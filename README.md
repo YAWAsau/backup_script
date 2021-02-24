@@ -8,7 +8,7 @@
 
 1. 解压缩到任意目录 点击先执行这个.sh等待提示结束
 
-   ![image-20210225011858607](C:\Users\chen\AppData\Roaming\Typora\typora-user-images\image-20210225011858607.png)
+   ![image-20210225011858607](https://github.com/chenaidairong/backup_script/blob/master/picture/image-20210225011610932.png)
 
 2. 编辑Apkname.txt把你不需要备份的软件删除&注视#都可以
 
