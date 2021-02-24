@@ -8,11 +8,11 @@
 
 1. 解压缩到任意目录 点击先执行这个.sh等待提示结束
 
-   ![image-20210225011858607](https://github.com/chenaidairong/backup_script/blob/master/picture/image-20210225011610932.png)
+   ![image-20210225011858607](https://github.com/chenaidairong/backup_script/blob/master/picture/image-20210225011858607.png
 
 2. 编辑Apkname.txt把你不需要备份的软件删除&注视#都可以
 
-   ![image-20210225012501486](C:\Users\chen\AppData\Roaming\Typora\typora-user-images\image-20210225012501486.png)
+   ![image-20210225012501486](https://github.com/chenaidairong/backup_script/blob/master/picture/image-20210225012501486.png)
 
 3. 点击执行我备份数据.sh等待备份结束
 
@@ -20,7 +20,7 @@
 
    #### 备注 一定要使用root权限执行脚本 ！！！！！！
 
-   ![image-20210225012600790](C:\Users\chen\AppData\Roaming\Typora\typora-user-images\image-20210225012600790.png)
+   ![image-20210225012600790](https://github.com/chenaidairong/backup_script/blob/master/picture/image-20210225012600790.png)
 
    ## 问答：
 
