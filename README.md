@@ -8,7 +8,7 @@
 
 1. 解压缩到任意目录 点击先执行这个.sh等待提示结束
 
-   ![image-20210225011858607](https://github.com/chenaidairong/backup_script/blob/master/picture/image-20210225011858607.png
+   ![image-20210225011858607](https://github.com/chenaidairong/backup_script/blob/master/picture/image-20210225011858607.png)
 
 2. 编辑Apkname.txt把你不需要备份的软件删除&注视#都可以
 
@@ -48,5 +48,4 @@
 <<<<<<< HEAD
 ![](https://avatars.githubusercontent.com/u/62833322?s=460&u=e349b67f15611011b1fee60102930f5df66e6d6e&v=4)
 =======
-![](https://avatars.githubusercontent.com/u/62833322?s=460&u=e349b67f15611011b1fee60102930f5df66e6d6e&v=4)
->>>>>>> cff2d173d871e10af26c49bc099624d7fa67566e
+
