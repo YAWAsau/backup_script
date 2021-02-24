@@ -6,7 +6,7 @@
 
 
 
-1. 解压缩到任意目录 点击先执行这个.sh等待提示结束
+1. 解压缩到任意目录 点击【appname.sh】等待提示结束
 
    ![image-20210225011858607](https://github.com/chenaidairong/backup_script/blob/master/picture/image-20210225011858607.png)
 
@@ -14,11 +14,11 @@
 
    ![image-20210225012501486](https://github.com/chenaidairong/backup_script/blob/master/picture/image-20210225012501486.png)
 
-3. 点击执行我备份数据.sh等待备份结束
+3. 点击【backup.sh】等待备份结束
 
 4. 会在当前目录看到多一个Backup资料夹里面都是你的软件备份吧这个资料夹整个备份起来刷好机直接在里面找到还原备份.sh即可恢复，同样道理里面有个name.txt 一样跟第二步骤操作一样不需要还原的删除
 
-   #### 备注 一定要使用root权限执行脚本 ！！！！！！
+   #### 备注 ：一定要使用root权限执行脚本 ！！！！！！
 
    ![image-20210225012600790](https://github.com/chenaidairong/backup_script/blob/master/picture/image-20210225012600790.png)
 
@@ -45,7 +45,7 @@
 
 [作者酷安地址](http://www.coolapk.com/u/2277637)
 
-<<<<<<< HEAD
+
 ![](https://avatars.githubusercontent.com/u/62833322?s=460&u=e349b67f15611011b1fee60102930f5df66e6d6e&v=4)
-=======
+
 
