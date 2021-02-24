@@ -1,0 +1,200 @@
+#!/system/bin/sh
+[[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
+[[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
+starttime1=$(date +"%Y-%m-%d %H:%M:%S")
+filepath=/data/adb/busybox/bin
+#檢測是否存在Magisk busybox
+if [[ -e /data/adb/magisk/busybox.bin ]]; then
+    if [[ ! -d $filepath ]]; then
+        mkdir -p $filepath
+        cp -r /data/adb/magisk/busybox.bin $filepath 
+        mv $filepath/busybox.bin $filepath/busybox
+        busybox="$filepath/busybox"   
+    else
+        if [[ -e $filepath/busybox.bin ]]; then
+            mv $filepath/busybox.bin $filepath/busybox
+        fi
+        busybox="$filepath/busybox"
+    fi
+else
+    if [[ -e /data/adb/magisk/busybox ]]; then
+        if [[ ! -d $filepath ]]; then
+            mkdir -p $filepath
+            cp -r /data/adb/magisk/busybox $filepath
+            busybox="$filepath/busybox"
+        else
+            busybox="$filepath/busybox"
+        fi
+    else
+        echo "沒有發現Magisk busybox"
+    fi
+fi
+if [[ -e $busybox ]]; then   
+    echo "busybox path: $busybox"
+    chmod 0777 $busybox
+    echo "發現Magisk Busybox....正在替換環境變量為Busybox防止簡陋的toybox缺少重要命令"
+    for a in $($busybox --list) ; do
+        if [[ -n $a ]]; then
+            if [[ -d $filepath ]]; then
+                [[ ! -e $filepath/$a ]] && ln -s $busybox "$filepath/$a"
+            fi    
+        fi    
+    done
+    unset PATH    
+fi
+
+#補上遺失指令集
+Add_path () {
+    if [[ ! -e $filepath/$1 ]]; then
+        if [[ -e $2/$1 ]]; then
+            if [[ $3 == y ]]; then                
+                if [[ -d $filepath ]]; then
+                    [[ ! -e $filepath/$1 ]] && cp -r $2/$1 $filepath && chmod 0777 $filepath/$1
+                else
+                    mkdir -p $filepath
+                    cp -r $2/$1 $filepath
+                    chmod 0777 $filepath/$1
+                fi
+            else
+                if [[ -d $filepath ]]; then
+                    [[ ! -e $filepath/$1 ]] && ln -s $2/$1 $filepath
+                else
+                    mkdir -p $filepath
+                    ln -s $2/$1 $filepath
+                fi
+            fi
+        else 
+            echo "$2/$1不存在 腳本所需的$1缺少"
+            exit 1
+        fi
+    fi    
+}
+
+Add_path "7za" ${0%/*}/bin y
+Add_path "aapt" ${0%/*}/bin n
+Add_path "pm" /system/bin n
+Add_path "cmd" /system/bin n
+export PATH=$PATH:/data/adb/busybox/bin  
+i=1
+txt="${0%/*}/name.txt"
+[[ ! -e $txt ]] && echo "$txt缺少" && exit 0
+r=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n '$=')
+[[ ! -z $r ]] && h=$r
+
+lock_val() {
+	if [[ -f $2 ]]; then
+		sy=$(cat "$2")
+		if [[ ! $sy == $1 ]]; then
+			chmod 0666 "$2" 2>/dev/null
+			echo "$1" >"$2"
+			chmod 0444 "$2" 2>/dev/null
+			echo "$(date '+%T') $2 $sy >>> $1"
+		fi
+	fi
+}
+
+echoRgb () {
+    if [[ -n $2 ]]; then
+        if [[ $3 == 1 ]]; then
+            echo -e "\e[1;32m $1\e[0m"
+        else
+            echo -e "\e[1;31m $1\e[0m"
+        fi
+    else
+        echo -e "\e[1;${bn}m $1\e[0m"
+    fi
+}
+
+echo_log() {
+	if [[ $? == 0 ]]; then
+		echoRgb "$1成功" "0" "1"
+	else
+		echoRgb "$1恢復失敗，過世了" "0" "0"
+	fi
+}
+7z () {
+    echoRgb "解壓縮$(basename $1)"
+    7za x "$1" -y -aos -o"$2">/dev/null 2>&1
+}
+
+endtime () {
+    #計算總體切換時長耗費
+    case $1 in
+    1) starttime=$starttime1 ;;
+    2) starttime=$starttime2 ;;
+    esac
+    endtime=$(date "+%Y-%m-%d %H:%M:%S")
+    duration=$(echo $((Sleep_time + $(date +%s -d "${endtime}") - $(date +%s -d "${starttime}"))) | awk '{t=split("60 秒 60 分 24 時 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')
+    [[ -n $duration ]] && echoRgb "$2用時:$duration" || echoRgb "$2用時:0秒"
+}
+
+if [[ ! $(getenforce) == Permissive ]]; then
+    #lock_val "0" /sys/fs/selinux/enforce
+    setenforce 0
+    echoRgb "selinux關閉"
+fi
+bn=37
+while [[ $i -le $h ]]; do
+    #let bn++
+    #[[ $bn -ge 37 ]] && bn=31
+	echoRgb "恢復第$i個應用 總共$h個 剩下$(($h - $i))個應用"
+	name=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')
+	name2=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')
+	echoRgb "恢復$name2"
+	starttime2=$(date +"%Y-%m-%d %H:%M:%S")
+    if [[ -d ${0%/*}/$name ]]; then        
+        zb=$(pm list packages | grep -w "$name" | sed 's/package://g')        
+        case $(find ${0%/*}/$name -name "*.apk" -type f | wc -l) in
+        1)
+            if [[ -z $zb ]]; then
+                echoRgb "$name2的Apk是常規Apk 開始安裝"
+                pm install -r -g "$(find ${0%/*}/$name -name "*.apk" -type f)">/dev/null 2>&1
+                echo_log "Apk安裝"
+            else
+                echoRgb "$name2存在當前系統中 略過安裝Apk"
+            fi ;;
+        *)
+            if [[ -z $zb ]]; then
+                echoRgb "$name2的Apk是多分包Apk 開始安裝"      
+                b=$(echo $(pm install-create) |grep -E -o '[0-9]+')
+                find ${0%/*}/$name -name "*.apk" -type f | while read i; do
+                    ad=$(basename $i)
+                    pm install-write $b $ad ${i%/*}/$ad>/dev/null 2>&1 && echo_log "$ad安裝"
+                done                
+                pm install-commit $b
+                echo_log "split Apk安裝"
+            else
+                echoRgb "$name2存在當前系統中 略過安裝Apk"
+            fi ;;
+        esac
+        if [[ -n $(pm list packages | grep -w "$name" | sed 's/package://g') ]]; then
+            echoRgb "$name2存在 開始釋放數據" 
+            if [[ $(cat /data/system/packages.list | grep -w "$name" | awk '{print $1}') == $name ]]; then            
+                [[ -n $name ]] && G=$(cat /data/system/packages.list | grep -w "$name" | awk '{print $2}')
+                X=$(cat /data/system/packages.list | grep -w "$name" | awk '{print $4}')
+                if [[ -n $name ]]; then
+                    [[ -d /data/user/0/$name ]] && rm -rf /data/user/0/$name
+                    [[ -d /sdcard/Android/data/$name ]] && rm -rf /sdcard/Android/data/$name
+                    [[ -d /sdcard/Android/obb/$name ]] && rm -rf /sdcard/Android/obb/$name
+                    find ${0%/*}/$name -name "*.zip" -type f| while read i; do                        
+                        7z "$i" /
+                        echo_log "解壓縮"
+                    done                    
+                fi                    
+                if [[ -d $X && -n $G ]]; then
+                    chown -R $G:$G $X
+                    echoRgb "路徑$X  權限:$G:$G" 
+                    echoRgb "$name2完成數據恢復"
+                fi
+            fi
+        fi
+        endtime 2 "$name2恢復"
+        echoRgb
+    #rm -rf ${0%/*}/$name
+    fi
+let i++
+done
+#lock_val "1" /sys/fs/selinux/enforce
+#setenforce 1
+echoRgb "批量恢復完成"
+endtime 1 "批量恢復開始到結束"
