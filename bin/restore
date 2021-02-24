@@ -1,7 +1,9 @@
 #!/system/bin/sh
 [[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
+#記錄開始時間
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
+#設置腳本busybox目錄位置
 filepath=/data/adb/busybox/bin
 #檢測是否存在Magisk busybox
 if [[ -e /data/adb/magisk/busybox.bin ]]; then
@@ -69,7 +71,7 @@ Add_path () {
         fi
     fi    
 }
-
+#設置命令位置
 Add_path "7za" ${0%/*}/bin y
 Add_path "aapt" ${0%/*}/bin n
 Add_path "pm" /system/bin n
@@ -80,19 +82,7 @@ txt="${0%/*}/name.txt"
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 0
 r=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n '$=')
 [[ ! -z $r ]] && h=$r
-
-lock_val() {
-	if [[ -f $2 ]]; then
-		sy=$(cat "$2")
-		if [[ ! $sy == $1 ]]; then
-			chmod 0666 "$2" 2>/dev/null
-			echo "$1" >"$2"
-			chmod 0444 "$2" 2>/dev/null
-			echo "$(date '+%T') $2 $sy >>> $1"
-		fi
-	fi
-}
-
+#轉換echo顏色提高可讀性
 echoRgb () {
     if [[ -n $2 ]]; then
         if [[ $3 == 1 ]]; then
@@ -104,7 +94,7 @@ echoRgb () {
         echo -e "\e[1;${bn}m $1\e[0m"
     fi
 }
-
+#顯示執行結果
 echo_log() {
 	if [[ $? == 0 ]]; then
 		echoRgb "$1成功" "0" "1"
@@ -112,11 +102,12 @@ echo_log() {
 		echoRgb "$1恢復失敗，過世了" "0" "0"
 	fi
 }
+#調用二進制
 7z () {
     echoRgb "解壓縮$(basename $1)"
     7za x "$1" -y -aos -o"$2">/dev/null 2>&1
 }
-
+#計算結束時間
 endtime () {
     #計算總體切換時長耗費
     case $1 in
@@ -128,12 +119,9 @@ endtime () {
     [[ -n $duration ]] && echoRgb "$2用時:$duration" || echoRgb "$2用時:0秒"
 }
 
-if [[ ! $(getenforce) == Permissive ]]; then
-    #lock_val "0" /sys/fs/selinux/enforce
-    setenforce 0
-    echoRgb "selinux關閉"
-fi
+[[ ! $(getenforce) == Permissive ]] && setenforce 0 && echoRgb "selinux關閉"
 bn=37
+#開始循環$txt內的資料進行恢復
 while [[ $i -le $h ]]; do
     #let bn++
     #[[ $bn -ge 37 ]] && bn=31
@@ -190,11 +178,10 @@ while [[ $i -le $h ]]; do
         fi
         endtime 2 "$name2恢復"
         echoRgb
-    #rm -rf ${0%/*}/$name
     fi
 let i++
 done
-#lock_val "1" /sys/fs/selinux/enforce
+
 #setenforce 1
 echoRgb "批量恢復完成"
 endtime 1 "批量恢復開始到結束"

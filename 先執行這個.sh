@@ -41,7 +41,6 @@ if [[ -e $busybox ]]; then
     done
     unset PATH    
 fi
-#安装aapt
 #補上遺失指令集
 Add_path () {
     if [[ ! -e $filepath/$1 ]]; then

@@ -3,8 +3,9 @@
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
 #是否備份外部數據
 sdcard_data=1
-Program=zip
+#記錄開始時間
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
+#設置腳本busybox目錄位置
 filepath=/data/adb/busybox/bin
 #檢測是否存在Magisk busybox
 if [[ -e /data/adb/magisk/busybox.bin ]]; then
@@ -72,6 +73,12 @@ Add_path () {
         fi
     fi    
 }
+#設置命令位置
+Add_path "zip" ${0%/*}/bin y
+Add_path "pm" /system/bin n
+Add_path "cmd" /system/bin n
+Add_path "am" /system/bin n
+export PATH=$PATH:/data/adb/busybox/bin    
 i=1
 txt="${0%/*}/Apkname.txt"
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 1
@@ -79,18 +86,13 @@ txt="${0%/*}/Apkname.txt"
 r=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n '$=')
 [[ -n $r ]] && h=$r
 [[ -z $r ]] && echo "爬..Apkname.txt是空的備份個鬼" && exit 0
-
-Add_path "zip" ${0%/*}/bin y
-Add_path "pm" /system/bin n
-Add_path "cmd" /system/bin n
-Add_path "am" /system/bin n
-export PATH=$PATH:/data/adb/busybox/bin    
 path="/sdcard/Android"
 path2="/data/user/0"
-time0=${0%/*}/Backup
-[[ ! -d $time0 ]] && mkdir "$time0"
-filesize=$(du -k -s $time0 | awk '{print $1}')
-[[ ! -e $time0/name.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">$time0/name.txt
+Backup="${0%/*}/Backup"
+[[ ! -d $Backup ]] && mkdir "$Backup"
+filesize=$(du -k -s $Backup | awk '{print $1}')
+[[ ! -e $Backup/name.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">$Backup/name.txt
+#調用二進制
 Quantity=0
 7z () {
     7za a -t7z $1.7z $2 -mx=$Quantity -r -ms >/dev/null 2>&1
@@ -101,6 +103,7 @@ Zip () {
 }	
 
 #Everything is Ok>/dev/null 2>&1
+#轉換echo顏色提高可讀性
 echoRgb () {
     if [[ -n $2 ]]; then
         if [[ $3 == 1 ]]; then
@@ -112,7 +115,7 @@ echoRgb () {
         echo -e "\e[1;${bn}m $1\e[0m"
     fi
 }
-
+#顯示執行結果
 echo_log() {
 	if [[ $? == 0 ]]; then
 		echoRgb "$1成功" "0" "1"
@@ -122,7 +125,7 @@ echo_log() {
 		result=1
 	fi
 }
-
+#計算結束時間
 endtime () {
     #計算總體切換時長耗費
     case $1 in
@@ -133,51 +136,53 @@ endtime () {
     duration=$(echo $((Sleep_time + $(date +%s -d "${endtime}") - $(date +%s -d "${starttime}"))) | awk '{t=split("60 秒 60 分 24 時 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')
     [[ -n $duration ]] && echoRgb "$2用時:$duration" || echoRgb "$2用時:0秒"
 }
-
+#檢測數據位置進行備份
 Backup-data () {
     if [[ -d $path/$1/$name && $sdcard_data == 1 ]]; then
-        if [[ ! -e $time0/$name/$1size.txt ]]; then
+        if [[ ! -e $Backup/$name/$1size.txt ]]; then
             echoRgb "發現${name2} $path/$1/數據開始備份"
             #7z "$name-$1" $path/$1/$name       
              Zip "$name-$1" $path/$1/$name                       
              echo_log "備份$name2 $path/$1"
-             [[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}')>$time0/$name/$1size.txt 
+             [[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}')>$Backup/$name/$1size.txt 
         else
-             if [[ ! $(cat $time0/$name/$1size.txt) == $(du -k -s $path/$1/$name | awk '{print $1}') ]];then
+             if [[ ! $(cat $Backup/$name/$1size.txt) == $(du -k -s $path/$1/$name | awk '{print $1}') ]];then
                  echoRgb "發現${name2} $path/$1/數據開始備份"
                  #7z "$name-$1" $path/$1/$name       
                  Zip "$name-$1" $path/$1/$name                       
                  echo_log "備份$name2 $path/$1"
-                 [[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}')>$time0/$name/$1size.txt 
+                 [[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}')>$Backup/$name/$1size.txt 
              else
                  echoRgb "$name2 $1數據無發生變化 跳過備份"
              fi
         fi
     else
-        [[ $sdcard_data == 1 ]] && echoRgb "天殺的竟然沒有$path/$1 跳過備份"
+        [[ $sdcard_data == 1 ]] && echoRgb "$path/$1 不存在跳過備份"
     fi
 }
-
+#檢測apk狀態進行備份
 Backup-apk () {
-    if [[ ! -e $time0/$name/apk-version.txt ]]; then
+    if [[ ! -e $Backup/$name/apk-version.txt ]]; then
         echoRgb "$1"
         echoRgb "發現$(pm path "$name" | cut -f2 -d ':' | wc -l)個Apk"
-        cp -r $(pm path "$name" | cut -f2 -d ':') "$time0/$name"
+        cp -r $(pm path "$name" | cut -f2 -d ':') "$Backup/$name"
         echo_log "備份Apk"
-        [[ $result == 0 ]] && echo $(pm dump $name | grep -m 1 versionName | sed -n 's/.*=//p')>$time0/$name/apk-version.txt
+        [[ $result == 0 ]] && echo $(pm dump $name | grep -m 1 versionName | sed -n 's/.*=//p')>$Backup/$name/apk-version.txt
     else
-        if [[ ! $(cat $time0/$name/apk-version.txt) == $(pm dump $name | grep -m 1 versionName | sed -n 's/.*=//p') ]];then    			 
+        if [[ ! $(cat $Backup/$name/apk-version.txt) == $(pm dump $name | grep -m 1 versionName | sed -n 's/.*=//p') ]];then    			 
             echoRgb "$1"
             echoRgb "發現$(pm path "$name" | cut -f2 -d ':' | wc -l)個Apk"
-            cp -r $(pm path "$name" | cut -f2 -d ':') "$time0/$name"
+            cp -r $(pm path "$name" | cut -f2 -d ':') "$Backup/$name"
             echo_log "備份Apk"
-            [[ $result == 0 ]] && echo $(pm dump $name | grep -m 1 versionName | sed -n 's/.*=//p')>$time0/$name/apk-version.txt
+            [[ $result == 0 ]] && echo $(pm dump $name | grep -m 1 versionName | sed -n 's/.*=//p')>$Backup/$name/apk-version.txt
         else
             echoRgb "$name2 Apk版本無更新 跳過備份"
         fi 
     fi 
 }
+
 bn=37
+#開始循環$txt內的資料進行備份
 while [[ $i -le $h ]]; do
     #let bn++
     #[[ $bn -ge 37 ]] && bn=31
@@ -190,14 +195,14 @@ while [[ $i -le $h ]]; do
 		if [[ -n $(pm list packages | grep -w "$name" | sed 's/package://g') ]]; then
             pkg=$(pm list packages | grep -w "$name" | sed 's/package://g')
 		    [[ $pkg == com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份" || [[ $pkg == com.tencent.mm ]] && echo "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
-			[[ ! -d $time0/bin ]] && mkdir -p $time0/bin && cp -f ${0%/*}/bin/7za $time0/bin
-			cd $time0
-			cp -r ${0%/*}/bin/restore $time0
+			[[ ! -d $Backup/bin ]] && mkdir -p $Backup/bin && cp -f ${0%/*}/bin/7za $Backup/bin
+			cd $Backup
+			cp -r ${0%/*}/bin/restore $Backup
 			mv restore 還原備份.sh
 			#停止軟件
 			[[ ! $name == bin.mt.plus && ! $name == com.termux ]] && am force-stop $name
-			[[ -z $(cat $time0/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name2  $name" >>$time0/name.txt
-			#[[ ! -d $time0/$name ]] && echo "$name2  $name" >>$time0/name.txt
+			[[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name2  $name" >>$Backup/name.txt
+			#[[ ! -d $Backup/$name ]] && echo "$name2  $name" >>$Backup/name.txt
 			#创建APP备份文件夹
 			[[ ! -d $name ]] && mkdir "$name" 
 			cd "$name"			
@@ -217,33 +222,34 @@ while [[ $i -le $h ]]; do
             echoRgb "[ 開始備份${name2} user數據 ]"
 			#备份user数据
 			if [[ -d /data/user/0/$name ]]; then
-                if [[ ! -e $time0/$name/usersize.txt ]]; then
+                if [[ ! -e $Backup/$name/usersize.txt ]]; then
 			        #7za a -t7z "$name-user.7z" /data/user/0/$name -xr!$name/lib -xr!$name/cache -xr!$name/code_cache -mx=$Quantity -r -ms -mmt>/dev/null 2>&1
     			    #zip -r -$Quantity "$name-user.zip" /data/user/0/$name -x "/data/user/0/$name/lib/*" -x "/data/user/0/$name/cache/*" -x "/data/user/0/$name/code_cache/*" >/dev/null 2>&1
     			     zip -r -$Quantity "$name-user.zip" /data/user/0/$name -x "/data/user/0/$name/lib/*" -x "/data/user/0/$name/cache/*">/dev/null 2>&1
     			    echo_log "備份user數據/data/user/0/$name"
-    			    [[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}')>$time0/$name/usersize.txt    
+    			    [[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}')>$Backup/$name/usersize.txt    
     			else
-                    if [[ ! $(cat $time0/$name/usersize.txt) == $(du -k -s /data/user/0/$name | awk '{print $1}') ]];then
+                    if [[ ! $(cat $Backup/$name/usersize.txt) == $(du -k -s /data/user/0/$name | awk '{print $1}') ]];then
         			    #zip -r -$Quantity "$name-user.zip" /data/user/0/$name -x "/data/user/0/$name/lib/*" -x "/data/user/0/$name/cache/*" -x "/data/user/0/$name/code_cache/*" >/dev/null 2>&1
         			    zip -r -$Quantity "$name-user.zip" /data/user/0/$name -x "/data/user/0/$name/lib/*" -x "/data/user/0/$name/cache/*">/dev/null 2>&1
         			    echo_log "備份user數據/data/user/0/$name"
-        			    [[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}')>$time0/$name/usersize.txt    
+        			    [[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}')>$Backup/$name/usersize.txt    
         			else
                         echoRgb "$name2 user數據無發生變化 跳過備份"
                     fi
     			fi        						                        
-            fi
+			fi
 		fi
         endtime 2 "$name2備份"
 		echo
 	fi    
 	let i++
 done
-filesizee=$(du -k -s $time0 | awk '{print $1}')
+#計算出備份大小跟差異性
+filesizee=$(du -k -s $Backup | awk '{print $1}')
 dsize=$(($((filesizee-filesize))/1024))
-echoRgb "備份資料夾路徑:$time0"
-echoRgb "備份資料夾總體大小$(du -k -s -h $time0 | awk '{print $1}')"
+echoRgb "備份資料夾路徑:$Backup"
+echoRgb "備份資料夾總體大小$(du -k -s -h $Backup | awk '{print $1}')"
 if [[ $dsize -gt 0 ]]; then
     if [[ $((dsize/1024)) -gt 0 ]]; then
         echoRgb "本次備份: $((dsize/1024))gb"
