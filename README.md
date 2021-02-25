@@ -4,17 +4,17 @@
 
 ## 使用
 
+#### 推荐的工具: MT管理器
 
-
-1. 解压缩到任意目录 点击【appname.sh】等待提示结束
+1. 解压缩到任意目录 点击【appname.sh】并勾选root执行脚本 等待提示结束
 
    ![image-20210225011858607](https://github.com/chenaidairong/backup_script/blob/master/picture/image-20210225011858607.png)
 
-2. 编辑Apkname.txt把你不需要备份的软件删除&注视#都可以
+2. 当前目录下会生成一个Apkname.txt, 这就是你要备份的软件列表, 你可以把你不需要备份的软件那一行前加上"#", 脚本就会自动跳过它了
 
    ![image-20210225012501486](https://github.com/chenaidairong/backup_script/blob/master/picture/image-20210225012501486.png)
 
-3. 点击【backup.sh】等待备份结束
+3. 点击【backup.sh】并勾选root执行 等待备份结束
 
 4. 会在当前目录看到多一个Backup资料夹里面都是你的软件备份吧这个资料夹整个备份起来刷好机直接在里面找到还原备份.sh即可恢复，同样道理里面有个name.txt 一样跟第二步骤操作一样不需要还原的删除
 
