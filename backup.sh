@@ -2,7 +2,7 @@
 [[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
 #是否備份外部數據
-sdcard_data=1
+sdcard_data=true
 #記錄開始時間
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
 #設置腳本busybox目錄位置
@@ -138,7 +138,7 @@ endtime () {
 }
 #檢測數據位置進行備份
 Backup-data () {
-    if [[ -d $path/$1/$name && $sdcard_data == 1 ]]; then
+    if [[ -d $path/$1/$name && $sdcard_data == true ]]; then
         if [[ ! -e $Backup/$name/$1size.txt ]]; then
             echoRgb "發現${name2} $path/$1/數據開始備份"
             #7z "$name-$1" $path/$1/$name       
@@ -157,7 +157,7 @@ Backup-data () {
              fi
         fi
     else
-        [[ $sdcard_data == 1 ]] && echoRgb "$path/$1 不存在跳過備份"
+        [[ $sdcard_data == true ]] && echoRgb "$path/$1 不存在跳過備份"
     fi
 }
 #檢測apk狀態進行備份
@@ -214,7 +214,7 @@ while [[ $i -le $h ]]; do
 			*)			    
                 Backup-apk "$name2為Split Apk支持備份" ;;
             esac	
-			[[ $sdcard_data == 1 ]] && echoRgb "[ 開始備份${name2} Sdcard數據 ]"
+			[[ $sdcard_data == true ]] && echoRgb "[ 開始備份${name2} Sdcard數據 ]"
 			#备份data数据
             Backup-data data
 			#备份obb数据
