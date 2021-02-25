@@ -1,86 +1,24 @@
 #!/system/bin/sh
 [[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
-
 # Load Settings Variables
-. settings.conf
-
+conf="${0%/*}/settings.conf"
+bin="${0%/*}/bin/bin2.sh"
+if [[ -e $conf ]]; then
+    . $conf 
+else
+    echo "$conf遺失"
+    exit 1
+fi
+if [[ -e $bin ]]; then
+    . $bin 
+else
+    echo "$bin遺失"
+    exit 1
+fi
+echo "環境變數: $PATH"
 #記錄開始時間
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
-#設置腳本busybox目錄位置
-filepath=/data/adb/busybox/bin
-#檢測是否存在Magisk busybox
-if [[ -e /data/adb/magisk/busybox.bin ]]; then
-    if [[ ! -d $filepath ]]; then
-        mkdir -p $filepath
-        cp -r /data/adb/magisk/busybox.bin $filepath 
-        mv $filepath/busybox.bin $filepath/busybox
-        busybox="$filepath/busybox"   
-    else
-        if [[ -e $filepath/busybox.bin ]]; then
-            mv $filepath/busybox.bin $filepath/busybox
-        fi
-        busybox="$filepath/busybox"
-    fi
-else
-    if [[ -e /data/adb/magisk/busybox ]]; then
-        if [[ ! -d $filepath ]]; then
-            mkdir -p $filepath
-            cp -r /data/adb/magisk/busybox $filepath
-            busybox="$filepath/busybox"
-        else
-            busybox="$filepath/busybox"
-        fi
-    else
-        echo "沒有發現Magisk busybox"
-    fi
-fi
-if [[ -e $busybox ]]; then   
-    echo "busybox path: $busybox"
-    chmod 0777 $busybox
-    echo "發現Magisk Busybox....正在替換環境變量為Busybox防止簡陋的toybox缺少重要命令"
-    for a in $($busybox --list) ; do
-        if [[ -n $a ]]; then
-            if [[ -d $filepath ]]; then
-                [[ ! -e $filepath/$a ]] && ln -s $busybox "$filepath/$a"
-            fi    
-        fi    
-    done
-    unset PATH    
-fi
-
-#補上遺失指令集
-Add_path () {
-    if [[ ! -e $filepath/$1 ]]; then
-        if [[ -e $2/$1 ]]; then
-            if [[ $3 == y ]]; then                
-                if [[ -d $filepath ]]; then
-                    [[ ! -e $filepath/$1 ]] && cp -r $2/$1 $filepath && chmod 0777 $filepath/$1
-                else
-                    mkdir -p $filepath
-                    cp -r $2/$1 $filepath
-                    chmod 0777 $filepath/$1
-                fi
-            else
-                if [[ -d $filepath ]]; then
-                    [[ ! -e $filepath/$1 ]] && ln -s $2/$1 $filepath
-                else
-                    mkdir -p $filepath
-                    ln -s $2/$1 $filepath
-                fi
-            fi
-        else 
-            echo "$2/$1不存在 腳本所需的$1缺少"
-            exit 1
-        fi
-    fi    
-}
-#設置命令位置
-Add_path "zip" ${0%/*}/bin y
-Add_path "pm" /system/bin n
-Add_path "cmd" /system/bin n
-Add_path "am" /system/bin n
-export PATH=$PATH:/data/adb/busybox/bin    
 i=1
 txt="${0%/*}/Apkname.txt"
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 1
@@ -199,8 +137,9 @@ while [[ $i -le $h ]]; do
 		    [[ $pkg == com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份" || [[ $pkg == com.tencent.mm ]] && echo "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
 			[[ ! -d $Backup/bin ]] && mkdir -p $Backup/bin && cp -f ${0%/*}/bin/7za $Backup/bin
 			cd $Backup
-			cp -r ${0%/*}/bin/restore $Backup
-			mv restore 還原備份.sh
+			[[ ! -e $Backup/還原備份.sh ]] && cp -r ${0%/*}/bin/restore $Backup && mv restore 還原備份.sh
+            [[ ! -e $Backup/bin/bin.sh ]] && cp -r ${0%/*}/bin/bin.sh $Backup/bin
+            [[ ! -e $Backup/bin/busybox ]] && cp -r ${0%/*}/bin/busybox $Backup/bin
 			#停止軟件
 			[[ ! $name == bin.mt.plus && ! $name == com.termux ]] && am force-stop $name
 			[[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name2  $name" >>$Backup/name.txt

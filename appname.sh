@@ -1,78 +1,15 @@
 #!/system/bin/sh
 [[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
-filepath=/data/adb/busybox/bin
-#檢測是否存在Magisk busybox
-if [[ -e /data/adb/magisk/busybox.bin ]]; then
-    if [[ ! -d $filepath ]]; then
-        mkdir -p $filepath
-        cp -r /data/adb/magisk/busybox.bin $filepath 
-        mv $filepath/busybox.bin $filepath/busybox
-        busybox="$filepath/busybox"   
-    else
-        if [[ -e $filepath/busybox.bin ]]; then
-            mv $filepath/busybox.bin $filepath/busybox
-        fi
-        busybox="$filepath/busybox"
-    fi
+#關連腳本設置環境變量
+bin="${0%/*}/bin/bin2.sh"
+if [[ -e $bin ]]; then
+    . $bin 
 else
-    if [[ -e /data/adb/magisk/busybox ]]; then
-        if [[ ! -d $filepath ]]; then
-            mkdir -p $filepath
-            cp -r /data/adb/magisk/busybox $filepath
-            busybox="$filepath/busybox"
-        else
-            busybox="$filepath/busybox"
-        fi
-    else
-        echo "沒有發現Magisk busybox"
-    fi
+    echo "$bin遺失"
+    exit 1
 fi
-if [[ -e $busybox ]]; then   
-    echo "busybox path: $busybox"
-    chmod 0777 $busybox
-    echo "發現Magisk Busybox....正在替換環境變量為Busybox防止簡陋的toybox缺少重要命令"
-    for a in $($busybox --list) ; do
-        if [[ -n $a ]]; then
-            if [[ -d $filepath ]]; then
-                [[ ! -e $filepath/$a ]] && ln -s $busybox "$filepath/$a"
-            fi    
-        fi    
-    done
-    unset PATH    
-fi
-#補上遺失指令集
-Add_path () {
-    if [[ ! -e $filepath/$1 ]]; then
-        if [[ -e $2/$1 ]]; then
-            if [[ $3 == y ]]; then                
-                if [[ -d $filepath ]]; then
-                    [[ ! -e $filepath/$1 ]] && cp -r $2/$1 $filepath && chmod 0777 $filepath/$1
-                else
-                    mkdir -p $filepath
-                    cp -r $2/$1 $filepath
-                    chmod 0777 $filepath/$1
-                fi
-            else
-                if [[ -d $filepath ]]; then
-                    [[ ! -e $filepath/$1 ]] && ln -s $2/$1 $filepath
-                else
-                    mkdir -p $filepath
-                    ln -s $2/$1 $filepath
-                fi
-            fi
-        else 
-            echo "$2/$1不存在 腳本所需的$1缺少"
-            exit 1
-        fi
-    fi    
-}
-
-Add_path "zip" ${0%/*}/bin y
-Add_path "aapt" ${0%/*}/bin y
-Add_path "pm" /system/bin n
-Add_path "cmd" /system/bin n
-export PATH=$PATH:/data/adb/busybox/bin  
+echo "環境變數: $PATH"
 name=$(pm list packages -3 | sed 's/package://g' | grep -v 'xiaomi' | grep -v 'miui')
 sys=$(pm list packages | egrep 'com.android.chrome|com.google.android.inputmethod.latin|com.digibites.accubattery' | sed 's/package://g')
 echo "#不需要備份的應用請在開頭注釋# 比如#xxxxxxxx 酷安">${0%/*}/Apkname.txt
