@@ -10,7 +10,14 @@ else
     echo "$bin遺失"
     exit 1
 fi
-echo "環境變數: $PATH"
+#設置命令和目錄位置及是否使用鏈接方式
+Add_path "busybox" ${0%/*}/bin n
+Add_path "7za" ${0%/*}/bin n
+Add_path "pm" /system/bin y
+Add_path "cmd" /system/bin y
+Add_path "am" /system/bin y
+busybox_file
+
 i=1
 txt="${0%/*}/name.txt"
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 0
@@ -94,13 +101,25 @@ while [[ $i -le $h ]]; do
             if [[ $(cat /data/system/packages.list | grep -w "$name" | awk '{print $1}') == $name ]]; then            
                 [[ -n $name ]] && G=$(cat /data/system/packages.list | grep -w "$name" | awk '{print $2}')
                 X=$(cat /data/system/packages.list | grep -w "$name" | awk '{print $4}')
-                if [[ -n $name ]]; then
-                    [[ -d /data/user/0/$name ]] && rm -rf /data/user/0/$name
-                    [[ -d /sdcard/Android/data/$name ]] && rm -rf /sdcard/Android/data/$name
-                    [[ -d /sdcard/Android/obb/$name ]] && rm -rf /sdcard/Android/obb/$name
-                    find ${0%/*}/$name -name "*.zip" -type f| while read i; do                        
-                        7z "$i" /
-                        echo_log "解壓縮"
+                if [[ -n $name ]]; then                                                            
+                    find ${0%/*}/$name -name "*.zip" -type f| while read i; do
+                        case $(basename $i) in
+                        $name-user.zip)
+                            [[ -d /data/user/0/$name ]] && rm -rf /data/user/0/$name
+                            7z "$i" /
+                            echo_log "解压缩"
+                            ;;
+                        $name-data.zip) 
+                            [[ -d /sdcard/Android/data/$name ]] && rm -rf /sdcard/Android/data/$name
+                            7z "$i" /
+                            echo_log "解压缩"
+                            ;;
+                        $name-obb.zip) 
+                            [[ -d /sdcard/Android/obb/$name ]] && rm -rf /sdcard/Android/obb/$name
+                            7z "$i" /
+                            echo_log "解压缩"
+                            ;;
+                        esac
                     done                    
                 fi                    
                 if [[ -d $X && -n $G ]]; then
