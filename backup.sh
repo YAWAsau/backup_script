@@ -3,7 +3,7 @@
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
 # Load Settings Variables
 conf="${0%/*}/settings.conf"
-bin="${0%/*}/bin/bin2.sh"
+bin="${0%/*}/bin/bin.sh"
 if [[ -e $conf ]]; then
     . $conf 
 else
@@ -16,7 +16,16 @@ else
     echo "$bin遺失"
     exit 1
 fi
-echo "環境變數: $PATH"
+#設置命令和目錄位置及是否使用鏈接方式
+Add_path "busybox" ${0%/*}/bin n
+Add_path "7za" ${0%/*}/bin n
+Add_path "aapt" ${0%/*}/bin n
+Add_path "zip" ${0%/*}/bin n
+Add_path "pm" /system/bin y
+Add_path "cmd" /system/bin y
+Add_path "am" /system/bin y
+busybox_file
+
 #記錄開始時間
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
 i=1

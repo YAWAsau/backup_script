@@ -2,14 +2,23 @@
 [[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
 #關連腳本設置環境變量
-bin="${0%/*}/bin/bin2.sh"
+bin="${0%/*}/bin/bin.sh"
 if [[ -e $bin ]]; then
     . $bin 
 else
     echo "$bin遺失"
     exit 1
 fi
-echo "環境變數: $PATH"
+#設置命令和目錄位置及是否使用鏈接方式
+Add_path "busybox" ${0%/*}/bin n
+Add_path "7za" ${0%/*}/bin n
+Add_path "aapt" ${0%/*}/bin n
+Add_path "zip" ${0%/*}/bin n
+Add_path "pm" /system/bin y
+Add_path "cmd" /system/bin y
+Add_path "am" /system/bin y
+busybox_file
+
 name=$(pm list packages -3 | sed 's/package://g' | grep -v 'xiaomi' | grep -v 'miui')
 sys=$(pm list packages | egrep 'com.android.chrome|com.google.android.inputmethod.latin|com.digibites.accubattery' | sed 's/package://g')
 echo "#不需要備份的應用請在開頭注釋# 比如#xxxxxxxx 酷安">${0%/*}/Apkname.txt
