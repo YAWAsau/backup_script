@@ -24,7 +24,6 @@ Add_path "zip" ${0%/*}/bin n
 Add_path "pm" /system/bin y
 Add_path "cmd" /system/bin y
 Add_path "am" /system/bin y
-busybox_file
 
 #記錄開始時間
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
