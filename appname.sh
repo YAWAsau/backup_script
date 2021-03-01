@@ -17,7 +17,7 @@ Add_path "zip" ${0%/*}/bin n
 Add_path "pm" /system/bin y
 Add_path "cmd" /system/bin y
 Add_path "am" /system/bin y
-busybox_file
+
 
 name=$(pm list packages -3 | sed 's/package://g' | grep -v 'xiaomi' | grep -v 'miui')
 sys=$(pm list packages | egrep 'com.android.chrome|com.google.android.inputmethod.latin|com.digibites.accubattery' | sed 's/package://g')

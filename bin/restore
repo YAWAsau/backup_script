@@ -16,7 +16,6 @@ Add_path "7za" ${0%/*}/bin n
 Add_path "pm" /system/bin y
 Add_path "cmd" /system/bin y
 Add_path "am" /system/bin y
-busybox_file
 
 i=1
 txt="${0%/*}/name.txt"
