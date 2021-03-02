@@ -3,7 +3,7 @@
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
 # Load Settings Variables
 conf="${0%/*}/settings.conf"
-bin="${0%/*}/bin/bin.sh"
+bin="${0%/*}/tools/bin.sh"
 if [[ -e $conf ]]; then
     . $conf 
 else
@@ -17,20 +17,28 @@ else
     exit 1
 fi
 #設置命令和目錄位置及是否使用鏈接方式
-Add_path "busybox" ${0%/*}/bin n
-Add_path "7za" ${0%/*}/bin n
-Add_path "aapt" ${0%/*}/bin n
-Add_path "zip" ${0%/*}/bin n
-Add_path "pm" /system/bin y
-Add_path "cmd" /system/bin y
-Add_path "am" /system/bin y
+Add_path
+if [[ -d /system/bin ]]; then
+    system_path=/system/bin 
+else
+    if [[ -d /system/xbin ]]; then
+        system_path=/system/xbin 
+    fi
+fi
+Add_path "7za" n
+Add_path "aapt" n
+Add_path "zip" n
+Add_path "pm" y $system_path 
+Add_path "cmd" y $system_path 
+Add_path "am" y $system_path 
+echo "環境變數: $PATH"
 
 #記錄開始時間
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
 i=1
 txt="${0%/*}/Apkname.txt"
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 1
-[[ ! -d ${0%/*}/bin ]] && echo "${0%/*}/bin目錄遺失" && exit 1
+[[ ! -d ${0%/*}/tools ]] && echo "${0%/*}/tools目錄遺失" && exit 1
 r=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n '$=')
 [[ -n $r ]] && h=$r
 [[ -z $r ]] && echo "爬..Apkname.txt是空的備份個鬼" && exit 0
@@ -143,11 +151,11 @@ while [[ $i -le $h ]]; do
 		if [[ -n $(pm list packages | grep -w "$name" | sed 's/package://g') ]]; then
             pkg=$(pm list packages | grep -w "$name" | sed 's/package://g')
 		    [[ $pkg == com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份" || [[ $pkg == com.tencent.mm ]] && echo "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
-			[[ ! -d $Backup/bin ]] && mkdir -p $Backup/bin && cp -f ${0%/*}/bin/7za $Backup/bin
+			[[ ! -d $Backup/tools ]] && mkdir -p $Backup/tools && cp -r ${0%/*}/tools/7za $Backup/tools
 			cd $Backup
-			[[ ! -e $Backup/還原備份.sh ]] && cp -r ${0%/*}/bin/restore $Backup && mv restore 還原備份.sh
-            [[ ! -e $Backup/bin/bin.sh ]] && cp -r ${0%/*}/bin/bin.sh $Backup/bin
-            [[ ! -e $Backup/bin/busybox ]] && cp -r ${0%/*}/bin/busybox $Backup/bin
+			[[ ! -e $Backup/還原備份.sh ]] && cp -r ${0%/*}/tools/restore $Backup && mv restore 還原備份.sh
+            [[ ! -e $Backup/tools/bin.sh ]] && cp -r ${0%/*}/tools/bin.sh $Backup/tools
+            [[ ! -e $Backup/tools/busybox ]] && cp -r ${0%/*}/tools/busybox $Backup/tools
 			#停止軟件
 			[[ ! $name == bin.mt.plus && ! $name == com.termux ]] && am force-stop $name
 			[[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name2  $name" >>$Backup/name.txt

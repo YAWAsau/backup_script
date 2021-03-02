@@ -2,7 +2,7 @@
 [[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
 #關連腳本設置環境變量
-bin="${0%/*}/bin/bin.sh"
+bin="${0%/*}/tools/bin.sh"
 if [[ -e $bin ]]; then
     . $bin 
 else
@@ -10,14 +10,21 @@ else
     exit 1
 fi
 #設置命令和目錄位置及是否使用鏈接方式
-Add_path "busybox" ${0%/*}/bin n
-Add_path "7za" ${0%/*}/bin n
-Add_path "aapt" ${0%/*}/bin n
-Add_path "zip" ${0%/*}/bin n
-Add_path "pm" /system/bin y
-Add_path "cmd" /system/bin y
-Add_path "am" /system/bin y
-
+Add_path
+if [[ -d /system/bin ]]; then
+    system_path=/system/bin 
+else
+    if [[ -d /system/xbin ]]; then
+        system_path=/system/xbin 
+    fi
+fi
+Add_path "7za" n
+Add_path "aapt" n
+Add_path "zip" n
+Add_path "pm" y $system_path
+Add_path "cmd" y $system_path 
+Add_path "am" y $system_path 
+echo "環境變數: $PATH"
 
 name=$(pm list packages -3 | sed 's/package://g' | grep -v 'xiaomi' | grep -v 'miui')
 sys=$(pm list packages | egrep 'com.android.chrome|com.google.android.inputmethod.latin|com.digibites.accubattery' | sed 's/package://g')
