@@ -10,6 +10,7 @@ else
     exit 1
 fi
 #設置命令和目錄位置及是否使用鏈接方式
+tools_path=${0%/*}/tools
 Add_path
 if [[ -d /system/bin ]]; then
     system_path=/system/bin 
@@ -31,16 +32,16 @@ sys=$(pm list packages | egrep 'com.android.chrome|com.google.android.inputmetho
 echo "#不需要備份的應用請在開頭注釋# 比如#xxxxxxxx 酷安">${0%/*}/Apkname.txt
 echo "請勿關閉腳本，等待提示結束"
 for name in $name $sys; do
-   #获取apk中文名称                                 
-   Appname1=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label-zh-CN" | head -1 | sed "s/.*:\'//g" | sed "s/\'//g")
-   Appname2=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label-zh-TW:" | sed 's/application-label-zh-TW://g' | sed "s/\'//g")
-   #获取apk默认名称
-   Appname3=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label:" | sed 's/application-label://g' | sed "s/\'//g")
-   [[ $(echo $Appname1 | wc -l) -eq 1 ]] && Appname=$(echo $Appname1 | sed 's/ //g')
-   [[ -z $Appname ]] && Appname=$(echo $Appname2 | sed 's/ //g')
-   [[ -z $Appname ]] && Appname=$(echo $Appname3 | sed 's/ //g')
-   [[ -z $Appname ]] && Appname=$name
-   [[ -z $(cat ${0%/*}/Apkname.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$Appname $name">>${0%/*}/Apkname.txt
+    #獲取apk中文名稱         
+    Appname1=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label-zh-CN" | head -1 | sed "s/.*:\'//g" | sed "s/\'//g" | sed 's/ //g')                                
+    Appname2=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label-zh-TW:" | sed 's/application-label-zh-TW://g' | sed "s/\'//g" | sed 's/ //g')
+    #獲取apk默認名稱
+    Appname3=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label:" | sed 's/application-label://g' | sed "s/\'//g" | sed 's/ //g')
+    [[ ! $(echo $Appname1 | wc -l) == 0  ]] && Appname=$Appname1
+    [[ -z $Appname ]] && Appname=$Appname2
+    [[ -z $Appname ]] && Appname=$Appname3
+    [[ -z $Appname ]] && Appname=$name
+    [[ -z $(cat ${0%/*}/Apkname.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$Appname $name">>${0%/*}/Apkname.txt
 done
 echo "如果執行中出現AndroidManifest.xml:XX: error: ERROR 代表dump名稱錯誤 以使用包名替代，不影響備份"
 echo "輸出包名結束 請查看${0%/*}/Apkname.txt"
