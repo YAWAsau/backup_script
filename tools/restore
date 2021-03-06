@@ -11,6 +11,7 @@ else
     exit 1
 fi
 #設置命令和目錄位置及是否使用鏈接方式
+tools_path=${0%/*}/tools
 Add_path
 if [[ -d /system/bin ]]; then
     system_path=/system/bin 

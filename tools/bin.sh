@@ -4,8 +4,7 @@ Add_path () {
     #設置二進制命令目錄位置
     filepath=/data/backup_tools
     busybox="$filepath/busybox"
-    #工具絕對位置
-    tools_path=${0%/*}/tools
+    #工具絕對位置  
     if [[ -e $busybox ]]; then        
         if [[ ! -e $filepath/$1 ]]; then
             if [[ $2 == n ]]; then             
@@ -38,6 +37,8 @@ Add_path () {
                     [[ ! -e $filepath/$a ]] && ln -s $busybox "$filepath/$a"                    
                 fi    
             done
+            export PATH=$filepath
+            [[ ! $PATH == $filepath ]] && echo "環境變量位置錯誤" && exit 1        
         else
             echo "錯誤 缺少$tools_path/busybox"
             exit 1
