@@ -1,21 +1,17 @@
 #!/system/bin/sh
 [[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
+[[ ! -d ${0%/*}/tools ]] && echo "${0%/*}/tools目錄遺失" && exit 1
 # Load Settings Variables
 conf="${0%/*}/settings.conf"
-bin="${0%/*}/tools/bin.sh"
 if [[ -e $conf ]]; then
     . $conf 
 else
     echo "$conf遺失"
     exit 1
 fi
-if [[ -e $bin ]]; then
-    . $bin 
-else
-    echo "$bin遺失"
-    exit 1
-fi
+. ${0%/*}/tools/bin.sh
+
 #設置命令和目錄位置及是否使用鏈接方式
 tools_path=${0%/*}/tools
 Add_path
@@ -39,7 +35,6 @@ starttime1=$(date +"%Y-%m-%d %H:%M:%S")
 i=1
 txt="${0%/*}/Apkname.txt"
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 1
-[[ ! -d ${0%/*}/tools ]] && echo "${0%/*}/tools目錄遺失" && exit 1
 r=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n '$=')
 [[ -n $r ]] && h=$r
 [[ -z $r ]] && echo "爬..Apkname.txt是空的備份個鬼" && exit 0
@@ -58,7 +53,6 @@ Quantity=0
 Zip () {
     zip -r -$Quantity $1.zip $2>/dev/null 2>&1 	
 }	
-
 #Everything is Ok>/dev/null 2>&1
 #轉換echo顏色提高可讀性
 echoRgb () {
@@ -99,14 +93,14 @@ Backup-data () {
         if [[ ! -e $Backup/$name/$1size.txt ]]; then
             echoRgb "發現${name2} $path/$1/數據開始備份"
             #7z "$name-$1" $path/$1/$name       
-             Zip "$name-$1" $path/$1/$name                       
+             Zip "$name-$1" "$path/$1/$name"                      
              echo_log "備份$name2 $path/$1"
              [[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}')>$Backup/$name/$1size.txt 
         else
              if [[ ! $(cat $Backup/$name/$1size.txt) == $(du -k -s $path/$1/$name | awk '{print $1}') ]];then
                  echoRgb "發現${name2} $path/$1/數據開始備份"
                  #7z "$name-$1" $path/$1/$name       
-                 Zip "$name-$1" $path/$1/$name                       
+                 Zip "$name-$1" "$path/$1/$name"                       
                  echo_log "備份$name2 $path/$1"
                  [[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}')>$Backup/$name/$1size.txt 
              else
@@ -149,29 +143,32 @@ while [[ $i -le $h ]]; do
 	echoRgb "備份$name2"
 	starttime2=$(date +"%Y-%m-%d %H:%M:%S")
 	if [[ -n $name ]]; then
-		if [[ -n $(pm list packages | grep -w "$name" | sed 's/package://g') ]]; then
-            pkg=$(pm list packages | grep -w "$name" | sed 's/package://g')
+	    pkg=$(pm list packages | grep -w "$name" | sed 's/package://g')
+		if [[ -n $pkg ]]; then            
 		    [[ $pkg == com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份" || [[ $pkg == com.tencent.mm ]] && echo "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
 			[[ ! -d $Backup/tools ]] && mkdir -p $Backup/tools && cp -r ${0%/*}/tools/7za $Backup/tools
-			cd $Backup
-			[[ ! -e $Backup/還原備份.sh ]] && cp -r ${0%/*}/tools/restore $Backup && mv restore 還原備份.sh
+			[[ ! -e $Backup/還原備份.sh ]] && cp -r ${0%/*}/tools/restore $Backup/還原備份.sh
             [[ ! -e $Backup/tools/bin.sh ]] && cp -r ${0%/*}/tools/bin.sh $Backup/tools
             [[ ! -e $Backup/tools/busybox ]] && cp -r ${0%/*}/tools/busybox $Backup/tools
 			#停止軟件
 			[[ ! $name == bin.mt.plus && ! $name == com.termux ]] && am force-stop $name
 			[[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name2  $name" >>$Backup/name.txt
-			#[[ ! -d $Backup/$name ]] && echo "$name2  $name" >>$Backup/name.txt
 			#创建APP备份文件夹
-			[[ ! -d $name ]] && mkdir "$name" 
-			cd "$name"			
+			[[ ! -d $Backup/$name ]] && mkdir "$Backup/$name" 
+			cd $Backup/$name
 			#备份apk
 			echoRgb "[ 開始備份${name2} APK ]"
+			if [[ $name == com.android.chrome ]]; then
+                find /data/app/ -maxdepth 2 -name "*com.google.android.trichromelibrary*" -type d | while read i; do
+                    [[ -e $i/base.apk ]] && cp -r "$i/base.apk" "$Backup/$name/nmsl.apk"
+                done
+            fi
 			case $(pm path "$name" | cut -f2 -d ':' | wc -l) in
             1)
                 Backup-apk "$name2為非Split Apk" ;;
-			*)			    
-                Backup-apk "$name2為Split Apk支持備份" ;;
-            esac	
+            *)			    
+                Backup-apk "$name2為Split Apk支持備份" ;;                
+            esac	                      
 			[[ $EXTERNAL_DATA == true ]] && echoRgb "[ 開始備份${name2} Sdcard數據 ]"
 			#备份data数据
             Backup-data data
@@ -181,15 +178,12 @@ while [[ $i -le $h ]]; do
 			#备份user数据
 			if [[ -d /data/user/0/$name ]]; then
                 if [[ ! -e $Backup/$name/usersize.txt ]]; then
-			        #7za a -t7z "$name-user.7z" /data/user/0/$name -xr!$name/lib -xr!$name/cache -xr!$name/code_cache -mx=$Quantity -r -ms -mmt>/dev/null 2>&1
-    			    #zip -r -$Quantity "$name-user.zip" /data/user/0/$name -x "/data/user/0/$name/lib/*" -x "/data/user/0/$name/cache/*" -x "/data/user/0/$name/code_cache/*" >/dev/null 2>&1
-    			     zip -r -$Quantity "$name-user.zip" /data/user/0/$name -x "/data/user/0/$name/lib/*" -x "/data/user/0/$name/cache/*">/dev/null 2>&1
+    			    zip -r -$Quantity "$name-user.zip" "/data/user/0/$name" -x "/data/user/0/$name/lib/*" -x "/data/user/0/$name/cache/*">/dev/null 2>&1
     			    echo_log "備份user數據/data/user/0/$name"
     			    [[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}')>$Backup/$name/usersize.txt    
     			else
-                    if [[ ! $(cat $Backup/$name/usersize.txt) == $(du -k -s /data/user/0/$name | awk '{print $1}') ]];then
-        			    #zip -r -$Quantity "$name-user.zip" /data/user/0/$name -x "/data/user/0/$name/lib/*" -x "/data/user/0/$name/cache/*" -x "/data/user/0/$name/code_cache/*" >/dev/null 2>&1
-        			    zip -r -$Quantity "$name-user.zip" /data/user/0/$name -x "/data/user/0/$name/lib/*" -x "/data/user/0/$name/cache/*">/dev/null 2>&1
+                    if [[ ! $(cat $Backup/$name/usersize.txt) == $(du -k -s /data/user/0/$name | awk '{print $1}') ]];then        		
+        			    zip -r -$Quantity "$name-user.zip" "/data/user/0/$name" -x "/data/user/0/$name/lib/*" -x "/data/user/0/$name/cache/*">/dev/null 2>&1
         			    echo_log "備份user數據/data/user/0/$name"
         			    [[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}')>$Backup/$name/usersize.txt    
         			else

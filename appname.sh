@@ -1,14 +1,9 @@
 #!/system/bin/sh
 [[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
-#關連腳本設置環境變量
-bin="${0%/*}/tools/bin.sh"
-if [[ -e $bin ]]; then
-    . $bin 
-else
-    echo "$bin遺失"
-    exit 1
-fi
+[[ ! -d ${0%/*}/tools ]] && echo "${0%/*}/tools目錄遺失" && exit 1
+#鏈接腳本設置環境變量
+. ${0%/*}/tools/bin.sh
 #設置命令和目錄位置及是否使用鏈接方式
 tools_path=${0%/*}/tools
 Add_path
@@ -29,7 +24,7 @@ echo "環境變數: $PATH"
 
 name=$(pm list packages -3 | sed 's/package://g' | grep -v 'xiaomi' | grep -v 'miui')
 sys=$(pm list packages | egrep 'com.android.chrome|com.google.android.inputmethod.latin|com.digibites.accubattery' | sed 's/package://g')
-echo "#不需要備份的應用請在開頭注釋# 比如#xxxxxxxx 酷安">${0%/*}/Apkname.txt
+echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">${0%/*}/Apkname.txt
 echo "請勿關閉腳本，等待提示結束"
 for name in $name $sys; do
     #獲取apk中文名稱         

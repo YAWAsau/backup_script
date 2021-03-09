@@ -1,15 +1,10 @@
 #!/system/bin/sh
 [[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
+[[ ! -d ${0%/*}/tools ]] && echo "${0%/*}/tools目錄遺失" && exit 1
 #記錄開始時間
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
-bin="${0%/*}/tools/bin.sh"
-if [[ -e $bin ]]; then
-    . $bin 
-else
-    echo "$bin遺失"
-    exit 1
-fi
+. ${0%/*}/tools/bin.sh
 #設置命令和目錄位置及是否使用鏈接方式
 tools_path=${0%/*}/tools
 Add_path
@@ -80,29 +75,31 @@ while [[ $i -le $h ]]; do
 	starttime2=$(date +"%Y-%m-%d %H:%M:%S")
     if [[ -d ${0%/*}/$name ]]; then        
         zb=$(pm list packages | grep -w "$name" | sed 's/package://g')        
-        case $(find ${0%/*}/$name -name "*.apk" -type f | wc -l) in
-        1)
-            if [[ -z $zb ]]; then
-                echoRgb "$name2的Apk是常規Apk 開始安裝"
-                pm install -r -g "$(find ${0%/*}/$name -name "*.apk" -type f)">/dev/null 2>&1
-                echo_log "Apk安裝"
-            else
-                echoRgb "$name2存在當前系統中 略過安裝Apk"
-            fi ;;
-        *)
-            if [[ -z $zb ]]; then
-                echoRgb "$name2的Apk是多分包Apk 開始安裝"      
-                b=$(echo $(pm install-create) |grep -E -o '[0-9]+')
-                find ${0%/*}/$name -name "*.apk" -type f | while read i; do
-                    ad=$(basename $i)
-                    pm install-write $b $ad ${i%/*}/$ad>/dev/null 2>&1 && echo_log "$ad安裝"
-                done                
-                pm install-commit $b
-                echo_log "split Apk安裝"
-            else
-                echoRgb "$name2存在當前系統中 略過安裝Apk"
-            fi ;;
-        esac
+            case $(find ${0%/*}/$name -name "*.apk" -type f | wc -l) in
+            1)
+                if [[ -z $zb ]]; then
+                    echoRgb "$name2的Apk是常規Apk 開始安裝"
+                    [[ -e ${0%/*}/$name/nmsl.apk ]] && pm install -r -g "${0%/*}/$name/nmsl.apk">/dev/null 2>&1
+                    pm install -r -g "$(find ${0%/*}/$name -name "*.apk" -type f)">/dev/null 2>&1
+                    echo_log "Apk安裝"
+                else
+                    echoRgb "$name2存在當前系統中 略過安裝Apk"
+                fi ;;
+            *)
+                if [[ -z $zb ]]; then
+                    echoRgb "$name2的Apk是多分包Apk 開始安裝"      
+                    b=$(echo $(pm install-create) |grep -E -o '[0-9]+')
+                    [[ -e ${0%/*}/$name/nmsl.apk ]] && pm install -r -g "${0%/*}/$name/nmsl.apk">/dev/null 2>&1
+                    find ${0%/*}/$name -name "*.apk" -type f | while read i; do
+                        ad=$(basename $i | grep -v 'nmsl.apk')
+                        pm install-write $b $ad ${i%/*}/$ad>/dev/null 2>&1 && echo_log "$ad安裝"
+                    done                
+                    pm install-commit $b
+                    echo_log "split Apk安裝"
+                else
+                    echoRgb "$name2存在當前系統中 略過安裝Apk"
+                fi ;;
+            esac
         if [[ -n $(pm list packages | grep -w "$name" | sed 's/package://g') ]]; then
             echoRgb "$name2存在 開始釋放數據" 
             if [[ $(cat /data/system/packages.list | grep -w "$name" | awk '{print $1}') == $name ]]; then            
@@ -114,17 +111,17 @@ while [[ $i -le $h ]]; do
                         $name-user.zip)
                             [[ -d /data/user/0/$name ]] && rm -rf /data/user/0/$name
                             7z "$i" /
-                            echo_log "解压缩"
+                            echo_log "解壓縮"
                             ;;
                         $name-data.zip) 
                             [[ -d /sdcard/Android/data/$name ]] && rm -rf /sdcard/Android/data/$name
                             7z "$i" /
-                            echo_log "解压缩"
+                            echo_log "解壓縮"
                             ;;
                         $name-obb.zip) 
                             [[ -d /sdcard/Android/obb/$name ]] && rm -rf /sdcard/Android/obb/$name
                             7z "$i" /
-                            echo_log "解压缩"
+                            echo_log "解壓縮"
                             ;;
                         esac
                     done                    
