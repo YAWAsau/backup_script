@@ -3,15 +3,7 @@
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥马不解压缩？用毛缐 憨批" && exit 1
 [[ ! -d ${0%/*}/tools ]] && echo "${0%/*}/tools目录遗失" && exit 1
 # Load Settings Variables
-conf="${0%/*}/settings.conf"
-if [[ -e $conf ]]; then
-    . $conf 
-else
-    echo "$conf遗失"
-    exit 1
-fi
 . ${0%/*}/tools/bin.sh
-
 #设置命令和目录位置及是否使用链接方式
 tools_path=${0%/*}/tools
 Add_path
@@ -22,12 +14,11 @@ else
         system_path=/system/xbin 
     fi
 fi
-Add_path "7za" n
 Add_path "aapt" n
-Add_path "zip" n
 Add_path "pm" y $system_path 
 Add_path "cmd" y $system_path 
 Add_path "am" y $system_path 
+Add_path "getevent" y $system_path 
 echo "环境变数: $PATH"
 
 #记录开始时间
@@ -46,14 +37,10 @@ filesize=$(du -k -s $Backup | awk '{print $1}')
 [[ ! -e $Backup/name.txt ]] && echo "#不需要恢復还原的应用请在开头注释# 比如#xxxxxxxx 酷安">$Backup/name.txt
 #调用二进制
 Quantity=0
-7z () {
-    7za a -t7z $1.7z $2 -mx=$Quantity -r -ms >/dev/null 2>&1
-    #7za a -t7z $1.7z $2 -mx=$Quantity -r -m0=LZMA:d=21 -ms -mmt>/dev/null 2>&1
+lz4 () { 
+    tar -cf "$1.tar.lz4" "$2">/dev/null 2>&1
 }
-Zip () {
-    zip -r -$Quantity $1.zip $2>/dev/null 2>&1 	
-}	
-#Everything is Ok>/dev/null 2>&1
+#Everything is Ok#z 2>&1
 #转换echo颜色提高可读性
 echoRgb () {
     if [[ -n $2 ]]; then
@@ -87,20 +74,39 @@ endtime () {
     duration=$(echo $((Sleep_time + $(date +%s -d "${endtime}") - $(date +%s -d "${starttime}"))) | awk '{t=split("60 秒 60 分 24 时 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')
     [[ -n $duration ]] && echoRgb "$2用时:$duration" || echoRgb "$2用时:0秒"
 }
+set -e
+get_version() {
+	local version
+	local branch
+	while :; do
+		version="$(getevent -qlc 1 | awk '{ print $3 }')"
+		case "$version" in
+			KEY_VOLUMEUP)
+				branch="yes"
+				;;
+			KEY_VOLUMEDOWN)
+				branch="no"
+				;;
+			*)
+				continue
+				;;
+		esac		
+		echo $branch
+		break
+	done
+}
 #检测数据位置进行备份
 Backup-data () {
-    if [[ -d $path/$1/$name && $EXTERNAL_DATA == true ]]; then
+    if [[ -d $path/$1/$name ]]; then
         if [[ ! -e $Backup/$name/$1size.txt ]]; then
             echoRgb "发现${name2} $path/$1/数据开始备份"
-            #7z "$name-$1" $path/$1/$name       
-             Zip "$name-$1" "$path/$1/$name"                      
-             echo_log "备份$name2 $path/$1"
-             [[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}')>$Backup/$name/$1size.txt 
+            lz4 "$name-$1" $path/$1/$name
+            echo_log "备份$name2 $path/$1"
+            [[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}')>$Backup/$name/$1size.txt 
         else
              if [[ ! $(cat $Backup/$name/$1size.txt) == $(du -k -s $path/$1/$name | awk '{print $1}') ]];then
                  echoRgb "发现${name2} $path/$1/数据开始备份"
-                 #7z "$name-$1" $path/$1/$name       
-                 Zip "$name-$1" "$path/$1/$name"                       
+                 lz4 "$name-$1" $path/$1/$name
                  echo_log "备份$name2 $path/$1"
                  [[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}')>$Backup/$name/$1size.txt 
              else
@@ -108,12 +114,13 @@ Backup-data () {
              fi
         fi
     else
-        [[ $EXTERNAL_DATA == true ]] && echoRgb "$path/$1 不存在跳过备份"
+        echoRgb "$path/$1 不存在跳过备份"
     fi
 }
 #检测apk状态进行备份
 Backup-apk () {
     if [[ ! -e $Backup/$name/apk-version.txt ]]; then
+        [[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name2  $name" >>$Backup/name.txt
         echoRgb "$1"
         echoRgb "发现$(pm path "$name" | cut -f2 -d ':' | wc -l)个Apk"
         cp -r $(pm path "$name" | cut -f2 -d ':') "$Backup/$name"
@@ -121,6 +128,7 @@ Backup-apk () {
         [[ $result == 0 ]] && echo $(pm dump $name | grep -m 1 versionName | sed -n 's/.*=//p')>$Backup/$name/apk-version.txt
     else
         if [[ ! $(cat $Backup/$name/apk-version.txt) == $(pm dump $name | grep -m 1 versionName | sed -n 's/.*=//p') ]];then    			 
+            [[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name2  $name" >>$Backup/name.txt
             echoRgb "$1"
             echoRgb "发现$(pm path "$name" | cut -f2 -d ':' | wc -l)个Apk"
             cp -r $(pm path "$name" | cut -f2 -d ':') "$Backup/$name"
@@ -131,7 +139,23 @@ Backup-apk () {
         fi 
     fi 
 }
-
+echoRgb "是否备份外部数据 即比如原神的数据包"
+echoRgb "音量上备份，音量下不备份"
+if [[ $(get_version) == yes ]]; then
+    B=yes
+else
+    B=no
+fi
+sleep 1
+[[ $B == yes ]] && echoRgb "备份" || echoRgb "不备份"
+echoRgb "选择是否只备份split apk"
+echoRgb "音量上是，音量下不是"
+if [[ $(get_version) == yes ]]; then
+    C=yes
+else
+    C=no
+fi
+[[ $C == yes ]] && echoRgb "是" || echoRgb "不是，混合备份"
 bn=37
 #开始循环$txt内的资料进行备份
 while [[ $i -le $h ]]; do
@@ -151,8 +175,7 @@ while [[ $i -le $h ]]; do
             [[ ! -e $Backup/tools/bin.sh ]] && cp -r ${0%/*}/tools/bin.sh $Backup/tools
             [[ ! -e $Backup/tools/busybox ]] && cp -r ${0%/*}/tools/busybox $Backup/tools
 			#停止软件
-			[[ ! $name == bin.mt.plus && ! $name == com.termux ]] && am force-stop $name
-			[[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name2  $name" >>$Backup/name.txt
+			[[ ! $name == bin.mt.plus && ! $name == com.termux ]] && am force-stop $name			
 			#创建APP备份文件夹
 			[[ ! -d $Backup/$name ]] && mkdir "$Backup/$name" 
 			cd $Backup/$name
@@ -165,7 +188,7 @@ while [[ $i -le $h ]]; do
                 FileNum=$(ls -l $FileDir|grep ^- |wc -l)
                 while [[ $FileNum -gt $ReservedNum ]]; do
                     OldFile=$(ls -rt $FileDir| head -1)
-                    echo "删除文件:"$OldFile
+                    echoRgb "删除文件:"$OldFile
                     rm -rf $OldFile
                     let "FileNum--"
                 done 
@@ -179,25 +202,37 @@ while [[ $i -le $h ]]; do
             fi
 			case $(pm path "$name" | cut -f2 -d ':' | wc -l) in
             1)
-                Backup-apk "$name2为非Split Apk" ;;
+                if [[ $C == no ]]; then
+                    Backup-apk "$name2为非Split Apk" 
+                    D=1
+                else
+                    echoRgb "$name2为非Split Apk跳过备份" 
+                    rm -rf $Backup/$name
+                    D=
+                fi
+                ;;
             *)			    
-                Backup-apk "$name2为Split Apk支持备份" ;;                
+                Backup-apk "$name2为Split Apk支持备份"
+                D=1
+                ;;                
             esac	                      
-			[[ $EXTERNAL_DATA == true ]] && echoRgb "[ 开始备份${name2} Sdcard数据 ]"
-			#备份data数据
-            Backup-data data
-			#备份obb数据
-            Backup-data obb
-            echoRgb "[ 开始备份${name2} user数据 ]"
+			if [[ $B == yes && -n $D ]]; then
+			    echoRgb "[ 开始备份${name2} Sdcard数据 ]"
+    			#备份data数据
+                Backup-data data
+    			#备份obb数据
+                Backup-data obb
+            fi            
 			#备份user数据
-			if [[ -d /data/user/0/$name ]]; then
-                if [[ ! -e $Backup/$name/usersize.txt ]]; then
-    			    zip -r -$Quantity "$name-user.zip" "/data/user/0/$name" -x "/data/user/0/$name/lib/*" -x "/data/user/0/$name/cache/*">/dev/null 2>&1
+			if [[ -d /data/user/0/$name && -n $D ]]; then
+                echoRgb "[ 开始备份${name2} user数据 ]"
+                if [[ ! -e $Backup/$name/usersize.txt ]]; then    			    			
+    			    tar -cf "$name-user.tar.lz4" /data/user/0/$name --exclude=cache --exclude=lib>/dev/null 2>&1
     			    echo_log "备份user数据/data/user/0/$name"
     			    [[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}')>$Backup/$name/usersize.txt    
     			else
                     if [[ ! $(cat $Backup/$name/usersize.txt) == $(du -k -s /data/user/0/$name | awk '{print $1}') ]];then        		
-        			    zip -r -$Quantity "$name-user.zip" "/data/user/0/$name" -x "/data/user/0/$name/lib/*" -x "/data/user/0/$name/cache/*">/dev/null 2>&1
+        			    tar -cf "$name-user.tar.lz4" /data/user/0/$name --exclude=cache --exclude=lib>/dev/null 2>&1
         			    echo_log "备份user数据/data/user/0/$name"
         			    [[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}')>$Backup/$name/usersize.txt    
         			else
@@ -227,3 +262,4 @@ else
 fi
 echoRgb "批量备份完成"
 endtime 1 "批量备份开始到结束"
+exit 0
