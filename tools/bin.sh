@@ -28,9 +28,12 @@ Add_path () {
         export PATH=$filepath
         [[ ! $PATH == $filepath ]] && echo "環境變量位置錯誤" && exit 1        
     else
-        if [[ -e $tools_path/busybox ]]; then
+        #判斷是否存在Magisk busybox 則優先使用，如沒有使用腳本自身busybox
+        if [[ -e /data/adb/magisk/busybox ]]; then    
+            echo "存在Magisk busybox path:/data/adb/magisk/busybox"
+            echo "優先使用 佈置環境中....."
             [[ ! -d $filepath ]] && mkdir -p $filepath
-            cp -r $tools_path/busybox $busybox
+            cp -r /data/adb/magisk/busybox $busybox
             chmod 0777 $busybox
             for a in $($busybox --list) ; do
                 if [[ -n $a ]]; then                    
@@ -38,10 +41,25 @@ Add_path () {
                 fi    
             done
             export PATH=$filepath
-            [[ ! $PATH == $filepath ]] && echo "環境變量位置錯誤" && exit 1        
+            [[ ! $PATH == $filepath ]] && echo "環境變量位置錯誤" && exit 1         
         else
-            echo "錯誤 缺少$tools_path/busybox"
-            exit 1
+            if [[ -e $tools_path/busybox ]]; then
+                echo "不存在Magisk busybox"
+                echo "使用$tools_path/busybox 佈置環境中....."
+                [[ ! -d $filepath ]] && mkdir -p $filepath
+                cp -r $tools_path/busybox $busybox
+                chmod 0777 $busybox
+                for a in $($busybox --list) ; do
+                    if [[ -n $a ]]; then                    
+                        [[ ! -e $filepath/$a ]] && ln -s $busybox "$filepath/$a"                    
+                    fi    
+                done
+                export PATH=$filepath
+                [[ ! $PATH == $filepath ]] && echo "環境變量位置錯誤" && exit 1        
+            else
+                echo "錯誤 缺少$tools_path/busybox"
+                exit 1
+            fi
         fi
     fi        
 }
