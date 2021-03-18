@@ -2,8 +2,7 @@
 [[ $(id -u) -ne 0 ]] && echo "你是憨批？不给Root用你妈 爬" && exit 1
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥马不解压缩？用毛缐 憨批" && exit 1
 [[ ! -d ${0%/*}/tools ]] && echo "${0%/*}/tools目录遗失" && exit 1
-#记录开始时间
-starttime1=$(date +"%Y-%m-%d %H:%M:%S")
+
 . ${0%/*}/tools/bin.sh
 #设置命令和目录位置及是否使用链接方式
 tools_path=${0%/*}/tools
@@ -15,11 +14,14 @@ else
         system_path=/system/xbin 
     fi
 fi
-Add_path "7za" n
+
+Add_path "pv" n
 Add_path "pm" y $system_path
 Add_path "cmd" y $system_path
 Add_path "am" y $system_path
 echo "环境变数: $PATH"
+#记录开始时间
+starttime1=$(date +"%Y-%m-%d %H:%M:%S")
 i=1
 txt="${0%/*}/name.txt"
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 0
@@ -58,7 +60,7 @@ endtime () {
     2) starttime=$starttime2 ;;
     esac
     endtime=$(date "+%Y-%m-%d %H:%M:%S")
-    duration=$(echo $((Sleep_time + $(date +%s -d "${endtime}") - $(date +%s -d "${starttime}"))) | awk '{t=split("60 秒 60 分 24 时 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')
+    duration=$(echo $(($(date +%s -d "${endtime}") - $(date +%s -d "${starttime}"))) | awk '{t=split("60 秒 60 分 24 时 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')
     [[ -n $duration ]] && echoRgb "$2用时:$duration" || echoRgb "$2用时:0秒"
 }
 
@@ -101,6 +103,8 @@ while [[ $i -le $h ]]; do
                 fi ;;
             esac
         if [[ -n $(pm list packages | grep -w "$name" | sed 's/package://g') ]]; then
+            #停止软件
+			[[ ! $name == bin.mt.plus && ! $name == com.termux && ! $name == com.mixplorer.silver ]] && am force-stop $name
             echoRgb "$name2存在 开始释放数据" 
             if [[ $(cat /data/system/packages.list | grep -w "$name" | awk '{print $1}') == $name ]]; then            
                 [[ -n $name ]] && G=$(cat /data/system/packages.list | grep -w "$name" | awk '{print $2}')
@@ -110,18 +114,18 @@ while [[ $i -le $h ]]; do
                         case $(basename $i) in
                         $name-user.tar.lz4)
                             [[ -d /data/user/0/$name ]] && rm -rf /data/user/0/$name
-                            7z "$i" /
-                            echo_log "解压缩"
+                            pv $i | tar xpf - -C /                           
+                            echo_log "$(basename $i)解压缩"
                             ;;
                         $name-data.tar.lz4) 
-                            [[ -d /sdcard/Android/data/$name ]] && rm -rf /sdcard/Android/data/$name
-                            7z "$i" /
-                            echo_log "解压缩"
+                            [[ -d /sdcard/Android/data/$name ]] && rm -rf /sdcard/Android/data/$name                          
+                            pv $i | tar xpf - -C /                      
+                            echo_log "$(basename $i)解压缩"
                             ;;
                         $name-obb.tar.lz4) 
-                            [[ -d /sdcard/Android/obb/$name ]] && rm -rf /sdcard/Android/obb/$name
-                            7z "$i" /
-                            echo_log "解压缩"
+                            [[ -d /sdcard/Android/obb/$name ]] && rm -rf /sdcard/Android/obb/$name                      
+                            pv $i | tar xpf - -C /
+                            echo_log "$(basename $i)解压缩"
                             ;;
                         esac
                     done                    

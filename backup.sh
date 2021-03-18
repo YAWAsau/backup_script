@@ -15,14 +15,13 @@ else
     fi
 fi
 Add_path "aapt" n
+Add_path "pv" n
 Add_path "pm" y $system_path 
 Add_path "cmd" y $system_path 
 Add_path "am" y $system_path 
 Add_path "getevent" y $system_path 
 echo "环境变数: $PATH"
 
-#记录开始时间
-starttime1=$(date +"%Y-%m-%d %H:%M:%S")
 i=1
 txt="${0%/*}/Apkname.txt"
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 1
@@ -38,7 +37,7 @@ filesize=$(du -k -s $Backup | awk '{print $1}')
 #调用二进制
 Quantity=0
 lz4 () { 
-    tar -cf "$1.tar.lz4" "$2">/dev/null 2>&1
+    tar -cf - "$2" 2>/dev/null | pv -terb > "$1.tar.lz4"
 }
 #Everything is Ok#z 2>&1
 #转换echo颜色提高可读性
@@ -71,9 +70,10 @@ endtime () {
     2) starttime=$starttime2 ;;
     esac
     endtime=$(date "+%Y-%m-%d %H:%M:%S")
-    duration=$(echo $((Sleep_time + $(date +%s -d "${endtime}") - $(date +%s -d "${starttime}"))) | awk '{t=split("60 秒 60 分 24 时 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')
+    duration=$(echo $(($(date +%s -d "${endtime}") - $(date +%s -d "${starttime}"))) | awk '{t=split("60 秒 60 分 24 时 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')
     [[ -n $duration ]] && echoRgb "$2用时:$duration" || echoRgb "$2用时:0秒"
 }
+
 set -e
 get_version() {
 	local version
@@ -158,6 +158,9 @@ fi
 [[ $C == yes ]] && echoRgb "是" || echoRgb "不是，混合备份"
 bn=37
 #开始循环$txt内的资料进行备份
+#记录开始时间
+starttime1=$(date +"%Y-%m-%d %H:%M:%S")
+
 while [[ $i -le $h ]]; do
     #let bn++
     #[[ $bn -ge 37 ]] && bn=31
@@ -175,7 +178,7 @@ while [[ $i -le $h ]]; do
             [[ ! -e $Backup/tools/bin.sh ]] && cp -r ${0%/*}/tools/bin.sh $Backup/tools
             [[ ! -e $Backup/tools/busybox ]] && cp -r ${0%/*}/tools/busybox $Backup/tools
 			#停止软件
-			[[ ! $name == bin.mt.plus && ! $name == com.termux ]] && am force-stop $name			
+			[[ ! $name == bin.mt.plus && ! $name == com.termux && ! $name == com.mixplorer.silver ]] && am force-stop $name
 			#创建APP备份文件夹
 			[[ ! -d $Backup/$name ]] && mkdir "$Backup/$name" 
 			cd $Backup/$name
@@ -227,12 +230,13 @@ while [[ $i -le $h ]]; do
 			if [[ -d /data/user/0/$name && -n $D ]]; then
                 echoRgb "[ 开始备份${name2} user数据 ]"
                 if [[ ! -e $Backup/$name/usersize.txt ]]; then    			    			
-    			    tar -cf "$name-user.tar.lz4" /data/user/0/$name --exclude=cache --exclude=lib>/dev/null 2>&1
+    			    #tar -cpf "$name-user.tar.lz4" /data/user/0/$name --exclude=$name/cache --exclude=$name/lib >/dev/null 2>&1
+    			    tar -cpf - "/data/user/0/$name" --exclude=$name/cache --exclude=$name/lib 2>/dev/null | pv -terb> "$name-user.tar.lz4"
     			    echo_log "备份user数据/data/user/0/$name"
     			    [[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}')>$Backup/$name/usersize.txt    
     			else
                     if [[ ! $(cat $Backup/$name/usersize.txt) == $(du -k -s /data/user/0/$name | awk '{print $1}') ]];then        		
-        			    tar -cf "$name-user.tar.lz4" /data/user/0/$name --exclude=cache --exclude=lib>/dev/null 2>&1
+        			    tar -cpf - "/data/user/0/$name" --exclude=$name/cache --exclude=$name/lib 2>/dev/null | pv -terb> "$name-user.tar.lz4"
         			    echo_log "备份user数据/data/user/0/$name"
         			    [[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}')>$Backup/$name/usersize.txt    
         			else
