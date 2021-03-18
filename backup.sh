@@ -14,7 +14,7 @@ else
         system_path=/system/xbin 
     fi
 fi
-Add_path "aapt" n
+
 Add_path "pv" n
 Add_path "pm" y $system_path 
 Add_path "cmd" y $system_path 
