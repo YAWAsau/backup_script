@@ -173,7 +173,7 @@ while [[ $i -le $h ]]; do
 	    pkg=$(pm list packages | grep -w "$name" | sed 's/package://g')
 		if [[ -n $pkg ]]; then            
 		    [[ $pkg == com.tencent.mobileqq ]] && echo "QQ可能恢復备份失败或是丢失聊天记录，请自行用你信赖的软件备份" || [[ $pkg == com.tencent.mm ]] && echo "WX可能恢復备份失败或是丢失聊天记录，请自行用你信赖的软件备份"
-			[[ ! -d $Backup/tools ]] && mkdir -p $Backup/tools
+			[[ ! -d $Backup/tools ]] && mkdir -p $Backup/tools && cp -r ${0%/*}/tools/pv $Backup/tools
 			[[ ! -e $Backup/还原备份.sh ]] && cp -r ${0%/*}/tools/restore $Backup/还原备份.sh
             [[ ! -e $Backup/tools/bin.sh ]] && cp -r ${0%/*}/tools/bin.sh $Backup/tools
             [[ ! -e $Backup/tools/busybox ]] && cp -r ${0%/*}/tools/busybox $Backup/tools
