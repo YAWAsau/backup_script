@@ -37,8 +37,10 @@ name=$(pm list packages -3 | sed 's/package://g' | grep -v 'xiaomi' | grep -v 'm
 sys=$(pm list packages -s | egrep 'com.android.chrome|com.google.android.inputmethod.latin|com.digibites.accubattery' | sed 's/package://g')
 echo "#不需要恢復还原的应用请在开头注释# 比如#xxxxxxxx 酷安">${0%/*}/Apkname.txt
 echo "请勿关闭脚本，等待提示结束"
-i=0
+i=1
 bn=37
+#删除遗留，防止上次意外中断脚本残留的打印包名文件
+[[ -e ${0%/*}/tools/tmp ]] && rm -rf ${0%/*}/tools/tmp
 for name in $name $sys; do    
     [[ $bn -ge 37 ]] && bn=31
     #获取apk中文名称         

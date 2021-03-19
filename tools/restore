@@ -19,6 +19,7 @@ Add_path "pv" n
 Add_path "pm" y $system_path
 Add_path "cmd" y $system_path
 Add_path "am" y $system_path
+Add_path "getenforce" y $system_path
 echo "环境变数: $PATH"
 #记录开始时间
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")

@@ -119,6 +119,30 @@ Backup-data () {
 }
 #检测apk状态进行备份
 Backup-apk () {
+    #创建APP备份文件夹
+	[[ ! -d $Backup/$name ]] && mkdir "$Backup/$name" 
+    cd $Backup/$name
+	#备份apk
+	echoRgb "[ 开始备份${name2} APK ]"
+	if [[ $name == com.android.chrome ]]; then
+        #删除所有旧apk ,保留一个最新apk进行备份
+        ReservedNum=1
+        FileDir=/data/app/*/com.google.android.trichromelibrary_*/base.apk            
+        FileNum=$(ls -l $FileDir|grep ^- |wc -l)
+        while [[ $FileNum -gt $ReservedNum ]]; do
+            OldFile=$(ls -rt $FileDir| head -1)
+            echoRgb "删除文件:"$OldFile
+            rm -rf $OldFile
+            let "FileNum--"
+        done 
+        ls $FileDir | while read t;do
+            if [[ -e $t ]]; then
+                echoRgb "备份额外的com.google.android.trichromelibrary"
+                cp -r "$t" "$Backup/$name/nmsl.apk"
+                echo_log "备份Apk"
+            fi
+        done
+    fi    
     if [[ ! -e $Backup/$name/apk-version.txt ]]; then
         [[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name2  $name" >>$Backup/name.txt
         echoRgb "$1"
@@ -176,33 +200,9 @@ while [[ $i -le $h ]]; do
 			[[ ! -d $Backup/tools ]] && mkdir -p $Backup/tools && cp -r ${0%/*}/tools/pv $Backup/tools
 			[[ ! -e $Backup/还原备份.sh ]] && cp -r ${0%/*}/tools/restore $Backup/还原备份.sh
             [[ ! -e $Backup/tools/bin.sh ]] && cp -r ${0%/*}/tools/bin.sh $Backup/tools
-            [[ ! -e $Backup/tools/busybox ]] && cp -r ${0%/*}/tools/busybox $Backup/tools
+            [[ ! -e $Backup/tools/busybox-* ]] && cp -r ${0%/*}/tools/busybox-* $Backup/tools
 			#停止软件
 			[[ ! $name == bin.mt.plus && ! $name == com.termux && ! $name == com.mixplorer.silver ]] && am force-stop $name
-			#创建APP备份文件夹
-			[[ ! -d $Backup/$name ]] && mkdir "$Backup/$name" 
-			cd $Backup/$name
-			#备份apk
-			echoRgb "[ 开始备份${name2} APK ]"
-			if [[ $name == com.android.chrome ]]; then
-                #删除所有旧apk ,保留一个最新apk进行备份
-                ReservedNum=1
-                FileDir=/data/app/*/com.google.android.trichromelibrary_*/base.apk            
-                FileNum=$(ls -l $FileDir|grep ^- |wc -l)
-                while [[ $FileNum -gt $ReservedNum ]]; do
-                    OldFile=$(ls -rt $FileDir| head -1)
-                    echoRgb "删除文件:"$OldFile
-                    rm -rf $OldFile
-                    let "FileNum--"
-                done 
-                ls $FileDir | while read t;do
-                    if [[ -e $t ]]; then
-                        echoRgb "备份额外的com.google.android.trichromelibrary"
-                        cp -r "$t" "$Backup/$name/nmsl.apk"
-                        echo_log "备份Apk"
-                    fi
-                done
-            fi
 			case $(pm path "$name" | cut -f2 -d ':' | wc -l) in
             1)
                 if [[ $C == no ]]; then
@@ -210,7 +210,6 @@ while [[ $i -le $h ]]; do
                     D=1
                 else
                     echoRgb "$name2为非Split Apk跳过备份" 
-                    rm -rf $Backup/$name
                     D=
                 fi
                 ;;
