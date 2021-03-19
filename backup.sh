@@ -20,6 +20,7 @@ Add_path "pm" y $system_path
 Add_path "cmd" y $system_path 
 Add_path "am" y $system_path 
 Add_path "getevent" y $system_path 
+
 echo "环境变数: $PATH"
 
 i=1

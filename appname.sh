@@ -19,6 +19,7 @@ Add_path "aapt" n
 Add_path "pm" y $system_path
 Add_path "cmd" y $system_path 
 Add_path "am" y $system_path 
+
 echo "环境变数: $PATH"
 
 #转换echo颜色提高可读性

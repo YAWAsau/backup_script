@@ -1,4 +1,10 @@
 
+
+abi=$(getprop ro.product.cpu.abi)
+case $abi in
+arm64*) echo "设备架构$abi" ;;    
+*) echo "未知的架构: $abi"; exit 1 ;;
+esac
 #补上遗失指令集
 Add_path () {
     #设置二进制命令目录位置
@@ -35,11 +41,6 @@ Add_path () {
         [[ ! $PATH == $filepath ]] && echo "环境变量位置错误" && exit 1        
     else        
         echo "不存在$busybox 设置环境中...."
-        abi=$(getprop ro.product.cpu.abi)
-        case $abi in
-        arm64*) echo "设备架构$abi" ;;    
-        *) echo "未知的架构: $abi"; exit 1 ;;
-        esac
         if [[ -e $tools_path/busybox-arm64 ]]; then
             [[ ! -d $filepath ]] && mkdir -p $filepath
             cp -r $tools_path/busybox-arm64 $busybox
