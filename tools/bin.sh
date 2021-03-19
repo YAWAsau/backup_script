@@ -10,12 +10,6 @@ Add_path () {
     #设置二进制命令目录位置
     filepath=/data/backup_tools
     busybox="$filepath/busybox"
-    if [[ -e $busybox ]]; then
-        if [[ ! $(du -k -s $busybox | awk '{print $1}') == $(du -k -s $tools_path/busybox-arm64 | awk '{print $1}') ]]; then
-            rm -rf $filepath
-            echo "busybox大小不一致，已删除并且重新设置"
-        fi
-    fi   
     #工具绝对位置  
     if [[ -e $busybox ]]; then        
         if [[ ! -e $filepath/$1 ]]; then
