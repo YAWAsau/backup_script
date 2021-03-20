@@ -3,23 +3,11 @@
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥马不解压缩？用毛缐 憨批" && exit 1
 [[ ! -d ${0%/*}/tools ]] && echo "${0%/*}/tools目录遗失" && exit 1
 # Load Settings Variables
+tools_path=${0%/*}/tools
 . ${0%/*}/tools/bin.sh
 #设置命令和目录位置及是否使用链接方式
-tools_path=${0%/*}/tools
 Add_path
-if [[ -d /system/bin ]]; then
-    system_path=/system/bin 
-else
-    if [[ -d /system/xbin ]]; then
-        system_path=/system/xbin 
-    fi
-fi
-
-Add_path "pv" n
-Add_path "pm" y $system_path 
-Add_path "cmd" y $system_path 
-Add_path "am" y $system_path 
-Add_path "getevent" y $system_path 
+Add_path "pv"
 
 echo "环境变数: $PATH"
 
