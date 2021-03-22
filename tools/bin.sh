@@ -32,7 +32,7 @@ Add_path() {
 			fi
 		fi
 		[[ ! -e $filepath/$1 ]] && echo "錯誤: $filepath/$1不存在" && exit 1
-		export PATH=$PATH:$filepath
+		export PATH=$filepath:$PATH
 	else
 		echo "不存在$busybox 设置环境中...."
 		if [[ -e $tools_path/busybox-arm64 ]]; then
@@ -44,7 +44,7 @@ Add_path() {
 					[[ ! -e $filepath/$a ]] && ln -s $busybox "$filepath/$a"
 				fi
 			done
-			export PATH=$PATH:$filepath	
+			export PATH=$filepath:$PATH
 		else
 			echo "錯誤 缺少$tools_path/busybox-arm64"
 			exit 1
