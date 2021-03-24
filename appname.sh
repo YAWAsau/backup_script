@@ -8,7 +8,7 @@ tools_path=${0%/*}/tools
 #设置命令和目录位置及是否使用链接方式
 Add_path
 Add_path "aapt"
-Version=v7
+nowversion= 58uy679
 echo "环境变数: $PATH"
 if [[ $(aapt v | grep '1') == 1 ]]; then
     echo "没有匹配的aapt 上香"

@@ -10,7 +10,7 @@ Add_path
 
 Add_path "pv"
 echo "环境变数: $PATH"
-Version=v7
+nowversion= 84evjk96
 i=1
 txt="${0%/*}/Apkname.txt"
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 1

@@ -6,7 +6,7 @@ arm64*) echo "設備架構$abi" ;;
 	exit 1
 	;;
 esac
-version=v7
+
 #設置二進制命令目錄位置
 filepath=/data/backup_tools
 busybox="$filepath/busybox"
