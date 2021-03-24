@@ -11,23 +11,39 @@ Add_path
 Add_path "pv"
 echo "环境变数: $PATH"
 nowversion=" 84evjk96"
-Onlineversion=$(curl -s https://raw.githubusercontent.com/YAWAsau/backup_script/master/backup.sh | awk '/nowversion=/{print $2}')
-if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
-    echo "本地版本与远端版本不同 下载覆盖中"
-    wget -t5 -q https://raw.githubusercontent.com/YAWAsau/backup_script/master/backup.sh -O backup.sh 2>/dev/null
-    if [[ $? -eq 0 ]]; then
-        echo "- 新版本已下载完毕，请退出重新运行backup.sh"            
-        exit
-    else
-        echo "从GitHub仓库下载失败 转换尝试国内源下载"
-        wget -t5 -q https://gitee.com/YAWAsau/backup_script/raw/master/backup.sh -O backup.sh 2>/dev/null
-		if [[ $? -eq 0 ]]; then
-            echo "- 新版本已下载完毕，请退出重新运行backup.sh"            
+gitsh="https://raw.githubusercontent.com/YAWAsau/backup_script/master/backup.sh"
+giteesh="https://gitee.com/YAWAsau/backup_script/raw/master/backup.sh"
+if [[ -n $(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g') ]]; then
+    Onlineversion=$(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g')
+    if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
+        echo "本地版本与远端版本不同 下载覆盖中"
+        wget -t5 -q "$gitsh" -O backup.sh 2>/dev/null
+        if [[ $? -eq 0 ]]; then
+            curl -s https://raw.githubusercontent.com/YAWAsau/backup_script/master/Update/log
+            echo "- 新版本已下载完毕，请退出重新运行backup.sh"
             exit
-        else
-    		echo "! 下载失败"
-    		exit 1
         fi
+    else
+        echo "无须更新已是最新版本"
+    fi
+else
+    echo "从GitHub获取更新下载失败 转换尝试国内源下载"
+    if [[ -n $(curl -s "$giteesh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g') ]]; then
+        Onlineversion=$(curl -s "$giteesh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g')
+        if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
+            echo "本地版本与远端版本不同 下载覆盖中"
+            wget -t5 -q "$giteesh" -O backup.sh 2>/dev/null
+            if [[ $? -eq 0 ]]; then
+                curl -s https://gitee.com/YAWAsau/backup_script/raw/master/Update/log
+                echo "- 新版本已下载完毕，请退出重新运行backup.sh"
+                exit
+            fi
+        else
+            echo "无须更新已是最新版本"
+        fi
+    else
+        echo "联网更新脚本失败，请自行关注作者酷安"
+        echo "落叶凄凉TEL"
     fi
 fi
 i=1
