@@ -15,8 +15,8 @@ nowversion=" 84evjk96"
 
 gitsh="https://raw.githubusercontent.com/YAWAsau/backup_script/master/backup.sh"
 giteesh="https://gitee.com/YAWAsau/backup_script/raw/master/backup.sh"
-if [[ -n $(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g') ]]; then
-    Onlineversion=$(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g')
+if [[ -n $(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g') ]]; then
+    Onlineversion=$(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g')
     if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
         echo "本地版本与远端版本不同 下载覆盖中"
         wget -t5 -q "$gitsh" -O backup.sh 2>/dev/null
@@ -30,8 +30,8 @@ if [[ -n $(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed
     fi
 else
     echo "从GitHub获取更新下载失败 转换尝试国内源下载"
-    if [[ -n $(curl -s "$giteesh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g') ]]; then
-        Onlineversion=$(curl -s "$giteesh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g')
+    if [[ -n $(curl -s "$giteesh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g') ]]; then
+        Onlineversion=$(curl -s "$giteesh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g')
         if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
             echo "本地版本与远端版本不同 下载覆盖中"
             wget -t5 -q "$giteesh" -O backup.sh 2>/dev/null
