@@ -10,7 +10,26 @@ Add_path
 
 Add_path "pv"
 echo "环境变数: $PATH"
-nowversion= 84evjk96
+nowversion=" 84evjk96"
+Onlineversion=$(curl -s https://raw.githubusercontent.com/YAWAsau/backup_script/master/backup.sh | awk '/nowversion=/{print $2}')
+if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
+    echo "本地版本与远端版本不同 下载覆盖中"
+    wget -t5 -q https://raw.githubusercontent.com/YAWAsau/backup_script/master/backup.sh -O backup.sh 2>/dev/null
+    if [[ $? -eq 0 ]]; then
+        echo "- 新版本已下载完毕，请退出重新运行backup.sh"            
+        exit
+    else
+        echo "从GitHub仓库下载失败 转换尝试国内源下载"
+        wget -t5 -q https://gitee.com/YAWAsau/backup_script/raw/master/backup.sh -O backup.sh 2>/dev/null
+		if [[ $? -eq 0 ]]; then
+            echo "- 新版本已下载完毕，请退出重新运行backup.sh"            
+            exit
+        else
+    		echo "! 下载失败"
+    		exit 1
+        fi
+    fi
+fi
 i=1
 txt="${0%/*}/Apkname.txt"
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 1

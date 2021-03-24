@@ -8,7 +8,26 @@ tools_path=${0%/*}/tools
 #设置命令和目录位置及是否使用链接方式
 Add_path
 Add_path "aapt"
-nowversion= 58uy679
+nowversion=" 58uy679"
+Onlineversion=$(curl -s https://raw.githubusercontent.com/YAWAsau/backup_script/master/appname.sh | awk '/nowversion=/{print $2}')
+if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
+    echo "本地版本与远端版本不同 下载覆盖中"
+    wget -t5 -q https://raw.githubusercontent.com/YAWAsau/backup_script/master/appname.sh -O appname.sh 2>/dev/null
+    if [[ $? -eq 0 ]]; then
+        echo "- 新版本已下载完毕，请退出重新运行appname.sh"            
+        exit
+    else
+        echo "从GitHub仓库下载失败 转换尝试国内源下载"
+        wget -t5 -q https://gitee.com/YAWAsau/backup_script/raw/master/appname.sh -O appname.sh 2>/dev/null
+		if [[ $? -eq 0 ]]; then
+            echo "- 新版本已下载完毕，请退出重新运行backup.sh"            
+            exit
+        else
+    		echo "! 下载失败"
+    		exit 1
+        fi
+    fi
+fi
 echo "环境变数: $PATH"
 if [[ $(aapt v | grep '1') == 1 ]]; then
     echo "没有匹配的aapt 上香"
