@@ -10,7 +10,7 @@ Add_path
 
 Add_path "pv"
 echo "环境变数: $PATH"
-
+version=v7
 i=1
 txt="${0%/*}/Apkname.txt"
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 1
@@ -152,16 +152,8 @@ Backup-apk() {
 		fi
 	fi
 }
-echoRgb "是否备份外部数据 即比如原神的数据包"
-echoRgb "音量上备份，音量下不备份"
-if [[ $(get_version) == yes ]]; then
-	B=yes
-else
-	B=no
-fi
-sleep 1
-[[ $B == yes ]] && echoRgb "备份" || echoRgb "不备份"
-echoRgb "选择是否只备份split apk"
+echoRgb "选择是否只备份split apk(分割apk档)"
+echoRgb "如果你不知道这意味什么请选择音量下进行混合备份"
 echoRgb "音量上是，音量下不是"
 if [[ $(get_version) == yes ]]; then
 	C=yes
@@ -169,6 +161,15 @@ else
 	C=no
 fi
 [[ $C == yes ]] && echoRgb "是" || echoRgb "不是，混合备份"
+sleep 1.5
+echoRgb "是否备份外部数据 即比如原神的数据包"
+echoRgb "音量上备份，音量下不备份"
+if [[ $(get_version) == yes ]]; then
+	B=yes
+else
+	B=no
+fi
+[[ $B == yes ]] && echoRgb "備份" || echoRgb "不备份"
 bn=37
 #开始循环$txt内的资料进行备份
 #记录开始时间
@@ -179,7 +180,8 @@ while [[ $i -le $h ]]; do
 	#[[ $bn -ge 37 ]] && bn=31
 	echoRgb "备份第$i个应用 总共$h个 剩下$(($h - $i))个应用"
 	name=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')
-	name2=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')		    
+	name2=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')		
+	[[ -z $name ]] && echoRgb "警告! name.txt软件包名获取失败，可能修改有问题" "0" "0" && exit 1    
 	pkg=$(pm list packages | grep -w "$name" | sed 's/package://g')
 	if [[ -n $pkg ]]; then
 	    starttime2=$(date +"%Y-%m-%d %H:%M:%S")

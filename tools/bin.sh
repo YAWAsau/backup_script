@@ -6,6 +6,7 @@ arm64*) echo "設備架構$abi" ;;
 	exit 1
 	;;
 esac
+version=v7
 #設置二進制命令目錄位置
 filepath=/data/backup_tools
 busybox="$filepath/busybox"
@@ -24,6 +25,10 @@ Add_path() {
 	if [[ -e $busybox ]]; then
 		if [[ ! -e $filepath/$1 ]]; then
 		    if [[ -e $tools_path/$1 ]]; then
+                if [[ $1 == aapt ]]; then
+                    cp -r $tools_path/aapt* $filepath
+                    chmod 0777 $filepath/aapt*
+                fi
     			cp -r $tools_path/$1 $filepath
     			chmod 0777 $filepath/$1
   			else
@@ -44,7 +49,7 @@ Add_path() {
 					[[ ! -e $filepath/$a ]] && ln -s $busybox "$filepath/$a"
 				fi
 			done
-			export PATH=$filepath:$PATH
+			export PATH=$PATH:$filepath	
 		else
 			echo "錯誤 缺少$tools_path/busybox-arm64"
 			exit 1

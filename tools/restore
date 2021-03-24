@@ -1,22 +1,23 @@
 #!/system/bin/sh
-[[ $(id -u) -ne 0 ]] && echo "你是憨批？不给Root用你妈 爬" && exit 1
-[[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥马不解压缩？用毛缐 憨批" && exit 1
-[[ ! -d ${0%/*}/tools ]] && echo "${0%/*}/tools目录遗失" && exit 1
+[[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
+[[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
+[[ ! -d ${0%/*}/tools ]] && echo "${0%/*}/tools目錄遺失" && exit 1
 tools_path=${0%/*}/tools
 . ${0%/*}/tools/bin.sh
-#设置命令和目录位置及是否使用链接方式
+#設置命令和目錄位置及是否使用鏈接方式
 Add_path
 
 Add_path "pv"
-echo "环境变数: $PATH"
-#记录开始时间
+echo "環境變數: $PATH"
+version=v7
+#記錄開始時間
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
 i=1
 txt="${0%/*}/name.txt"
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 0
 r=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n '$=')
 [[ ! -z $r ]] && h=$r
-#转换echo颜色提高可读性
+#轉換echo顏色提高可讀性
 echoRgb() {
 	if [[ -n $2 ]]; then
 		if [[ $3 == 1 ]]; then
@@ -28,40 +29,41 @@ echoRgb() {
 		echo -e "\e[1;${bn}m $1\e[0m"
 	fi
 }
-#显示执行结果
+#顯示執行結果
 echo_log() {
 	if [[ $? == 0 ]]; then
 		echoRgb "$1成功" "0" "1"
 	else
-		echoRgb "$1恢復失败，过世了" "0" "0"
+		echoRgb "$1恢復失敗，過世了" "0" "0"
 	fi
 }
-#调用二进制
+#調用二進制
 7z() {
-	echoRgb "解压缩$(basename $1)"
+	echoRgb "解壓縮$(basename $1)"
 	7za x "$1" -y -aos -o"$2" >/dev/null 2>&1
 }
-#计算结束时间
+#計算結束時間
 endtime() {
-	#计算总体切换时长耗费
+	#計算總體切換時長耗費
 	case $1 in
 	1) starttime=$starttime1 ;;
 	2) starttime=$starttime2 ;;
 	esac
 	endtime=$(date "+%Y-%m-%d %H:%M:%S")
-	duration=$(echo $(($(date +%s -d "${endtime}") - $(date +%s -d "${starttime}"))) | awk '{t=split("60 秒 60 分 24 时 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')
-	[[ -n $duration ]] && echoRgb "$2用时:$duration" || echoRgb "$2用时:0秒"
+	duration=$(echo $(($(date +%s -d "${endtime}") - $(date +%s -d "${starttime}"))) | awk '{t=split("60 秒 60 分 24 時 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')
+	[[ -n $duration ]] && echoRgb "$2用時:$duration" || echoRgb "$2用時:0秒"
 }
 
-[[ ! $(getenforce) == Permissive ]] && setenforce 0 && echoRgb "selinux关闭"
+[[ ! $(getenforce) == Permissive ]] && setenforce 0 && echoRgb "selinux關閉"
 bn=37
-#开始循环$txt内的资料进行恢復
+#開始循環$txt內的資料進行恢復
 while [[ $i -le $h ]]; do
 	#let bn++
 	#[[ $bn -ge 37 ]] && bn=31
-	echoRgb "恢復第$i个应用 总共$h个 剩下$(($h - $i))个应用"
+	echoRgb "恢復第$i個應用 總共$h個 剩下$(($h - $i))個應用"
 	name=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')
 	name2=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')	
+	[[ -z $name ]] && echoRgb "警告! name.txt軟件包名獲取失敗，可能修改有問題" "0" "0" && exit 1
 	if [[ -d ${0%/*}/$name ]]; then
 	    echoRgb "恢復$name2"
     	starttime2=$(date +"%Y-%m-%d %H:%M:%S")
@@ -69,34 +71,35 @@ while [[ $i -le $h ]]; do
 		case $(find ${0%/*}/$name -name "*.apk" -type f | wc -l) in
 		1)
 			if [[ -z $zb ]]; then
-				echoRgb "$name2的Apk是常规Apk 开始安装"
+				echoRgb "$name2的Apk是常規Apk 開始安裝"
 				[[ -e ${0%/*}/$name/nmsl.apk ]] && pm install -r -g "${0%/*}/$name/nmsl.apk" >/dev/null 2>&1
 				pm install -r -g "$(find ${0%/*}/$name -name "*.apk" -type f)" >/dev/null 2>&1
-				echo_log "Apk安装"
+				echo_log "Apk安裝"
 			else
-				echoRgb "$name2存在当前系统中 略过安装Apk"
+				echoRgb "$name2存在當前系統中 略過安裝Apk"
 			fi
 			;;
 		*)
 			if [[ -z $zb ]]; then
-				echoRgb "$name2的Apk是多分包Apk 开始安装"
+				echoRgb "$name2的Apk是多分包Apk 開始安裝"
 				b=$(echo $(pm install-create) | grep -E -o '[0-9]+')
 				[[ -e ${0%/*}/$name/nmsl.apk ]] && pm install -r -g "${0%/*}/$name/nmsl.apk" >/dev/null 2>&1
 				find ${0%/*}/$name -name "*.apk" -type f | while read i; do
 					ad=$(basename $i | grep -v 'nmsl.apk')
-					pm install-write $b $ad ${i%/*}/$ad >/dev/null 2>&1 && echo_log "$ad安装"
+					pm install-write $b $ad ${i%/*}/$ad >/dev/null 2>&1
+					echo_log "$i"
 				done
 				pm install-commit $b
-				echo_log "split Apk安装"
+				echo_log "split Apk安裝"
 			else
-				echoRgb "$name2存在当前系统中 略过安装Apk"
+				echoRgb "$name2存在當前系統中 略過安裝Apk"
 			fi
 			;;
 		esac
 		if [[ -n $(pm list packages | grep -w "$name" | sed 's/package://g') ]]; then
 			#停止软件
 			[[ ! $name == bin.mt.plus && ! $name == com.termux && ! $name == com.mixplorer.silver ]] && am force-stop $name
-			echoRgb "$name2存在 开始释放数据"
+			echoRgb "$name2存在 開始釋放數據"
 			if [[ $(cat /data/system/packages.list | grep -w "$name" | awk '{print $1}') == $name ]]; then
 				[[ -n $name ]] && G=$(cat /data/system/packages.list | grep -w "$name" | awk '{print $2}')
 				X=$(cat /data/system/packages.list | grep -w "$name" | awk '{print $4}')
@@ -106,36 +109,36 @@ while [[ $i -le $h ]]; do
 						$name-user.tar.lz4)
 							[[ -d /data/user/0/$name ]] && rm -rf /data/user/0/$name
 							pv $i | tar xpf - -C /
-							echo_log "$(basename $i)解压缩"
+							echo_log "$(basename $i)解壓縮"
 							;;
 						$name-data.tar.lz4)
 							[[ -d /sdcard/Android/data/$name ]] && rm -rf /sdcard/Android/data/$name
 							pv $i | tar xpf - -C /
-							echo_log "$(basename $i)解压缩"
+							echo_log "$(basename $i)解壓縮"
 							;;
 						$name-obb.tar.lz4)
 							[[ -d /sdcard/Android/obb/$name ]] && rm -rf /sdcard/Android/obb/$name
 							pv $i | tar xpf - -C /
-							echo_log "$(basename $i)解压缩"
+							echo_log "$(basename $i)解壓縮"
 							;;
 						esac
 					done
 				fi
 				if [[ -d $X && -n $G ]]; then
 					chown -R $G:$G $X
-					echoRgb "路径$X  权限:$G:$G"
-					echoRgb "$name2完成数据恢復"
+					echoRgb "路徑$X  權限:$G:$G"
+					echoRgb "$name2完成數據恢復"
 				fi
 			fi
 		fi
 		endtime 2 "$name2恢復"
 		echoRgb
 	else
-        echoRgb "$name2资料夹遗失，无法恢復" "0" "0"
+        echoRgb "$name2資料夾遺失，無法恢復" "0" "0"
 	fi
 	let i++
 done
 
 #setenforce 1
 echoRgb "批量恢復完成"
-endtime 1 "批量恢復开始到结束"
+endtime 1 "批量恢復開始到結束"

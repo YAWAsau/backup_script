@@ -6,11 +6,15 @@
 tools_path=${0%/*}/tools
 . ${0%/*}/tools/bin.sh
 #设置命令和目录位置及是否使用链接方式
-
+version=v7
 Add_path
 Add_path "aapt"
 echo "环境变数: $PATH"
-
+if [[ $(aapt v | grep '1') == 1 ]]; then
+    echo "没有匹配的aapt 上香"
+    echo "aapt二进制无法使用"
+    exit 1
+fi
 #转换echo颜色提高可读性
 echoRgb() {
 	if [[ -n $2 ]]; then
@@ -23,6 +27,7 @@ echoRgb() {
 		echo -e "\e[1;${bn}m $1\e[0m"
 	fi
 }
+
 name=$(pm list packages -3 | sed 's/package://g' | grep -v 'xiaomi' | grep -v 'miui')
 sys=$(pm list packages -s | egrep 'com.android.chrome|com.google.android.inputmethod.latin|com.digibites.accubattery' | sed 's/package://g')
 echo "#不需要恢復还原的应用请在开头注释# 比如#xxxxxxxx 酷安" >${0%/*}/Apkname.txt
@@ -34,7 +39,7 @@ bn=37
 for name in $name $sys; do
 	[[ $bn -ge 37 ]] && bn=31
 	#获取apk中文名称
-	Appname1=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label-zh-CN" | head -1 | sed "s/.*:\'//g" | sed "s/\'//g" | sed 's/ //g')
+	Appname1=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label-zh-CN:" | sed 's/application-label-zh-CN://g' | sed "s/\'//g" | sed 's/ //g')
 	Appname2=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label-zh-TW:" | sed 's/application-label-zh-TW://g' | sed "s/\'//g" | sed 's/ //g')
 	#获取apk默认名称
 	Appname3=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label:" | sed 's/application-label://g' | sed "s/\'//g" | sed 's/ //g')
