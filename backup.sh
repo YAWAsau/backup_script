@@ -10,11 +10,11 @@ Add_path
 
 Add_path "pv"
 echo "环境变数: $PATH"
-nowversion=" 84evjk96"
+nowversion=" 84evjk6"
 
 
 gitsh="https://raw.githubusercontent.com/YAWAsau/backup_script/master/backup.sh"
-giteesh="https://gitee.com/YAWAsau/backup_script/raw/master/backup.sh"
+giteesh="https://cdn.jsdelivr.net/gh/YAWAsau/backup_script@master/backup.sh"
 if [[ -n $(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g') ]]; then
     Onlineversion=$(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g')
     if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
@@ -29,7 +29,7 @@ if [[ -n $(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed
         echo "无须更新已是最新版本"
     fi
 else
-    echo "从GitHub获取更新下载失败 转换尝试国内源下载"
+    echo "从GitHub获取更新下载失败 转换尝试cdn下载"
     if [[ -n $(curl -s "$giteesh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g') ]]; then
         Onlineversion=$(curl -s "$giteesh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g')
         if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
