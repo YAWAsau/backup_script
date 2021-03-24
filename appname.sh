@@ -6,11 +6,52 @@
 tools_path=${0%/*}/tools
 . ${0%/*}/tools/bin.sh
 #设置命令和目录位置及是否使用链接方式
-
 Add_path
 Add_path "aapt"
-echo "环境变数: $PATH"
+nowversion=" 58uy679"
 
+
+gitsh="https://raw.githubusercontent.com/YAWAsau/backup_script/master/appname.sh"
+giteesh="https://gitee.com/YAWAsau/backup_script/raw/master/appname.sh"
+if [[ -n $(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g') ]]; then
+    Onlineversion=$(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g')
+    if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
+        echo "本地版本与远端版本不同 下载覆盖中"
+        wget -t5 -q "$gitsh" -O appname.sh 2>/dev/null
+        if [[ $? -eq 0 ]]; then
+            curl -s https://raw.githubusercontent.com/YAWAsau/backup_script/master/Update/log
+            echo "- 新版本已下载完毕，请退出重新运行appname.sh"
+            exit
+        fi
+    else
+        echo "无须更新已是最新版本"
+    fi
+else
+    echo "从GitHub获取更新下载失败 转换尝试国内源下载"
+    if [[ -n $(curl -s "$giteesh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g') ]]; then
+        Onlineversion=$(curl -s "$giteesh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g')
+        if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
+            curl -s https://gitee.com/YAWAsau/backup_script/raw/master/Update/log
+            echo "本地版本与远端版本不同 下载覆盖中"
+            wget -t5 -q "$giteesh" -O appname.sh 2>/dev/null
+            if [[ $? -eq 0 ]]; then
+                echo "- 新版本已下载完毕，请退出重新运行appname.sh"
+                exit
+            fi
+        else
+            echo "无须更新已是最新版本"
+        fi
+    else
+        echo "联网更新脚本失败，请自行关注作者酷安"
+        echo "落叶凄凉TEL"
+    fi
+fi
+echo "环境变数: $PATH"
+if [[ $(aapt v | grep '1') == 1 ]]; then
+    echo "没有匹配的aapt 上香"
+    echo "aapt二进制无法使用"
+    exit 1
+fi
 #转换echo颜色提高可读性
 echoRgb() {
 	if [[ -n $2 ]]; then
@@ -23,6 +64,7 @@ echoRgb() {
 		echo -e "\e[1;${bn}m $1\e[0m"
 	fi
 }
+
 name=$(pm list packages -3 | sed 's/package://g' | grep -v 'xiaomi' | grep -v 'miui')
 sys=$(pm list packages -s | egrep 'com.android.chrome|com.google.android.inputmethod.latin|com.digibites.accubattery' | sed 's/package://g')
 echo "#不需要恢復还原的应用请在开头注释# 比如#xxxxxxxx 酷安" >${0%/*}/Apkname.txt
@@ -34,7 +76,7 @@ bn=37
 for name in $name $sys; do
 	[[ $bn -ge 37 ]] && bn=31
 	#获取apk中文名称
-	Appname1=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label-zh-CN" | head -1 | sed "s/.*:\'//g" | sed "s/\'//g" | sed 's/ //g')
+	Appname1=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label-zh-CN:" | sed 's/application-label-zh-CN://g' | sed "s/\'//g" | sed 's/ //g')
 	Appname2=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label-zh-TW:" | sed 's/application-label-zh-TW://g' | sed "s/\'//g" | sed 's/ //g')
 	#获取apk默认名称
 	Appname3=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label:" | sed 's/application-label://g' | sed "s/\'//g" | sed 's/ //g')
