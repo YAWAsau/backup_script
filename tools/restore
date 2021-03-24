@@ -9,7 +9,7 @@ Add_path
 
 Add_path "pv"
 echo "環境變數: $PATH"
-version=v7
+Version=v7
 #記錄開始時間
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
 i=1
