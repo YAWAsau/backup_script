@@ -13,7 +13,7 @@ nowversion=" mkv2b80hj"
 
 
 gitsh="https://raw.githubusercontent.com/YAWAsau/backup_script/master/tools/restore"
-giteesh="https://cdn.jsdelivr.net/gh/YAWAsau/backup_script@master/restore"
+giteesh="https://cdn.jsdelivr.net/gh/YAWAsau/backup_script@master/tools/restore"
 if [[ -n $(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g') ]]; then
     Onlineversion=$(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g')
     if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
