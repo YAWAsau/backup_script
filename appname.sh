@@ -8,7 +8,7 @@ tools_path=${0%/*}/tools
 #设置命令和目录位置及是否使用链接方式
 Add_path
 Add_path "aapt"
-nowversion=" 58uy69"
+nowversion=" 58uy69o"
 
 
 gitsh="https://raw.githubusercontent.com/YAWAsau/backup_script/master/appname.sh"
@@ -20,6 +20,8 @@ if [[ -n $(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed
         wget -t5 -q "$gitsh" -O appname.sh 2>/dev/null
         if [[ $? -eq 0 ]]; then
             curl -s https://raw.githubusercontent.com/YAWAsau/backup_script/master/Update/log
+            echo
+            echo
             echo "- 新版本已下载完毕，请退出重新运行appname.sh"
             exit
         fi
@@ -35,6 +37,9 @@ else
             echo "本地版本与远端版本不同 下载覆盖中"
             wget -t5 -q "$giteesh" -O appname.sh 2>/dev/null
             if [[ $? -eq 0 ]]; then
+                curl -s https://cdn.jsdelivr.net/gh/YAWAsau/backup_script@master/Update/log
+                echo
+                echo
                 echo "- 新版本已下载完毕，请退出重新运行appname.sh"
                 exit
             fi
