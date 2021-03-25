@@ -9,7 +9,7 @@ Add_path
 
 Add_path "pv"
 echo "環境變數: $PATH"
-nowversion=" mkv2b80hj"
+nowversion=" mkv2k80ohj"
 
 
 gitsh="https://raw.githubusercontent.com/YAWAsau/backup_script/master/tools/restore"
@@ -18,7 +18,7 @@ if [[ -n $(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed
     Onlineversion=$(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g')
     if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
         echo "本地版本与远端版本不同 下载覆盖中"
-        wget -t5 -q "$gitsh" -O 还原备份.sh 2>/dev/null
+        curl -s "$gitsh">${0%/*}/还原备份.sh
         if [[ $? -eq 0 ]]; then
             curl -s https://raw.githubusercontent.com/YAWAsau/backup_script/master/Update/log
             echo
@@ -35,7 +35,7 @@ else
         Onlineversion=$(curl -s "$giteesh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g')
         if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
             echo "本地版本与远端版本不同 下载覆盖中"
-            wget -t5 -q "$giteesh" -O 还原备份.sh 2>/dev/null
+            curl -s "$gitsh">${0%/*}/还原备份.sh
             if [[ $? -eq 0 ]]; then
                 curl -s https://cdn.jsdelivr.net/gh/YAWAsau/backup_script@master/Update/log
                 echo

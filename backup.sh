@@ -10,7 +10,7 @@ Add_path
 
 Add_path "pv"
 echo "环境变数: $PATH"
-nowversion=" 84evjik6"
+nowversion=" 84uevjik6"
 
 
 gitsh="https://raw.githubusercontent.com/YAWAsau/backup_script/master/backup.sh"
@@ -19,7 +19,7 @@ if [[ -n $(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed
     Onlineversion=$(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g')
     if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
         echo "本地版本与远端版本不同 下载覆盖中"
-        wget -t5 -q "$gitsh" -O backup.sh 2>/dev/null
+        curl -s "$gitsh">${0%/*}/backup.sh
         if [[ $? -eq 0 ]]; then
             curl -s https://raw.githubusercontent.com/YAWAsau/backup_script/master/Update/log
             echo
@@ -36,7 +36,7 @@ else
         Onlineversion=$(curl -s "$giteesh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g')
         if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
             echo "本地版本与远端版本不同 下载覆盖中"
-            wget -t5 -q "$giteesh" -O backup.sh 2>/dev/null
+            curl -s "$giteesh">${0%/*}/backup.sh
             if [[ $? -eq 0 ]]; then
                 curl -s https://cdn.jsdelivr.net/gh/YAWAsau/backup_script@master/Update/log
                 echo
