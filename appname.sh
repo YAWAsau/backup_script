@@ -8,7 +8,7 @@ tools_path=${0%/*}/tools
 #设置命令和目录位置及是否使用链接方式
 Add_path
 Add_path "aapt"
-nowversion=" 58uy6op9o"
+nowversion=" 58uy6o9o"
 
 
 gitsh="https://raw.githubusercontent.com/YAWAsau/backup_script/master/appname.sh"

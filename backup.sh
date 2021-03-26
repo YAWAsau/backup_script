@@ -10,7 +10,7 @@ Add_path
 
 Add_path "pv"
 echo "环境变数: $PATH"
-nowversion=" 84uevjik6"
+nowversion=" 85uevjik6"
 
 
 gitsh="https://raw.githubusercontent.com/YAWAsau/backup_script/master/backup.sh"
@@ -226,7 +226,7 @@ while [[ $i -le $h ]]; do
 	pkg=$(pm list packages | grep -w "$name" | sed 's/package://g')
 	if [[ -n $pkg ]]; then
 	    starttime2=$(date +"%Y-%m-%d %H:%M:%S")
-	    echoRgb "备份$name2"
+	    echoRgb "备份$name2 ($name)"
 		[[ $pkg == com.tencent.mobileqq ]] && echo "QQ可能恢復备份失败或是丢失聊天记录，请自行用你信赖的软件备份" || [[ $pkg == com.tencent.mm ]] && echo "WX可能恢復备份失败或是丢失聊天记录，请自行用你信赖的软件备份"
 		[[ ! -d $Backup/tools ]] && mkdir -p $Backup/tools && cp -r ${0%/*}/tools/pv $Backup/tools
 		[[ ! -e $Backup/还原备份.sh ]] && cp -r ${0%/*}/tools/restore $Backup/还原备份.sh
@@ -234,21 +234,24 @@ while [[ $i -le $h ]]; do
 		[[ ! -e $Backup/tools/busybox-* ]] && cp -r ${0%/*}/tools/busybox-* $Backup/tools
 		#停止软件
 		[[ ! $name == bin.mt.plus && ! $name == com.termux && ! $name == com.mixplorer.silver ]] && am force-stop $name
-		case $(pm path "$name" | cut -f2 -d ':' | wc -l) in
-		1)
+		if [[ $(pm path "$name" | cut -f2 -d ':' | wc -l) == 1 ]]; then
 			if [[ $C == no ]]; then
 				Backup-apk "$name2为非Split Apk"
 				D=1
 			else
 				echoRgb "$name2为非Split Apk跳过备份"
 				D=
-			fi
-			;;
-		*)
+			fi			
+		else
 			Backup-apk "$name2为Split Apk支持备份"
-			D=1
-			;;
-		esac
+			D=1			
+		fi
+        #复制Mt or termux安装包到外部资料夹方便恢复
+        if [[ $name == bin.mt.plus || $name == com.termux || $name == com.mixplorer.silver ]]; then           
+             if [[ -e $Backup/$name/base.apk ]]; then                
+                cp -r "$Backup/$name/base.apk" "$Backup/$name.apk"                
+            fi
+        fi
 		if [[ $B == yes && -n $D ]]; then
 			echoRgb "[ 开始备份${name2} Sdcard数据 ]"
 			#备份data数据
@@ -260,7 +263,6 @@ while [[ $i -le $h ]]; do
 		if [[ -d /data/user/0/$name && -n $D ]]; then
 			echoRgb "[ 开始备份${name2} user数据 ]"
 			if [[ ! -e $Backup/$name/usersize.txt ]]; then
-				#tar -cpf "$name-user.tar.lz4" /data/user/0/$name --exclude=$name/cache --exclude=$name/lib >/dev/null 2>&1
 				tar -cpf - "/data/user/0/$name" --exclude=$name/cache --exclude=$name/lib 2>/dev/null | pv -terb >"$name-user.tar.lz4"
 				echo_log "备份user数据/data/user/0/$name"
 				[[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
