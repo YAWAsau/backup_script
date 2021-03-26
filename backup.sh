@@ -10,7 +10,7 @@ Add_path
 
 Add_path "pv"
 echo "环境变数: $PATH"
-nowversion=" 85uevjik6"
+nowversion=" 86uevjik6"
 
 
 gitsh="https://raw.githubusercontent.com/YAWAsau/backup_script/master/backup.sh"
