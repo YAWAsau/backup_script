@@ -9,7 +9,7 @@ Add_path
 
 Add_path "pv"
 echo "环境变数: $PATH"
-nowversion=" mkv2k81ohj"
+nowversion=" mv2k1ohj"
 
 
 gitsh="https://raw.githubusercontent.com/YAWAsau/backup_script/master/tools/restore"
