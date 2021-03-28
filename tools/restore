@@ -2,55 +2,7 @@
 [[ $(id -u) -ne 0 ]] && echo "你是憨批？不给Root用你妈 爬" && exit 1
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥马不解压缩？用毛线 憨批" && exit 1
 [[ ! -d ${0%/*}/tools ]] && echo "${0%/*}/tools目录遗失" && exit 1
-tools_path=${0%/*}/tools
 . ${0%/*}/tools/bin.sh
-#设置命令和目录位置及是否使用链接方式
-Add_path
-
-Add_path "pv"
-echo "环境变数: $PATH"
-nowversion=" mv2k1ohj"
-
-
-gitsh="https://raw.githubusercontent.com/YAWAsau/backup_script/master/tools/restore"
-giteesh="https://cdn.jsdelivr.net/gh/YAWAsau/backup_script@master/tools/restore"
-if [[ -n $(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g') ]]; then
-    Onlineversion=$(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g')
-    if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
-        echo "本地版本与远端版本不同 下载覆盖中"
-        curl -s "$gitsh">${0%/*}/还原备份.sh
-        if [[ $? -eq 0 ]]; then
-            curl -s https://raw.githubusercontent.com/YAWAsau/backup_script/master/Update/log
-            echo
-            echo
-            echo "- 新版本已下载完毕，请退出重新运行还原备份.sh"
-            exit
-        fi
-    else
-        echo "无须更新已是最新版本"
-    fi
-else
-    echo "从GitHub获取更新下载失败 转换尝试cdn下载"
-    if [[ -n $(curl -s "$giteesh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g') ]]; then
-        Onlineversion=$(curl -s "$giteesh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g')
-        if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
-            echo "本地版本与远端版本不同 下载覆盖中"
-            curl -s "$gitsh">${0%/*}/还原备份.sh
-            if [[ $? -eq 0 ]]; then
-                curl -s https://cdn.jsdelivr.net/gh/YAWAsau/backup_script@master/Update/log
-                echo
-                echo
-                echo "- 新版本已下载完毕，请退出重新运行还原备份.sh"
-                exit
-            fi
-        else
-            echo "无须更新已是最新版本"
-        fi
-    else
-        echo "联网更新脚本失败，请自行关注作者酷安"
-        echo "落叶凄凉TEL"
-    fi
-fi
 #记录开始时间
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
 i=1
@@ -138,23 +90,38 @@ while [[ $i -le $h ]]; do
 				[[ -n $name ]] && G=$(cat /data/system/packages.list | grep -w "$name" | awk '{print $2}')
 				X=$(cat /data/system/packages.list | grep -w "$name" | awk '{print $4}')
 				if [[ -n $name ]]; then
-					find ${0%/*}/$name -name "*.tar.lz4" -type f | while read i; do
+					find ${0%/*}/$name -name "*.tar.zst" -o -name "*.tar.lz4" -type f | while read i; do
 						case $(basename $i) in
-						*-user.tar.lz4)
+						*-user.tar.zst)
 							[[ -d /data/user/0/$name ]] && rm -rf /data/user/0/$name
-							pv $i | tar xpf - -C /
+							pv $i | tar -I zstd -xPpf -
 							echo_log "$(basename $i)解压缩"
 							;;
-						*-data.tar.lz4)
+					    *-user.tar.lz4)
+							[[ -d /data/user/0/$name ]] && rm -rf /data/user/0/$name
+							pv $i | tar xPpf -
+							echo_log "$(basename $i)解压缩"
+							;;					        							
+						*-data.tar.zst)
 							[[ -d /sdcard/Android/data/$name ]] && rm -rf /sdcard/Android/data/$name
-							pv $i | tar xpf - -C /
+							pv $i | tar -I zstd -xPpf -                   
 							echo_log "$(basename $i)解压缩"
 							;;
-						*-obb.tar.lz4)
+					    *-data.tar.lz4)
+							[[ -d /sdcard/Android/data/$name ]] && rm -rf /sdcard/Android/data/$name
+							pv $i | tar xPpf -
+							echo_log "$(basename $i)解压缩"
+							;;					        							
+						*-obb.tar.zst)
 							[[ -d /sdcard/Android/obb/$name ]] && rm -rf /sdcard/Android/obb/$name
-							pv $i | tar xpf - -C /
+							pv $i | tar -I zstd -xPpf -                
 							echo_log "$(basename $i)解压缩"
 							;;
+					    *-obb.tar.lz4)
+							[[ -d /sdcard/Android/obb/$name ]] && rm -rf /sdcard/Android/obb/$name
+							pv $i | tar xPpf -
+							echo_log "$(basename $i)解压缩"
+							;;					        
 						esac
 					done
 				fi

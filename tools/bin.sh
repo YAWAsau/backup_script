@@ -8,51 +8,53 @@ arm64*) echo "設備架構$abi" ;;
 esac
 
 #設置二進制命令目錄位置
-filepath=/data/backup_tools
+[[ -z $tools_path ]] && tools_path=${0%/*}/tools
+filepath=/data/aosp_tools
 busybox="$filepath/busybox"
+#排除自身
+exclude="
+restore
+bin.sh"
+[[ ! -d $filepath ]] && mkdir -p $filepath && echo "設置busybox環境中"
 if [[ -e $busybox ]]; then
 	filesize=$(ls -l $busybox | awk '{print $5}')
-	filesize2=$(ls -l $tools_path/busybox-arm64 | awk '{print $5}')
-	if [[ ! $filesize == $filesize2 ]]; then
+	filesize2=$(ls -l $tools_path/busybox | awk '{print $5}')
+	if [[ ! $filesize = $filesize2 ]]; then
 		echo "busybox大小不一致 重新創立環境中"
 		rm -rf $filepath
+		[[ ! -d $filepath ]] && mkdir -p $filepath && echo "設置busybox環境中"
 	fi
 fi
-
-#補上遺失指令集
-Add_path() {
-	#工具絕對位置
-	if [[ -e $busybox ]]; then
-		if [[ ! -e $filepath/$1 ]]; then
-		    if [[ -e $tools_path/$1 ]]; then
-                if [[ $1 == aapt ]]; then
-                    cp -r $tools_path/aapt* $filepath
-                    chmod 0777 $filepath/aapt*
-                fi
-    			cp -r $tools_path/$1 $filepath
-    			chmod 0777 $filepath/$1
-  			else
-				echo "$tools_path/$1不存在 腳本所需的$1缺少"
-				exit 1
-			fi
-		fi
-		[[ ! -e $filepath/$1 ]] && echo "錯誤: $filepath/$1不存在" && exit 1
-		export PATH=$filepath:$PATH
-	else
-		echo "不存在$busybox 设置环境中...."
-		if [[ -e $tools_path/busybox-arm64 ]]; then
-			[[ ! -d $filepath ]] && mkdir -p $filepath
-			cp -r $tools_path/busybox-arm64 $busybox
-			chmod 0777 $busybox
-			for a in $($busybox --list); do
-				if [[ -n $a ]]; then
-					[[ ! -e $filepath/$a ]] && ln -s $busybox "$filepath/$a"
-				fi
-			done
-			export PATH=$PATH:$filepath	
-		else
-			echo "錯誤 缺少$tools_path/busybox-arm64"
-			exit 1
-		fi
-	fi
-}
+if [[ -d $tools_path ]]; then
+    ls -a $tools_path | sed -r '/^\.{1,2}$/d' | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read i; do
+        if [[ ! -e $filepath/$i ]]; then             
+            if [[ ! $i = busybox ]]; then
+                echo "$i > $filepath/$i"
+                cp -r $tools_path/$i $filepath
+                chmod 0777 $filepath/$i
+            else
+                cp -r $tools_path/$i $filepath
+                chmod 0777 $filepath/$i
+                echo "$i > $filepath/$i"
+                for a in $($busybox --list); do
+    				if [[ -n $a ]]; then
+    					if [[ ! -e $filepath/$a ]]; then
+    					    [[ ! $a = tar ]] && ln -s $busybox "$filepath/$a"
+    					fi
+    				fi               
+    			done    			
+    		fi
+        fi
+    done
+else
+    echo "遺失$tools_path"
+    exit 1
+fi
+#工具絕對位置
+if [[ -e $busybox ]]; then
+    export PATH=$filepath:$PATH
+    echo "环境变数: $PATH"
+else
+	echo "不存在$busybox ...."
+	exit 1
+fi	

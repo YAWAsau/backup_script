@@ -3,55 +3,7 @@
 [[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥马不解压缩？用毛缐 憨批" && exit 1
 [[ ! -d ${0%/*}/tools ]] && echo "${0%/*}/tools目录遗失" && exit 1
 # Load Settings Variables
-tools_path=${0%/*}/tools
 . ${0%/*}/tools/bin.sh
-#设置命令和目录位置及是否使用链接方式
-Add_path
-
-Add_path "pv"
-echo "环境变数: $PATH"
-nowversion=" 86uevjik6"
-
-
-gitsh="https://raw.githubusercontent.com/YAWAsau/backup_script/master/backup.sh"
-giteesh="https://cdn.jsdelivr.net/gh/YAWAsau/backup_script@master/backup.sh"
-if [[ -n $(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g') ]]; then
-    Onlineversion=$(curl -s "$gitsh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g')
-    if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
-        echo "本地版本与远端版本不同 下载覆盖中"
-        curl -s "$gitsh">${0%/*}/backup.sh
-        if [[ $? -eq 0 ]]; then
-            curl -s https://raw.githubusercontent.com/YAWAsau/backup_script/master/Update/log
-            echo
-            echo
-            echo "- 新版本已下载完毕，请退出重新运行backup.sh"
-            exit
-        fi
-    else
-        echo "无须更新已是最新版本"
-    fi
-else
-    echo "从GitHub获取更新下载失败 转换尝试cdn下载"
-    if [[ -n $(curl -s "$giteesh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g') ]]; then
-        Onlineversion=$(curl -s "$giteesh" | awk '/nowversion=/{print $2}' | sed 's/"//g' | sed 's/\-s//g' | sed 's/\[//g')
-        if [[ ! $(echo $nowversion | sed 's/ //g') == $Onlineversion ]]; then
-            echo "本地版本与远端版本不同 下载覆盖中"
-            curl -s "$giteesh">${0%/*}/backup.sh
-            if [[ $? -eq 0 ]]; then
-                curl -s https://cdn.jsdelivr.net/gh/YAWAsau/backup_script@master/Update/log
-                echo
-                echo
-                echo "- 新版本已下载完毕，请退出重新运行backup.sh"
-                exit
-            fi
-        else
-            echo "无须更新已是最新版本"
-        fi
-    else
-        echo "联网更新脚本失败，请自行关注作者酷安"
-        echo "落叶凄凉TEL"
-    fi
-fi
 i=1
 txt="${0%/*}/Apkname.txt"
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 1
@@ -66,8 +18,11 @@ filesize=$(du -k -s $Backup | awk '{print $1}')
 [[ ! -e $Backup/name.txt ]] && echo "#不需要恢復还原的应用请在开头注释# 比如#xxxxxxxx 酷安" >$Backup/name.txt
 #调用二进制
 Quantity=0
-lz4() {
-	tar -cf - "$2" 2>/dev/null | pv -terb >"$1.tar.lz4"
+lz4 () {
+	tar -cPpf - "$2" 2>/dev/null | pv -terb >"$1.tar.lz4"
+}
+zst () {
+    tar -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$1.tar.zst"
 }
 #Everything is Ok#z 2>&1
 #转换echo颜色提高可读性
@@ -132,13 +87,27 @@ Backup-data() {
 			echoRgb "发现${name2} $path/$1/数据开始备份"
 			lz4 "$name-$1" $path/$1/$name
 			echo_log "备份$name2 $path/$1"
-			[[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
+			if [[ $result == 0 ]]; then
+			    echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
+			else
+			    echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
+			    zst "$name-$1" $path/$1/$name
+			    echo_log "备份$name2 $path/$1"
+			    [[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
+			fi
 		else
 			if [[ ! $(cat $Backup/$name/$1size.txt) == $(du -k -s $path/$1/$name | awk '{print $1}') ]]; then
 				echoRgb "发现${name2} $path/$1/数据开始备份"
 				lz4 "$name-$1" $path/$1/$name
 				echo_log "备份$name2 $path/$1"
-				[[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
+				if [[ $result == 0 ]]; then
+				    echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
+				else
+                    echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
+                    zst "$name-$1" $path/$1/$name
+			    	echo_log "备份$name2 $path/$1"
+			    	[[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
+			    fi
 			else
 				echoRgb "$name2 $1数据无发生变化 跳过备份"
 			fi
@@ -228,10 +197,15 @@ while [[ $i -le $h ]]; do
 	    starttime2=$(date +"%Y-%m-%d %H:%M:%S")
 	    echoRgb "备份$name2 ($name)"
 		[[ $pkg == com.tencent.mobileqq ]] && echo "QQ可能恢復备份失败或是丢失聊天记录，请自行用你信赖的软件备份" || [[ $pkg == com.tencent.mm ]] && echo "WX可能恢復备份失败或是丢失聊天记录，请自行用你信赖的软件备份"
-		[[ ! -d $Backup/tools ]] && mkdir -p $Backup/tools && cp -r ${0%/*}/tools/pv $Backup/tools
+		if [[ ! -d $Backup/tools ]]; then
+		    mkdir -p $Backup/tools
+		    cp -r ${0%/*}/tools/pv $Backup/tools
+            cp -r ${0%/*}/tools/zstd $Backup/tools
+            cp -r ${0%/*}/tools/tar $Backup/tools
+        fi
 		[[ ! -e $Backup/还原备份.sh ]] && cp -r ${0%/*}/tools/restore $Backup/还原备份.sh
 		[[ ! -e $Backup/tools/bin.sh ]] && cp -r ${0%/*}/tools/bin.sh $Backup/tools
-		[[ ! -e $Backup/tools/busybox-* ]] && cp -r ${0%/*}/tools/busybox-* $Backup/tools
+		[[ ! -e $Backup/tools/busybox ]] && cp -r ${0%/*}/tools/busybox $Backup/tools
 		#停止软件
 		[[ ! $name == bin.mt.plus && ! $name == com.termux && ! $name == com.mixplorer.silver ]] && am force-stop $name
 		if [[ $(pm path "$name" | cut -f2 -d ':' | wc -l) == 1 ]]; then
@@ -263,14 +237,28 @@ while [[ $i -le $h ]]; do
 		if [[ -d /data/user/0/$name && -n $D ]]; then
 			echoRgb "[ 开始备份${name2} user数据 ]"
 			if [[ ! -e $Backup/$name/usersize.txt ]]; then
-				tar -cpf - "/data/user/0/$name" --exclude=$name/cache --exclude=$name/lib 2>/dev/null | pv -terb >"$name-user.tar.lz4"
+				tar -cPpf - "/data/user/0/$name" --exclude="$name/cache" --exclude="$name/lib" 2>/dev/null | pv -terb >"$name-user.tar.lz4"				
 				echo_log "备份user数据/data/user/0/$name"
-				[[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
+				if [[ $result == 0 ]]; then
+				    echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
+				else
+                    echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
+                    tar --exclude="$name/cache" --exclude="$name/lib" -cPpf - "/data/user/0/$name" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$name-user.tar.zst"
+                    echo_log "备份user数据/data/user/0/$name"
+                    [[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
+                fi
 			else
-				if [[ ! $(cat $Backup/$name/usersize.txt) == $(du -k -s /data/user/0/$name | awk '{print $1}') ]]; then
-					tar -cpf - "/data/user/0/$name" --exclude=$name/cache --exclude=$name/lib 2>/dev/null | pv -terb >"$name-user.tar.lz4"
+				if [[ ! $(cat $Backup/$name/usersize.txt) == $(du -k -s /data/user/0/$name | awk '{print $1}') ]]; then					
+					tar -cPpf - "/data/user/0/$name" --exclude="$name/cache" --exclude="$name/lib" 2>/dev/null | pv -terb >"$name-user.tar.lz4"				
 					echo_log "备份user数据/data/user/0/$name"
-					[[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
+    				if [[ $result == 0 ]]; then
+    				    echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
+    				else
+                        echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
+                        tar --exclude="$name/cache" --exclude="$name/lib" -cPpf - "/data/user/0/$name" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$name-user.tar.zst"
+                        echo_log "备份user数据/data/user/0/$name"
+                        [[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
+                    fi
 				else
 					echoRgb "$name2 user数据无发生变化 跳过备份"
 				fi
