@@ -54,7 +54,6 @@ while [[ $i -le $h ]]; do
 	[[ -z $name ]] && echoRgb "警告! name.txt软件包名获取失败，可能修改有问题" "0" "0" && exit 1
 	if [[ -n $name && -d ${0%/*}/$name ]]; then
 	    echoRgb "恢复$name2 ($name)"
-	    echoRgb "路徑:${0%/*}/$name"
     	starttime2=$(date +"%Y-%m-%d %H:%M:%S")
 		zb=$(pm list packages | grep -w "$name" | sed 's/package://g')
 		if [[ $(find "${0%/*}/$name" -maxdepth 1 -name "*.apk" -type f | wc -l) == 1 ]]; then

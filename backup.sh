@@ -143,7 +143,7 @@ Backup-apk() {
 		done
 	fi
 	if [[ ! -e $Backup/$name/apk-version.txt ]]; then
-		[[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name2  $name" >>$Backup/name.txt
+		[[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name" | head -1) ]] && echo "$name2  $name" >>$Backup/name.txt
 		echoRgb "$1"
 		echoRgb "发现$(pm path "$name" | cut -f2 -d ':' | wc -l)个Apk"
 		cp -r $(pm path "$name" | cut -f2 -d ':') "$Backup/$name"
@@ -151,7 +151,7 @@ Backup-apk() {
 		[[ $result == 0 ]] && echo $(pm dump $name | grep -m 1 versionName | sed -n 's/.*=//p') >$Backup/$name/apk-version.txt
 	else
 		if [[ ! $(cat $Backup/$name/apk-version.txt) == $(pm dump $name | grep -m 1 versionName | sed -n 's/.*=//p') ]]; then
-			[[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name2  $name" >>$Backup/name.txt
+			[[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name" | head -1) ]] && echo "$name2  $name" >>$Backup/name.txt
 			echoRgb "$1"
 			echoRgb "发现$(pm path "$name" | cut -f2 -d ':' | wc -l)个Apk"
 			cp -r $(pm path "$name" | cut -f2 -d ':') "$Backup/$name"
@@ -192,7 +192,7 @@ while [[ $i -le $h ]]; do
 	name=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')
 	name2=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')		
 	[[ -z $name ]] && echoRgb "警告! name.txt软件包名获取失败，可能修改有问题" "0" "0" && exit 1    
-	pkg=$(pm list packages | grep -w "$name" | sed 's/package://g')
+	pkg=$(pm list packages | grep -w "$name" | sed 's/package://g' | head -1)
 	if [[ -n $pkg ]]; then
 	    starttime2=$(date +"%Y-%m-%d %H:%M:%S")
 	    echoRgb "备份$name2 ($name)"
@@ -207,9 +207,9 @@ while [[ $i -le $h ]]; do
 		[[ ! -e $Backup/tools/bin.sh ]] && cp -r ${0%/*}/tools/bin.sh $Backup/tools
 		[[ ! -e $Backup/tools/busybox ]] && cp -r ${0%/*}/tools/busybox $Backup/tools
 		#停止软件
-		[[ ! $name == bin.mt.plus && ! $name == com.termux && ! $name == com.mixplorer.silver ]] && am force-stop $name
 		if [[ $(pm path "$name" | cut -f2 -d ':' | wc -l) == 1 ]]; then
 			if [[ $C == no ]]; then
+				[[ ! $name == bin.mt.plus && ! $name == com.termux && ! $name == com.mixplorer.silver ]] && am force-stop $name
 				Backup-apk "$name2为非Split Apk"
 				D=1
 			else
@@ -217,6 +217,7 @@ while [[ $i -le $h ]]; do
 				D=
 			fi			
 		else
+			[[ ! $name == bin.mt.plus && ! $name == com.termux && ! $name == com.mixplorer.silver ]] && am force-stop $name
 			Backup-apk "$name2为Split Apk支持备份"
 			D=1			
 		fi

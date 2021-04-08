@@ -22,8 +22,13 @@ echoRgb() {
 	fi
 }
 
-name=$(pm list packages -3 | sed 's/package://g' | grep -v 'xiaomi' | grep -v 'miui')
-sys=$(pm list packages -s | egrep 'com.android.chrome|com.google.android.inputmethod.latin|com.digibites.accubattery' | sed 's/package://g')
+name=$(pm list packages -3 | sed 's/package://g' | grep -v 'miui')
+system="
+com.android.launcher3
+com.digibites.accubattery
+com.google.android.inputmethod.latin
+com.android.chrome"
+sys=$(pm list packages -s | egrep -w "$(echo $system | sed 's/ /\|/g')" | sed 's/package://g')
 echo "#不需要恢復还原的应用请在开头注释# 比如#xxxxxxxx 酷安" >${0%/*}/Apkname.txt
 echo "请勿关闭脚本，等待提示结束"
 i=1
