@@ -86,7 +86,7 @@ while [[ $i -le $h ]]; do
 			[[ ! $name == bin.mt.plus && ! $name == com.termux && ! $name == com.mixplorer.silver ]] && am force-stop $name
 			echoRgb "$name2存在 开始释放数据"
 			if [[ $(cat /data/system/packages.list | grep -w "$name" | awk '{print $1}') == $name ]]; then
-				[[ -n $name ]] && G=$(cat /data/system/packages.list | grep -w "$name" | awk '{print $2}')
+				[[ -n $name ]] && G=$(dumpsys package "$name" | awk '/userId=/{print $1}' | sed 's/userId=//g')
 				X=$(cat /data/system/packages.list | grep -w "$name" | awk '{print $4}')
 				if [[ -n $name ]]; then
 					find ${0%/*}/$name -name "*.tar.zst" -o -name "*.tar.lz4" -type f | while read i; do
