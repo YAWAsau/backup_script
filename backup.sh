@@ -22,7 +22,7 @@ lz4 () {
 	tar -cPpf - "$2" 2>/dev/null | pv -terb >"$1.tar.lz4"
 }
 zst () {
-    tar -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$1.tar.zst"
+	tar -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$1.tar.zst"
 }
 #Everything is Ok#z 2>&1
 #转换echo颜色提高可读性
@@ -58,6 +58,25 @@ endtime() {
 	duration=$(echo $(($(date +%s -d "${endtime}") - $(date +%s -d "${starttime}"))) | awk '{t=split("60 秒 60 分 24 时 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')
 	[[ -n $duration ]] && echoRgb "$2用时:$duration" || echoRgb "$2用时:0秒"
 }
+Package_names() {
+	[[ -n $1 ]] && t1="$1"
+	case $2 in
+	0) t2=$(pm list packages | sed 's/package://g' | grep -w "$t1" | head -1) ;;
+	3) t2=$(pm list packages -3 | sed 's/package://g' | grep -w "$t1" | head -1) ;;
+	s) t2=$(pm list packages -s | sed 's/package://g' | grep -w "$t1" | head -1) ;;
+	esac
+	if [[ -n $t2 ]]; then
+		[[ -z $1 ]] && {
+		echo "$t2"
+		} || if [[ $t2 = $1 ]]; then
+				echo $t2
+			fi
+	else
+		[[ -z $2 ]] && {
+		echo "未輸入包名參數"
+		}
+	fi
+}
 
 set -e
 get_version() {
@@ -88,12 +107,12 @@ Backup-data() {
 			lz4 "$name-$1" $path/$1/$name
 			echo_log "备份$name2 $path/$1"
 			if [[ $result == 0 ]]; then
-			    echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
+				echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
 			else
-			    echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
-			    zst "$name-$1" $path/$1/$name
-			    echo_log "备份$name2 $path/$1"
-			    [[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
+				echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
+				zst "$name-$1" $path/$1/$name
+				echo_log "备份$name2 $path/$1"
+				[[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
 			fi
 		else
 			if [[ ! $(cat $Backup/$name/$1size.txt) == $(du -k -s $path/$1/$name | awk '{print $1}') ]]; then
@@ -101,13 +120,13 @@ Backup-data() {
 				lz4 "$name-$1" $path/$1/$name
 				echo_log "备份$name2 $path/$1"
 				if [[ $result == 0 ]]; then
-				    echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
+					echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
 				else
-                    echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
-                    zst "$name-$1" $path/$1/$name
-			    	echo_log "备份$name2 $path/$1"
-			    	[[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
-			    fi
+					echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
+					zst "$name-$1" $path/$1/$name
+					echo_log "备份$name2 $path/$1"
+					[[ $result == 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
+				fi
 			else
 				echoRgb "$name2 $1数据无发生变化 跳过备份"
 			fi
@@ -190,19 +209,19 @@ while [[ $i -le $h ]]; do
 	#[[ $bn -ge 37 ]] && bn=31
 	echoRgb "备份第$i个应用 总共$h个 剩下$(($h - $i))个应用"
 	name=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')
-	name2=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')		
-	[[ -z $name ]] && echoRgb "警告! name.txt软件包名获取失败，可能修改有问题" "0" "0" && exit 1    
-	pkg=$(pm list packages | grep -w "$name" | sed 's/package://g' | head -1)
+	name2=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')
+	[[ -z $name ]] && echoRgb "警告! name.txt软件包名获取失败，可能修改有问题" "0" "0" && exit 1
+	pkg=$(Package_names "$name" "0")
 	if [[ -n $pkg ]]; then
-	    starttime2=$(date +"%Y-%m-%d %H:%M:%S")
-	    echoRgb "备份$name2 ($name)"
+		starttime2=$(date +"%Y-%m-%d %H:%M:%S")
+		echoRgb "备份$name2 ($name)"
 		[[ $pkg == com.tencent.mobileqq ]] && echo "QQ可能恢復备份失败或是丢失聊天记录，请自行用你信赖的软件备份" || [[ $pkg == com.tencent.mm ]] && echo "WX可能恢復备份失败或是丢失聊天记录，请自行用你信赖的软件备份"
 		if [[ ! -d $Backup/tools ]]; then
-		    mkdir -p $Backup/tools
-		    cp -r ${0%/*}/tools/pv $Backup/tools
-            cp -r ${0%/*}/tools/zstd $Backup/tools
-            cp -r ${0%/*}/tools/tar $Backup/tools
-        fi
+			mkdir -p $Backup/tools
+			cp -r ${0%/*}/tools/pv $Backup/tools
+			cp -r ${0%/*}/tools/zstd $Backup/tools
+			cp -r ${0%/*}/tools/tar $Backup/tools
+		fi
 		[[ ! -e $Backup/还原备份.sh ]] && cp -r ${0%/*}/tools/restore $Backup/还原备份.sh
 		[[ ! -e $Backup/tools/bin.sh ]] && cp -r ${0%/*}/tools/bin.sh $Backup/tools
 		[[ ! -e $Backup/tools/busybox ]] && cp -r ${0%/*}/tools/busybox $Backup/tools
@@ -215,18 +234,18 @@ while [[ $i -le $h ]]; do
 			else
 				echoRgb "$name2为非Split Apk跳过备份"
 				D=
-			fi			
+			fi
 		else
 			[[ ! $name == bin.mt.plus && ! $name == com.termux && ! $name == com.mixplorer.silver ]] && am force-stop $name
 			Backup-apk "$name2为Split Apk支持备份"
-			D=1			
+			D=1
 		fi
-        #复制Mt or termux安装包到外部资料夹方便恢复
-        if [[ $name == bin.mt.plus || $name == com.termux || $name == com.mixplorer.silver ]]; then           
-             if [[ -e $Backup/$name/base.apk ]]; then                
-                cp -r "$Backup/$name/base.apk" "$Backup/$name.apk"                
-            fi
-        fi
+		#复制Mt or termux安装包到外部资料夹方便恢复
+		if [[ $name == bin.mt.plus || $name == com.termux || $name == com.mixplorer.silver ]]; then
+			 if [[ -e $Backup/$name/base.apk ]]; then
+				cp -r "$Backup/$name/base.apk" "$Backup/$name.apk"
+			fi
+		fi
 		if [[ $B == yes && -n $D ]]; then
 			echoRgb "[ 开始备份${name2} Sdcard数据 ]"
 			#备份data数据
@@ -238,37 +257,37 @@ while [[ $i -le $h ]]; do
 		if [[ -d /data/user/0/$name && -n $D ]]; then
 			echoRgb "[ 开始备份${name2} user数据 ]"
 			if [[ ! -e $Backup/$name/usersize.txt ]]; then
-				tar -cPpf - "/data/user/0/$name" --exclude="$name/cache" --exclude="$name/lib" 2>/dev/null | pv -terb >"$name-user.tar.lz4"				
+				tar -cPpf - "/data/user/0/$name" --exclude="$name/cache" --exclude="$name/lib" 2>/dev/null | pv -terb >"$name-user.tar.lz4"
 				echo_log "备份user数据/data/user/0/$name"
 				if [[ $result == 0 ]]; then
-				    echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
+					echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
 				else
-                    echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
-                    tar --exclude="$name/cache" --exclude="$name/lib" -cPpf - "/data/user/0/$name" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$name-user.tar.zst"
-                    echo_log "备份user数据/data/user/0/$name"
-                    [[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
-                fi
-			else
-				if [[ ! $(cat $Backup/$name/usersize.txt) == $(du -k -s /data/user/0/$name | awk '{print $1}') ]]; then					
-					tar -cPpf - "/data/user/0/$name" --exclude="$name/cache" --exclude="$name/lib" 2>/dev/null | pv -terb >"$name-user.tar.lz4"				
+					echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
+					tar --exclude="$name/cache" --exclude="$name/lib" -cPpf - "/data/user/0/$name" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$name-user.tar.zst"
 					echo_log "备份user数据/data/user/0/$name"
-    				if [[ $result == 0 ]]; then
-    				    echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
-    				else
-                        echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
-                        tar --exclude="$name/cache" --exclude="$name/lib" -cPpf - "/data/user/0/$name" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$name-user.tar.zst"
-                        echo_log "备份user数据/data/user/0/$name"
-                        [[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
-                    fi
+					[[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
+				fi
+			else
+				if [[ ! $(cat $Backup/$name/usersize.txt) == $(du -k -s /data/user/0/$name | awk '{print $1}') ]]; then
+					tar -cPpf - "/data/user/0/$name" --exclude="$name/cache" --exclude="$name/lib" 2>/dev/null | pv -terb >"$name-user.tar.lz4"
+					echo_log "备份user数据/data/user/0/$name"
+					if [[ $result == 0 ]]; then
+						echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
+					else
+						echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
+						tar --exclude="$name/cache" --exclude="$name/lib" -cPpf - "/data/user/0/$name" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$name-user.tar.zst"
+						echo_log "备份user数据/data/user/0/$name"
+						[[ $result == 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
+					fi
 				else
 					echoRgb "$name2 user数据无发生变化 跳过备份"
 				fi
 			fi
 		fi
-        endtime 2 "$name2备份"
-    else
-        echoRgb "$name2不在安装列表，备份个寂寞？" "0" "0"
-	fi		
+		endtime 2 "$name2备份"
+	else
+		echoRgb "$name2不在安装列表，备份个寂寞？" "0" "0"
+	fi
 	echo
 	let i++
 done

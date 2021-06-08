@@ -21,10 +21,20 @@ echoRgb() {
 		echo -e "\e[1;${bn}m $1\e[0m"
 	fi
 }
-
+lang_print() {
+    LANG=$(getprop "persist.sys.locale")
+    if [[ -n $LANG ]]; then
+        case $LANG in
+        zh-Hant-TW) echo "TW" ;;
+        zh-Hant-CN) echo "CN" ;;
+        * ) echo "CN" ;;
+        esac
+    fi
+}
 name=$(pm list packages -3 | sed 's/package://g' | grep -v 'miui')
 system="
 com.android.launcher3
+com.google.android.apps.messaging
 com.digibites.accubattery
 com.google.android.inputmethod.latin
 com.android.chrome"
@@ -37,14 +47,12 @@ bn=37
 [[ -e ${0%/*}/tools/tmp ]] && rm -rf ${0%/*}/tools/tmp
 for name in $name $sys; do
 	[[ $bn -ge 37 ]] && bn=31
-	#获取apk中文名称
-	Appname1=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label-zh-CN:" | sed 's/application-label-zh-CN://g' | sed "s/\'//g" | sed 's/ //g')
-	Appname2=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label-zh-TW:" | sed 's/application-label-zh-TW://g' | sed "s/\'//g" | sed 's/ //g')
-	#获取apk默认名称
-	Appname3=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label:" | sed 's/application-label://g' | sed "s/\'//g" | sed 's/ //g')
-	[[ ! $(echo $Appname1 | wc -l) == 0 ]] && Appname=$Appname1
-	[[ -z $Appname ]] && Appname=$Appname2
-	[[ -z $Appname ]] && Appname=$Appname3
+	#獲取apk中文名稱
+	Appname=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label-zh-$(lang_print):" | sed "s/application-label-zh-$(lang_print)://g" | sed "s/\'//g" | sed 's/ //g')
+	#獲取apk默認名稱
+	Appname1=$(aapt dump badging $(pm path "$name" | cut -f2 -d ':') | grep -w "application-label:" | sed 's/application-label://g' | sed "s/\'//g" | sed 's/ //g')
+	[[ ! $(echo $Appname | wc -l) = 0 ]] && Appname=$Appname
+	[[ -z $Appname ]] && Appname=$Appname1
 	[[ -z $Appname ]] && Appname=$name
 	echoRgb "$i.$Appname"
 	[[ -z $(cat ${0%/*}/Apkname.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$Appname $name" >>${0%/*}/tools/tmp
