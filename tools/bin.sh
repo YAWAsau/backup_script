@@ -54,7 +54,7 @@ if [[ -d $tools_path ]]; then
 				rm_busyPATH
 				for a in $($busybox --list); do
 					case $a in
-					date|tar) ;;
+					date|tar|restore|busybox_path) ;;
 					*)
 						if [[ ! -e $filepath/$a ]]; then
 							echo "$a > $filepath/$a"

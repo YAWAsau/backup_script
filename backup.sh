@@ -60,25 +60,11 @@ endtime() {
 }
 Package_names() {
 	[[ -n $1 ]] && t1="$1"
-	case $2 in
-	0) t2=$(pm list packages | sed 's/package://g' | grep -w "$t1" | head -1) ;;
-	3) t2=$(pm list packages -3 | sed 's/package://g' | grep -w "$t1" | head -1) ;;
-	s) t2=$(pm list packages -s | sed 's/package://g' | grep -w "$t1" | head -1) ;;
-	esac
-	if [[ -n $t2 ]]; then
-		[[ -z $1 ]] && {
-		echo "$t2"
-		} || if [[ $t2 = $1 ]]; then
-				echo $t2
-			fi
-	else
-		[[ -z $2 ]] && {
-		echo "未輸入包名參數"
-		}
-	fi
+	t2=$(appinfo -o pn -d ⎈ -n $t1 | head -1)
+	[[ -n $t2 ]] && [[ $t2 = $1 ]] && echo $t2
 }
 
-set -e
+
 get_version() {
 	local version
 	local branch
@@ -211,7 +197,7 @@ while [[ $i -le $h ]]; do
 	name=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')
 	name2=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')
 	[[ -z $name ]] && echoRgb "警告! name.txt软件包名获取失败，可能修改有问题" "0" "0" && exit 1
-	pkg=$(Package_names "$name" "0")
+	pkg=$(Package_names "$name")
 	if [[ -n $pkg ]]; then
 		starttime2=$(date +"%Y-%m-%d %H:%M:%S")
 		echoRgb "备份$name2 ($name)"

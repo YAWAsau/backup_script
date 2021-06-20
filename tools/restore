@@ -13,7 +13,7 @@ r=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n '$=')
 #转换echo颜色提高可读性
 echoRgb() {
 	if [[ -n $2 ]]; then
-		if [[ $3 == 1 ]]; then
+		if [[ $3 = 1 ]]; then
 			echo -e "\e[1;32m $1\e[0m"
 		else
 			echo -e "\e[1;31m $1\e[0m"
@@ -24,7 +24,7 @@ echoRgb() {
 }
 #显示执行结果
 echo_log() {
-	if [[ $? == 0 ]]; then
+	if [[ $? = 0 ]]; then
 		echoRgb "$1成功" "0" "1"
 	else
 		echoRgb "$1恢复失败，过世了" "0" "0"
@@ -43,25 +43,11 @@ endtime() {
 }
 Package_names() {
 	[[ -n $1 ]] && t1="$1"
-	case $2 in
-	0) t2=$(pm list packages | sed 's/package://g' | grep -w "$t1" | head -1) ;;
-	3) t2=$(pm list packages -3 | sed 's/package://g' | grep -w "$t1" | head -1) ;;
-	s) t2=$(pm list packages -s | sed 's/package://g' | grep -w "$t1" | head -1) ;;
-	esac
-	if [[ -n $t2 ]]; then
-		[[ -z $1 ]] && {
-		echo "$t2"
-		} || if [[ $t2 = $1 ]]; then
-				echo $t2
-			fi
-	else
-		[[ -z $2 ]] && {
-		echo "未輸入包名參數"
-		}
-	fi
+	t2=$(appinfo -o pn -d ⎈ -n $t1 | head -1)
+	[[ -n $t2 ]] && [[ $t2 = $1 ]] && echo $t2
 }
 
-[[ ! $(getenforce) == Permissive ]] && setenforce 0 && echoRgb "selinux關閉"
+[[ ! $(getenforce) = Permissive ]] && setenforce 0 && echoRgb "selinux關閉"
 bn=37
 #开始循环$txt内的资料进行恢复
 while [[ $i -le $h ]]; do
@@ -74,8 +60,8 @@ while [[ $i -le $h ]]; do
 	if [[ -n $name && -d ${0%/*}/$name ]]; then
 		echoRgb "恢复$name2 ($name)"
 		starttime2=$(date +"%Y-%m-%d %H:%M:%S")
-		zb=$(Package_names "$name" "0")
-		if [[ $(find "${0%/*}/$name" -maxdepth 1 -name "*.apk" -type f | wc -l) == 1 ]]; then
+		zb=$(Package_names "$name")
+		if [[ $(find "${0%/*}/$name" -maxdepth 1 -name "*.apk" -type f | wc -l) = 1 ]]; then
 			if [[ -z $zb ]]; then
 				echoRgb "$name2是常规Apk 开始安装"
 				[[ -e ${0%/*}/$name/nmsl.apk ]] && pm install -r -g "${0%/*}/$name/nmsl.apk" >/dev/null 2>&1
@@ -100,11 +86,11 @@ while [[ $i -le $h ]]; do
 				echoRgb "$name2存在当前系统中 略过安装Apk"
 			fi
 		fi
-		if [[ -n $(Package_names "$name" "0") ]]; then
+		if [[ -n $(Package_names "$name") ]]; then
 			#停止软件
-			[[ ! $name == bin.mt.plus && ! $name == com.termux && ! $name == com.mixplorer.silver ]] && am force-stop $name
+			[[ ! $name = bin.mt.plus && ! $name = com.termux && ! $name = com.mixplorer.silver ]] && am force-stop $name
 			echoRgb "$name2存在 开始释放数据"
-			if [[ $(cat /data/system/packages.list | grep -w "$name" | awk '{print $1}') == $name ]]; then
+			if [[ $(cat /data/system/packages.list | grep -w "$name" | awk '{print $1}') = $name ]]; then
 				[[ -n $name ]] && G=$(dumpsys package "$name" | awk '/userId=/{print $1}' | sed 's/userId=//g' | head -1)
 				X=$(cat /data/system/packages.list | grep -w "$name" | awk '{print $4}')
 				if [[ -n $name ]]; then
