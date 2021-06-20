@@ -17,7 +17,7 @@ echo "请勿关闭脚本，等待提示结束"
 [[ -e ${0%/*}/tools/tmp ]] && rm -rf ${0%/*}/tools/tmp
 echoRgb() {
 	if [[ -n $2 ]]; then
-		if [[ $3 == 1 ]]; then
+		if [[ $3 = 1 ]]; then
 			echo -e "\e[1;32m $1\e[0m"
 		else
 			echo -e "\e[1;31m $1\e[0m"
