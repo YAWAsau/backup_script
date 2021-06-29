@@ -36,7 +36,7 @@ echo "$name" | while read name; do
 	let bn++
 done
 #dump_name "$g"
-echo "如果执行中出现AndroidManifest.xml:XX: error: ERROR 代表dump名称错误 以使用包名替代，不影响备份"
+echo "如果执行中出现AndroidManifest.xml:XX: error: ERROR 代表dump名称错误 已使用包名替代，不影响备份"
 echo "整理排列中........"
 sort ${0%/*}/tools/tmp | while read o; do
 	echo $o >>${0%/*}/Apkname.txt
