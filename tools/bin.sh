@@ -13,6 +13,7 @@ esac
 filepath=/data/backup_tools
 #排除自身
 exclude="
+restore
 busybox_path
 bin.sh"
 rm_busyPATH() {
@@ -52,9 +53,9 @@ if [[ -d $tools_path ]]; then
 			chmod 0777 $filepath/$i
 			if [[ $i = busybox ]]; then
 				rm_busyPATH
-				for a in $($busybox --list); do
+				$busybox --list | while read a; do
 					case $a in
-					date|tar|restore|busybox_path) ;;
+					date|tar) ;;
 					*)
 						if [[ ! -e $filepath/$a ]]; then
 							echo "$a > $filepath/$a"
@@ -63,6 +64,16 @@ if [[ -d $tools_path ]]; then
 					;;
 					esac
 				done
+			fi
+		else
+			filesize=$(ls -l $filepath/$i | awk '{print $5}')
+			filesize2=$(ls -l $tools_path/$i | awk '{print $5}')
+			if [[ ! $filesize = $filesize2 ]]; then
+				echo "$i大小不一致 重新創建"
+				echo "$i > $filepath/$i"
+				rm -rf $filepath/$i
+				cp -r $tools_path/$i $filepath
+				chmod 0777 $filepath/$i
 			fi
 		fi
 	done

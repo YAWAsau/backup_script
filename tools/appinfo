@@ -1,11 +1,6 @@
 #!/system/bin/sh
 
+
 base=/system
-z=1
-if [[ $z = 1 ]]; then
-	export CLASSPATH="${0%/*}/dex/classes.dex"
-	exec app_process $base/bin --nice-name=momos xmx.tests.OLD.appPS "$@"
-else
-	export CLASSPATH="${0%/*}/dex/appinfo.dex"
-	exec app_process /system/bin --nice-name=appinfo indi.appinfo.AppInfo "$@"
-fi
+export CLASSPATH="${0%/*}/appinfo.dex"
+exec app_process /system/bin --nice-name=appinfo indi.appinfo.AppInfo "$@"
