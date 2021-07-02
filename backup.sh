@@ -6,6 +6,7 @@
 . ${0%/*}/tools/bin.sh
 i=1
 txt="${0%/*}/Apkname.txt"
+Open_apps=$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 1
 r=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n '$=')
 [[ -n $r ]] && h=$r
@@ -60,7 +61,7 @@ endtime() {
 }
 Package_names() {
 	[[ -n $1 ]] && t1="$1"
-	t2=$(appinfo -o pn -d ⎈ -n $t1 | head -1)
+	t2=$(appinfo -o pn -pn $t1 | head -1)
 	[[ -n $t2 ]] && [[ $t2 = $1 ]] && echo $t2
 }
 
@@ -163,6 +164,7 @@ Backup-apk() {
 			echo_log "备份Apk"
 			[[ $result = 0 ]] && echo $(pm dump $name | grep -m 1 versionName | sed -n 's/.*=//p') >$Backup/$name/apk-version.txt
 		else
+			[[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name" | head -1) ]] && echo "$name2  $name" >>$Backup/name.txt
 			echoRgb "$name2 Apk版本无更新 跳过备份"
 		fi
 	fi
@@ -189,7 +191,7 @@ bn=37
 #开始循环$txt内的资料进行备份
 #记录开始时间
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
-
+{
 while [[ $i -le $h ]]; do
 	#let bn++
 	#[[ $bn -ge 37 ]] && bn=31
@@ -204,17 +206,13 @@ while [[ $i -le $h ]]; do
 		[[ $pkg = com.tencent.mobileqq ]] && echo "QQ可能恢復备份失败或是丢失聊天记录，请自行用你信赖的软件备份" || [[ $pkg = com.tencent.mm ]] && echo "WX可能恢復备份失败或是丢失聊天记录，请自行用你信赖的软件备份"
 		if [[ ! -d $Backup/tools ]]; then
 			mkdir -p $Backup/tools
-			cp -r ${0%/*}/tools/pv $Backup/tools
-			cp -r ${0%/*}/tools/zstd $Backup/tools
-			cp -r ${0%/*}/tools/tar $Backup/tools
+			cp -r ${0%/*}/tools/* $Backup/tools
 		fi
 		[[ ! -e $Backup/还原备份.sh ]] && cp -r ${0%/*}/tools/restore $Backup/还原备份.sh
-		[[ ! -e $Backup/tools/bin.sh ]] && cp -r ${0%/*}/tools/bin.sh $Backup/tools
-		[[ ! -e $Backup/tools/busybox ]] && cp -r ${0%/*}/tools/busybox $Backup/tools
 		#停止软件
 		if [[ $(pm path "$name" | cut -f2 -d ':' | wc -l) = 1 ]]; then
 			if [[ $C = no ]]; then
-				[[ ! $name = bin.mt.plus && ! $name = com.termux && ! $name = com.mixplorer.silver ]] && am force-stop $name
+				[[ ! $name = $Open_apps ]] && am force-stop $name
 				Backup-apk "$name2为非Split Apk"
 				D=1
 			else
@@ -222,7 +220,7 @@ while [[ $i -le $h ]]; do
 				D=
 			fi
 		else
-			[[ ! $name = bin.mt.plus && ! $name = com.termux && ! $name = com.mixplorer.silver ]] && am force-stop $name
+			[[ ! $name = $Open_apps ]] && am force-stop $name
 			Backup-apk "$name2为Split Apk支持备份"
 			D=1
 		fi
@@ -272,7 +270,7 @@ while [[ $i -le $h ]]; do
 		fi
 		endtime 2 "$name2备份"
 	else
-		echoRgb "$name2不在安装列表，备份个寂寞？" "0" "0"
+		echoRgb "$name2[$name]不在安装列表，备份个寂寞？" "0" "0"
 	fi
 	echo
 	let i++
@@ -294,3 +292,4 @@ fi
 echoRgb "批量备份完成"
 endtime 1 "批量备份开始到结束"
 exit 0
+}&
