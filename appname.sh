@@ -1,9 +1,12 @@
 #!/system/bin/sh
-[[ $(id -u) -ne 0 ]] && echo "你是憨批？不给Root用你妈 爬" && exit 1
-[[ -z $(echo ${0%/*} | grep -v 'mt') ]] && echo "草泥马不解压缩？用毛缐 憨批" && exit 1
-[[ ! -d ${0%/*}/tools ]] && echo "${0%/*}/tools目录遗失" && exit 1
-#链接脚本设置环境变量
-. ${0%/*}/tools/bin.sh
+MODDIR=${0%/*}
+[[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
+[[ -z $(echo $MODDIR | grep -v 'mt') ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
+[[ ! -d $MODDIR/tools ]] && echo "$MODDIR/tools目錄遺失" && exit 1
+#鏈接腳本設置環境變量
+md5path="$MODDIR"
+tools_path=$MODDIR/tools
+. $tools_path/bin.sh
 system="
 com.android.launcher3
 com.google.android.apps.messaging
@@ -11,31 +14,18 @@ com.digibites.accubattery
 com.google.android.inputmethod.latin
 com.android.chrome"
 
-echo "#不需要恢復还原的应用请在开头注释# 比如#xxxxxxxx 酷安" >${0%/*}/Apkname.txt
-echo "请勿关闭脚本，等待提示结束"
-#删除遗留，防止上次意外中断脚本残留的打印包名文件
-[[ -e ${0%/*}/tools/tmp ]] && rm -rf ${0%/*}/tools/tmp
-echoRgb() {
-	if [[ -n $2 ]]; then
-		if [[ $3 == 1 ]]; then
-			echo -e "\e[1;32m $1\e[0m"
-		else
-			echo -e "\e[1;31m $1\e[0m"
-		fi
-	else
-		echo -e "\e[1;${bn}m $1\e[0m"
-	fi
-}
+echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >$MODDIR/Apkname.txt
+echo "請勿關閉腳本，等待提示結束"
+#刪除遺留，防止上次意外中斷腳本殘留的打印包名文件
+[[ -e $MODDIR/tools/tmp ]] && rm -rf $MODDIR/tools/tmp
 i=1
 bn=37
-appinfo -d " " -o ands,pn -pn $system -3 | while read name; do
+#echo -n ""> $MODDIR/Apkname.txt
+appinfo -d " " -o ands,pn -pn $system -3 | sort | while read name; do
 	[[ $bn -ge 37 ]] && bn=31
 	echoRgb "$i.$name"
-	[[ -z $(cat ${0%/*}/Apkname.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name" >>${0%/*}/tools/tmp
+	[[ -z $(cat $MODDIR/Apkname.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name" >>$MODDIR/Apkname.txt
 	let i++
 	let bn++
 done
-echo "整理排列中........"
-sort ${0%/*}/tools/tmp>>${0%/*}/Apkname.txt
-rm -rf ${0%/*}/tools/tmp
-echo "输出包名结束 请查看${0%/*}/Apkname.txt"
+echo "輸出包名結束 請查看$MODDIR/Apkname.txt"
