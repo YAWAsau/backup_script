@@ -1,6 +1,0 @@
-#!/system/bin/sh
-
-
-base=/system
-export CLASSPATH="${0%/*}/appinfo.dex"
-exec app_process /system/bin --nice-name=appinfo indi.appinfo.AppInfo "$@"
