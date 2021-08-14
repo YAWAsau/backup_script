@@ -7,7 +7,6 @@ arm64*)
 	exit 1
 	;;
 esac
-
 #設置二進制命令目錄位置
 [[ -z $tools_path ]] && echo "未正確指定bin.sh位置" && exit 2
 filepath=/data/backup_tools
@@ -96,14 +95,6 @@ echo "不存在$busybox ...."
 exit 1
 }
 export PATH=$filepath:$PATH
-echo "-環境變數: $PATH"
-echo "-version:$(busybox | head -1 | awk '{print $2}')"
-echo "-設備架構$abi"
-echo "-品牌:$(getprop ro.product.brand)"
-echo "-設備代號:$(getprop ro.product.device)"
-echo "-型號:$(getprop ro.product.model)"
-echo "-Android版本:$(getprop ro.build.version.release)"
-echo "-SDK:$(getprop ro.build.version.sdk)"
 endtime() {
 	#計算總體切換時長耗費
 	case $1 in
@@ -131,3 +122,12 @@ Package_names() {
 	t2=$(appinfo -o pn -pn $t1 2>/dev/null | head -1)
 	[[ -n $t2 ]] && [[ $t2 = $1 ]] && echo $t2
 }
+bn=36
+echoRgb "-環境變數: $PATH"
+echoRgb "-version:$(busybox | head -1 | awk '{print $2}')"
+echoRgb "-設備架構$abi"
+echoRgb "-品牌:$(getprop ro.product.brand)"
+echoRgb "-設備代號:$(getprop ro.product.device)"
+echoRgb "-型號:$(getprop ro.product.model)"
+echoRgb "-Android版本:$(getprop ro.build.version.release)"
+echoRgb "-SDK:$(getprop ro.build.version.sdk)"
