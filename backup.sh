@@ -18,15 +18,17 @@ path="/sdcard/Android"
 path2="/data/user/0"
 Backup="$MODDIR/Backup"
 [[ ! -d $Backup ]] && mkdir "$Backup"
-filesize=$(du -k -s $Backup | awk '{print $1}')
 [[ ! -e $Backup/name.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >$Backup/name.txt
+[[ ! -d $Backup/tools ]] && mkdir -p $Backup/tools && cp -r $MODDIR/tools/* $Backup/tools && rm -rf $Backup/tools/restore
+[[ ! -e $Backup/還原備份.sh ]] && cp -r $MODDIR/tools/restore $Backup/還原備份.sh
+filesize=$(du -ks $Backup | awk '{print $1}')
 #調用二進制
 Quantity=0
 lz4 () {
-	tar -cPpf - "$2" 2>/dev/null | pv -terb >"$1.tar.lz4"
+	tar -cPpf - "$2" 2>/dev/null | pv -s $(du -sk $2 | awk '{printf "%.0f", $1*1024}') -i 0.1 >"$Backup/$name/$1.tar.lz4"
 }
 zst () {
-	tar -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$1.tar.zst"
+	tar -cPpf - "$2" 2>/dev/null | pv -s $(du -sk $2 | awk '{printf "%.0f", $1*1024}') -i 0.1 | zstd -r -T0 -0 -q >"$Backup/$name/$1.tar.zst"
 }
 #顯示執行結果
 echo_log() {
@@ -57,103 +59,112 @@ get_version() {
 	done
 }
 #檢測數據位置進行備份
-Backup-data() {
-	if [[ -d $path/$1/$name ]]; then
-		if [[ ! -e $Backup/$name/$1size.txt ]]; then
-			echoRgb "發現${name2} $path/$1/數據開始備份"
-			lz4 "$name-$1" $path/$1/$name
-			echo_log "備份$name2 $path/$1"
-			if [[ $result = 0 ]]; then
-				echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
-			else
-				echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
-				zst "$name-$1" $path/$1/$name
-				echo_log "備份$name2 $path/$1"
-				[[ $result = 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
-			fi
+Backup_method() {
+	if [[ $1 != user ]]; then
+		lz4 "$name-$1" $data_path
+		echo_log "備份$1數據"
+		if [[ $result = 0 ]]; then
+			echo $(du -ks $data_path | awk '{print $1}') >$Size_file
 		else
-			if [[ $(cat $Backup/$name/$1size.txt) != $(du -k -s $path/$1/$name | awk '{print $1}') ]]; then
-				echoRgb "發現${name2} $path/$1/數據開始備份"
-				lz4 "$name-$1" $path/$1/$name
-				echo_log "備份$name2 $path/$1"
-				if [[ $result = 0 ]]; then
-					echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
-				else
-					echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
-					zst "$name-$1" $path/$1/$name
-					echo_log "備份$name2 $path/$1"
-					[[ $result = 0 ]] && echo $(du -k -s $path/$1/$name | awk '{print $1}') >$Backup/$name/$1size.txt
-				fi
+			echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
+			zst "$name-$1" $data_path
+			echo_log "備份$1數據"
+			[[ $result = 0 ]] && echo $(du -ks $data_path | awk '{print $1}') >$Size_file
+		fi
+	else
+		tar --exclude="cache/" --exclude="lib/" -cPpf - "$data_path" 2>/dev/null | pv -s $(du -sk $data_path | awk '{printf "%.0f", $1*1000}') -i 5 >"$Backup/$name/$name-user.tar.lz4"
+		echo_log "備份$1數據"
+		if [[ $result = 0 ]]; then
+			echo $(du -ks $data_path | awk '{print $1}') >$Size_file
+		else
+			echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
+			tar --exclude="cache/" --exclude="lib/" -cPpf - "$data_path" 2>/dev/null | pv -s $(du -sk $data_path | awk '{printf "%.0f", $1*1024}') - 0.1 | zstd -r -T0 -0 -q >"$Backup/$name/$name-user.tar.zst"
+			echo_log "備份$1數據"
+			[[ $result = 0 ]] && echo $(du -ks $data_path | awk '{print $1}') >$Size_file
+		fi
+	fi
+}
+Backup-data() {
+	if [[ $1 = user ]]; then
+		data_path="/data/user/0/$name"
+		Size_file="$Backup/$name/usersize.txt"
+	else
+		data_path="$path/$1/$name"
+		Size_file="$Backup/$name/$1size.txt"
+	fi
+	if [[ -d $data_path ]]; then
+		if [[ ! -e $Size_file ]]; then
+			Backup_method $1
+		else
+			if [[ $(cat $Size_file) != $(du -ks $data_path | awk '{print $1}') ]]; then
+				Backup_method $1
 			else
-				echoRgb "$name2 $1數據無發生變化 跳過備份"
+				echoRgb "$1數據無發生變化 跳過備份"
 			fi
 		fi
 	else
-		echoRgb "$path/$1 不存在跳過備份"
+		echoRgb "$1數據不存在跳過備份"
 	fi
 }
 #檢測apk狀態進行備份
 Backup-apk() {
 	#創建APP備份文件夾
 	[[ ! -d $Backup/$name ]] && mkdir "$Backup/$name"
-	cd "$Backup/$name"
 	#備份apk
-	echoRgb "[ 開始備份${name2} APK ]"
 	if [[ $name = com.android.chrome ]]; then
 		#刪除所有舊apk ,保留一個最新apk進行備份
 		ReservedNum=1
 		FileDir="/data/app/*/com.google.android.trichromelibrary_*/base.apk"
-		FileNum="$(ls $FileDir | wc -l)"
+		FileNum="$(ls $FileDir 2>/dev/null | wc -l)"
 		while [[ $FileNum -gt $ReservedNum ]]; do
-			OldFile="$(ls -rt $FileDir | head -1)"
+			OldFile="$(ls -rt $FileDir 2>/dev/null | head -1)"
 			echoRgb "刪除文件:${OldFile%/*/*}"
 			rm -rf "${OldFile%/*/*}"
 			let "FileNum--"
 		done
-		if [[ -e $(ls $FileDir) && $(ls $FileDir | wc -l) = 1 ]]; then
-			cp -r "$(ls $FileDir)" "$Backup/$name/nmsl.apk"
+		if [[ -e $(ls $FileDir 2>/dev/null) && $(ls $FileDir 2>/dev/null | wc -l) = 1 ]]; then
+			cp -r "$(ls $FileDir 2>/dev/null)" "$Backup/$name/nmsl.apk"
 			echo_log "備份com.google.android.trichromelibrary"
 		fi
 	fi
+	apk_path=$(pm path "$name" | cut -f2 -d ':')
+	echoRgb "$1"
+	[[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name" | head -1) ]] && echo "$name2 $name" >>$Backup/name.txt
 	if [[ ! -e $Backup/$name/apk-version.txt ]]; then
-		[[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name" | head -1) ]] && echo "$name2  $name" >>$Backup/name.txt
-		echoRgb "$1"
-		echoRgb "發現$(pm path "$name" | cut -f2 -d ':' | wc -l)個Apk"
-		cp -r $(pm path "$name" | cut -f2 -d ':') "$Backup/$name"
-		echo_log "備份Apk"
+		cp -r $apk_path "$Backup/$name"
+		echo_log "備份$apk_number個Apk"
 		[[ $result = 0 ]] && echo $(pm dump $name | grep -m 1 versionName | sed -n 's/.*=//p') >$Backup/$name/apk-version.txt
 	else
 		if [[ $(cat $Backup/$name/apk-version.txt) != $(pm dump $name | grep -m 1 versionName | sed -n 's/.*=//p') ]]; then
-			[[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name" | head -1) ]] && echo "$name2  $name" >>$Backup/name.txt
-			echoRgb "$1"
-			echoRgb "發現$(pm path "$name" | cut -f2 -d ':' | wc -l)個Apk"
-			cp -r $(pm path "$name" | cut -f2 -d ':') "$Backup/$name"
-			echo_log "備份Apk"
+			cp -r $apk_path "$Backup/$name"
+			echo_log "備份$apk_number個Apk"
 			[[ $result = 0 ]] && echo $(pm dump $name | grep -m 1 versionName | sed -n 's/.*=//p') >$Backup/$name/apk-version.txt
 		else
-			[[ -z $(cat $Backup/name.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name" | head -1) ]] && echo "$name2  $name" >>$Backup/name.txt
-			echoRgb "$name2 Apk版本無更新 跳過備份"
+			echoRgb "Apk版本無更新 跳過備份"
 		fi
 	fi
+	D=1
 }
-echoRgb "選擇是否只備份split apk(分割apk檔)"
-echoRgb "如果你不知道這意味什麼請選擇音量下進行混合備份"
-echoRgb "音量上是，音量下不是"
+echoRgb "選擇是否只備份split apk(分割apk檔)
+ 如果你不知道這意味什麼請選擇音量下進行混合備份
+ 音量上是，音量下不是"
 if [[ $(get_version) = yes ]]; then
 	C=yes
+	echoRgb "是"
 else
 	C=no
+	echoRgb "不是，混合備份"
 fi
-[[ $C = yes ]] && echoRgb "是" || echoRgb "不是，混合備份"
 sleep 1.5
-echoRgb "是否備份外部數據 即比如原神的數據包"
-echoRgb "音量上備份，音量下不備份"
+echoRgb "是否備份外部數據 即比如原神的數據包
+ 音量上備份，音量下不備份"
 if [[ $(get_version) = yes ]]; then
 	B=yes
+	echoRgb "備份"
 else
 	B=no
+	echoRgb "不備份"
 fi
-[[ $B = yes ]] && echoRgb "備份" || echoRgb "不備份"
 bn=37
 #開始循環$txt內的資料進行備份
 #記錄開始時間
@@ -162,81 +173,40 @@ starttime1=$(date +"%Y-%m-%d %H:%M:%S")
 while [[ $i -le $h ]]; do
 	#let bn++
 	#[[ $bn -ge 37 ]] && bn=31
-	echoRgb "備份第$i個應用 總共$h個 剩下$(($h - $i))個應用"
+	echoRgb "備份第$i個應用 總共$h個 剩下$(($h-$i))個應用"
 	name=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')
 	name2=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')
 	[[ -z $name ]] && echoRgb "警告! name.txt軟件包名獲取失敗，可能修改有問題" "0" "0" && exit 1
-	pkg=$(Package_names "$name")
-	if [[ -n $pkg ]]; then
+	if [[ -n $(Package_names "$name") ]]; then
 		starttime2=$(date +"%Y-%m-%d %H:%M:%S")
 		echoRgb "備份$name2 ($name)"
-		[[ $pkg = com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份" || [[ $pkg = com.tencent.mm ]] && echo "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
-		if [[ ! -d $Backup/tools ]]; then
-			mkdir -p $Backup/tools
-			cp -r $MODDIR/tools/* $Backup/tools
-			rm -rf $Backup/tools/restore
-		fi
-		[[ ! -e $Backup/還原備份.sh ]] && cp -r $MODDIR/tools/restore $Backup/還原備份.sh
-		#停止軟件
-		if [[ $(pm path "$name" | cut -f2 -d ':' | wc -l) = 1 ]]; then
+		[[ $name = com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份" || [[ $name = com.tencent.mm ]] && echo "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
+		apk_number=$(pm path "$name" | cut -f2 -d ':' | wc -l)
+		if [[ $apk_number = 1 ]]; then
 			if [[ $C = no ]]; then
 				[[ $name != $Open_apps ]] && am force-stop $name
-				Backup-apk "$name2為非Split Apk"
-				D=1
+				Backup-apk "非Split Apk"
 			else
-				echoRgb "$name2為非Split Apk跳過備份"
-				D=
+				echoRgb "非Split Apk跳過備份"
+				unset D
 			fi
 		else
 			[[ $name != $Open_apps ]] && am force-stop $name
-			Backup-apk "$name2為Split Apk支持備份"
-			D=1
+			Backup-apk "Split Apk支持備份"
 		fi
-		#複製Mt or termux安裝包到外部資料夾方便恢複
-		if [[ $name = bin.mt.plus ]]; then
-			 if [[ -e $Backup/$name/base.apk ]]; then
-				cp -r "$Backup/$name/base.apk" "$Backup/$name.apk"
+		if [[ -n $D ]]; then
+			#複製Mt安裝包到外部資料夾方便恢複
+			[[ $name = bin.mt.plus && -e $Backup/$name/base.apk ]] && cp -r "$Backup/$name/base.apk" "$Backup/$name.apk"
+			if [[ $B = yes ]]; then
+				#備份data數據
+				Backup-data data
+				#備份obb數據
+				Backup-data obb
 			fi
+			#備份user數據
+			Backup-data user
+			endtime 2 "$name2備份"
 		fi
-		if [[ $B = yes && -n $D ]]; then
-			echoRgb "[ 開始備份${name2} Sdcard數據 ]"
-			#備份data數據
-			Backup-data data
-			#備份obb數據
-			Backup-data obb
-		fi
-		#備份user數據
-		if [[ -d /data/user/0/$name && -n $D ]]; then
-			echoRgb "[ 開始備份${name2} user數據 ]"
-			if [[ ! -e $Backup/$name/usersize.txt ]]; then
-				tar --exclude="$name/cache" --exclude="$name/lib" -cPpf - "/data/user/0/$name" 2>/dev/null | pv -terb >"$name-user.tar.lz4"
-				echo_log "備份user數據/data/user/0/$name"
-				if [[ $result = 0 ]]; then
-					echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
-				else
-					echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
-					tar --exclude="$name/cache" --exclude="$name/lib" -cPpf - "/data/user/0/$name" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$name-user.tar.zst"
-					echo_log "備份user數據/data/user/0/$name"
-					[[ $result = 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
-				fi
-			else
-				if [[ $(cat $Backup/$name/usersize.txt) != $(du -k -s /data/user/0/$name | awk '{print $1}') ]]; then
-					tar --exclude="$name/cache" --exclude="$name/lib" -cPpf - "/data/user/0/$name" 2>/dev/null | pv -terb >"$name-user.tar.lz4"
-					echo_log "備份user數據/data/user/0/$name"
-					if [[ $result = 0 ]]; then
-						echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
-					else
-						echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
-						tar --exclude="$name/cache" --exclude="$name/lib" -cPpf - "/data/user/0/$name" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$name-user.tar.zst"
-						echo_log "備份user數據/data/user/0/$name"
-						[[ $result = 0 ]] && echo $(du -k -s /data/user/0/$name | awk '{print $1}') >$Backup/$name/usersize.txt
-					fi
-				else
-					echoRgb "$name2 user數據無發生變化 跳過備份"
-				fi
-			fi
-		fi
-		endtime 2 "$name2備份"
 	else
 		echoRgb "$name2[$name]不在安裝列表，備份個寂寞？" "0" "0"
 	fi
@@ -244,10 +214,10 @@ while [[ $i -le $h ]]; do
 	let i++
 done
 #計算出備份大小跟差異性
-filesizee=$(du -k -s $Backup | awk '{print $1}')
+filesizee=$(du -ks $Backup | awk '{print $1}')
 dsize=$(($((filesizee - filesize)) / 1024))
 echoRgb "備份資料夾路徑:$Backup"
-echoRgb "備份資料夾總體大小$(du -k -s -h $Backup | awk '{print $1}')"
+echoRgb "備份資料夾總體大小$(du -ksh $Backup | awk '{print $1}')"
 if [[ $dsize -gt 0 ]]; then
 	if [[ $((dsize / 1024)) -gt 0 ]]; then
 		echoRgb "本次備份: $((dsize / 1024))gb"
