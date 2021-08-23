@@ -8,7 +8,7 @@ md5path="$MODDIR"
 tools_path=$MODDIR/tools
 . $tools_path/bin.sh
 i=1
-txt="$MODDIR/Apkname.txt"
+txt="$PWD/Apkname.txt"
 Open_apps=$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 1
 r=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n '$=')
@@ -16,7 +16,7 @@ r=$(cat $txt | grep -v "#" | sed -e '/^$/d' | sed -n '$=')
 [[ -z $r ]] && echo "爬..Apkname.txt是空的備份個鬼" && exit 0
 path="/sdcard/Android"
 path2="/data/user/0"
-Backup="$MODDIR/Backup"
+Backup="$PWD/Backup"
 [[ ! -d $Backup ]] && mkdir "$Backup"
 [[ ! -e $Backup/name.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >$Backup/name.txt
 [[ ! -d $Backup/tools ]] && mkdir -p $Backup/tools && cp -r $MODDIR/tools/* $Backup/tools && rm -rf $Backup/tools/restore

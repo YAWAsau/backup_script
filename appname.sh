@@ -14,20 +14,20 @@ com.digibites.accubattery
 com.google.android.inputmethod.latin
 com.android.chrome"
 
-echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >$MODDIR/Apkname.txt
+echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >$PWD/Apkname.txt
 echo " 請勿關閉腳本，等待提示結束"
 #刪除遺留，防止上次意外中斷腳本殘留的打印包名文件
 [[ -e $MODDIR/tools/tmp ]] && rm -rf $MODDIR/tools/tmp
 i=1
 bn=37
-#echo -n ""> $MODDIR/Apkname.txt
+#echo -n ""> $PWD/Apkname.txt
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
 appinfo -d " " -o ands,pn -pn $system -3 | sort | while read name; do
 	[[ $bn -ge 37 ]] && bn=31
 	echoRgb "$i.$name"
-	[[ -z $(cat $MODDIR/Apkname.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name" >>$MODDIR/Apkname.txt
+	[[ -z $(cat $PWD/Apkname.txt | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name" >>$PWD/Apkname.txt
 	let i++
 	let bn++
 done
 endtime 1
-echo " 輸出包名結束 請查看$MODDIR/Apkname.txt"
+echo " 輸出包名結束 請查看$PWD/Apkname.txt"
