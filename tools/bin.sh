@@ -7,18 +7,20 @@ arm64*)
 	exit 1
 	;;
 esac
+[[ $(getprop ro.build.version.release) -le 8 ]] && echo "設備Android版本過低 請升級至Android 9+" && exit 1
 #設置二進制命令目錄位置
 [[ -z $tools_path ]] && echo "未正確指定bin.sh位置" && exit 2
 filepath=/data/backup_tools
 #排除自身
 exclude="
 restore
+restore2
 busybox_path
 bin.sh"
 MD5() {
 	file_path=$(find $md5path -name "$1" -maxdepth 2 -type f)
 	if [[ -f $file_path ]]; then
-		if [[ ! $(echo $file_path | xargs md5sum | cut -d" " -f1) = $2 ]]; then
+		if [[ ! $(echo "$file_path" | xargs md5sum | cut -d" " -f1) = $2 ]]; then
 			echo "$1文件被更改或是損毀"
 			exit 1
 		fi
@@ -26,16 +28,16 @@ MD5() {
 }
 rm_busyPATH() {
 if [[ ! -d $filepath ]]; then
-	mkdir -p $filepath
+	mkdir -p "$filepath"
 	echo "設置busybox環境中"
 else
-	[[ ! -e $tools_path/busybox_path ]] && touch $tools_path/busybox_path
-	if [[ ! $filepath = $(cat $tools_path/busybox_path) ]]; then
-		if [[ -d $(cat $tools_path/busybox_path) ]]; then
-			rm -rf "$(cat $tools_path/busybox_path)"
-			echo "$filepath">$tools_path/busybox_path
+	[[ ! -e $tools_path/busybox_path ]] && touch "$tools_path/busybox_path"
+	if [[ ! $filepath = $(cat "$tools_path/busybox_path") ]]; then
+		if [[ -d $(cat "$tools_path/busybox_path") ]]; then
+			rm -rf "$(cat "$tools_path/busybox_path")"
+			echo "$filepath">"$tools_path/busybox_path"
 		else
-			echo "$filepath">$tools_path/busybox_path
+			echo "$filepath">"$tools_path/busybox_path"
 		fi
 	fi
 fi
@@ -43,30 +45,30 @@ fi
 rm_busyPATH
 if [[ -d $tools_path ]]; then
 	[[ ! -e $tools_path/busybox ]] && echo "$tools_path/busybox不存在" && exit 1
-	busybox="$filepath/busybox"
+	busybox=$filepath/busybox
 	if [[ -e $busybox ]]; then
-		filemd5=$(md5sum $busybox | cut -d" " -f1)
-		filemd5_1=$(md5sum $tools_path/busybox | cut -d" " -f1)
+		filemd5=$(md5sum "$busybox" | cut -d" " -f1)
+		filemd5_1=$(md5sum "$tools_path/busybox" | cut -d" " -f1)
 		if [[ ! $filemd5 = $filemd5_1 ]]; then
 			echo "busybox md5不一致 重新創立環境中"
-			rm -rf $filepath
-			[[ ! -d $filepath ]] && mkdir -p $filepath && echo "設置busybox環境中"
+			rm -rf "$filepath"
+			[[ ! -d $filepath ]] && mkdir -p "$filepath" && echo "設置busybox環境中"
 			rm_busyPATH
 		fi
 	fi
-	ls -a $tools_path | sed -r '/^\.{1,2}$/d' | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read i; do
+	ls -a "$tools_path" | sed -r '/^\.{1,2}$/d' | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read i; do
 		if [[ ! -e $filepath/$i ]]; then
+			cp -r "$tools_path/$i" "$filepath"
+			chmod 0777 "$filepath/$i"
 			echo "$i > $filepath/$i"
-			cp -r $tools_path/$i $filepath
-			chmod 0777 $filepath/$i
 			if [[ $i = busybox ]]; then
 				rm_busyPATH
-				$busybox --list | while read a; do
+				"$busybox" --list | while read a; do
 					case $a in
-					date|tar) ;;
+					tar) ;;
 					*)
 						if [[ ! -e $filepath/$a ]]; then
-							ln -s $busybox "$filepath/$a"
+							ln -s "$busybox" "$filepath/$a"
 						fi
 					;;
 					esac
@@ -74,14 +76,14 @@ if [[ -d $tools_path ]]; then
 				echo "busybox設置完成"
 			fi
 		else
-			filemd5=$(md5sum $filepath/$i | cut -d" " -f1)
-			filemd5_1=$(md5sum $tools_path/$i | cut -d" " -f1)
+			filemd5=$(md5sum "$filepath/$i" | cut -d" " -f1)
+			filemd5_1=$(md5sum "$tools_path/$i" | cut -d" " -f1)
 			if [[ ! $filemd5 = $filemd5_1 ]]; then
 				echo "$i md5不一致 重新創建"
+				rm -rf "$filepath/$i"
+				cp -r "$tools_path/$i" "$filepath"
+				chmod 0777 "$filepath/$i"
 				echo "$i > $filepath/$i"
-				rm -rf $filepath/$i
-				cp -r $tools_path/$i $filepath
-				chmod 0777 $filepath/$i
 			fi
 		fi
 	done
@@ -95,6 +97,10 @@ echo "不存在$busybox ...."
 exit 1
 }
 export PATH=$filepath:$PATH
+ls -a "$tools_path" | sed -r '/^\.{1,2}$/d' | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read i; do
+	[[ $(which "$i" | wc -l) = 1 ]] || echo "$i存在錯誤" && error=1
+done
+[[ $error = 1 ]] && exit 1
 endtime() {
 	#計算總體切換時長耗費
 	case $1 in
@@ -118,16 +124,46 @@ echoRgb() {
 	fi
 }
 Package_names() {
-	[[ -n $1 ]] && t1="$1"
-	t2=$(appinfo -o pn -pn $t1 2>/dev/null | head -1)
-	[[ -n $t2 ]] && [[ $t2 = $1 ]] && echo $t2
+	[[ -n $1 ]] && t1=$1
+	t2=$(appinfo -o pn -pn "$t1" 2>/dev/null | head -1)
+	[[ -n $t2 ]] && [[ $t2 = $1 ]] && echo "$t2"
+}
+get_version() {
+	while :; do
+		version=$(getevent -qlc 1 | awk '{ print $3 }')
+		case $version in
+		KEY_VOLUMEUP)
+			branch=true
+			echoRgb "$1"
+			;;
+		KEY_VOLUMEDOWN)
+			branch=false
+			echoRgb "$2"
+			;;
+		*)
+			continue
+			;;
+		esac
+		sleep 1.2
+		break
+	done
+}
+isBoolean() {
+	nsx=$1
+	if [[ $1 = 1 ]];then
+		nsx=true
+	elif [[ $1 = 0 ]];then
+		nsx=false
+	else
+		echoRgb "$MODDIR/backup_settings.conf填寫錯誤" && exit 2
+	fi
 }
 bn=36
-echoRgb "-環境變數: $PATH"
-echoRgb "-version:$(busybox | head -1 | awk '{print $2}')"
-echoRgb "-設備架構$abi"
-echoRgb "-品牌:$(getprop ro.product.brand)"
-echoRgb "-設備代號:$(getprop ro.product.device)"
-echoRgb "-型號:$(getprop ro.product.model)"
-echoRgb "-Android版本:$(getprop ro.build.version.release)"
-echoRgb "-SDK:$(getprop ro.build.version.sdk)"
+echoRgb "-環境變數: $PATH
+ -version:$(busybox | head -1 | awk '{print $2}')
+ -設備架構$abi
+ -品牌:$(getprop ro.product.brand)
+ -設備代號:$(getprop ro.product.device)
+ -型號:$(getprop ro.product.model)
+ -Android版本:$(getprop ro.build.version.release)
+ -SDK:$(getprop ro.build.version.sdk)"

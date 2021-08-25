@@ -1,0 +1,143 @@
+#!/system/bin/sh
+MODDIR=${0%/*}
+[[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
+[[ ! -d ${MODDIR%/*}/tools ]] && echo "${MODDIR%/*}/tools目錄遺失" && exit 1
+md5path="$MODDIR"
+tools_path=${MODDIR%/*}/tools
+. "$tools_path/bin.sh"
+Open_apps=$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")
+#記錄開始時間
+starttime1=$(date +"%Y-%m-%d %H:%M:%S")
+i=1
+#顯示執行結果
+echo_log() {
+	if [[ $? = 0 ]]; then
+		echoRgb "$1成功" "0" "1" && result=0
+	else
+		echoRgb "$1恢複失敗，過世了" "0" "0" && result=1
+	fi
+}
+if [[ ! $(getenforce) = Permissive ]]; then
+	setenforce 0 2>/dev/null
+	echo_log "selinux關閉"
+	if [[ $result = 0 ]]; then
+		selinux_result=0 && Sn=1 && echoRgb "使用原目錄安裝程序 關閉selinux"
+	else
+		selinux_result=1 && echoRgb "selinux無法關閉 使用cp方式安裝"
+	fi
+else
+	selinux_result=0 && echoRgb "使用原目錄安裝程序 關閉selinux"
+fi
+echoRgb "selinux狀態:$selinux_result" && echoRgb "當前使用的恢復程序:$(appinfo -o ands -pn "$Open_apps" 2>/dev/null)"
+bn=37
+{
+Backup_folder=$MODDIR
+name=$(cat "$Backup_folder/Package_name.txt")
+name2=$(basename "$Backup_folder"/恢復*.sh | sed 's/恢復//g' | sed 's/.sh//g')
+echoRgb "恢複$name2 ($name)"
+starttime2=$(date +"%Y-%m-%d %H:%M:%S")
+if [[ -z $(Package_names "$name") ]]; then
+	case $(find "$Backup_folder/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
+	1)
+		echoRgb "恢復普通apk"
+		if [[ $selinux_result = 1 ]]; then
+			cp -r "$Backup_folder"/*.apk /data/local/tmp && pm install -r /data/local/tmp/*.apk >/dev/null 2>&1
+			echo_log "Apk安裝" && rm -rf /data/local/tmp/*
+		else
+			pm install -r "$Backup_folder"/*.apk >/dev/null 2>&1
+			echo_log "Apk安裝"
+		fi
+		[[ $result = 0 ]] && echoRgb "Apk恢復無誤" "0" "1" || echoRgb "Apk恢復異常" "0" "0"
+		;;
+	0)
+		echoRgb "你的Apk離家出走了，可能備份後移動過程遺失了 解決辦法手動安裝Apk後再執行恢復腳本" "0" "0"
+		;;
+	*)
+		echoRgb "恢復split apk"
+		b=$(pm install-create | grep -E -o '[0-9]+')
+		if [[ -e $Backup_folder/nmsl.apk ]]; then
+			if [[ $selinux_result = 1 ]]; then
+				cp -r "$Backup_folder/nmsl.apk" /data/local/tmp && pm install -r "/data/local/tmp/nmsl.apk" >/dev/null 2>&1
+				echo_log "nmsl.apk安裝" && rm -rf /data/local/tmp/*
+			else
+				pm install -r "$Backup_folder/nmsl.apk" >/dev/null 2>&1
+				echo_log "nmsl.apk安裝"
+			fi
+		fi
+		find "$Backup_folder" -maxdepth 1 -name "*.apk" -type f | while read i; do
+			ad=$(basename "$i" | grep -v 'nmsl.apk')
+			if [[ -n $ad ]]; then
+				if [[ $selinux_result = 1 ]]; then
+					cp -r "$i" /data/local/tmp && pm install-write "$b" "$ad" "/data/local/tmp/$ad" >/dev/null 2>&1
+					echo_log "$(basename "$i")安裝"
+				else
+					pm install-write "$b" "$ad" "$i" >/dev/null 2>&1
+					echo_log "$(basename "$i")安裝"
+				fi
+			fi
+		done
+		pm install-commit "$b"
+		echo_log "split Apk安裝"
+		[[ $selinux_result = 1 ]] && rm -rf /data/local/tmp/*
+		;;
+	esac
+else
+	echoRgb "存在當前系統中略過安裝Apk"
+fi
+zb=$(Package_names "$name")
+if [[ -n $zb ]]; then
+	[[ $zb = $name ]] && {
+	#停止軟件
+	[[ $name != $Open_apps ]] && am force-stop "$name"
+	if [[ -e /config/sdcardfs/$name/appid ]]; then
+		G=$(cat "/config/sdcardfs/$name/appid")
+	else
+		G=$(dumpsys package "$name" | awk '/userId=/{print $1}' | sed 's/userId=//g' | head -1)
+	fi
+	X=/data/user/0/$name
+	find "$Backup_folder" -name "*.tar.zst" -o -name "*.tar.lz4" -type f | while read i; do
+		case $(basename "$i") in
+		*-user.tar.zst)
+			[[ -d /data/user/0/$name ]] && rm -rf "/data/user/0/$name"
+			pv "$i" | tar -I zstd -xmPpf -
+			echo_log "$(basename "$i")解壓縮(user)"
+			;;
+		*-user.tar.lz4)
+			[[ -d /data/user/0/$name ]] && rm -rf "/data/user/0/$name"
+			pv "$i" | tar xmPpf -
+			echo_log "$(basename "$i")解壓縮(user)"
+			;;
+		*-data.tar.zst)
+			[[ -d /sdcard/Android/data/$name ]] && rm -rf "/sdcard/Android/data/$name"
+			pv "$i" | tar -I zstd -xmPpf -
+			echo_log "$(basename "$i")解壓縮(data)"
+			;;
+		*-data.tar.lz4)
+			[[ -d /sdcard/Android/data/$name ]] && rm -rf "/sdcard/Android/data/$name"
+			pv "$i" | tar xmPpf -
+			echo_log "$(basename "$i")解壓縮(data)"
+			;;
+		*-obb.tar.zst)
+			[[ -d /sdcard/Android/obb/$name ]] && rm -rf "/sdcard/Android/obb/$name"
+			pv "$i" | tar -I zstd -xmPpf -
+			echo_log "$(basename "$i")解壓縮(obb)"
+			;;
+		*-obb.tar.lz4)
+			[[ -d /sdcard/Android/obb/$name ]] && rm -rf "/sdcard/Android/obb/$name"
+			pv "$i" | tar xmPpf -
+			echo_log "$(basename "$i")解壓縮(obb)"
+			;;
+		esac
+	done
+	if [[ -d $X && -n $G ]]; then
+		echoRgb "路徑$X
+ 權限:$G:$G"
+		chown -R "$G:$G" "$X"
+		echo_log "數據恢複"
+	fi
+	}
+else
+	echoRgb "Apk沒有安裝無法恢復數據" "0" "0"
+fi
+endtime 2 "恢複" && endtime 1 "恢複開始到結束"
+} &
