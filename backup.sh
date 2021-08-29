@@ -9,10 +9,6 @@ md5path=$MODDIR
 tools_path=$MODDIR/tools
 . "$tools_path/bin.sh"
 . "$MODDIR/backup_settings.conf"
-i=1
-txt=$MODDIR/Apkname.txt
-Open_apps=$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")
-echoRgb "當前使用的備份程序:$(appinfo -o ands -pn "$Open_apps" 2>/dev/null)"
 isBoolean $Lo && Lo=$nsx
 if [[ $Lo = false ]]; then
 	isBoolean $C && C=$nsx
@@ -23,13 +19,22 @@ else
  音量上當前環境位置，音量下腳本絕對位置"
 	get_version "當前環境位置" "腳本絕對位置" && path3=$branch
 fi
+i=1
+Open_apps=$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")
+echoRgb "當前使用的備份程序:$(appinfo -o ands -pn "$Open_apps" 2>/dev/null)"
+path=/sdcard/Android
+path2=/data/user/0
+if [[ $path3 = true ]]; then
+	Backup=$PWD/Backup
+	txt=$PWD/Apkname.txt
+else
+	Backup=$MODDIR/Backup
+	txt=$MODDIR/Apkname.txt
+fi
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 1
 r=$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')
 [[ -n $r ]] && h=$r
 [[ -z $r ]] && echo "爬..Apkname.txt是空的備份個鬼" && exit 0
-path=/sdcard/Android
-path2=/data/user/0
-[[ $path3 = true ]] && Backup=$PWD/Backup || Backup=$MODDIR/Backup
 data=/data
 hx="本地"
 if [[ -d /proc/scsi/usb-storage ]]; then
@@ -59,11 +64,6 @@ lz4 () {
 zst () {
 	tar -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst"
 }
-#檢查目標備份所需大小
-check-data() {
-	[[ $1 = user ]] && data_path=/data/user/0/$name || data_path=$path/$1/$name
-	[[ -d $data_path ]] && du -ks "$data_path" | awk '{sum += $1} END {print sum}'>>"$MODDIR/size" &
-}
 #顯示執行結果
 echo_log() {
 	if [[ $? = 0 ]]; then
@@ -75,13 +75,13 @@ echo_log() {
 #檢測數據位置進行備份
 Backup_method() {
 	if [[ $1 != user ]]; then
-		lz4 "$name-$1" $data_path
+		lz4 "$name-$1" "$data_path"
 		echo_log "備份$1數據"
 		if [[ $result = 0 ]]; then
 			echo "$(du -ks "$data_path" | awk '{print $1}')" >"$Size_file"
 		else
 			echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
-			zst "$name-$1" $data_path
+			zst "$name-$1" "$data_path"
 			echo_log "備份$1數據"
 			[[ $result = 0 ]] && echo "$(du -ks "$data_path" | awk '{print $1}')" >"$Size_file"
 		fi
@@ -173,55 +173,6 @@ echoRgb "是否備份外部數據 即比如原神的數據包
  音量上備份，音量下不備份"
 get_version "備份" "不備份" && B=$branch
 }
-#循環出大小並記錄對比
-echoRgb "請稍後 正在對比是否有足夠空間進行備份"
-ii=1
-while [[ $ii -le $h ]]; do
-	name=$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${ii}p" | awk '{print $2}')
-	apk_number=$(pm path "$name" | cut -f2 -d ':' | wc -l)
-	apk_path=$(pm path "$name" | cut -f2 -d ':')
-	xc=1
-	if [[ $apk_number = 1 ]]; then
-		if [[ $C = false ]]; then
-			du -ks "$apk_path" | awk '{sum += $1} END {print sum}'>>"$MODDIR/size" &
-		else
-			unset xc
-		fi
-	else
-		pm path "$name" | cut -f2 -d ':' | while read aox; do
-			du -ks "$aox" | awk '{sum += $1} END {print sum}'>>"$MODDIR/size" &
-		done
-	fi
-	[[ -n $xc ]] && {
-	[[ $B = true ]] && check-data data && check-data obb
-	check-data user
-	}
-	echoRgb "已完成$((ii*100/h))%"
-	let ii++
-done
-wait
-if [[ -e $MODDIR/size ]]; then
-	filesizee=$(cat "$MODDIR/size" | awk '{sum += $1} END {print sum}')
-	dsize=$((filesizee / 1024))
-	if [[ $dsize -gt 0 ]]; then
-		if [[ $((dsize / 1024)) -gt 0 ]]; then
-			echoRgb "本次備份需要$((dsize / 1024))gb"
-		else
-			echoRgb "本次備份需要${dsize}mb"
-		fi
-	else
-		echoRgb "本次備份需要$(($((filesizee - filesize)) * 1000 / 1024))kb"
-	fi
-	rm -rf "$MODDIR/size"
-	echoRgb "$hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')"
-	echoRgb "你的剩餘空間能否完成備份呢？音量上支持 音量下不支持退出腳本"
-	get_version "繼續備份" "含淚離開腳本,去刪除點東西騰出空間再來吧~" 
-	[[ $branch = false ]] && exit
-else
-	echoRgb "可能選擇了音量上備份，但是你的備份列表內沒有
- split apk,請選擇音量下混合備份" "0" "0"
-	exit
-fi
 bn=37
 #開始循環$txt內的資料進行備份
 #記錄開始時間
@@ -266,11 +217,13 @@ while [[ $i -le $h ]]; do
 			Backup-data user
 			endtime 2 "$name2備份"
 		fi
-		echoRgb "完成$((i*100/h))%"
+		echoRgb "完成$((i*100/h))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')"
 	else
 		echoRgb "$name2[$name]不在安裝列表，備份個寂寞？" "0" "0"
 	fi
 	echo
+	lxj=$(df -h "$data" | awk 'END{print $4}' | sed 's/%//g')
+	[[ $lxj -ge 95 ]] && echoRgb "$data空間不足,達到$lxj%" "0" "0" && exit 2
 	let i++
 done
 #計算出備份大小跟差異性
