@@ -1,0 +1,475 @@
+#!/sbin/sh
+
+#初始化
+
+OUTFD="$2"
+
+ZIPFILE="$3"
+
+#设置字符输出
+
+ui_print() {
+
+    echo "ui_print "$@"" > /proc/self/fd/$OUTFD
+
+}
+
+#设置工作目录
+
+MODDIR=/dev/backup
+
+#安装二进制文件
+
+rm -rf "$MODDIR"
+
+mkdir -p "$MODDIR"
+
+unzip -o "$ZIPFILE" 'tools/appinfo' -d "$MODDIR"
+
+unzip -o "$ZIPFILE" 'tools/pv' -d "$MODDIR"
+
+unzip -o "$ZIPFILE" 'tools/bin.sh' -d "$MODDIR"
+
+unzip -o "$ZIPFILE" 'tools/appinfo.dex' -d "$MODDIR"
+
+unzip -o "$ZIPFILE" 'tools/busybox' -d "$MODDIR"
+
+unzip -o "$ZIPFILE" 'tools/tar' -d "$MODDIR"
+
+unzip -o "$ZIPFILE" 'tools/zstd' -d "$MODDIR"
+
+unzip -o "$ZIPFILE" 'tools/restore' -d "$MODDIR"
+
+unzip -o "$ZIPFILE" 'tools/restore2' -d "$MODDIR"
+
+unzip -o "$ZIPFILE" 'script/Apkname.txt' -d "$MODDIR"
+
+unzip -o "$ZIPFILE" 'script/backup_settings.conf' -d "$MODDIR"
+
+chmod -R 0755 "$MODDIR/tools/"
+
+busybox=$MODDIR/tools/busybox
+
+mkdir -p "$MODDIR/xbin"
+
+"$busybox" --list | while read a; do
+
+ case $a in
+
+ tar) ;;
+
+ *)
+
+  ln -s "$busybox" "$MODDIR/xbin/$a"
+
+  ;;
+
+ esac
+
+done
+
+isBoolean() {
+
+ nsx=$1
+
+ if [[ $1 = 1 ]];then
+
+  nsx=true
+
+ elif [[ $1 = 0 ]];then
+
+  nsx=false
+
+ else
+
+  ui_print "$MODDIR/script/backup_settings.conf填寫錯誤" && exit 2
+
+ fi
+
+}
+
+#设置环境
+
+export PATH=$MODDIR/xbin:$MODDIR/tools:$PATH
+
+. "$MODDIR/script/backup_settings.conf"
+
+i=1
+
+txt=$MODDIR/script/Apkname.txt
+
+isBoolean $C && C=$nsx
+
+isBoolean $B && B=$nsx
+
+[[ ! -e $txt ]] && ui_print "$txt缺少" && exit 1
+
+r=$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')
+
+[[ -n $r ]] && h=$r
+
+[[ -z $r ]] && ui_print "爬..Apkname.txt是空的備份個鬼" && exit 0
+
+path=/data/media/0/Android
+
+path2=/data/data
+
+data=/data
+
+Backup=/data/media/0/TWRP/backup
+
+[[ ! -d $Backup ]] && mkdir -p "$Backup" || rm -rf "$Backup"/*
+
+[[ ! -e $Backup/name.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$Backup/name.txt"
+
+[[ ! -d $Backup/tools ]] && mkdir -p "$Backup/tools" && cp -r "$MODDIR/tools"/* "$Backup/tools" && rm -rf "$Backup/tools"/restore*
+
+[[ ! -e $Backup/還原備份.sh ]] && cp -r "$MODDIR/tools/restore" "$Backup/還原備份.sh"
+
+filesize=$(du -ks "$Backup" | awk '{print $1}')
+
+#調用二進制
+
+Quantity=0
+
+lz4 () {
+
+ tar -cPpf "$Backup_folder/$1.tar.lz4" "$2" 2>/dev/null
+
+}
+
+zst () {
+
+ tar -cPpf - "$2" 2>/dev/null | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst"
+
+}
+
+#顯示執行結果
+
+echo_log() {
+
+ if [[ $? = 0 ]]; then
+
+  ui_print "$1成功" && result=0
+
+ else
+
+  ui_print "$1備份失敗，過世了" && result=1
+
+ fi
+
+}
+
+#檢測數據位置進行備份
+
+Backup_method() {
+
+ if [[ $1 != user ]]; then
+
+  lz4 "$name-$1" "$data_path"
+
+  echo_log "備份$1數據"
+
+  if [[ $result = 1 ]]; then
+
+   echo "lz4遭遇打包失敗，使用zstd嘗試打包"
+
+   zst "$name-$1" "$data_path"
+
+   echo_log "備份$1數據"
+
+  fi
+
+ else
+
+  tar --exclude="cache/" --exclude="lib/" -cPpf "$Backup_folder/$name-user.tar.lz4" "$data_path" 2>/dev/null
+
+  echo_log "備份$1數據"
+
+  if [[ $result = 1 ]]; then
+
+   echo "lz4遭遇打包失敗，使用zstd嘗試打包"
+
+   tar --exclude="cache/" --exclude="lib/" -cPpf - "$data_path" 2>/dev/null | zstd -r -T0 -0 -q >"$Backup_folder/$name-user.tar.zst"
+
+   echo_log "備份$1數據"
+
+  fi
+
+ fi
+
+}
+
+Backup-data() {
+
+ if [[ $1 = user ]]; then
+
+  data_path=/data/data/$name
+
+ else
+
+  data_path=$path/$1/$name
+
+ fi
+
+ if [[ ! -d $data_path ]]; then
+
+  ui_print "$1數據不存在跳過備份"
+
+ else
+
+  Backup_method "$1"
+
+ fi
+
+}
+
+#檢測apk狀態進行備份
+
+Backup-apk() {
+
+ #創建APP備份文件夾
+
+ [[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
+
+ #備份apk
+
+ ui_print "$1"
+
+ rm -rf "$Backup_folder"/*.apk
+
+ if [[ $apk_number = 1 ]]; then
+
+  cp -r "$apk_path"/*.apk "$Backup_folder/"
+
+ else
+
+  find "$apk_path/" -maxdepth 1 -name "*.apk" -type f | while read aof; do
+
+   cp -r "$aof" "$Backup_folder/"
+
+  done
+
+ fi
+
+ echo_log "備份$apk_number個Apk"
+
+ [[ -z $(cat "$Backup/name.txt" | grep -v "#" | sed -e '/^$/d' | grep -w "$name" | head -1) ]] && echo "$name2 $name" >>"$Backup/name.txt"
+
+ if [[ $name = com.android.chrome ]]; then
+
+  #刪除所有舊apk ,保留一個最新apk進行備份
+
+  ReservedNum=1
+
+  FileNum=$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)
+
+  while [[ $FileNum -gt $ReservedNum ]]; do
+
+   OldFile=$(ls -rt /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | head -1)
+
+   ui_print "刪除文件:${OldFile%/*/*}"
+
+   rm -rf "${OldFile%/*/*}"
+
+   let "FileNum--"
+
+  done
+
+  if [[ -e $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null) && $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l) = 1 ]]; then
+
+   cp -r "$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null)" "$Backup_folder/nmsl.apk"
+
+   echo_log "備份com.google.android.trichromelibrary"
+
+  fi
+
+ fi
+
+ D=1
+
+}
+
+endtime() {
+
+ #計算總體切換時長耗費
+
+ case $1 in
+
+ 1) starttime=$starttime1 ;;
+
+ 2) starttime=$starttime2 ;;
+
+ esac
+
+ endtime=$(date "+%Y-%m-%d %H:%M:%S")
+
+ duration=$(echo $(($(date +%s -d "${endtime}") - $(date +%s -d "${starttime}"))) | awk '{t=split("60 秒 60 分 24 時 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')
+
+ [[ -n $duration ]] && ui_print "$2用時:$duration" || ui_print "$2用時:0秒"
+
+}
+
+isBoolean() {
+
+ nsx=$1
+
+ if [[ $1 = 1 ]];then
+
+  nsx=true
+
+ elif [[ $1 = 0 ]];then
+
+  nsx=false
+
+ else
+
+  ui_print "$MODDIR/backup_settings.conf填寫錯誤" && exit 2
+
+ fi
+
+}
+
+bn=37
+
+#開始循環$txt內的資料進行備份
+
+#記錄開始時間
+
+starttime1=$(date +"%Y-%m-%d %H:%M:%S")
+
+{
+
+while [[ $i -le $h ]]; do
+
+ #let bn++
+
+ #[[ $bn -ge 37 ]] && bn=31
+
+ ui_print "備份第$i個應用 總共$h個 剩下$((h-i))個應用"
+
+ name=$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')
+
+ name2=$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')
+
+ apk_path=$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $3}')
+
+ Backup_folder="$Backup/$name2($name)"
+
+ [[ -z $name ]] && ui_print "警告! name.txt軟件包名獲取失敗，可能修改有問題" && exit 1
+
+ if [[ -d $apk_path ]]; then
+
+  starttime2=$(date +"%Y-%m-%d %H:%M:%S")
+
+  ui_print "備份$name2 ($name)"
+
+  [[ $name = com.tencent.mobileqq ]] && ui_print "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份" || [[ $name = com.tencent.mm ]] && ui_print "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
+
+  apk_number=$(find "$apk_path/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+
+  if [[ $apk_number = 1 ]]; then
+
+   if [[ $C = false ]]; then
+
+    Backup-apk "非Split Apk"
+
+   else
+
+    ui_print "非Split Apk跳過備份"
+
+    unset D
+
+   fi
+
+  else
+
+   Backup-apk "Split Apk支持備份"
+
+  fi
+
+  if [[ -n $D ]]; then
+
+   #複製Mt安裝包到外部資料夾方便恢複
+
+   [[ ! -e $Backup_folder/恢復$name2.sh ]] && cp -r "$MODDIR/tools/restore2" "$Backup_folder/恢復$name2.sh"
+
+   [[ $name = bin.mt.plus && -e $Backup_folder/base.apk ]] && cp -r "$Backup_folder/base.apk" "$Backup_folder.apk"
+
+   if [[ $B = true ]]; then
+
+    #備份data數據
+
+    Backup-data data
+
+    #備份obb數據
+
+    Backup-data obb
+
+   fi
+
+   #備份user數據
+
+   Backup-data user
+
+   endtime 2 "$name2備份"
+
+  fi
+
+  ui_print "完成$((i*100/h))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')"
+
+ else
+
+  ui_print "$name2[$name]不在安裝列表，備份個寂寞？"
+
+ fi
+
+ ui_print "
+
+ "
+
+ lxj=$(df -h "$data" | awk 'END{print $4}' | sed 's/%//g')
+
+ [[ $lxj -ge 95 ]] && ui_print "$data空間不足,達到$lxj%" && exit 2
+
+ let i++
+
+done
+
+#計算出備份大小跟差異性
+
+filesizee=$(du -ks "$Backup" | awk '{print $1}')
+
+dsize=$(($((filesizee - filesize)) / 1024))
+
+ui_print "備份資料夾路徑:$Backup"
+
+ui_print "備份資料夾總體大小$(du -ksh "$Backup" | awk '{print $1}')"
+
+if [[ $dsize -gt 0 ]]; then
+
+ if [[ $((dsize / 1024)) -gt 0 ]]; then
+
+  ui_print "本次備份: $((dsize / 1024))gb"
+
+ else
+
+  ui_print "本次備份: ${dsize}mb"
+
+ fi
+
+else
+
+ ui_print "本次備份: $(($((filesizee - filesize)) * 1000 / 1024))kb"
+
+fi
+
+ui_print "批量備份完成"
+
+endtime 1 "批量備份開始到結束"
+
+rm -rf "$MODDIR"
+
+exit 0
+
+}&
