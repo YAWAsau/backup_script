@@ -32,6 +32,7 @@ echoRgb "selinux狀態:$selinux_result" && echoRgb "當前使用的恢復程序:
 bn=37
 {
 Backup_folder=$MODDIR
+echoRgb "$Backup_folder/Package_name.txt遺失，無法獲取包名" "0" "0" && exit 1
 name=$(cat "$Backup_folder/Package_name.txt")
 name2=$(basename "$Backup_folder"/恢復*.sh | sed 's/恢復//g' | sed 's/.sh//g')
 echoRgb "恢複$name2 ($name)"

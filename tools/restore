@@ -158,7 +158,5 @@ while [[ $i -le $h ]]; do
 	fi
 	let i++
 done
-#setenforce 1
 echoRgb "批量恢複完成" && endtime 1 "批量恢複開始到結束"
-#[[ -n $Sn ]] && setenforce 1
 } &
