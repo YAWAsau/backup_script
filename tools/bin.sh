@@ -65,7 +65,7 @@ if [[ -d $tools_path ]]; then
 				rm_busyPATH
 				"$busybox" --list | while read a; do
 					case $a in
-					tar) ;;
+					tar|date) ;;
 					*)
 						if [[ ! -e $filepath/$a ]]; then
 							ln -s "$busybox" "$filepath/$a"
@@ -155,7 +155,7 @@ isBoolean() {
 	elif [[ $1 = 0 ]];then
 		nsx=false
 	else
-		echoRgb "$MODDIR/backup_settings.conf填寫錯誤" && exit 2
+		echoRgb "$MODDIR/backup_settings.conf $1填寫錯誤" && exit 2
 	fi
 }
 bn=36

@@ -108,35 +108,36 @@ while [[ $i -le $h ]]; do
 				G=$(dumpsys package "$name" | awk '/userId=/{print $1}' | sed 's/userId=//g' | head -1)
 			fi
 			X=/data/user/0/$name
-			find "$Backup_folder" -name "*.tar.zst" -o -name "*.tar.lz4" -type f | while read i; do
+			unset usernd datand obbnd
+			find "$Backup_folder" -name "*.tar.zst" -o -name "*.tar.lz4" -type f | xargs ls -rt | while read i; do
 				case $(basename "$i") in
-				*-user.tar.zst)
-					[[ -d /data/user/0/$name ]] && rm -rf "/data/user/0/$name"
+				*-user*.tar.zst)
+					[[ -z $usernd && -d /data/user/0/$name ]] && rm -rf "/data/user/0/$name" && usernd=1
 					pv "$i" | tar -I zstd -xmPpf -
 					echo_log "$(basename "$i")解壓縮(user)"
 					;;
-				*-user.tar.lz4)
-					[[ -d /data/user/0/$name ]] && rm -rf "/data/user/0/$name"
+				*-user*.tar.lz4)
+					[[ -z $usernd && -d /data/user/0/$name ]] && rm -rf "/data/user/0/$name" && usernd=1
 					pv "$i" | tar xmPpf -
 					echo_log "$(basename "$i")解壓縮(user)"
 					;;
-				*-data.tar.zst)
-					[[ -d /sdcard/Android/data/$name ]] && rm -rf "/sdcard/Android/data/$name"
+				*-data*.tar.zst)
+					[[ -z $datand && -d /sdcard/Android/data/$name ]] && rm -rf "/sdcard/Android/data/$name" && datand=1
 					pv "$i" | tar -I zstd -xmPpf -
 					echo_log "$(basename "$i")解壓縮(data)"
 					;;
-				*-data.tar.lz4)
-					[[ -d /sdcard/Android/data/$name ]] && rm -rf "/sdcard/Android/data/$name"
+				*-data*.tar.lz4)
+					[[ -z $datand && -d /sdcard/Android/data/$name ]] && rm -rf "/sdcard/Android/data/$name" && datand=1
 					pv "$i" | tar xmPpf -
 					echo_log "$(basename "$i")解壓縮(data)"
 					;;
-				*-obb.tar.zst)
-					[[ -d /sdcard/Android/obb/$name ]] && rm -rf "/sdcard/Android/obb/$name"
+				*-obb*.tar.zst)
+					[[ -z $obbnd && -d /sdcard/Android/obb/$name ]] && rm -rf "/sdcard/Android/obb/$name" && obbnd=1
 					pv "$i" | tar -I zstd -xmPpf -
 					echo_log "$(basename "$i")解壓縮(obb)"
 					;;
-				*-obb.tar.lz4)
-					[[ -d /sdcard/Android/obb/$name ]] && rm -rf "/sdcard/Android/obb/$name"
+				*-obb*.tar.lz4)
+					[[ -z $obbnd && -d /sdcard/Android/obb/$name ]] && rm -rf "/sdcard/Android/obb/$name" && obbnd=1
 					pv "$i" | tar xmPpf -
 					echo_log "$(basename "$i")解壓縮(obb)"
 					;;
