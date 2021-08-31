@@ -59,10 +59,14 @@ filesize=$(du -ks "$Backup" | awk '{print $1}')
 #調用二進制
 Quantity=0
 lz4 () {
-	tar -cPpf - "$2" 2>/dev/null | pv -terb >"$Backup_folder/$1.tar.lz4"
+	Num=$(ls "$Backup_folder/$1.tar-"*.lz4 2>/dev/null | wc -l)
+	Num=$((Num+1))
+	tar -g "$Backup_folder/snapshot-$3" -cPpf - "$2" 2>/dev/null | pv -terb >"$Backup_folder/$1-$Num.tar.lz4"
 }
 zst () {
-	tar -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst"
+	Num=$(ls "$Backup_folder/$1.tar-"*.zst 2>/dev/null | wc -l)
+	Num=$((Num+1))
+	tar -g "$Backup_folder/snapshot-$3" -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$1-$Num.tar.zst"
 }
 #顯示執行結果
 echo_log() {
@@ -72,54 +76,6 @@ echo_log() {
 		echoRgb "$1備份失敗，過世了" "0" "0" && result=1
 	fi
 }
-#檢測數據位置進行備份
-Backup_method() {
-	if [[ $1 != user ]]; then
-		lz4 "$name-$1" "$data_path"
-		echo_log "備份$1數據"
-		if [[ $result = 0 ]]; then
-			echo "$(du -ks "$data_path" | awk '{print $1}')" >"$Size_file"
-		else
-			echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
-			zst "$name-$1" "$data_path"
-			echo_log "備份$1數據"
-			[[ $result = 0 ]] && echo "$(du -ks "$data_path" | awk '{print $1}')" >"$Size_file"
-		fi
-	else
-		tar --exclude="cache/" --exclude="lib/" -cPpf - "$data_path" 2>/dev/null | pv -terb >"$Backup_folder/$name-user.tar.lz4"
-		echo_log "備份$1數據"
-		if [[ $result = 0 ]]; then
-			echo $(du -ks "$data_path" | awk '{print $1}') >"$Size_file"
-		else
-			echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
-			tar --exclude="cache/" --exclude="lib/" -cPpf - "$data_path" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$name-user.tar.zst"
-			echo_log "備份$1數據"
-			[[ $result = 0 ]] && echo "$(du -ks "$data_path" | awk '{print $1}')" >"$Size_file"
-		fi
-	fi
-}
-Backup-data() {
-	if [[ $1 = user ]]; then
-		data_path=/data/user/0/$name
-		Size_file=$Backup_folder/usersize.txt
-	else
-		data_path=$path/$1/$name
-		Size_file=$Backup_folder/$1size.txt
-	fi
-	if [[ -d $data_path ]]; then
-		if [[ ! -e $Size_file ]]; then
-			Backup_method "$1"
-		else
-			if [[ $(cat "$Size_file") != $(du -ks "$data_path" | awk '{print $1}') ]]; then
-				Backup_method "$1"
-			else
-				echoRgb "$1數據無發生變化 跳過備份"
-			fi
-		fi
-	else
-		echoRgb "$1數據不存在跳過備份"
-	fi
-}
 #檢測apk狀態進行備份
 Backup-apk() {
 	#創建APP備份文件夾
@@ -127,15 +83,11 @@ Backup-apk() {
 	#備份apk
 	apk_path=$(pm path "$name" | cut -f2 -d ':')
 	echoRgb "$1"
-	xb=d
 	[[ -z $(cat "$Backup/name.txt" | grep -v "#" | sed -e '/^$/d' | grep -w "$name" | head -1) ]] && echo "$name2 $name" >>"$Backup/name.txt"
-	if [[ -e $Backup_folder/apk-version.txt ]]; then
-		if [[ $(cat "$Backup_folder/apk-version.txt") = $(pm dump "$name" | grep -m 1 versionName | sed -n 's/.*=//p') ]]; then
-			unset xb
-			echoRgb "Apk版本無更新 跳過備份"
-		fi
-	fi
-	[[ -n $xb ]] && {
+	if [[ $apk_version = $(pm dump "$name" | grep -m 1 versionName | sed -n 's/.*=//p') ]]; then
+		unset xb
+		echoRgb "Apk版本無更新 跳過備份"
+	else
 		rm -rf "$Backup_folder"/*.apk
 		if [[ $apk_number = 1 ]]; then
 			cp -r "$apk_path" "$Backup_folder/"
@@ -145,8 +97,11 @@ Backup-apk() {
 			done
 		fi
 		echo_log "備份$apk_number個Apk"
-		[[ $result = 0 ]] && echo "$(pm dump "$name" | grep -m 1 versionName | sed -n 's/.*=//p')" >"$Backup_folder/apk-version.txt" && echo "$name">"$Backup_folder/Package_name.txt"
-	}
+		if [[ $result = 0 ]]; then
+			echo "apk_version=$(pm dump "$name" | grep -m 1 versionName | sed -n 's/.*=//p')" >>"$app_details"
+			[[ -z $PackageName ]] && echo "PackageName=$name">>"$app_details"
+		fi
+	fi
 	if [[ $name = com.android.chrome ]]; then
 		#刪除所有舊apk ,保留一個最新apk進行備份
 		ReservedNum=1
@@ -164,6 +119,60 @@ Backup-apk() {
 	fi
 	D=1
 }
+#檢測數據位置進行備份
+Backup_method() {
+	if [[ $1 != user ]]; then
+		lz4 "$name-$1" "$data_path" "$1"
+		echo_log "備份$1數據"
+		if [[ $result = 0 ]]; then
+			echo "$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
+		else
+			echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
+			zst "$name-$1" "$data_path"
+			echo_log "備份$1數據"
+			[[ $result = 0 ]] && echo "$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
+		fi
+	else
+		Num=$(ls "$Backup_folder/$name-$1-"*.tar.lz4 2>/dev/null | wc -l)
+		Num=$((Num+1))
+		tar --exclude="cache/" --exclude="lib/" -g "$Backup_folder/snapshot-$1" -cPpf - "$data_path" 2>/dev/null | pv -terb >"$Backup_folder/$name-$1-$Num.tar.lz4"
+		echo_log "備份$1數據"
+		if [[ $result = 0 ]]; then
+			echo "$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
+		else
+			echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
+			tar --exclude="cache/" --exclude="lib/" -g "$Backup_folder/snapshot-$1" -cPpf - "$data_path" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$name-$1-$Num.tar.zst"
+			echo_log "備份$1數據"
+			[[ $result = 0 ]] && echo "$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
+		fi
+	fi
+}
+Backup-data() {
+	if [[ $1 = user ]]; then
+		data_path=/data/user/0/$name
+	else
+		data_path=$path/$1/$name
+	fi
+	if [[ -d $data_path ]]; then
+		case $1 in
+			user) Size=$userSize ;;
+			data) Size=$dataSize ;;
+			obb) Size=$obbSize ;;
+		esac
+		if [[ -z $Size ]]; then
+			Backup_method "$1"
+		else
+			if [[ $Size != $(du -ks "$data_path" | awk '{print $1}') ]]; then
+				Backup_method "$1"
+			else
+				echoRgb "$1數據無發生變化 跳過備份"
+			fi
+		fi
+	else
+		echoRgb "$1數據不存在跳過備份"
+	fi
+}
+
 [[ $Lo = true ]] && {
 echoRgb "選擇是否只備份split apk(分割apk檔)
  如果你不知道這意味什麼請選擇音量下進行混合備份
@@ -185,6 +194,8 @@ while [[ $i -le $h ]]; do
 	name=$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')
 	name2=$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')
 	Backup_folder="$Backup/$name2($name)"
+	app_details="$Backup_folder/app_details"
+	[[ -e $app_details ]] && . "$app_details"
 	[[ -z $name ]] && echoRgb "警告! name.txt軟件包名獲取失敗，可能修改有問題" "0" "0" && exit 1
 	if [[ -n $(Package_names "$name") ]]; then
 		starttime2=$(date +"%Y-%m-%d %H:%M:%S")
