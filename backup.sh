@@ -58,15 +58,18 @@ fi
 filesize=$(du -ks "$Backup" | awk '{print $1}')
 #調用二進制
 Quantity=0
-lz4 () {
-	Num=$(ls "$Backup_folder/$1.tar-"*.lz4 2>/dev/null | wc -l)
-	Num=$((Num+1))
-	tar -g "$Backup_folder/snapshot-$3" -cPpf - "$2" 2>/dev/null | pv -terb >"$Backup_folder/$1-$Num.tar.lz4"
-}
-zst () {
-	Num=$(ls "$Backup_folder/$1.tar-"*.zst 2>/dev/null | wc -l)
-	Num=$((Num+1))
-	tar -g "$Backup_folder/snapshot-$3" -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$1-$Num.tar.zst"
+compression() {
+	if [[ $3 != user ]]; then
+		case $4 in
+		lz4) tar -cPpf - "$2" 2>/dev/null | pv -terb >"$Backup_folder/$1.tar.lz4" ;;
+		zst) tar -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst" ;;
+		esac
+	else
+		case $4 in
+		lz4) tar --exclude="cache/" --exclude="lib/" -cPpf - "$2" 2>/dev/null | pv -terb >"$Backup_folder/$1.tar.lz4" ;;
+		zst) tar --exclude="cache/" --exclude="lib/" -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst" ;;
+		esac
+	fi
 }
 #顯示執行結果
 echo_log() {
@@ -77,7 +80,7 @@ echo_log() {
 	fi
 }
 #檢測apk狀態進行備份
-Backup-apk() {
+Backup_apk() {
 	#創建APP備份文件夾
 	[[ ! -d $Backup_folder ]] && mkdir "$Backup_folder"
 	#備份apk
@@ -120,36 +123,9 @@ Backup-apk() {
 	D=1
 }
 #檢測數據位置進行備份
-Backup_method() {
-	if [[ $1 != user ]]; then
-		lz4 "$name-$1" "$data_path" "$1"
-		echo_log "備份$1數據"
-		if [[ $result = 0 ]]; then
-			echo "$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
-		else
-			echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
-			zst "$name-$1" "$data_path"
-			echo_log "備份$1數據"
-			[[ $result = 0 ]] && echo "$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
-		fi
-	else
-		Num=$(ls "$Backup_folder/$name-$1-"*.tar.lz4 2>/dev/null | wc -l)
-		Num=$((Num+1))
-		tar --exclude="cache/" --exclude="lib/" -g "$Backup_folder/snapshot-$1" -cPpf - "$data_path" 2>/dev/null | pv -terb >"$Backup_folder/$name-$1-$Num.tar.lz4"
-		echo_log "備份$1數據"
-		if [[ $result = 0 ]]; then
-			echo "$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
-		else
-			echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包"
-			tar --exclude="cache/" --exclude="lib/" -g "$Backup_folder/snapshot-$1" -cPpf - "$data_path" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$name-$1-$Num.tar.zst"
-			echo_log "備份$1數據"
-			[[ $result = 0 ]] && echo "$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
-		fi
-	fi
-}
-Backup-data() {
+Backup_data() {
 	if [[ $1 = user ]]; then
-		data_path=/data/user/0/$name
+		data_path=$path2/$name
 	else
 		data_path=$path/$1/$name
 	fi
@@ -160,12 +136,25 @@ Backup-data() {
 			obb) Size=$obbSize ;;
 		esac
 		if [[ -z $Size ]]; then
-			Backup_method "$1"
+			nsxg=1
 		else
 			if [[ $Size != $(du -ks "$data_path" | awk '{print $1}') ]]; then
-				Backup_method "$1"
+				nsxg=1
 			else
 				echoRgb "$1數據無發生變化 跳過備份"
+				unset nsxg
+			fi
+		fi
+		if [[ -n $nsxg ]]; then
+			compression "$name-$1" "$data_path" "$1" "lz4"
+			echo_log "備份$1數據"
+			if [[ $result = 0 ]]; then
+				echo "$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
+			else
+				echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包" "0" "0"
+				compression "$name-$1" "$data_path" "$1" "zst"
+				echo_log "備份$1數據"
+				[[ $result = 0 ]] && echo "$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
 			fi
 		fi
 	else
@@ -205,14 +194,14 @@ while [[ $i -le $h ]]; do
 		if [[ $apk_number = 1 ]]; then
 			if [[ $C = false ]]; then
 				[[ $name != $Open_apps ]] && am force-stop "$name"
-				Backup-apk "非Split Apk"
+				Backup_apk "非Split Apk"
 			else
 				echoRgb "非Split Apk跳過備份"
 				unset D
 			fi
 		else
 			[[ $name != $Open_apps ]] && am force-stop "$name"
-			Backup-apk "Split Apk支持備份"
+			Backup_apk "Split Apk支持備份"
 		fi
 		if [[ -n $D ]]; then
 			#複製Mt安裝包到外部資料夾方便恢複
@@ -220,12 +209,12 @@ while [[ $i -le $h ]]; do
 			[[ $name = bin.mt.plus && -e $Backup_folder/base.apk ]] && cp -r "$Backup_folder/base.apk" "$Backup_folder.apk"
 			if [[ $B = true ]]; then
 				#備份data數據
-				Backup-data data
+				Backup_data data
 				#備份obb數據
-				Backup-data obb
+				Backup_data obb
 			fi
 			#備份user數據
-			Backup-data user
+			Backup_data user
 			endtime 2 "$name2備份"
 		fi
 		echoRgb "完成$((i*100/h))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')"
