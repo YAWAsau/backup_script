@@ -66,11 +66,18 @@ Backup=/data/media/0/TWRP/backup
 filesize=$(du -ks "$Backup" | awk '{print $1}')
 #調用二進制
 Quantity=0
-lz4 () {
-	tar -cPpf "$Backup_folder/$1.tar.lz4" "$2" 2>/dev/null
-}
-zst () {
-	tar -cPpf - "$2" 2>/dev/null | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst"
+compression() {
+	if [[ $3 != user ]]; then
+		case $4 in
+		lz4) tar -cPpf "$Backup_folder/$1.tar.lz4" "$2" 2>/dev/null ;;
+		zst) tar -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst" ;;
+		esac
+	else
+		case $4 in
+		lz4) tar --exclude="cache/" --exclude="lib/" -cPpf "$Backup_folder/$1.tar.lz4" "$2" 2>/dev/null ;;
+		zst) tar --exclude="cache/" --exclude="lib/" -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst" ;;
+		esac
+	fi
 }
 #顯示執行結果
 echo_log() {
@@ -78,38 +85,6 @@ echo_log() {
 		ui_print "$1成功" && result=0
 	else
 		ui_print "$1備份失敗，過世了" && result=1
-	fi
-}
-#檢測數據位置進行備份
-Backup_method() {
-	if [[ $1 != user ]]; then
-		lz4 "$name-$1" "$data_path"
-		echo_log "備份$1數據"
-		if [[ $result = 1 ]]; then
-			echo "lz4遭遇打包失敗，使用zstd嘗試打包"
-			zst "$name-$1" "$data_path"
-			echo_log "備份$1數據"
-		fi
-	else
-		tar --exclude="cache/" --exclude="lib/" -cPpf "$Backup_folder/$name-user.tar.lz4" "$data_path" 2>/dev/null
-		echo_log "備份$1數據"
-		if [[ $result = 1 ]]; then
-			echo "lz4遭遇打包失敗，使用zstd嘗試打包"
-			tar --exclude="cache/" --exclude="lib/" -cPpf - "$data_path" 2>/dev/null | zstd -r -T0 -0 -q >"$Backup_folder/$name-user.tar.zst"
-			echo_log "備份$1數據"
-		fi
-	fi
-}
-Backup-data() {
-	if [[ $1 = user ]]; then
-		data_path=/data/data/$name
-	else
-		data_path=$path/$1/$name
-	fi
-	if [[ ! -d $data_path ]]; then
-		ui_print "$1數據不存在跳過備份"
-	else
-		Backup_method "$1"
 	fi
 }
 #檢測apk狀態進行備份
@@ -145,6 +120,24 @@ Backup-apk() {
 		fi
 	fi
 	D=1
+}
+Backup-data() {
+	if [[ $1 = user ]]; then
+		data_path=/data/data/$name
+	else
+		data_path=$path/$1/$name
+	fi
+	if [[ ! -d $data_path ]]; then
+		ui_print "$1數據不存在跳過備份"
+	else
+		compression "$name-$1" "$data_path" "$1" "lz4"
+		echo_log "備份$1數據"
+		if [[ $result = 1 ]]; then
+			echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包" "0" "0"
+			compression "$name-$1" "$data_path" "$1" "zst"
+			echo_log "備份$1數據"
+		fi
+	fi
 }
 endtime() {
 	#計算總體切換時長耗費
