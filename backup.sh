@@ -20,8 +20,6 @@ else
 	get_version "當前環境位置" "腳本絕對位置" && path3=$branch
 fi
 i=1
-Open_apps=$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")
-echoRgb "當前使用的備份程序:$(appinfo -o ands -pn "$Open_apps" 2>/dev/null)"
 path=/sdcard/Android
 path2=/data/user/0
 if [[ $path3 = true ]]; then
@@ -31,10 +29,10 @@ else
 	Backup=$MODDIR/Backup
 	txt=$MODDIR/Apkname.txt
 fi
-[[ ! -e $txt ]] && echo "$txt缺少" && exit 1
+[[ ! -e $txt ]] && echoRgb "請執行appname.sh獲取軟件列表再來備份" "0" "0" && exit 1
 r=$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')
 [[ -n $r ]] && h=$r
-[[ -z $r ]] && echo "爬..Apkname.txt是空的備份個鬼" && exit 0
+[[ -z $r ]] && echoRgb "爬..Apkname.txt是空的備份個鬼" "0" "0" && exit 0
 data=/data
 hx="本地"
 if [[ -d /proc/scsi/usb-storage ]]; then

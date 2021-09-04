@@ -24,23 +24,40 @@ bn=37
 rm -rf "$MODDIR/Apkname.txt"
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
 appinfo -d " " -o ands,pn -pn $system -3 2>/dev/null | sort | while read name; do
-	app_1=$(echo $name | awk '{print $1}')
-	app_2=$(echo $name | awk '{print $2}')
 	[[ $bn -ge 37 ]] && bn=31
-	echoRgb "$i.$name"
 	if [[ $1 = twrp ]]; then
+		app_2=$(echo $name | awk '{print $2}')
 		apkpath=$(pm path "$app_2" | cut -f2 -d ':' | head -1)
 		nametxt=$MODDIR/recovery.txt
 		[[ ! -e $nametxt ]] && echo "#不需要備份的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$nametxt"
-		[[ -z $(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name ${apkpath%/*}" >>"$nametxt"
+		if [[ -z $(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]]; then
+			echo "$name ${apkpath%/*}" >>"$nametxt" && xz=1
+			echoRgb "$i.$name"
+		else
+			unset xz
+		fi
 	else
 		nametxt=$txtpath/Apkname.txt
 		[[ ! -e $nametxt ]] && echo "#不需要備份的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$nametxt"
-		[[ -z $(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]] && echo "$name" >>"$nametxt"
+		if [[ -z $(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]]; then
+			echo "$name" >>"$nametxt" && xz=1
+			echoRgb "$i.$name"
+		else
+			unset xz
+		fi
 	fi
-	let i++
+	[[ -n $xz ]] && let i++
 	let bn++
 done
 endtime 1
-[[ $1 = twrp ]] && echoRgb " 輸出包名結束 請編輯$MODDIR/recovery.txt確認無法開機時需要備份應用" || echoRgb " 輸出包名結束 請查看$txtpath/Apkname.txt"
+if [[ $1 = twrp ]]; then
+	echoRgb " 輸出包名結束 請編輯$MODDIR/recovery.txt確認無法開機時需要備份應用"
+	[[ ! -d $MODDIR/recovery/tools ]] && mkdir -p "$MODDIR/recovery/tools"
+		rm -rf "$MODDIR/recovery/tools"/*
+		cp -r "$MODDIR/tools"/* "$MODDIR/recovery/tools"
+		rm -rf "$MODDIR/recovery/tools/busybox_path"
+		rm -rf "$MODDIR/recovery/tools/zip"
+else
+	echoRgb " 輸出包名結束 請查看$txtpath/Apkname.txt"
+fi
 exit 0
