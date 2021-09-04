@@ -14,25 +14,18 @@ filepath=/data/backup_tools
 #排除自身
 exclude="
 restore
+md5tmp
+md5check
 restore2
 busybox_path
 bin.sh"
-MD5() {
-	file_path=$(find $md5path -name "$1" -maxdepth 2 -type f)
-	if [[ -f $file_path ]]; then
-		if [[ ! $(echo "$file_path" | xargs md5sum | cut -d" " -f1) = $2 ]]; then
-			echo "$1文件被更改或是損毀"
-			exit 1
-		fi
-	fi
-}
 rm_busyPATH() {
-if [[ ! -d $filepath ]]; then
-	mkdir -p "$filepath"
-	echo "設置busybox環境中"
-else
+	if [[ ! -d $filepath ]]; then
+		mkdir -p "$filepath"
+		[[ $? = 0 ]] && echo "設置busybox環境中"
+	fi
 	[[ ! -e $tools_path/busybox_path ]] && touch "$tools_path/busybox_path"
-	if [[ ! $filepath = $(cat "$tools_path/busybox_path") ]]; then
+	if [[ $filepath != $(cat "$tools_path/busybox_path") ]]; then
 		if [[ -d $(cat "$tools_path/busybox_path") ]]; then
 			rm -rf "$(cat "$tools_path/busybox_path")"
 			echo "$filepath">"$tools_path/busybox_path"
@@ -40,7 +33,6 @@ else
 			echo "$filepath">"$tools_path/busybox_path"
 		fi
 	fi
-fi
 }
 rm_busyPATH
 if [[ -d $tools_path ]]; then
@@ -49,11 +41,9 @@ if [[ -d $tools_path ]]; then
 	if [[ -e $busybox ]]; then
 		filemd5=$(md5sum "$busybox" | cut -d" " -f1)
 		filemd5_1=$(md5sum "$tools_path/busybox" | cut -d" " -f1)
-		if [[ ! $filemd5 = $filemd5_1 ]]; then
+		if [[ $filemd5 != $filemd5_1 ]]; then
 			echo "busybox md5不一致 重新創立環境中"
-			rm -rf "$filepath"
-			[[ ! -d $filepath ]] && mkdir -p "$filepath" && echo "設置busybox環境中"
-			rm_busyPATH
+			rm -rf "$filepath" && rm_busyPATH
 		fi
 	fi
 	ls -a "$tools_path" | sed -r '/^\.{1,2}$/d' | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read i; do
@@ -67,18 +57,24 @@ if [[ -d $tools_path ]]; then
 					case $a in
 					tar|date) ;;
 					*)
-						if [[ ! -e $filepath/$a ]]; then
-							ln -s "$busybox" "$filepath/$a"
-						fi
+						[[ ! -e $filepath/$a ]] && ln -s "$busybox" "$filepath/$a"
 					;;
 					esac
 				done
 				echo "busybox設置完成"
 			fi
 		else
+			"$busybox" --list | while read a; do
+				case $a in
+				tar|date) ;;
+				*)
+					[[ ! -e $filepath/$a ]] && ln -s "$busybox" "$filepath/$a" && echo "$a > $filepath/$a"
+					;;
+				esac
+			done
 			filemd5=$(md5sum "$filepath/$i" | cut -d" " -f1)
 			filemd5_1=$(md5sum "$tools_path/$i" | cut -d" " -f1)
-			if [[ ! $filemd5 = $filemd5_1 ]]; then
+			if [[ $filemd5 != $filemd5_1 ]]; then
 				echo "$i md5不一致 重新創建"
 				rm -rf "$filepath/$i"
 				cp -r "$tools_path/$i" "$filepath"
@@ -92,15 +88,18 @@ else
 	exit 1
 fi
 #工具絕對位置
-[[ ! -e $busybox ]] && {
-echo "不存在$busybox ...."
-exit 1
-}
+if [[ ! -e $busybox ]]; then
+	echo "不存在$busybox ...."
+	exit 1
+fi
 export PATH=$filepath:$PATH
 ls -a "$tools_path" | sed -r '/^\.{1,2}$/d' | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read i; do
 	[[ $(which "$i" | wc -l) = 1 ]] || echo "$i存在錯誤" && error=1
 done
 [[ $error = 1 ]] && exit 1
+Open_apps=$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")
+
+#下列為自定義函數
 endtime() {
 	#計算總體切換時長耗費
 	case $1 in
@@ -160,10 +159,17 @@ isBoolean() {
 }
 bn=36
 echoRgb "-環境變數: $PATH
- -version:$(busybox | head -1 | awk '{print $2}')
+ -busybox版本:$(busybox | head -1 | awk '{print $2}')
+ -appinfo版本:$(appinfo --version)
  -設備架構$abi
  -品牌:$(getprop ro.product.brand)
  -設備代號:$(getprop ro.product.device)
  -型號:$(getprop ro.product.model)
  -Android版本:$(getprop ro.build.version.release)
- -SDK:$(getprop ro.build.version.sdk)"
+ -SDK:$(getprop ro.build.version.sdk)
+ -終端:$(appinfo -o ands -pn "$Open_apps" 2>/dev/null)
+ -下列為本工具項目銘謝貢獻名單(排名不分先後)
+ -臭批老k提供部分與驗證函數思路(kmou424)
+ -屑老方提供自動更新腳本方案(雄氏老方)
+ -依心所言&情非得已c提供appinfo替代aapt作為更高效的dump包名
+ -胖子老陳(雨季騷年)"

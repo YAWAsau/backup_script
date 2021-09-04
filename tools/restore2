@@ -5,7 +5,6 @@ MODDIR=${0%/*}
 md5path="$MODDIR"
 tools_path=${MODDIR%/*}/tools
 . "$tools_path/bin.sh"
-Open_apps=$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")
 #記錄開始時間
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
 i=1
@@ -17,7 +16,7 @@ echo_log() {
 		echoRgb "$1恢複失敗，過世了" "0" "0" && result=1
 	fi
 }
-if [[ ! $(getenforce) = Permissive ]]; then
+if [[ $(getenforce) != Permissive ]]; then
 	setenforce 0 2>/dev/null
 	echo_log "selinux關閉"
 	if [[ $result = 0 ]]; then
@@ -28,7 +27,7 @@ if [[ ! $(getenforce) = Permissive ]]; then
 else
 	selinux_result=0 && echoRgb "使用原目錄安裝程序 關閉selinux"
 fi
-echoRgb "selinux狀態:$selinux_result" && echoRgb "當前使用的恢復程序:$(appinfo -o ands -pn "$Open_apps" 2>/dev/null)"
+echoRgb "selinux狀態:$selinux_result"
 bn=37
 {
 Backup_folder=$MODDIR
@@ -101,7 +100,7 @@ if [[ -n $zb ]]; then
 	fi
 	X=/data/user/0/$name
 	unset usernd datand obbnd
-	find "$Backup_folder" -name "*.tar.zst" -o -name "*.tar.lz4" -type f | xargs ls -rt | while read i; do
+	find "$Backup_folder" -name "*.tar.zst" -o -name "*.tar.lz4" -type f | while read i; do
 		case $(basename "$i") in
 		*-user.tar.zst)
 			[[ -z $usernd && -d /data/user/0/$name ]] && rm -rf "/data/user/0/$name" && usernd=1
