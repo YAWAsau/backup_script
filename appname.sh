@@ -57,6 +57,8 @@ if [[ $1 = twrp ]]; then
 		cp -r "$MODDIR/tools"/* "$MODDIR/recovery/tools"
 		rm -rf "$MODDIR/recovery/tools/busybox_path"
 		rm -rf "$MODDIR/recovery/tools/zip"
+		rm -rf "$MODDIR/recovery/tools/apk"
+		rm -rf "$MODDIR/recovery/tools/toast"
 else
 	echoRgb " 輸出包名結束 請查看$txtpath/Apkname.txt"
 fi

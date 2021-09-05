@@ -9,7 +9,30 @@ md5path=$MODDIR
 tools_path=$MODDIR/tools
 . "$tools_path/bin.sh"
 . "$MODDIR/backup_settings.conf"
-echoRgb "壓縮方式:$Compression_method"
+if [[ $(pgrep -f "backup.sh" | grep -v grep | wc -l) -gt 1 ]]; then
+	echoRgb "檢測到進程殘留，請重新執行腳本 已銷毀進程" "0" "0"
+	pgrep -f "backup.sh" | grep -v grep | while read i; do
+		kill -9 $i >/dev/null
+	done
+fi
+if [[ $(pm path y.u.k) = "" ]]; then
+	echoRgb "未安裝toast 開始安裝" "0" "0"
+	if [[ $(getenforce) != Permissive ]]; then
+		setenforce 0 2>/dev/null
+		if [[ $? = 0 ]]; then
+			echoRgb "selinux關閉成功" "0" "1" && pm install -r "$MODDIR/tools/apk"/*.apk >/dev/null 2>&1 && echoRgb "安裝toast成功" || echoRgb "安裝toast失敗"
+		else
+			echoRgb "selinux關閉失敗 使用cp安裝toast" "0" "0" &&  cp -r "$MODDIR/tools/apk"/*.apk /data/local/tmp && pm install -r /data/local/tmp/*.apk >/dev/null 2>&1 && (rm -rf /data/local/tmp/* && echoRgb "安裝toast成功") || echoRgb "安裝toast失敗"
+		fi
+	else
+		pm install -r "$MODDIR/tools/apk"/*.apk >/dev/null 2>&1 && echoRgb "安裝toast成功" || echoRgb "安裝toast失敗"
+	fi
+fi
+echoRgb "-壓縮方式:$Compression_method"
+echoRgb "-提示 腳本支持後台壓縮 可以直接離開腳本
+ -或是是關閉終端也能備份 如需終止腳本請執行
+ -$MODDIR/停止正在进行的备份(本文件将会在结束备份后删除).sh
+ -備份結束將發送toast提示語" "0" "2"
 isBoolean $Lo && Lo=$nsx
 if [[ $Lo = false ]]; then
 	isBoolean $C && C=$nsx
@@ -52,7 +75,7 @@ else
 fi
 [[ ! -d $Backup ]] && mkdir "$Backup"
 [[ ! -e $Backup/name.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$Backup/name.txt"
-[[ ! -d $Backup/tools ]] && mkdir -p "$Backup/tools" && cp -r "$MODDIR/tools"/* "$Backup/tools" && rm -rf "$Backup/tools"/restore*
+[[ ! -d $Backup/tools ]] && mkdir -p "$Backup/tools" && cp -r "$MODDIR/tools"/* "$Backup/tools" && rm -rf "$Backup/tools"/restore* && rm -rf "$Backup/tools/apk" && rm -rf "$Backup/tools/toast" 
 [[ ! -e $Backup/還原備份.sh ]] && cp -r "$MODDIR/tools/restore" "$Backup/還原備份.sh"
 filesize=$(du -ks "$Backup" | awk '{print $1}')
 #調用二進制
@@ -63,14 +86,14 @@ compression() {
 		tar|Tar|TAR) tar -cPpf - "$2" 2>/dev/null | pv -terb >"$Backup_folder/$1.tar" ;;
 		zstd|Zstd|ZSTD) tar -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
 		lz4|Lz4|LZ4) tar -cPpf - "$2" 2>/dev/null | pv -terb | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
-		*) echoRgb "你個憨批$4是什麼勾八" "0" "0" ; rm -rf "$Backup_folder" && exit 2
+		*) echoRgb "你個憨批$4是什麼勾八" "0" "0" && rm -rf "$Backup_folder" && exit 2
 		esac
 	else
 		case $4 in
 		tar|Tar|TAR) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv -terb >"$Backup_folder/$1.tar" ;;
 		zstd|Zstd|ZSTD) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
 		lz4|Lz4|LZ4) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv -terb | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
-		*) echoRgb "你個憨批$4是什麼勾八" "0" "0" ; rm -rf "$Backup_folder" && exit 2
+		*) echoRgb "你個憨批$4是什麼勾八" "0" "0" && rm -rf "$Backup_folder" && exit 2
 		esac
 	fi
 }
@@ -236,6 +259,7 @@ else
 	echoRgb "本次備份: $(($((filesizee - filesize)) * 1000 / 1024))kb"
 fi
 echoRgb "批量備份完成"
+[[ $(pm path y.u.k) != "" ]] && toast "批量備份完成"
 endtime 1 "批量備份開始到結束"
 exit 0
 }&
