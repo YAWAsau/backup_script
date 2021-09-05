@@ -70,14 +70,14 @@ Quantity=0
 compression() {
 	if [[ $3 != user ]]; then
 		case $4 in
-		tar|Tar|TAR) tar -cPpf "$Backup_folder/$1.tar.lz4" "$2" 2>/dev/null ;;
-		zstd|Zstd|ZSTD) tar -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst" ;;
+		tar|Tar|TAR) tar -cPpf "$Backup_folder/$1.tar" "$2" 2>/dev/null ;;
+		zstd|Zstd|ZSTD) tar -cPpf - "$2" 2>/dev/null | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst" ;;
 		*) ui_print "$4為不支持的壓縮算法" ;;
 		esac
 	else
 		case $4 in
-		tar|Tar|TAR) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf "$Backup_folder/$1.tar.lz4" "$2" 2>/dev/null ;;
-		zstd|Zstd|ZSTD) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst" ;;
+		tar|Tar|TAR) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf "$Backup_folder/$1.tar" "$2" 2>/dev/null ;;
+		zstd|Zstd|ZSTD) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst" ;;
 		*) ui_print "$4為不支持的壓縮算法" ;;
 		esac
 	fi
