@@ -47,6 +47,7 @@ if [[ -d $tools_path ]]; then
 		fi
 	fi
 	ls -a "$tools_path" | sed -r '/^\.{1,2}$/d' | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read i; do
+		[[ ! -d $tools_path/$i ]] && {
 		if [[ ! -e $filepath/$i ]]; then
 			cp -r "$tools_path/$i" "$filepath"
 			chmod 0777 "$filepath/$i"
@@ -82,6 +83,7 @@ if [[ -d $tools_path ]]; then
 				echo "$i > $filepath/$i"
 			fi
 		fi
+		}
 	done
 else
 	echo "遺失$tools_path"
@@ -93,10 +95,12 @@ if [[ ! -e $busybox ]]; then
 	exit 1
 fi
 export PATH=$filepath:$PATH
+echo "驗證環境中 請稍後"
 ls -a "$tools_path" | sed -r '/^\.{1,2}$/d' | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read i; do
-	[[ $(which "$i" | wc -l) = 1 ]] || echo "$i存在錯誤" && error=1
+	[[ ! -d $tools_path/$i ]] && {
+	[[ $(which "$i" | wc -l) != 1 ]] && echo "$i不存在環境中"
+	}
 done
-[[ $error = 1 ]] && exit 1
 Open_apps=$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")
 
 #下列為自定義函數
@@ -113,10 +117,14 @@ endtime() {
 echoRgb() {
 	#轉換echo顏色提高可讀性
 	if [[ -n $2 ]]; then
-		if [[ $3 = 1 ]]; then
-			echo -e "\e[1;32m $1\e[0m"
-		else
+		if [[ $3 = 0 ]]; then
 			echo -e "\e[1;31m $1\e[0m"
+		elif [[ $3 = 1 ]]; then
+			echo -e "\e[1;32m $1\e[0m"
+		elif [[ $3 = 2 ]]; then
+			echo -e "\e[1;33m $1\e[0m"
+		else
+			echo "$1 $2 $3 顏色控制項錯誤"; exit 2
 		fi
 	else
 		echo -e "\e[1;${bn}m $1\e[0m"
