@@ -19,6 +19,7 @@ unzip -o "$ZIPFILE" 'tools/appinfo.dex' -d "$MODDIR"
 unzip -o "$ZIPFILE" 'tools/busybox' -d "$MODDIR"
 unzip -o "$ZIPFILE" 'tools/tar' -d "$MODDIR"
 unzip -o "$ZIPFILE" 'tools/zstd' -d "$MODDIR"
+unzip -o "$ZIPFILE" 'tools/lz4' -d "$MODDIR"
 unzip -o "$ZIPFILE" 'tools/restore' -d "$MODDIR"
 unzip -o "$ZIPFILE" 'tools/restore2' -d "$MODDIR"
 unzip -o "$ZIPFILE" 'script/Apkname.txt' -d "$MODDIR"
@@ -69,13 +70,15 @@ Quantity=0
 compression() {
 	if [[ $3 != user ]]; then
 		case $4 in
-		lz4) tar -cPpf "$Backup_folder/$1.tar.lz4" "$2" 2>/dev/null ;;
-		zst) tar -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst" ;;
+		tar|Tar|TAR) tar -cPpf "$Backup_folder/$1.tar.lz4" "$2" 2>/dev/null ;;
+		zstd|Zstd|ZSTD) tar -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst" ;;
+		*) ui_print "$4為不支持的壓縮算法" ;;
 		esac
 	else
 		case $4 in
-		lz4) tar --exclude="cache/" --exclude="lib/" -cPpf "$Backup_folder/$1.tar.lz4" "$2" 2>/dev/null ;;
-		zst) tar --exclude="cache/" --exclude="lib/" -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst" ;;
+		tar|Tar|TAR) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf "$Backup_folder/$1.tar.lz4" "$2" 2>/dev/null ;;
+		zstd|Zstd|ZSTD) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst" ;;
+		*) ui_print "$4為不支持的壓縮算法" ;;
 		esac
 	fi
 }
@@ -88,7 +91,7 @@ echo_log() {
 	fi
 }
 #檢測apk狀態進行備份
-Backup-apk() {
+Backup_apk() {
 	#創建APP備份文件夾
 	[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
 	#備份apk
@@ -121,7 +124,7 @@ Backup-apk() {
 	fi
 	D=1
 }
-Backup-data() {
+Backup_data() {
 	if [[ $1 = user ]]; then
 		data_path=/data/data/$name
 	else
@@ -130,13 +133,8 @@ Backup-data() {
 	if [[ ! -d $data_path ]]; then
 		ui_print "$1數據不存在跳過備份"
 	else
-		compression "$name-$1" "$data_path" "$1" "lz4"
+		compression "$name-$1" "$data_path" "$1" "$Compression_method"
 		echo_log "備份$1數據"
-		if [[ $result = 1 ]]; then
-			echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包" "0" "0"
-			compression "$name-$1" "$data_path" "$1" "zst"
-			echo_log "備份$1數據"
-		fi
 	fi
 }
 endtime() {
@@ -182,13 +180,13 @@ while [[ $i -le $h ]]; do
 		apk_number=$(find "$apk_path/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
 		if [[ $apk_number = 1 ]]; then
 			if [[ $C = false ]]; then
-				Backup-apk "非Split Apk"
+				Backup_apk "非Split Apk"
 			else
 				ui_print "非Split Apk跳過備份"
 				unset D
 			fi
 		else
-			Backup-apk "Split Apk支持備份"
+			Backup_apk "Split Apk支持備份"
 		fi
 		if [[ -n $D ]]; then
 			#複製Mt安裝包到外部資料夾方便恢複
@@ -196,12 +194,12 @@ while [[ $i -le $h ]]; do
 			[[ $name = bin.mt.plus && -e $Backup_folder/base.apk ]] && cp -r "$Backup_folder/base.apk" "$Backup_folder.apk"
 			if [[ $B = true ]]; then
 				#備份data數據
-				Backup-data data
+				Backup_data data
 				#備份obb數據
-				Backup-data obb
+				Backup_data obb
 			fi
 			#備份user數據
-			Backup-data user
+			Backup_data user
 			endtime 2 "$name2備份"
 		fi
 		ui_print "完成$((i*100/h))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')"
