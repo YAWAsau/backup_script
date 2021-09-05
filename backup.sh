@@ -9,6 +9,7 @@ md5path=$MODDIR
 tools_path=$MODDIR/tools
 . "$tools_path/bin.sh"
 . "$MODDIR/backup_settings.conf"
+echoRgb "壓縮方式:$Compression_method"
 isBoolean $Lo && Lo=$nsx
 if [[ $Lo = false ]]; then
 	isBoolean $C && C=$nsx
@@ -20,7 +21,7 @@ else
 	get_version "當前環境位置" "腳本絕對位置" && path3=$branch
 fi
 i=1
-path=/sdcard/Android
+path=/data/media/0/Android
 path2=/data/user/0
 if [[ $path3 = true ]]; then
 	Backup=$PWD/Backup
@@ -29,14 +30,14 @@ else
 	Backup=$MODDIR/Backup
 	txt=$MODDIR/Apkname.txt
 fi
+PU=$(ls /dev/block/vold | grep public 2>/dev/null)
 [[ ! -e $txt ]] && echoRgb "請執行appname.sh獲取軟件列表再來備份" "0" "0" && exit 1
 r=$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')
 [[ -n $r ]] && h=$r
 [[ -z $r ]] && echoRgb "爬..Apkname.txt是空的備份個鬼" "0" "0" && exit 0
 data=/data
 hx="本地"
-if [[ -d /proc/scsi/usb-storage ]]; then
-	PU=$(ls /dev/block/vold | grep public)
+if [[ -d /proc/scsi/usb-storage || -n $PU ]]; then
 	PT=$(cat /proc/mounts | grep "$PU" | awk '{print $2}')
 	echoRgb "檢測到usb 是否在usb備份
  音量上是，音量下不是"
@@ -59,13 +60,17 @@ Quantity=0
 compression() {
 	if [[ $3 != user ]]; then
 		case $4 in
-		lz4) tar -cPpf - "$2" 2>/dev/null | pv -terb >"$Backup_folder/$1.tar.lz4" ;;
-		zst) tar -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst" ;;
+		tar|Tar|TAR) tar -cPpf - "$2" 2>/dev/null | pv -terb >"$Backup_folder/$1.tar" ;;
+		zstd|Zstd|ZSTD) tar -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
+		lz4|Lz4|LZ4) tar -cPpf - "$2" 2>/dev/null | pv -terb | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+		*) echoRgb "你個憨批$4是什麼勾八" "0" "0" ; rm -rf "$Backup_folder" && exit 2
 		esac
 	else
 		case $4 in
-		lz4) tar --exclude="cache/" --exclude="lib/" -cPpf - "$2" 2>/dev/null | pv -terb >"$Backup_folder/$1.tar.lz4" ;;
-		zst) tar --exclude="cache/" --exclude="lib/" -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -0 -q >"$Backup_folder/$1.tar.zst" ;;
+		tar|Tar|TAR) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv -terb >"$Backup_folder/$1.tar" ;;
+		zstd|Zstd|ZSTD) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
+		lz4|Lz4|LZ4) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv -terb | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+		*) echoRgb "你個憨批$4是什麼勾八" "0" "0" ; rm -rf "$Backup_folder" && exit 2
 		esac
 	fi
 }
@@ -144,16 +149,9 @@ Backup_data() {
 			fi
 		fi
 		if [[ -n $nsxg ]]; then
-			compression "$name-$1" "$data_path" "$1" "lz4"
+			compression "$name-$1" "$data_path" "$1" "$Compression_method"
 			echo_log "備份$1數據"
-			if [[ $result = 0 ]]; then
-				echo "$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
-			else
-				echoRgb "lz4遭遇打包失敗，使用zstd嘗試打包" "0" "0"
-				compression "$name-$1" "$data_path" "$1" "zst"
-				echo_log "備份$1數據"
-				[[ $result = 0 ]] && echo "$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
-			fi
+			[[ $result = 0 ]] && echo "$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
 		fi
 	else
 		echoRgb "$1數據不存在跳過備份"
@@ -202,7 +200,6 @@ while [[ $i -le $h ]]; do
 			Backup_apk "Split Apk支持備份"
 		fi
 		if [[ -n $D ]]; then
-			#複製Mt安裝包到外部資料夾方便恢複
 			[[ ! -e $Backup_folder/恢復$name2.sh ]] && cp -r "$MODDIR/tools/restore2" "$Backup_folder/恢復$name2.sh"
 			[[ $name = bin.mt.plus && -e $Backup_folder/base.apk ]] && cp -r "$Backup_folder/base.apk" "$Backup_folder.apk"
 			if [[ $B = true ]]; then

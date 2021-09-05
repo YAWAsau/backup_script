@@ -21,7 +21,7 @@ echoRgb " 請勿關閉腳本，等待提示結束"
 [[ -e $MODDIR/tools/tmp ]] && rm -rf "$MODDIR"/tools/tmp
 i=1
 bn=37
-rm -rf "$MODDIR/Apkname.txt"
+#rm -rf "$MODDIR/Apkname.txt"
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
 appinfo -d " " -o ands,pn -pn $system -3 2>/dev/null | sort | while read name; do
 	[[ $bn -ge 37 ]] && bn=31
