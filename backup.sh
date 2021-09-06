@@ -30,8 +30,8 @@ if [[ $(pm path y.u.k) = "" ]]; then
 fi
 echoRgb "-壓縮方式:$Compression_method"
 echoRgb "-提示 腳本支持後台壓縮 可以直接離開腳本
- -或是是關閉終端也能備份 如需終止腳本請執行
- -$MODDIR/停止正在进行的备份(本文件将会在结束备份后删除).sh
+ -或是是關閉終端也能備份 如需終止腳本
+ -請在次執行backup.sh即可停止
  -備份結束將發送toast提示語" "0" "2"
 isBoolean $Lo && Lo=$nsx
 if [[ $Lo = false ]]; then
@@ -112,7 +112,7 @@ Backup_apk() {
 	#備份apk
 	apk_path=$(pm path "$name" | cut -f2 -d ':')
 	echoRgb "$1"
-	[[ -z $(cat "$Backup/name.txt" | grep -v "#" | sed -e '/^$/d' | grep -w "$name" | head -1) ]] && echo "$name2 $name" >>"$Backup/name.txt"
+	[[ -z $(cat "$Backup/name.txt" | sed -e '/^$/d' | grep -w "$name" | head -1) ]] && echo "$name2 $name" >>"$Backup/name.txt"
 	if [[ $apk_version = $(pm dump "$name" | grep -m 1 versionName | sed -n 's/.*=//p') ]]; then
 		unset xb
 		echoRgb "Apk版本無更新 跳過備份"

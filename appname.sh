@@ -30,7 +30,7 @@ appinfo -d " " -o ands,pn -pn $system -3 2>/dev/null | sort | while read name; d
 		apkpath=$(pm path "$app_2" | cut -f2 -d ':' | head -1)
 		nametxt=$MODDIR/recovery.txt
 		[[ ! -e $nametxt ]] && echo "#不需要備份的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$nametxt"
-		if [[ -z $(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]]; then
+		if [[ -z $(cat "$nametxt" | sed -e '/^$/d' | grep -w "$name") ]]; then
 			echo "$name ${apkpath%/*}" >>"$nametxt" && xz=1
 			echoRgb "$i.$name"
 		else
@@ -39,7 +39,7 @@ appinfo -d " " -o ands,pn -pn $system -3 2>/dev/null | sort | while read name; d
 	else
 		nametxt=$txtpath/Apkname.txt
 		[[ ! -e $nametxt ]] && echo "#不需要備份的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$nametxt"
-		if [[ -z $(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | grep -w "$name") ]]; then
+		if [[ -z $(cat "$nametxt" | sed -e '/^$/d' | grep -w "$name") ]]; then
 			echo "$name" >>"$nametxt" && xz=1
 			echoRgb "$i.$name"
 		else
