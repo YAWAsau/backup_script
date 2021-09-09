@@ -1,9 +1,8 @@
 #!/system/bin/sh
-MODDIR=${0%/*}
+MODDIR="${0%/*}"
 [[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
 [[ ! -d ${MODDIR%/*}/tools ]] && echo "${MODDIR%/*}/tools目錄遺失" && exit 1
-md5path="$MODDIR"
-tools_path=${MODDIR%/*}/tools
+tools_path="${MODDIR%/*}/tools"
 . "$tools_path/bin.sh"
 path=/data/media/0/Android
 path2=/data/user/0
@@ -11,7 +10,7 @@ path2=/data/user/0
 [[ ! -d $path/obb ]] && echoRgb "設備不存在obb目錄" "0" "0" && exit 1
 [[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" "0" && exit 1
 #記錄開始時間
-starttime1=$(date +"%Y-%m-%d %H:%M:%S")
+starttime1="$(date +"%Y-%m-%d %H:%M:%S")"
 i=1
 #顯示執行結果
 echo_log() {
@@ -20,6 +19,31 @@ echo_log() {
 	else
 		echoRgb "$1恢複失敗，過世了" "0" "0" && result=1
 	fi
+}
+Release_data() {
+	FILE_NAME="$(basename "$1")"
+	FILE_NAME2="${FILE_NAME%%.*}"
+	case $FILE_NAME in
+	data.tar*| obb.tar*)
+		case $FILE_NAME in
+		*.lz4)
+			pv "$1" | tar --recursive-unlink -I lz4 -xmPpf - ;;
+		*.zst)
+			pv "$1" | tar --recursive-unlink -I zstd -xmPpf - ;;
+		*.tar)
+			pv "$1" | tar --recursive-unlink -xmPpf - ;;
+		esac ;;
+	user.tar*)
+		case $FILE_NAME in
+		*.lz4)
+			pv "$1" | tar --recursive-unlink -I lz4 -xmPpf - ;;
+		*.zst)
+			pv "$1" | tar --recursive-unlink -I zstd -xmPpf - ;;
+		*.tar)
+			pv "$1" | tar --recursive-unlink -xmPpf - ;;
+		esac ;;
+	esac
+	echo_log "$FILE_NAME解壓縮($FILE_NAME2)"
 }
 if [[ $(getenforce) != Permissive ]]; then
 	setenforce 0 2>/dev/null
@@ -35,27 +59,26 @@ fi
 echoRgb "selinux狀態:$selinux_result"
 bn=37
 {
-Backup_folder=$MODDIR
+Backup_folder="$MODDIR"
 if [[ ! -e $Backup_folder/app_details ]]; then
 	echoRgb "$Backup_folder/app_details遺失，無法獲取包名" "0" "0" && exit 1
 else
 	. "$Backup_folder/app_details"
 fi
-name=$PackageName
-name2=$(basename "$Backup_folder"/恢復*.sh | sed 's/恢復//g' | sed 's/.sh//g')
+name="$PackageName"
+name2="$(basename "$Backup_folder"/恢復*.sh | sed 's/恢復//g' | sed 's/.sh//g')"
 echoRgb "恢複$name2 ($name)"
-starttime2=$(date +"%Y-%m-%d %H:%M:%S")
+starttime2="$(date +"%Y-%m-%d %H:%M:%S")"
 if [[ -z $(Package_names "$name") ]]; then
 	case $(find "$Backup_folder/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
 	1)
 		echoRgb "恢復普通apk"
 		if [[ $selinux_result = 1 ]]; then
-			cp -r "$Backup_folder"/*.apk /data/local/tmp && pm install -r /data/local/tmp/*.apk >/dev/null 2>&1
-			echo_log "Apk安裝" && rm -rf /data/local/tmp/*
+			cp -r "$Backup_folder"/*.apk /data/local/tmp && pm install -r /data/local/tmp/*.apk >/dev/null 2>&1 && rm -rf /data/local/tmp/*
 		else
 			pm install -r "$Backup_folder"/*.apk >/dev/null 2>&1
-			echo_log "Apk安裝"
 		fi
+		echo_log "Apk安裝"
 		[[ $result = 0 ]] && echoRgb "Apk恢復無誤" "0" "1" || echoRgb "Apk恢復異常" "0" "0"
 		;;
 	0)
@@ -63,26 +86,24 @@ if [[ -z $(Package_names "$name") ]]; then
 		;;
 	*)
 		echoRgb "恢復split apk"
-		b=$(pm install-create | grep -E -o '[0-9]+')
+		b="$(pm install-create | grep -E -o '[0-9]+')"
 		if [[ -e $Backup_folder/nmsl.apk ]]; then
 			if [[ $selinux_result = 1 ]]; then
-				cp -r "$Backup_folder/nmsl.apk" /data/local/tmp && pm install -r "/data/local/tmp/nmsl.apk" >/dev/null 2>&1
-				echo_log "nmsl.apk安裝" && rm -rf /data/local/tmp/*
+				cp -r "$Backup_folder/nmsl.apk" /data/local/tmp && pm install -r "/data/local/tmp/nmsl.apk" >/dev/null 2>&1 && rm -rf /data/local/tmp/*
 			else
 				pm install -r "$Backup_folder/nmsl.apk" >/dev/null 2>&1
-				echo_log "nmsl.apk安裝"
 			fi
+			echo_log "nmsl.apk安裝"
 		fi
 		find "$Backup_folder" -maxdepth 1 -name "*.apk" -type f | while read i; do
-			ad=$(basename "$i" | grep -v 'nmsl.apk')
+			ad="$(basename "$i" | grep -v 'nmsl.apk')"
 			if [[ -n $ad ]]; then
 				if [[ $selinux_result = 1 ]]; then
 					cp -r "$i" /data/local/tmp && pm install-write "$b" "$ad" "/data/local/tmp/$ad" >/dev/null 2>&1
-					echo_log "$(basename "$i")安裝"
 				else
 					pm install-write "$b" "$ad" "$i" >/dev/null 2>&1
-					echo_log "$(basename "$i")安裝"
 				fi
+				echo_log "$(basename "$i")安裝"
 			fi
 		done
 		pm install-commit "$b"
@@ -93,66 +114,19 @@ if [[ -z $(Package_names "$name") ]]; then
 else
 	echoRgb "存在當前系統中略過安裝Apk"
 fi
-zb=$(Package_names "$name")
+zb="$(Package_names "$name")"
 if [[ -n $zb ]]; then
 	[[ $zb = $name ]] && {
 	#停止軟件
 	[[ $name != $Open_apps ]] && am force-stop "$name"
 	if [[ -e /config/sdcardfs/$name/appid ]]; then
-		G=$(cat "/config/sdcardfs/$name/appid")
+		G="$(cat "/config/sdcardfs/$name/appid")"
 	else
-		G=$(dumpsys package "$name" | awk '/userId=/{print $1}' | sed 's/userId=//g' | head -1)
+		G="$(dumpsys package "$name" | awk '/userId=/{print $1}' | sed 's/userId=//g' | head -1)"
 	fi
-	X=$path2/$name
-	unset usernd datand obbnd
+	X="$path2/$name"
 	find "$Backup_folder" -name "*.tar*" -type f | while read i; do
-		case $(basename "$i") in
-		*-user.tar.zst)
-			[[ -z $usernd && -d $path2/$name ]] && rm -rf "$path2/$name" && usernd=1
-			pv "$i" | tar -I zstd -xmPpf -
-			echo_log "$(basename "$i")解壓縮(user)"
-			;;
-		*-user.tar.lz4)
-			[[ -z $usernd && -d $path2/$name ]] && rm -rf "$path2/$name" && usernd=1
-			pv "$i" | tar -I lz4 -xmPpf -
-			echo_log "$(basename "$i")解壓縮(user)"
-			;;
-		*-user.tar)
-			[[ -z $usernd && -d $path2/$name ]] && rm -rf "$path2/$name" && usernd=1
-			pv "$i" | tar xmPpf -
-			echo_log "$(basename "$i")解壓縮(user)"
-			;;
-		*-data.tar.zst)
-			[[ -z $datand && -d $path/data/$name ]] && rm -rf "$path/data/$name" && datand=1
-			pv "$i" | tar -I zstd -xmPpf -
-			echo_log "$(basename "$i")解壓縮(data)"
-			;;
-		*-data.tar.lz4)
-			[[ -z $datand && -d $path/data/$name ]] && rm -rf "$path/data/$name" && datand=1
-			pv "$i" | tar -I lz4 -xmPpf -
-			echo_log "$(basename "$i")解壓縮(data)"
-			;;
-		*-data.tar)
-			[[ -z $datand && -d $path/data/$name ]] && rm -rf "$path/data/$name" && datand=1
-			pv "$i" | tar xmPpf -
-			echo_log "$(basename "$i")解壓縮(data)"
-			;;
-		*-obb.tar.zst)
-			[[ -z $obbnd && -d $path/obb/$name ]] && rm -rf "$path/obb/$name" && obbnd=1
-			pv "$i" | tar -I zstd -xmPpf -
-			echo_log "$(basename "$i")解壓縮(obb)"
-			;;
-		*-obb.tar.lz4)
-			[[ -z $obbnd && -d $path/obb/$name ]] && rm -rf "$path/obb/$name" && obbnd=1
-			pv "$i" | tar -I lz4 -xmPpf -
-			echo_log "$(basename "$i")解壓縮(obb)"
-			;;
-		*-obb.tar)
-			[[ -z $obbnd && -d $path/obb/$name ]] && rm -rf "$path/obb/$name" && obbnd=1
-			pv "$i" | tar xmPpf -
-			echo_log "$(basename "$i")解壓縮(obb)"
-			;;
-		esac
+		Release_data "$i"
 	done
 	if [[ -d $X && -n $G ]]; then
 		echoRgb "路徑$X

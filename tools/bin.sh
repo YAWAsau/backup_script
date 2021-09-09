@@ -1,4 +1,4 @@
-abi=$(getprop ro.product.cpu.abi)
+abi="$(getprop ro.product.cpu.abi)"
 case $abi in
 arm64*) 
 	;;
@@ -37,10 +37,10 @@ rm_busyPATH() {
 rm_busyPATH
 if [[ -d $tools_path ]]; then
 	[[ ! -e $tools_path/busybox ]] && echo "$tools_path/busybox不存在" && exit 1
-	busybox=$filepath/busybox
+	busybox="$filepath/busybox"
 	if [[ -e $busybox ]]; then
-		filemd5=$(md5sum "$busybox" | cut -d" " -f1)
-		filemd5_1=$(md5sum "$tools_path/busybox" | cut -d" " -f1)
+		filemd5="$(md5sum "$busybox" | cut -d" " -f1)"
+		filemd5_1="$(md5sum "$tools_path/busybox" | cut -d" " -f1)"
 		if [[ $filemd5 != $filemd5_1 ]]; then
 			echo "busybox md5不一致 重新創立環境中"
 			rm -rf "$filepath" && rm_busyPATH
@@ -73,8 +73,8 @@ if [[ -d $tools_path ]]; then
 					;;
 				esac
 			done
-			filemd5=$(md5sum "$filepath/$i" | cut -d" " -f1)
-			filemd5_1=$(md5sum "$tools_path/$i" | cut -d" " -f1)
+			filemd5="$(md5sum "$filepath/$i" | cut -d" " -f1)"
+			filemd5_1="$(md5sum "$tools_path/$i" | cut -d" " -f1)"
 			if [[ $filemd5 != $filemd5_1 ]]; then
 				echo "$i md5不一致 重新創建"
 				rm -rf "$filepath/$i"
@@ -94,24 +94,24 @@ if [[ ! -e $busybox ]]; then
 	echo "不存在$busybox ...."
 	exit 1
 fi
-export PATH=$filepath:$PATH
+export PATH="$filepath:$PATH"
 echo "驗證環境中 請稍後"
 ls -a "$tools_path" | sed -r '/^\.{1,2}$/d' | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read i; do
 	[[ ! -d $tools_path/$i ]] && {
 	[[ $(which "$i" | wc -l) != 1 ]] && echo "$i不存在環境中"
 	}
 done
-Open_apps=$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")
+Open_apps="$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")"
 
 #下列為自定義函數
 endtime() {
 	#計算總體切換時長耗費
 	case $1 in
-	1) starttime=$starttime1 ;;
-	2) starttime=$starttime2 ;;
+	1) starttime="$starttime1" ;;
+	2) starttime="$starttime2" ;;
 	esac
-	endtime=$(date "+%Y-%m-%d %H:%M:%S")
-	duration=$(echo $(($(date +%s -d "${endtime}") - $(date +%s -d "${starttime}"))) | awk '{t=split("60 秒 60 分 24 時 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')
+	endtime="$(date "+%Y-%m-%d %H:%M:%S")"
+	duration="$(echo $(($(date +%s -d "${endtime}") - $(date +%s -d "${starttime}"))) | awk '{t=split("60 秒 60 分 24 時 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')"
 	[[ -n $duration ]] && echoRgb "$2用時:$duration" || echoRgb "$2用時:0秒"
 }
 echoRgb() {
@@ -131,13 +131,13 @@ echoRgb() {
 	fi
 }
 Package_names() {
-	[[ -n $1 ]] && t1=$1
-	t2=$(appinfo -o pn -pn "$t1" 2>/dev/null | head -1)
+	[[ -n $1 ]] && t1="$1"
+	t2="$(appinfo -o pn -pn "$t1" 2>/dev/null | head -1)"
 	[[ -n $t2 ]] && [[ $t2 = $1 ]] && echo "$t2"
 }
 get_version() {
 	while :; do
-		version=$(getevent -qlc 1 | awk '{ print $3 }')
+		version="$(getevent -qlc 1 | awk '{ print $3 }')"
 		case $version in
 		KEY_VOLUMEUP)
 			branch=true
@@ -156,7 +156,7 @@ get_version() {
 	done
 }
 isBoolean() {
-	nsx=$1
+	nsx="$1"
 	if [[ $1 = 1 ]];then
 		nsx=true
 	elif [[ $1 = 0 ]];then
