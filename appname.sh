@@ -9,11 +9,25 @@ tools_path=$MODDIR/tools
 . "$tools_path/bin.sh"
 . "$MODDIR/backup_settings.conf"
 system="
-com.android.launcher3
 com.google.android.apps.messaging
 com.digibites.accubattery
 com.google.android.inputmethod.latin
 com.android.chrome"
+get_launcher() {
+	if [[ $(getprop ro.build.version.sdk) -gt 27 ]]; then
+		# 获取默认桌面
+		launcher_app=$(pm resolve-activity --brief -c android.intent.category.HOME -a android.intent.action.MAIN | grep '/' | cut -f1 -d '/')
+		for launcher_app in $launcher_app; do
+			if [[ $launcher_app != "" && $launcher_app != "android" ]]; then
+				if [[ $(pgrep -f "$launcher_app" | grep -v 'grep' | wc -l) -ge 1 ]]; then
+					echo "$launcher_app" && Dk=1
+				else
+					Dk=0
+				fi
+			fi
+		done
+	fi
+}
 isBoolean $path && txtpath=$nsx
 [[ $txtpath = true ]] && txtpath=$PWD || txtpath=$MODDIR
 echoRgb " 請勿關閉腳本，等待提示結束"
@@ -23,7 +37,7 @@ i=1
 bn=37
 #rm -rf "$MODDIR/Apkname.txt"
 starttime1=$(date +"%Y-%m-%d %H:%M:%S")
-appinfo -d " " -o ands,pn -pn $system -3 2>/dev/null | sort | while read name; do
+appinfo -d " " -o ands,pn -pn $system $(get_launcher) -3 2>/dev/null | sort | while read name; do
 	[[ $bn -ge 37 ]] && bn=31
 	if [[ $1 = twrp ]]; then
 		app_2=$(echo $name | awk '{print $2}')
