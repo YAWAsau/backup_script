@@ -13,15 +13,18 @@ if [[ ! -d $magisk_Module_path ]]; then
 	echoRgb "不存在Magisk模塊 正在創建"
 	mkdir -p "$magisk_Module_path" && cp -r "$MODDIR/Magisk_Module" "$magisk_Module_path/recovery" && cp -r "$MODDIR/tools" "$magisk_Module_path/recovery" && cp -r "$magisk_Module_path/recovery/tools/Magisk_backup" "$magisk_Module_path/backup2.sh"
 	mkdir -p "$magisk_Module_path/cron.d" && mkdir -p "$backup_path"
-	tail -n +55 "$0" >"$magisk_Module_path/backup.sh"
+	tail -n +59 "$0" >"$magisk_Module_path/backup.sh"
 	unset PATH
 	sh "$magisk_Module_path/backup.sh" &
+	unset PATH
+	. $MODDIR/appname.sh
+	echoRgb "請編輯$nametxt中需要自動備份的軟件(不包含卡刷包備份)"
 else
 	echoRgb "滾你媽的 已經裝過了別再裝了 傻逼" "0" "0" && exit 2
 fi
 echo 'id=backup
 name=數據備份
-version=8.8.8
+version=8.8.9
 versionCode=1
 author=落葉淒涼(高雄佬) 
 description=自動生成卡刷包並於間隔一小時監控第三方軟件數量進行卡刷包生成服務，防止突然不能開機時丟失軟件 生成的卡刷包必須進入recovery刷入進行備份 凌晨3點進行總體數據備份'>"$magisk_Module_path/module.prop"
@@ -52,14 +55,13 @@ B=0
 #壓縮算法(可用lz4 zstd tar tar為僅打包 有什麼好用的壓縮算法請聯繫我
 #lz4壓縮最快，但是壓縮率略差 zstd擁有良好的壓縮率與速度 當然慢於lz4
 Compression_method=zstd'>/data/media/0/Android/backup_script/backup_settings.conf
-sh "$magisk_Module_path/backup2.sh" &
 exit
 #!/system/bin/sh
 #2020/10/10
 MODDIR=${0%/*}
 tools_path="$MODDIR/recovery/tools"
 . "$tools_path/bin.sh"
-zip_out="$backup_path"
+zip_out="/data/media/0/Android/backup_script"
 system="
 com.google.android.apps.messaging
 com.digibites.accubattery

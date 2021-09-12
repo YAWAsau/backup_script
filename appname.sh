@@ -36,15 +36,14 @@ get_launcher() {
 }
 isBoolean "$path" && txtpath="$nsx"
 [[ $txtpath = true ]] && txtpath="$PWD" || txtpath="$MODDIR"
+[[ $backup_path != "" ]] && nametxt="$backup_path/Apkname.txt" || nametxt="$txtpath/Apkname.txt"
 echoRgb " 請勿關閉腳本，等待提示結束"
 i=1
 bn=37
 rm -rf "$MODDIR/tmp"
 starttime1="$(date -u "+%s")"
-appinfo -d " " -o pn -pn $system $(get_launcher) -3 | wc
 appinfo -d " " -o ands,pn -pn $system $(get_launcher) -3 2>/dev/null | sort | while read name; do
 	[[ $bn -ge 37 ]] && bn=31
-	nametxt="$txtpath/Apkname.txt"
 	[[ ! -e $nametxt ]] && echo "#不需要備份的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$nametxt"
 	if [[ $(cat "$nametxt" | sed -e '/^$/d' | grep -w "$name" | wc -l) = 0 ]]; then
 		echo "$name" >>"$nametxt" && xz=1 && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
@@ -55,6 +54,5 @@ appinfo -d " " -o ands,pn -pn $system $(get_launcher) -3 2>/dev/null | sort | wh
 	[[ $xz != "" ]] && let i++ bn++
 done
 endtime 1
-[[ ! -e $MODDIR/tmp ]] && echoRgb "無新增應用" || echoRgb " 輸出包名結束 請查看$txtpath/Apkname.txt"
+[[ ! -e $MODDIR/tmp ]] && echoRgb "無新增應用" || echoRgb " 輸出包名結束 請查看$nametxt"
 rm -rf "$MODDIR/tmp"
-exit 0
