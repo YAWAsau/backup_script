@@ -1,4 +1,5 @@
 MODDIR="${0%/*}"
+Magisk=true
 [[ $(echo "$MODDIR" | grep -v 'mt') = "" ]] && echo "我他媽骨灰給你揚了撒了TM不解壓縮？用毛線 憨批" && exit 1
 [[ ! -d $MODDIR/tools ]] && echo "$MODDIR/tools目錄遺失" && exit 1
 [[ ! -d $MODDIR/Magisk_Module ]] && echo "$MODDIR/Magisk_Module目錄遺失" && exit 1
@@ -13,7 +14,7 @@ if [[ ! -d $magisk_Module_path ]]; then
 	echoRgb "不存在Magisk模塊 正在創建"
 	mkdir -p "$magisk_Module_path" && cp -r "$MODDIR/Magisk_Module" "$magisk_Module_path/recovery" && cp -r "$MODDIR/tools" "$magisk_Module_path/recovery" && cp -r "$magisk_Module_path/recovery/tools/Magisk_backup" "$magisk_Module_path/backup2.sh"
 	mkdir -p "$magisk_Module_path/cron.d" && mkdir -p "$backup_path"
-	tail -n +59 "$0" >"$magisk_Module_path/backup.sh"
+	tail -n +60 "$0" >"$magisk_Module_path/backup.sh"
 	unset PATH
 	sh "$magisk_Module_path/backup.sh" &
 	unset PATH

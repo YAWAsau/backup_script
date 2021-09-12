@@ -98,7 +98,7 @@ fi
 unset LD_LIBRARY_PATH LD_PRELOAD
 export PATH="$filepath:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin"
 export TZ=Asia/Taipei
-echo "驗證環境中 請稍後"
+[[ $Magisk = "" ]] && echo "驗證環境中 請稍後"
 ls -a "$tools_path" | sed -r '/^\.{1,2}$/d' | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read i; do
 	[[ ! -d $tools_path/$i ]] && {
 	[[ $(which "$i" | wc -l) != 1 ]] && echo "$i不存在環境中"
@@ -169,6 +169,7 @@ isBoolean() {
 	fi
 }
 bn=36
+[[ $Magisk = "" ]] && {
 echoRgb "-環境變數: $PATH
  -busybox版本:$(busybox | head -1 | awk '{print $2}')
  -appinfo版本:$(appinfo --version)
@@ -183,4 +184,5 @@ echoRgb "-環境變數: $PATH
  -臭批老k提供部分與驗證函數思路(kmou424)
  -屑老方提供自動更新腳本方案(雄氏老方)
  -依心所言&情非得已c提供appinfo替代aapt作為更高效的dump包名
- -胖子老陳(雨季騷年)"
+ -胖子老陳(雨季騷年) 笨批阿巴醬提供自動構建簡體版本"
+}
