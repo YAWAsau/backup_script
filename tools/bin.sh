@@ -9,13 +9,14 @@ arm64*)
 esac
 [[ $(getprop ro.build.version.release) -le 8 ]] && echo "設備Android版本過低 請升級至Android 9+" && exit 1
 #設置二進制命令目錄位置
-[[ -z $tools_path ]] && echo "未正確指定bin.sh位置" && exit 2
+[[ $tools_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
 filepath=/data/backup_tools
 #排除自身
 exclude="
 restore
 md5tmp
 md5check
+Magisk_backup
 restore2
 busybox_path
 bin.sh"
@@ -67,7 +68,7 @@ if [[ -d $tools_path ]]; then
 		else
 			"$busybox" --list | while read a; do
 				case $a in
-				tar|date) ;;
+				tar) ;;
 				*)
 					[[ ! -e $filepath/$a ]] && ln -s "$busybox" "$filepath/$a" && echo "$a > $filepath/$a"
 					;;
@@ -94,7 +95,9 @@ if [[ ! -e $busybox ]]; then
 	echo "不存在$busybox ...."
 	exit 1
 fi
-export PATH="$filepath:$PATH"
+unset LD_LIBRARY_PATH LD_PRELOAD
+export PATH="$filepath:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin"
+export TZ=Asia/Taipei
 echo "驗證環境中 請稍後"
 ls -a "$tools_path" | sed -r '/^\.{1,2}$/d' | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read i; do
 	[[ ! -d $tools_path/$i ]] && {
@@ -110,13 +113,13 @@ endtime() {
 	1) starttime="$starttime1" ;;
 	2) starttime="$starttime2" ;;
 	esac
-	endtime="$(date "+%Y-%m-%d %H:%M:%S")"
-	duration="$(echo $(($(date +%s -d "${endtime}") - $(date +%s -d "${starttime}"))) | awk '{t=split("60 秒 60 分 24 時 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')"
-	[[ -n $duration ]] && echoRgb "$2用時:$duration" || echoRgb "$2用時:0秒"
+	endtime="$(date -u "+%s")"
+	duration="$(echo $((endtime - starttime)) | awk '{t=split("60 秒 60 分 24 時 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')"
+	[[ $duration != "" ]] && echoRgb "$2用時:$duration" || echoRgb "$2用時:0秒"
 }
 echoRgb() {
 	#轉換echo顏色提高可讀性
-	if [[ -n $2 ]]; then
+	if [[ $2 != "" ]]; then
 		if [[ $3 = 0 ]]; then
 			echo -e "\e[1;31m $1\e[0m"
 		elif [[ $3 = 1 ]]; then
@@ -131,9 +134,9 @@ echoRgb() {
 	fi
 }
 Package_names() {
-	[[ -n $1 ]] && t1="$1"
+	[[ $1 != "" ]] && t1="$1"
 	t2="$(appinfo -o pn -pn "$t1" 2>/dev/null | head -1)"
-	[[ -n $t2 ]] && [[ $t2 = $1 ]] && echo "$t2"
+	[[ $t2 != "" ]] && [[ $t2 = $1 ]] && echo "$t2"
 }
 get_version() {
 	while :; do

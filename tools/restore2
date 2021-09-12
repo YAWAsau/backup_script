@@ -10,7 +10,7 @@ path2=/data/user/0
 [[ ! -d $path/obb ]] && echoRgb "設備不存在obb目錄" "0" "0" && exit 1
 [[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" "0" && exit 1
 #記錄開始時間
-starttime1="$(date +"%Y-%m-%d %H:%M:%S")"
+starttime1="$(date -u "+%s")"
 i=1
 #顯示執行結果
 echo_log() {
@@ -68,8 +68,8 @@ fi
 name="$PackageName"
 name2="$(basename "$Backup_folder"/恢復*.sh | sed 's/恢復//g' | sed 's/.sh//g')"
 echoRgb "恢複$name2 ($name)"
-starttime2="$(date +"%Y-%m-%d %H:%M:%S")"
-if [[ -z $(Package_names "$name") ]]; then
+starttime2="$(date -u "+%s")"
+if [[ $(Package_names "$name") = "" ]]; then
 	case $(find "$Backup_folder/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
 	1)
 		echoRgb "恢復普通apk"
@@ -97,7 +97,7 @@ if [[ -z $(Package_names "$name") ]]; then
 		fi
 		find "$Backup_folder" -maxdepth 1 -name "*.apk" -type f | while read i; do
 			ad="$(basename "$i" | grep -v 'nmsl.apk')"
-			if [[ -n $ad ]]; then
+			if [[ $ad != "" ]]; then
 				if [[ $selinux_result = 1 ]]; then
 					cp -r "$i" /data/local/tmp && pm install-write "$b" "$ad" "/data/local/tmp/$ad" >/dev/null 2>&1
 				else
@@ -115,7 +115,7 @@ else
 	echoRgb "存在當前系統中略過安裝Apk"
 fi
 zb="$(Package_names "$name")"
-if [[ -n $zb ]]; then
+if [[ $zb != "" ]]; then
 	[[ $zb = $name ]] && {
 	#停止軟件
 	[[ $name != $Open_apps ]] && am force-stop "$name"
@@ -128,7 +128,7 @@ if [[ -n $zb ]]; then
 	find "$Backup_folder" -name "*.tar*" -type f | while read i; do
 		Release_data "$i"
 	done
-	if [[ -d $X && -n $G ]]; then
+	if [[ -d $X && $G != "" ]]; then
 		echoRgb "路徑$X
  權限:$G:$G"
 		chown -R "$G:$G" "$X"

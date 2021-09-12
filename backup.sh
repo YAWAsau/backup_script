@@ -1,15 +1,15 @@
 #!/system/bin/sh
 MODDIR="${0%/*}"
 [[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
-[[ -z $(echo "$MODDIR" | grep -v 'mt') ]] && echo "我他媽骨灰給你揚了撒了TM不解壓縮？用毛線 憨批" && exit 1
+[[ $(echo "$MODDIR" | grep -v 'mt') = "" ]] && echo "我他媽骨灰給你揚了撒了TM不解壓縮？用毛線 憨批" && exit 1
 [[ $MODDIR = /storage/emulated/0/Android/* ]] && echo "請勿在$MODDIR內備份" && exit 2
 [[ ! -d $MODDIR/tools ]] && echo "$MODDIR/tools目錄遺失" && exit 1
 tools_path="$MODDIR/tools"
 . "$tools_path/bin.sh"
 . "$MODDIR/backup_settings.conf"
-if [[ $(pgrep -f "$(basename "$0")" | grep -v grep | wc -l) -gt 1 ]]; then
+if [[ $(pgrep -f "$(basename "$0")" | grep -v grep | wc -l) -ge 2 ]]; then
 	echoRgb "檢測到進程殘留，請重新執行腳本 已銷毀進程" "0" "0"
-	pgrep -f "backup.sh" | grep -v grep | while read i; do
+	pgrep -f "$(basename "$0")" | grep -v grep | while read i; do
 		kill -9 " $i" >/dev/null
 	done
 fi
@@ -36,7 +36,7 @@ fi
 PU="$(ls /dev/block/vold | grep public 2>/dev/null)"
 [[ ! -e $txt ]] && echoRgb "請執行appname.sh獲取軟件列表再來備份" "0" "0" && exit 1
 r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
-[[ -z $r ]] && echoRgb "爬..Apkname.txt是空的或是包名被注釋了這樣備份個鬼" "0" "0" && exit 1
+[[ $r = "" ]] && echoRgb "爬..Apkname.txt是空的或是包名被注釋了這樣備份個鬼" "0" "0" && exit 1
 data=/data
 hx="本地"
 if [[ $(pm path y.u.k) = "" ]]; then
@@ -44,20 +44,21 @@ if [[ $(pm path y.u.k) = "" ]]; then
 	if [[ $(getenforce) != Permissive ]]; then
 		setenforce 0 2>/dev/null
 		if [[ $? = 0 ]]; then
-			echoRgb "selinux關閉成功" "0" "1" && pm install -r "$MODDIR/tools/apk"/*.apk >/dev/null 2>&1 && echoRgb "安裝toast成功" || echoRgb "安裝toast失敗"
+			echoRgb "selinux關閉成功" "0" "1" && pm install -r "$MODDIR/tools/apk"/*.apk >/dev/null 2>&1
 		else
-			echoRgb "selinux關閉失敗 使用cp安裝toast" "0" "0" &&  cp -r "$MODDIR/tools/apk"/*.apk /data/local/tmp && pm install -r /data/local/tmp/*.apk >/dev/null 2>&1 && (rm -rf /data/local/tmp/* && echoRgb "安裝toast成功") || echoRgb "安裝toast失敗"
+			echoRgb "selinux關閉失敗 使用cp安裝toast" "0" "0" &&  cp -r "$MODDIR/tools/apk"/*.apk /data/local/tmp && pm install -r /data/local/tmp/*.apk >/dev/null 2>&1 && rm -rf /data/local/tmp/*
 		fi
 	else
-		pm install -r "$MODDIR/tools/apk"/*.apk >/dev/null 2>&1 && echoRgb "安裝toast成功" || echoRgb "安裝toast失敗"
+		pm install -r "$MODDIR/tools/apk"/*.apk >/dev/null 2>&1
 	fi
+	[[ $? = 0 ]] && echoRgb "安裝toast成功" "0" "1" || echoRgb "安裝toast失敗" "0" "0"
 fi
 echoRgb "-壓縮方式:$Compression_method"
 echoRgb "-提示 腳本支持後台壓縮 可以直接離開腳本
  -或是關閉終端也能備份 如需終止腳本
  -請再次執行$(basename "$0")即可停止
  -備份結束將發送toast提示語" "0" "2"
-if [[ -d /proc/scsi/usb-storage || -n $PU ]]; then
+if [[ -d /proc/scsi/usb-storage || $PU != "" ]]; then
 	PT="$(cat /proc/mounts | grep "$PU" | awk '{print $2}')"
 	echoRgb "檢測到usb 是否在usb備份
  音量上是，音量下不是"
@@ -72,7 +73,7 @@ else
 fi
 [[ ! -d $Backup ]] && mkdir "$Backup"
 [[ ! -e $Backup/name.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$Backup/name.txt"
-[[ ! -d $Backup/tools ]] && mkdir -p "$Backup/tools" && cp -r "$MODDIR/tools"/* "$Backup/tools" && rm -rf "$Backup/tools"/restore* && rm -rf "$Backup/tools/apk" && rm -rf "$Backup/tools/toast" 
+[[ ! -d $Backup/tools ]] && cp -r "$MODDIR/tools" "$Backup" && rm -rf "$Backup/tools"/restore* && rm -rf "$Backup/tools/apk" && rm -rf "$Backup/tools/toast" && rm -rf "$Backup/tools/Magisk_backup" && rm -rf "$Backup/tools/bash"
 [[ ! -e $Backup/還原備份.sh ]] && cp -r "$MODDIR/tools/restore" "$Backup/還原備份.sh"
 filesize="$(du -ks "$Backup" | awk '{print $1}')"
 #調用二進制
@@ -109,7 +110,7 @@ Backup_apk() {
 	#備份apk
 	apk_path="$(pm path "$name" | cut -f2 -d ':')"
 	echoRgb "$1"
-	[[ -z $(cat "$Backup/name.txt" | sed -e '/^$/d' | grep -w "$name" | head -1) ]] && echo "$name2 $name" >>"$Backup/name.txt"
+	[[ $(cat "$Backup/name.txt" | sed -e '/^$/d' | grep -w "$name" | head -1) = "" ]] && echo "$name2 $name" >>"$Backup/name.txt"
 	if [[ $apk_version = $(pm dump "$name" | grep -m 1 versionName | sed -n 's/.*=//p') ]]; then
 		unset xb
 		echoRgb "Apk版本無更新 跳過備份"
@@ -125,7 +126,7 @@ Backup_apk() {
 		echo_log "備份$apk_number個Apk"
 		if [[ $result = 0 ]]; then
 			echo "apk_version=$(pm dump "$name" | grep -m 1 versionName | sed -n 's/.*=//p')" >>"$app_details"
-			[[ -z $PackageName ]] && echo "PackageName=$name">>"$app_details"
+			[[ $PackageName = "" ]] && echo "PackageName=$name">>"$app_details"
 		fi
 	fi
 	if [[ $name = com.android.chrome ]]; then
@@ -158,7 +159,7 @@ Backup_data() {
 			data) Size="$dataSize" ;;
 			obb) Size="$obbSize" ;;
 		esac
-		if [[ -z $Size ]]; then
+		if [[ $Size = "" ]]; then
 			nsxg=1
 		else
 			if [[ $Size != $(du -ks "$data_path" | awk '{print $1}') ]]; then
@@ -168,7 +169,7 @@ Backup_data() {
 				unset nsxg
 			fi
 		fi
-		if [[ -n $nsxg ]]; then
+		if [[ $nsxg != "" ]]; then
 			compression "$1" "$data_path" "$Compression_method"
 			echo_log "備份$1數據"
 			[[ $result = 0 ]] && echo "$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
@@ -190,7 +191,7 @@ get_version "備份" "不備份" && B="$branch"
 bn=37
 #開始循環$txt內的資料進行備份
 #記錄開始時間
-starttime1="$(date +"%Y-%m-%d %H:%M:%S")"
+starttime1="$(date -u "+%s")"
 {
 while [[ $i -le $r ]]; do
 	echoRgb "備份第$i個應用 總共$r個 剩下$((r-i))個應用"
@@ -199,9 +200,9 @@ while [[ $i -le $r ]]; do
 	Backup_folder="$Backup/$name2($name)"
 	app_details="$Backup_folder/app_details"
 	[[ -e $app_details ]] && . "$app_details"
-	[[ -z $name ]] && echoRgb "警告! name.txt軟件包名獲取失敗，可能修改有問題" "0" "0" && exit 1
-	if [[ -n $(Package_names "$name") ]]; then
-		starttime2="$(date +"%Y-%m-%d %H:%M:%S")"
+	[[ $name = "" ]] && echoRgb "警告! name.txt軟件包名獲取失敗，可能修改有問題" "0" "0" && exit 1
+	if [[ $(Package_names "$name") != "" ]]; then
+		starttime2="$(date -u "+%s")"
 		echoRgb "備份$name2 ($name)"
 		[[ $name = com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
 		[[ $name = com.tencent.mm ]] && echo "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
@@ -218,7 +219,7 @@ while [[ $i -le $r ]]; do
 			[[ $name != $Open_apps ]] && am force-stop "$name"
 			Backup_apk "Split Apk支持備份"
 		fi
-		if [[ -n $D ]]; then
+		if [[ $D != "" ]]; then
 			[[ ! -e $Backup_folder/恢復$name2.sh ]] && cp -r "$MODDIR/tools/restore2" "$Backup_folder/恢復$name2.sh"
 			[[ $name = bin.mt.plus && -e $Backup_folder/base.apk ]] && cp -r "$Backup_folder/base.apk" "$Backup_folder.apk"
 			if [[ $B = true ]]; then

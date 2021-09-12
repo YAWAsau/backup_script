@@ -1,7 +1,7 @@
 #!/system/bin/sh
 MODDIR="${0%/*}"
 [[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
-[[ -z $(echo "$MODDIR" | grep -v 'mt') ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
+[[ $(echo "$MODDIR" | grep -v 'mt') = "" ]] && echo "草泥馬不解壓縮？用毛線 憨批" && exit 1
 [[ ! -d $MODDIR/tools ]] && echo "$MODDIR/tools目錄遺失" && exit 1
 tools_path="$MODDIR/tools"
 . "$tools_path/bin.sh"
@@ -11,12 +11,12 @@ path2=/data/user/0
 [[ ! -d $path/obb ]] && echoRgb "設備不存在obb目錄" "0" "0" && exit 1
 [[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" "0" && exit 1
 #記錄開始時間
-starttime1="$(date +"%Y-%m-%d %H:%M:%S")"
+starttime1="$(date -u "+%s")"
 i=1
 txt="$MODDIR/name.txt"
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 0
 r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
-[[ -z $r ]] && echoRgb "name.txt包名為空或是被注釋了" "0" "0" && exit 1
+[[ $r = "" ]] && echoRgb "name.txt包名為空或是被注釋了" "0" "0" && exit 1
 #顯示執行結果
 echo_log() {
 	if [[ $? = 0 ]]; then
@@ -73,11 +73,11 @@ while [[ $i -le $r ]]; do
 	name="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
 	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
 	Backup_folder="$MODDIR/$name2($name)"
-	[[ -z $name ]] && echoRgb "警告! name.txt軟件包名獲取失敗，可能修改有問題" "0" "0" && exit 1
-	if [[ -n $name && -d $Backup_folder ]]; then
+	[[ $name = "" ]] && echoRgb "警告! name.txt軟件包名獲取失敗，可能修改有問題" "0" "0" && exit 1
+	if [[ $name != "" && -d $Backup_folder ]]; then
 		echoRgb "恢複$name2 ($name)"
-		starttime2="$(date +"%Y-%m-%d %H:%M:%S")"
-		if [[ -z $(Package_names "$name") ]]; then
+		starttime2="$(date -u "+%s")"
+		if [[ $(Package_names "$name") = "" ]]; then
 			case $(find "$Backup_folder" -maxdepth 1 -name "*.apk" -type f | wc -l) in
 			1)
 				echoRgb "恢復普通apk"
@@ -105,7 +105,7 @@ while [[ $i -le $r ]]; do
 				fi
 				find "$Backup_folder" -maxdepth 1 -name "*.apk" -type f | while read i; do
 					ad="$(basename "$i" | grep -v 'nmsl.apk')"
-					if [[ -n $ad ]]; then
+					if [[ $ad != "" ]]; then
 						if [[ $selinux_result = 1 ]]; then
 							cp -r "$i" /data/local/tmp && pm install-write "$b" "$ad" "/data/local/tmp/$ad" >/dev/null 2>&1
 						else
@@ -123,7 +123,7 @@ while [[ $i -le $r ]]; do
 			echoRgb "存在當前系統中略過安裝Apk"
 		fi
 		zb="$(Package_names "$name")"
-		if [[ -n $zb ]]; then
+		if [[ $zb != "" ]]; then
 			[[ $zb = $name ]] && {
 			#停止軟件
 			[[ $name != $Open_apps ]] && am force-stop "$name"
@@ -136,7 +136,7 @@ while [[ $i -le $r ]]; do
 			find "$Backup_folder" -name "*.tar*" -type f | while read i; do
 				Release_data "$i"
 			done
-			if [[ -d $X && -n $G ]]; then
+			if [[ -d $X && $G != "" ]]; then
 				echoRgb "路徑$X
  權限:$G:$G"
 				chown -R "$G:$G" "$X"

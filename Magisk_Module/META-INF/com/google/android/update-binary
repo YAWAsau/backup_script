@@ -19,7 +19,6 @@ unzip -o "$ZIPFILE" 'tools/appinfo.dex' -d "$MODDIR"
 unzip -o "$ZIPFILE" 'tools/busybox' -d "$MODDIR"
 unzip -o "$ZIPFILE" 'tools/tar' -d "$MODDIR"
 unzip -o "$ZIPFILE" 'tools/zstd' -d "$MODDIR"
-unzip -o "$ZIPFILE" 'tools/lz4' -d "$MODDIR"
 unzip -o "$ZIPFILE" 'tools/restore' -d "$MODDIR"
 unzip -o "$ZIPFILE" 'tools/restore2' -d "$MODDIR"
 unzip -o "$ZIPFILE" 'script/Apkname.txt' -d "$MODDIR"
@@ -54,7 +53,7 @@ isBoolean "$C" && C="$nsx"
 isBoolean "$B" && B="$nsx"
 [[ ! -e $txt ]] && ui_print "$txt缺少" && exit 1
 r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
-[[ -z $r ]] && ui_print "爬..Apkname.txt是空的備份個鬼" && exit 0
+[[ $r = "" ]] && ui_print "爬..Apkname.txt是空的備份個鬼" && exit 0
 path=/data/media/0/Android
 path2=/data/data
 data=/data
@@ -104,8 +103,8 @@ Backup_apk() {
 		done
 	fi
 	echo_log "備份$apk_number個Apk"
-	[[ $result = 0 ]] && [[ -z $PackageName ]] && echo "PackageName=$name">>"$app_details"
-	[[ -z $(cat "$Backup/name.txt" | grep -v "#" | sed -e '/^$/d' | grep -w "$name" | head -1) ]] && echo "$name2 $name" >>"$Backup/name.txt"
+	[[ $result = 0 ]] && [[ $PackageName = "" ]] && echo "PackageName=$name">>"$app_details"
+	[[ $(cat "$Backup/name.txt" | grep -v "#" | sed -e '/^$/d' | grep -w "$name" | head -1) = "" ]] && echo "$name2 $name" >>"$Backup/name.txt"
 	if [[ $name = com.android.chrome ]]; then
 		#刪除所有舊apk ,保留一個最新apk進行備份
 		ReservedNum=1
@@ -142,14 +141,14 @@ endtime() {
 	1) starttime="$starttime1" ;;
 	2) starttime="$starttime2" ;;
 	esac
-	endtime="$(date "+%Y-%m-%d %H:%M:%S")"
-	duration="$(echo $(($(date +%s -d "${endtime}") - $(date +%s -d "${starttime}"))) | awk '{t=split("60 秒 60 分 24 時 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')"
-	[[ -n $duration ]] && ui_print "$2用時:$duration" || ui_print "$2用時:0秒"
+	endtime="$(date -u "+%s")"
+	duration="$(echo "$((endtime - starttime))" | awk '{t=split("60 秒 60 分 24 時 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')"
+	[[ $duration != "" ]] && ui_print "$2用時:$duration" || ui_print "$2用時:0秒"
 }
 bn=37
 #開始循環$txt內的資料進行備份
 #記錄開始時間
-starttime1="$(date +"%Y-%m-%d %H:%M:%S")"
+starttime1="$(date -u "+%s")"
 {
 while [[ $i -le $r ]]; do
 	ui_print "備份第$i個應用 總共$r個 剩下$((r-i))個應用"
@@ -159,11 +158,12 @@ while [[ $i -le $r ]]; do
 	Backup_folder="$Backup/$name2($name)"
 	app_details="$Backup_folder/app_details"
 	[[ -e $app_details ]] && . "$app_details"
-	[[ -z $name ]] && ui_print "警告! name.txt軟件包名獲取失敗，可能修改有問題" && exit 1
+	[[ $name = "" ]] && ui_print "警告! name.txt軟件包名獲取失敗，可能修改有問題" && exit 1
 	if [[ -d $apk_path ]]; then
-		starttime2="$(date +"%Y-%m-%d %H:%M:%S")"
+		starttime2="$(date -u "+%s")"
 		ui_print "備份$name2 ($name)"
-		[[ $name = com.tencent.mobileqq ]] && ui_print "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份" || [[ $name = com.tencent.mm ]] && ui_print "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
+		[[ $name = com.tencent.mobileqq ]] && ui_print "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
+		[[ $name = com.tencent.mm ]] && ui_print "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
 		apk_number="$(find "$apk_path/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)"
 		if [[ $apk_number = 1 ]]; then
 			if [[ $C = false ]]; then
@@ -175,7 +175,7 @@ while [[ $i -le $r ]]; do
 		else
 			Backup_apk "Split Apk支持備份"
 		fi
-		if [[ -n $D ]]; then
+		if [[ $D != "" ]]; then
 			#複製Mt安裝包到外部資料夾方便恢複
 			[[ ! -e $Backup_folder/恢復$name2.sh ]] && cp -r "$MODDIR/tools/restore2" "$Backup_folder/恢復$name2.sh"
 			[[ $name = bin.mt.plus && -e $Backup_folder/base.apk ]] && cp -r "$Backup_folder/base.apk" "$Backup_folder.apk"
