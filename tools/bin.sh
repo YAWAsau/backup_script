@@ -2,7 +2,7 @@ abi="$(getprop ro.product.cpu.abi)"
 case $abi in
 arm64*) 
 	case $(getprop ro.build.version.release) in 
-	8|9|10|11|12) ;;
+	8*|9|10|11|12) ;;
 	*) 
 		echo "設備Android $(getprop ro.build.version.release)版本過低 請升級至Android 9+" && exit 1
 		;;
