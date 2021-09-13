@@ -23,6 +23,7 @@ echo_log() {
 Release_data() {
 	FILE_NAME="$(basename "$1")"
 	FILE_NAME2="${FILE_NAME%%.*}"
+	echoRgb "恢復$FILE_NAME2數據" "0" "2"
 	case $FILE_NAME in
 	data.tar*| obb.tar*)
 		case $FILE_NAME in

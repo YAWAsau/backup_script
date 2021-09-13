@@ -1,13 +1,18 @@
 abi="$(getprop ro.product.cpu.abi)"
 case $abi in
 arm64*) 
+	case $(getprop ro.build.version.release) in 
+	8|9|10|11|12) ;;
+	*) 
+		echo "設備Android $(getprop ro.build.version.release)版本過低 請升級至Android 9+" && exit 1
+		;;
+	esac
 	;;
 *)
 	echo "-未知的架構: $abi"
 	exit 1
 	;;
 esac
-[[ $(getprop ro.build.version.release) -le 8 ]] && echo "設備Android版本過低 請升級至Android 9+" && exit 1
 #設置二進制命令目錄位置
 [[ $tools_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
 filepath=/data/backup_tools
@@ -57,7 +62,7 @@ if [[ -d $tools_path ]]; then
 				rm_busyPATH
 				"$busybox" --list | while read a; do
 					case $a in
-					tar|date) ;;
+					tar) ;;
 					*)
 						[[ ! -e $filepath/$a ]] && ln -s "$busybox" "$filepath/$a"
 					;;
@@ -95,9 +100,17 @@ if [[ ! -e $busybox ]]; then
 	echo "不存在$busybox ...."
 	exit 1
 fi
-unset LD_LIBRARY_PATH LD_PRELOAD
 export PATH="$filepath:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin"
+unset LD_LIBRARY_PATH LD_PRELOAD
 export TZ=Asia/Taipei
+{
+for lib in $(find /system/framework -type f -iname \*.jar); do
+    BOOTCLASSPATH="${lib}:${BOOTCLASSPATH};"
+done
+BOOTCLASSPATH="${BOOTCLASSPATH%%:}"
+export BOOTCLASSPATH
+} &
+wait
 [[ $Magisk = "" ]] && echo "驗證環境中 請稍後"
 ls -a "$tools_path" | sed -r '/^\.{1,2}$/d' | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read i; do
 	[[ ! -d $tools_path/$i ]] && {

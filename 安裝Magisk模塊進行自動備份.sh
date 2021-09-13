@@ -9,7 +9,7 @@ tools_path="$MODDIR/tools"
 magisk_Module_path="/data/adb/modules/backup"
 #備份資料夾路徑
 backup_path=/data/media/0/Android/backup_script
-[[ ! -d ${magisk_Module_path%/*} ]] && echoRgb "沒有安裝Magisk或是裝了Magisk Lite" "0" "0"
+[[ ! -d ${magisk_Module_path%/*} ]] && echoRgb "沒有安裝Magisk或是裝了Magisk Lite" "0" "0" && exit 2
 if [[ ! -d $magisk_Module_path ]]; then
 	echoRgb "不存在Magisk模塊 正在創建"
 	mkdir -p "$magisk_Module_path" && cp -r "$MODDIR/Magisk_Module" "$magisk_Module_path/recovery" && cp -r "$MODDIR/tools" "$magisk_Module_path/recovery" && cp -r "$magisk_Module_path/recovery/tools/Magisk_backup" "$magisk_Module_path/backup2.sh"
@@ -46,8 +46,8 @@ if [[ $(pgrep -f "backup/cron.d" | grep -v grep | wc -l) -ge 1 ]]; then
 	echo "$(date '+%T') backup: backup cron.d啟動成功">>/data/media/0/Android/backup_script/卡刷包生成資訊.txt
 fi
 '>>"$magisk_Module_path/service.sh"
-echo "0 */1 * * * $filepath/bash $magisk_Module_path/backup.sh
-0 03 * * * $filepath/bash $magisk_Module_path/backup2.sh">"$magisk_Module_path/cron.d/root"
+echo "0 */8 * * * $filepath/bash $magisk_Module_path/backup.sh
+15 07 * * * $filepath/bash $magisk_Module_path/backup2.sh">"$magisk_Module_path/cron.d/root"
 sh "$magisk_Module_path/service.sh"
 
 echo '#是否備份外部數據 即比如原神的數據包(1備份0不備份)

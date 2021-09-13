@@ -8,14 +8,6 @@ md5path="$MODDIR"
 tools_path="$MODDIR/tools"
 . "$tools_path/bin.sh"
 . "$MODDIR/backup_settings.conf"
-{
-for lib in $(find /system/framework -type f -iname \*.jar); do
-    BOOTCLASSPATH=${lib}:${BOOTCLASSPATH};
-done
-BOOTCLASSPATH=${BOOTCLASSPATH%%:}
-export BOOTCLASSPATH
-} &
-wait
 system="
 com.google.android.apps.messaging
 com.digibites.accubattery
