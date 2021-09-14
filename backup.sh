@@ -96,14 +96,6 @@ compression() {
 		*) echoRgb "你個憨批$3是什麼勾八" "0" "0" && rm -rf "$Backup" && exit 2
 			;;
 		esac ;;
-	media)
-		case $3 in
-		tar|Tar|TAR) tar -cPpf - "$2" 2>/dev/null | pv -terb >"$Backup/$1.tar" ;;
-		zstd|Zstd|ZSTD) tar -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -6 -q >"$Backup/$1.tar.zst" ;;
-		lz4|Lz4|LZ4) tar -cPpf - "$2" 2>/dev/null | pv -terb | lz4 -1 >"$Backup/$1.tar.lz4" ;;
-		*) echoRgb "你個憨批$3是什麼勾八" "0" "0" && rm -rf "$Backup" && exit 2
-			;;
-		esac ;;
 	esac
 }
 #顯示執行結果
