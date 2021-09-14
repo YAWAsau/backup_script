@@ -236,7 +236,6 @@ while [[ $i -le $r ]]; do
 	lxj="$(df -h "$data" | awk 'END{print $4}' | sed 's/%//g')"
 	[[ $lxj -ge 95 ]] && log "$data空間不足,達到$lxj%" && exit 2
 	let i++
-	exit
 done
 #計算出備份大小跟差異性
 filesizee="$(du -ks "$Backup" | awk '{print $1}')"
