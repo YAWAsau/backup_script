@@ -1,13 +1,11 @@
 #!/system/bin/sh
+test "$(id -u)" -ne 0 && echo "你是憨批？不給Root用你媽 爬" && exit 1
 MODDIR="${0%/*}"
-[[ $(id -u) -ne 0 ]] && echo "你是憨批？不給Root用你媽 爬" && exit 1
 [[ ! -d ${MODDIR%/*}/tools ]] && echo "${MODDIR%/*}/tools目錄遺失" && exit 1
 tools_path="${MODDIR%/*}/tools"
 . "$tools_path/bin.sh"
 path=/data/media/0/Android
 path2=/data/user/0
-[[ ! -d $path/data ]] && echoRgb "設備不存在data目錄" "0" "0" && exit 1
-[[ ! -d $path/obb ]] && echoRgb "設備不存在obb目錄" "0" "0" && exit 1
 [[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" "0" && exit 1
 #記錄開始時間
 starttime1="$(date -u "+%s")"

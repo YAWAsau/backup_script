@@ -191,6 +191,13 @@ while [[ $i -le $r ]]; do
 	log "備份第$i個應用 總共$r個 剩下$((r-i))個應用"
 	name="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
 	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+	if [[ $name2 = *! || $name2 = *！ ]]; then
+		name2=$(echo "$name2" | sed 's/!//g' | sed 's/！//g')
+		log "跳過備份$name2 所有數據" 
+		No_backupdata=1
+	else
+		[[ $No_backupdata != "" ]] && unset No_backupdata
+	fi
 	Backup_folder="$Backup/$name2($name)"
 	app_details="$Backup_folder/app_details"
 	[[ -e $app_details ]] && . "$app_details"
@@ -210,7 +217,8 @@ while [[ $i -le $r ]]; do
 		fi
 		[[ ! -e $Backup_folder/恢復$name2.sh ]] && cp -r "$tools_path/restore2" "$Backup_folder/恢復$name2.sh"
 		[[ $name = bin.mt.plus && -e $Backup_folder/base.apk ]] && cp -r "$Backup_folder/base.apk" "$Backup_folder.apk"
-		if [[ $B = 1 ]]; then
+		[[ $No_backupdata = "" ]] && {
+		if [[ $Backup_obb_data = true ]]; then
 			#備份data數據
 			Backup_data "data"
 			#備份obb數據
@@ -218,6 +226,7 @@ while [[ $i -le $r ]]; do
 		fi
 		#備份user數據
 		Backup_data "user"
+		}
 		endtime 2 "$name2備份"
 		log "完成$((i*100/r))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')"
 	else
@@ -227,6 +236,7 @@ while [[ $i -le $r ]]; do
 	lxj="$(df -h "$data" | awk 'END{print $4}' | sed 's/%//g')"
 	[[ $lxj -ge 95 ]] && log "$data空間不足,達到$lxj%" && exit 2
 	let i++
+	exit
 done
 #計算出備份大小跟差異性
 filesizee="$(du -ks "$Backup" | awk '{print $1}')"

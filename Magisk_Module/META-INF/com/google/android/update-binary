@@ -49,7 +49,7 @@ export PATH="$MODDIR/xbin:$MODDIR/tools:$PATH"
 . "$MODDIR/script/backup_settings.conf"
 i=1
 txt="$MODDIR/script/Apkname.txt"
-isBoolean "$C" && C="$nsx"
+isBoolean "$Splist" && C="$nsx"
 isBoolean "$B" && B="$nsx"
 [[ ! -e $txt ]] && ui_print "$txt缺少" && exit 1
 r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
@@ -166,7 +166,7 @@ while [[ $i -le $r ]]; do
 		[[ $name = com.tencent.mm ]] && ui_print "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
 		apk_number="$(find "$apk_path/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)"
 		if [[ $apk_number = 1 ]]; then
-			if [[ $C = false ]]; then
+			if [[ $Splist = false ]]; then
 				Backup_apk "非Split Apk"
 			else
 				ui_print "非Split Apk跳過備份"
@@ -179,7 +179,7 @@ while [[ $i -le $r ]]; do
 			#複製Mt安裝包到外部資料夾方便恢複
 			[[ ! -e $Backup_folder/恢復$name2.sh ]] && cp -r "$MODDIR/tools/restore2" "$Backup_folder/恢復$name2.sh"
 			[[ $name = bin.mt.plus && -e $Backup_folder/base.apk ]] && cp -r "$Backup_folder/base.apk" "$Backup_folder.apk"
-			if [[ $B = true ]]; then
+			if [[ $Backup_obb_data = true ]]; then
 				#備份data數據
 				Backup_data data
 				#備份obb數據

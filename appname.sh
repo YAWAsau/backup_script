@@ -1,6 +1,6 @@
 #!/system/bin/sh
 MODDIR="${0%/*}"
-[ $(id -u) != 0 ] && echo " 你是憨批？不給Root用你媽 爬" && exit 1
+test "$(id -u)" -ne 0 && echo "你是憨批？不給Root用你媽 爬" && exit 1
 [[ $(echo "$MODDIR" | grep -v 'mt') = "" ]] && echo "我他媽骨灰給你揚了撒了TM不解壓縮？用毛線 憨批" && exit 1
 [[ ! -d $MODDIR/tools ]] && echo " $MODDIR/tools目錄遺失" && exit 1
 #鏈接腳本設置環境變量
@@ -36,7 +36,8 @@ rm -rf "$MODDIR/tmp"
 starttime1="$(date -u "+%s")"
 appinfo -d " " -o ands,pn -pn $system $(get_launcher) -3 2>/dev/null | sort | while read name; do
 	[[ $bn -ge 37 ]] && bn=31
-	[[ ! -e $nametxt ]] && echo "#不需要備份的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$nametxt"
+	[[ ! -e $nametxt ]] && echo '#不需要備份的應用請在開頭注釋# 比如#酷安 com.coolapk.market
+#不需要備份數據比如酷安! com.coolapk.market軟件名後方加一個驚嘆號即可 注意是軟件名不是包名' >"$nametxt"
 	if [[ $(cat "$nametxt" | sed -e '/^$/d' | grep -w "$name" | wc -l) = 0 ]]; then
 		echo "$name" >>"$nametxt" && xz=1 && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
 		echoRgb "$i.$name"

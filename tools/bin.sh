@@ -1,12 +1,7 @@
 abi="$(getprop ro.product.cpu.abi)"
 case $abi in
 arm64*) 
-	case $(getprop ro.build.version.release) in 
-	8*|9|10|11|12) ;;
-	*) 
-		echo "設備Android $(getprop ro.build.version.release)版本過低 請升級至Android 9+" && exit 1
-		;;
-	esac
+	[[ $(getprop ro.build.version.sdk) -lt 28 ]] && echo "設備Android $(getprop ro.build.version.release)版本過低 請升級至Android 9+" && exit 1
 	;;
 *)
 	echo "-未知的架構: $abi"
@@ -111,12 +106,6 @@ BOOTCLASSPATH="${BOOTCLASSPATH%%:}"
 export BOOTCLASSPATH
 } &
 wait
-[[ $Magisk = "" ]] && echo "驗證環境中 請稍後"
-ls -a "$tools_path" | sed -r '/^\.{1,2}$/d' | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read i; do
-	[[ ! -d $tools_path/$i ]] && {
-	[[ $(which "$i" | wc -l) != 1 ]] && echo "$i不存在環境中"
-	}
-done
 Open_apps="$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")"
 
 #下列為自定義函數
