@@ -49,8 +49,8 @@ export PATH="$MODDIR/xbin:$MODDIR/tools:$PATH"
 . "$MODDIR/script/backup_settings.conf"
 i=1
 txt="$MODDIR/script/Apkname.txt"
-isBoolean "$Splist" && C="$nsx"
-isBoolean "$B" && B="$nsx"
+isBoolean "$Splist" && Splist="$nsx"
+isBoolean "$Backup_obb_data" && Backup_obb_data="$nsx"
 [[ ! -e $txt ]] && ui_print "$txt缺少" && exit 1
 r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 [[ $r = "" ]] && ui_print "爬..Apkname.txt是空的備份個鬼" && exit 0

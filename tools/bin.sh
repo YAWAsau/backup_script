@@ -27,12 +27,8 @@ rm_busyPATH() {
 	fi
 	[[ ! -e $tools_path/busybox_path ]] && touch "$tools_path/busybox_path"
 	if [[ $filepath != $(cat "$tools_path/busybox_path") ]]; then
-		if [[ -d $(cat "$tools_path/busybox_path") ]]; then
-			rm -rf "$(cat "$tools_path/busybox_path")"
-			echo "$filepath">"$tools_path/busybox_path"
-		else
-			echo "$filepath">"$tools_path/busybox_path"
-		fi
+		[[ -d $(cat "$tools_path/busybox_path") ]] && rm -rf "$(cat "$tools_path/busybox_path")"
+		echo "$filepath">"$tools_path/busybox_path"
 	fi
 }
 rm_busyPATH
@@ -56,23 +52,13 @@ if [[ -d $tools_path ]]; then
 			if [[ $i = busybox ]]; then
 				rm_busyPATH
 				"$busybox" --list | while read a; do
-					case $a in
-					tar) ;;
-					*)
-						[[ ! -e $filepath/$a ]] && ln -s "$busybox" "$filepath/$a"
-					;;
-					esac
+					[[ $a != tar && ! -e $filepath/$a ]] && ln -s "$busybox" "$filepath/$a"
 				done
 				echo "busybox設置完成"
 			fi
 		else
 			"$busybox" --list | while read a; do
-				case $a in
-				tar) ;;
-				*)
-					[[ ! -e $filepath/$a ]] && ln -s "$busybox" "$filepath/$a" && echo "$a > $filepath/$a"
-					;;
-				esac
+				[[ $a != tar && ! -e $filepath/$a ]] && ln -s "$busybox" "$filepath/$a" && echo "$a > $filepath/$a"
 			done
 			filemd5="$(md5sum "$filepath/$i" | cut -d" " -f1)"
 			filemd5_1="$(md5sum "$tools_path/$i" | cut -d" " -f1)"
@@ -90,6 +76,7 @@ else
 	echo "遺失$tools_path"
 	exit 1
 fi
+
 #工具絕對位置
 if [[ ! -e $busybox ]]; then
 	echo "不存在$busybox ...."
@@ -98,14 +85,6 @@ fi
 export PATH="$filepath:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin"
 unset LD_LIBRARY_PATH LD_PRELOAD
 export TZ=Asia/Taipei
-{
-for lib in $(find /system/framework -type f -iname \*.jar); do
-    BOOTCLASSPATH="${lib}:${BOOTCLASSPATH};"
-done
-BOOTCLASSPATH="${BOOTCLASSPATH%%:}"
-export BOOTCLASSPATH
-} &
-wait
 Open_apps="$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")"
 
 #下列為自定義函數
@@ -134,11 +113,6 @@ echoRgb() {
 	else
 		echo -e "\e[1;${bn}m $1\e[0m"
 	fi
-}
-Package_names() {
-	[[ $1 != "" ]] && t1="$1"
-	t2="$(appinfo -o pn -pn "$t1" 2>/dev/null | head -1)"
-	[[ $t2 != "" ]] && [[ $t2 = $1 ]] && echo "$t2"
 }
 get_version() {
 	while :; do

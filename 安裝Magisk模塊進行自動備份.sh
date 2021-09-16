@@ -15,14 +15,24 @@ if [[ ! -d $magisk_Module_path ]]; then
 	echoRgb "不存在Magisk模塊 正在創建"
 	mkdir -p "$magisk_Module_path" && cp -r "$MODDIR/Magisk_Module" "$magisk_Module_path/recovery" && cp -r "$MODDIR/tools" "$magisk_Module_path/recovery" && cp -r "$magisk_Module_path/recovery/tools/Magisk_backup" "$magisk_Module_path/backup2.sh"
 	mkdir -p "$magisk_Module_path/cron.d" && mkdir -p "$backup_path"
-	tail -n +61 "$0" >"$magisk_Module_path/backup.sh"
+	tail -n +74 "$0" >"$magisk_Module_path/backup.sh"
 	unset PATH
 	sh "$magisk_Module_path/backup.sh" &
 	unset PATH
 	. $MODDIR/appname.sh
 	echoRgb "請編輯$nametxt中需要自動備份的軟件(不包含卡刷包備份)"
 else
-	echoRgb "滾你媽的 已經裝過了別再裝了 傻逼" "0" "0" && exit 2
+	. $magisk_Module_path/module.prop
+	[[ $version != 8.8.9 ]] && echoRgb "更新模塊"
+	rm -rf "$magisk_Module_path"
+	mkdir -p "$magisk_Module_path" && cp -r "$MODDIR/Magisk_Module" "$magisk_Module_path/recovery" && cp -r "$MODDIR/tools" "$magisk_Module_path/recovery" && cp -r "$magisk_Module_path/recovery/tools/Magisk_backup" "$magisk_Module_path/backup2.sh"
+	mkdir -p "$magisk_Module_path/cron.d" && mkdir -p "$backup_path"
+	tail -n +61 "$0" >"$magisk_Module_path/backup.sh"
+	unset PATH
+	sh "$magisk_Module_path/backup.sh" &
+	unset PATH
+	. $MODDIR/appname.sh
+	echoRgb "請編輯$nametxt中需要自動備份的軟件(不包含卡刷包備份)"
 fi
 echo 'id=backup
 name=數據備份
@@ -39,14 +49,17 @@ until [[ $(getprop sys.boot_completed) -eq 1 && $(dumpsys window policy | grep "
 	[[ $wait_start -ge 180 ]] && exit 1
 	let wait_start++
 done
-MODDIR=${0%/*}'>"$magisk_Module_path/service.sh"
-echo "alias busybox=$filepath/busybox">>"$magisk_Module_path/service.sh"
-echo 'chmod -R 777 "$MODDIR"
-busybox crond -c "$MODDIR/cron.d"
-if [[ $(pgrep -f "backup/cron.d" | grep -v grep | wc -l) -ge 1 ]]; then
-	echo "$(date '+%T') backup: backup cron.d啟動成功">>/data/media/0/Android/backup_script/卡刷包生成資訊.txt
+MODDIR=${0%/*}
+if [[ -e $(magisk --path)/.magisk/busybox/crond ]]; then
+	alias crond="$(magisk --path)/.magisk/busybox/crond"
+else
+	echo "沒有crond" && exit 2
 fi
-'>>"$magisk_Module_path/service.sh"
+chmod -R 777 "$MODDIR"
+crond -c "$MODDIR/cron.d"
+if [[ $(pgrep -f "backup/cron.d" | grep -v grep | wc -l) -ge 1 ]]; then
+	echo "$(date +%T) backup: backup cron.d啟動成功">>/data/media/0/Android/backup_script/卡刷包生成資訊.txt
+fi'>>"$magisk_Module_path/service.sh"
 echo "0 */8 * * * $filepath/bash $magisk_Module_path/backup.sh
 15 07 * * * $filepath/bash $magisk_Module_path/backup2.sh">"$magisk_Module_path/cron.d/root"
 sh "$magisk_Module_path/service.sh"

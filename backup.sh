@@ -122,13 +122,12 @@ Backup_apk() {
 		if [[ $apk_number = 1 ]]; then
 			cp -r "$apk_path" "$Backup_folder/"
 		else
-			pm path "$name" | cut -f2 -d ':' | while read aof; do
-				cp -r "$aof" "$Backup_folder/"
-			done
+			apk_path="$(pm path "$name" | cut -f2 -d ':' | head -1)"
+			cp -r "${apk_path%/*}"/*.apk "$Backup_folder/"
 		fi
 		echo_log "備份$apk_number個Apk"
 		if [[ $result = 0 ]]; then
-			echo "apk_version=$(pm dump "$name" | grep -m 1 versionName | sed -n 's/.*=//p')" >>"$app_details"
+			echo "apk_version=$(appinfo -o vc -pn "$name")" >>"$app_details"
 			[[ $PackageName = "" ]] && echo "PackageName=$name">>"$app_details"
 		fi
 	fi
@@ -211,7 +210,7 @@ while [[ $i -le $r ]]; do
 	app_details="$Backup_folder/app_details"
 	[[ -e $app_details ]] && . "$app_details"
 	[[ $name = "" ]] && echoRgb "警告! name.txt軟件包名獲取失敗，可能修改有問題" "0" "0" && exit 1
-	if [[ $(Package_names "$name") != "" ]]; then
+	if [[ $(pm path "$name") != "" ]]; then
 		starttime2="$(date -u "+%s")"
 		echoRgb "備份$name2 ($name)"
 		[[ $name = com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
@@ -229,7 +228,7 @@ while [[ $i -le $r ]]; do
 			[[ $name != $Open_apps ]] && am force-stop "$name"
 			Backup_apk "Split Apk支持備份"
 		fi
-		if [[ $D != "" ]]; then
+		if [[ $D != ""  && $result = 0 ]]; then
 			[[ ! -e $Backup_folder/恢復$name2.sh ]] && cp -r "$MODDIR/tools/restore2" "$Backup_folder/恢復$name2.sh"
 			[[ $name = bin.mt.plus && -e $Backup_folder/base.apk ]] && cp -r "$Backup_folder/base.apk" "$Backup_folder.apk"
 			[[ $No_backupdata = "" ]] && {

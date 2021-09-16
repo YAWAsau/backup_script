@@ -76,7 +76,7 @@ while [[ $i -le $r ]]; do
 	if [[ $name != "" && -d $Backup_folder ]]; then
 		echoRgb "恢複$name2 ($name)"
 		starttime2="$(date -u "+%s")"
-		if [[ $(Package_names "$name") = "" ]]; then
+		if [[ $(pm path "$name") = "" ]]; then
 			case $(find "$Backup_folder" -maxdepth 1 -name "*.apk" -type f | wc -l) in
 			1)
 				echoRgb "恢復普通apk"
@@ -121,7 +121,7 @@ while [[ $i -le $r ]]; do
 		else
 			echoRgb "存在當前系統中略過安裝Apk"
 		fi
-		zb="$(Package_names "$name")"
+		zb="$(pm list packages | grep -w "$name" | sed 's/package://g')"
 		if [[ $zb != "" ]]; then
 			[[ $zb = $name ]] && {
 			#停止軟件
@@ -141,7 +141,7 @@ while [[ $i -le $r ]]; do
 				chown -R "$G:$G" "$X"
 				echo_log "數據恢複"
 			fi
-			}
+			} || echoRgb "E $zb != $name" "0" "0"
 		else
 			echoRgb "Apk沒有安裝無法恢復數據" "0" "0"
 		fi

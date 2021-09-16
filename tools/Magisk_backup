@@ -18,6 +18,9 @@ com.google.android.apps.messaging
 com.digibites.accubattery
 com.google.android.inputmethod.latin
 com.android.chrome"
+#充電狀態
+status="$(dumpsys deviceidle get charging)"
+[[ $status != true ]] && log "非充電狀態 跳過備份"
 get_launcher() {
 	if [[ $(getprop ro.build.version.sdk) -gt 27 ]]; then
 		# 获取默认桌面
@@ -202,7 +205,7 @@ while [[ $i -le $r ]]; do
 	app_details="$Backup_folder/app_details"
 	[[ -e $app_details ]] && . "$app_details"
 	[[ $name = "" ]] && log "警告! name.txt軟件包名獲取失敗，可能修改有問題" && exit 1
-	if [[ $(Package_names "$name") != "" ]]; then
+	if [[ $(pm path "$name") != "" ]]; then
 		starttime2="$(date -u "+%s")"
 		log "備份$name2 ($name)"
 		[[ $name = com.tencent.mobileqq ]] && log "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
