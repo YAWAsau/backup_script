@@ -228,10 +228,9 @@ while [[ $i -le $r ]]; do
 			[[ $name != $Open_apps ]] && am force-stop "$name"
 			Backup_apk "Split Apk支持備份"
 		fi
-		if [[ $D != ""  && $result = 0 ]]; then
+		if [[ $D != ""  && $result = 0 && $No_backupdata = "" ]]; then
 			[[ ! -e $Backup_folder/恢復$name2.sh ]] && cp -r "$MODDIR/tools/restore2" "$Backup_folder/恢復$name2.sh"
 			[[ $name = bin.mt.plus && -e $Backup_folder/base.apk ]] && cp -r "$Backup_folder/base.apk" "$Backup_folder.apk"
-			[[ $No_backupdata = "" ]] && {
 			if [[ $Backup_obb_data = true ]]; then
 				#備份data數據
 				Backup_data "data"
@@ -240,7 +239,6 @@ while [[ $i -le $r ]]; do
 			fi
 			#備份user數據
 			Backup_data "user"
-			}
 		fi
 		endtime 2 "$name2備份"
 		echoRgb "完成$((i*100/r))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')"

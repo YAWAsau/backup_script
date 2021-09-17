@@ -15,28 +15,32 @@ if [[ ! -d $magisk_Module_path ]]; then
 	echoRgb "不存在Magisk模塊 正在創建"
 	mkdir -p "$magisk_Module_path" && cp -r "$MODDIR/Magisk_Module" "$magisk_Module_path/recovery" && cp -r "$MODDIR/tools" "$magisk_Module_path/recovery" && cp -r "$magisk_Module_path/recovery/tools/Magisk_backup" "$magisk_Module_path/backup2.sh"
 	mkdir -p "$magisk_Module_path/cron.d" && mkdir -p "$backup_path"
-	tail -n +74 "$0" >"$magisk_Module_path/backup.sh"
+	tail -n +78 "$0" >"$magisk_Module_path/backup.sh"
 	unset PATH
 	sh "$magisk_Module_path/backup.sh" &
 	unset PATH
-	. $MODDIR/appname.sh
+	. "$MODDIR/appname.sh"
 	echoRgb "請編輯$nametxt中需要自動備份的軟件(不包含卡刷包備份)"
 else
 	. $magisk_Module_path/module.prop
-	[[ $version != 8.8.9 ]] && echoRgb "更新模塊"
-	rm -rf "$magisk_Module_path"
-	mkdir -p "$magisk_Module_path" && cp -r "$MODDIR/Magisk_Module" "$magisk_Module_path/recovery" && cp -r "$MODDIR/tools" "$magisk_Module_path/recovery" && cp -r "$magisk_Module_path/recovery/tools/Magisk_backup" "$magisk_Module_path/backup2.sh"
-	mkdir -p "$magisk_Module_path/cron.d" && mkdir -p "$backup_path"
-	tail -n +61 "$0" >"$magisk_Module_path/backup.sh"
-	unset PATH
-	sh "$magisk_Module_path/backup.sh" &
-	unset PATH
-	. $MODDIR/appname.sh
-	echoRgb "請編輯$nametxt中需要自動備份的軟件(不包含卡刷包備份)"
+	if [[ $version != 8.8.9 ]]; then
+		rm -rf "$magisk_Module_path"
+		mkdir -p "$magisk_Module_path" && cp -r "$MODDIR/Magisk_Module" "$magisk_Module_path/recovery" && cp -r "$MODDIR/tools" "$magisk_Module_path/recovery" && cp -r "$magisk_Module_path/recovery/tools/Magisk_backup" "$magisk_Module_path/backup2.sh"
+		mkdir -p "$magisk_Module_path/cron.d" && mkdir -p "$backup_path"
+		tail -n +61 "$0" >"$magisk_Module_path/backup.sh"
+		unset PATH
+		sh "$magisk_Module_path/backup.sh" &
+		unset PATH
+		. "$MODDIR/appname.sh"
+		echoRgb "更新模塊"
+		echoRgb "請編輯$nametxt中需要自動備份的軟件(不包含卡刷包備份)"
+	else
+		echoRgb "無須更新模塊"
+	fi
 fi
 echo 'id=backup
 name=數據備份
-version=8.8.9
+version=9.1
 versionCode=1
 author=落葉淒涼(高雄佬) 
 description=自動生成卡刷包並於間隔一小時監控第三方軟件數量進行卡刷包生成服務，防止突然不能開機時丟失軟件 生成的卡刷包必須進入recovery刷入進行備份 凌晨3點進行總體數據備份'>"$magisk_Module_path/module.prop"

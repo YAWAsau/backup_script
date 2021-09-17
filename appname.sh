@@ -38,7 +38,7 @@ appinfo -d " " -o ands,pn -pn $system $(get_launcher) -3 2>/dev/null | sort | wh
 	[[ $bn -ge 37 ]] && bn=31
 	[[ ! -e $nametxt ]] && echo '#不需要備份的應用請在開頭注釋# 比如#酷安 com.coolapk.market
 #不需要備份數據比如酷安! com.coolapk.market軟件名後方加一個驚嘆號即可 注意是軟件名不是包名' >"$nametxt"
-	if [[ $(cat "$nametxt" | sed -e '/^$/d' | grep -w "$name" | wc -l) = 0 ]]; then
+	if [[ $(cat "$nametxt" | sed -e '/^$/d' | sed 's/!//g' | sed 's/！//g' | grep -w "$name") = ""   ]]; then
 		echo "$name" >>"$nametxt" && xz=1 && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
 		echoRgb "$i.$name"
 	else

@@ -154,6 +154,13 @@ while [[ $i -le $r ]]; do
 	ui_print "備份第$i個應用 總共$r個 剩下$((r-i))個應用"
 	name="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
 	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+	if [[ $name2 = *! || $name2 = *！ ]]; then
+		name2=$(echo "$name2" | sed 's/!//g' | sed 's/！//g')
+		ui_print "跳過備份$name2 所有數據" "0" "0"
+		No_backupdata=1
+	else
+		[[ $No_backupdata != "" ]] && unset No_backupdata
+	fi
 	apk_path="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $3}')"
 	Backup_folder="$Backup/$name2($name)"
 	app_details="$Backup_folder/app_details"
@@ -179,14 +186,16 @@ while [[ $i -le $r ]]; do
 			#複製Mt安裝包到外部資料夾方便恢複
 			[[ ! -e $Backup_folder/恢復$name2.sh ]] && cp -r "$MODDIR/tools/restore2" "$Backup_folder/恢復$name2.sh"
 			[[ $name = bin.mt.plus && -e $Backup_folder/base.apk ]] && cp -r "$Backup_folder/base.apk" "$Backup_folder.apk"
+			[[ $No_backupdata = "" ]] && {
 			if [[ $Backup_obb_data = true ]]; then
 				#備份data數據
-				Backup_data data
+				Backup_data "data"
 				#備份obb數據
-				Backup_data obb
+				Backup_data "obb"
 			fi
 			#備份user數據
-			Backup_data user
+			Backup_data "user"
+			}
 			endtime 2 "$name2備份"
 		fi
 		ui_print "完成$((i*100/r))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')"
