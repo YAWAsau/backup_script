@@ -108,7 +108,7 @@ Backup_apk() {
 	apk_path="$(pm path "$name" | cut -f2 -d ':')"
 	log "$1"
 	[[ $(cat "$Backup/name.txt" | sed -e '/^$/d' | grep -w "$name" | head -1) = "" ]] && echo "$name2 $name" >>"$Backup/name.txt"
-	if [[ $apk_version = $(pm dump "$name" | grep -m 1 versionName | sed -n 's/.*=//p') ]]; then
+	if [[ $apk_version = $(appinfo -o vc -pn "$name") ]]; then
 		unset xb
 		log "Apk版本無更新 跳過備份"
 	else
@@ -122,7 +122,7 @@ Backup_apk() {
 		fi
 		echo_log "備份$apk_number個Apk"
 		if [[ $result = 0 ]]; then
-			echo "apk_version=$(pm dump "$name" | grep -m 1 versionName | sed -n 's/.*=//p')" >>"$app_details"
+			echo "apk_version=$(appinfo -o vc -pn "$name")" >>"$app_details"
 			[[ $PackageName = "" ]] && echo "PackageName=$name">>"$app_details"
 		fi
 	fi

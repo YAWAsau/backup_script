@@ -15,19 +15,18 @@ if [[ ! -d $magisk_Module_path ]]; then
 	echoRgb "不存在Magisk模塊 正在創建"
 	mkdir -p "$magisk_Module_path" && cp -r "$MODDIR/Magisk_Module" "$magisk_Module_path/recovery" && cp -r "$MODDIR/tools" "$magisk_Module_path/recovery" && cp -r "$magisk_Module_path/recovery/tools/Magisk_backup" "$magisk_Module_path/backup2.sh"
 	mkdir -p "$magisk_Module_path/cron.d" && mkdir -p "$backup_path"
-	tail -n +78 "$0" >"$magisk_Module_path/backup.sh"
+	tail -n +77 "$0" >"$magisk_Module_path/backup.sh"
 	unset PATH
 	sh "$magisk_Module_path/backup.sh" &
 	unset PATH
 	. "$MODDIR/appname.sh"
 	echoRgb "請編輯$nametxt中需要自動備份的軟件(不包含卡刷包備份)"
 else
-	. $magisk_Module_path/module.prop
-	if [[ $version != 8.8.9 ]]; then
+	if [[ $(grep_prop version "$magisk_Module_path/module.prop") != 9.1 ]]; then
 		rm -rf "$magisk_Module_path"
 		mkdir -p "$magisk_Module_path" && cp -r "$MODDIR/Magisk_Module" "$magisk_Module_path/recovery" && cp -r "$MODDIR/tools" "$magisk_Module_path/recovery" && cp -r "$magisk_Module_path/recovery/tools/Magisk_backup" "$magisk_Module_path/backup2.sh"
 		mkdir -p "$magisk_Module_path/cron.d" && mkdir -p "$backup_path"
-		tail -n +61 "$0" >"$magisk_Module_path/backup.sh"
+		tail -n +77 "$0" >"$magisk_Module_path/backup.sh"
 		unset PATH
 		sh "$magisk_Module_path/backup.sh" &
 		unset PATH
@@ -35,7 +34,7 @@ else
 		echoRgb "更新模塊"
 		echoRgb "請編輯$nametxt中需要自動備份的軟件(不包含卡刷包備份)"
 	else
-		echoRgb "無須更新模塊"
+		echoRgb "無須更新模塊" && exit
 	fi
 fi
 echo 'id=backup

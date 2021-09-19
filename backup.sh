@@ -114,7 +114,7 @@ Backup_apk() {
 	apk_path="$(pm path "$name" | cut -f2 -d ':')"
 	echoRgb "$1"
 	[[ $(cat "$Backup/name.txt" | sed -e '/^$/d' | grep -w "$name" | head -1) = "" ]] && echo "$name2 $name" >>"$Backup/name.txt"
-	if [[ $apk_version = $(pm dump "$name" | grep -m 1 versionName | sed -n 's/.*=//p') ]]; then
+	if [[ $apk_version = $(appinfo -o vc -pn "$name") ]]; then
 		unset xb
 		echoRgb "Apk版本無更新 跳過備份"
 	else

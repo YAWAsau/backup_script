@@ -162,3 +162,10 @@ echoRgb "-環境變數: $PATH
  -依心所言&情非得已c提供appinfo替代aapt作為更高效的dump包名
  -胖子老陳(雨季騷年) 笨批阿巴醬提供自動構建簡體版本"
 }
+
+grep_prop() {
+	local REGEX="s/^$1=//p"
+	shift
+	local FILES="$@"
+	cat "$FILES" 2>/dev/null | dos2unix | sed -n "$REGEX" | head -n 1
+}
