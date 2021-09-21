@@ -76,17 +76,17 @@ compression() {
 	case $1 in
 	obb|data)
 		case $3 in
-		tar|Tar|TAR) tar -cPpf - "$2" 2>/dev/null | pv -terb >"$Backup_folder/$1.tar" ;;
-		zstd|Zstd|ZSTD) tar -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
-		lz4|Lz4|LZ4) tar -cPpf - "$2" 2>/dev/null | pv -terb | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+		tar|Tar|TAR) tar -cPpf - "$2" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
+		zstd|Zstd|ZSTD) tar -cPpf - "$2" 2>/dev/null | pv | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
+		lz4|Lz4|LZ4) tar -cPpf - "$2" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 		*) echoRgb "你個憨批$3是什麼勾八" "0" "0" && rm -rf "$Backup" && exit 2
 			;;
 		esac ;;
 	user)
 		case $3 in
-		tar|Tar|TAR) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv -terb >"$Backup_folder/$1.tar" ;;
-		zstd|Zstd|ZSTD) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv -terb | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
-		lz4|Lz4|LZ4) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv -terb | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+		tar|Tar|TAR) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
+		zstd|Zstd|ZSTD) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv  | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
+		lz4|Lz4|LZ4) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 		*) echoRgb "你個憨批$3是什麼勾八" "0" "0" && rm -rf "$Backup" && exit 2
 			;;
 		esac ;;
@@ -120,6 +120,7 @@ Backup_apk() {
 			[[ $PackageName = "" ]] && echo "PackageName=$name">>"$app_details"
 		fi
 	fi
+	[[ $name = bin.mt.plus && -e $Backup_folder/base.apk ]] && cp -r "$Backup_folder/base.apk" "$Backup_folder.apk"
 	if [[ $name = com.android.chrome ]]; then
 		#刪除所有舊apk ,保留一個最新apk進行備份
 		ReservedNum=1
@@ -135,7 +136,7 @@ Backup_apk() {
 			echo_log "備份com.google.android.trichromelibrary"
 		fi
 	fi
-	D=1
+	unset PackageName ; D=1
 }
 #檢測數據位置進行備份
 Backup_data() {
@@ -220,10 +221,8 @@ while [[ $i -le $r ]]; do
 			[[ $name != $Open_apps ]] && am force-stop "$name"
 			Backup_apk "Split Apk支持備份"
 		fi
-		unset PackageName
 		if [[ $D != ""  && $result = 0 && $No_backupdata = "" ]]; then
 			[[ ! -e $Backup_folder/恢復$name2.sh ]] && cp -r "$MODDIR/tools/restore2" "$Backup_folder/恢復$name2.sh"
-			[[ $name = bin.mt.plus && -e $Backup_folder/base.apk ]] && cp -r "$Backup_folder/base.apk" "$Backup_folder.apk"
 			if [[ $Backup_obb_data = true ]]; then
 				#備份data數據
 				Backup_data "data"

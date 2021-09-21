@@ -81,6 +81,8 @@ if [[ $(pm path "$name") = "" ]]; then
 			if [[ $ad != "" ]]; then
 				pm install-write "$b" "$ad" "$TMPDIR/$ad" >/dev/null 2>&1
 				echo_log "$(basename "$i")安裝"
+			else
+				echoRgb "涼了 basename階段出錯" "0" "0" && exit
 			fi
 		done
 		pm install-commit "$b"
@@ -93,25 +95,30 @@ else
 fi
 zb="$(pm list packages | grep -w "$name" | sed 's/package://g')"
 if [[ $zb != "" ]]; then
-	[[ $zb = $name ]] && {
-	#停止軟件
-	[[ $name != $Open_apps ]] && am force-stop "$name"
-	if [[ -e /config/sdcardfs/$name/appid ]]; then
-		G="$(cat "/config/sdcardfs/$name/appid")"
+	if [[ $zb = $name ]]; then
+		#停止軟件
+		[[ $name != $Open_apps ]] && am force-stop "$name"
+		if [[ -e /config/sdcardfs/$name/appid ]]; then
+			G="$(cat "/config/sdcardfs/$name/appid")"
+		else
+			G="$(dumpsys package "$name" | awk '/userId=/{print $1}' | sed 's/userId=//g' | head -1)"
+		fi
+		X="$path2/$name"
+		find "$Backup_folder" -name "*.tar*" -type f | while read i; do
+			Release_data "$i"
+		done
+		if [[ -d $X && $G != "" ]]; then
+			echoRgb "路徑$X
+權限:$G:$G"
+			chown -R "$G:$G" "$X"
+			echo_log "數據恢複"
+		else
+			[[ ! -d $X ]] && echoRgb "路徑$X不存在" "0" "0" ; [[ $G = "" ]] && echoRgb "user權限uid獲取失敗" "0" "0"
+			echoRgb "由於上列提示錯誤數據恢複失敗" "0" "0"
+		fi
 	else
-		G="$(dumpsys package "$name" | awk '/userId=/{print $1}' | sed 's/userId=//g' | head -1)"
+		echoRgb "E $zb != $name" "0" "0"
 	fi
-	X="$path2/$name"
-	find "$Backup_folder" -name "*.tar*" -type f | while read i; do
-		Release_data "$i"
-	done
-	if [[ -d $X && $G != "" ]]; then
-		echoRgb "路徑$X
- 權限:$G:$G"
-		chown -R "$G:$G" "$X"
-		echo_log "數據恢複"
-	fi
-	} || echoRgb "E $zb != $name" "0" "0"
 else
 	echoRgb "Apk沒有安裝無法恢復數據" "0" "0"
 fi
