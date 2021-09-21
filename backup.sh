@@ -18,6 +18,7 @@ if [[ $Lo = false ]]; then
 	isBoolean "$Splist" && Splist="$nsx"
 	isBoolean "$Backup_obb_data" && Backup_obb_data="$nsx"
 	isBoolean "$path" && path3="$nsx"
+	isBoolean "$Backup_user_data" && Backup_user_data="$nsx"
 else
 	echoRgb "備份路徑位置為絕對位置或是當前環境位置
  音量上當前環境位置，音量下腳本絕對位置"
@@ -42,16 +43,9 @@ hx="本地"
 if [[ $(pm path y.u.k) = "" ]]; then
 	echoRgb "未安裝toast 開始安裝" "0" "0"
 	if [[ $(getenforce) != Permissive ]]; then
-		setenforce 0 2>/dev/null
-		if [[ $? = 0 ]]; then
-			echoRgb "selinux關閉成功" "0" "1" && pm install -r "$MODDIR/tools/apk"/*.apk >/dev/null 2>&1
-		else
-			echoRgb "selinux關閉失敗 使用cp安裝toast" "0" "0" &&  cp -r "$MODDIR/tools/apk"/*.apk /data/local/tmp && pm install -r /data/local/tmp/*.apk >/dev/null 2>&1 && rm -rf /data/local/tmp/*
-		fi
-	else
-		pm install -r "$MODDIR/tools/apk"/*.apk >/dev/null 2>&1
+		cp -r "$MODDIR/tools/apk"/*.apk /data/local/tmp && pm install -r /data/local/tmp/*.apk >/dev/null 2>&1 && rm -rf /data/local/tmp/* 
+		[[ $? = 0 ]] && echoRgb "安裝toast成功" "0" "1" || echoRgb "安裝toast失敗" "0" "0"
 	fi
-	[[ $? = 0 ]] && echoRgb "安裝toast成功" "0" "1" || echoRgb "安裝toast失敗" "0" "0"
 fi
 echoRgb "-壓縮方式:$Compression_method"
 echoRgb "-提示 腳本支持後台壓縮 可以直接離開腳本
@@ -110,8 +104,6 @@ echo_log() {
 Backup_apk() {
 	#創建APP備份文件夾
 	[[ ! -d $Backup_folder ]] && mkdir "$Backup_folder"
-	#備份apk
-	apk_path="$(pm path "$name" | cut -f2 -d ':')"
 	echoRgb "$1"
 	[[ $(cat "$Backup/name.txt" | sed -e '/^$/d' | grep -w "$name" | head -1) = "" ]] && echo "$name2 $name" >>"$Backup/name.txt"
 	if [[ $apk_version = $(appinfo -o vc -pn "$name") ]]; then
@@ -119,12 +111,9 @@ Backup_apk() {
 		echoRgb "Apk版本無更新 跳過備份"
 	else
 		rm -rf "$Backup_folder"/*.apk
-		if [[ $apk_number = 1 ]]; then
-			cp -r "$apk_path" "$Backup_folder/"
-		else
-			apk_path="$(pm path "$name" | cut -f2 -d ':' | head -1)"
-			cp -r "${apk_path%/*}"/*.apk "$Backup_folder/"
-		fi
+		#備份apk
+		apk_path="$(pm path "$name" | cut -f2 -d ':' | head -1)"
+		cp -r "${apk_path%/*}"/*.apk "$Backup_folder/"
 		echo_log "備份$apk_number個Apk"
 		if [[ $result = 0 ]]; then
 			echo "apk_version=$(appinfo -o vc -pn "$name")" >>"$app_details"
@@ -189,6 +178,9 @@ get_version "是" "不是，混合備份" && Splist="$branch"
 echoRgb "是否備份外部數據 即比如原神的數據包
  音量上備份，音量下不備份"
 get_version "備份" "不備份" && Backup_obb_data="$branch"
+echoRgb "是否備份使用者數據 
+ 音量上備份，音量下不備份"
+get_version "備份" "不備份" && Backup_user_data="$branch"
 }
 bn=37
 #開始循環$txt內的資料進行備份
@@ -228,6 +220,7 @@ while [[ $i -le $r ]]; do
 			[[ $name != $Open_apps ]] && am force-stop "$name"
 			Backup_apk "Split Apk支持備份"
 		fi
+		unset PackageName
 		if [[ $D != ""  && $result = 0 && $No_backupdata = "" ]]; then
 			[[ ! -e $Backup_folder/恢復$name2.sh ]] && cp -r "$MODDIR/tools/restore2" "$Backup_folder/恢復$name2.sh"
 			[[ $name = bin.mt.plus && -e $Backup_folder/base.apk ]] && cp -r "$Backup_folder/base.apk" "$Backup_folder.apk"
@@ -238,7 +231,7 @@ while [[ $i -le $r ]]; do
 				Backup_data "obb"
 			fi
 			#備份user數據
-			Backup_data "user"
+			[[ $Backup_user_data = true ]] && Backup_data "user"
 		fi
 		endtime 2 "$name2備份"
 		echoRgb "完成$((i*100/r))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')"

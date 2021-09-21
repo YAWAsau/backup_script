@@ -55,16 +55,7 @@ data=/data
 hx="本地"
 if [[ $(pm path y.u.k) = "" ]]; then
 	log "未安裝toast 開始安裝"
-	if [[ $(getenforce) != Permissive ]]; then
-		setenforce 0 2>/dev/null
-		if [[ $? = 0 ]]; then
-			log "selinux關閉成功" && pm install -r "$tools_path/apk"/*.apk >/dev/null 2>&1 && log "安裝toast成功" || log "安裝toast失敗"
-		else
-			log "selinux關閉失敗 使用cp安裝toast" &&  cp -r "$tools_path/apk"/*.apk /data/local/tmp && pm install -r /data/local/tmp/*.apk >/dev/null 2>&1 && (rm -rf /data/local/tmp/* && log "安裝toast成功") || log "安裝toast失敗"
-		fi
-	else
-		pm install -r "$tools_path/apk"/*.apk >/dev/null 2>&1 && log "安裝toast成功" || log "安裝toast失敗"
-	fi
+	cp -r "$tools_path/apk"/*.apk /data/local/tmp && pm install -r /data/local/tmp/*.apk >/dev/null 2>&1 && (rm -rf /data/local/tmp/* && log "安裝toast成功") || log "安裝toast失敗"
 fi
 [[ $sleep_backup != "" ]] && sleep 300
 log "-壓縮方式:$Compression_method"
@@ -218,6 +209,7 @@ while [[ $i -le $r ]]; do
 			[[ $name != $Open_apps ]] && am force-stop "$name"
 			Backup_apk "Split Apk支持備份"
 		fi
+		unset PackageName
 		[[ ! -e $Backup_folder/恢復$name2.sh ]] && cp -r "$tools_path/restore2" "$Backup_folder/恢復$name2.sh"
 		[[ $name = bin.mt.plus && -e $Backup_folder/base.apk ]] && cp -r "$Backup_folder/base.apk" "$Backup_folder.apk"
 		[[ $No_backupdata = "" ]] && {

@@ -44,18 +44,6 @@ Release_data() {
 	esac
 	echo_log "$FILE_NAME解壓縮($FILE_NAME2)"
 }
-if [[ $(getenforce) != Permissive ]]; then
-	setenforce 0 2>/dev/null
-	echo_log "selinux關閉"
-	if [[ $result = 0 ]]; then
-		selinux_result=0 && Sn=1 && echoRgb "使用原目錄安裝程序 關閉selinux"
-	else
-		selinux_result=1 && echoRgb "selinux無法關閉 使用cp方式安裝"
-	fi
-else
-	selinux_result=0 && echoRgb "使用原目錄安裝程序 關閉selinux"
-fi
-echoRgb "selinux狀態:$selinux_result"
 bn=37
 {
 Backup_folder="$MODDIR"
@@ -69,16 +57,14 @@ name2="$(basename "$Backup_folder"/恢復*.sh | sed 's/恢復//g' | sed 's/.sh//
 echoRgb "恢複$name2 ($name)"
 starttime2="$(date -u "+%s")"
 if [[ $(pm path "$name") = "" ]]; then
-	case $(find "$Backup_folder/" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
+	TMPDIR="/data/local/tmp"
+	rm -rf "$TMPDIR"/*
+	cp -r "$Backup_folder"/*.apk "$TMPDIR"
+	case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
 	1)
 		echoRgb "恢復普通apk"
-		if [[ $selinux_result = 1 ]]; then
-			cp -r "$Backup_folder"/*.apk /data/local/tmp && pm install -r /data/local/tmp/*.apk >/dev/null 2>&1 && rm -rf /data/local/tmp/*
-		else
-			pm install -r "$Backup_folder"/*.apk >/dev/null 2>&1
-		fi
+		pm install -r /data/local/tmp/*.apk >/dev/null 2>&1
 		echo_log "Apk安裝"
-		[[ $result = 0 ]] && echoRgb "Apk恢復無誤" "0" "1" || echoRgb "Apk恢復異常" "0" "0"
 		;;
 	0)
 		echoRgb "你的Apk離家出走了，可能備份後移動過程遺失了 解決辦法手動安裝Apk後再執行恢復腳本" "0" "0"
@@ -86,30 +72,22 @@ if [[ $(pm path "$name") = "" ]]; then
 	*)
 		echoRgb "恢復split apk"
 		b="$(pm install-create | grep -E -o '[0-9]+')"
-		if [[ -e $Backup_folder/nmsl.apk ]]; then
-			if [[ $selinux_result = 1 ]]; then
-				cp -r "$Backup_folder/nmsl.apk" /data/local/tmp && pm install -r "/data/local/tmp/nmsl.apk" >/dev/null 2>&1 && rm -rf /data/local/tmp/*
-			else
-				pm install -r "$Backup_folder/nmsl.apk" >/dev/null 2>&1
-			fi
+		if [[ -e $TMPDIR/nmsl.apk ]]; then
+			pm install -r "/data/local/tmp/nmsl.apk" >/dev/null 2>&1
 			echo_log "nmsl.apk安裝"
 		fi
-		find "$Backup_folder" -maxdepth 1 -name "*.apk" -type f | while read i; do
+		find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f | while read i; do
 			ad="$(basename "$i" | grep -v 'nmsl.apk')"
 			if [[ $ad != "" ]]; then
-				if [[ $selinux_result = 1 ]]; then
-					cp -r "$i" /data/local/tmp && pm install-write "$b" "$ad" "/data/local/tmp/$ad" >/dev/null 2>&1
-				else
-					pm install-write "$b" "$ad" "$i" >/dev/null 2>&1
-				fi
+				pm install-write "$b" "$ad" "$TMPDIR/$ad" >/dev/null 2>&1
 				echo_log "$(basename "$i")安裝"
 			fi
 		done
 		pm install-commit "$b"
 		echo_log "split Apk安裝"
-		[[ $selinux_result = 1 ]] && rm -rf /data/local/tmp/*
 		;;
 	esac
+	rm -rf /data/local/tmp/*
 else
 	echoRgb "存在當前系統中略過安裝Apk"
 fi
