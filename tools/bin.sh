@@ -14,9 +14,6 @@ filepath=/data/backup_tools
 #排除自身
 exclude="
 restore
-md5tmp
-md5check
-Magisk_backup
 restore2
 busybox_path
 bin.sh"
@@ -145,7 +142,6 @@ isBoolean() {
 	fi
 }
 bn=36
-[[ $Magisk = "" ]] && {
 echoRgb "-環境變數: $PATH
  -busybox版本:$(busybox | head -1 | awk '{print $2}')
  -appinfo版本:$(appinfo --version)
@@ -161,11 +157,3 @@ echoRgb "-環境變數: $PATH
  -屑老方提供自動更新腳本方案(雄氏老方)
  -依心所言&情非得已c提供appinfo替代aapt作為更高效的dump包名
  -胖子老陳(雨季騷年) 笨批阿巴醬提供自動構建簡體版本"
-}
-
-grep_prop() {
-	local REGEX="s/^$1=//p"
-	shift
-	local FILES="$@"
-	cat "$FILES" 2>/dev/null | dos2unix | sed -n "$REGEX" | head -n 1
-}

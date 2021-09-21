@@ -42,34 +42,37 @@
   Lo=0 (如果是1，那下面三项设置就被忽略，改为音量键选择。)
 
   # 选择是否只备份split apk(分割apk档，1备份split apk 0混合备份)
-  C=0
+  Splist=0
+
+  # 是否备份使用者数据 (1备份0不备份)
+  Backup_user_data=1
 
   # 是否备份外部数据 即比如原神的数据包(1备份0不备份)
-  B=0
+  Backup_obb_data=0
 
   # 备份路径位置为绝对位置或是当前环境位置(1环境位置 0脚本所在位置)
   path=0
 
-  # 压缩算法(可用lz4 zstd tar tar为仅打包 有什么好用的压缩算法请联系我)
-  # lz4压缩最快，但是压缩率略差 zstd拥有良好的压缩率与速度 当然慢于lz4。
-  Compression_method=tar
+  # 压缩算法(可用lz4 zstd tar tar为仅打包 有什么好用的压缩算法请联系我
+  # lz4压缩最快，但是压缩率略差 zstd拥有良好的压缩率与速度 当然慢于lz4
+  Compression_method=zstd
   ```
   `如果上面内容看不懂或者懒得看，你也可以选择忽略，直接用默认即可。`
 
 
 ##### 附加说明[2]：安装Magisk模块进行自动备份.sh (8.8.9版本更新加入)
   ```
-  1. ROOT执行 安装Magisk模块进行自动备份.sh，会安装 数据备份脚本 的Magisk模块。
+  1. 刷入模块 重启
 
   2. 相关路径查看：/storage/emulated/0/Android/backup_script/
 
-  3. Magisk模块会生成卡刷包，并且每隔一小时监控第三方软件数量进行卡刷包生成服务，防止突然不能开机时丢失软件数据。
+  3. Magisk模块会生成卡刷包，并且每隔4小时监控第三方软件数量进行卡刷包生成服务，防止突然不能开机时丢失软件数据。
 
-  4. 生成的卡刷包必须进入recovery才能刷入进行备份，每天凌晨3点进行总体数据备份。
+  4. 生成的卡刷包必须进入recovery才能刷入进行备份。
   ```
 
 ## 关于反馈
-  - 如果使用过程中出现问题，请**携带截图并详细说明问题**建立[issues](https://github.com/YAWAsau/backup_script/issues)。
+  - 如果使用过程中出现问题，请携带截图并详细说明问题建立[issues](https://github.com/YAWAsau/backup_script/issues)。
   - 酷安@[落叶凄凉TEL](http://www.coolapk.com/u/2277637)
 
 ## 常见问题

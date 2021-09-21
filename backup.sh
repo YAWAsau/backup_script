@@ -85,7 +85,7 @@ compression() {
 	user)
 		case $3 in
 		tar|Tar|TAR) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-		zstd|Zstd|ZSTD) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
+		zstd|Zstd|ZSTD) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv  | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
 		lz4|Lz4|LZ4) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 		*) echoRgb "你個憨批$3是什麼勾八" "0" "0" && rm -rf "$Backup" && exit 2
 			;;
@@ -97,7 +97,7 @@ echo_log() {
 	if [[ $? = 0 ]]; then
 		echoRgb "$1成功" "0" "1" && result=0
 	else
-		echoRgb "$1備份失敗，過世了" "0" "0" && result=1
+		echoRgb "$1備份失敗，過世了" "0" "0" && result=1 && let ERROR++
 	fi
 }
 #檢測apk狀態進行備份
@@ -187,6 +187,8 @@ bn=37
 #開始循環$txt內的資料進行備份
 #記錄開始時間
 starttime1="$(date -u "+%s")"
+#記錄error次數起點
+ERROR=1
 {
 while [[ $i -le $r ]]; do
 	echoRgb "備份第$i個應用 總共$r個 剩下$((r-i))個應用"
@@ -240,6 +242,10 @@ while [[ $i -le $r ]]; do
 	echo
 	lxj="$(df -h "$data" | awk 'END{print $4}' | sed 's/%//g')"
 	[[ $lxj -ge 95 ]] && echoRgb "$data空間不足,達到$lxj%" "0" "0" && exit 2
+	if [[ $ERROR -ge 5 ]]; then
+		echoRgb "錯誤次數達到上限 環境已重設" "0" "0" && rm -rf "$filepath"
+		echoRgb "請重新執行腳本" "0" "0" && exit
+	fi
 	let i++
 done
 

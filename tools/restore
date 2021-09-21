@@ -20,7 +20,7 @@ echo_log() {
 	if [[ $? = 0 ]]; then
 		echoRgb "$1成功" "0" "1" && result=0
 	else
-		echoRgb "$1恢複失敗，過世了" "0" "0" && result=1
+		echoRgb "$1恢複失敗，過世了" "0" "0" && result=1 && let ERROR++
 	fi
 }
 Release_data() {
@@ -51,6 +51,8 @@ Release_data() {
 }
 bn=37
 #開始循環$txt內的資料進行恢複
+#記錄error次數起點
+ERROR=1
 {
 while [[ $i -le $r ]]; do
 	#let bn++
@@ -132,6 +134,10 @@ while [[ $i -le $r ]]; do
 		endtime 2 "恢複" && echoRgb "完成$((i*100/r))%" && echoRgb
 	else
 		echoRgb "$Backup_folder資料夾遺失，無法恢複" "0" "0"
+	fi
+	if [[ $ERROR -ge 5 ]]; then
+		echoRgb "錯誤次數達到上限 環境已重設" "0" "0" && rm -rf "$filepath"
+		echoRgb "請重新執行腳本" "0" "0" && exit
 	fi
 	let i++
 done
