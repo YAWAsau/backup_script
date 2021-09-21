@@ -85,7 +85,7 @@ compression() {
 	user)
 		case $3 in
 		tar|Tar|TAR) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-		zstd|Zstd|ZSTD) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv  | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
+		zstd|Zstd|ZSTD) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
 		lz4|Lz4|LZ4) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 		*) echoRgb "你個憨批$3是什麼勾八" "0" "0" && rm -rf "$Backup" && exit 2
 			;;
