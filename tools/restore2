@@ -122,5 +122,5 @@ if [[ $zb != "" ]]; then
 else
 	echoRgb "Apk沒有安裝無法恢復數據" "0" "0"
 fi
-endtime 2 "恢複" && endtime 1 "恢複開始到結束"
+echoRgb "批量恢複完成" && endtime 1 "批量恢複開始到結束" && echoRgb "軟件閃退請重新開機" "0" "2"
 } &

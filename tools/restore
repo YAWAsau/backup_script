@@ -141,5 +141,5 @@ while [[ $i -le $r ]]; do
 	fi
 	let i++
 done
-echoRgb "批量恢複完成" && endtime 1 "批量恢複開始到結束"
+echoRgb "批量恢複完成" && endtime 1 "批量恢複開始到結束" && echoRgb "軟件閃退請重新開機" "0" "2"
 } &
