@@ -28,16 +28,7 @@ Release_data() {
 	FILE_NAME2="${FILE_NAME%%.*}"
 	echoRgb "恢復$FILE_NAME2數據" "0" "2"
 	case $FILE_NAME in
-	data.tar*| obb.tar*)
-		case $FILE_NAME in
-		*.lz4)
-			pv "$1" | tar --recursive-unlink -I lz4 -xmPpf - ;;
-		*.zst)
-			pv "$1" | tar --recursive-unlink -I zstd -xmPpf - ;;
-		*.tar)
-			pv "$1" | tar --recursive-unlink -xmPpf - ;;
-		esac ;;
-	user.tar*)
+	user.tar*|data.tar*|obb.tar*|Pictures.tar*|Music.tar*|DCIM.tar*)
 		case $FILE_NAME in
 		*.lz4)
 			pv "$1" | tar --recursive-unlink -I lz4 -xmPpf - ;;
@@ -61,6 +52,7 @@ while [[ $i -le $r ]]; do
 	name="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
 	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
 	Backup_folder="$MODDIR/$name2($name)"
+	Backup_folder2="$MODDIR/媒體"
 	[[ $name = "" ]] && echoRgb "警告! name.txt軟件包名獲取失敗，可能修改有問題" "0" "0" && exit 1
 	if [[ -d $Backup_folder ]]; then
 		echoRgb "恢複$name2 ($name)"
@@ -98,7 +90,7 @@ while [[ $i -le $r ]]; do
 				echo_log "split Apk安裝"
 				;;
 			esac
-			rm -rf /data/local/tmp/*
+			rm -rf "$TMPDIR"/*
 		else
 			echoRgb "存在當前系統中略過安裝Apk"
 		fi
@@ -118,7 +110,7 @@ while [[ $i -le $r ]]; do
 				done
 				if [[ -d $X && $G != "" ]]; then
 					echoRgb "路徑$X
-權限:$G:$G"
+ 權限:$G:$G"
 					chown -R "$G:$G" "$X"
 					echo_log "數據恢複"
 				else
@@ -134,6 +126,18 @@ while [[ $i -le $r ]]; do
 		endtime 2 "恢複" && echoRgb "完成$((i*100/r))%" && echoRgb
 	else
 		echoRgb "$Backup_folder資料夾遺失，無法恢複" "0" "0"
+	fi
+	if [[ $i = $r ]]; then
+		if [[ -d $Backup_folder2 ]]; then
+			echoRgb "是否恢復多媒體數據
+ 音量上恢復，音量下不恢復"
+			get_version "恢復媒體數據" "跳過恢復媒體數據"
+			if [[ $branch = true ]]; then
+				find "$Backup_folder2" -name "*.tar*" -type f | while read i; do
+					Release_data "$i"
+				done
+			fi
+		fi
 	fi
 	if [[ $ERROR -ge 5 ]]; then
 		echoRgb "錯誤次數達到上限 環境已重設" "0" "0" && rm -rf "$filepath"

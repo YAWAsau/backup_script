@@ -1,0 +1,35 @@
+test "$(id -u)" -ne 0 && echo "你是憨批？不給Root用你媽 爬" && exit 1
+MODDIR="${0%/*}"
+[[ ! -d ${MODDIR%/*}/tools ]] && echo "${MODDIR%/*}/tools目錄遺失" && exit 1
+tools_path="${MODDIR%/*}/tools"
+. "$tools_path/bin.sh"
+#記錄開始時間
+starttime1="$(date -u "+%s")"
+echo_log() {
+	if [[ $? = 0 ]]; then
+		echoRgb "$1成功" "0" "1" && result=0
+	else
+		echoRgb "$1恢複失敗，過世了" "0" "0" && result=1
+	fi
+}
+Release_data() {
+	FILE_NAME="$(basename "$1")"
+	FILE_NAME2="${FILE_NAME%%.*}"
+	echoRgb "恢復$FILE_NAME2數據" "0" "2"
+	case $FILE_NAME in
+	user.tar*|data.tar*|obb.tar*|Pictures.tar*|Music.tar*|DCIM.tar*)
+		case $FILE_NAME in
+		*.lz4)
+			pv "$1" | tar --recursive-unlink -I lz4 -xmPpf - ;;
+		*.zst)
+			pv "$1" | tar --recursive-unlink -I zstd -xmPpf - ;;
+		*.tar)
+			pv "$1" | tar --recursive-unlink -xmPpf - ;;
+		esac ;;
+	esac
+	echo_log "$FILE_NAME解壓縮($FILE_NAME2)"
+}
+Backup_folder="$MODDIR"
+find "$Backup_folder" -name "*.tar*" -type f | while read i; do
+	Release_data "$i"
+done
