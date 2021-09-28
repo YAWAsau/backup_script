@@ -94,7 +94,7 @@ while [[ $i -le $r ]]; do
 		else
 			echoRgb "存在當前系統中略過安裝Apk"
 		fi
-		zb="$(pm list packages | grep -w "$name" | sed 's/package://g')"
+		zb="$(pm list packages | grep -w "$name" | cut -f2 -d ':')"
 		if [[ $zb != "" ]]; then
 			if [[ $zb = $name ]]; then
 				#停止軟件
@@ -102,7 +102,7 @@ while [[ $i -le $r ]]; do
 				if [[ -e /config/sdcardfs/$name/appid ]]; then
 					G="$(cat "/config/sdcardfs/$name/appid")"
 				else
-					G="$(dumpsys package "$name" | awk '/userId=/{print $1}' | sed 's/userId=//g' | head -1)"
+					G="$(dumpsys package "$name" | awk '/userId=/{print $1}' | cut -f2 -d '=' | head -1)"
 				fi
 				X="$path2/$name"
 				find "$Backup_folder" -name "*.tar*" -type f | while read i; do

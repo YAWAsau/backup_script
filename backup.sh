@@ -10,7 +10,7 @@ tools_path="$MODDIR/tools"
 if [[ $(pgrep -f "$(basename "$0")" | grep -v grep | wc -l) -ge 2 ]]; then
 	echoRgb "檢測到進程殘留，請重新執行腳本 已銷毀進程" "0" "0"
 	pgrep -f "$(basename "$0")" | grep -v grep | while read i; do
-		kill -9 " $i" >/dev/null
+		[[ $i != "" ]] && kill -9 " $i" >/dev/null
 	done
 fi
 isBoolean "$Lo" && Lo="$nsx"
@@ -77,18 +77,18 @@ filesize="$(du -ks "$Backup" | awk '{print $1}')"
 Quantity=0
 compression() {
 	case $1 in
-	obb|data|DCIM|Music|Pictures)
-		case $3 in
-		tar|Tar|TAR) tar -cPpf - "$2" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-		zstd|Zstd|ZSTD) tar -cPpf - "$2" 2>/dev/null | pv | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
-		lz4|Lz4|LZ4) tar -cPpf - "$2" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
-		*) echoRgb "你個憨批$3是什麼勾八" "0" "0" && rm -rf "$Backup" && exit 2 ;;
-		esac ;;
 	user)
 		case $3 in
 		tar|Tar|TAR) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
 		zstd|Zstd|ZSTD) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
 		lz4|Lz4|LZ4) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+		*) echoRgb "你個憨批$3是什麼勾八" "0" "0" && rm -rf "$Backup" && exit 2 ;;
+		esac ;;
+	*)
+		case $3 in
+		tar|Tar|TAR) tar -cPpf - "$2" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
+		zstd|Zstd|ZSTD) tar -cPpf - "$2" 2>/dev/null | pv | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
+		lz4|Lz4|LZ4) tar -cPpf - "$2" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 		*) echoRgb "你個憨批$3是什麼勾八" "0" "0" && rm -rf "$Backup" && exit 2 ;;
 		esac ;;
 	esac
@@ -106,7 +106,7 @@ Backup_apk() {
 	#創建APP備份文件夾
 	[[ ! -d $Backup_folder ]] && mkdir "$Backup_folder"
 	[[ $(cat "$Backup/name.txt" | sed -e '/^$/d' | grep -w "$name" | head -1) = "" ]] && echo "$name2 $name" >>"$Backup/name.txt"
-	if [[ $apk_version = $(dumpsys package "$name" | awk '/versionName=/{print $1}' | sed 's/versionName=//g' | head -1) ]]; then
+	if [[ $apk_version = $(dumpsys package "$name" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1) ]]; then
 		unset xb && result=0
 		echoRgb "Apk版本無更新 跳過備份"
 	else
@@ -114,18 +114,21 @@ Backup_apk() {
 		rm -rf "$Backup_folder"/*.apk
 		#備份apk
 		echoRgb "$1"
+		[[ $name != $Open_apps ]] && am force-stop "$name"
 		echo "$apk_path" | while read j; do
-			path="$j"
-			b_size="$(ls -l "$path" | awk '{print $5}')"
-			k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
-			m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
-			echoRgb "$(basename "$path") ${m_size}MB(${k_size}KB)" "0" "2"
+			if [[ $j != "" ]]; then
+				path="$j"
+				b_size="$(ls -l "$path" | awk '{print $5}')"
+				k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
+				m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
+				echoRgb "$(basename "$path") ${m_size}MB(${k_size}KB)" "0" "2"
+			fi
 		done
 		apk_path="$(echo "$apk_path" | head -1)"
 		cp -r "${apk_path%/*}"/*.apk "$Backup_folder/"
 		echo_log "備份$apk_number個Apk"
 		if [[ $result = 0 ]]; then
-			echo "apk_version=$(dumpsys package "$name" | awk '/versionName=/{print $1}' | sed 's/versionName=//g' | head -1)" >>"$app_details"
+			echo "apk_version=$(dumpsys package "$name" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)" >>"$app_details"
 			[[ $PackageName = "" ]] && echo "PackageName=$name">>"$app_details"
 		fi
 	fi
@@ -150,9 +153,7 @@ Backup_data() {
 	user) Size="$userSize" && data_path="$path2/$name" ;;
 	data) Size="$dataSize" && data_path="$path/$1/$name" ;;
 	obb) Size="$obbSize" && data_path="$path/$1/$name" ;;
-	DCIM) Size="$DCIMSize" && data_path="/data/media/0/$1" && Compression_method=tar ;;
-	Music) Size="$MusicSize" && data_path="/data/media/0/$1" && Compression_method=tar ;;
-	Pictures) Size="$PicturesSize" && data_path="/data/media/0/$1" && Compression_method=tar ;;
+	*) Size="$(set | grep -w "$1Size" | cut -f2 -d '=')" && data_path="$2" && Compression_method=tar ;;
 	esac
 	if [[ -d $data_path ]]; then
 		if [[ $Size != $(du -ks "$data_path" | awk '{print $1}') ]]; then
@@ -197,7 +198,7 @@ while [[ $i -le $r ]]; do
 	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
 	lxj="$(df -h "$data" | awk 'END{print $4}' | sed 's/%//g')"
 	if [[ $name2 = *! || $name2 = *！ ]]; then
-		name2="$(echo "$name2" | sed 's/!//g' | sed 's/！//g')"
+		name2="$(echo "$name2" | sed 's/!//g ; s/！//g')"
 		echoRgb "跳過備份$name2 所有數據" "0" "0"
 		No_backupdata=1
 	else
@@ -207,22 +208,21 @@ while [[ $i -le $r ]]; do
 	app_details="$Backup_folder/app_details"
 	[[ -e $app_details ]] && . "$app_details"
 	[[ $name = "" ]] && echoRgb "警告! name.txt軟件包名獲取失敗，可能修改有問題" "0" "0" && exit 1
-	apk_path="$(pm path "$name" | cut -f2 -d ':')"
-	if [[ $apk_path != "" ]]; then
+	Get_apklist="$(pm list packages | grep -w "$name" | cut -f2 -d ':')"
+	if [[ $Get_apklist != "" && $Get_apklist = $name ]]; then
 		starttime2="$(date -u "+%s")"
 		echoRgb "備份$name2 ($name)"
+		apk_path="$(pm path "$name" | cut -f2 -d ':')"
 		[[ $name = com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
 		[[ $name = com.tencent.mm ]] && echo "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
 		apk_number="$(echo "$apk_path" | wc -l)"
 		if [[ $apk_number = 1 ]]; then
 			if [[ $Splist = false ]]; then
-				[[ $name != $Open_apps ]] && am force-stop "$name"
 				Backup_apk "非Split Apk"
 			else
 				echoRgb "非Split Apk跳過備份" && unset D
 			fi
 		else
-			[[ $name != $Open_apps ]] && am force-stop "$name"
 			Backup_apk "Split Apk支持備份"
 		fi
 		if [[ $D != ""  && $result = 0 && $No_backupdata = "" ]]; then
@@ -246,13 +246,17 @@ while [[ $i -le $r ]]; do
 		if [[ $backup_media = true ]]; then
 			echoRgb "備份結束，備份多媒體"
 			Backup_folder="$Backup/媒體"
+			A=1
+			B="$(echo "$Custom_path" | sed -e '/^$/d' | sed -n '$=')"
 			[[ ! -e $Backup_folder/恢復多媒體數據.sh ]] && cp -r "$MODDIR/tools/restore3" "$Backup_folder/恢復多媒體數據.sh"
 			app_details="$Backup_folder/app_details"
 			[[ -e $app_details ]] && . "$app_details"
 			[[ ! -d $Backup_folder ]] && mkdir "$Backup_folder"
-			Backup_data "DCIM"
-			Backup_data "Music"
-			Backup_data "Pictures"
+			echoRgb "備份第$A個資料夾 總共$B個 剩下$((B-A))個"
+			echo "$Custom_path" | sed -e '/^$/d' | while read k; do
+				Backup_data "${k##*/}" "$k"
+				echoRgb "完成$((A*100/B))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')" && let A++
+			done
 		fi
 	fi
 	if [[ $ERROR -ge 5 ]]; then
