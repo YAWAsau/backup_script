@@ -86,9 +86,9 @@ compression() {
 		esac ;;
 	*)
 		case $3 in
-		tar|Tar|TAR) tar -cPpf - "$2" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-		zstd|Zstd|ZSTD) tar -cPpf - "$2" 2>/dev/null | pv | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
-		lz4|Lz4|LZ4) tar -cPpf - "$2" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+		tar|Tar|TAR) tar --exclude="Backup_"* -cPpf - "$2" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
+		zstd|Zstd|ZSTD) tar --exclude="Backup_"* -cPpf - "$2" 2>/dev/null | pv | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
+		lz4|Lz4|LZ4) tar --exclude="Backup_"* -cPpf - "$2" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 		*) echoRgb "你個憨批$3是什麼勾八" "0" "0" && rm -rf "$Backup" && exit 2 ;;
 		esac ;;
 	esac
@@ -115,14 +115,12 @@ Backup_apk() {
 		#備份apk
 		echoRgb "$1"
 		[[ $name != $Open_apps ]] && am force-stop "$name"
-		echo "$apk_path" | while read j; do
-			if [[ $j != "" ]]; then
-				path="$j"
-				b_size="$(ls -l "$path" | awk '{print $5}')"
-				k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
-				m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
-				echoRgb "$(basename "$path") ${m_size}MB(${k_size}KB)" "0" "2"
-			fi
+		echo "$apk_path" | sed -e '/^$/d' | while read j; do
+			path="$j"
+			b_size="$(ls -l "$path" | awk '{print $5}')"
+			k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
+			m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
+			echoRgb "$(basename "$path") ${m_size}MB(${k_size}KB)" "0" "2"
 		done
 		apk_path="$(echo "$apk_path" | head -1)"
 		cp -r "${apk_path%/*}"/*.apk "$Backup_folder/"
@@ -153,7 +151,7 @@ Backup_data() {
 	user) Size="$userSize" && data_path="$path2/$name" ;;
 	data) Size="$dataSize" && data_path="$path/$1/$name" ;;
 	obb) Size="$obbSize" && data_path="$path/$1/$name" ;;
-	*) Size="$(set | grep -w "$1Size" | cut -f2 -d '=')" && data_path="$2" && Compression_method=tar ;;
+	*) Size="$(set | awk "/$1Size/"'{print $1}' | cut -f2 -d '=')" && data_path="$2" && Compression_method=tar ;;
 	esac
 	if [[ -d $data_path ]]; then
 		if [[ $Size != $(du -ks "$data_path" | awk '{print $1}') ]]; then
