@@ -4,7 +4,6 @@ test "$(id -u)" -ne 0 && echo "你是憨批？不給Root用你媽 爬" && exit 1
 [[ $(echo "$MODDIR" | grep -v 'mt') = "" ]] && echo "我他媽骨灰給你揚了撒了TM不解壓縮？用毛線 憨批" && exit 1
 [[ ! -d $MODDIR/tools ]] && echo " $MODDIR/tools目錄遺失" && exit 1
 #鏈接腳本設置環境變量
-md5path="$MODDIR"
 tools_path="$MODDIR/tools"
 . "$tools_path/bin.sh"
 . "$MODDIR/backup_settings.conf"

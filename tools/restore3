@@ -5,6 +5,9 @@ tools_path="${MODDIR%/*}/tools"
 . "$tools_path/bin.sh"
 #記錄開始時間
 starttime1="$(date -u "+%s")"
+Set_back() {
+	return 1
+}
 echo_log() {
 	if [[ $? = 0 ]]; then
 		echoRgb "$1成功" "0" "1" && result=0
@@ -13,23 +16,19 @@ echo_log() {
 	fi
 }
 Release_data() {
-	FILE_NAME="$(basename "$1")"
+	tar_path="$1"
+	FILE_NAME="${tar_path##*/}"
 	FILE_NAME2="${FILE_NAME%%.*}"
-	echoRgb "恢復$FILE_NAME2數據" "0" "2"
-	case $FILE_NAME in
-	user.tar*|data.tar*|obb.tar*|Pictures.tar*|Music.tar*|DCIM.tar*)
-		case $FILE_NAME in
-		*.lz4)
-			pv "$1" | tar --recursive-unlink -I lz4 -xmPpf - ;;
-		*.zst)
-			pv "$1" | tar --recursive-unlink -I zstd -xmPpf - ;;
-		*.tar)
-			pv "$1" | tar --recursive-unlink -xmPpf - ;;
-		esac ;;
+	echoRgb "恢復$FILE_NAME2數據" "0" "2" && usertar="1"
+	case ${FILE_NAME##*.} in
+	lz4) pv "$1" | tar --recursive-unlink -I lz4 -xmPpf - ; Set_back ;;
+	zst) pv "$1" | tar --recursive-unlink -I zstd -xmPpf - ;;
+	tar) pv "$1" | tar --recursive-unlink -xmPpf - ;;
+	*) (echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0" "0" ; [[ $FILE_NAME2 = user ]] && unset usertar ; Set_back)
 	esac
-	echo_log "$FILE_NAME解壓縮($FILE_NAME2)"
+	echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
 }
-Backup_folder="$MODDIR"
-find "$Backup_folder" -name "*.tar*" -type f | while read i; do
+find "$MODDIR" -name "*.tar*" -type f | while read i; do
 	Release_data "$i"
 done
+endtime 1 "恢複結束"

@@ -8,13 +8,14 @@ tools_path="$MODDIR/tools"
 path=/data/media/0/Android
 path2=/data/user/0
 [[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" "0" && exit 1
-#記錄開始時間
-starttime1="$(date -u "+%s")"
 i=1
 txt="$MODDIR/name.txt"
 [[ ! -e $txt ]] && echo "$txt缺少" && exit 0
 r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 [[ $r = "" ]] && echoRgb "name.txt包名為空或是被注釋了" "0" "0" && exit 1
+Set_back() {
+	return 1
+}
 #顯示執行結果
 echo_log() {
 	if [[ $? = 0 ]]; then
@@ -24,24 +25,23 @@ echo_log() {
 	fi
 }
 Release_data() {
-	FILE_NAME="$(basename "$1")"
+	tar_path="$1"
+	FILE_NAME="${tar_path##*/}"
 	FILE_NAME2="${FILE_NAME%%.*}"
-	echoRgb "恢復$FILE_NAME2數據" "0" "2"
-	case $FILE_NAME in
-	user.tar*|data.tar*|obb.tar*|Pictures.tar*|Music.tar*|DCIM.tar*)
-		case $FILE_NAME in
-		*.lz4)
-			pv "$1" | tar --recursive-unlink -I lz4 -xmPpf - ;;
-		*.zst)
-			pv "$1" | tar --recursive-unlink -I zstd -xmPpf - ;;
-		*.tar)
-			pv "$1" | tar --recursive-unlink -xmPpf - ;;
-		esac ;;
+	echoRgb "恢復$FILE_NAME2數據" "0" "2" && usertar="1"
+	case ${FILE_NAME##*.} in
+	lz4) pv "$1" | tar --recursive-unlink -I lz4 -xmPpf - ;;
+	zst) pv "$1" | tar --recursive-unlink -I zstd -xmPpf - ;;
+	tar) pv "$1" | tar --recursive-unlink -xmPpf - ;;
+	*) (echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0" "0" ; [[ $FILE_NAME2 = user ]] && unset usertar ; Set_back)
 	esac
-	echo_log "$FILE_NAME解壓縮($FILE_NAME2)"
+	echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
 }
 bn=37
 #開始循環$txt內的資料進行恢複
+#記錄開始時間
+starttime1="$(date -u "+%s")"
+TIME="$starttime1"
 #記錄error次數起點
 ERROR=1
 {
@@ -78,12 +78,12 @@ while [[ $i -le $r ]]; do
 					echo_log "nmsl.apk安裝"
 				fi
 				find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f | while read i; do
-					ad="$(basename "$i" | grep -v 'nmsl.apk')"
+					ad="$(echo "${i##*/}" | grep -v 'nmsl.apk')"
 					if [[ $ad != "" ]]; then
 						pm install-write "$b" "$ad" "$TMPDIR/$ad" >/dev/null 2>&1
-						echo_log "$(basename "$i")安裝"
+						echo_log "${i##*/}安裝"
 					else
-						echoRgb "涼了 basename階段出錯" "0" "0" && exit
+						echoRgb "split apk安裝 ad變量為空" "0" "0" && exit 2
 					fi
 				done
 				pm install-commit "$b"
@@ -108,14 +108,19 @@ while [[ $i -le $r ]]; do
 				find "$Backup_folder" -name "*.tar*" -type f | while read i; do
 					Release_data "$i"
 				done
-				if [[ -d $X && $G != "" ]]; then
-					echoRgb "路徑$X
+				if [[ -d $X ]]; then
+					if [[ $G != "" ]]; then
+						if [[ $usertar != "" ]]; then
+							echoRgb "路徑$X
  權限:$G:$G"
-					chown -R "$G:$G" "$X"
-					echo_log "數據恢複"
+							chown -R "$G:$G" "$X"
+							echo_log "數據恢複"
+						fi
+					else
+						echoRgb "user權限uid獲取失敗" "0" "0"
+					fi
 				else
-					[[ ! -d $X ]] && echoRgb "路徑$X不存在" "0" "0" ; [[ $G = "" ]] && echoRgb "user權限uid獲取失敗" "0" "0"
-					echoRgb "由於上列提示錯誤數據恢複失敗" "0" "0"
+					echoRgb "路徑$X不存在" "0" "0"
 				fi
 			else
 				echoRgb "E $zb != $name" "0" "0"
@@ -128,6 +133,8 @@ while [[ $i -le $r ]]; do
 		echoRgb "$Backup_folder資料夾遺失，無法恢複" "0" "0"
 	fi
 	if [[ $i = $r ]]; then
+		endtime 1 "應用恢復"
+		starttime1="$(date -u "+%s")"
 		if [[ -d $Backup_folder2 ]]; then
 			echoRgb "是否恢復多媒體數據
  音量上恢復，音量下不恢復"
@@ -136,6 +143,7 @@ while [[ $i -le $r ]]; do
 				find "$Backup_folder2" -name "*.tar*" -type f | while read i; do
 					Release_data "$i"
 				done
+				endtime 1 "自定義恢復"
 			fi
 		fi
 	fi
@@ -145,5 +153,6 @@ while [[ $i -le $r ]]; do
 	fi
 	let i++
 done
+starttime1="$TIME"
 echoRgb "批量恢複完成" && endtime 1 "批量恢複開始到結束" && echoRgb "軟件閃退請重新開機" "0" "2"
 } &

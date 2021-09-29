@@ -120,7 +120,7 @@ Backup_apk() {
 			b_size="$(ls -l "$path" | awk '{print $5}')"
 			k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
 			m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
-			echoRgb "$(basename "$path") ${m_size}MB(${k_size}KB)" "0" "2"
+			echoRgb "${path##*/} ${m_size}MB(${k_size}KB)" "0" "2"
 		done
 		apk_path="$(echo "$apk_path" | head -1)"
 		cp -r "${apk_path%/*}"/*.apk "$Backup_folder/"
@@ -187,6 +187,7 @@ bn=37
 #開始循環$txt內的資料進行備份
 #記錄開始時間
 starttime1="$(date -u "+%s")"
+TIME="$starttime1"
 #記錄error次數起點
 ERROR=1
 {
@@ -241,6 +242,8 @@ while [[ $i -le $r ]]; do
 	fi
 	echo
 	if [[ $i = $r ]]; then
+		endtime 1 "應用備份"
+		starttime1="$(date -u "+%s")"
 		if [[ $backup_media = true ]]; then
 			echoRgb "備份結束，備份多媒體"
 			Backup_folder="$Backup/媒體"
@@ -250,11 +253,12 @@ while [[ $i -le $r ]]; do
 			app_details="$Backup_folder/app_details"
 			[[ -e $app_details ]] && . "$app_details"
 			[[ ! -d $Backup_folder ]] && mkdir "$Backup_folder"
-			echoRgb "備份第$A個資料夾 總共$B個 剩下$((B-A))個"
 			echo "$Custom_path" | sed -e '/^$/d' | while read k; do
+				echoRgb "備份第$A個資料夾 總共$B個 剩下$((B-A))個"
 				Backup_data "${k##*/}" "$k"
 				echoRgb "完成$((A*100/B))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')" && let A++
 			done
+			endtime 1 "自定義備份"
 		fi
 	fi
 	if [[ $ERROR -ge 5 ]]; then
@@ -281,6 +285,7 @@ else
 fi
 echoRgb "批量備份完成"
 [[ $(pm path y.u.k) != "" ]] && toast "批量備份完成"
+starttime1="$TIME"
 endtime 1 "批量備份開始到結束"
 exit 0
 }&
