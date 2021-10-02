@@ -1,11 +1,10 @@
 #!/system/bin/sh
-test "$(id -u)" -ne 0 && echo "你是憨批？不給Root用你媽 爬" && exit 1
 MODDIR="${0%/*}"
 [[ ! -d ${MODDIR%/*}/tools ]] && echo "${MODDIR%/*}/tools目錄遺失" && exit 1
 tools_path="${MODDIR%/*}/tools"
 . "$tools_path/bin.sh"
-path=/data/media/0/Android
-path2=/data/user/0
+path="/data/media/0/Android"
+path2="/data/data"
 [[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" "0" && exit 1
 #記錄開始時間
 starttime1="$(date -u "+%s")"
@@ -24,14 +23,36 @@ Release_data() {
 	tar_path="$1"
 	FILE_NAME="${tar_path##*/}"
 	FILE_NAME2="${FILE_NAME%%.*}"
-	echoRgb "恢復$FILE_NAME2數據" "0" "2" && usertar="1"
+	echoRgb "恢復$FILE_NAME2數據" "0" "2"
 	case ${FILE_NAME##*.} in
 	lz4) pv "$1" | tar --recursive-unlink -I lz4 -xmPpf - ;;
 	zst) pv "$1" | tar --recursive-unlink -I zstd -xmPpf - ;;
 	tar) pv "$1" | tar --recursive-unlink -xmPpf - ;;
-	*) (echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0" "0" ; [[ $FILE_NAME2 = user ]] && unset usertar ; Set_back)
+	*) (echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0" "0" ; Set_back)
 	esac
 	echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
+	if [[ $result = 0 ]]; then
+		if [[ $FILE_NAME2 = user ]]; then
+			X="$path2/$name"
+			if [[ -e /config/sdcardfs/$name/appid ]]; then
+				G="$(cat "/config/sdcardfs/$name/appid")"
+			else
+				G="$(dumpsys package "$name" | awk '/userId=/{print $1}' | cut -f2 -d '=' | head -1)"
+			fi
+			if [[ -d $X ]]; then
+				if [[ $G != "" ]]; then
+					echoRgb "路徑$X
+ 權限:$G:$G"
+ 					chmod -R u+wrx "$X" && chown -hR "$G:$G" "$X" && restorecon -R "$X"
+					echo_log "數據恢複"
+				else
+					echoRgb "uid獲取失敗" "0" "0"
+				fi
+			else
+				echoRgb "路徑$X不存在" "0" "0"
+			fi
+		fi
+	fi
 }
 bn=37
 {
@@ -52,7 +73,7 @@ if [[ $(pm path "$name") = "" ]]; then
 	case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
 	1)
 		echoRgb "恢復普通apk"
-		pm install -r /data/local/tmp/*.apk >/dev/null 2>&1
+		pm install -r "$TMPDIR"/*.apk >/dev/null 2>&1
 		echo_log "Apk安裝"
 		;;
 	0)
@@ -62,7 +83,7 @@ if [[ $(pm path "$name") = "" ]]; then
 		echoRgb "恢復split apk"
 		b="$(pm install-create | grep -E -o '[0-9]+')"
 		if [[ -e $TMPDIR/nmsl.apk ]]; then
-			pm install -r "/data/local/tmp/nmsl.apk" >/dev/null 2>&1
+			pm install -r "$TMPDIR/nmsl.apk" >/dev/null 2>&1
 			echo_log "nmsl.apk安裝"
 		fi
 		find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f | while read i; do
@@ -87,29 +108,9 @@ if [[ $zb != "" ]]; then
 	if [[ $zb = $name ]]; then
 		#停止軟件
 		[[ $name != $Open_apps ]] && am force-stop "$name"
-		if [[ -e /config/sdcardfs/$name/appid ]]; then
-			G="$(cat "/config/sdcardfs/$name/appid")"
-		else
-			G="$(dumpsys package "$name" | awk '/userId=/{print $1}' | cut -f2 -d '=' | head -1)"
-		fi
-		X="$path2/$name"
-		find "$Backup_folder" -name "*.tar*" -type f | while read i; do
-			Release_data "$i"
+		find "$Backup_folder" -maxdepth 1 -name "*.tar*" -type f | sort | while read; do
+			Release_data "$REPLY"
 		done
-		if [[ -d $X ]]; then
-			if [[ $G != "" ]]; then
-				if [[ $uaertar != "" ]]; then
-					echoRgb "路徑$X
- 權限:$G:$G"
-					chown -R "$G:$G" "$X"
-					echo_log "數據恢複"
-				fi
-			else
-				echoRgb "user權限uid獲取失敗" "0" "0"
-			fi
-		else
-			echoRgb "路徑$X不存在" "0" "0"
-		fi
 	else
 		echoRgb "$zb != $name" "0" "0"
 	fi

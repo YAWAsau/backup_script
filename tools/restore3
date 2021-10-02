@@ -1,4 +1,4 @@
-test "$(id -u)" -ne 0 && echo "你是憨批？不給Root用你媽 爬" && exit 1
+#!/system/bin/sh
 MODDIR="${0%/*}"
 [[ ! -d ${MODDIR%/*}/tools ]] && echo "${MODDIR%/*}/tools目錄遺失" && exit 1
 tools_path="${MODDIR%/*}/tools"
@@ -24,11 +24,11 @@ Release_data() {
 	lz4) pv "$1" | tar --recursive-unlink -I lz4 -xmPpf - ; Set_back ;;
 	zst) pv "$1" | tar --recursive-unlink -I zstd -xmPpf - ;;
 	tar) pv "$1" | tar --recursive-unlink -xmPpf - ;;
-	*) (echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0" "0" ; [[ $FILE_NAME2 = user ]] && unset usertar ; Set_back)
+	*) (echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0" "0" ; Set_back)
 	esac
 	echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
 }
-find "$MODDIR" -name "*.tar*" -type f | while read i; do
-	Release_data "$i"
+find "$MODDIR" -maxdepth 1 -name "*.tar*" -type f | while read; do
+	Release_data "$REPLY"
 done
 endtime 1 "恢複結束"

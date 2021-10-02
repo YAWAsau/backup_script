@@ -1,3 +1,4 @@
+test "$(whoami)" != root && echo "你是憨批？不給Root用你媽 爬" && exit 1
 abi="$(getprop ro.product.cpu.abi)"
 case $abi in
 arm64*) 
@@ -8,9 +9,10 @@ arm64*)
 	exit 1
 	;;
 esac
+backup_version="9.6Releases 2021/10/2-19:09"
 #設置二進制命令目錄位置
 [[ $tools_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
-filepath=/data/backup_tools
+filepath="/data/backup_tools"
 #排除自身
 exclude="
 restore
@@ -145,15 +147,11 @@ bn=36
 echoRgb "-環境變數: $PATH
  -busybox版本:$(busybox | head -1 | awk '{print $2}')
  -appinfo版本:$(appinfo --version)
+ -腳本版本:$backup_version
  -設備架構$abi
  -品牌:$(getprop ro.product.brand)
  -設備代號:$(getprop ro.product.device)
  -型號:$(getprop ro.product.model)
  -Android版本:$(getprop ro.build.version.release)
  -SDK:$(getprop ro.build.version.sdk)
- -終端:$(appinfo -o ands -pn "$Open_apps" 2>/dev/null)
- -下列為本工具項目銘謝貢獻名單(排名不分先後)
- -臭批老k提供部分與驗證函數思路(kmou424)
- -屑老方提供自動更新腳本方案(雄氏老方)
- -依心所言&情非得已c提供appinfo替代aapt作為更高效的dump包名
- -胖子老陳(雨季騷年) 笨批阿巴醬提供自動構建簡體版本"
+ -終端:$(appinfo -o ands -pn "$Open_apps" 2>/dev/null)"

@@ -26,11 +26,11 @@
   **推荐工具**: [MT管理器](https://www.coolapk.com/apk/bin.mt.plus)
    警告! termux请勿使用tsu 支援设备必须安卓版本Android 8+ Arm64,
 
-  > 1. __appname.sh__：将zip解压缩到任意目录，点击`appname.sh`并勾选root执行脚本 [[示意图]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/1.png)，等待提示结束 [[示意图]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/2.png)。
+  > 1. __生成应用名.sh__：将zip解压缩到任意目录，点击`appname.sh`并勾选root执行脚本 [[示意图]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/1.png)，等待提示结束 [[示意图]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/2.png)。
 
   > 2. __Apkname.txt__：当前目录下会生成一个`Apkname.txt`，这就是你**要备份的软件列表**，你可以把**不需要备份的软件那一行前加上`#`** [[示意图]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/3.png)，备份时就会跳过它；如果你只需要备份一两个软件，那么你可以**全选删除**，然后按照这个格式：`[App名称 App包名]` 进行填写需要备份的软件 [[示意图]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/4.png)，这样就不用一个一个去加`#`了。
 
-  > 3. __backup.sh__：以上简单两步你就设置好了需要备份的软件，接下来点击`backup.sh`并勾选root执行，等待备份结束 [[示意图]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/5.png)。
+  > 3. __备份应用.sh__：以上简单两步你就设置好了需要备份的软件，接下来点击`backup.sh`并勾选root执行，等待备份结束 [[示意图]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/5.png)。
 
   > 4. __备份完成__：完成后会在当前目录生成一个Backup资料夹，里面是你的软件备份，把这个资料夹整个备份起来，刷完机直接在里面找到`还原备份.sh`即可恢复备份的所有数据，同样道理里面有个name.txt ，一样跟第二步骤操作一样不需要还原的删除。
 

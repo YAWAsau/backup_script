@@ -1,9 +1,9 @@
 #!/system/bin/sh
 MODDIR="${0%/*}"
-test "$(id -u)" -ne 0 && echo "你是憨批？不給Root用你媽 爬" && exit 1
 [[ $(echo "$MODDIR" | grep -v 'mt') = "" ]] && echo "我他媽骨灰給你揚了撒了TM不解壓縮？用毛線 憨批" && exit 1
 [[ $MODDIR = /data/media/0/Android/* ]] && echo "請勿在$MODDIR內備份" && exit 2
 [[ ! -d $MODDIR/tools ]] && echo "$MODDIR/tools目錄遺失" && exit 1
+[[ ! -f $MODDIR/backup_settings.conf ]] && echo "backup_settings.conf遺失" && exit 1
 tools_path="$MODDIR/tools"
 . "$tools_path/bin.sh"
 . "$MODDIR/backup_settings.conf"
@@ -26,8 +26,8 @@ else
 	get_version "當前環境位置" "腳本絕對位置" && path3="$branch"
 fi
 i=1
-path=/data/media/0/Android
-path2=/data/user/0
+path="/data/media/0/Android"
+path2="/data/data"
 if [[ $path3 = true ]]; then
 	Backup="$PWD/Backup_$Compression_method"
 	txt="$PWD/Apkname.txt"
@@ -75,24 +75,6 @@ fi
 filesize="$(du -ks "$Backup" | awk '{print $1}')"
 #調用二進制
 Quantity=0
-compression() {
-	case $1 in
-	user)
-		case $3 in
-		tar|Tar|TAR) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-		zstd|Zstd|ZSTD) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
-		lz4|Lz4|LZ4) tar --exclude="$2/cache" --exclude="$2/lib" -cPpf - "$2" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
-		*) echoRgb "你個憨批$3是什麼勾八" "0" "0" && rm -rf "$Backup" && exit 2 ;;
-		esac ;;
-	*)
-		case $3 in
-		tar|Tar|TAR) tar --exclude="Backup_"* -cPpf - "$2" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-		zstd|Zstd|ZSTD) tar --exclude="Backup_"* -cPpf - "$2" 2>/dev/null | pv | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
-		lz4|Lz4|LZ4) tar --exclude="Backup_"* -cPpf - "$2" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
-		*) echoRgb "你個憨批$3是什麼勾八" "0" "0" && rm -rf "$Backup" && exit 2 ;;
-		esac ;;
-	esac
-}
 #顯示執行結果
 echo_log() {
 	if [[ $? = 0 ]]; then
@@ -147,19 +129,43 @@ Backup_apk() {
 }
 #檢測數據位置進行備份
 Backup_data() {
+	unset  zsize
 	case $1 in
 	user) Size="$userSize" && data_path="$path2/$name" ;;
 	data) Size="$dataSize" && data_path="$path/$1/$name" ;;
 	obb) Size="$obbSize" && data_path="$path/$1/$name" ;;
-	*) Size="$(set | awk "/$1Size/"'{print $1}' | cut -f2 -d '=')" && data_path="$2" && Compression_method=tar ;;
+	*) [[ -e $app_details ]] && Size="$(cat "$app_details" | awk "/$1Size/"'{print $1}' | cut -f2 -d '=' | tail -n1)" ; data_path="$2" && Compression_method=tar && zsize=1 ;;
 	esac
 	if [[ -d $data_path ]]; then
 		if [[ $Size != $(du -ks "$data_path" | awk '{print $1}') ]]; then
 			[[ $lxj -ge 95 ]] && echoRgb "$data空間不足,達到$lxj%" "0" "0" && exit 2
+			cd "${data_path%/*}"
 			echoRgb "備份$1數據" "0" "2"
-			compression "$1" "$data_path" "$Compression_method"
+			case $1 in
+			user)
+				#data_path="${data_path##*/}"
+				case $Compression_method in
+				tar|Tar|TAR) tar --exclude="$data_path/.ota" --exclude="$data_path/cache" --exclude="$data_path/lib" -cPpf - "$data_path" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
+				zstd|Zstd|ZSTD) tar --exclude="$data_path/.ota" --exclude="$data_path/cache" --exclude="$data_path/lib" -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
+				lz4|Lz4|LZ4) tar --exclude="$data_path/.ota" --exclude="$data_path/cache" --exclude="$data_path/lib" -cPpf - "$data_path" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+				*) echoRgb "你個憨批$Compression_method是什麼勾八" "0" "0" && rm -rf "$Backup" && exit 2 ;;
+				esac ;;
+			*)
+				case $Compression_method in
+				tar|Tar|TAR) tar --exclude="Backup_"* -cPpf - "$data_path" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
+				zstd|Zstd|ZSTD) tar --exclude="Backup_"* -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
+				lz4|Lz4|LZ4) tar --exclude="Backup_"* -cPpf - "$data_path" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+				*) echoRgb "你個憨批$Compression_method是什麼勾八" "0" "0" && rm -rf "$Backup" && exit 2 ;;
+				esac ;;
+			esac
 			echo_log "備份$1數據"
-			[[ $result = 0 ]] && echo "$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
+			if [[ $result = 0 ]]; then
+				if [[ $zsize != "" ]]; then
+					echo "#$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
+				else
+					echo "$1Size=$(du -ks "$data_path" | awk '{print $1}')" >>"$app_details"
+				fi
+			fi
 		else
 			echoRgb "$1數據無發生變化 跳過備份"
 		fi
@@ -249,10 +255,10 @@ while [[ $i -le $r ]]; do
 			Backup_folder="$Backup/媒體"
 			A=1
 			B="$(echo "$Custom_path" | sed -e '/^$/d' | sed -n '$=')"
+			[[ ! -d $Backup_folder ]] && mkdir "$Backup_folder"
 			[[ ! -e $Backup_folder/恢復多媒體數據.sh ]] && cp -r "$MODDIR/tools/restore3" "$Backup_folder/恢復多媒體數據.sh"
 			app_details="$Backup_folder/app_details"
 			[[ -e $app_details ]] && . "$app_details"
-			[[ ! -d $Backup_folder ]] && mkdir "$Backup_folder"
 			echo "$Custom_path" | sed -e '/^$/d' | while read k; do
 				echoRgb "備份第$A個資料夾 總共$B個 剩下$((B-A))個"
 				Backup_data "${k##*/}" "$k"
