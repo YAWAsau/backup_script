@@ -1,5 +1,6 @@
 #!/system/bin/sh
 MODDIR="${0%/*}"
+script="${0##*/}"
 [[ $(echo "$MODDIR" | grep -v 'mt') = "" ]] && echo "我他媽骨灰給你揚了撒了TM不解壓縮？用毛線 憨批" && exit 1
 [[ $MODDIR = /data/media/0/Android/* ]] && echo "請勿在$MODDIR內備份" && exit 2
 [[ ! -d $MODDIR/tools ]] && echo "$MODDIR/tools目錄遺失" && exit 1
@@ -7,9 +8,9 @@ MODDIR="${0%/*}"
 tools_path="$MODDIR/tools"
 . "$tools_path/bin.sh"
 . "$MODDIR/backup_settings.conf"
-if [[ $(pgrep -f "$(basename "$0")" | grep -v grep | wc -l) -ge 2 ]]; then
+if [[ $(pgrep -f "$script" | grep -v grep | wc -l) -ge 2 ]]; then
 	echoRgb "檢測到進程殘留，請重新執行腳本 已銷毀進程" "0" "0"
-	pgrep -f "$(basename "$0")" | grep -v grep | while read i; do
+	pgrep -f "$script" | grep -v grep | while read i; do
 		[[ $i != "" ]] && kill -9 " $i" >/dev/null
 	done
 fi
@@ -51,7 +52,7 @@ fi
 echoRgb "-壓縮方式:$Compression_method"
 echoRgb "-提示 腳本支持後台壓縮 可以直接離開腳本
  -或是關閉終端也能備份 如需終止腳本
- -請再次執行$(basename "$0")即可停止
+ -請再次執行$script即可停止
  -備份結束將發送toast提示語" "0" "2"
 if [[ -d /proc/scsi/usb-storage || $PU != "" ]]; then
 	PT="$(cat /proc/mounts | grep "$PU" | awk '{print $2}')"
