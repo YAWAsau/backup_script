@@ -68,7 +68,7 @@ fi
 [[ ! -e $Backup/name.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$Backup/name.txt"
 [[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools"/restore* && rm -rf "$Backup/tools/apk" && rm -rf "$Backup/tools/toast" && rm -rf "$Backup/tools/appinfo*"
 [[ ! -e $Backup/還原備份.sh ]] && cp -r "$tools_path/restore" "$Backup/還原備份.sh"
-[[ ! -e $Backup/掃描資料夾名.sh ]] && cp -r "$tools_path/掃描資料夾名" "$Backup/掃描資料夾名.sh"
+[[ ! -e $Backup/掃描資料夾名.sh ]] && cp -r "$tools_path/Get_DirName" "$Backup/掃描資料夾名.sh"
 filesize="$(du -ks "$Backup" | awk '{print $1}')"
 #調用二進制
 Quantity=0

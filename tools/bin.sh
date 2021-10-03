@@ -18,7 +18,7 @@ exclude="
 restore
 restore2
 restore3
-掃描資料夾名.sh
+Get_DirName
 busybox_path
 bin.sh"
 rm_busyPATH() {
