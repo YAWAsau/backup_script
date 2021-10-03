@@ -16,7 +16,7 @@ echo_log() {
 	if [[ $? = 0 ]]; then
 		echoRgb "$1成功" "0" "1" && result=0
 	else
-		echoRgb "$1恢複失敗，過世了" "0" "0" && result=1
+		echoRgb "$1失敗，過世了" "0" "0" && result=1
 	fi
 }
 bn=37

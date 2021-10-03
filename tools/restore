@@ -1,7 +1,7 @@
 #!/system/bin/sh
 MODDIR="${0%/*}"
-[[ ! -d $MODDIR/tools ]] && echo "$MODDIR/tools目錄遺失" && exit 1
 tools_path="$MODDIR/tools"
+[[ ! -d $tools_path ]] && echo "$tools_path目錄遺失" && exit 1
 . "$tools_path/bin.sh"
 path="/data/media/0/Android"
 path2="/data/data"
@@ -119,7 +119,7 @@ while [[ $i -le $r ]]; do
 		else
 			echoRgb "存在當前系統中略過安裝Apk"
 		fi
-		zb="$(pm list packages | grep -w "$name" | cut -f2 -d ':')"
+		zb="$(pm list packages "$name" | cut -f2 -d ':' | grep -w "^${name}$")"
 		if [[ $zb != "" ]]; then
 			if [[ $zb = $name ]]; then
 				#停止軟件
@@ -128,7 +128,7 @@ while [[ $i -le $r ]]; do
 					Release_data "$REPLY"
 				done
 			else
-				echoRgb "E $zb != $name" "0" "0"
+				echoRgb "$zb != $name" "0" "0"
 			fi
 		else
 			echoRgb "Apk沒有安裝無法恢復數據" "0" "0"
@@ -141,8 +141,7 @@ while [[ $i -le $r ]]; do
 		endtime 1 "應用恢復"
 		starttime1="$(date -u "+%s")"
 		if [[ -d $Backup_folder2 ]]; then
-			echoRgb "是否恢復多媒體數據
- 音量上恢復，音量下不恢復"
+			echoRgb "是否恢復多媒體數據\n 音量上恢復，音量下不恢復"
 			get_version "恢復媒體數據" "跳過恢復媒體數據"
 			if [[ $branch = true ]]; then
 				find "$Backup_folder2" -maxdepth 1 -name "*.tar*" -type f | while read; do
