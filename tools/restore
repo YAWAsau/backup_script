@@ -19,7 +19,7 @@ echo_log() {
 	if [[ $? = 0 ]]; then
 		echoRgb "$1成功" "0" "1" && result=0
 	else
-		echoRgb "$1恢複失敗，過世了" "0" "0" && result=1 && let ERROR++
+		echoRgb "$1失敗，過世了" "0" "0" && result=1 && let ERROR++
 	fi
 }
 Release_data() {
@@ -44,10 +44,15 @@ Release_data() {
 			fi
 			if [[ -d $X ]]; then
 				if [[ $G != "" ]]; then
-					echoRgb "路徑$X
- 權限:$G:$G"
- 					chmod -R u+wrx "$X" && chown -hR "$G:$G" "$X" && restorecon -R "$X"
-					echo_log "數據恢複"
+					echoRgb "路徑:$X"
+					Path_details="$(stat -c "%A/%a %U/%G" "$X")"
+ 					chmod -R u+wrx "$X"
+ 					echo_log "設置權限:$(echo "$Path_details" | awk '{print $1}')"
+ 					chown -hR "$G:$G" "$X" 
+ 					echo_log "設置用戶組:$(echo "$Path_details" | awk '{print $2}')"
+ 					restorecon -R "$X" >/dev/null 2>&1 	
+ 					echo_log "selinux上下文設置"
+ 					#echoRgb "$(stat -c "%n %A/%a %U/%G" "$X" | awk '{print "路徑:"$1"\n 權限:"$2"\n 用戶組:"$3}')"
 				else
 					echoRgb "uid獲取失敗" "0" "0"
 				fi
@@ -84,7 +89,7 @@ while [[ $i -le $r ]]; do
 			case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
 			1)
 				echoRgb "恢復普通apk"
-				pm install -r "$TMPDIR"/*.apk >/dev/null 2>&1
+				pm install --user 0 -r "$TMPDIR"/*.apk >/dev/null 2>&1
 				echo_log "Apk安裝"
 				;;
 			0)
@@ -92,9 +97,9 @@ while [[ $i -le $r ]]; do
 				;;
 			*)
 				echoRgb "恢復split apk"
-				b="$(pm install-create | grep -E -o '[0-9]+')"
+				b="$(pm install-create --user 0 | grep -E -o '[0-9]+')"
 				if [[ -e $TMPDIR/nmsl.apk ]]; then
-					pm install -r "$TMPDIR/nmsl.apk" >/dev/null 2>&1
+					pm install --user 0 -r "$TMPDIR/nmsl.apk" >/dev/null 2>&1
 					echo_log "nmsl.apk安裝"
 				fi
 				find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f | while read i; do
@@ -106,7 +111,7 @@ while [[ $i -le $r ]]; do
 						echoRgb "split apk安裝 ad變量為空" "0" "0" && exit 2
 					fi
 				done
-				pm install-commit "$b"
+				pm install-commit "$b" >/dev/null 2>&1
 				echo_log "split Apk安裝"
 				;;
 			esac

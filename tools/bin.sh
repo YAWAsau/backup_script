@@ -17,6 +17,8 @@ filepath="/data/backup_tools"
 exclude="
 restore
 restore2
+restore3
+掃描資料夾名.sh
 busybox_path
 bin.sh"
 rm_busyPATH() {
@@ -144,14 +146,4 @@ isBoolean() {
 	fi
 }
 bn=36
-echoRgb "-環境變數: $PATH
- -busybox版本:$(busybox | head -1 | awk '{print $2}')
- -appinfo版本:$(appinfo --version)
- -腳本版本:$backup_version
- -設備架構$abi
- -品牌:$(getprop ro.product.brand)
- -設備代號:$(getprop ro.product.device)
- -型號:$(getprop ro.product.model)
- -Android版本:$(getprop ro.build.version.release)
- -SDK:$(getprop ro.build.version.sdk)
- -終端:$(appinfo -o ands -pn "$Open_apps" 2>/dev/null)"
+echoRgb "-環境變數: $PATH\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$(appinfo -o ands -pn "$Open_apps" 2>/dev/null)"

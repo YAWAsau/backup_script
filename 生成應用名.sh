@@ -3,7 +3,7 @@ MODDIR="${0%/*}"
 #鏈接腳本設置環境變量
 tools_path="$MODDIR/tools"
 [[ $(echo "$MODDIR" | grep -v 'mt') = "" ]] && echo "我他媽骨灰給你揚了撒了TM不解壓縮？用毛線 憨批" && exit 1
-[[ ! -d $MODDIR/tools ]] && echo " $MODDIR/tools目錄遺失" && exit 1
+[[ ! -d $tools_path ]] && echo " $tools_path目錄遺失" && exit 1
 [[ ! -f $MODDIR/backup_settings.conf ]] && echo "backup_settings.conf遺失" && exit 1
 . "$tools_path/bin.sh"
 . "$MODDIR/backup_settings.conf"
@@ -27,7 +27,7 @@ get_launcher() {
 }
 isBoolean "$path" && txtpath="$nsx"
 [[ $txtpath = true ]] && txtpath="$PWD" || txtpath="$MODDIR"
-[[ $backup_path != "" ]] && nametxt="$backup_path/Apkname.txt" || nametxt="$txtpath/Apkname.txt"
+nametxt="$txtpath/Apkname.txt"
 echoRgb " 請勿關閉腳本，等待提示結束"
 i=1
 bn=37
@@ -37,7 +37,8 @@ appinfo -d " " -o ands,pn -pn $system $(get_launcher) -3 2>/dev/null | sort | se
 	[[ $bn -ge 37 ]] && bn=31
 	[[ ! -e $nametxt ]] && echo '#不需要備份的應用請在開頭注釋# 比如#酷安 xxxxxxxx
 #不需要備份數據比如酷安! xxxxxxxx軟件名後方加一個驚嘆號即可 注意是軟件名不是包名' >"$nametxt"
-	if [[ $(cat "$nametxt" | sed -e '/^$/d ; s/!//g ; s/！//g' | grep -w "$name") = "" ]]; then
+	app_1=($name $name)
+	if [[ $(cat "$nametxt" | grep -oE "${app_1[1]}$") = "" ]]; then
 		echo "$name" >>"$nametxt" && xz=1 && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
 		echoRgb "$i.$name"
 	else
