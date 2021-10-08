@@ -26,13 +26,13 @@
    **推薦工具**: [MT管理器](https://www.coolapk.com/apk/bin.mt.plus)
     警告! termux請勿使用tsu 支援設備必須安卓版本Android 8+ Arm64,
 
-   > 1. __生成應用名.sh__：將zip解壓縮到任意目錄，點擊`appname.sh`並勾選root執行腳本 [[示意圖]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/1.png)，等待提示結束 [[示意圖]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/2.png)。
+   > 1. __生成應用列表.sh__：將zip解壓縮到任意目錄，點擊`生成應用列表.sh`並勾選root執行腳本 [[示意圖]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/1.png)，等待提示結束 [[示意圖]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/2.png)。
 
-   > 2. __Apkname.txt__：當前目錄下會生成一個`Apkname.txt`，這就是你**要備份的軟件列表**，你可以把**不需要備份的軟件那一行前加上`#`** [[示意圖]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/3.png)，備份時就會跳過它；如果你只需要備份一兩個軟件，那麼你可以**全選刪除**，然後按照這個格式：`[App名稱 App包名]` 進行填寫需要備份的軟件 [[示意圖]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/4.png)，這樣就不用一個一個去加`#`了。
+   > 2. __應用列表.txt__：當前目錄下會生成一個`應用列表.txt`，這就是你**要備份的軟件列表**，你可以把**不需要備份的軟件那一行前加上`#`** [[示意圖]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/3.png)，備份時就會跳過它；如果你只需要備份一兩個軟件，那麼你可以**全選刪除**，然後按照這個格式：`[App名稱 App包名]` 進行填寫需要備份的軟件 [[示意圖]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/4.png)，這樣就不用一個一個去加`#`了。
 
-   > 3. __備份應用.sh__：以上簡單兩步你就設置好了需要備份的軟件，接下來點擊`backup.sh`並勾選root執行，等待備份結束 [[示意圖]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/5.png)。
+   > 3. __備份應用.sh__：以上簡單兩步你就設置好了需要備份的軟件，接下來點擊`備份應用.sh`並勾選root執行，等待備份結束 [[示意圖]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/5.png)。
 
-   > 4. __備份完成__：完成後會在當前目錄生成一個Backup資料夾，裡面是你的軟件備份，把這個資料夾整個備份起來，刷完機直接在裡面找到`還原備份.sh`即可恢復備份的所有數據，同樣道理裡面有個name.txt ，一樣跟第二步驟操作一樣不需要還原的刪除。
+   > 4. __備份完成__：完成後會在當前目錄生成一個Backup資料夾，裡面是你的軟件備份，把這個資料夾整個備份起來，刷完機直接在裡面找到`還原備份.sh`即可恢復備份的所有數據，同樣道理裡面有個應用列表.txt ，一樣跟第二步驟操作一樣不需要還原的刪除。
 
  ##### 附加說明[1]：backup_settings.conf (備份設置)
    ```

@@ -9,16 +9,18 @@ arm64*)
 	exit 1
 	;;
 esac
-backup_version="9.6Releases 2021/10/2-19:09"
+export PATH="$(magisk --path)/.magisk/busybox:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin"
+backup_version="V9.9 2021/10/8-20:59"
 #設置二進制命令目錄位置
 [[ $tools_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
+tools_path="${tools_path/'/storage/emulated/'/'/data/media/'}"
+chmod -R 777 "$tools_path"
+Status_log="${tools_path%/*}/執行狀態日誌.txt"
+rm -rf "$Status_log"
 filepath="/data/backup_tools"
+busybox="$filepath/busybox"
 #排除自身
 exclude="
-restore
-restore2
-restore3
-Get_DirName
 busybox_path
 bin.sh"
 rm_busyPATH() {
@@ -26,65 +28,40 @@ rm_busyPATH() {
 		mkdir -p "$filepath"
 		[[ $? = 0 ]] && echo "設置busybox環境中"
 	fi
-	[[ ! -e $tools_path/busybox_path ]] && touch "$tools_path/busybox_path"
+	[[ ! -f $tools_path/busybox_path ]] && touch "$tools_path/busybox_path"
 	if [[ $filepath != $(cat "$tools_path/busybox_path") ]]; then
 		[[ -d $(cat "$tools_path/busybox_path") ]] && rm -rf "$(cat "$tools_path/busybox_path")"
 		echo "$filepath">"$tools_path/busybox_path"
 	fi
 }
 rm_busyPATH
+#刪除無效軟連結
+find -L "$filepath" -maxdepth 1 -type l -exec rm -rf {} \;
 if [[ -d $tools_path ]]; then
-	[[ ! -e $tools_path/busybox ]] && echo "$tools_path/busybox不存在" && exit 1
-	busybox="$filepath/busybox"
-	if [[ -e $busybox ]]; then
-		filemd5="$(md5sum "$busybox" | cut -d" " -f1)"
-		filemd5_1="$(md5sum "$tools_path/busybox" | cut -d" " -f1)"
-		if [[ $filemd5 != $filemd5_1 ]]; then
-			echo "busybox md5不一致 重新創立環境中"
-			rm -rf "$filepath" && rm_busyPATH
+	[[ ! -f $tools_path/busybox ]] && echo "$tools_path/busybox不存在" && exit 1
+	find "$tools_path" -maxdepth 1 -type f | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read; do
+		File_name="${REPLY##*/}"
+		if [[ ! -f $filepath/$File_name ]]; then
+			ln -fs "$REPLY" "$filepath"
+			echo "$File_name > $filepath/$File_name"
 		fi
-	fi
-	ls -a "$tools_path" | sed -r '/^\.{1,2}$/d' | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read i; do
-		[[ ! -d $tools_path/$i ]] && {
-		if [[ ! -e $filepath/$i ]]; then
-			cp -r "$tools_path/$i" "$filepath"
-			chmod 0777 "$filepath/$i"
-			echo "$i > $filepath/$i"
-			if [[ $i = busybox ]]; then
-				rm_busyPATH
-				"$busybox" --list | while read a; do
-					[[ $a != tar && ! -e $filepath/$a ]] && ln -s "$busybox" "$filepath/$a"
-				done
-				echo "busybox設置完成"
-			fi
-		else
-			"$busybox" --list | while read a; do
-				[[ $a != tar && ! -e $filepath/$a ]] && ln -s "$busybox" "$filepath/$a" && echo "$a > $filepath/$a"
-			done
-			filemd5="$(md5sum "$filepath/$i" | cut -d" " -f1)"
-			filemd5_1="$(md5sum "$tools_path/$i" | cut -d" " -f1)"
-			if [[ $filemd5 != $filemd5_1 ]]; then
-				echo "$i md5不一致 重新創建"
-				rm -rf "$filepath/$i"
-				cp -r "$tools_path/$i" "$filepath"
-				chmod 0777 "$filepath/$i"
-				echo "$i > $filepath/$i"
-			fi
+		[[ ! -x $REPLY ]] && echo "$REPLY權限不可執行" && exit 1
+	done
+	rm_busyPATH
+	"$busybox" --list | while read; do
+		if [[ $REPLY != tar && ! -f $filepath/$REPLY ]]; then
+			ln -fs "$busybox" "$filepath/$REPLY"
 		fi
-		}
 	done
 else
 	echo "遺失$tools_path"
 	exit 1
 fi
-
-#工具絕對位置
-if [[ ! -e $busybox ]]; then
+if [[ ! -f $busybox ]]; then
 	echo "不存在$busybox ...."
 	exit 1
 fi
 export PATH="$filepath:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin"
-unset LD_LIBRARY_PATH LD_PRELOAD
 export TZ=Asia/Taipei
 Open_apps="$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")"
 
@@ -103,17 +80,18 @@ echoRgb() {
 	#轉換echo顏色提高可讀性
 	if [[ $2 != "" ]]; then
 		if [[ $3 = 0 ]]; then
-			echo -e "\e[1;31m $1\e[0m"
+			echo -e "\e[38;5;196m -$1\e[0m"
 		elif [[ $3 = 1 ]]; then
-			echo -e "\e[1;32m $1\e[0m"
+			echo -e "\e[38;5;82m -$1\e[0m"
 		elif [[ $3 = 2 ]]; then
-			echo -e "\e[1;33m $1\e[0m"
+			echo -e "\e[38;5;87m -$1\e[0m"
 		else
-			echo "$1 $2 $3 顏色控制項錯誤"; exit 2
+			echo -e "\e[38;5;196m $1 $2 $3 顏色控制項錯誤\e[0m"; exit 2
 		fi
 	else
-		echo -e "\e[1;${bn}m $1\e[0m"
+		echo -e "\e[38;5;${bn}m -$1\e[0m"
 	fi
+	echo " -$1">>"$Status_log"
 }
 get_version() {
 	while :; do
@@ -142,8 +120,9 @@ isBoolean() {
 	elif [[ $1 = 0 ]];then
 		nsx=false
 	else
-		echoRgb "$MODDIR/backup_settings.conf $1填寫錯誤" && exit 2
+		echoRgb "$MODDIR/backup_settings.conf $1填寫錯誤" "0" "0" && exit 2
 	fi
 }
-bn=36
-echoRgb "-環境變數: $PATH\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$(appinfo -o ands -pn "$Open_apps" 2>/dev/null)"
+bn=205
+echoRgb "環境變數:$PATH\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$(appinfo -o ands -pn "$Open_apps" 2>/dev/null)"
+bn=195
