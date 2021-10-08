@@ -10,7 +10,7 @@ i=1
 txt="$MODDIR/應用列表.txt"
 [[ ! -e $txt ]] && echoRgb "請執行\"掃描資料夾名.sh\"獲取應用列表再來恢復" "0" "0" && exit 2
 r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
-[[ $r = "" ]] && echoRgb "name.txt包名為空或是被注釋了" "0" "0" && exit 1
+[[ $r = "" ]] && echoRgb "應用列表.txt包名為空或是被注釋了" "0" "0" && exit 1
 Set_back() {
 	return 1
 }
@@ -86,7 +86,7 @@ while [[ $i -le $r ]]; do
 	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
 	Backup_folder="$MODDIR/$name2($name)"
 	Backup_folder2="$MODDIR/媒體"
-	[[ $name = "" ]] && echoRgb "警告! name.txt應用包名獲取失敗，可能修改有問題" "0" "0" && exit 1
+	[[ $name = "" ]] && echoRgb "警告! 應用列表.txt應用包名獲取失敗，可能修改有問題" "0" "0" && exit 1
 	if [[ -d $Backup_folder ]]; then
 		echoRgb "恢複$name2 ($name)"
 		starttime2="$(date -u "+%s")"
