@@ -1,8 +1,8 @@
 #!/system/bin/sh
 MODDIR="${0%/*}"
-tools_path="${MODDIR%/*}/tools"
-[[ ! -d $tools_path ]] && echo "$tools_path目錄遺失" && exit 1
-. "$tools_path/bin.sh"
+bin_path="${MODDIR%/*}/bin"
+[[ ! -d $bin_path ]] && echo "$bin_path目錄遺失" && exit 1
+. "$bin_path/bin.sh"
 #記錄開始時間
 starttime1="$(date -u "+%s")"
 Set_back() {

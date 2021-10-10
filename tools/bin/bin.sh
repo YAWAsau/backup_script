@@ -9,13 +9,13 @@ arm64*)
 	exit 1
 	;;
 esac
-export PATH="$(magisk --path)/.magisk/busybox:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin"
-backup_version="V9.9 2021/10/8-20:59"
+[[ -d $(magisk --path) ]] && export PATH="$(magisk --path)/.magisk/busybox:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin"
+backup_version="V10 2021/10/10-10:59"
 #設置二進制命令目錄位置
-[[ $tools_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
-tools_path="${tools_path/'/storage/emulated/'/'/data/media/'}"
-chmod -R 777 "$tools_path"
-Status_log="${tools_path%/*}/執行狀態日誌.txt"
+[[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
+bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
+chmod -R 777 "$bin_path"
+Status_log="$MODDIR/執行狀態日誌.txt"
 rm -rf "$Status_log"
 filepath="/data/backup_tools"
 busybox="$filepath/busybox"
@@ -28,18 +28,18 @@ rm_busyPATH() {
 		mkdir -p "$filepath"
 		[[ $? = 0 ]] && echo "設置busybox環境中"
 	fi
-	[[ ! -f $tools_path/busybox_path ]] && touch "$tools_path/busybox_path"
-	if [[ $filepath != $(cat "$tools_path/busybox_path") ]]; then
-		[[ -d $(cat "$tools_path/busybox_path") ]] && rm -rf "$(cat "$tools_path/busybox_path")"
-		echo "$filepath">"$tools_path/busybox_path"
+	[[ ! -f $bin_path/busybox_path ]] && touch "$bin_path/busybox_path"
+	if [[ $filepath != $(cat "$bin_path/busybox_path") ]]; then
+		[[ -d $(cat "$bin_path/busybox_path") ]] && rm -rf "$(cat "$bin_path/busybox_path")"
+		echo "$filepath">"$bin_path/busybox_path"
 	fi
 }
 rm_busyPATH
 #刪除無效軟連結
 find -L "$filepath" -maxdepth 1 -type l -exec rm -rf {} \;
-if [[ -d $tools_path ]]; then
-	[[ ! -f $tools_path/busybox ]] && echo "$tools_path/busybox不存在" && exit 1
-	find "$tools_path" -maxdepth 1 -type f | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read; do
+if [[ -d $bin_path ]]; then
+	[[ ! -f $bin_path/busybox ]] && echo "$bin_path/busybox不存在" && exit 1
+	find "$bin_path" -maxdepth 1 -type f | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read; do
 		File_name="${REPLY##*/}"
 		if [[ ! -f $filepath/$File_name ]]; then
 			ln -fs "$REPLY" "$filepath"
@@ -54,7 +54,7 @@ if [[ -d $tools_path ]]; then
 		fi
 	done
 else
-	echo "遺失$tools_path"
+	echo "遺失$bin_path"
 	exit 1
 fi
 if [[ ! -f $busybox ]]; then

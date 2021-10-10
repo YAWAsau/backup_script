@@ -2,10 +2,11 @@
 MODDIR="${0%/*}"
 #鏈接腳本設置環境變量
 tools_path="$MODDIR/tools"
+bin_path="$tools_path/bin"
 [[ $(echo "$MODDIR" | grep -v 'mt') = "" ]] && echo "我他媽骨灰給你揚了撒了TM不解壓縮？用毛線 憨批" && exit 1
 [[ ! -d $tools_path ]] && echo " $tools_path目錄遺失" && exit 1
 [[ ! -f $MODDIR/backup_settings.conf ]] && echo "backup_settings.conf遺失" && exit 1
-. "$tools_path/bin.sh"
+. "$bin_path/bin.sh"
 . "$MODDIR/backup_settings.conf"
 system="
 com.google.android.apps.messaging

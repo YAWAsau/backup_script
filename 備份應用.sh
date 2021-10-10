@@ -1,12 +1,13 @@
 #!/system/bin/sh
 MODDIR="${0%/*}"
 tools_path="$MODDIR/tools"
+bin_path="$tools_path/bin"
 script_path="$tools_path/script"
 script="${0##*/}"
 [[ $(echo "$MODDIR" | grep -v 'mt') = "" ]] && echo "我他媽骨灰給你揚了撒了TM不解壓縮？用毛線 憨批" && exit 1
 [[ ! -d $tools_path ]] && echo "$tools_path目錄遺失" && exit 1
 [[ ! -d $script_path ]] && echo "$script_path目錄遺失" && exit 1
-. "$tools_path/bin.sh"
+. "$bin_path/bin.sh"
 . "$MODDIR/backup_settings.conf"
 [[ $MODDIR = /data/media/0/Android/* ]] && echoRgb "請勿在$MODDIR內備份" "0" "0" && exit 2
 [[ ! -f $MODDIR/backup_settings.conf ]] && echoRgb "backup_settings.conf遺失" "0" "0" && exit 1
@@ -23,6 +24,7 @@ if [[ $Lo = false ]]; then
 	isBoolean "$path" && path3="$nsx"
 	isBoolean "$Backup_user_data" && Backup_user_data="$nsx"
 	isBoolean "$backup_media" && backup_media="$nsx"
+	isBoolean "$recovery_backup" && recovery_backup="$nsx"
 else
 	echoRgb "備份路徑位置為絕對位置或是當前環境位置\n 音量上當前環境位置，音量下腳本絕對位置"
 	get_version "當前環境位置" "腳本絕對位置" && path3="$branch"
@@ -66,9 +68,9 @@ else
 fi
 [[ $Backup_user_data = false ]] && echoRgb "當前backup_settings.conf的Backup_user_data為0將不備份user數據" "0" "0"
 [[ $Backup_obb_data = false ]] && echoRgb "當前backup_settings.conf的Backup_obb_data為0將不備份外部數據" "0" "0"
-[[ ! -d $Backup ]] && mkdir "$Backup"
+[[ ! -d $Backup ]] && mkdir -p "$Backup"
 [[ ! -f $Backup/應用列表.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$Backup/應用列表.txt"
-[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools"/restore* && rm -rf "$Backup/tools/apk" && rm -rf "$Backup/tools/toast" && rm -rf "$Backup/tools/appin"* && rm -rf "$Backup/tools/Get_DirName" && rm -rf "$Backup/tools/script"
+[[ ! -d $Backup/tools ]] && cp -r "$bin_path" "$Backup" && rm -rf "$Backup/bin/toast" "$Backup/bin/appin"* "$Backup/bin/zip"
 [[ ! -f $Backup/還原備份.sh ]] && cp -r "$script_path/restore" "$Backup/還原備份.sh"
 [[ ! -f $Backup/掃描資料夾名.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/掃描資料夾名.sh"
 
@@ -86,7 +88,7 @@ echo_log() {
 #檢測apk狀態進行備份
 Backup_apk() {
 	#創建APP備份文件夾
-	[[ ! -d $Backup_folder ]] && mkdir "$Backup_folder"
+	[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
 	[[ $(cat "$Backup/應用列表.txt" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name}$" | head -1) = "" ]] && echo "$name2 $name" >>"$Backup/應用列表.txt"
 	if [[ $apk_version = $(dumpsys package "$name" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1) ]]; then
 		unset xb && result=0
@@ -182,7 +184,10 @@ echoRgb "是否備份使用者數據\n 音量上備份，音量下不備份"
 get_version "備份" "不備份" && Backup_user_data="$branch"
 echoRgb "全部應用備份結束後是否備份自定義目錄\n 音量上備份，音量下不備份"
 get_version "備份" "不備份" && backup_media="$branch"
+echoRgb "同上,是否備份結束後生成可供recovery中救急備份的卡刷包？\n 音量上生成，音量下不生成"
+get_version "生成" "不生成" && recovery_backup="$branch"
 }
+[[ $recovery_backup = true ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$script_path/應用列表.txt"
 #開始循環$txt內的資料進行備份
 #記錄開始時間
 starttime1="$(date -u "+%s")"
@@ -211,6 +216,9 @@ while [[ $i -le $r ]]; do
 		starttime2="$(date -u "+%s")"
 		echoRgb "備份$name2 ($name)"
 		apk_path="$(pm path "$name" | cut -f2 -d ':')"
+		if [[ $recovery_backup = true ]]; then
+			apk_path2="$(pm path "$name" | cut -f2 -d ':' | head -1)" ; echo "$name2 $name ${apk_path2%/*}" >>"$script_path/應用列表.txt"
+		fi
 		[[ $name = com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份"
 		[[ $name = com.tencent.mm ]] && echo "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份"
 		apk_number="$(echo "$apk_path" | wc -l)"
@@ -248,7 +256,7 @@ while [[ $i -le $r ]]; do
 			Backup_folder="$Backup/媒體"
 			A=1
 			B="$(echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
-			[[ ! -d $Backup_folder ]] && mkdir "$Backup_folder"
+			[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
 			[[ ! -f $Backup_folder/恢復多媒體數據.sh ]] && cp -r "$script_path/restore3" "$Backup_folder/恢復多媒體數據.sh"
 			app_details="$Backup_folder/app_details"
 			[[ -f $app_details ]] && . "$app_details"
@@ -258,6 +266,19 @@ while [[ $i -le $r ]]; do
 				echoRgb "完成$((A*100/B))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')" && let A++
 			done
 			endtime 1 "自定義備份"
+		fi
+		if [[ $recovery_backup = true ]]; then
+			if [[ -f $tools_path/META-INF/com/google/android/update-binary ]]; then
+				echoRgb "輸出用於recovery的備份卡刷包"
+				rm -rf "$MODDIR/recovery卡刷備份.zip"
+				mkdir -p "$MODDIR/tmp"
+				tar -cpf - -C "$tools_path" "META-INF" "script" "bin" | tar --delete "script/restore3" --delete "bin/busybox_path" --delete "bin/toast" --delete "bin/lz4" --delete "bin/zip" --delete "bin/appinfo" --delete "bin/appinfo.dex" | pv | tar --recursive-unlink -xmpf - -C "$MODDIR/tmp"
+				cd "$MODDIR/tmp"
+				zip -r "recovery卡刷備份.zip" *
+				mv "$MODDIR/tmp/recovery卡刷備份.zip" "$MODDIR"
+				rm -rf "$MODDIR/tmp" "$script_path/應用列表.txt"
+				echoRgb "輸出:$MODDIR/recovery卡刷備份.zip"
+			fi
 		fi
 	fi
 	if [[ $ERROR -ge 5 ]]; then

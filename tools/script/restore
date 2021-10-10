@@ -1,8 +1,8 @@
 #!/system/bin/sh
 MODDIR="${0%/*}"
-tools_path="$MODDIR/tools"
-[[ ! -d $tools_path ]] && echo "$tools_path目錄遺失" && exit 1
-. "$tools_path/bin.sh"
+bin_path="$MODDIR/bin"
+[[ ! -d $bin_path ]] && echo "$bin_path目錄遺失" && exit 1
+. "$bin_path/bin.sh"
 path="/data/media/0/Android"
 path2="/data/data"
 [[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" "0" && exit 1
@@ -24,16 +24,21 @@ echo_log() {
 }
 Release_data() {
 	tar_path="$1"
+	X="$path2/$name"
 	FILE_NAME="${tar_path##*/}"
 	FILE_NAME2="${FILE_NAME%%.*}"
 	echoRgb "恢復$FILE_NAME2數據" "0" "2"
 	if [[ $FILE_NAME2 = user ]]; then
-		case ${FILE_NAME##*.} in
-		lz4) pv "$tar_path" | tar --recursive-unlink -I lz4 -xmpf - -C "$path2" ;;
-		zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$path2" ;;
-		tar) pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$path2" ;;
-		*) (echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0" "0" ; Set_back)
-		esac
+		if [[ -d $X ]]; then
+			case ${FILE_NAME##*.} in
+			lz4) pv "$tar_path" | tar --recursive-unlink -I lz4 -xmpf - -C "$path2" ;;
+			zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$path2" ;;
+			tar) pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$path2" ;;
+			*) (echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0" "0" ; Set_back)
+			esac
+		else
+			echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0" "0" && Set_back
+		fi
 	else
 		case ${FILE_NAME##*.} in
 		lz4) pv "$tar_path" | tar --recursive-unlink -I lz4 -xmPpf - ;;
@@ -45,7 +50,6 @@ Release_data() {
 	echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
 	if [[ $result = 0 ]]; then
 		if [[ $FILE_NAME2 = user ]]; then
-			X="$path2/$name"
 			if [[ -e /config/sdcardfs/$name/appid ]]; then
 				G="$(cat "/config/sdcardfs/$name/appid" | grep -Eo '[0-9]+')"
 			else
