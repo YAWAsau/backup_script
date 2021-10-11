@@ -27,14 +27,18 @@
 
   警告! termux请勿使用tsu 支援设备必须安卓版本Android 8+ Arm64
 
-> 1. __生成应用列表.sh__：将zip解压缩到任意目录，点击`生成应用列表.sh`并勾选root执行脚本，等待提示结束 [[示意图]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/2.png)。
+> 1. **生成应用列表.sh**：将zip解压缩到任意目录，点击`生成应用列表.sh`并勾选root执行脚本，等待提示结束 [[示意图]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/2.png)。
 ![](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/1.png)
 
-> 2. __应用列表.txt__：当前目录下会生成一个`应用列表.txt`，这就是你**要备份的软件列表**，你可以把**不需要备份的软件那一行前加上`#`** [[示意图]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/3.png)，备份时就会跳过它；如果你只需要备份一两个软件，那么你可以**全选删除**，然后按照这个格式：`[App名称 App包名]` 进行填写需要备份的软件 [[示意图]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/4.png)，这样就不用一个一个去加`#`了。
+> 2. **应用列表.txt**：当前目录下会生成一个`应用列表.txt`，这就是你**要备份的软件列表**，你可以把**不需要备份的软件那一行前加上`#`**，备份时就会跳过它。
+![](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/3.png)
+如果你只需要备份一两个软件，那么你可以**全选删除**，然后按照这个格式：`[App名称 App包名]` 进行填写需要备份的软件，这样就不用一个一个去加`#`了。
+![](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/4.png)
 
-> 3. __备份应用.sh__：以上简单两步你就设置好了需要备份的软件，接下来点击`备份应用.sh`并勾选root执行，等待备份结束 [[示意图]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/5.png)。
+> 3. **备份应用.sh**：以上简单两步你就设置好了需要备份的软件，接下来点击`备份应用.sh`并勾选root执行，等待备份结束。
+![](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/5.png)
 
-> 4. __备份完成__：完成后会在当前目录生成一个Backup资料夹，里面是你的软件备份，把这个资料夹整个备份起来，刷完机直接在里面找到`还原备份.sh`即可恢复备份的所有数据，同样道理里面有个应用列表.txt ，一样跟第二步骤操作一样不需要还原的删除。
+> 4. **备份完成**：完成后会在当前目录生成一个Backup资料夹，里面是你的软件备份，把这个资料夹整个备份起来，刷完机直接在里面找到`还原备份.sh`即可恢复备份的所有数据，同样道理里面有个应用列表.txt ，一样跟第二步骤操作一样不需要还原的删除。
 
 ##### 附加说明[1]：backup_settings.conf (备份设置)
 ```
