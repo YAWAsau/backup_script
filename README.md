@@ -24,7 +24,8 @@
 `请认真阅读以下说明，以减少不必要的问题。`
 
 **推荐工具**: [MT管理器](https://www.coolapk.com/apk/bin.mt.plus)
-> 警告! termux请勿使用tsu 支援设备必须安卓版本Android 8+ Arm64
+
+  警告! termux请勿使用tsu 支援设备必须安卓版本Android 8+ Arm64
 
 > 1. __生成应用列表.sh__：将zip解压缩到任意目录，点击`生成应用列表.sh`并勾选root执行脚本 [[示意图]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/1.png)，等待提示结束 [[示意图]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/2.png)。
 
