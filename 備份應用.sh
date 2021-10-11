@@ -272,7 +272,7 @@ while [[ $i -le $r ]]; do
 				echoRgb "輸出用於recovery的備份卡刷包"
 				rm -rf "$MODDIR/recovery卡刷備份.zip"
 				mkdir -p "$MODDIR/tmp"
-				tar -cpf - -C "$tools_path" "META-INF" "script" "bin" | tar --delete "script/restore3" --delete "bin/busybox_path" --delete "bin/lz4" --delete "bin/zip" --delete "bin/appinfo" --delete "bin/appinfo.dex" | pv | tar --recursive-unlink -xmpf - -C "$MODDIR/tmp"
+				tar -cpf - -C "$tools_path" "META-INF" "script" "bin" "apk" | tar --delete "script/restore3" --delete "bin/busybox_path" --delete "bin/lz4" --delete "bin/zip" --delete "bin/appinfo" --delete "bin/appinfo.dex" | pv | tar --recursive-unlink -xmpf - -C "$MODDIR/tmp"
 				cd "$MODDIR/tmp"
 				zip -r "recovery卡刷備份.zip" *
 				mv "$MODDIR/tmp/recovery卡刷備份.zip" "$MODDIR"

@@ -12,6 +12,7 @@ MODDIR=/dev/backup
 #安装二进制文件
 rm -rf "$MODDIR"
 mkdir -p "$MODDIR"
+unzip -o "$ZIPFILE" 'apk/Message.apk' -d "$MODDIR"
 unzip -o "$ZIPFILE" 'bin/pv' -d "$MODDIR"
 unzip -o "$ZIPFILE" 'bin/bin.sh' -d "$MODDIR"
 unzip -o "$ZIPFILE" 'bin/busybox' -d "$MODDIR"
@@ -60,7 +61,7 @@ data=/data
 Backup="/data/media/0/TWRP/Backup_$Compression_method"
 [[ ! -d $Backup ]] && mkdir -p "$Backup" || rm -rf "$Backup"/*
 [[ ! -f $Backup/應用列表.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$Backup/應用列表.txt"
-[[ ! -d $Backup/bin ]] && mkdir -p "$Backup/bin" && cp -r "$MODDIR/bin"/* "$Backup/bin"
+[[ ! -d $Backup/bin ]] && cp -r "$MODDIR/bin" "$Backup" && cp -r "$MODDIR/apk" "$Backup/bin"
 [[ ! -f $Backup/還原備份.sh ]] && cp -r "$MODDIR/script/restore" "$Backup/還原備份.sh"
 [[ ! -f $Backup/掃描資料夾名.sh ]] && cp -r "$MODDIR/script/Get_DirName" "$Backup/掃描資料夾名.sh"
 filesize="$(du -ks "$Backup" | awk '{print $1}')"
@@ -96,6 +97,7 @@ Backup_apk() {
 	if [[ $result = 0 ]]; then
 		[[ $PackageName = "" ]] && echo "PackageName=\"$name\"" >>"$app_details"
 		[[ $ChineseName = "" ]] && echo "ChineseName=\"$name2\"" >>"$app_details"
+		[[ ! -f $Backup_folder/還原備份.sh ]] && cp -r "$MODDIR/script/restore2" "$Backup_folder/還原備份.sh"
 	fi
 	if [[ $name = com.android.chrome ]]; then
 		#刪除所有舊apk ,保留一個最新apk進行備份
@@ -191,7 +193,6 @@ while [[ $i -le $r ]]; do
 			Backup_apk "Split Apk支持備份"
 		fi
 		if [[ $D != ""  && $result = 0 && $No_backupdata = "" ]]; then
-			[[ ! -f $Backup_folder/還原備份.sh ]] && cp -r "$MODDIR/script/restore2" "$Backup_folder/還原備份.sh"
 			if [[ $Backup_obb_data = true ]]; then
 				#備份data數據
 				Backup_data "data"
