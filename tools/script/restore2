@@ -21,7 +21,7 @@ echo_log() {
 }
 {
 Backup_folder="$MODDIR"
-if [[ ! -e $Backup_folder/app_details ]]; then
+if [[ ! -f $Backup_folder/app_details ]]; then
 	echoRgb "$Backup_folder/app_details遺失，無法獲取包名" "0" "0" && exit 1
 else
 	. "$Backup_folder/app_details"
@@ -46,7 +46,7 @@ if [[ $(pm path "$name") = "" ]]; then
 	*)
 		echoRgb "恢復split apk"
 		b="$(pm install-create --user 0 | grep -Eo '[0-9]+')"
-		if [[ -e $TMPDIR/nmsl.apk ]]; then
+		if [[ -f $TMPDIR/nmsl.apk ]]; then
 			pm install --user 0 -r "$TMPDIR/nmsl.apk" >/dev/null 2>&1
 			echo_log "nmsl.apk安裝"
 		fi
@@ -95,7 +95,7 @@ if [[ $zb != "" ]]; then
 			echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
 			if [[ $result = 0 ]]; then
 				if [[ $FILE_NAME2 = user ]]; then
-					if [[ -e /config/sdcardfs/$name/appid ]]; then
+					if [[ -f /config/sdcardfs/$name/appid ]]; then
 						G="$(cat "/config/sdcardfs/$name/appid" | grep -Eo '[0-9]+')"
 					else
 						G="$(dumpsys package "$name" | awk '/userId=/{print $1}' | cut -f2 -d '=' | head -1 | grep -Eo '[0-9]+')"

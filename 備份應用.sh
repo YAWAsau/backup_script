@@ -9,7 +9,9 @@ script="${0##*/}"
 [[ ! -d $script_path ]] && echo "$script_path目錄遺失" && exit 1
 . "$bin_path/bin.sh"
 . "$MODDIR/backup_settings.conf"
-[[ $MODDIR = /data/media/0/Android/* ]] && echoRgb "請勿在$MODDIR內備份" "0" "0" && exit 2
+case $MODDIR in
+/storage/emulated/0/Android/*|/data/media/0/Android/*|/sdcard/Android/*) echoRgb "請勿在$MODDIR內備份" "0" "0" && exit 2 ;;
+esac
 [[ ! -f $MODDIR/backup_settings.conf ]] && echoRgb "backup_settings.conf遺失" "0" "0" && exit 1
 if [[ $(pgrep -f "$script" | grep -v grep | wc -l) -ge 2 ]]; then
 	echoRgb "檢測到進程殘留，請重新執行腳本 已銷毀進程" "0" "0"
