@@ -30,7 +30,7 @@ isBoolean "$path" && txtpath="$nsx"
 [[ $txtpath = true ]] && txtpath="$PWD" || txtpath="$MODDIR"
 nametxt="$txtpath/應用列表.txt"
 [[ ! -e $nametxt ]] && echo '#不需要備份的應用請在開頭注釋# 比如#酷安 xxxxxxxx\n#不需要備份數據比如酷安! xxxxxxxx應用名後方加一個驚嘆號即可 注意是應用名不是包名' >"$nametxt"
-#echo >>"$nametxt"
+echo >>"$nametxt"
 echoRgb "請勿關閉腳本，等待提示結束"
 i=1
 bn=118
@@ -47,6 +47,7 @@ appinfo -d " " -o ands,pn -pn $system $(get_launcher) -3 2>/dev/null | sort | se
 	fi
 	[[ $xz != "" ]] && let i++ bn++
 done
+sed -ie '/^$/d' "$nametxt" && rm -rf "$MODDIR/應用列表.txte"
 endtime 1
 [[ ! -e $MODDIR/tmp ]] && echoRgb "無新增應用" || echoRgb "輸出包名結束 請查看$nametxt"
 rm -rf "$MODDIR/tmp"

@@ -11,6 +11,11 @@ txt="$MODDIR/應用列表.txt"
 [[ ! -e $txt ]] && echoRgb "請執行\"掃描資料夾名.sh\"獲取應用列表再來恢復" "0" "0" && exit 2
 r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 [[ $r = "" ]] && echoRgb "應用列表.txt包名為空或是被注釋了" "0" "0" && exit 1
+if [[ $(pm path ice.message) = "" ]]; then
+	echoRgb "未安裝toast 開始安裝" "0" "0"
+	cp -r "$bin_path/apk"/*.apk /data/local/tmp && pm install --user 0 -r /data/local/tmp/*.apk >/dev/null 2>&1 && rm -rf /data/local/tmp/* 
+	[[ $? = 0 ]] && echoRgb "安裝toast成功" "0" "1" || echoRgb "安裝toast失敗" "0" "0"
+fi
 Set_back() {
 	return 1
 }
@@ -171,3 +176,5 @@ done
 starttime1="$TIME"
 echoRgb "批量恢複完成" && endtime 1 "批量恢複開始到結束" && echoRgb "應用閃退請重新開機" "0" "2"
 } &
+longToast "批量恢復完成"
+Print "批量恢復完成 執行過程請查看$Status_log"

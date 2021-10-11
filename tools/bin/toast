@@ -1,6 +1,0 @@
-if [[ $@ = "" ]]; then
-	echo "你媽腦溢血？不輸入他媽的用啥toast 我幹你娘類你個勾八東西草泥馬"
-else
-	am broadcast -n y.u.k/.T --es m "$@" &>/dev/null
-fi
-#

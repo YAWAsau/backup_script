@@ -17,6 +17,7 @@ if [[ $(pgrep -f "$script" | grep -v grep | wc -l) -ge 2 ]]; then
 		[[ $i != "" ]] && kill -9 " $i" >/dev/null
 	done
 fi
+#效驗選填是否正確
 isBoolean "$Lo" && Lo="$nsx"
 if [[ $Lo = false ]]; then
 	isBoolean "$Splist" && Splist="$nsx"
@@ -30,6 +31,7 @@ else
 	get_version "當前環境位置" "腳本絕對位置" && path3="$branch"
 fi
 i=1
+#數據目錄
 path="/data/media/0/Android"
 path2="/data/user/0"
 if [[ $path3 = true ]]; then
@@ -45,12 +47,10 @@ r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 [[ $r = "" ]] && echoRgb "爬..應用列表.txt是空的或是包名被注釋了這樣備份個鬼" "0" "0" && exit 1
 data=/data
 hx="本地"
-if [[ $(pm path y.u.k) = "" ]]; then
+if [[ $(pm path ice.message) = "" ]]; then
 	echoRgb "未安裝toast 開始安裝" "0" "0"
-	if [[ $(getenforce) != Permissive ]]; then
-		cp -r "$tools_path/apk"/*.apk /data/local/tmp && pm install --user 0 -r /data/local/tmp/*.apk >/dev/null 2>&1 && rm -rf /data/local/tmp/* 
-		[[ $? = 0 ]] && echoRgb "安裝toast成功" "0" "1" || echoRgb "安裝toast失敗" "0" "0"
-	fi
+	cp -r "$tools_path/apk"/*.apk /data/local/tmp && pm install --user 0 -r /data/local/tmp/*.apk >/dev/null 2>&1 && rm -rf /data/local/tmp/* 
+	[[ $? = 0 ]] && echoRgb "安裝toast成功" "0" "1" || echoRgb "安裝toast失敗" "0" "0"
 fi
 echoRgb "-壓縮方式:$Compression_method"
 echoRgb "-提示 腳本支持後台壓縮 可以直接離開腳本\n -或是關閉終端也能備份 如需終止腳本\n -請再次執行$script即可停止\n -備份結束將發送toast提示語" "0" "2"
@@ -70,7 +70,7 @@ fi
 [[ $Backup_obb_data = false ]] && echoRgb "當前backup_settings.conf的Backup_obb_data為0將不備份外部數據" "0" "0"
 [[ ! -d $Backup ]] && mkdir -p "$Backup"
 [[ ! -f $Backup/應用列表.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$Backup/應用列表.txt"
-[[ ! -d $Backup/tools ]] && cp -r "$bin_path" "$Backup" && rm -rf "$Backup/bin/toast" "$Backup/bin/appin"* "$Backup/bin/zip"
+[[ ! -d $Backup/tools ]] && cp -r "$bin_path" "$Backup" && cp -r "$tools_path/apk" "$Backup/bin" && rm -rf "$Backup/bin/toast" "$Backup/bin/appin"* "$Backup/bin/zip"
 [[ ! -f $Backup/還原備份.sh ]] && cp -r "$script_path/restore" "$Backup/還原備份.sh"
 [[ ! -f $Backup/掃描資料夾名.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/掃描資料夾名.sh"
 
@@ -99,8 +99,8 @@ Backup_apk() {
 		#備份apk
 		echoRgb "$1"
 		#[[ $name != $Open_apps ]] && am force-stop "$name"
-		echo "$apk_path" | sed -e '/^$/d' | while read j; do
-			path="$j"
+		echo "$apk_path" | sed -e '/^$/d' | while read; do
+			path="$REPLY"
 			b_size="$(ls -l "$path" | awk '{print $5}')"
 			k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
 			m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
@@ -113,6 +113,7 @@ Backup_apk() {
 			echo "apk_version=\"$(dumpsys package "$name" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)\"" >>"$app_details"
 			[[ $PackageName = "" ]] && echo "PackageName=\"$name\"" >>"$app_details"
 			[[ $ChineseName = "" ]] && echo "ChineseName=\"$name2\"" >>"$app_details"
+			[[ ! -f $Backup_folder/還原備份.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/還原備份.sh"
 		fi
 	fi
 	[[ $name = bin.mt.plus && -f $Backup_folder/base.apk ]] && cp -r "$Backup_folder/base.apk" "$Backup_folder.apk"
@@ -232,7 +233,6 @@ while [[ $i -le $r ]]; do
 			Backup_apk "Split Apk支持備份"
 		fi
 		if [[ $D != ""  && $result = 0 && $No_backupdata = "" ]]; then
-			[[ ! -f $Backup_folder/還原備份.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/還原備份.sh"
 			if [[ $Backup_obb_data = true ]]; then
 				#備份data數據
 				Backup_data "data"
@@ -272,7 +272,7 @@ while [[ $i -le $r ]]; do
 				echoRgb "輸出用於recovery的備份卡刷包"
 				rm -rf "$MODDIR/recovery卡刷備份.zip"
 				mkdir -p "$MODDIR/tmp"
-				tar -cpf - -C "$tools_path" "META-INF" "script" "bin" | tar --delete "script/restore3" --delete "bin/busybox_path" --delete "bin/toast" --delete "bin/lz4" --delete "bin/zip" --delete "bin/appinfo" --delete "bin/appinfo.dex" | pv | tar --recursive-unlink -xmpf - -C "$MODDIR/tmp"
+				tar -cpf - -C "$tools_path" "META-INF" "script" "bin" | tar --delete "script/restore3" --delete "bin/busybox_path" --delete "bin/lz4" --delete "bin/zip" --delete "bin/appinfo" --delete "bin/appinfo.dex" | pv | tar --recursive-unlink -xmpf - -C "$MODDIR/tmp"
 				cd "$MODDIR/tmp"
 				zip -r "recovery卡刷備份.zip" *
 				mv "$MODDIR/tmp/recovery卡刷備份.zip" "$MODDIR"
@@ -304,8 +304,9 @@ else
 	echoRgb "本次備份: $(($((filesizee - filesize)) * 1000 / 1024))kb"
 fi
 echoRgb "批量備份完成"
-[[ $(pm path y.u.k) != "" ]] && toast "批量備份完成"
-starttime1="$TIME"
 endtime 1 "批量備份開始到結束"
 exit 0
 }&
+wait
+longToast "批量備份完成"
+Print "批量備份完成 執行過程請查看$Status_log"
