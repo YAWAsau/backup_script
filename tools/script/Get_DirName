@@ -1,0 +1,14 @@
+#!/system/bin/sh
+MODDIR="${0%/*}"
+bin_path="$MODDIR/bin"
+[[ ! -d $bin_path ]] && echo "$bin_path目錄遺失" && exit 1
+txt="$MODDIR/應用列表.txt"
+. "$bin_path/bin.sh"
+echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt"
+find "$MODDIR" -maxdepth 1 -type d | sort | sed 's/\[/ /g ; s/\]//g' | while read; do
+	case ${REPLY##*/} in
+	媒體|backup_*|Backup_*|bin) ;;
+	*) echo "${REPLY##*/}">>"$txt" ;;
+	esac
+done
+echoRgb "$txt重新生成"

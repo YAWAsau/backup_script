@@ -1,0 +1,4 @@
+#!/system/bin/sh
+
+a=$(echo "$*" | sed 's#/#{xiegang}#g')
+content query --uri content://ice.message/long/"$*" >/dev/null 2>&1

@@ -1,0 +1,10 @@
+#!/system/bin/sh
+
+a=$(echo "$2" | sed 's#/#{xiegang}#g')
+b=$(echo "$3" | sed 's#/#{xiegang}#g')
+
+if [[ "$4" = "" ]]; then
+    content query --uri content://ice.message/notify/"$1<|>$a<|>$b<|>" >/dev/null 2>&1
+else
+    content query --uri content://ice.message/notify/"$1<|>$a<|>$b<|>$4" >/dev/null 2>&1
+fi
