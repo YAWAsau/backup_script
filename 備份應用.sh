@@ -142,12 +142,12 @@ Backup_apk() {
 }
 #檢測數據位置進行備份
 Backup_data() {
-	unset  zsize
+	unset zsize
 	case $1 in
 	user) Size="$userSize" && data_path="$path2/$name" ;;
 	data) Size="$dataSize" && data_path="$path/$1/$name" ;;
 	obb) Size="$obbSize" && data_path="$path/$1/$name" ;;
-	*) [[ -f $app_details ]] && Size="$(cat "$app_details" | awk "/$1Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" ; data_path="$2" ; Compression_method=tar ; zsize=1
+	*) [[ -f $app_details ]] && Size="$(cat "$app_details" | awk "/$1Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" ; data_path="$2" && Compression_method=tar && zsize=1
 	esac
 	if [[ -d $data_path ]]; then
 		if [[ $Size != $(du -ks "$data_path" | awk '{print $1}') ]]; then

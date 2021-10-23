@@ -36,7 +36,7 @@ if [[ $(pm path "$name") = "" ]]; then
 		lz4) pv "$apkfile" | tar -I lz4 -xmpf - -C "$TMPDIR" ;;
 		zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
 		tar) pv "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
-		*) (echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0" ; Set_back)
+		*) echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0" ; Set_back
 		esac
 		echo_log "${apkfile##*/}解壓縮" && [[ -f $Backup_folder/nmsl.apk ]] && cp -r "$Backup_folder/nmsl.apk" "$TMPDIR"
 	else
@@ -86,17 +86,17 @@ if [[ $(pm path "$name") != "" ]]; then
 				lz4) pv "$tar_path" | tar --recursive-unlink -I lz4 -xmpf - -C "$path2" ;;
 				zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$path2" ;;
 				tar) pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$path2" ;;
-				*) (echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0" ; Set_back)
+				*) echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0" ; Set_back
 				esac
 			else
-				(echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0" ; Set_back)
+				echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0" ; Set_back
 			fi
 		else
 			case ${FILE_NAME##*.} in
 			lz4) pv "$tar_path" | tar --recursive-unlink -I lz4 -xmPpf - ;;
 			zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmPpf - ;;
 			tar) pv "$tar_path" | tar --recursive-unlink -xmPpf - ;;
-			*) (echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0" ; Set_back)
+			*) echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0" ; Set_back
 			esac
 		fi
 		echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"

@@ -1,6 +1,6 @@
 #!/system/bin/sh
 MODDIR="${0%/*}"
-bin_path="$MODDIR/bin"
+bin_path="$MODDIR/tools/bin"
 [[ ! -d $bin_path ]] && echo "$bin_path目錄遺失" && exit 1
 txt="$MODDIR/應用列表.txt"
 . "$bin_path/bin.sh"
