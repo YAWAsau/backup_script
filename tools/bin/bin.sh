@@ -12,10 +12,10 @@ esac
 #if [[ -d /data/user/0/com.tencent.mobileqq/files/aladdin_configs/964103426 ]]; then
 #	echo "爬 不給你用臭批阿巴" && exit 2
 #fi
+PATH="/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/Han.GJZS/files/usr/busybox:/data/data/Han.GJZS/files/usr/bin:/data/data/com.omarea.vtools/files/toolkit"
 if [[ -d $(magisk --path) ]]; then
-	PATH="/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/Han.GJZS/files/usr/busybox:/data/data/Han.GJZS/files/usr/bin:$(magisk --path)/.magisk/busybox"
+	PATH="$PATH:$(magisk --path)/.magisk/busybox"
 else
-	PATH="/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/Han.GJZS/files/usr/busybox:/data/data/Han.GJZS/files/usr/bin"
 	echo "Magisk busybox Path does not exist"
 fi ; export PATH="$PATH"
 backup_version="V10.6 2021/10/22-20:59"
@@ -44,8 +44,7 @@ fi
 #刪除無效軟連結
 find -L "$filepath" -maxdepth 1 -type l -exec rm -rf {} \;
 if [[ -d $bin_path ]]; then
-	[[ ! -f $busybox2 ]] && echo "$busybox2不存在" && exit 1
-	if [[ -f $busybox ]]; then
+	if [[ -f $busybox && -f $busybox2 ]]; then
 		filemd5="$(md5sum "$busybox" | cut -d" " -f1)"
 		filemd5_1="$(md5sum "$busybox2" | cut -d" " -f1)"
 		if [[ $filemd5 != $filemd5_1 ]]; then
@@ -70,22 +69,24 @@ if [[ -d $bin_path ]]; then
 			fi
 		fi
 	done
-	"$busybox" --list | while read; do
-		if [[ $REPLY != tar && ! -f $filepath/$REPLY ]]; then
-			ln -fs "$busybox" "$filepath/$REPLY"
-		fi
-	done
+	if [[ -f $busybox ]]; then
+		"$busybox" --list | while read; do
+			if [[ $REPLY != tar && ! -f $filepath/$REPLY ]]; then
+				ln -fs "$busybox" "$filepath/$REPLY"
+			fi
+		done
+	fi
 else
 	echo "遺失$bin_path"
-	exit 1
-fi
-if [[ ! -f $busybox ]]; then
-	echo "不存在$busybox ...."
 	exit 1
 fi
 export PATH="$filepath:$PATH"
 export TZ=Asia/Taipei
 TMPDIR="/data/local/tmp"
+if [[ $(which busybox) = "" ]]; then
+	echo "環境變量中沒有找到busybox 請在tools/bin內添加一個\narm64可用的busybox\n或是安裝搞機助手 scene或是Magisk busybox模塊...."
+	exit 1
+fi
 Open_apps="$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")"
 #下列為自定義函數
 Set_back() {
@@ -148,7 +149,7 @@ isBoolean() {
 	fi
 }
 bn=147
-echoRgb "\n --------------歡迎使用⚡️🤟🐂纸備份--------------\n -當前腳本執行路徑:$MODDIR\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$(appinfo -o ands -pn "$Open_apps" 2>/dev/null)"
+echoRgb "\n --------------歡迎使用⚡️🤟🐂纸備份--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$(appinfo -o ands -pn "$Open_apps" 2>/dev/null)"
 bn=195
 if [[ $(pm path ice.message) = "" ]]; then
 	echoRgb "未安裝toast 開始安裝" "0"
