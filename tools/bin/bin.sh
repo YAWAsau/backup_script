@@ -13,11 +13,10 @@ esac
 #	echo "爬 不給你用臭批阿巴" && exit 2
 #fi
 PATH="/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/Han.GJZS/files/usr/busybox:/data/data/Han.GJZS/files/usr/bin:/data/data/com.omarea.vtools/files/toolkit"
-if [[ -d $(magisk --path) ]]; then
-	PATH="$PATH:$(magisk --path)/.magisk/busybox"
-else
-	echo "Magisk busybox Path does not exist"
-fi ; export PATH="$PATH"
+MAGISKTMP="$(magisk --path 2>/dev/null)"
+[[ -z "$MAGISKTMP" ]] && MAGISKTMP="/sbin"
+[[ -d "$MAGISKTMP" ]] && PATH="$PATH:$MAGISKTMP/.magisk/busybox" || echo "Magisk busybox Path does not exist"
+export PATH="$PATH"
 backup_version="V10.6 2021/10/22-20:59"
 #設置二進制命令目錄位置
 [[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
