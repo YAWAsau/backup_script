@@ -85,6 +85,7 @@ if [[ ! -f $busybox ]]; then
 fi
 export PATH="$filepath:$PATH"
 export TZ=Asia/Taipei
+TMPDIR="/data/local/tmp"
 Open_apps="$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")"
 #下列為自定義函數
 Set_back() {
@@ -147,5 +148,10 @@ isBoolean() {
 	fi
 }
 bn=147
-echoRgb "\n --------------歡迎使用⚡️🤟🐂纸備份--------------\n -當前腳本執行路徑:$MODDIR\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$(  -o ands -pn "$Open_apps" 2>/dev/null)"
+echoRgb "\n --------------歡迎使用⚡️🤟🐂纸備份--------------\n -當前腳本執行路徑:$MODDIR\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$(appinfo -o ands -pn "$Open_apps" 2>/dev/null)"
 bn=195
+if [[ $(pm path ice.message) = "" ]]; then
+	echoRgb "未安裝toast 開始安裝" "0"
+	cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user 0 -r "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/* 
+	[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
+fi

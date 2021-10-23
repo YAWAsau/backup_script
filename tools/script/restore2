@@ -1,11 +1,10 @@
 #!/system/bin/sh
 MODDIR="${0%/*}"
-bin_path="${MODDIR%/*}/bin"
+bin_path="${MODDIR%/*}/tools/bin"
 [[ ! -d $bin_path ]] && echo "$bin_path目錄遺失" && exit 1
 . "$bin_path/bin.sh"
 path="/data/media/0/Android"
 path2="/data/data"
-TMPDIR="/data/local/tmp"
 [[ ! -d $TMPDIR ]] && mkdir "$TMPDIR"
 [[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
 #記錄開始時間

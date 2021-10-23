@@ -42,7 +42,6 @@ i=1
 #數據目錄
 path="/data/media/0/Android"
 path2="/data/user/0"
-TMPDIR="/data/local/tmp"
 [[ ! -d $TMPDIR ]] && mkdir "$TMPDIR"
 if [[ $path3 = true ]]; then
 	Backup="$PWD/Backup_$Compression_method"
@@ -57,11 +56,6 @@ r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 [[ $r = "" ]] && echoRgb "爬..應用列表.txt是空的或是包名被注釋了這樣備份個鬼" "0" && exit 1
 data=/data
 hx="本地"
-if [[ $(pm path ice.message) = "" ]]; then
-	echoRgb "未安裝toast 開始安裝" "0"
-	cp -r "$tools_path/apk"/*.apk "$TMPDIR" && pm install --user 0 -r "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/* 
-	[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
-fi
 echoRgb "-壓縮方式:$Compression_method"
 echoRgb "-提示 腳本支持後台壓縮 可以直接離開腳本\n -或是關閉終端也能備份 如需終止腳本\n -請再次執行$script即可停止\n -備份結束將發送toast提示語" "2"
 if [[ $PU != "" ]]; then
@@ -83,7 +77,7 @@ fi
 [[ $Hybrid_backup = true ]] && echoRgb "當前backup_settings.conf的\n -Hybrid_backup為1將不備份任何應用" "0"
 [[ ! -d $Backup ]] && mkdir -p "$Backup"
 [[ ! -f $Backup/應用列表.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$Backup/應用列表.txt"
-[[ ! -d $Backup/tools ]] && cp -r "$bin_path" "$Backup" && cp -r "$tools_path/apk" "$Backup/bin" && rm -rf "$Backup/bin/toast" "$Backup/bin/zip"
+[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/META-INF" "$Backup/tools/script"
 [[ ! -f $Backup/還原備份.sh ]] && cp -r "$script_path/restore" "$Backup/還原備份.sh"
 [[ ! -f $Backup/掃描資料夾名.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/掃描資料夾名.sh"
 filesize="$(du -ks "$Backup" | awk '{print $1}')"
@@ -137,14 +131,13 @@ Backup_apk() {
 			FileNum="$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)"
 			while [[ $FileNum -gt $ReservedNum ]]; do
 				OldFile="$(ls -rt /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | head -1)"
-				echoRgb "刪除文件:${OldFile%/*/*}"
-				rm -rf "${OldFile%/*/*}"
+				rm -rf "${OldFile%/*/*}" && echoRgb "刪除文件:${OldFile%/*/*}"
 				let "FileNum--"
 			done
 			[[ -f $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null) && $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l) = 1 ]] && cp -r "$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null)" "$Backup_folder/nmsl.apk"
 		fi
 	fi
-	[[ $name = bin.mt.plus && -f $apk_path && ! -f $Backup/$name2.apk ]] && cp -r "$apk_path" "$Backup/$name2.apk"
+	[[ $name = bin.mt.plus && ! -f $Backup/$name2.apk ]] && cp -r "$apk_path" "$Backup/$name2.apk"
 	unset ChineseName PackageName ; D=1
 }
 #檢測數據位置進行備份
