@@ -12,9 +12,9 @@ esac
 #if [[ -d /data/user/0/com.tencent.mobileqq/files/aladdin_configs/964103426 ]]; then
 #	echo "爬 不給你用臭批阿巴" && exit 2
 #fi
-PATH="/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/Han.GJZS/files/usr/busybox:/data/data/Han.GJZS/files/usr/bin:/data/data/com.omarea.vtools/files/toolkit"
+PATH="/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/Han.GJZS/files/usr/busybox:/data/data/Han.GJZS/files/usr/bin:/data/data/com.omarea.vtools/files/toolkit:/data/user/0/com.termux/files/usr/bin"
 if [[ -d $(magisk --path) ]]; then
-	PATH="$PATH:$(magisk --path)/.magisk/busybox"
+	PATH="$(magisk --path)/.magisk/busybox:$PATH"
 else
 	echo "Magisk busybox Path does not exist"
 fi ; export PATH="$PATH"
