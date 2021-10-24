@@ -23,7 +23,7 @@ echo_log() {
 }
 Release_data() {
 	tar_path="$1"
-	X="$path2/$name"
+	X="$path2/$name2"
 	FILE_NAME="${tar_path##*/}"
 	FILE_NAME2="${FILE_NAME%%.*}"
 	echoRgb "恢復$FILE_NAME2數據" "2"
@@ -50,10 +50,10 @@ Release_data() {
 	if [[ $result = 0 ]]; then
 		if [[ $FILE_NAME2 = user ]]; then
 			if [[ -d $X ]]; then
-				if [[ -f /config/sdcardfs/$name/appid ]]; then
-					G="$(cat "/config/sdcardfs/$name/appid")"
+				if [[ -f /config/sdcardfs/$name2/appid ]]; then
+					G="$(cat "/config/sdcardfs/$name2/appid")"
 				else
-					G="$(dumpsys package "$name" | awk '/userId=/{print $1}' | cut -f2 -d '=' | head -1)"
+					G="$(dumpsys package "$name2" | awk '/userId=/{print $1}' | cut -f2 -d '=' | head -1)"
 				fi ; G="$(echo "$G" | grep -Eo '[0-9]+')"
 				if [[ $G != "" ]]; then
 					echoRgb "路徑:$X"
@@ -70,7 +70,7 @@ Release_data() {
 				echoRgb "路徑$X不存在" "0"
 			fi
 		elif [[ $FILE_NAME2 = data ]]; then
-			chown -R "1023:1078" "$path/data/$name"
+			chown -R "1023:1078" "$path/data/$name2"
 		fi
 	fi
 }
@@ -85,15 +85,15 @@ while [[ $i -le $r ]]; do
 	#let bn++
 	#[[ $bn -ge 37 ]] && bn=31
 	echoRgb "恢複第$i個應用 總共$r個 剩下$((r-i))個應用"
-	name="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
-	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-	Backup_folder="$MODDIR/${name2}[${name}]"
+	name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+	Backup_folder="$MODDIR/$name1"
 	Backup_folder2="$MODDIR/媒體"
-	[[ $name = "" ]] && echoRgb "警告! 應用列表.txt應用包名獲取失敗，可能修改有問題" "0" && exit 1
+	[[ $name2 = "" ]] && echoRgb "應用包名獲取失敗" "0" && exit 1
 	if [[ -d $Backup_folder ]]; then
-		echoRgb "恢複$name2 ($name)"
+		echoRgb "恢複$name1 ($name2)"
 		starttime2="$(date -u "+%s")"
-		if [[ $(pm path "$name") = "" ]]; then
+		if [[ $(pm path "$name2") = "" ]]; then
 			apkfile="$(find "$Backup_folder" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
 			if [[ $apkfile != "" ]]; then
 				rm -rf "$TMPDIR"/*
@@ -136,14 +136,14 @@ while [[ $i -le $r ]]; do
 		else
 			echoRgb "存在當前系統中略過安裝Apk"
 		fi
-		if [[ $(pm path "$name") != "" ]]; then
+		if [[ $(pm path "$name2") != "" ]]; then
 			#停止應用
-			[[ $name != $Open_apps ]] && am force-stop "$name"
+			[[ $name2 != $Open_apps ]] && am force-stop "$name2"
 			find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f | sort | while read; do
 				Release_data "$REPLY"
 			done
 		else
-			echoRgb "$name2沒有安裝無法恢復數據" "0"
+			echoRgb "$name1沒有安裝無法恢復數據" "0"
 		fi
 		endtime 2 "恢複" && echoRgb "完成$((i*100/r))%" && echoRgb
 	else

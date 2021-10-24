@@ -95,8 +95,8 @@ echo_log() {
 Backup_apk() {
 	#創建APP備份文件夾
 	[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
-	[[ $(cat "$Backup/應用列表.txt" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name}$" | head -1) = "" ]] && echo "$name2 $name" >>"$Backup/應用列表.txt"
-	if [[ $apk_version = $(dumpsys package "$name" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1) ]]; then
+	[[ $(cat "$Backup/應用列表.txt" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "$name1 $name2" >>"$Backup/應用列表.txt"
+	if [[ $apk_version = $(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1) ]]; then
 		unset xb ; result=0
 		echoRgb "Apk版本無更新 跳過備份"
 	else
@@ -104,7 +104,7 @@ Backup_apk() {
 		rm -rf "$Backup_folder"/*.apk
 		#備份apk
 		echoRgb "$1"
-		[[ $name != $Open_apps ]] && am force-stop "$name"
+		[[ $name2 != $Open_apps ]] && am force-stop "$name2"
 		echo "$apk_path" | sed -e '/^$/d' | while read; do
 			path="$REPLY"
 			b_size="$(ls -l "$path" | awk '{print $5}')"
@@ -120,12 +120,12 @@ Backup_apk() {
 		esac)
 		echo_log "備份$apk_number個Apk"
 		if [[ $result = 0 ]]; then
-			echo "apk_version=\"$(dumpsys package "$name" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)\"" >>"$app_details"
-			[[ $PackageName = "" ]] && echo "PackageName=\"$name\"" >>"$app_details"
-			[[ $ChineseName = "" ]] && echo "ChineseName=\"$name2\"" >>"$app_details"
+			echo "apk_version=\"$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)\"" >>"$app_details"
+			[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
+			[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
 			[[ ! -f $Backup_folder/還原備份.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/還原備份.sh"
 		fi
-		if [[ $name = com.android.chrome ]]; then
+		if [[ $name2 = com.android.chrome ]]; then
 			#刪除所有舊apk ,保留一個最新apk進行備份
 			ReservedNum=1
 			FileNum="$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)"
@@ -137,20 +137,21 @@ Backup_apk() {
 			[[ -f $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null) && $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l) = 1 ]] && cp -r "$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null)" "$Backup_folder/nmsl.apk"
 		fi
 	fi
-	[[ $name = bin.mt.plus && ! -f $Backup/$name2.apk ]] && cp -r "$apk_path" "$Backup/$name2.apk"
+	[[ $name2 = bin.mt.plus && ! -f $Backup/$name1.apk ]] && cp -r "$apk_path" "$Backup/$name1.apk"
 	unset ChineseName PackageName ; D=1
 }
 #檢測數據位置進行備份
 Backup_data() {
 	unset zsize
 	case $1 in
-	user) Size="$userSize" && data_path="$path2/$name" ;;
-	data) Size="$dataSize" && data_path="$path/$1/$name" ;;
-	obb) Size="$obbSize" && data_path="$path/$1/$name" ;;
+	user) Size="$userSize" && data_path="$path2/$name2" ;;
+	data) Size="$dataSize" && data_path="$path/$1/$name2" ;;
+	obb) Size="$obbSize" && data_path="$path/$1/$name2" ;;
 	*) [[ -f $app_details ]] && Size="$(cat "$app_details" | awk "/$1Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" ; data_path="$2" ; Compression_method=tar ; zsize=1
 	esac
 	if [[ -d $data_path ]]; then
 		if [[ $Size != $(du -ks "$data_path" | awk '{print $1}') ]]; then
+			[[ $name2 != $Open_apps ]] && am force-stop "$name2"
 			[[ $lxj -ge 95 ]] && echoRgb "$data空間不足,達到$lxj%" "0" && exit 2
 			echoRgb "備份$1數據" "2"
 			case $1 in
@@ -183,7 +184,7 @@ Backup_data() {
 	fi
 }
 recovery_backup() {
-	echo "$name2 $name $apk_path2" >>"$script_path/應用列表.txt"
+	echo "$name1 $name2 $apk_path2" >>"$script_path/應用列表.txt"
 	if [[ $i = $r ]]; then
 		if [[ -f $tools_path/META-INF/com/google/android/update-binary ]]; then
 			echoRgb "輸出用於recovery的備份卡刷包" ; rm -rf "$MODDIR/recovery卡刷備份.zip" ; mkdir -p "$MODDIR/tmp"
@@ -217,29 +218,37 @@ TIME="$starttime1"
 ERROR=1
 {
 while [[ $i -le $r ]]; do
-	name="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
-	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-	[[ $name = "" ]] && echoRgb "警告! 應用列表.txt應用包名獲取失敗，可能修改有問題" "0" && exit 1
-	apk_path="$(pm path "$name" | cut -f2 -d ':')"
+	name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+	[[ $name2 = "" ]] && echoRgb "警告! 應用列表.txt應用包名獲取失敗，可能修改有問題" "0" && exit 1
+	apk_path="$(pm path "$name2" | cut -f2 -d ':')"
 	apk_path2="$(echo "$apk_path" | head -1)" ; apk_path2="${apk_path2%/*}"
 	if [[ -d $apk_path2 ]]; then
 		if [[ $Hybrid_backup = false ]]; then
 			echoRgb "備份第$i個應用 總共$r個 剩下$((r-i))個應用"
-			if [[ $name2 = *! || $name2 = *！ ]]; then
-				name2="$(echo "$name2" | sed 's/!//g ; s/！//g')"
-				echoRgb "跳過備份$name2 所有數據" "0"
+			if [[ $name1 = *! || $name1 = *！ ]]; then
+				name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
+				echoRgb "跳過備份$name1 所有數據" "0"
 				No_backupdata=1
 			else
 				[[ $No_backupdata != "" ]] && unset No_backupdata
 			fi
-			Backup_folder="$Backup/${name2}[${name}]"
+			Backup_folder="$Backup/$name1"
 			app_details="$Backup_folder/app_details"
-			[[ -f $app_details ]] && . "$app_details"
+			if [[ -f $app_details ]]; then
+				. "$app_details"
+				if [[ $PackageName != $name2 ]]; then
+					unset userSize ChineseName PackageName apk_version
+					Backup_folder="$Backup/${name1}[${name2}]"
+					app_details="$Backup_folder/app_details"
+					[[ -f $app_details ]] && . "$app_details"
+				fi
+			fi
 			lxj="$(df -h "$data" | awk 'END{print $4}' | sed 's/%//g')"
 			starttime2="$(date -u "+%s")"
-			echoRgb "備份$name2 ($name)"
-			[[ $name = com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份"
-			[[ $name = com.tencent.mm ]] && echo "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份"
+			echoRgb "備份$name1 ($name2)"
+			[[ $name2 = com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份"
+			[[ $name2 = com.tencent.mm ]] && echo "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份"
 			apk_number="$(echo "$apk_path" | wc -l)"
 			if [[ $apk_number = 1 ]]; then
 				if [[ $Splist = false ]]; then
@@ -260,7 +269,7 @@ while [[ $i -le $r ]]; do
 				#備份user數據
 				[[ $Backup_user_data = true ]] && Backup_data "user"
 			fi
-			endtime 2 "$name2備份"
+			endtime 2 "$name1備份"
 			echoRgb "完成$((i*100/r))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')"
 			echoRgb
 			recovery_backup
@@ -268,7 +277,7 @@ while [[ $i -le $r ]]; do
 			recovery_backup
 		fi
 	else
-		echoRgb "$name2[$name]不在安裝列表，備份個寂寞？" "0"
+		echoRgb "$name1[$name2]不在安裝列表，備份個寂寞？" "0"
 	fi
 	if [[ $i = $r ]]; then
 		endtime 1 "應用備份"

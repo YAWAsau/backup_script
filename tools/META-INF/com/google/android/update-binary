@@ -90,7 +90,7 @@ Backup_apk() {
 	ui_print "$1"
 	[[ $lxj -ge 95 ]] && ui_print "$data空間不足,達到$lxj%" && exit 2
 	rm -rf "$Backup_folder"/*.apk
-	[[ $(cat "$Backup/應用列表.txt" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name}$" | head -1) = "" ]] && echo "$name2 $name" >>"$Backup/應用列表.txt"
+	[[ $(cat "$Backup/應用列表.txt" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "$name1 $name2" >>"$Backup/應用列表.txt"
 	find "$apk_path" -maxdepth 1 -name "*.apk" -type f | while read; do
 		path="$REPLY"
 		b_size="$(ls -l "$path" | awk '{print $5}')"
@@ -105,11 +105,11 @@ Backup_apk() {
 	esac)
 	echo_log "備份$apk_number個Apk"
 	if [[ $result = 0 ]]; then
-		[[ $PackageName = "" ]] && echo "PackageName=\"$name\"" >>"$app_details"
-		[[ $ChineseName = "" ]] && echo "ChineseName=\"$name2\"" >>"$app_details"
+		[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
+		[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
 		[[ ! -f $Backup_folder/還原備份.sh ]] && cp -r "$MODDIR/script/restore2" "$Backup_folder/還原備份.sh"
 	fi
-	if [[ $name = com.android.chrome ]]; then
+	if [[ $name2 = com.android.chrome ]]; then
 		#刪除所有舊apk ,保留一個最新apk進行備份
 		ReservedNum=1
 		FileNum="$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)"
@@ -121,16 +121,16 @@ Backup_apk() {
 		done
 		[[ -f $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null) && $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l) = 1 ]] && cp -r "$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null)" "$Backup_folder/nmsl.apk"
 	fi
-	[[ $name = bin.mt.plus && -f $apk_path/base.apk && ! -f $Backup/$name2.apk ]] && cp -r "$apk_path/base.apk" "$Backup/$name2.apk"
+	[[ $name2 = bin.mt.plus && -f $apk_path/base.apk && ! -f $Backup/$name1.apk ]] && cp -r "$apk_path/base.apk" "$Backup/$name1.apk"
 	unset PackageName ChineseName ; D=1
 }
 #檢測數據位置進行備份
 Backup_data() {
 	unset  zsize
 	case $1 in
-	user) data_path="$path2/$name" ;;
-	data) data_path="$path/$1/$name" ;;
-	obb) data_path="$path/$1/$name" ;;
+	user) data_path="$path2/$name2" ;;
+	data) data_path="$path/$1/$name2" ;;
+	obb) data_path="$path/$1/$name2" ;;
 	*) [[ -f $app_details ]] && data_path="$2" && Compression_method=tar && zsize=1 ;;
 	esac
 	if [[ -d $data_path ]]; then
@@ -172,26 +172,34 @@ starttime1="$(date -u "+%s")"
 {
 while [[ $i -le $r ]]; do
 	ui_print "備份第$i個應用 總共$r個 剩下$((r-i))個應用"
-	name="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
-	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+	name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
 	lxj="$(df -h "$data" | awk 'END{print $4}' | sed 's/%//g')"
-	if [[ $name2 = *! || $name2 = *！ ]]; then
-		name2="$(echo "$name2" | sed 's/!//g ; s/！//g')"
-		ui_print "跳過備份$name2 所有數據"
+	if [[ $name1 = *! || $name1 = *！ ]]; then
+		name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
+		ui_print "跳過備份$name1 所有數據"
 		No_backupdata=1
 	else
 		[[ $No_backupdata != "" ]] && unset No_backupdata
 	fi
-	Backup_folder="$Backup/${name2}[${name}]"
+	Backup_folder="$Backup/$name1"
 	app_details="$Backup_folder/app_details"
-	[[ -f $app_details ]] && . "$app_details"
-	[[ $name = "" ]] && ui_print "警告! 應用列表.txt應用包名獲取失敗，可能修改有問題" && exit 1
+	if [[ -f $app_details ]]; then
+		. "$app_details"
+		if [[ $PackageName != $name2 ]]; then
+			unset ChineseName PackageName
+			Backup_folder="$Backup/${name1}[${name2}]"
+			app_details="$Backup_folder/app_details"
+			[[ -f $app_details ]] && . "$app_details"
+		fi
+	fi
+	[[ $name2 = "" ]] && ui_print "警告! 應用列表.txt應用包名獲取失敗，可能修改有問題" && exit 1
 	apk_path="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $3}')"
 	if [[ -d $apk_path ]]; then
 		starttime2="$(date -u "+%s")"
-		ui_print "備份$name2 ($name)"
-		[[ $name = com.tencent.mobileqq ]] && ui_print "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
-		[[ $name = com.tencent.mm ]] && ui_print "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
+		ui_print "備份$name1 ($name2)"
+		[[ $name2 = com.tencent.mobileqq ]] && ui_print "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
+		[[ $name2 = com.tencent.mm ]] && ui_print "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的軟件備份"
 		apk_number="$(find "$apk_path" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)"
 		if [[ $apk_number = 1 ]]; then
 			if [[ $Splist = false ]]; then
@@ -213,10 +221,10 @@ while [[ $i -le $r ]]; do
 			#備份user數據
 			[[ $Backup_user_data = true ]] && Backup_data "user"
 		fi
-		endtime 2 "$name2備份"
+		endtime 2 "$name1備份"
 		ui_print "完成$((i*100/r))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')"
 	else
-		ui_print "$name2[$name]不在安裝列表，備份個寂寞？"
+		ui_print "$name1[$name2]不在安裝列表，備份個寂寞？"
 	fi
 	ui_print "
 	"
