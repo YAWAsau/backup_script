@@ -61,8 +61,8 @@ echoRgb "-提示 腳本支持後台壓縮 可以直接離開腳本\n -或是關�
 if [[ $PU != "" ]]; then
 	[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts | grep "$PU" | awk '{print $2}')"
 	if [[ -d $PT ]]; then
-		echoRgb "檢測到usb 是否在usb備份\n 音量上是，音量下不是"
-		get_version "USB備份" "本地備份"
+		echoRgb "檢測到usb 是否在usb備份\n -音量上是，音量下不是"
+		get_version "選擇了USB備份" "選擇了本地備份"
 		if $branch = true ]]; then
 			Backup="$PT/Backup_$Compression_method"
 			data="/dev/block/vold/$PU"
