@@ -56,8 +56,8 @@ r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 [[ $r = "" ]] && echoRgb "爬..應用列表.txt是空的或是包名被注釋了這樣備份個鬼" "0" && exit 1
 data=/data
 hx="本地"
-echoRgb "-壓縮方式:$Compression_method"
-echoRgb "-提示 腳本支持後台壓縮 可以直接離開腳本\n -或是關閉終端也能備份 如需終止腳本\n -請再次執行$script即可停止\n -備份結束將發送toast提示語" "2"
+echoRgb "壓縮方式:$Compression_method"
+echoRgb "提示 腳本支持後台壓縮 可以直接離開腳本\n -或是關閉終端也能備份 如需終止腳本\n -請再次執行$script即可停止\n -備份結束將發送toast提示語" "2"
 if [[ $PU != "" ]]; then
 	[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts | grep "$PU" | awk '{print $2}')"
 	if [[ -d $PT ]]; then
