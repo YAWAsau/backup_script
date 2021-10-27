@@ -28,7 +28,7 @@ i=1
 bn=118
 rm -rf "$MODDIR/tmp"
 starttime1="$(date -u "+%s")"
-appinfo -d " " -o ands,pn -pn $system $launcher_app -3 2>/dev/null | sort | sed 's/\///g ; s/\://g ; s/(//g ; s/)//g ; s/\[//g ; s/\]//g ; s/\-//g' | egrep -v 'ice.message|oneplus|miui|xiaomi|oppo|flyme' | while read; do
+appinfo -d " " -o ands,pn -pn $system $launcher_app -3 2>/dev/null | sort | sed 's/\///g ; s/\://g ; s/(//g ; s/)//g ; s/\[//g ; s/\]//g ; s/\-//g' | egrep -v 'ice.message|oneplus|miui|xiaomi|oppo|flyme|meizu|com.android.soundrecorder' | while read; do
 	[[ $bn -ge 229 ]] && bn=118
 	app_1=($REPLY $REPLY)
 	if [[ $(cat "$nametxt" | grep -oE "${app_1[1]}$") = "" ]]; then

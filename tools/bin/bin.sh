@@ -18,11 +18,10 @@ if [[ -d $(magisk --path 2>/dev/null) ]]; then
 else
 	echo "Magisk busybox Path does not exist"
 fi ; export PATH="$PATH"
-backup_version="V10.7 2021/10/25-21:07"
+backup_version="V10.7 2021/10/27-20:07"
 #設置二進制命令目錄位置
 [[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
-bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
-MODDIR="${MODDIR/'/storage/emulated/'/'/data/media/'}"
+#bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
 Status_log="$MODDIR/執行狀態日誌.txt"
 rm -rf "$Status_log"
 filepath="/data/backup_tools"
@@ -124,11 +123,11 @@ get_version() {
 		case $version in
 		KEY_VOLUMEUP)
 			branch=true
-			echoRgb "$1"
+			echoRgb "$1" "1"
 			;;
 		KEY_VOLUMEDOWN)
 			branch=false
-			echoRgb "$2"
+			echoRgb "$2" "0"
 			;;
 		*)
 			continue

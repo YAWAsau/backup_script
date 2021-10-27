@@ -8,7 +8,7 @@ echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安"
 find "$MODDIR" -maxdepth 1 -type d | sort | sed 's/\[/ /g ; s/\]//g' | while read; do
 	if [[ -f $REPLY/app_details ]]; then
 		unset PackageName
-		. $REPLY/app_details
+		. "$REPLY/app_details"
 		if [[ $PackageName != "" ]]; then
 			echo "${REPLY##*/} $PackageName">>"$txt"
 		fi

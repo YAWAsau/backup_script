@@ -29,6 +29,7 @@ fi
 isBoolean "$Lo" && Lo="$nsx"
 if [[ $Lo = false ]]; then
 	isBoolean "$Splist" && Splist="$nsx"
+	isBoolean "$USBdefault" && USBdefault="$nsx"
 	isBoolean "$Backup_obb_data" && Backup_obb_data="$nsx"
 	isBoolean "$path" && path3="$nsx"
 	isBoolean "$Backup_user_data" && Backup_user_data="$nsx"
@@ -61,16 +62,23 @@ echoRgb "提示 腳本支持後台壓縮 可以直接離開腳本\n -或是關�
 if [[ $PU != "" ]]; then
 	[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts | grep "$PU" | awk '{print $2}')"
 	if [[ -d $PT ]]; then
-		echoRgb "檢測到usb 是否在usb備份\n -音量上是，音量下不是"
-		get_version "選擇了USB備份" "選擇了本地備份"
-		if $branch = true ]]; then
+		if [[ $USBdefault = false ]]; then
+			echoRgb "檢測到隨身碟 是否在隨身碟備份\n -音量上是，音量下不是"
+			get_version "選擇了隨身碟備份" "選擇了本地備份"
+			if $branch = true ]]; then
+				Backup="$PT/Backup_$Compression_method"
+				data="/dev/block/vold/$PU"
+				hx="USB"
+			fi
+		else
+			echoRgb "於隨身碟備份" "1"
 			Backup="$PT/Backup_$Compression_method"
 			data="/dev/block/vold/$PU"
 			hx="USB"
 		fi
 	fi
 else
-	echoRgb "沒有檢測到USB於本地備份" "2"
+	echoRgb "沒有檢測到隨身碟於本地備份" "1"
 fi
 [[ $Backup_user_data = false ]] && echoRgb "當前backup_settings.conf的\n -Backup_user_data為0將不備份user數據" "0"
 [[ $Backup_obb_data = false ]] && echoRgb "當前backup_settings.conf的\n -Backup_obb_data為0將不備份外部數據" "0"
