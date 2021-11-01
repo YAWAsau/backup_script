@@ -112,6 +112,8 @@ echoRgb() {
 		echo -e "\e[38;5;82m -$1\e[0m"
 	elif [[ $2 = 2 ]]; then
 		echo -e "\e[38;5;87m -$1\e[0m"
+	elif [[ $2 = 3 ]]; then
+		echo -e "\e[38;5;${en}m -$1\e[0m"
 	else
 		echo -e "\e[38;5;${bn}m -$1\e[0m"
 	fi

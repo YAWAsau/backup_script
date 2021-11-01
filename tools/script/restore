@@ -2,7 +2,11 @@
 MODDIR="${0%/*}"
 bin_path="$MODDIR/tools/bin"
 [[ ! -d $bin_path ]] && echo "$bin_path目錄遺失" && exit 1
+[[ ! -f $MODDIR/recover.conf ]] && echo "recover.conf遺失" && exit 1
 . "$bin_path/bin.sh"
+. "$MODDIR/recover.conf"
+isBoolean "$Recovery_mode" && Recovery_mode="$nsx"
+[[ $Recovery_mode = false ]] && echoRgb "當前恢復模式:安裝apk不恢復數據" "0" || echoRgb "當前恢復模式:安裝apk+恢復數據" "1"
 path="/data/media/0/Android"
 path2="/data/data"
 [[ ! -d $TMPDIR ]] && mkdir "$TMPDIR"
@@ -91,10 +95,10 @@ starttime1="$(date -u "+%s")"
 TIME="$starttime1"
 #記錄error次數起點
 ERROR=1
+en=118
 {
 while [[ $i -le $r ]]; do
-	#let bn++
-	#[[ $bn -ge 37 ]] && bn=31
+	[[ $en -ge 229 ]] && en=118
 	echoRgb "恢複第$i個應用 總共$r個 剩下$((r-i))個應用"
 	name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
 	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
@@ -147,16 +151,18 @@ while [[ $i -le $r ]]; do
 		else
 			echoRgb "存在當前系統中略過安裝Apk"
 		fi
-		if [[ $(pm path "$name2") != "" ]]; then
-			#停止應用
-			[[ $name2 != $Open_apps ]] && am force-stop "$name2"
-			find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f | sort | while read; do
-				Release_data "$REPLY"
-			done
-		else
-			echoRgb "$name1沒有安裝無法恢復數據" "0"
+		if [[ $Recovery_mode = true ]]; then
+			if [[ $(pm path "$name2") != "" ]]; then
+				#停止應用
+				[[ $name2 != $Open_apps ]] && am force-stop "$name2"
+				find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f | sort | while read; do
+					Release_data "$REPLY"
+				done
+			else
+				echoRgb "$name1沒有安裝無法恢復數據" "0"
+			fi
 		fi
-		endtime 2 "恢複" && echoRgb "完成$((i*100/r))%" && echoRgb
+		endtime 2 "恢複" && echoRgb "完成$((i*100/r))%" && echoRgb "____________________________________" "3"
 	else
 		echoRgb "$Backup_folder資料夾遺失，無法恢複" "0"
 	fi
@@ -179,7 +185,7 @@ while [[ $i -le $r ]]; do
 		fi
 	fi
 	[[ $ERROR -ge 5 ]] && (echoRgb "錯誤次數達到上限 環境已重設\n -請重新執行腳本" "0" && rm -rf "$filepath" && exit)
-	let i++
+	let i++ en++
 done
 starttime1="$TIME"
 echoRgb "批量恢複完成" && endtime 1 "批量恢複開始到結束" && echoRgb "應用閃退請重新開機" "0"

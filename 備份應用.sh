@@ -85,6 +85,8 @@ fi
 [[ $Hybrid_backup = true ]] && echoRgb "當前backup_settings.conf的\n -Hybrid_backup為1將不備份任何應用" "0"
 [[ ! -d $Backup ]] && mkdir -p "$Backup"
 [[ ! -f $Backup/應用列表.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$Backup/應用列表.txt"
+[[ ! -f $Backup/本地一鍵更新腳本.sh ]] && cp -r "$MODDIR/本地一鍵更新腳本.sh" "$Backup"
+[[ ! -f $Backup/recover.conf ]] && cp -r "$script_path/recover.conf" "$Backup"
 [[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/META-INF" "$Backup/tools/script"
 [[ ! -f $Backup/還原備份.sh ]] && cp -r "$script_path/restore" "$Backup/還原備份.sh"
 [[ ! -f $Backup/掃描資料夾名.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/掃描資料夾名.sh"
@@ -132,6 +134,7 @@ Backup_apk() {
 			[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
 			[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
 			[[ ! -f $Backup_folder/還原備份.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/還原備份.sh"
+			[[ ! -f $Backup_folder/recover.conf ]] && cp -r "$script_path/recover.conf" "$Backup_folder"
 		fi
 		if [[ $name2 = com.android.chrome ]]; then
 			#刪除所有舊apk ,保留一個最新apk進行備份
@@ -224,8 +227,10 @@ starttime1="$(date -u "+%s")"
 TIME="$starttime1"
 #記錄error次數起點
 ERROR=1
+en=118
 {
 while [[ $i -le $r ]]; do
+	[[ $en -ge 229 ]] && en=118
 	name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
 	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
 	[[ $name2 = "" ]] && echoRgb "警告! 應用列表.txt應用包名獲取失敗，可能修改有問題" "0" && exit 1
@@ -279,7 +284,7 @@ while [[ $i -le $r ]]; do
 			fi
 			endtime 2 "$name1備份"
 			echoRgb "完成$((i*100/r))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')"
-			echoRgb
+			echoRgb "____________________________________" "3"
 			recovery_backup
 		else
 			recovery_backup
@@ -308,7 +313,7 @@ while [[ $i -le $r ]]; do
 		fi
 	fi
 	[[ $ERROR -ge 5 ]] && echoRgb "錯誤次數達到上限 環境已重設\n -請重新執行腳本" "0" && rm -rf "$filepath" && exit 2
-	let i++
+		let i++ en++
 done
 
 echoRgb "你要備份跑路？祝你卡米9008" "2"
