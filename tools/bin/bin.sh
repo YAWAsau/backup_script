@@ -18,7 +18,7 @@ if [[ -d $(magisk --path 2>/dev/null) ]]; then
 else
 	echo "Magisk busybox Path does not exist"
 fi ; export PATH="$PATH"
-backup_version="V10.7 2021/10/27-20:07"
+backup_version="V11 2021/11/2-23:25"
 #設置二進制命令目錄位置
 [[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
@@ -86,7 +86,7 @@ if [[ $(which busybox) = "" ]]; then
 	echo "環境變量中沒有找到busybox 請在tools/bin內添加一個\narm64可用的busybox\n或是安裝搞機助手 scene或是Magisk busybox模塊...."
 	exit 1
 fi
-Open_apps="$(appinfo -ta pn)"
+Open_apps="$(appinfo -o ands -ta c)"
 #下列為自定義函數
 Set_back() {
 	return 1
@@ -158,7 +158,7 @@ echo_log() {
 	fi
 }
 bn=147
-echoRgb "\n --------------歡迎使用⚡️🤟🐂纸備份--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$(appinfo -o ands -pn "$Open_apps" 2>/dev/null)"
+echoRgb "\n --------------歡迎使用⚡️🤟🐂纸備份--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$Open_apps"
 bn=195
 if [[ $(pm path ice.message) = "" ]]; then
 	echoRgb "未安裝toast 開始安裝" "0"
