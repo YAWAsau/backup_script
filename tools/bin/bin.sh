@@ -86,7 +86,7 @@ if [[ $(which busybox) = "" ]]; then
 	echo "環境變量中沒有找到busybox 請在tools/bin內添加一個\narm64可用的busybox\n或是安裝搞機助手 scene或是Magisk busybox模塊...."
 	exit 1
 fi
-Open_apps="$(dumpsys window | grep -w mCurrentFocus | egrep -oh "[^ ]*/[^//}]+" | cut -f 1 -d "/")"
+Open_apps="$(appinfo -ta pn)"
 #下列為自定義函數
 Set_back() {
 	return 1
@@ -101,8 +101,9 @@ endtime() {
 	duration="$(echo $((endtime - starttime)) | awk '{t=split("60 秒 60 分 24 時 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')"
 	[[ $duration != "" ]] && echoRgb "$2用時:$duration" || echoRgb "$2用時:0秒"
 }
+nskg=1
 Print() {
-	notify "1" "backup-$(date '+%T')" "$1" bs
+	notify "$nskg" "backup-$(date '+%T')" "$1" bs
 }
 echoRgb() {
 	#轉換echo顏色提高可讀性
@@ -147,6 +148,13 @@ isBoolean() {
 		nsx=false
 	else
 		echoRgb "$MODDIR/backup_settings.conf $1填寫錯誤" "0" && exit 2
+	fi
+}
+echo_log() {
+	if [[ $? = 0 ]]; then
+		echoRgb "$1成功" "1" ; result=0
+	else
+		echoRgb "$1失敗，過世了" "0" ; Print "$1失敗，過世了" ; result=1
 	fi
 }
 bn=147

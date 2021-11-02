@@ -93,14 +93,6 @@ fi
 filesize="$(du -ks "$Backup" | awk '{print $1}')"
 #調用二進制
 Quantity=0
-#顯示執行結果
-echo_log() {
-	if [[ $? = 0 ]]; then
-		echoRgb "$1成功" "1" && result=0
-	else
-		echoRgb "$1失敗，過世了" "0" && result=1 && let ERROR++
-	fi
-}
 #檢測apk狀態進行備份
 Backup_apk() {
 	#創建APP備份文件夾
@@ -158,7 +150,7 @@ Backup_data() {
 	user) Size="$userSize" && data_path="$path2/$name2" ;;
 	data) Size="$dataSize" && data_path="$path/$1/$name2" ;;
 	obb) Size="$obbSize" && data_path="$path/$1/$name2" ;;
-	*) [[ -f $app_details ]] && Size="$(cat "$app_details" | awk "/$1Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" ; data_path="$2" ; Compression_method=tar ; zsize=1
+	*) [[ -f $app_details ]] && Size="$(cat "$app_details" | awk "/$1Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" ; data_path="$2" ; Compression_method1="$Compression_method" ; Compression_method=tar ; zsize=1
 	esac
 	if [[ -d $data_path ]]; then
 		if [[ $Size != $(du -ks "$data_path" | awk '{print $1}') ]]; then
@@ -177,7 +169,7 @@ Backup_data() {
 				tar|Tar|TAR) tar --exclude="Backup_"* -cPpf - "$data_path" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
 				zstd|Zstd|ZSTD) tar --exclude="Backup_"* -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
 				lz4|Lz4|LZ4) tar --exclude="Backup_"* -cPpf - "$data_path" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
-				esac ;;
+				esac ; [[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1" ; unset Compression_method1 ;;
 			esac
 			echo_log "備份$1數據"
 			if [[ $result = 0 ]]; then
@@ -225,8 +217,6 @@ echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安"
 #記錄開始時間
 starttime1="$(date -u "+%s")"
 TIME="$starttime1"
-#記錄error次數起點
-ERROR=1
 en=118
 {
 while [[ $i -le $r ]]; do
@@ -281,6 +271,7 @@ while [[ $i -le $r ]]; do
 				fi
 				#備份user數據
 				[[ $Backup_user_data = true ]] && Backup_data "user"
+				[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos_*" -maxdepth 1 -type d)"
 			fi
 			endtime 2 "$name1備份"
 			echoRgb "完成$((i*100/r))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')"
@@ -312,10 +303,8 @@ while [[ $i -le $r ]]; do
 			endtime 1 "自定義備份"
 		fi
 	fi
-	[[ $ERROR -ge 5 ]] && echoRgb "錯誤次數達到上限 環境已重設\n -請重新執行腳本" "0" && rm -rf "$filepath" && exit 2
-		let i++ en++
+	let i++ en++ nskg++
 done
-
 echoRgb "你要備份跑路？祝你卡米9008" "2"
 #計算出備份大小跟差異性
 filesizee="$(du -ks "$Backup" | awk '{print $1}')"
@@ -334,8 +323,7 @@ fi
 echoRgb "批量備份完成"
 starttime1="$TIME"
 endtime 1 "批量備份開始到結束"
-exit 0
-}&
-wait
 longToast "批量備份完成"
 Print "批量備份完成 執行過程請查看$Status_log"
+exit 0
+}&

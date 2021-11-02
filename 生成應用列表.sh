@@ -28,7 +28,7 @@ i=1
 bn=118
 rm -rf "$MODDIR/tmp"
 starttime1="$(date -u "+%s")"
-appinfo -sort-i -d " " -o ands,pn -pn $system $launcher_app -3 2>/dev/null | sed 's/\///g ; s/\://g ; s/(//g ; s/)//g ; s/\[//g ; s/\]//g ; s/\-//g' | grep -v 'ice.message' | while read; do
+appinfo -sort-i -d " " -o ands,pn -pn $system $launcher_app -3 2>/dev/null | sed 's/\///g ; s/\://g ; s/(//g ; s/)//g ; s/\[//g ; s/\]//g ; s/\-//g ; s/!//g' | grep -v 'ice.message' | while read; do
 	[[ $bn -ge 229 ]] && bn=118
 	app_1=($REPLY $REPLY)
 	if [[ $(cat "$nametxt" | grep -oE "${app_1[1]}$") = "" ]]; then
