@@ -89,7 +89,7 @@ if [[ $Recovery_mode = true ]]; then
 					echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0" ; Set_back
 				fi
 			else
-				[[ $FILE_NAME2 = thanox ]] && rm -rf "$(find "/data/system" -name "thanos_*" -maxdepth 1 -type d)"
+				[[ $FILE_NAME2 = thanox ]] && rm -rf "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)"
 				case ${FILE_NAME##*.} in
 				lz4) pv "$tar_path" | tar --recursive-unlink -I lz4 -xmPpf - ;;
 				zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmPpf - ;;
@@ -122,7 +122,7 @@ if [[ $Recovery_mode = true ]]; then
 				elif [[ $FILE_NAME2 = data ]]; then
 					[[ -d $path/data/$name2 ]] && chown -R "1023:1078" "$path/data/$name2"
 				elif [[ $FILE_NAME2 = thanox ]]; then
-					restorecon -R "$(find "/data/system" -name "thanos_*" -maxdepth 1 -type d)" >/dev/null 2>&1
+					restorecon -R "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)" >/dev/null 2>&1
 					echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
 				fi
 			fi
@@ -131,6 +131,5 @@ if [[ $Recovery_mode = true ]]; then
 		echoRgb "$name2沒有安裝無法恢復數據" "0"
 	fi
 fi
-} &
-wait
 endtime 1 "恢複開始到結束" && echoRgb "應用閃退請重新開機" "0" && rm -rf "$TMPDIR"/*
+} &

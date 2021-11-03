@@ -7,7 +7,6 @@ script="${0##*/}"
 [[ $(echo "$MODDIR" | grep -v 'mt') = "" ]] && echo "我他媽骨灰給你揚了撒了TM不解壓縮？用毛線 憨批" && exit 1
 [[ ! -d $tools_path ]] && echo "$tools_path目錄遺失" && exit 1
 [[ ! -d $script_path ]] && echo "$script_path目錄遺失" && exit 1
-[[ ! -d $tools_path/META-INF ]] && echo "$tools_path/META-INF目錄遺失" && exit 1
 [[ ! -d $tools_path/apk ]] && echo "$tools_path/apk目錄遺失" && exit 1
 . "$bin_path/bin.sh"
 . "$MODDIR/backup_settings.conf"
@@ -34,7 +33,6 @@ if [[ $Lo = false ]]; then
 	isBoolean "$path" && path3="$nsx"
 	isBoolean "$Backup_user_data" && Backup_user_data="$nsx"
 	isBoolean "$backup_media" && backup_media="$nsx"
-	isBoolean "$Hybrid_backup" && Hybrid_backup="$nsx"
 else
 	echoRgb "備份路徑位置為絕對位置或是當前環境位置\n 音量上當前環境位置，音量下腳本絕對位置"
 	get_version "當前環境位置" "腳本絕對位置" && path3="$branch"
@@ -82,12 +80,11 @@ else
 fi
 [[ $Backup_user_data = false ]] && echoRgb "當前backup_settings.conf的\n -Backup_user_data為0將不備份user數據" "0"
 [[ $Backup_obb_data = false ]] && echoRgb "當前backup_settings.conf的\n -Backup_obb_data為0將不備份外部數據" "0"
-[[ $Hybrid_backup = true ]] && echoRgb "當前backup_settings.conf的\n -Hybrid_backup為1將不備份任何應用" "0"
 [[ ! -d $Backup ]] && mkdir -p "$Backup"
 [[ ! -f $Backup/應用列表.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$Backup/應用列表.txt"
 [[ ! -f $Backup/本地一鍵更新腳本.sh ]] && cp -r "$MODDIR/本地一鍵更新腳本.sh" "$Backup"
 [[ ! -f $Backup/recover.conf ]] && cp -r "$script_path/recover.conf" "$Backup"
-[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/META-INF" "$Backup/tools/script"
+[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/META-INF" "$Backup/tools/script"
 [[ ! -f $Backup/還原備份.sh ]] && cp -r "$script_path/restore" "$Backup/還原備份.sh"
 [[ ! -f $Backup/掃描資料夾名.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/掃描資料夾名.sh"
 filesize="$(du -ks "$Backup" | awk '{print $1}')"
@@ -186,20 +183,6 @@ Backup_data() {
 		echoRgb "$1數據不存在跳過備份"
 	fi
 }
-recovery_backup() {
-	echo "$name1 $name2 $apk_path2" >>"$script_path/應用列表.txt"
-	if [[ $i = $r ]]; then
-		if [[ -f $tools_path/META-INF/com/google/android/update-binary ]]; then
-			echoRgb "輸出用於recovery的備份卡刷包" ; rm -rf "$MODDIR/recovery卡刷備份.zip" ; mkdir -p "$MODDIR/tmp"
-			tar -cpf - -C "$tools_path" "META-INF" "script" "bin" "apk" | tar --delete "script/restore3" --delete "bin/busybox_path" --delete "bin/lz4" --delete "bin/zip" | pv | tar --recursive-unlink -xmpf - -C "$MODDIR/tmp"
-			(cd "$MODDIR/tmp" && zip -r "recovery卡刷備份.zip" *)
-			echo_log "打包卡刷包"
-			[[ $result = 0 ]] && (mv "$MODDIR/tmp/recovery卡刷備份.zip" "$MODDIR" && rm -rf "$MODDIR/tmp" "$script_path/應用列表.txt" ; echoRgb "輸出:$MODDIR/recovery卡刷備份.zip" "2")
-		else
-			echoRgb "update-binary卡刷腳本遺失" "0"
-		fi
-	fi
-}
 [[ $Lo = true ]] && {
 echoRgb "選擇是否只備份split apk(分割apk檔)\n 如果你不知道這意味什麼請選擇音量下進行混合備份\n 音量上是，音量下不是"
 get_version "是" "不是，混合備份" && Splist="$branch"
@@ -209,8 +192,6 @@ echoRgb "是否備份使用者數據\n 音量上備份，音量下不備份"
 get_version "備份" "不備份" && Backup_user_data="$branch"
 echoRgb "全部應用備份結束後是否備份自定義目錄\n 音量上備份，音量下不備份"
 get_version "備份" "不備份" && backup_media="$branch"
-echoRgb "單獨生成可供recovery中救急備份的卡刷包？\n 音量上生成，音量下備份應用+生成(混合)"
-get_version "單獨生成" "備份應用+卡刷包" && Hybrid_backup="$branch"
 }
 echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$script_path/應用列表.txt"
 #開始循環$txt內的資料進行備份
@@ -227,80 +208,79 @@ while [[ $i -le $r ]]; do
 	apk_path="$(pm path "$name2" | cut -f2 -d ':')"
 	apk_path2="$(echo "$apk_path" | head -1)" ; apk_path2="${apk_path2%/*}"
 	if [[ -d $apk_path2 ]]; then
-		if [[ $Hybrid_backup = false ]]; then
-			echoRgb "備份第$i個應用 總共$r個 剩下$((r-i))個應用"
-			if [[ $name1 = *! || $name1 = *！ ]]; then
-				name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
-				echoRgb "跳過備份$name1 所有數據" "0"
-				No_backupdata=1
-			else
-				[[ $No_backupdata != "" ]] && unset No_backupdata
-			fi
-			Backup_folder="$Backup/$name1"
-			app_details="$Backup_folder/app_details"
-			if [[ -f $app_details ]]; then
-				. "$app_details"
-				if [[ $PackageName != $name2 ]]; then
-					unset userSize ChineseName PackageName apk_version
-					Backup_folder="$Backup/${name1}[${name2}]"
-					app_details="$Backup_folder/app_details"
-					[[ -f $app_details ]] && . "$app_details"
-				fi
-			fi
-			lxj="$(df -h "$data" | awk 'END{print $4}' | sed 's/%//g')"
-			starttime2="$(date -u "+%s")"
-			echoRgb "備份$name1 ($name2)"
-			[[ $name2 = com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份"
-			[[ $name2 = com.tencent.mm ]] && echo "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份"
-			apk_number="$(echo "$apk_path" | wc -l)"
-			if [[ $apk_number = 1 ]]; then
-				if [[ $Splist = false ]]; then
-					Backup_apk "非Split Apk"
-				else
-					echoRgb "非Split Apk跳過備份" && unset D
-				fi
-			else
-				Backup_apk "Split Apk支持備份"
-			fi
-			if [[ $D != ""  && $result = 0 && $No_backupdata = "" ]]; then
-				if [[ $Backup_obb_data = true ]]; then
-					#備份data數據
-					Backup_data "data"
-					#備份obb數據
-					Backup_data "obb"
-				fi
-				#備份user數據
-				[[ $Backup_user_data = true ]] && Backup_data "user"
-				[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos_*" -maxdepth 1 -type d)"
-			fi
-			endtime 2 "$name1備份"
-			echoRgb "完成$((i*100/r))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')"
-			echoRgb "____________________________________" "3"
-			recovery_backup
+		echoRgb "備份第$i個應用 總共$r個 剩下$((r-i))個應用"
+		if [[ $name1 = *! || $name1 = *！ ]]; then
+			name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
+			echoRgb "跳過備份$name1 所有數據" "0"
+			No_backupdata=1
 		else
-			recovery_backup
+			[[ $No_backupdata != "" ]] && unset No_backupdata
 		fi
+		Backup_folder="$Backup/$name1"
+		app_details="$Backup_folder/app_details"
+		if [[ -f $app_details ]]; then
+			. "$app_details"
+			if [[ $PackageName != $name2 ]]; then
+				unset userSize ChineseName PackageName apk_version
+				Backup_folder="$Backup/${name1}[${name2}]"
+				app_details="$Backup_folder/app_details"
+				[[ -f $app_details ]] && . "$app_details"
+			fi
+		fi
+		lxj="$(df -h "$data" | awk 'END{print $4}' | sed 's/%//g')"
+		starttime2="$(date -u "+%s")"
+		echoRgb "備份$name1 ($name2)"
+		[[ $name2 = com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份"
+		[[ $name2 = com.tencent.mm ]] && echo "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份"
+		apk_number="$(echo "$apk_path" | wc -l)"
+		if [[ $apk_number = 1 ]]; then
+			if [[ $Splist = false ]]; then
+				Backup_apk "非Split Apk"
+			else
+				echoRgb "非Split Apk跳過備份" && unset D
+			fi
+		else
+			Backup_apk "Split Apk支持備份"
+		fi
+		if [[ $D != ""  && $result = 0 && $No_backupdata = "" ]]; then
+			if [[ $Backup_obb_data = true ]]; then
+				#備份data數據
+				Backup_data "data"
+				#備份obb數據
+				Backup_data "obb"
+			fi
+			#備份user數據
+			[[ $Backup_user_data = true ]] && Backup_data "user"
+			[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)"
+		fi
+		endtime 2 "$name1備份"
+		echoRgb "完成$((i*100/r))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')"
+		echoRgb "____________________________________" "3"
 	else
 		echoRgb "$name1[$name2]不在安裝列表，備份個寂寞？" "0"
 	fi
 	if [[ $i = $r ]]; then
 		endtime 1 "應用備份"
-		if [[ $backup_media = true && $Hybrid_backup = false ]]; then
-			echoRgb "備份結束，備份多媒體"
-			starttime1="$(date -u "+%s")"
-			Backup_folder="$Backup/媒體"
+		if [[ $backup_media = true ]]; then
 			A=1
 			B="$(echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
-			[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
-			[[ ! -f $Backup_folder/恢復多媒體數據.sh ]] && cp -r "$script_path/restore3" "$Backup_folder/恢復多媒體數據.sh"
-			app_details="$Backup_folder/app_details"
-			[[ -f $app_details ]] && . "$app_details"
-			echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | while read; do
-				echoRgb "備份第$A個資料夾 總共$B個 剩下$((B-A))個"
-				Backup_data "${REPLY##*/}" "$REPLY"
-				echoRgb "完成$((A*100/B))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')" && let A++
-			done
-			endtime 1 "自定義備份"
+			if [[ $B != "" ]]; then
+				echoRgb "備份結束，備份多媒體"
+				starttime1="$(date -u "+%s")"
+				Backup_folder="$Backup/媒體"
+				[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
+				[[ ! -f $Backup_folder/恢復多媒體數據.sh ]] && cp -r "$script_path/restore3" "$Backup_folder/恢復多媒體數據.sh"
+				app_details="$Backup_folder/app_details"
+				[[ -f $app_details ]] && . "$app_details"
+				echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | while read; do
+					echoRgb "備份第$A個資料夾 總共$B個 剩下$((B-A))個"
+					Backup_data "${REPLY##*/}" "$REPLY"
+					echoRgb "完成$((A*100/B))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')" && let A++
+				done
+				endtime 1 "自定義備份"
+			else
+				echoRgb "自定義路徑為空 無法備份" "0"
+			fi
 		fi
 	fi
 	let i++ en++ nskg++
