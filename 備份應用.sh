@@ -103,7 +103,7 @@ Backup_apk() {
 		rm -rf "$Backup_folder"/*.apk
 		#備份apk
 		echoRgb "$1"
-		[[ $name2 != $Open_apps ]] && am force-stop "$name2"
+		[[ $name1 != $Open_apps ]] && am force-stop "$name2"
 		echo "$apk_path" | sed -e '/^$/d' | while read; do
 			path="$REPLY"
 			b_size="$(ls -l "$path" | awk '{print $5}')"
@@ -151,7 +151,7 @@ Backup_data() {
 	esac
 	if [[ -d $data_path ]]; then
 		if [[ $Size != $(du -ks "$data_path" | awk '{print $1}') ]]; then
-			[[ $name2 != $Open_apps ]] && am force-stop "$name2"
+			[[ $name1 != $Open_apps ]] && am force-stop "$name2"
 			[[ $lxj -ge 95 ]] && echoRgb "$data空間不足,達到$lxj%" "0" && exit 2
 			echoRgb "備份$1數據" "2"
 			case $1 in

@@ -149,7 +149,7 @@ while [[ $i -le $r ]]; do
 		if [[ $Recovery_mode = true ]]; then
 			if [[ $(pm path "$name2") != "" ]]; then
 				#停止應用
-				[[ $name2 != $Open_apps ]] && am force-stop "$name2"
+				[[ $name1 != $Open_apps ]] && am force-stop "$name2"
 				find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f | sort | while read; do
 					Release_data "$REPLY"
 				done
