@@ -193,7 +193,6 @@ get_version "備份" "不備份" && Backup_user_data="$branch"
 echoRgb "全部應用備份結束後是否備份自定義目錄\n 音量上備份，音量下不備份"
 get_version "備份" "不備份" && backup_media="$branch"
 }
-echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$script_path/應用列表.txt"
 #開始循環$txt內的資料進行備份
 #記錄開始時間
 starttime1="$(date -u "+%s")"
@@ -208,7 +207,7 @@ while [[ $i -le $r ]]; do
 	apk_path="$(pm path "$name2" | cut -f2 -d ':')"
 	apk_path2="$(echo "$apk_path" | head -1)" ; apk_path2="${apk_path2%/*}"
 	if [[ -d $apk_path2 ]]; then
-		echoRgb "備份第$i個應用 總共$r個 剩下$((r-i))個應用"
+		echoRgb "備份第$i/$r個應用 剩下$((r-i))個"
 		if [[ $name1 = *! || $name1 = *！ ]]; then
 			name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
 			echoRgb "跳過備份$name1 所有數據" "0"
@@ -273,7 +272,7 @@ while [[ $i -le $r ]]; do
 				app_details="$Backup_folder/app_details"
 				[[ -f $app_details ]] && . "$app_details"
 				echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | while read; do
-					echoRgb "備份第$A個資料夾 總共$B個 剩下$((B-A))個"
+					echoRgb "備份第$A/$B個資料夾 剩下$((B-A))個"
 					Backup_data "${REPLY##*/}" "$REPLY"
 					echoRgb "完成$((A*100/B))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')" && let A++
 				done

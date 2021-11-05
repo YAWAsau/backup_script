@@ -29,7 +29,7 @@ starttime1="$(date -u "+%s")"
 A=1
 B="$(find "$MODDIR" -maxdepth 1 -name "*.tar*" -type f | wc -l)"
 find "$MODDIR" -maxdepth 1 -name "*.tar*" -type f | while read; do
-	echoRgb "恢復第$A個壓縮包 總共$B個 剩下$((B-A))個"
+	echoRgb "恢復第$A/$B個壓縮包 剩下$((B-A))個"
 	Release_data "$REPLY"
 	echoRgb "完成$((A*100/B))%" && let A++
 done

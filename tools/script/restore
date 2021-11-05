@@ -94,7 +94,7 @@ en=118
 {
 while [[ $i -le $r ]]; do
 	[[ $en -ge 229 ]] && en=118
-	echoRgb "恢複第$i個應用 總共$r個 剩下$((r-i))個應用"
+	echoRgb "恢複第$i/$r個應用 剩下$((r-i))個"
 	name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
 	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
 	Backup_folder="$MODDIR/$name1"
@@ -171,7 +171,7 @@ while [[ $i -le $r ]]; do
 			B="$(find "$Backup_folder2" -maxdepth 1 -name "*.tar*" -type f | wc -l)"
 			if [[ $branch = true ]]; then
 				find "$Backup_folder2" -maxdepth 1 -name "*.tar*" -type f | while read; do
-					echoRgb "恢復第$A個壓縮包 總共$B個 剩下$((B-A))個"
+					echoRgb "恢復第$A/$B個壓縮包 剩下$((B-A))個"
 					Release_data "$REPLY"
 					echoRgb "完成$((A*100/B))%" && let A++
 				done
