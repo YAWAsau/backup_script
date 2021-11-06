@@ -44,10 +44,10 @@ fi
 find -L "$filepath" -maxdepth 1 -type l -exec rm -rf {} \;
 if [[ -d $bin_path ]]; then
 	if [[ -f $busybox && -f $busybox2 ]]; then
-		filemd5="$(md5sum "$busybox" | cut -d" " -f1)"
-		filemd5_1="$(md5sum "$busybox2" | cut -d" " -f1)"
-		if [[ $filemd5 != $filemd5_1 ]]; then
-			echo "busybox md5不一致 重新創立環境中"
+		filesha256="$(sha256sum "$busybox" | cut -d" " -f1)"
+		filesha256_1="$(sha256sum "$busybox2" | cut -d" " -f1)"
+		if [[ $filesha256 != $filesha256_1 ]]; then
+			echo "busybox sha256不一致 重新創立環境中"
 			rm -rf "$filepath"/*
 		fi
 	fi
@@ -58,10 +58,10 @@ if [[ -d $bin_path ]]; then
 			chmod 0777 "$filepath/$File_name"
 			echo "$File_name > $filepath/$File_name"
 		else
-			filemd5="$(md5sum "$filepath/$File_name" | cut -d" " -f1)"
-			filemd5_1="$(md5sum "$bin_path/$File_name" | cut -d" " -f1)"
-			if [[ $filemd5 != $filemd5_1 ]]; then
-				echo "$File_name md5不一致 重新創建"
+			filesha256="$(sha256sum "$filepath/$File_name" | cut -d" " -f1)"
+			filesha256_1="$(sha256sum "$bin_path/$File_name" | cut -d" " -f1)"
+			if [[ $filesha256 != $filesha256_1 ]]; then
+				echo "$File_name sha256不一致 重新創建"
 				cp -r "$REPLY" "$filepath"
 				chmod 0777 "$filepath/$File_name"
 				echo "$File_name > $filepath/$File_name"
