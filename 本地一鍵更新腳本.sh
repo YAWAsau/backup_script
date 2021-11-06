@@ -13,7 +13,9 @@ find "$MODDIR" -maxdepth 1 -name "*.zip" -type f | while read; do
 		case $MODDIR in
 		*Backup_*)
 			echoRgb "更新當前${MODDIR##*/}目錄下恢復相關腳本+tools目錄"
-			cp -r "$tools_path/script/Get_DirName" "$MODDIR/掃描資料夾名.sh" && cp -r "$tools_path/script/restore" "$MODDIR/還原備份.sh"
+			cp -r "$tools_path/script/Get_DirName" "$MODDIR/掃描資料夾名.sh"
+			cp -r "$tools_path/script/restore" "$MODDIR/還原備份.sh"
+			[[ -d $MODDIR/媒體 ]] && cp -r "$tools_path/script/restore3" "$MODDIR/媒體/恢復多媒體數據.sh"
 			find "$MODDIR" -maxdepth 1 -type d | sort | sed 's/\[/ /g ; s/\]//g' | while read; do
 				if [[ -f $REPLY/app_details ]]; then
 					unset PackageName
@@ -32,6 +34,8 @@ find "$MODDIR" -maxdepth 1 -name "*.zip" -type f | while read; do
 						cp -r "$tools_path" "$backup_path" && rm -rf "$backup_path/tools/bin/zip" "$backup_path/tools/META-INF" "$backup_path/tools/script"
 						cp -r "$tools_path/script/restore" "$backup_path/還原備份.sh"
 						cp -r "$tools_path/script/Get_DirName" "$backup_path/掃描資料夾名.sh"
+						cp -r "$MODDIR/本地一鍵更新腳本.sh" "$backup_path/本地一鍵更新腳本.sh"
+						[[ -d $backup_path/媒體 ]] && cp -r "$tools_path/script/restore3" "$backup_path/媒體/恢復多媒體數據.sh"
 						find "$MODDIR" -maxdepth 2 -type d | sort | sed 's/\[/ /g ; s/\]//g' | while read; do
 							if [[ -f $REPLY/app_details ]]; then
 								unset PackageName

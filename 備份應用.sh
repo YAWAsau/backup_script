@@ -60,19 +60,21 @@ echoRgb "提示 腳本支持後台壓縮 可以直接離開腳本\n -或是關�
 if [[ $PU != "" ]]; then
 	[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts | grep "$PU" | awk '{print $2}')"
 	if [[ -d $PT ]]; then
-		if [[ $USBdefault = false ]]; then
-			echoRgb "檢測到隨身碟 是否在隨身碟備份\n -音量上是，音量下不是"
-			get_version "選擇了隨身碟備份" "選擇了本地備份"
-			if $branch = true ]]; then
-				Backup="$PT/Backup_$Compression_method"
-				data="/dev/block/vold/$PU"
-				hx="USB"
-			fi
-		else
+		if [[ $(echo "$MODDIR" | grep -oE "^${PT}") != "" || $USBdefault = true ]]; then
 			echoRgb "於隨身碟備份" "1"
 			Backup="$PT/Backup_$Compression_method"
 			data="/dev/block/vold/$PU"
 			hx="USB"
+		else
+			if [[ $USBdefault = false ]]; then
+				echoRgb "檢測到隨身碟 是否在隨身碟備份\n -音量上是，音量下不是"
+				get_version "選擇了隨身碟備份" "選擇了本地備份"
+				if $branch = true ]]; then
+					Backup="$PT/Backup_$Compression_method"
+					data="/dev/block/vold/$PU"
+					hx="USB"
+				fi
+			fi
 		fi
 	fi
 else
@@ -99,7 +101,7 @@ Backup_apk() {
 		unset xb ; result=0
 		echoRgb "Apk版本無更新 跳過備份"
 	else
-		[[ $lxj -ge 95 ]] && echoRgb "$data空間不足,達到$lxj%" "0" && exit 2
+		[[ $lxj -ge 95 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
 		rm -rf "$Backup_folder"/*.apk
 		#備份apk
 		echoRgb "$1"
@@ -152,7 +154,7 @@ Backup_data() {
 	if [[ -d $data_path ]]; then
 		if [[ $Size != $(du -ks "$data_path" | awk '{print $1}') ]]; then
 			[[ $name1 != $Open_apps ]] && am force-stop "$name2"
-			[[ $lxj -ge 95 ]] && echoRgb "$data空間不足,達到$lxj%" "0" && exit 2
+			[[ $lxj -ge 95 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
 			echoRgb "備份$1數據" "2"
 			case $1 in
 			user)
