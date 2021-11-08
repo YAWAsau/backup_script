@@ -66,14 +66,12 @@ if [[ $PU != "" ]]; then
 			data="/dev/block/vold/$PU"
 			hx="USB"
 		else
-			if [[ $USBdefault = false ]]; then
-				echoRgb "檢測到隨身碟 是否在隨身碟備份\n -音量上是，音量下不是"
-				get_version "選擇了隨身碟備份" "選擇了本地備份"
-				if $branch = true ]]; then
-					Backup="$PT/Backup_$Compression_method"
-					data="/dev/block/vold/$PU"
-					hx="USB"
-				fi
+			echoRgb "檢測到隨身碟 是否在隨身碟備份\n -音量上是，音量下不是"
+			get_version "選擇了隨身碟備份" "選擇了本地備份"
+			if $branch = true ]]; then
+				Backup="$PT/Backup_$Compression_method"
+				data="/dev/block/vold/$PU"
+				hx="USB"
 			fi
 		fi
 	fi
@@ -174,6 +172,7 @@ Backup_data() {
 			if [[ $result = 0 ]]; then
 				if [[ $zsize != "" ]]; then
 					echo "#$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
+					[[ $2 != $(cat "$app_details" | awk "/$1path/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g') ]] && echo "#$1path=\"$2\"" >>"$app_details"
 				else
 					echo "$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
 				fi
@@ -275,8 +274,9 @@ while [[ $i -le $r ]]; do
 				[[ -f $app_details ]] && . "$app_details"
 				echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | while read; do
 					echoRgb "備份第$A/$B個資料夾 剩下$((B-A))個"
+					starttime2="$(date -u "+%s")"
 					Backup_data "${REPLY##*/}" "$REPLY"
-					echoRgb "完成$((A*100/B))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')" && let A++
+					endtime 2 "${REPLY##*/}備份" && echoRgb "完成$((A*100/B))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')" && echoRgb "____________________________________" "3" && let A++
 				done
 				endtime 1 "自定義備份"
 			else

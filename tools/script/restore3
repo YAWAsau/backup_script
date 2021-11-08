@@ -1,5 +1,6 @@
 #!/system/bin/sh
 MODDIR="${0%/*}"
+app_details="$MODDIR/app_details"
 bin_path="${MODDIR%/*}/tools/bin"
 [[ ! -d $bin_path ]] && echo "$bin_path目錄遺失" && exit 1
 . "$bin_path/bin.sh"
@@ -24,13 +25,15 @@ Release_data() {
 	*) (echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0" ; Set_back)
 	esac
 	echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
+	[[ $result = 0 ]] && [[ -f $app_details ]] && echoRgb "解壓路徑:$(cat "$app_details" | awk "/${FILE_NAME2}path/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')"
 }
 starttime1="$(date -u "+%s")"
 A=1
 B="$(find "$MODDIR" -maxdepth 1 -name "*.tar*" -type f | wc -l)"
 find "$MODDIR" -maxdepth 1 -name "*.tar*" -type f | while read; do
+	starttime2="$(date -u "+%s")"
 	echoRgb "恢復第$A/$B個壓縮包 剩下$((B-A))個"
 	Release_data "$REPLY"
-	echoRgb "完成$((A*100/B))%" && let A++
+	endtime 2 "恢複" && echoRgb "完成$((A*100/B))%" && echoRgb "____________________________________" "3" && let A++
 done
 endtime 1 "恢複結束"
