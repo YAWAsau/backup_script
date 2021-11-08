@@ -34,6 +34,6 @@ find "$MODDIR" -maxdepth 1 -name "*.tar*" -type f | while read; do
 	starttime2="$(date -u "+%s")"
 	echoRgb "恢復第$A/$B個壓縮包 剩下$((B-A))個"
 	Release_data "$REPLY"
-	endtime 2 "恢複" && echoRgb "完成$((A*100/B))%" && echoRgb "____________________________________" "3" && let A++
+	endtime 2 "$FILE_NAME2恢複" && echoRgb "完成$((A*100/B))%" && echoRgb "____________________________________" "3" && let A++
 done
 endtime 1 "恢複結束"

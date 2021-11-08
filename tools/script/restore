@@ -162,14 +162,14 @@ while [[ $i -le $r ]]; do
 				echoRgb "$name1沒有安裝無法恢復數據" "0"
 			fi
 		fi
-		endtime 2 "恢複" && echoRgb "完成$((i*100/r))%" && echoRgb "____________________________________" "3"
+		endtime 2 "$name1恢複" && echoRgb "完成$((i*100/r))%" && echoRgb "____________________________________" "3"
 	else
 		echoRgb "$Backup_folder資料夾遺失，無法恢複" "0"
 	fi
 	if [[ $i = $r ]]; then
 		endtime 1 "應用恢復"
 		if [[ -d $Backup_folder2 ]]; then
-			Print "是否恢復多媒體數據 音量上恢復，音量下不恢復" ; echoRgb "是否恢復多媒體數據\n 音量上恢復，音量下不恢復"
+			Print "是否恢復多媒體數據 音量上恢復，音量下不恢復" ; echoRgb "是否恢復多媒體數據\n -音量上恢復，音量下不恢復"
 			get_version "恢復媒體數據" "跳過恢復媒體數據"
 			starttime1="$(date -u "+%s")"
 			A=1
@@ -179,7 +179,7 @@ while [[ $i -le $r ]]; do
 					starttime2="$(date -u "+%s")"
 					echoRgb "恢復第$A/$B個壓縮包 剩下$((B-A))個"
 					Release_data "$REPLY"
-					endtime 2 "恢複" && echoRgb "完成$((A*100/B))%" && echoRgb "____________________________________" "3" && let A++
+					endtime 2 "$FILE_NAME2恢複" && echoRgb "完成$((A*100/B))%" && echoRgb "____________________________________" "3" && let A++
 				done
 				endtime 1 "自定義恢復"
 			fi
