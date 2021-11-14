@@ -5,7 +5,11 @@ bin_path="$tools_path/bin"
 [[ $(echo "$MODDIR" | grep -v 'mt') = "" ]] && echo "我他媽骨灰給你揚了撒了TM不解壓縮？用毛線 憨批" && exit 1
 [[ ! -d $tools_path ]] && echo " $tools_path目錄遺失" && exit 1
 . "$bin_path/bin.sh"
-[[ $(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f) = "" ]] && echoRgb "警告 未找到任何zip 請將下載的備份腳本.zip\n -放入當前目錄中\n -當前路徑$MODDIR" "0"
+if [[ $(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f) = "" ]]; then
+	echoRgb "警告 未找到任何zip 請將下載的備份腳本.zip\n -放入當前目錄中\n -當前路徑$MODDIR" "0"
+else
+	[[ $(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f | wc -l) -gt 1 ]] && echoRgb "錯誤 請刪除當前目錄多餘zip\n -保留一個最新的數據備份.zip\n -下列為當期目錄zip\n$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)" "0" && exit 1
+fi
 find "$MODDIR" -maxdepth 1 -name "*.zip" -type f | while read; do
 	if [[ $(unzip -l "$REPLY" | awk '{print $4}' | grep -oE "^backup_settings.conf$") != "" ]]; then
 		unzip -o "$REPLY" -d "$MODDIR" && (

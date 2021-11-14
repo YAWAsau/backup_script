@@ -17,6 +17,7 @@ txt="$MODDIR/應用列表.txt"
 [[ ! -f $txt ]] && echoRgb "請執行\"掃描資料夾名.sh\"獲取應用列表再來恢復" "0" && exit 2
 r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 [[ $r = "" ]] && echoRgb "應用列表.txt包名為空或是被注釋了" "0" && exit 1
+[[ $(restorecon --help 2>/dev/null) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
 #顯示執行結果
 Release_data() {
 	tar_path="$1"
@@ -74,7 +75,7 @@ Release_data() {
 					Path_details="$(stat -c "%A/%a %U/%G" "$X")"
 					chown -hR "$G:$G" "$X"
 					echo_log "設置用戶組:$(echo "$Path_details" | awk '{print $2}')"
-					restorecon -R "$X" >/dev/null 2>&1
+					restorecon -RF "$X/" >/dev/null 2>&1
 					echo_log "selinux上下文設置"
 					#echoRgb "$(stat -c "%n %A/%a %U/%G" "$X" | awk '{print "路徑:"$1"\n 權限:"$2"\n 用戶組:"$3}')"
 				else
@@ -84,9 +85,9 @@ Release_data() {
 				echoRgb "路徑$X不存在" "0"
 			fi
 		elif [[ $FILE_NAME2 = data ]]; then
-			[[ -d $path/data/$name2 ]] && chown -R "1023:1078" "$path/data/$name2"
+			[[ -d $path/data/$name2 ]] && chown -R "1023:1023" "$path/data/$name2"
 		elif [[ $FILE_NAME2 = thanox ]]; then
-			restorecon -R "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)" >/dev/null 2>&1
+			restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)/" >/dev/null 2>&1
 			echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
 		fi
 	fi

@@ -61,18 +61,23 @@ if [[ $PU != "" ]]; then
 	[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts | grep "$PU" | awk '{print $2}')"
 	if [[ -d $PT ]]; then
 		if [[ $(echo "$MODDIR" | grep -oE "^${PT}") != "" || $USBdefault = true ]]; then
-			echoRgb "於隨身碟備份" "1"
-			Backup="$PT/Backup_$Compression_method"
-			data="/dev/block/vold/$PU"
 			hx="USB"
 		else
 			echoRgb "檢測到隨身碟 是否在隨身碟備份\n -音量上是，音量下不是"
 			get_version "選擇了隨身碟備份" "選擇了本地備份"
-			if $branch = true ]]; then
-				Backup="$PT/Backup_$Compression_method"
-				data="/dev/block/vold/$PU"
-				hx="USB"
-			fi
+			[[ $branch = true ]] && hx="USB"
+		fi
+		if [[ $hx = USB ]]; then
+			Backup="$PT/Backup_$Compression_method"
+			data="/dev/block/vold/$PU"
+			mountinfo="$(df -T "$data" | awk 'END{print $1}')"
+			case $mountinfo in
+			exfat|NTFS|ext4)
+				echoRgb "於隨身碟備份 檔案系統:$mountinfo" "1"
+				;;
+			*)
+				echoRgb "隨身碟檔案系統$mountinfo不支持超過單檔4GB\n -請格式化為exfat" "0" ; exit 1 ;;
+			esac
 		fi
 	fi
 else
@@ -115,7 +120,7 @@ Backup_apk() {
 		case $Compression_method in
 		tar|TAR|Tar) tar -cf "$Backup_folder/apk.tar" *.apk ;;
 		lz4|LZ4|Lz4) tar -cf - *.apk | lz4 -1 >"$Backup_folder/apk.tar.lz4" ;;
-		zstd|Zstd|ZSTD) tar -cf - *apk | zstd -r -T0 -6 -q >"$Backup_folder/apk.tar.zst" ;;
+		zstd|Zstd|ZSTD) tar -cf - *apk | zstd -r -T0 --ultra -6 -q >"$Backup_folder/apk.tar.zst" ;;
 		esac)
 		echo_log "備份$apk_number個Apk"
 		if [[ $result = 0 ]]; then
@@ -158,14 +163,14 @@ Backup_data() {
 			user)
 				case $Compression_method in
 				tar|Tar|TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-				zstd|Zstd|ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
+				zstd|Zstd|ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
 				lz4|Lz4|LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 				esac ;;
 			*)
 				case $Compression_method in
-				tar|Tar|TAR) tar --exclude="Backup_"* -cPpf - "$data_path" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-				zstd|Zstd|ZSTD) tar --exclude="Backup_"* -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 -6 -q >"$Backup_folder/$1.tar.zst" ;;
-				lz4|Lz4|LZ4) tar --exclude="Backup_"* -cPpf - "$data_path" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+				tar|Tar|TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
+				zstd|Zstd|ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
+				lz4|Lz4|LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 				esac ; [[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1" ; unset Compression_method1 ;;
 			esac
 			echo_log "備份$1數據"
@@ -228,6 +233,7 @@ while [[ $i -le $r ]]; do
 			fi
 		fi
 		lxj="$(df -h "$data" | awk 'END{print $4}' | sed 's/%//g')"
+		[[ $hx = USB && $PT = "" ]] && echoRgb "隨身碟意外斷開 請檢查穩定性" "0" && exit 1
 		starttime2="$(date -u "+%s")"
 		echoRgb "備份$name1 ($name2)"
 		[[ $name2 = com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份"
