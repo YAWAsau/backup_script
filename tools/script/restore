@@ -63,33 +63,33 @@ Release_data() {
 			[[ -f $app_details ]] && echoRgb "解壓路徑:$(cat "$app_details" | awk "/${FILE_NAME2}path/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" || echoRgb "已經成功解壓縮 但是解壓路徑獲取失敗" "0"
 		fi
 		[[ $datapath != "" ]] && echoRgb "解壓縮路徑:$datapath"
-		if [[ $FILE_NAME2 = user ]]; then
+		case $FILE_NAME2 in
+		user)
 			if [[ -d $X ]]; then
-				if [[ -f /config/sdcardfs/$name2/appid ]]; then
-					G="$(cat "/config/sdcardfs/$name2/appid")"
+				if [[ -f /config/sdcardfs/$name/appid ]]; then
+					G="$(cat "/config/sdcardfs/$name/appid")"
 				else
-					G="$(dumpsys package "$name2" | awk '/userId=/{print $1}' | cut -f2 -d '=' | head -1)"
+					G="$(dumpsys package "$name" | awk '/userId=/{print $1}' | cut -f2 -d '=' | head -1)"
 				fi ; G="$(echo "$G" | grep -Eo '[0-9]+')"
 				if [[ $G != "" ]]; then
 					echoRgb "路徑:$X"
 					Path_details="$(stat -c "%A/%a %U/%G" "$X")"
-					chown -hR "$G:$G" "$X"
+					chown -hR "$G:$G" "$X/"
 					echo_log "設置用戶組:$(echo "$Path_details" | awk '{print $2}')"
 					restorecon -RF "$X/" >/dev/null 2>&1
 					echo_log "selinux上下文設置"
-					#echoRgb "$(stat -c "%n %A/%a %U/%G" "$X" | awk '{print "路徑:"$1"\n 權限:"$2"\n 用戶組:"$3}')"
 				else
 					echoRgb "uid獲取失敗" "0"
 				fi
 			else
 				echoRgb "路徑$X不存在" "0"
-			fi
-		elif [[ $FILE_NAME2 = data ]]; then
-			[[ -d $path/data/$name2 ]] && chown -R "1023:1023" "$path/data/$name2"
-		elif [[ $FILE_NAME2 = thanox ]]; then
+			fi ;;
+		data|obb)
+			[[ -d $path/$FILE_NAME2/$name2 ]] && chmod -R 0777 "$path/$FILE_NAME2/$name2" ;;
+		thanox)
 			restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)/" >/dev/null 2>&1
-			echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
-		fi
+			echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0" ;;
+		esac
 	fi
 }
 #開始循環$txt內的資料進行恢複

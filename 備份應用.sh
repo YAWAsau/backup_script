@@ -186,7 +186,11 @@ Backup_data() {
 			echoRgb "$1數據無發生變化 跳過備份"
 		fi
 	else
-		echoRgb "$1數據不存在跳過備份"
+		if [[ -f $data_path ]]; then
+			echoRgb "$1是一個文件 不支持備份" "0"
+		else
+			echoRgb "$1數據不存在跳過備份"
+		fi
 	fi
 }
 [[ $Lo = true ]] && {

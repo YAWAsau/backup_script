@@ -100,7 +100,8 @@ if [[ $Recovery_mode = true ]]; then
 			fi
 			echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
 			if [[ $result = 0 ]]; then
-				if [[ $FILE_NAME2 = user ]]; then
+				case $FILE_NAME2 in
+				user)
 					if [[ -d $X ]]; then
 						if [[ -f /config/sdcardfs/$name/appid ]]; then
 							G="$(cat "/config/sdcardfs/$name/appid")"
@@ -110,7 +111,7 @@ if [[ $Recovery_mode = true ]]; then
 						if [[ $G != "" ]]; then
 							echoRgb "路徑:$X"
 							Path_details="$(stat -c "%A/%a %U/%G" "$X")"
-							chown -hR "$G:$G" "$X"
+							chown -hR "$G:$G" "$X/"
 							echo_log "設置用戶組:$(echo "$Path_details" | awk '{print $2}')"
 							restorecon -RF "$X/" >/dev/null 2>&1
 							echo_log "selinux上下文設置"
@@ -119,13 +120,13 @@ if [[ $Recovery_mode = true ]]; then
 						fi
 					else
 						echoRgb "路徑$X不存在" "0"
-					fi
-				elif [[ $FILE_NAME2 = data ]]; then
-					[[ -d $path/data/$name2 ]] && chown -R "1023:1023" "$path/data/$name2"
-				elif [[ $FILE_NAME2 = thanox ]]; then
-					restorecon -R "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)/" >/dev/null 2>&1
-					echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
-				fi
+					fi ;;
+				data|obb)
+					[[ -d $path/$FILE_NAME2/$name2 ]] && chmod -R 0777 "$path/$FILE_NAME2/$name2" ;;
+				thanox)
+					restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)/" >/dev/null 2>&1
+					echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0" ;;
+				esac
 			fi
 		done
 	else
