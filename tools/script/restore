@@ -66,10 +66,10 @@ Release_data() {
 		case $FILE_NAME2 in
 		user)
 			if [[ -d $X ]]; then
-				if [[ -f /config/sdcardfs/$name/appid ]]; then
-					G="$(cat "/config/sdcardfs/$name/appid")"
+				if [[ -f /config/sdcardfs/$name2/appid ]]; then
+					G="$(cat "/config/sdcardfs/$name2/appid")"
 				else
-					G="$(dumpsys package "$name" | awk '/userId=/{print $1}' | cut -f2 -d '=' | head -1)"
+					G="$(dumpsys package "$name2" | awk '/userId=/{print $1}' | cut -f2 -d '=' | head -1)"
 				fi ; G="$(echo "$G" | grep -Eo '[0-9]+')"
 				if [[ $G != "" ]]; then
 					echoRgb "路徑:$X"
