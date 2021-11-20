@@ -6,7 +6,6 @@ bin_path="$tools_path/bin"
 [[ ! -d $tools_path ]] && echo " $tools_path目錄遺失" && exit 1
 . "$bin_path/bin.sh"
 zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
-tag="$(cat "$bin_path/tag" 2>/dev/null)"
 if [[ $zippath != "" ]]; then
 	case $(echo "$zippath" | wc -l) in
 	1)
@@ -16,8 +15,8 @@ if [[ $zippath != "" ]]; then
 	esac
 else
 	echoRgb "從GitHub更新"
+	down -s -A s "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" | jq -r '.tag_name'>"$bin_path/tag" ; tag="$(cat "$bin_path/tag" 2>/dev/null)"
 	if [[ $backup_version != $(down -s -A s "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" | jq -r '.tag_name') ]]; then
-		down -s -A s "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" | jq -r '.tag_name'>"$tag"
 		down -L -o "$MODDIR/$tag.zip" "$(down -s -A s "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
 		echo_log "下載$tag.zip"
 		if [[ $result = 0 ]]; then
