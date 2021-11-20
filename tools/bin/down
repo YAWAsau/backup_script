@@ -1,0 +1,2 @@
+export CLASSPATH="${0%/*}/down.dex"
+exec app_process /system/bin --nice-name=down Han.download.Down "$@"

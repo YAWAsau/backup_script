@@ -10,7 +10,6 @@ bin_path="$tools_path/bin"
 . "$MODDIR/backup_settings.conf"
 system="
 com.google.android.apps.messaging
-com.digibites.accubattery
 com.google.android.inputmethod.latin
 com.android.chrome"
 # 获取默认桌面

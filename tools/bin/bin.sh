@@ -18,7 +18,7 @@ if [[ -d $(magisk --path 2>/dev/null) ]]; then
 else
 	echo "Magisk busybox Path does not exist"
 fi ; export PATH="$PATH"
-backup_version="V11.5 2021/11/15-23:30"
+backup_version="V11.5"
 #設置二進制命令目錄位置
 [[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
@@ -30,6 +30,7 @@ busybox2="$bin_path/busybox"
 #排除自身
 exclude="
 busybox_path
+tag
 bin.sh"
 if [[ ! -d $filepath ]]; then
 	mkdir -p "$filepath"
