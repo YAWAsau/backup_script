@@ -17,7 +17,7 @@ else
 	echoRgb "從GitHub更新"
 	down -s -A s "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" | jq -r '.tag_name'>"$bin_path/tag" ; tag="$(cat "$bin_path/tag" 2>/dev/null)"
 	if [[ $backup_version != $(down -s -A s "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" | jq -r '.tag_name') ]]; then
-		down -L -o "$MODDIR/$tag.zip" "$(down -s -A s "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
+		down -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$(down -s -A s "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
 		echo_log "下載$tag.zip"
 		if [[ $result = 0 ]]; then
 			zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
@@ -54,7 +54,7 @@ if [[ $result = 0 ]]; then
 					cp -r "$tools_path" "$backup_path" && rm -rf "$backup_path/tools/bin/zip" "$backup_path/tools/META-INF" "$backup_path/tools/script"
 					cp -r "$tools_path/script/restore" "$backup_path/還原備份.sh"
 					cp -r "$tools_path/script/Get_DirName" "$backup_path/掃描資料夾名.sh"
-					cp -r "$MODDIR/更新腳本.sh" "$backup_path/更新腳本.sh"
+					cp -r "$MODDIR/本地一鍵更新腳本.sh" "$backup_path/本地一鍵更新腳本.sh"
 					[[ -d $backup_path/媒體 ]] && cp -r "$tools_path/script/restore3" "$backup_path/媒體/恢復多媒體數據.sh"
 					find "$MODDIR" -maxdepth 2 -type d | sort | while read; do
 						if [[ -f $REPLY/app_details ]]; then
