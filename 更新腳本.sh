@@ -58,10 +58,10 @@ if [[ $result = 0 ]]; then
 					cp -r "$MODDIR/更新腳本.sh" "$backup_path/更新腳本.sh"
 					[[ -d $backup_path/媒體 ]] && cp -r "$tools_path/script/restore3" "$backup_path/媒體/恢復多媒體數據.sh"
 					find "$MODDIR" -maxdepth 2 -type d | sort | while read; do
-						if [[ -f $zippath/app_details ]]; then
+						if [[ -f $REPLY/app_details ]]; then
 							unset PackageName
-							. "$zippath/app_details"
-							[[ $PackageName != "" ]] && cp -r "$tools_path/script/restore2" "$zippath/還原備份.sh"
+							. "$REPLY/app_details"
+							[[ $PackageName != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/還原備份.sh"
 						fi
 					done
 				fi
