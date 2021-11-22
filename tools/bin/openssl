@@ -1,0 +1,2 @@
+export LD_LIBRARY_PATH=${0%/*}
+exec ${0%/*}/openssl.elf "$@"

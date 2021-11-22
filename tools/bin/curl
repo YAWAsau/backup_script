@@ -1,0 +1,3 @@
+export LD_LIBRARY_PATH=${0%/*}
+export CURL_CA_BUNDLE=${0%/*}/cacert.pem
+exec ${0%/*}/curl.elf "$@"

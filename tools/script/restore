@@ -1,6 +1,8 @@
 #!/system/bin/sh
 MODDIR="${0%/*}"
+tools_path="$MODDIR/tools"
 bin_path="$MODDIR/tools/bin"
+[[ ! -d $tools_path ]] && echo "$tools_path目錄遺失" && exit 1
 [[ ! -d $bin_path ]] && echo "$bin_path目錄遺失" && exit 1
 [[ ! -f $MODDIR/recover.conf ]] && echo "recover.conf遺失" && exit 1
 . "$bin_path/bin.sh"
@@ -9,7 +11,6 @@ isBoolean "$Recovery_mode" && Recovery_mode="$nsx"
 [[ $Recovery_mode = false ]] && echoRgb "當前恢復模式:安裝apk不恢復數據" "0" || echoRgb "當前恢復模式:安裝apk+恢復數據" "1"
 path="/data/media/0/Android"
 path2="/data/data"
-[[ ! -d $TMPDIR ]] && mkdir "$TMPDIR"
 [[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
 [[ ! -d ${bin_path%/*}/apk ]] && echo "${bin_path%/*}/apk目錄遺失" && exit 1
 i=1

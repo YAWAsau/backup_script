@@ -41,7 +41,6 @@ i=1
 #數據目錄
 path="/data/media/0/Android"
 path2="/data/user/0"
-[[ ! -d $TMPDIR ]] && mkdir "$TMPDIR"
 if [[ $path3 = true ]]; then
 	Backup="$PWD/Backup_$Compression_method"
 	txt="$PWD/應用列表.txt"
@@ -72,7 +71,7 @@ if [[ $PU != "" ]]; then
 			data="/dev/block/vold/$PU"
 			mountinfo="$(df -T "$data" | awk 'END{print $1}')"
 			case $mountinfo in
-			exfat|NTFS|ext4)
+			fuseblk|exfat|NTFS|ext4)
 				echoRgb "於隨身碟備份 檔案系統:$mountinfo" "1"
 				;;
 			*)
@@ -87,9 +86,8 @@ fi
 [[ $Backup_obb_data = false ]] && echoRgb "當前backup_settings.conf的\n -Backup_obb_data為0將不備份外部數據" "0"
 [[ ! -d $Backup ]] && mkdir -p "$Backup"
 [[ ! -f $Backup/應用列表.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$Backup/應用列表.txt"
-[[ ! -f $Backup/本地一鍵更新腳本.sh ]] && cp -r "$MODDIR/本地一鍵更新腳本.sh" "$Backup"
 [[ ! -f $Backup/recover.conf ]] && cp -r "$script_path/recover.conf" "$Backup"
-[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/META-INF" "$Backup/tools/script"
+[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
 [[ ! -f $Backup/還原備份.sh ]] && cp -r "$script_path/restore" "$Backup/還原備份.sh"
 [[ ! -f $Backup/掃描資料夾名.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/掃描資料夾名.sh"
 filesize="$(du -ks "$Backup" | awk '{print $1}')"
