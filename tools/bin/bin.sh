@@ -18,7 +18,7 @@ if [[ -d $(magisk --path 2>/dev/null) ]]; then
 else
 	echo "Magisk busybox Path does not exist"
 fi ; export PATH="$PATH"
-backup_version="V11.8"
+backup_version="V11.9"
 #設置二進制命令目錄位置
 [[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
@@ -169,17 +169,36 @@ if [[ $(pm path ice.message) = "" ]]; then
 	[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
 fi
 zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
-curl -Lks https://api.github.com/repos/YAWAsau/backup_script/releases/latest | jq -r '.tag_name'>"$bin_path/tag" ; tag="$(cat "$bin_path/tag" 2>/dev/null)"
+LANG="$(getprop "persist.sys.locale")"
+if [[ $LANG != "" ]]; then
+	case $LANG in
+	*-TW|*-tw)
+		echoRgb "系統語系:繁體"
+		Language="https://api.github.com/repos/YAWAsau/backup_script/releases/latest" ;;
+	*-CN|*-cn)
+		echoRgb "系統語系:簡體"
+		Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest" ;;
+	* )
+		echoRgb "$LANG不支持 默認簡體" "0"
+		Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest" ;;
+	esac
+else
+	echoRgb "獲取系統語系失敗 默認簡體" "0"
+	Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest"
+fi
+#sed -r -n 's/.*"browser_download_url": *"(.*)".*/\1/p'
+#sed -r -n 's/.*"browser_download_url": *"(.*-linux64\..*\.so\.bz2)".*/\1/p'
+curl -Lks "$Language" | jq -r '.tag_name'>"$bin_path/tag" ; tag="$(cat "$bin_path/tag" 2>/dev/null)"
 if [[ $? = 0 ]]; then
 	if [[ $backup_version != $tag ]]; then
-		echoRgb "發現新版本 從GitHub更新 版本:$tag" 
-		curl -Lks -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$(curl -Lks "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
+		echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(curl -Lks "$Language" | jq -r '.body')"
+		curl -Lks -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$(curl -Lks "$Language" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
 		echo_log "下載$tag.zip"
 		if [[ $result = 0 ]]; then
 			zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
 			GitHub="true"
 		else
-			echoRgb "請手動將備份腳本壓縮包放置在\n -$MODDIR後再次執行腳本進行更新" "0" && exit 2
+			echoRgb "請手動將備份腳本壓縮包放置在\n -$MODDIR後再次執行腳本進行更新" "0"
 		fi
 	else
 		echoRgb "本地版本:$backup_version 線上版本:$tag 版本一致無須更新"
@@ -248,10 +267,10 @@ if [[ $zippath != "" ]]; then
 						echoRgb "更新當前${MODDIR##*/}目錄下備份相關腳本+tools目錄"
 					fi ;;
 				esac
-				rm -rf "$TMPDIR"/*
 			else
-				cp -r "$TMPDIR/tools" "$MODDIR" && rm -rf "$TMPDIR"/*
+				cp -r "$TMPDIR/tools" "$MODDIR"
 			fi
+			rm -rf "$TMPDIR"/*
 			find "$MODDIR" -maxdepth 1 -name "*.zip" -type f -exec rm -rf {} \;
 			echoRgb "更新完成 請重新執行腳本" "2" && exit
 		fi ;;
