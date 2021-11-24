@@ -2,6 +2,7 @@
 MODDIR="${0%/*}"
 tools_path="$MODDIR/tools"
 bin_path="$MODDIR/tools/bin"
+script="${0##*/}"
 [[ ! -d $tools_path ]] && echo "$tools_path目錄遺失" && exit 1
 [[ ! -d $bin_path ]] && echo "$bin_path目錄遺失" && exit 1
 [[ ! -f $MODDIR/recover.conf ]] && echo "recover.conf遺失" && exit 1
@@ -101,14 +102,20 @@ en=118
 {
 while [[ $i -le $r ]]; do
 	[[ $en -ge 229 ]] && en=118
-	echoRgb "恢複第$i/$r個應用 剩下$((r-i))個"
-	name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+	if [[ ! -f $MODDIR/apktmp ]]; then
+		echoRgb "恢複第$i/$r個應用 剩下$((r-i))個"
+		name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+		name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+	else
+		echoRgb "由於上次意外中斷恢復，本次恢復上次恢復應用" && r=1
+		name1="$(cat "$MODDIR/apktmp" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+		name2="$(cat "$MODDIR/apktmp" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+	fi
 	Backup_folder="$MODDIR/$name1"
 	Backup_folder2="$MODDIR/媒體"
 	[[ $name2 = "" ]] && echoRgb "應用包名獲取失敗" "0" && exit 1
 	if [[ -d $Backup_folder ]]; then
-		echoRgb "恢複$name1 ($name2)"
+		echoRgb "恢複$name1 ($name2)" && echo "$name1 $name2">"$MODDIR/apktmp"
 		starttime2="$(date -u "+%s")"
 		if [[ $(pm path "$name2") = "" ]]; then
 			apkfile="$(find "$Backup_folder" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
@@ -164,6 +171,7 @@ while [[ $i -le $r ]]; do
 				echoRgb "$name1沒有安裝無法恢復數據" "0"
 			fi
 		fi
+		rm -rf "$MODDIR/apktmp"
 		endtime 2 "$name1恢複" && echoRgb "完成$((i*100/r))%" && echoRgb "____________________________________" "3"
 	else
 		echoRgb "$Backup_folder資料夾遺失，無法恢複" "0"

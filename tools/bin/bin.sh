@@ -163,6 +163,12 @@ echo_log() {
 bn=147
 echoRgb "\n --------------歡迎使用⚡️🤟🐂纸備份--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$Open_apps"
 bn=195
+if [[ $script != "" && $(pgrep -f "$script" | grep -v grep | wc -l) -ge 2 ]]; then
+	echoRgb "檢測到進程殘留，請重新執行腳本 已銷毀進程" "0"
+	pgrep -f "$script" | grep -v grep | while read i; do
+		[[ $i != "" ]] && kill -9 " $i" >/dev/null
+	done
+fi
 if [[ $(pm path ice.message) = "" ]]; then
 	echoRgb "未安裝toast 開始安裝" "0"
 	cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user 0 -r "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/* 

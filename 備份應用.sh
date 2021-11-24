@@ -18,12 +18,6 @@ zstd|Zstd|ZSTD|tar|Tar|TAR|lz4|Lz4|LZ4) ;;
 *) echoRgb "$Compression_method為不支持的壓縮算法" "0" &&  exit 2 ;;
 esac
 [[ ! -f $MODDIR/backup_settings.conf ]] && echoRgb "backup_settings.conf遺失" "0" && exit 1
-if [[ $(pgrep -f "$script" | grep -v grep | wc -l) -ge 2 ]]; then
-	echoRgb "檢測到進程殘留，請重新執行腳本 已銷毀進程" "0"
-	pgrep -f "$script" | grep -v grep | while read i; do
-		[[ $i != "" ]] && kill -9 " $i" >/dev/null
-	done
-fi
 #效驗選填是否正確
 isBoolean "$Lo" && Lo="$nsx"
 if [[ $Lo = false ]]; then

@@ -3,6 +3,7 @@ MODDIR="${0%/*}"
 app_details="$MODDIR/app_details"
 tools_path="${tools_path%/*}/tools"
 bin_path="${MODDIR%/*}/tools/bin"
+script="${0##*/}"
 [[ ! -d $tools_path ]] && echo "$tools_path目錄遺失" && exit 1
 [[ ! -d $bin_path ]] && echo "$bin_path目錄遺失" && exit 1
 . "$bin_path/bin.sh"
