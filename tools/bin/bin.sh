@@ -18,7 +18,7 @@ if [[ -d $(magisk --path 2>/dev/null) ]]; then
 else
 	echo "Magisk busybox Path does not exist"
 fi ; export PATH="$PATH"
-backup_version="V12.0"
+backup_version="V12.1.1"
 #設置二進制命令目錄位置
 [[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
@@ -200,9 +200,9 @@ if [[ -f $bin_path/json && $(cat "$bin_path/json") != "" ]]; then
 	download="$(cat "$bin_path/json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
 	if [[ $tag != "" ]]; then
 		if [[ $backup_version != $tag ]]; then
-			echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(curl -Lks "$Language" | jq -r '.body')"
+			echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(cat "$bin_path/json" | jq -r '.body')"
 			down -s -L -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$download"
-			echo_log "下載$tag.zip"
+			echo_log "下載${download##*/}"
 			if [[ $result = 0 ]]; then
 				zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
 				GitHub="true"
@@ -223,6 +223,7 @@ if [[ $zippath != "" ]]; then
 			echoRgb "${zippath##*/}並非指定的備份zip，請刪除後重新放置\n -何謂更新zip? 就是GitHub release頁面下載的zip" "0"
 		else
 			cp -r "$tools_path" "$TMPDIR" && rm -rf "$tools_path"
+			find "$MODDIR" -maxdepth 3 -name "*.sh" -type f -exec rm -rf {} \;
 			unzip -o "$zippath" -d "$MODDIR"
 			echo_log "解壓縮${zippath##*/}"
 			if [[ $result = 0 ]]; then
@@ -240,6 +241,13 @@ if [[ $zippath != "" ]]; then
 						else
 							cp -r "$tools_path/script/restore3" "${MODDIR%/*}/媒體/恢復多媒體數據.sh"
 						fi
+						if [[ -d ${MODDIR%/*/*}/tools && -f ${MODDIR%/*/*}/備份應用.sh ]]; then
+							echoRgb "更新${MODDIR%/*/*}/tools與備份相關腳本"
+							rm -rf "${MODDIR%/*/*}/tools"
+							find "${MODDIR%/*/*}" -maxdepth 1 -name "*.sh" -type f -exec rm -rf {} \;
+							mv "$MODDIR/backup_settings.conf" "$MODDIR/備份應用.sh" "$MODDIR/生成應用列表.sh" "${MODDIR%/*/*}"
+							cp -r "$tools_path" "${MODDIR%/*/*}"
+						fi
 					else
 						echoRgb "更新當前${MODDIR##*/}目錄下恢復相關腳本+tools目錄"
 						cp -r "$tools_path/script/Get_DirName" "$MODDIR/掃描資料夾名.sh"
@@ -252,8 +260,15 @@ if [[ $zippath != "" ]]; then
 								[[ $PackageName != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/還原備份.sh"
 							fi
 						done
+						if [[ -d ${MODDIR%/*}/tools && -f ${MODDIR%/*}/備份應用.sh ]]; then
+							echoRgb "更新${MODDIR%/*}/tools與備份相關腳本"
+							rm -rf "${MODDIR%/*}/tools"
+							find "${MODDIR%/*}" -maxdepth 1 -name "*.sh" -type f -exec rm -rf {} \;
+							mv "$MODDIR/backup_settings.conf" "$MODDIR/備份應用.sh" "$MODDIR/生成應用列表.sh" "${MODDIR%/*}"
+							cp -r "$tools_path" "${MODDIR%/*}"
+						fi
 					fi
-					rm -rf "$tools_path/script" "$tools_path/bin/zip" "$MODDIR/backup_settings.conf" "$MODDIR/備份應用.sh" "$MODDIR/生成應用列表.sh" ;;
+					rm -rf "$tools_path/script" "$MODDIR/backup_settings.conf" "$MODDIR/備份應用.sh" "$MODDIR/生成應用列表.sh" ;;
 				*)
 					if [[ $(find "$MODDIR" -maxdepth 1 -name "Backup_*" -type d) != "" ]]; then
 						find "$MODDIR" -maxdepth 1 -name "Backup_*" -type d | while read backup_path; do
@@ -284,6 +299,6 @@ if [[ $zippath != "" ]]; then
 			echoRgb "更新完成 請重新執行腳本" "2" && exit
 		fi ;;
 	*)
-		echoRgb "錯誤 請刪除當前目錄多餘zip\n -保留一個最新的數據備份.zip\n -下列為當前目錄zip\n$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)" "0" && exit 1 ;;
+		echoRgb "錯誤 請刪除當前目錄多餘zip\n -保留一個最新的數據備份.zip\n -下列為當前目錄zip\n$zippath" "0" && exit 1 ;;
 	esac
 fi

@@ -1,6 +1,6 @@
 #!/system/bin/sh
 MODDIR="${0%/*}"
-tools_path="${MODDIR%/*}/tools"
+tools_path="$MODDIR/tools"
 bin_path="$MODDIR/tools/bin"
 [[ ! -d $tools_path ]] && echo "$tools_path目錄遺失" && exit 1
 [[ ! -d $bin_path ]] && echo "$bin_path目錄遺失" && exit 1
