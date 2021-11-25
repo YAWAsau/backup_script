@@ -18,7 +18,7 @@ if [[ -d $(magisk --path 2>/dev/null) ]]; then
 else
 	echo "Magisk busybox Path does not exist"
 fi ; export PATH="$PATH"
-backup_version="V11.9"
+backup_version="V12.0"
 #設置二進制命令目錄位置
 [[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
@@ -31,6 +31,7 @@ busybox2="$bin_path/busybox"
 exclude="
 busybox_path
 tag
+json
 bin.sh"
 if [[ ! -d $filepath ]]; then
 	mkdir -p "$filepath"
@@ -88,8 +89,6 @@ if [[ $(which busybox) = "" ]]; then
 	echo "環境變量中沒有找到busybox 請在tools/bin內添加一個\narm64可用的busybox\n或是安裝搞機助手 scene或是Magisk busybox模塊...."
 	exit 1
 fi
-
-Open_apps="$(appinfo -o ands -ta c)"
 #下列為自定義函數
 Set_back() {
 	return 1
@@ -160,6 +159,25 @@ echo_log() {
 		echoRgb "$1失敗，過世了" "0" ; Print "$1失敗，過世了" ; result=1
 	fi
 }
+LANG="$(getprop "persist.sys.locale")"
+if [[ $LANG != "" ]]; then
+	case $LANG in
+	*-TW|*-tw)
+		echoRgb "系統語系:繁體中文"
+		Language="https://api.github.com/repos/YAWAsau/backup_script/releases/latest" ;;
+	*-CN|*-cn)
+		echoRgb "系統語系:簡體中文"
+		Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest" ;;
+	* )
+		echoRgb "$LANG不支持 默認簡體中文" "0"
+		Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest" ;;
+	esac
+else
+	echoRgb "獲取系統語系失敗 默認簡體中文" "0"
+	Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest"
+fi
+down -s -L "$Language" 2>/dev/null >"$bin_path/json"
+Open_apps="$(appinfo -o ands -ta c)"
 bn=147
 echoRgb "\n --------------歡迎使用⚡️🤟🐂纸備份--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$Open_apps"
 bn=195
@@ -175,42 +193,27 @@ if [[ $(pm path ice.message) = "" ]]; then
 	[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
 fi
 zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
-LANG="$(getprop "persist.sys.locale")"
-if [[ $LANG != "" ]]; then
-	case $LANG in
-	*-TW|*-tw)
-		echoRgb "系統語系:繁體"
-		Language="https://api.github.com/repos/YAWAsau/backup_script/releases/latest" ;;
-	*-CN|*-cn)
-		echoRgb "系統語系:簡體"
-		Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest" ;;
-	* )
-		echoRgb "$LANG不支持 默認簡體" "0"
-		Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest" ;;
-	esac
-else
-	echoRgb "獲取系統語系失敗 默認簡體" "0"
-	Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest"
-fi
 #sed -r -n 's/.*"browser_download_url": *"(.*)".*/\1/p'
 #sed -r -n 's/.*"browser_download_url": *"(.*-linux64\..*\.so\.bz2)".*/\1/p'
-curl -Lks "$Language" | jq -r '.tag_name'>"$bin_path/tag" ; tag="$(cat "$bin_path/tag" 2>/dev/null)"
-if [[ $? = 0 ]]; then
-	if [[ $backup_version != $tag ]]; then
-		echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(curl -Lks "$Language" | jq -r '.body')"
-		curl -Lks -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$(curl -Lks "$Language" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
-		echo_log "下載$tag.zip"
-		if [[ $result = 0 ]]; then
-			zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
-			GitHub="true"
+if [[ -f $bin_path/json && $(cat "$bin_path/json") != "" ]]; then
+	tag="$(cat "$bin_path/json" | jq -r '.tag_name')"
+	download="$(cat "$bin_path/json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
+	if [[ $tag != "" ]]; then
+		if [[ $backup_version != $tag ]]; then
+			echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(curl -Lks "$Language" | jq -r '.body')"
+			down -s -L -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$download"
+			echo_log "下載$tag.zip"
+			if [[ $result = 0 ]]; then
+				zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
+				GitHub="true"
+			else
+				echoRgb "請手動將備份腳本壓縮包放置在\n -$MODDIR後再次執行腳本進行更新" "0"
+			fi
 		else
-			echoRgb "請手動將備份腳本壓縮包放置在\n -$MODDIR後再次執行腳本進行更新" "0"
+			echoRgb "本地版本:$backup_version 線上版本:$tag 版本一致無須更新"
 		fi
-	else
-		echoRgb "本地版本:$backup_version 線上版本:$tag 版本一致無須更新"
 	fi
-else
-	echoRgb "curl or jq其中之一發生錯誤 無法下載" "0" && exit 1
+	rm -rf "$bin_path/json"
 fi
 if [[ $zippath != "" ]]; then
 	case $(echo "$zippath" | wc -l) in

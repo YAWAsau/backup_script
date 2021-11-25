@@ -1,2 +1,2 @@
-export CLASSPATH="${0%/*}/appinfo.dex"
+export CLASSPATH="${0%/*}/classes.dex"
 exec app_process /system/bin --nice-name=appinfo indi.appinfo.AppInfo "$@"
