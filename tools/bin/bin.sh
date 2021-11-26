@@ -18,7 +18,7 @@ if [[ -d $(magisk --path 2>/dev/null) ]]; then
 else
 	echo "Magisk busybox Path does not exist"
 fi ; export PATH="$PATH"
-backup_version="V12.1.1"
+backup_version="V12.3"
 #設置二進制命令目錄位置
 [[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
@@ -30,8 +30,6 @@ busybox2="$bin_path/busybox"
 #排除自身
 exclude="
 busybox_path
-tag
-json
 bin.sh"
 if [[ ! -d $filepath ]]; then
 	mkdir -p "$filepath"
@@ -214,6 +212,8 @@ if [[ -f $bin_path/json && $(cat "$bin_path/json") != "" ]]; then
 		fi
 	fi
 	rm -rf "$bin_path/json"
+else
+	echoRgb "更新獲取失敗" "0"
 fi
 if [[ $zippath != "" ]]; then
 	case $(echo "$zippath" | wc -l) in
@@ -302,3 +302,7 @@ if [[ $zippath != "" ]]; then
 		echoRgb "錯誤 請刪除當前目錄多餘zip\n -保留一個最新的數據備份.zip\n -下列為當前目錄zip\n$zippath" "0" && exit 1 ;;
 	esac
 fi
+#down -s -L "https://magisk-modules-repo.github.io/submission/modules.json" | jq -r '.modules[] | {id,prop_url,zip_url}'
+#down -s -L "https://magisk-modules-repo.github.io/submission/modules.json" | jq -r '.modules[].zip_url' | egrep -w "riru_lsposed|busybox-ndk|riru_storage_redirect|riru-core|HideNavBar" | while read; do
+#	down -s -L -o "$MODDIR/${REPLY##*/}" "$REPLY"
+#done
