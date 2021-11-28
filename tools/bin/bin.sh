@@ -164,9 +164,11 @@ echoRgb "\n --------------歡迎使用⚡️🤟🐂纸備份--------------\n -�
 bn=195
 if [[ $script != "" && $(pgrep -f "$script" | grep -v grep | wc -l) -ge 2 ]]; then
 	echoRgb "檢測到進程殘留，請重新執行腳本 已銷毀進程" "0"
-	pgrep -f "$script" | grep -v grep | while read i; do
-		[[ $i != "" ]] && kill -9 " $i" >/dev/null
+	{
+	pgrep -f "$script" | while read; do
+		kill -KILL " $REPLY" >/dev/null
 	done
+	} &
 fi
 if [[ $(pm path ice.message) = "" ]]; then
 	echoRgb "未安裝toast 開始安裝" "0"

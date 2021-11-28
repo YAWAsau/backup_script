@@ -204,6 +204,7 @@ TIME="$starttime1"
 en=118
 {
 while [[ $i -le $r ]]; do
+	sleep 90
 	[[ $en -ge 229 ]] && en=118
 	name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
 	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
