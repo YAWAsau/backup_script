@@ -56,3 +56,4 @@ done
 endtime 1
 [[ ! -e $MODDIR/tmp ]] && echoRgb "無新增應用" || echoRgb "輸出包名結束 請查看$nametxt"
 rm -rf "$MODDIR/tmp"
+fead --help
