@@ -158,7 +158,25 @@ echo_log() {
 		echoRgb "$1失敗，過世了" "0" ; Print "$1失敗，過世了" ; result=1
 	fi
 }
+Open_apps="$(appinfo -o ands -ta c)"
+bn=147
+echoRgb "\n --------------歡迎使用⚡️🤟🐂纸備份--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$Open_apps"
+bn=195
+if [[ $script != "" && $(pgrep -f "$script" | grep -v grep | wc -l) -ge 2 ]]; then
+	echoRgb "檢測到進程殘留，請重新執行腳本 已銷毀進程" "0"
+	pgrep -f "$script" | grep -v grep | while read i; do
+		[[ $i != "" ]] && kill -9 " $i" >/dev/null
+	done
+fi
+if [[ $(pm path ice.message) = "" ]]; then
+	echoRgb "未安裝toast 開始安裝" "0"
+	cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user 0 -r "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/* 
+	[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
+fi
+#sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p'
+#sed -r -n 's/.*"browser_download_url": *"(.*-linux64\..*\.so\.bz2)".*/\1/p'
 LANG="$(getprop "persist.sys.locale")"
+zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
 if [[ $LANG != "" ]]; then
 	case $LANG in
 	*-TW|*-tw)
@@ -176,43 +194,27 @@ else
 	Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest"
 fi
 down -s -L "$Language" 2>/dev/null >"$bin_path/json"
-Open_apps="$(appinfo -o ands -ta c)"
-bn=147
-echoRgb "\n --------------歡迎使用⚡️🤟🐂纸備份--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$Open_apps"
-bn=195
-if [[ $script != "" && $(pgrep -f "$script" | grep -v grep | wc -l) -ge 2 ]]; then
-	echoRgb "檢測到進程殘留，請重新執行腳本 已銷毀進程" "0"
-	pgrep -f "$script" | grep -v grep | while read i; do
-		[[ $i != "" ]] && kill -9 " $i" >/dev/null
-	done
-fi
-if [[ $(pm path ice.message) = "" ]]; then
-	echoRgb "未安裝toast 開始安裝" "0"
-	cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user 0 -r "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/* 
-	[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
-fi
-zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
-#sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p'
-#sed -r -n 's/.*"browser_download_url": *"(.*-linux64\..*\.so\.bz2)".*/\1/p'
-if [[ -f $bin_path/json && $(cat "$bin_path/json") != "" ]]; then
-	tag="$(cat "$bin_path/json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
-	download="$(cat "$bin_path/json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
-	if [[ $tag != "" ]]; then
-		if [[ $backup_version != $tag ]]; then
-			echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(cat "$bin_path/json" | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
-			down -s -L -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$download"
-			echo_log "下載${download##*/}"
-			if [[ $result = 0 ]]; then
-				zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
-				GitHub="true"
+if [[ $? = 0 ]]; then
+	if [[ -f $bin_path/json && $(cat "$bin_path/json") != "" ]]; then
+		tag="$(cat "$bin_path/json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
+		download="$(cat "$bin_path/json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
+		if [[ $tag != "" ]]; then
+			if [[ $backup_version != $tag ]]; then
+				echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(cat "$bin_path/json" | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
+				down -s -L -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$download"
+				echo_log "下載${download##*/}"
+				if [[ $result = 0 ]]; then
+					zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
+					GitHub="true"
+				else
+					echoRgb "請手動將備份腳本壓縮包放置在\n -$MODDIR後再次執行腳本進行更新" "0"
+				fi
 			else
-				echoRgb "請手動將備份腳本壓縮包放置在\n -$MODDIR後再次執行腳本進行更新" "0"
+				echoRgb "本地版本:$backup_version 線上版本:$tag 版本一致無須更新"
 			fi
-		else
-			echoRgb "本地版本:$backup_version 線上版本:$tag 版本一致無須更新"
 		fi
+		rm -rf "$bin_path/json"
 	fi
-	rm -rf "$bin_path/json"
 else
 	echoRgb "更新獲取失敗" "0"
 fi
@@ -275,6 +277,7 @@ if [[ $zippath != "" ]]; then
 						find "$MODDIR" -maxdepth 1 -name "Backup_*" -type d | while read backup_path; do
 							if [[ -d $backup_path && $backup_path != $MODDIR ]]; then
 								echoRgb "更新當前目錄下備份相關腳本&tools目錄+${backup_path##*/}內tools目錄+恢復腳本+tools"
+								rm -rf "$backup_path/tools"
 								cp -r "$tools_path" "$backup_path" && rm -rf "$backup_path/tools/bin/zip" "$backup_path/tools/script"
 								cp -r "$tools_path/script/restore" "$backup_path/還原備份.sh"
 								cp -r "$tools_path/script/Get_DirName" "$backup_path/掃描資料夾名.sh"
