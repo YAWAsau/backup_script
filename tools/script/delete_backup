@@ -1,0 +1,20 @@
+MODDIR="${0%/*}"
+tools_path="$MODDIR/tools"
+bin_path="$tools_path/bin"
+script_path="$tools_path/script"
+[[ ! -d $tools_path ]] && echo "$tools_path目錄遺失" && exit 1
+[[ ! -d $script_path ]] && echo "$script_path目錄遺失" && exit 1
+. "$bin_path/bin.sh"
+find "$MODDIR" -maxdepth 2 -type d | sort | while read; do
+	if [[ -f $REPLY/app_details ]]; then
+		unset PackageName
+		. "$REPLY/app_details"
+		if [[ $PackageName != "" && $(pm path "$PackageName" | cut -f2 -d ':') = "" ]]; then
+			echoRgb "${REPLY##*/}不存在系統，刪除備份"
+			rm -rf "$REPLY"
+			if [[ ${REPLY%/*}/應用列表.txt ]]; then
+				cat "${REPLY%/*}/應用列表.txt" | sed -e "s/${REPLY##*/} $PackageName//g ; /^$/d" | sort >"${REPLY%/*}/應用列表.tmp" && mv "${REPLY%/*}/應用列表.tmp" "${REPLY%/*}/應用列表.txt"
+			fi
+		fi
+	fi
+done

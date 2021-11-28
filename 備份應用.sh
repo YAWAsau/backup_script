@@ -85,6 +85,7 @@ fi
 [[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
 [[ ! -f $Backup/還原備份.sh ]] && cp -r "$script_path/restore" "$Backup/還原備份.sh"
 [[ ! -f $Backup/掃描資料夾名.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/掃描資料夾名.sh"
+[[ ! -f $MODDIR/刪除已卸載備份.sh ]] && cp -r "$script_path/delete_backup" "$MODDIR/刪除已卸載備份.sh"
 filesize="$(du -ks "$Backup" | awk '{print $1}')"
 #調用二進制
 Quantity=0

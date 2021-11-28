@@ -19,7 +19,7 @@ txt="$MODDIR/應用列表.txt"
 [[ ! -f $txt ]] && echoRgb "請執行\"掃描資料夾名.sh\"獲取應用列表再來恢復" "0" && exit 2
 r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 [[ $r = "" ]] && echoRgb "應用列表.txt包名為空或是被注釋了" "0" && exit 1
-[[ $(restorecon --help 2>/dev/null) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
+[[ $(which restorecon) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
 #顯示執行結果
 Release_data() {
 	tar_path="$1"

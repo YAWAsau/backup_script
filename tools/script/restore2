@@ -13,7 +13,7 @@ isBoolean "$Recovery_mode" && Recovery_mode="$nsx"
 path="/data/media/0/Android"
 path2="/data/data"
 [[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
-[[ $(restorecon --help 2>/dev/null) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
+[[ $(which restorecon) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
 #記錄開始時間
 starttime1="$(date -u "+%s")"
 {
