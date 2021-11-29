@@ -197,6 +197,7 @@ while [[ $i -le $r ]]; do
 	fi
 	let i++ en++ nskg++
 done
+rm -rf "$TMPDIR/scriptTMP"
 starttime1="$TIME"
 echoRgb "批量恢複完成" && endtime 1 "批量恢複開始到結束" && echoRgb "應用閃退請重新開機" "0"
 longToast "批量恢復完成"

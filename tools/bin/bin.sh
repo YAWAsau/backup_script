@@ -18,7 +18,7 @@ if [[ -d $(magisk --path 2>/dev/null) ]]; then
 else
 	echo "Magisk busybox Path does not exist"
 fi ; export PATH="$PATH"
-backup_version="V12.3"
+backup_version="V12.4"
 #設置二進制命令目錄位置
 [[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
@@ -29,6 +29,7 @@ busybox="$filepath/busybox"
 busybox2="$bin_path/busybox"
 #排除自身
 exclude="
+json
 busybox_path
 update
 bin.sh"
@@ -160,15 +161,21 @@ echo_log() {
 }
 Open_apps="$(appinfo -o ands -ta c)"
 bn=147
-echoRgb "\n --------------歡迎使用⚡️🤟🐂纸備份--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$Open_apps"
+echoRgb "\n --------------歡迎使用⚡️🤟🐂纸備份--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$Open_apps"
 bn=195
-if [[ $script != "" && $(pgrep -f "$script" | grep -v grep | wc -l) -ge 2 ]]; then
-	echoRgb "檢測到進程殘留，請重新執行腳本 已銷毀進程" "0"
-	{
-	pgrep -f "$script" | while read; do
-		kill -KILL " $REPLY" >/dev/null
-	done
-	} &
+if [[ $script != "" ]]; then
+	if [[ ! -f $TMPDIR/scriptTMP ]]; then
+		touch "$TMPDIR/scriptTMP"
+	else
+		echoRgb "檢測到進程殘留，請重新執行腳本 已銷毀進程" "0"
+		rm -rf "$TMPDIR/scriptTMP"
+		pgrep -f "tar" | while read; do
+			kill -KILL " $REPLY" >/dev/null
+		done
+		pgrep -f "$script" | while read; do
+			kill -KILL " $REPLY" >/dev/null
+		done
+	fi
 fi
 if [[ $(pm path ice.message) = "" ]]; then
 	echoRgb "未安裝toast 開始安裝" "0"
@@ -179,21 +186,20 @@ fi
 #sed -r -n 's/.*"browser_download_url": *"(.*-linux64\..*\.so\.bz2)".*/\1/p'
 LANG="$(getprop "persist.sys.locale")"
 zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
+echoRgb "檢查更新中 請稍後......."
+Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest"
 if [[ $LANG != "" ]]; then
 	case $LANG in
 	*-TW|*-tw)
 		echoRgb "系統語系:繁體中文"
 		Language="https://api.github.com/repos/YAWAsau/backup_script/releases/latest" ;;
 	*-CN|*-cn)
-		echoRgb "系統語系:簡體中文"
-		Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest" ;;
+		echoRgb "系統語系:簡體中文" ;;
 	* )
-		echoRgb "$LANG不支持 默認簡體中文" "0"
-		Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest" ;;
+		echoRgb "$LANG不支持 默認簡體中文" "0" ;;
 	esac
 else
 	echoRgb "獲取系統語系失敗 默認簡體中文" "0"
-	Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest"
 fi
 down -s -L "$Language" 2>/dev/null >"$bin_path/json"
 if [[ $? = 0 ]]; then
@@ -202,7 +208,7 @@ if [[ $? = 0 ]]; then
 		download="$(cat "$bin_path/json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
 		if [[ $tag != "" ]]; then
 			if [[ $backup_version != $tag ]]; then
-				echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(cat "$bin_path/json" | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
+				echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(down -s -L "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
 				down -s -L -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$download"
 				echo_log "下載${download##*/}"
 				if [[ $result = 0 ]]; then

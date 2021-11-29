@@ -290,6 +290,7 @@ while [[ $i -le $r ]]; do
 	fi
 	let i++ en++ nskg++
 done
+rm -rf "$TMPDIR/scriptTMP"
 echoRgb "你要備份跑路？祝你卡米9008" "2"
 #計算出備份大小跟差異性
 filesizee="$(du -ks "$Backup" | awk '{print $1}')"

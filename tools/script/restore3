@@ -40,3 +40,4 @@ find "$MODDIR" -maxdepth 1 -name "*.tar*" -type f | while read; do
 	endtime 2 "$FILE_NAME2恢複" && echoRgb "完成$((A*100/B))%" && echoRgb "____________________________________" "3" && let A++
 done
 endtime 1 "恢複結束"
+rm -rf "$TMPDIR/scriptTMP"

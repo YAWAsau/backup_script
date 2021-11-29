@@ -136,4 +136,5 @@ if [[ $Recovery_mode = true ]]; then
 	fi
 fi
 endtime 1 "恢複開始到結束" && echoRgb "應用閃退請重新開機" "0" && rm -rf "$TMPDIR"/*
+rm -rf "$TMPDIR/scriptTMP"
 } &
