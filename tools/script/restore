@@ -199,7 +199,7 @@ while [[ $i -le $r ]]; do
 done
 rm -rf "$TMPDIR/scriptTMP"
 starttime1="$TIME"
-echoRgb "批量恢複完成" && endtime 1 "批量恢複開始到結束" && echoRgb "應用閃退請重新開機" "0"
+echoRgb "批量恢複完成" && endtime 1 "批量恢複開始到結束" && echoRgb "如發現應用閃退請重新開機"
 longToast "批量恢復完成"
 Print "批量恢復完成 執行過程請查看$Status_log" && rm -rf "$TMPDIR"/*
 } &

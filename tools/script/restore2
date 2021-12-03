@@ -135,6 +135,6 @@ if [[ $Recovery_mode = true ]]; then
 		echoRgb "$name2沒有安裝無法恢復數據" "0"
 	fi
 fi
-endtime 1 "恢複開始到結束" && echoRgb "應用閃退請重新開機" "0" && rm -rf "$TMPDIR"/*
+endtime 1 "恢複開始到結束" && echoRgb "如發現應用閃退請重新開機" && rm -rf "$TMPDIR"/*
 rm -rf "$TMPDIR/scriptTMP"
 } &

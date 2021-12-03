@@ -81,13 +81,11 @@ fi
 [[ $backup_media = false ]] && echoRgb "當前backup_settings.conf的\n -backup_media為0將不備份自定義資料夾" "0"
 [[ ! -d $Backup ]] && mkdir -p "$Backup"
 [[ ! -f $Backup/應用列表.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$Backup/應用列表.txt"
-[[ ! -f $Backup/recover.conf ]] && cp -r "$script_path/recover.conf" "$Backup"
 [[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
 [[ ! -f $Backup/還原備份.sh ]] && cp -r "$script_path/restore" "$Backup/還原備份.sh"
 [[ ! -f $Backup/掃描資料夾名.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/掃描資料夾名.sh"
 [[ ! -f $MODDIR/刪除已卸載備份.sh ]] && cp -r "$script_path/delete_backup" "$MODDIR/刪除已卸載備份.sh"
 filesize="$(du -ks "$Backup" | awk '{print $1}')"
-#調用二進制
 Quantity=0
 #檢測apk狀態進行備份
 Backup_apk() {
@@ -123,6 +121,7 @@ Backup_apk() {
 			[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
 			[[ ! -f $Backup_folder/還原備份.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/還原備份.sh"
 			[[ ! -f $Backup_folder/recover.conf ]] && cp -r "$script_path/recover.conf" "$Backup_folder"
+			[[ ! -f $Backup/recover.conf ]] && cp -r "$script_path/recover.conf" "$Backup"
 		fi
 		if [[ $name2 = com.android.chrome ]]; then
 			#刪除所有舊apk ,保留一個最新apk進行備份

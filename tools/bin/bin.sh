@@ -30,6 +30,7 @@ busybox2="$bin_path/busybox"
 #排除自身
 exclude="
 json
+.doh
 busybox_path
 update
 bin.sh"
@@ -201,15 +202,23 @@ if [[ $LANG != "" ]]; then
 else
 	echoRgb "獲取系統語系失敗 默認簡體中文" "0"
 fi
-down -s -L "$Language" 2>/dev/null >"$bin_path/json"
+#dns="1.1.1.1,1.0.0.1"
+dns="8.8.8.8"
+#dns="114.114.114.114"
+# Curl uses boringssl - first appeared in Marshmallow - don't try using ssl in older android versions
+[[ $(getprop ro.build.version.sdk) -lt 23 ]] && alias curl="curl -kL --dns-servers $dns$flag" || alias curl="curl -L --dns-servers $dns$flag"
+echoRgb "DNS:$dns"
+jsonpath="$bin_path/json"
+(curl "$Language" 2>/dev/null >"$jsonpath" && echoRgb "使用curl") || (down -s -L "$Language" 2>/dev/null >"$bin_path/json" && echoRgb "使用down")
 if [[ $? = 0 ]]; then
-	if [[ -f $bin_path/json && $(cat "$bin_path/json") != "" ]]; then
-		tag="$(cat "$bin_path/json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
-		download="$(cat "$bin_path/json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
+	json="$(cat "$jsonpath")"
+	if [[ -f $jsonpath && $(echo "$json") != "" ]]; then
+		tag="$(echo "$json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
 		if [[ $tag != "" ]]; then
 			if [[ $backup_version != $tag ]]; then
-				echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(down -s -L "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
-				down -s -L -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$download"
+				echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(curl "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
+				download="$(echo "$json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
+				curl -O "https://gh.api.99988866.xyz/$download" || down -s -L -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$download"
 				echo_log "下載${download##*/}"
 				if [[ $result = 0 ]]; then
 					zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
@@ -221,7 +230,7 @@ if [[ $? = 0 ]]; then
 				echoRgb "本地版本:$backup_version 線上版本:$tag 版本一致無須更新"
 			fi
 		fi
-		rm -rf "$bin_path/json"
+		rm -rf "$jsonpath"
 	fi
 else
 	echoRgb "更新獲取失敗" "0"
@@ -235,7 +244,7 @@ if [[ $zippath != "" ]]; then
 		else
 			cp -r "$tools_path" "$TMPDIR" && rm -rf "$tools_path"
 			find "$MODDIR" -maxdepth 3 -name "*.sh" -type f -exec rm -rf {} \;
-			unzip -o "$zippath" -d "$MODDIR"
+			unzip -o "$zippath" -x "backup_settings.conf" -d "$MODDIR"
 			echo_log "解壓縮${zippath##*/}"
 			if [[ $result = 0 ]]; then
 				case $MODDIR in
@@ -315,6 +324,6 @@ if [[ $zippath != "" ]]; then
 	esac
 fi
 #down -s -L "https://magisk-modules-repo.github.io/submission/modules.json" | jq -r '.modules[] | {id,prop_url,zip_url}'
-#down -s -L "https://magisk-modules-repo.github.io/submission/modules.json" | jq -r '.modules[].zip_url' | egrep -w "Ainur_Narsil|riru_lsposed|busybox-ndk|riru_storage_redirect|riru-core|HideNavBar" | while read; do
+#down -s -L "https://magisk-modules-repo.github.io/submission/modules.json" | jq -r '.modules[].zip_url' | egrep -w "Ainur_Narsil|riru_lsposed|busybox-ndk|riru_storage_redirect|riru-core|HideNavBar|ccbins" | while read; do
 #	down -s -L -o "$MODDIR/${REPLY##*/}" "$REPLY"
 #done
