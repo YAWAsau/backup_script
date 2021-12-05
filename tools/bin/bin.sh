@@ -18,7 +18,7 @@ if [[ -d $(magisk --path 2>/dev/null) ]]; then
 else
 	echo "Magisk busybox Path does not exist"
 fi ; export PATH="$PATH"
-backup_version="V12.4"
+backup_version="V12.6"
 #設置二進制命令目錄位置
 [[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
@@ -162,7 +162,7 @@ echo_log() {
 }
 Open_apps="$(appinfo -o ands -ta c)"
 bn=147
-echoRgb "\n --------------歡迎使用⚡️🤟🐂纸備份--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$Open_apps"
+echoRgb "\n --------------script_backup--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$Open_apps"
 bn=195
 if [[ $script != "" ]]; then
 	if [[ ! -f $TMPDIR/scriptTMP ]]; then
@@ -208,29 +208,29 @@ dns="8.8.8.8"
 # Curl uses boringssl - first appeared in Marshmallow - don't try using ssl in older android versions
 [[ $(getprop ro.build.version.sdk) -lt 23 ]] && alias curl="curl -kL --dns-servers $dns$flag" || alias curl="curl -L --dns-servers $dns$flag"
 echoRgb "DNS:$dns"
-jsonpath="$bin_path/json"
-(curl "$Language" 2>/dev/null >"$jsonpath" && echoRgb "使用curl") || (down -s -L "$Language" 2>/dev/null >"$bin_path/json" && echoRgb "使用down")
-if [[ $? = 0 ]]; then
-	json="$(cat "$jsonpath")"
-	if [[ -f $jsonpath && $(echo "$json") != "" ]]; then
-		tag="$(echo "$json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
-		if [[ $tag != "" ]]; then
-			if [[ $backup_version != $tag ]]; then
-				echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(curl "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
-				download="$(echo "$json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
-				curl -O "https://gh.api.99988866.xyz/$download" || down -s -L -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$download"
-				echo_log "下載${download##*/}"
-				if [[ $result = 0 ]]; then
-					zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
-					GitHub="true"
-				else
-					echoRgb "請手動將備份腳本壓縮包放置在\n -$MODDIR後再次執行腳本進行更新" "0"
-				fi
-			else
-				echoRgb "本地版本:$backup_version 線上版本:$tag 版本一致無須更新"
-			fi
+json="$(curl "$Language" 2>/dev/null)"
+if [[ $json != "" ]]; then
+	echoRgb "使用curl"
+else
+	json="$(down -s -L "$Language" 2>/dev/null)"
+	[[ $json != "" ]] && echoRgb "使用down"
+fi
+if [[ $json != "" ]]; then
+	tag="$(echo "$json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
+	if [[ $backup_version != $tag ]]; then
+		echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(curl "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p' || down -s -L "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
+		download="$(echo "$json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
+		curl -O "https://gh.api.99988866.xyz/$download" || down -s -L -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$download"
+		echo_log "下載${download##*/}"
+		if [[ $result = 0 ]]; then
+			echoRgb "update $backup_version > $tag"
+			zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
+			GitHub="true"
+		else
+			echoRgb "請手動將備份腳本壓縮包放置在\n -$MODDIR後再次執行腳本進行更新" "0"
 		fi
-		rm -rf "$jsonpath"
+	else
+		echoRgb "本地版本:$backup_version 線上版本:$tag 版本一致無須更新"
 	fi
 else
 	echoRgb "更新獲取失敗" "0"

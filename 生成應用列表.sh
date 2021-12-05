@@ -32,7 +32,7 @@ appinfo -sort-i -d " " -o ands,pn -pn $system $launcher_app -3 2>/dev/null | sed
 	app_1=($REPLY $REPLY)
 	if [[ $(cat "$nametxt" | grep -oE "${app_1[1]}$") = "" ]]; then
 		case ${app_1[1]} in
-		oneplus|miui|xiaomi|oppo|flyme|meizu|com.android.soundrecorder|com.mfashiongallery.emag|com.mi.health)
+		*oneplus*|*miui*|*xiaomi*|*oppo*|*flyme*|*meizu*|com.android.soundrecorder|com.mfashiongallery.emag|com.mi.health|*coloros*)
 			echoRgb "$REPLY 可能是廠商自帶應用 比對中....." "0"
 			if [[ $(appinfo -sort-i -d " " -o ands,pn -xm | grep -w "$REPLY") = $REPLY ]]; then
 				echoRgb "為Xposed模塊 進行添加" "1"
