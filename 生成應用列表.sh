@@ -19,6 +19,7 @@ for launcher_app in $launcher_app; do
 done
 isBoolean "$path" && txtpath="$nsx"
 [[ $txtpath = true ]] && txtpath="$PWD" || txtpath="$MODDIR"
+txtpath="${txtpath/'/storage/emulated/'/'/data/media/'}"
 nametxt="$txtpath/應用列表.txt"
 [[ ! -e $nametxt ]] && echo '#不需要備份的應用請在開頭注釋# 比如#酷安 xxxxxxxx\n#不需要備份數據比如酷安! xxxxxxxx應用名後方加一個驚嘆號即可 注意是應用名不是包名' >"$nametxt"
 echo >>"$nametxt"
