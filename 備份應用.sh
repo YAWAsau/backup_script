@@ -42,6 +42,7 @@ else
 	Backup="$MODDIR/Backup_$Compression_method"
 	txt="$MODDIR/應用列表.txt"
 fi
+txt="${txt/'/storage/emulated/'/'/data/media/'}"
 PU="$(ls /dev/block/vold | grep public)"
 [[ ! -f $txt ]] && echoRgb "請執行\"生成應用列表.sh\"獲取應用列表再來備份" "0" && exit 1
 r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
@@ -80,7 +81,8 @@ fi
 [[ $Backup_obb_data = false ]] && echoRgb "當前backup_settings.conf的\n -Backup_obb_data為0將不備份外部數據" "0"
 [[ $backup_media = false ]] && echoRgb "當前backup_settings.conf的\n -backup_media為0將不備份自定義資料夾" "0"
 [[ ! -d $Backup ]] && mkdir -p "$Backup"
-[[ ! -f $Backup/應用列表.txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$Backup/應用列表.txt"
+txt2="$Backup/應用列表.txt"
+[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt2"
 [[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
 [[ ! -f $Backup/還原備份.sh ]] && cp -r "$script_path/restore" "$Backup/還原備份.sh"
 [[ ! -f $Backup/掃描資料夾名.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/掃描資料夾名.sh"
@@ -91,48 +93,58 @@ Quantity=0
 Backup_apk() {
 	#創建APP備份文件夾
 	[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
-	[[ $(cat "$Backup/應用列表.txt" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$Backup/應用列表.txt"
 	if [[ $apk_version = $(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1) ]]; then
 		unset xb ; result=0
 		echoRgb "Apk版本無更新 跳過備份"
 	else
-		[[ $lxj -ge 95 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
-		rm -rf "$Backup_folder"/*.apk
-		#備份apk
-		echoRgb "$1"
-		[[ $name1 != $Open_apps ]] && am force-stop "$name2"
-		echo "$apk_path" | sed -e '/^$/d' | while read; do
-			path="$REPLY"
-			b_size="$(ls -l "$path" | awk '{print $5}')"
-			k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
-			m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
-			echoRgb "${path##*/} ${m_size}MB(${k_size}KB)" "2"
-		done
-		(cd "$apk_path2"
-		case $Compression_method in
-		tar|TAR|Tar) tar -cf "$Backup_folder/apk.tar" *.apk ;;
-		lz4|LZ4|Lz4) tar -cf - *.apk | lz4 -1 >"$Backup_folder/apk.tar.lz4" ;;
-		zstd|Zstd|ZSTD) tar -cf - *apk | zstd -r -T0 --ultra -6 -q >"$Backup_folder/apk.tar.zst" ;;
-		esac)
-		echo_log "備份$apk_number個Apk"
-		if [[ $result = 0 ]]; then
-			echo "apk_version=\"$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)\"" >>"$app_details"
-			[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
-			[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
-			[[ ! -f $Backup_folder/還原備份.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/還原備份.sh"
-			[[ ! -f $Backup_folder/recover.conf ]] && cp -r "$script_path/recover.conf" "$Backup_folder"
-			[[ ! -f $Backup/recover.conf ]] && cp -r "$script_path/recover.conf" "$Backup"
-		fi
-		if [[ $name2 = com.android.chrome ]]; then
-			#刪除所有舊apk ,保留一個最新apk進行備份
-			ReservedNum=1
-			FileNum="$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)"
-			while [[ $FileNum -gt $ReservedNum ]]; do
-				OldFile="$(ls -rt /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | head -1)"
-				rm -rf "${OldFile%/*/*}" && echoRgb "刪除文件:${OldFile%/*/*}"
-				let "FileNum--"
+		case $name2 in
+		com.google.android.youtube)
+			[[ -d /data/adb/Vanced ]] && nobackup="true" ;;
+		com.google.android.apps.youtube.music)
+			[[ -d /data/adb/Music ]] && nobackup="true" ;;
+		esac
+		if [[ $nobackup != true ]]; then
+			[[ $lxj -ge 95 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
+			[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
+			rm -rf "$Backup_folder"/*.apk
+			#備份apk
+			echoRgb "$1"
+			[[ $name1 != $Open_apps ]] && am force-stop "$name2"
+			echo "$apk_path" | sed -e '/^$/d' | while read; do
+				path="$REPLY"
+				b_size="$(ls -l "$path" | awk '{print $5}')"
+				k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
+				m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
+				echoRgb "${path##*/} ${m_size}MB(${k_size}KB)" "2"
 			done
-			[[ -f $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null) && $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l) = 1 ]] && cp -r "$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null)" "$Backup_folder/nmsl.apk"
+			(cd "$apk_path2"
+			case $Compression_method in
+			tar|TAR|Tar) tar -cf "$Backup_folder/apk.tar" *.apk ;;
+			lz4|LZ4|Lz4) tar -cf - *.apk | lz4 -1 >"$Backup_folder/apk.tar.lz4" ;;
+			zstd|Zstd|ZSTD) tar -cf - *apk | zstd -r -T0 --ultra -6 -q >"$Backup_folder/apk.tar.zst" ;;
+			esac)
+			echo_log "備份$apk_number個Apk"
+			if [[ $result = 0 ]]; then
+				echo "apk_version=\"$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)\"" >>"$app_details"
+				[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
+				[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
+				[[ ! -f $Backup_folder/還原備份.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/還原備份.sh"
+				[[ ! -f $Backup_folder/recover.conf ]] && cp -r "$script_path/recover.conf" "$Backup_folder"
+				[[ ! -f $Backup/recover.conf ]] && cp -r "$script_path/recover.conf" "$Backup"
+			fi
+			if [[ $name2 = com.android.chrome ]]; then
+				#刪除所有舊apk ,保留一個最新apk進行備份
+				ReservedNum=1
+				FileNum="$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)"
+				while [[ $FileNum -gt $ReservedNum ]]; do
+					OldFile="$(ls -rt /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | head -1)"
+					rm -rf "${OldFile%/*/*}" && echoRgb "刪除文件:${OldFile%/*/*}"
+					let "FileNum--"
+				done
+				[[ -f $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null) && $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l) = 1 ]] && cp -r "$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null)" "$Backup_folder/nmsl.apk"
+			fi
+		else
+			echoRgb "$name不支持備份 需要使用vanced安裝" "0" && rm -rf "$Backup_folder"
 		fi
 	fi
 	[[ $name2 = bin.mt.plus && ! -f $Backup/$name1.apk ]] && cp -r "$apk_path" "$Backup/$name1.apk"
