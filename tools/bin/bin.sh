@@ -19,13 +19,21 @@ if [[ -d $(magisk --path 2>/dev/null) ]]; then
 else
 	echo "Magisk busybox Path does not exist"
 fi ; export PATH="$PATH"
-backup_version="V12.8"
+backup_version="V12.9"
 #設置二進制命令目錄位置
 [[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
-Status_log="$MODDIR/執行狀態日誌.txt"
+Status_log="$MODDIR/Log.txt"
 rm -rf "$Status_log"
 filepath="/data/backup_tools"
+case $MODDIR in
+/data/user/0/com.xayah.databackup*)
+	if [[ -d /data/user/0/com.xayah.databackup ]]; then
+		filepath="/data/user/0/com.xayah.databackup/backup_tools"
+		echo "於com.xayah.databackup內執行" && app="true"
+		[[ ! -e $bin_path/freq ]] && echo "1">"$bin_path/freq"
+	fi ;;
+esac
 busybox="$filepath/busybox"
 busybox2="$bin_path/busybox"
 #排除自身
@@ -203,6 +211,7 @@ if [[ $LANG != "" ]]; then
 else
 	echoRgb "獲取系統語系失敗 默認簡體中文" "0"
 fi
+[[ $app = true && $(cat "$bin_path/freq" 2>/dev/null) = 1 ]] && Mandatory_update="true" && freq="$(cat "$bin_path/freq" 2>/dev/null)"
 #dns="1.1.1.1,1.0.0.1"
 dns="8.8.8.8"
 #dns="114.114.114.114"
@@ -218,20 +227,28 @@ else
 fi
 if [[ $json != "" ]]; then
 	tag="$(echo "$json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
-	if [[ $backup_version != $tag ]]; then
-		echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(curl "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p' || down -s -L "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
+	if [[ $Mandatory_update != true ]]; then
+		if [[ $backup_version != $tag ]]; then
+			echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(curl "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p' || down -s -L "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
+			download="$(echo "$json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
+			curl -O "https://gh.api.99988866.xyz/$download" || down -s -L -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$download"
+			echo_log "下載${download##*/}"
+			if [[ $result = 0 ]]; then
+				echoRgb "update $backup_version > $tag"
+				zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
+				GitHub="true"
+			else
+				echoRgb "請手動將備份腳本壓縮包放置在\n -$MODDIR後再次執行腳本進行更新" "0"
+			fi
+		else
+			echoRgb "本地版本:$backup_version 線上版本:$tag 版本一致無須更新"
+		fi
+	else
+		echoRgb "首次使用 強制更新腳本\n -版本:$tag\n -更新日誌:\n$(curl "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p' || down -s -L "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
 		download="$(echo "$json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
 		curl -O "https://gh.api.99988866.xyz/$download" || down -s -L -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$download"
 		echo_log "下載${download##*/}"
-		if [[ $result = 0 ]]; then
-			echoRgb "update $backup_version > $tag"
-			zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
-			GitHub="true"
-		else
-			echoRgb "請手動將備份腳本壓縮包放置在\n -$MODDIR後再次執行腳本進行更新" "0"
-		fi
-	else
-		echoRgb "本地版本:$backup_version 線上版本:$tag 版本一致無須更新"
+		zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
 	fi
 else
 	echoRgb "更新獲取失敗" "0"
@@ -318,6 +335,7 @@ if [[ $zippath != "" ]]; then
 			fi
 			rm -rf "$TMPDIR"/*
 			find "$MODDIR" -maxdepth 1 -name "*.zip" -type f -exec rm -rf {} \;
+			echo "$(("$freq"+1))" >"$bin_path/freq"
 			echoRgb "更新完成 請重新執行腳本" "2" && exit
 		fi ;;
 	*)

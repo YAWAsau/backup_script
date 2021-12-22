@@ -16,6 +16,7 @@ path2="/data/data"
 [[ $(which restorecon) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
 #記錄開始時間
 starttime1="$(date -u "+%s")"
+[[ $(pm path "com.android.vending") != "" ]] && echoRgb "注意 為了避免還原失敗請關閉PLAY的安全檢查"
 {
 Backup_folder="$MODDIR"
 if [[ ! -f $Backup_folder/app_details ]]; then

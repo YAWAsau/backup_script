@@ -24,23 +24,18 @@ if [[ $Lo = false ]]; then
 	isBoolean "$Splist" && Splist="$nsx"
 	isBoolean "$USBdefault" && USBdefault="$nsx"
 	isBoolean "$Backup_obb_data" && Backup_obb_data="$nsx"
-	isBoolean "$path" && path3="$nsx"
 	isBoolean "$Backup_user_data" && Backup_user_data="$nsx"
 	isBoolean "$backup_media" && backup_media="$nsx"
-else
-	echoRgb "備份路徑位置為絕對位置或是當前環境位置\n 音量上當前環境位置，音量下腳本絕對位置"
-	get_version "當前環境位置" "腳本絕對位置" && path3="$branch"
 fi
 i=1
 #數據目錄
 path="/data/media/0/Android"
 path2="/data/user/0"
-if [[ $path3 = true ]]; then
-	Backup="$PWD/Backup_$Compression_method"
-	txt="$PWD/應用列表.txt"
+txt="$MODDIR/應用列表.txt"
+if [[ $Output_path != "" ]]; then
+	echoRgb "使用自定義目錄\n-輸出位置:$Output_path" && Backup="$Output_path/Backup_$Compression_method"
 else
 	Backup="$MODDIR/Backup_$Compression_method"
-	txt="$MODDIR/應用列表.txt"
 fi
 txt="${txt/'/storage/emulated/'/'/data/media/'}"
 PU="$(ls /dev/block/vold | grep public)"
@@ -84,9 +79,9 @@ fi
 txt2="$Backup/應用列表.txt"
 [[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt2"
 [[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
-[[ ! -f $Backup/還原備份.sh ]] && cp -r "$script_path/restore" "$Backup/還原備份.sh"
-[[ ! -f $Backup/掃描資料夾名.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/掃描資料夾名.sh"
-[[ ! -f $Backup/刪除已卸載備份.sh ]] && cp -r "$script_path/delete_backup" "$Backup/刪除已卸載備份.sh"
+[[ ! -f $Backup/Restorebackup.sh ]] && cp -r "$script_path/restore" "$Backup/Restorebackup.sh"
+[[ ! -f $Backup/DumpName.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/DumpName.sh"
+[[ ! -f $Backup/delete_backup ]] && cp -r "$script_path/delete_backup" "$Backup/delete_backup.sh"
 filesize="$(du -ks "$Backup" | awk '{print $1}')"
 Quantity=0
 #檢測apk狀態進行備份
@@ -128,7 +123,7 @@ Backup_apk() {
 				echo "apk_version=\"$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)\"" >>"$app_details"
 				[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
 				[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
-				[[ ! -f $Backup_folder/還原備份.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/還原備份.sh"
+				[[ ! -f $Backup_folder/Restorebackup.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/Restorebackup.sh"
 				[[ ! -f $Backup_folder/recover.conf ]] && cp -r "$script_path/recover.conf" "$Backup_folder"
 				[[ ! -f $Backup/recover.conf ]] && cp -r "$script_path/recover.conf" "$Backup"
 			fi
@@ -247,6 +242,7 @@ while [[ $i -le $r ]]; do
 		echoRgb "備份$name1 ($name2)"
 		[[ $name2 = com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份"
 		[[ $name2 = com.tencent.mm ]] && echo "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份"
+		unset nobackup
 		apk_number="$(echo "$apk_path" | wc -l)"
 		if [[ $apk_number = 1 ]]; then
 			if [[ $Splist = false ]]; then
@@ -257,7 +253,7 @@ while [[ $i -le $r ]]; do
 		else
 			Backup_apk "Split Apk支持備份"
 		fi
-		if [[ $D != ""  && $result = 0 && $No_backupdata = "" ]]; then
+		if [[ $D != ""  && $result = 0 && $No_backupdata = "" && $nobackup != true ]]; then
 			if [[ $Backup_obb_data = true ]]; then
 				#備份data數據
 				Backup_data "data"

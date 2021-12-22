@@ -98,6 +98,7 @@ Release_data() {
 #記錄開始時間
 starttime1="$(date -u "+%s")"
 TIME="$starttime1"
+[[ $(pm path "com.android.vending") != "" ]] && echoRgb "注意 為了避免還原失敗請關閉PLAY的安全檢查"
 en=118
 {
 while [[ $i -le $r ]]; do
