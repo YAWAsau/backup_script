@@ -31,7 +31,7 @@ i=1
 #數據目錄
 path="/data/media/0/Android"
 path2="/data/user/0"
-txt="$MODDIR/應用列表.txt"
+txt="$MODDIR/appList.txt"
 if [[ $Output_path != "" ]]; then
 	echoRgb "使用自定義目錄\n-輸出位置:$Output_path" && Backup="$Output_path/Backup_$Compression_method"
 else
@@ -39,9 +39,9 @@ else
 fi
 txt="${txt/'/storage/emulated/'/'/data/media/'}"
 PU="$(ls /dev/block/vold | grep public)"
-[[ ! -f $txt ]] && echoRgb "請執行\"生成應用列表.sh\"獲取應用列表再來備份" "0" && exit 1
+[[ ! -f $txt ]] && echoRgb "請執行\"Getlist.sh\"獲取應用列表再來備份" "0" && exit 1
 r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
-[[ $r = "" ]] && echoRgb "爬..應用列表.txt是空的或是包名被注釋了這樣備份個鬼" "0" && exit 1
+[[ $r = "" ]] && echoRgb "爬..appList.txt是空的或是包名被注釋了這樣備份個鬼" "0" && exit 1
 data=/data
 hx="本地"
 echoRgb "壓縮方式:$Compression_method"
@@ -76,7 +76,7 @@ fi
 [[ $Backup_obb_data = false ]] && echoRgb "當前backup_settings.conf的\n -Backup_obb_data為0將不備份外部數據" "0"
 [[ $backup_media = false ]] && echoRgb "當前backup_settings.conf的\n -backup_media為0將不備份自定義資料夾" "0"
 [[ ! -d $Backup ]] && mkdir -p "$Backup"
-txt2="$Backup/應用列表.txt"
+txt2="$Backup/appList.txt"
 [[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt2"
 [[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
 [[ ! -f $Backup/Restorebackup.sh ]] && cp -r "$script_path/restore" "$Backup/Restorebackup.sh"
@@ -213,7 +213,7 @@ while [[ $i -le $r ]]; do
 	[[ $en -ge 229 ]] && en=118
 	name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
 	name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
-	[[ $name2 = "" ]] && echoRgb "警告! 應用列表.txt應用包名獲取失敗，可能修改有問題" "0" && exit 1
+	[[ $name2 = "" ]] && echoRgb "警告! appList.txt應用包名獲取失敗，可能修改有問題" "0" && exit 1
 	apk_path="$(pm path "$name2" | cut -f2 -d ':')"
 	apk_path2="$(echo "$apk_path" | head -1)" ; apk_path2="${apk_path2%/*}"
 	if [[ -d $apk_path2 ]]; then
