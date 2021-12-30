@@ -81,5 +81,5 @@ A4：因為連同軟件數據包都給你備份了，例如原神數據包9GB+�
 - 屑老方([雄氏老方](http://www.coolapk.com/u/665894))：提供自動更新腳本方案
 - 依心所言&情非得已c：提供appinfo替代aapt作為更高效的dump包名
 - 胖子老陳(雨季騷年)
-- XayahSuSuSu([XayahSuSuSu](https://github.com/kmou424))：提供App支持
+- XayahSuSuSu([XayahSuSuSu](https://github.com/XayahSuSuSu))：提供App支持
 `文檔編輯：Petit-Abba, YuKongA`
