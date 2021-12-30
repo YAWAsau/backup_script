@@ -177,15 +177,15 @@ Backup_data() {
 			case $1 in
 			user)
 				case $Compression_method in
-				tar|Tar|TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f >"$Backup_folder/$1.tar" ;;
-				zstd|Zstd|ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
-				lz4|Lz4|LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+				tar|Tar|TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f >"$Backup_folder/$1.tar" ;;
+				zstd|Zstd|ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
+				lz4|Lz4|LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 				esac ;;
 			*)
 				case $Compression_method in
-				tar|Tar|TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f >"$Backup_folder/$1.tar" ;;
-				zstd|Zstd|ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
-				lz4|Lz4|LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+				tar|Tar|TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f >"$Backup_folder/$1.tar" ;;
+				zstd|Zstd|ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
+				lz4|Lz4|LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 				esac ; [[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1" ; unset Compression_method1 ;;
 			esac
 			echo_log "備份$1數據"
