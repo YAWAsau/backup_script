@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/github/license/YAWAsau/backup_script?label=License)](https://choosealicense.com/licenses/gpl-3.0)
 
 <div align="center">
-<span style="font-weight: bold"><a href=README.md> 简体中文</a> | 繁體中文  </span>
+<span style="font-weight: bold"><a href=README_TS.md> 简体中文</a> | 繁體中文  </span>
 </div>
 
 ## 概述
