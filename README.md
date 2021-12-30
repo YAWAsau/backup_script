@@ -1,105 +1,85 @@
-# backup_script 数据备份脚本
-![主图](https://github.com/Petit-Abba/backup_script_zh-CN/blob/06e06a015a1f672be52d980cb77ec0fd8dc4087d/File/mmexport1631297554615.png)
+# Backup_script 數據備份腳本
+![主圖](https://github.com/Petit-Abba/backup_script_zh-CN/blob/main/File/mmexport1631297795059.png)
 [![Stars](https://img.shields.io/github/stars/YAWAsau/backup_script?label=stars)](https://github.com/YAWAsau)
 [![Download](https://img.shields.io/github/downloads/YAWAsau/backup_script/total)](https://github.com/YAWAsau/backup_script/releases)
 [![Release](https://img.shields.io/github/v/release/YAWAsau/backup_script?label=release)](https://github.com/YAWAsau/backup_script/releases/latest)
 [![License](https://img.shields.io/github/license/YAWAsau/backup_script?label=License)](https://choosealicense.com/licenses/gpl-3.0)
 
 <div align="center">
-<span style="font-weight: bold"> 简体中文 | <a href=README_TS.md> 繁体中文 </a> </span>
+<span style="font-weight: bold"><a href=README.md> 简体中文</a> | 繁體中文  </span>
 </div>
 
 ## 概述
-创作该脚本是为了使用户能够更加完整地**备份/恢复**软件数据。
 
-(&) 由于本人习惯输入繁体中文，所以发布的版本为繁体版，如果需要**简体版**，可前往这里下载。
-> 简体中文版：[backup_script_zh-CN](https://github.com/Petit-Abba/backup_script_zh-CN)
+創作該腳本是為了使用戶能夠更加完整地**備份/恢復**應用數據，
+支援設備必須符合以下條件：`Android 8+`+`Arm 64`。
 
-## 优势
- - 数据完整：在更换系统之后，原有的数据全部保留，无需重新登陆或者下载额外数据包。
- - 速度快：目前支持的压缩算法有 `tar(默认)` `lz4` `zstd`
- - 易操作：下面简单4步即可备份App完整数据！
+由於本人是台灣人所以發布的版本為繁體版，如果需要**简体版**，可前往這裡下載：
+> 简体中文版：[backup_script_zh-CN](https://github.com/Petit-Abba/backup_script_zh-CN) 。
+
+PS. 簡體版本使用 Github Action 自動構建，30分鐘執行一次，所以在原倉庫發布新 release 後，不會立馬更新简体版。
+
+## 優勢
+
+- 數據完整：在更換系統之後，原有的數據全部保留，無需重新登陸或者下載額外數據包。
+- 易操作：簡單几步即可備份應用完整數據！
+- 限制少：不限制機型，可跨安桌版本。
+- 功能強：可備份恢復`split apk`。
+- 算法多：目前支持的壓縮算法有 `tar(默認)` `lz4` `zstd`。
+- 速度快：即使使用`zstd`壓縮算法速率依舊快速（對比鈦備份 swift）。
 
 ## 如何使用
-`请认真阅读以下说明，以减少不必要的问题。`
+`請認真閱讀以下說明，以減少不必要的問題`
 
-**推荐工具**: [MT管理器](https://www.coolapk.com/apk/bin.mt.plus)
+##### 推薦工具：[`MT管理器`](https://www.coolapk.com/apk/bin.mt.plus)，若使用`Termux`，則請勿使用`tsu`。
 
-  警告! termux请勿使用tsu 支援设备必须安卓版本Android 8+ Arm64
+#### !!!以下操作皆須ROOT!!! ####
 
-> 1. **生成应用列表.sh**：将zip解压缩到任意目录，点击`生成应用列表.sh`并勾选root执行脚本，等待提示结束 [[示意图]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/2.png)。
-![](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/1.png)
+1. 首先將下載到的`數據備份脚本.zip`解壓到任意目錄後，可以看到以下4個文件或目錄：`Getlist.sh` `backup_settings.conf` `backup.sh` `tools`。
 
-> 2. **应用列表.txt**：当前目录下会生成一个`应用列表.txt`，这就是你**要备份的软件列表**，你可以把**不需要备份的软件那一行前加上`#`**，备份时就会跳过它。
-![](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/3.png)
-如果你只需要备份一两个软件，那么你可以**全选删除**，然后按照这个格式：`[App名称 App包名]` 进行填写需要备份的软件，这样就不用一个一个去加`#`了。
-![](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/4.png)
+2. 然後執行`Getlist.sh`腳本，並等待腳本輸出結束[[示意圖]](https://raw.githubusercontent.com/YAWAsau/backup_script/0a08a49865fd9ec36d4fedd3e76ec68f841ff1d7/DCIM/Screenshot_20211230-185717_MT%E7%AE%A1%E7%90%86%E5%99%A8-01.jpeg)，再等待提示結束 [[示意圖]](https://raw.githubusercontent.com/YAWAsau/backup_script/master/DCIM/Screenshot_20211230-190000_MT%E7%AE%A1%E7%90%86%E5%99%A8-01.jpeg) [[示意圖]](https://raw.githubusercontent.com/YAWAsau/backup_script/master/DCIM/Screenshot_20211230-185941_MT%E7%AE%A1%E7%90%86%E5%99%A8-01.jpeg)，此時會在當前目錄生成一個`appList.txt`，這就是你當前安裝的所有第三方應用。
 
-> 3. **备份应用.sh**：以上简单两步你就设置好了需要备份的软件，接下来点击`备份应用.sh`并勾选root执行，等待备份结束。
-![](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/5.png)
+3. 現在打開生成的`appList.txt`，根據裏面的提示操作後保存[[示意圖]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/3.png)，這樣你就設置好了需要備份的軟件。
 
-> 4. **备份完成**：完成后会在当前目录生成一个Backup资料夹，里面是你的软件备份，把这个资料夹整个备份起来，刷完机直接在里面找到`还原备份.sh`即可恢复备份的所有数据，同样道理里面有个应用列表.txt ，一样跟第二步骤操作一样不需要还原的删除。
+4. 最後找到`backup_settings.conf`打開[[示意圖]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/5.png)，再打開`backup.sh`，等候備份結束。完成後會在當前目錄生成一個以`Backup_壓縮算法名`命名的資料夾，裡面就是你的軟件備份。把這個資料夾整個保持到其他位置，刷完機后複製回手機，直接在資料夾裡找到`Restorebackup.sh`即可恢復備份的所有數據，同樣道理，裡面也有個`appList.txt`，使用方法跟第3步驟一樣，不需要還原的刪除即可。
 
-##### 附加说明[1]：backup_settings.conf (备份设置)
+ ##### 附加說明：如何恢復 以下是關於恢復資料夾內的文件說明?
 ```
-1=是0=否 
+1. 找到恢復資料夾內的appList.txt打開 編輯列表 保存退出
 
-# 是否在每次执行备份脚本使用音量键询问如下备份需求
-Lo=0 (如果是1，那下面三项设置就被忽略，改为音量键选择。)
+2. 找到Restorebackup.sh 給予root後等待腳本結束即可
 
-# 选择是否只备份split apk(分割apk档，1备份split apk 0混合备份)
-Splist=0
+3. recovery.conf可決定批量恢復的恢復模式
 
-# 是否备份使用者数据 (1备份0不备份)
-Backup_user_data=1
+4. DumpName.sh可用於刷新appList.txt內的列表 使用時機為當你刪除列表內的任何應用備份時,抑或者是Restorebackup.sh提示列表錯誤時
 
-# 是否备份外部数据 即比如原神的数据包(1备份0不备份)
-Backup_obb_data=0
-
-# 备份路径位置为绝对位置或是当前环境位置(1环境位置 0脚本所在位置)
-path=0
-
-# 压缩算法(可用lz4 zstd tar tar为仅打包 有什么好用的压缩算法请联系我
-# lz4压缩最快，但是压缩率略差 zstd拥有良好的压缩率与速度 当然慢于lz4
-Compression_method=zstd
-```
-`如果上面内容看不懂或者懒得看，你也可以选择忽略，直接用默认即可。`
-
-
-##### 附加说明[2]：安装Magisk模块进行自动备份.sh (8.8.9版本更新加入)
-```
-1. 刷入模块 重启
-
-2. 相关路径查看：/storage/emulated/0/Android/backup_script/
-
-3. Magisk模块会生成卡刷包，并且每隔4小时监控第三方软件数量进行卡刷包生成服务，防止突然不能开机时丢失软件数据。
-
-4. 生成的卡刷包必须进入recovery才能刷入进行备份。
+5. delete_backup.sh用於刪除未安裝的備份
 ```
 
-## 关于反馈
-- 如果使用过程中出现问题，请携带截图并详细说明问题建立[issues](https://github.com/YAWAsau/backup_script/issues)。
-- 酷安@[落叶凄凉TEL](http://www.coolapk.com/u/2277637)
+## 關於反饋
+- 如果使用過程中出現問題，請攜帶截圖並詳細說明問題，建立 [issues](https://github.com/YAWAsau/backup_script/issues)。
+- 酷安 @[落葉淒涼TEL](http://www.coolapk.com/u/2277637)
+- QQ組 976613477
 
-## 常见问题
+## 常見問題
 ```
-Q：批量备份大量提示失败怎么办？
-A：退出脚本，删除/data/backup_tools，再备份一次。
+Q1：批量備份大量提示失敗怎麼辦？
+A1：退出腳本，刪除/data/backup_tools，再備份一次
 
-Q：批量恢复大量提示失败怎么办？
-A：退出脚本，按照上面同样操作。 如果还是错误，请建立issues，我帮你排除错误。
+Q2：批量恢復大量提示失敗怎麼辦？
+A2：退出腳本，按照上面同樣操作。 如果還是錯誤，請建立issues，我幫你排除錯誤
 
-Q：微信/QQ 能不能完美备份&恢复数据？
-A：不能保证，有的人说不能有的人说能，所以备份会有提示。 建议用你信赖的备份软件针对微信/QQ再备份一次，以防丢失重要数据。
+Q3：微信/QQ 能不能完美備份&恢復數據？
+A3：不能保證，有的人說不能有的人說能，所以備份會有提示。 建議用你信賴的備份軟件針對微信/QQ再備份一次，以防丟失重要數據
 
-Q：为什么部分APP备份很久？ 比如王者荣耀、PUBG、原神、微信、QQ。
-A：因为连同软件数据包都给你备份了，原神数据包9GB+当然久到裂开了，恢复同理，还要解压缩数据包。
+Q4：為什麼部分應用備份很久？ 例如王者榮耀、PUBG、原神、微信、QQ。
+A4：因為連同軟件數據包都給你備份了，例如原神數據包9GB+，當然久到裂開了，恢復也是同理，還要解壓縮數據包
 ```
 
-## 铭谢贡献
-- 臭批老k([kmou424](https://github.com/kmou424))：提供部分与验证函数思路
-- 屑老方([雄氏老方](http://www.coolapk.com/u/665894))：提供自动更新脚本方案
-- 依心所言&情非得已c：提供appinfo替代aapt作为更高效的dump包名
-- 胖子老陈(雨季骚年)
-
-`文档编辑：Petit-Abba`
+## 銘謝貢獻
+- 臭批老k([kmou424](https://github.com/kmou424))：提供部分與驗證函數思路
+- 屑老方([雄氏老方](http://www.coolapk.com/u/665894))：提供自動更新腳本方案
+- 依心所言&情非得已c：提供appinfo替代aapt作為更高效的dump包名
+- 胖子老陳(雨季騷年)
+- XayahSuSuSu([XayahSuSuSu](https://github.com/kmou424))：提供App支持
+`文檔編輯：Petit-Abba, YuKongA`
