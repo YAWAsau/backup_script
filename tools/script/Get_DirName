@@ -4,7 +4,7 @@ tools_path="$MODDIR/tools"
 bin_path="$MODDIR/tools/bin"
 [[ ! -d $tools_path ]] && echo "$tools_path目錄遺失" && exit 1
 [[ ! -d $bin_path ]] && echo "$bin_path目錄遺失" && exit 1
-txt="$MODDIR/應用列表.txt"
+txt="$MODDIR/appList.txt"
 txt="${txt/'/storage/emulated/'/'/data/media/'}"
 . "$bin_path/bin.sh"
 echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt"

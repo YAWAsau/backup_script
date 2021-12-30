@@ -19,26 +19,21 @@ if [[ -d $(magisk --path 2>/dev/null) ]]; then
 else
 	echo "Magisk busybox Path does not exist"
 fi ; export PATH="$PATH"
-backup_version="V13.1"
+backup_version="V13.4"
 #設置二進制命令目錄位置
 [[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
 Status_log="$MODDIR/Log.txt"
 rm -rf "$Status_log"
 filepath="/data/backup_tools"
-case $MODDIR in
-/data/user/0/com.xayah.databackup*)
-	if [[ -d /data/user/0/com.xayah.databackup ]]; then
-		filepath="/data/user/0/com.xayah.databackup/backup_tools"
-		echo "於com.xayah.databackup內執行"
-	fi ;;
-esac
+if [[ $APP_ENV = 1 ]]; then
+	filepath="/data/user/0/com.xayah.databackup/backup_tools"
+fi
 busybox="$filepath/busybox"
 busybox2="$bin_path/busybox"
 #排除自身
 exclude="
-json
-.doh
+update
 busybox_path
 update
 bin.sh"
@@ -168,9 +163,10 @@ echo_log() {
 		echoRgb "$1失敗，過世了" "0" ; Print "$1失敗，過世了" ; result=1
 	fi
 }
-Open_apps="$(appinfo -o ands -ta c)"
+Open_apps="$(appinfo -d "(" -ed ")" -o ands,pn -ta c)"
+Open_apps2="$(echo "$Open_apps" | cut -f2 -d '(' | sed 's/)//g')" 
 bn=147
-echoRgb "\n --------------script_backup--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$Open_apps"
+echoRgb "\n --------------###############--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$Open_apps"
 bn=195
 if [[ $script != "" ]]; then
 	if [[ ! -f $TMPDIR/scriptTMP ]]; then
@@ -193,55 +189,59 @@ if [[ $(pm path ice.message) = "" ]]; then
 fi
 #sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p'
 #sed -r -n 's/.*"browser_download_url": *"(.*-linux64\..*\.so\.bz2)".*/\1/p'
-LANG="$(getprop "persist.sys.locale")"
-zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
-echoRgb "檢查更新中 請稍後......."
-Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest"
-if [[ $LANG != "" ]]; then
-	case $LANG in
-	*-TW|*-tw)
-		echoRgb "系統語系:繁體中文"
-		Language="https://api.github.com/repos/YAWAsau/backup_script/releases/latest" ;;
-	*-CN|*-cn)
-		echoRgb "系統語系:簡體中文" ;;
-	* )
-		echoRgb "$LANG不支持 默認簡體中文" "0" ;;
-	esac
-else
-	echoRgb "獲取系統語系失敗 默認簡體中文" "0"
-fi
-#dns="1.1.1.1,1.0.0.1"
-dns="8.8.8.8"
-#dns="114.114.114.114"
-# Curl uses boringssl - first appeared in Marshmallow - don't try using ssl in older android versions
-[[ $(getprop ro.build.version.sdk) -lt 23 ]] && alias curl="curl -kL --dns-servers $dns$flag" || alias curl="curl -L --dns-servers $dns$flag"
-echoRgb "DNS:$dns"
-json="$(curl "$Language" 2>/dev/null)"
-if [[ $json != "" ]]; then
-	echoRgb "使用curl"
-else
-	json="$(down -s -L "$Language" 2>/dev/null)"
-	[[ $json != "" ]] && echoRgb "使用down"
-fi
-if [[ $json != "" ]]; then
-	tag="$(echo "$json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
-	if [[ $backup_version != $tag ]]; then
-		echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(curl "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p' || down -s -L "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
-		download="$(echo "$json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
-		curl -O "https://gh.api.99988866.xyz/$download" || down -s -L -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$download"
-		echo_log "下載${download##*/}"
-		if [[ $result = 0 ]]; then
-			echoRgb "update $backup_version > $tag"
-			zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
-			GitHub="true"
+if [[ -e $bin_path/update ]]; then
+	LANG="$(getprop "persist.sys.locale")"
+	zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
+	echoRgb "檢查更新中 請稍後......."
+	Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest"
+	if [[ $LANG != "" ]]; then
+		case $LANG in
+		*-TW|*-tw)
+			echoRgb "系統語系:繁體中文"
+			Language="https://api.github.com/repos/YAWAsau/backup_script/releases/latest" ;;
+		*-CN|*-cn)
+			echoRgb "系統語系:簡體中文" ;;
+		* )
+			echoRgb "$LANG不支持 默認簡體中文" "0" ;;
+		esac
+	else
+		echoRgb "獲取系統語系失敗 默認簡體中文" "0"
+	fi
+	#dns="1.1.1.1,1.0.0.1"
+	dns="8.8.8.8"
+	#dns="114.114.114.114"
+	# Curl uses boringssl - first appeared in Marshmallow - don't try using ssl in older android versions
+	[[ $(getprop ro.build.version.sdk) -lt 23 ]] && alias curl="curl -kL --dns-servers $dns$flag" || alias curl="curl -L --dns-servers $dns$flag"
+	echoRgb "DNS:$dns"
+	json="$(curl "$Language" 2>/dev/null)"
+	if [[ $json != "" ]]; then
+		echoRgb "使用curl"
+	else
+		json="$(down -s -L "$Language" 2>/dev/null)"
+		[[ $json != "" ]] && echoRgb "使用down"
+	fi
+	if [[ $json != "" ]]; then
+		tag="$(echo "$json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
+		if [[ $backup_version != $tag ]]; then
+			echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(curl "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p' || down -s -L "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
+			download="$(echo "$json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
+			curl -O "https://gh.api.99988866.xyz/$download" || down -s -L -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$download"
+			echo_log "下載${download##*/}"
+			if [[ $result = 0 ]]; then
+				echoRgb "update $backup_version > $tag"
+				zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
+				GitHub="true"
+			else
+				echoRgb "請手動將備份腳本壓縮包放置在\n -$MODDIR後再次執行腳本進行更新" "0"
+			fi
 		else
-			echoRgb "請手動將備份腳本壓縮包放置在\n -$MODDIR後再次執行腳本進行更新" "0"
+			echoRgb "本地版本:$backup_version 線上版本:$tag 版本一致無須更新"
 		fi
 	else
-		echoRgb "本地版本:$backup_version 線上版本:$tag 版本一致無須更新"
+		echoRgb "更新獲取失敗" "0"
 	fi
 else
-	echoRgb "更新獲取失敗" "0"
+	echoRgb "自動更新未開啟" "0"
 fi
 if [[ $zippath != "" ]]; then
 	case $(echo "$zippath" | wc -l) in

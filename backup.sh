@@ -33,13 +33,28 @@ path="/data/media/0/Android"
 path2="/data/user/0"
 txt="$MODDIR/appList.txt"
 if [[ $Output_path != "" ]]; then
-	echoRgb "使用自定義目錄\n-輸出位置:$Output_path" && Backup="$Output_path/Backup_$Compression_method"
+	echoRgb "使用自定義目錄\n -輸出位置:$Output_path" && Backup="$Output_path/Backup_$Compression_method"
 else
 	Backup="$MODDIR/Backup_$Compression_method"
+	if [[ $APP_ENV = 1 ]]; then
+		Backup="/data/media/0/Download/Backup_$Compression_method"
+		echoRgb "沒有設定備份目錄 使用默認路徑\n $Backup"
+	fi
 fi
 txt="${txt/'/storage/emulated/'/'/data/media/'}"
 PU="$(ls /dev/block/vold | grep public)"
-[[ ! -f $txt ]] && echoRgb "請執行\"Getlist.sh\"獲取應用列表再來備份" "0" && exit 1
+if [[ ! -f $txt ]]; then
+	echoRgb "請執行\"Getlist.sh\"獲取應用列表再來備份" "0" && exit 1
+else
+	cat "$txt" | grep -v "#" | while read; do
+		name=($REPLY $REPLY)
+		if [[ $REPLY != "" && $(pm path "${name[1]}" | cut -f2 -d ':') = "" ]]; then
+			echoRgb "${name[2]}不存在系統，從列表中刪除"
+			cat "$txt" | sed -e "s/$REPLY//g ; /^$/d" >"$txt.tmp" && mv "$txt.tmp" "$txt"
+		fi
+	done
+	cat "$txt" | sed -e '/^$/d' >"$txt.tmp" && mv "$txt.tmp" "$txt"
+fi
 r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 [[ $r = "" ]] && echoRgb "爬..appList.txt是空的或是包名被注釋了這樣備份個鬼" "0" && exit 1
 data=/data
@@ -104,7 +119,7 @@ Backup_apk() {
 			rm -rf "$Backup_folder"/*.apk
 			#備份apk
 			echoRgb "$1"
-			[[ $name1 != $Open_apps ]] && am force-stop "$name2"
+			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
 			echo "$apk_path" | sed -e '/^$/d' | while read; do
 				path="$REPLY"
 				b_size="$(ls -l "$path" | awk '{print $5}')"
@@ -156,21 +171,21 @@ Backup_data() {
 	esac
 	if [[ -d $data_path ]]; then
 		if [[ $Size != $(du -ks "$data_path" | awk '{print $1}') ]]; then
-			[[ $name1 != $Open_apps ]] && am force-stop "$name2"
+			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
 			[[ $lxj -ge 95 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
 			echoRgb "備份$1數據" "2"
 			case $1 in
 			user)
 				case $Compression_method in
-				tar|Tar|TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-				zstd|Zstd|ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
-				lz4|Lz4|LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+				tar|Tar|TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f >"$Backup_folder/$1.tar" ;;
+				zstd|Zstd|ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
+				lz4|Lz4|LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 				esac ;;
 			*)
 				case $Compression_method in
-				tar|Tar|TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-				zstd|Zstd|ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
-				lz4|Lz4|LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+				tar|Tar|TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f >"$Backup_folder/$1.tar" ;;
+				zstd|Zstd|ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
+				lz4|Lz4|LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 				esac ; [[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1" ; unset Compression_method1 ;;
 			esac
 			echo_log "備份$1數據"
@@ -194,13 +209,13 @@ Backup_data() {
 	fi
 }
 [[ $Lo = true ]] && {
-echoRgb "選擇是否只備份split apk(分割apk檔)\n 如果你不知道這意味什麼請選擇音量下進行混合備份\n 音量上是，音量下不是"
+echoRgb "選擇是否只備份split apk(分割apk檔)\n -如果你不知道這意味什麼請選擇音量下進行混合備份\n 音量上是，音量下不是"
 get_version "是" "不是，混合備份" && Splist="$branch"
-echoRgb "是否備份外部數據 即比如原神的數據包\n 音量上備份，音量下不備份"
+echoRgb "是否備份外部數據 即比如原神的數據包\n -音量上備份，音量下不備份"
 get_version "備份" "不備份" && Backup_obb_data="$branch"
-echoRgb "是否備份使用者數據\n 音量上備份，音量下不備份"
+echoRgb "是否備份使用者數據\n -音量上備份，音量下不備份"
 get_version "備份" "不備份" && Backup_user_data="$branch"
-echoRgb "全部應用備份結束後是否備份自定義目錄\n 音量上備份，音量下不備份"
+echoRgb "全部應用備份結束後是否備份自定義目錄\n -音量上備份，音量下不備份"
 get_version "備份" "不備份" && backup_media="$branch"
 }
 #開始循環$txt內的資料進行備份
@@ -236,12 +251,13 @@ while [[ $i -le $r ]]; do
 				[[ -f $app_details ]] && . "$app_details"
 			fi
 		fi
-		lxj="$(df -h "$data" | awk 'END{print $4}' | sed 's/%//g')"
+		Occupation_status="$(df -h "$data" | cut -f3 -d 'use' | cut -f1 -d '%')%"
+		lxj="$(echo "$Occupation_status" | awk '{print $5}' | sed 's/%//g')"
 		[[ $hx = USB && $PT = "" ]] && echoRgb "隨身碟意外斷開 請檢查穩定性" "0" && exit 1
 		starttime2="$(date -u "+%s")"
 		echoRgb "備份$name1 ($name2)"
-		[[ $name2 = com.tencent.mobileqq ]] && echo "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份"
-		[[ $name2 = com.tencent.mm ]] && echo "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份"
+		[[ $name2 = com.tencent.mobileqq ]] && echoRgb "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
+		[[ $name2 = com.tencent.mm ]] && echoRgb "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
 		unset nobackup
 		apk_number="$(echo "$apk_path" | wc -l)"
 		if [[ $apk_number = 1 ]]; then
@@ -265,7 +281,7 @@ while [[ $i -le $r ]]; do
 			[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)"
 		fi
 		endtime 2 "$name1備份"
-		echoRgb "完成$((i*100/r))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')"
+		echoRgb "完成$((i*100/r))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$4"使用率:"$5}')"
 		echoRgb "____________________________________" "3"
 	else
 		echoRgb "$name1[$name2]不在安裝列表，備份個寂寞？" "0"
@@ -287,7 +303,8 @@ while [[ $i -le $r ]]; do
 					echoRgb "備份第$A/$B個資料夾 剩下$((B-A))個"
 					starttime2="$(date -u "+%s")"
 					Backup_data "${REPLY##*/}" "$REPLY"
-					endtime 2 "${REPLY##*/}備份" && echoRgb "完成$((A*100/B))% $hx$(df -h "$data" | awk 'END{print "剩餘:"$3"使用率:"$4}')" && echoRgb "____________________________________" "3" && let A++
+					endtime 2 "${REPLY##*/}備份"
+					echoRgb "完成$((A*100/B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$4"使用率:"$5}')" && echoRgb "____________________________________" "3" && let A++
 				done
 				endtime 1 "自定義備份"
 			else
@@ -319,4 +336,4 @@ endtime 1 "批量備份開始到結束"
 longToast "批量備份完成"
 Print "批量備份完成 執行過程請查看$Status_log"
 exit 0
-}&
+}

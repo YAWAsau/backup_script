@@ -52,7 +52,17 @@ appinfo -sort-i -d " " -o ands,pn -pn $system $launcher_app -3 2>/dev/null | sed
 	fi
 	[[ $xz != "" ]] && let i++ bn++
 done
-[[ -f $nametxt ]] && (cat "$nametxt" | sed -e '/^$/d' >"$nametxt.tmp" && mv "$nametxt.tmp" "$nametxt") || (echoRgb "$nametxt生成失敗" "0" && exit 2)
+if [[ -f $nametxt ]]; then
+	echoRgb "列表:$nametxt"
+	cat "$nametxt" | grep -v "#" | while read; do
+		name=($REPLY $REPLY)
+		if [[ $REPLY != "" && $(pm path "${name[1]}" | cut -f2 -d ':') = "" ]]; then
+			echoRgb "${name[2]}不存在系統，從列表中刪除"
+			cat "$nametxt" | sed -e "s/$REPLY//g ; /^$/d" >"$nametxt.tmp" && mv "$nametxt.tmp" "$nametxt"
+		fi
+	done
+	cat "$nametxt" | sed -e '/^$/d' >"$nametxt.tmp" && mv "$nametxt.tmp" "$nametxt"
+fi
 endtime 1
 [[ ! -e $MODDIR/tmp ]] && echoRgb "無新增應用" || echoRgb "輸出包名結束 請查看$nametxt"
 rm -rf "$MODDIR/tmp"

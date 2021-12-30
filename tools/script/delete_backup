@@ -3,6 +3,7 @@ tools_path="$MODDIR/tools"
 bin_path="$tools_path/bin"
 [[ ! -d $tools_path ]] && echo "$tools_path目錄遺失" && exit 1
 . "$bin_path/bin.sh"
+echoRgb "警告 此腳本將刪除任何未被安裝的應用備份\n -你的備份將一去不復返,10秒內退出腳本還有生還機會" "0" && sleep 10
 find "$MODDIR" -maxdepth 2 -type d | sort | while read; do
 	if [[ -f $REPLY/app_details ]]; then
 		unset PackageName
