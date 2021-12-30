@@ -74,7 +74,7 @@ fi
 if [[ $Recovery_mode = true ]]; then
 	if [[ $(pm path "$name") != "" ]]; then
 		#停止應用
-		[[ $name2 != $Open_apps ]] && am force-stop "$name"
+		[[ $name != $Open_apps2 ]] && am force-stop "$name"
 		find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f | sort | while read; do
 			tar_path="$REPLY"
 			X="$path2/$name"

@@ -16,9 +16,9 @@ path2="/data/data"
 [[ ! -d ${bin_path%/*}/apk ]] && echo "${bin_path%/*}/apk目錄遺失" && exit 1
 i=1
 txt="$MODDIR/appList.txt"
-[[ ! -f $txt ]] && echoRgb "請執行\"DumpName.sh\"獲取應用列表再來恢復" "0" && exit 2
+[[ ! -f $txt ]] && echoRgb "請執行\"掃描資料夾名.sh\"獲取應用列表再來恢復" "0" && exit 2
 r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
-[[ $r = "" ]] && echoRgb "appList.txt包名為空或是被注釋了" "0" && exit 1
+[[ $r = "" ]] && echoRgb "應用列表.txt包名為空或是被注釋了" "0" && exit 1
 [[ $(which restorecon) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
 #顯示執行結果
 Release_data() {
@@ -164,7 +164,7 @@ while [[ $i -le $r ]]; do
 		if [[ $Recovery_mode = true ]]; then
 			if [[ $(pm path "$name2") != "" ]]; then
 				#停止應用
-				[[ $name1 != $Open_apps ]] && am force-stop "$name2"
+				[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
 				find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f | sort | while read; do
 					Release_data "$REPLY"
 				done
