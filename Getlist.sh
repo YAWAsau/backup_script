@@ -4,10 +4,8 @@ MODDIR="${0%/*}"
 tools_path="$MODDIR/tools"
 bin_path="$tools_path/bin"
 [[ $(echo "$MODDIR" | grep -v 'mt') = "" ]] && echo "我他媽骨灰給你揚了撒了TM不解壓縮？用毛線 憨批" && exit 1
-[[ ! -d $tools_path ]] && echo " $tools_path目錄遺失" && exit 1
-[[ ! -f $MODDIR/backup_settings.conf ]] && echo "backup_settings.conf遺失" && exit 1
+[[ ! -d $tools_path ]] && echo " $tools_path二進制目錄遺失" && exit 1
 . "$bin_path/bin.sh"
-. "$MODDIR/backup_settings.conf"
 system="
 com.google.android.apps.messaging
 com.google.android.inputmethod.latin

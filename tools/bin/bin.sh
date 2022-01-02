@@ -20,7 +20,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V13.4fix"
+backup_version="V13.6"
 #設置二進制命令目錄位置
 [[ $bin_path == "" ]] && echo "未正確指定bin.sh位置" && exit 2
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
@@ -259,7 +259,7 @@ if [[ $zippath != "" ]]; then
 		else
 			cp -r "$tools_path" "$TMPDIR" && rm -rf "$tools_path"
 			find "$MODDIR" -maxdepth 3 -name "*.sh" -type f -exec rm -rf {} \;
-			unzip -o "$zippath" -d "$MODDIR"
+			unzip -o "$zippath" -x "backup_settings.conf" -d "$MODDIR"
 			echo_log "解壓縮${zippath##*/}"
 			if [[ $result == 0 ]]; then
 				case $MODDIR in

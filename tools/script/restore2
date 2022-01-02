@@ -3,8 +3,10 @@ MODDIR="${0%/*}"
 tools_path="${MODDIR%/*}/tools"
 bin_path="${MODDIR%/*}/tools/bin"
 script="${0##*/}"
-[[ ! -d $tools_path ]] && echo "$tools_path目錄遺失" && exit 1
-[[ ! -d $bin_path ]] && echo "$bin_path目錄遺失" && exit 1
+[[ ! -d $tools_path ]] && echo "$tools_path二進制目錄遺失" && EXIT="true"
+[[ ! -d $bin_path ]] && echo "$bin_path關鍵目錄遺失" && EXIT="true"
+[[ ! -f $bin_path/bin.sh ]] && echo "$bin_path/bin.sh關鍵腳本遺失" && EXIT="true"
+[[ $EXIT == true ]] && exit 1
 . "$bin_path/bin.sh"
 path="/data/media/0/Android"
 path2="/data/data"

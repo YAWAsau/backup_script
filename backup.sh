@@ -5,11 +5,15 @@ bin_path="$tools_path/bin"
 script_path="$tools_path/script"
 script="${0##*/}"
 [[ $(echo "$MODDIR" | grep -v 'mt') == "" ]] && echo "我他媽骨灰給你揚了撒了TM不解壓縮？用毛線 憨批" && exit 1
-[[ ! -d $tools_path ]] && echo "$tools_path目錄遺失" && exit 1
-[[ ! -d $script_path ]] && echo "$script_path目錄遺失" && exit 1
-[[ ! -d $tools_path/apk ]] && echo "$tools_path/apk目錄遺失" && exit 1
-. "$bin_path/bin.sh"
+[[ ! -d $tools_path ]] && echo "$tools_path二進制目錄遺失" && EXIT="true"
+[[ ! -d $script_path ]] && echo "$script_path腳本目錄遺失" && EXIT="true"
+[[ ! -d $tools_path/apk ]] && echo "$tools_path/apk目錄遺失" && EXIT="true"
+[[ ! -d $bin_path ]] && echo "$bin_path關鍵目錄遺失" && EXIT="true"
+[[ ! -f $bin_path/bin.sh ]] && echo "$bin_path/bin.sh關鍵腳本遺失" && EXIT="true"
+[[ ! -f $MODDIR/backup_settings.conf ]] && echo "backup_settings.conf配置遺失" && EXIT="true"
+[[ $EXIT == true ]] && exit 1
 . "$MODDIR/backup_settings.conf"
+. "$bin_path/bin.sh"
 case $MODDIR in
 /storage/emulated/0/Android/* | /data/media/0/Android/* | /sdcard/Android/*) echoRgb "請勿在$MODDIR內備份" "0" && exit 2 ;;
 esac
@@ -17,7 +21,6 @@ case $Compression_method in
 zstd | Zstd | ZSTD | tar | Tar | TAR | lz4 | Lz4 | LZ4) ;;
 *) echoRgb "$Compression_method為不支持的壓縮算法" "0" && exit 2 ;;
 esac
-[[ ! -f $MODDIR/backup_settings.conf ]] && echoRgb "backup_settings.conf遺失" "0" && exit 1
 #效驗選填是否正確
 isBoolean "$Lo" && Lo="$nsx"
 if [[ $Lo == false ]]; then
@@ -32,15 +35,6 @@ i=1
 path="/data/media/0/Android"
 path2="/data/user/0"
 txt="$MODDIR/appList.txt"
-if [[ $Output_path != "" ]]; then
-	echoRgb "使用自定義目錄\n -輸出位置:$Output_path" && Backup="$Output_path/Backup_$Compression_method"
-else
-	Backup="$MODDIR/Backup_$Compression_method"
-	if [[ $APP_ENV == 1 ]]; then
-		Backup="/data/media/0/Download/Backup_$Compression_method"
-		echoRgb "沒有設定備份目錄 使用默認路徑\n $Backup"
-	fi
-fi
 txt="${txt/'/storage/emulated/'/'/data/media/'}"
 PU="$(ls /dev/block/vold | grep public)"
 if [[ ! -f $txt ]]; then
@@ -49,6 +43,7 @@ else
 	cat "$txt" | grep -v "#" | while read; do
 		name=($REPLY $REPLY)
 		if [[ $REPLY != "" && $(pm path "${name[1]}" | cut -f2 -d ':') == "" ]]; then
+			echo "$REPLY"
 			echoRgb "${name[2]}不存在系統，從列表中刪除"
 			cat "$txt" | sed -e "s/$REPLY//g ; /^$/d" >"$txt.tmp" && mv "$txt.tmp" "$txt"
 		fi
@@ -61,6 +56,16 @@ data=/data
 hx="本地"
 echoRgb "壓縮方式:$Compression_method"
 echoRgb "提示 腳本支持後台壓縮 可以直接離開腳本\n -或是關閉終端也能備份 如需終止腳本\n -請再次執行$script即可停止\n -備份結束將發送toast提示語" "2"
+if [[ $Output_path != "" ]]; then
+	Backup="$Output_path/Backup_$Compression_method"
+	outshow="使用自定義目錄\n -輸出位置↓↓↓\n -$Backup"
+else
+	Backup="$MODDIR/Backup_$Compression_method"
+	if [[ $APP_ENV == 1 ]]; then
+		Backup="/data/media/0/Download/Backup_$Compression_method"
+		outshow="沒有設定備份目錄 使用默認路徑↓↓↓\n -$Backup"
+	fi
+fi
 if [[ $PU != "" ]]; then
 	[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts | grep "$PU" | awk '{print $2}')"
 	if [[ -d $PT ]]; then
@@ -76,8 +81,8 @@ if [[ $PU != "" ]]; then
 			data="/dev/block/vold/$PU"
 			mountinfo="$(df -T "$data" | awk 'END{print $1}')"
 			case $mountinfo in
-			fuseblk | exfat | NTFS | ext4)
-				echoRgb "於隨身碟備份 檔案系統:$mountinfo" "1"
+			vfat | fuseblk | exfat | NTFS | ext4)
+				outshow="於隨身碟備份 檔案系統:$mountinfo \n -路徑↓↓↓\n -$Backup"
 				;;
 			*)
 				echoRgb "隨身碟檔案系統$mountinfo不支持超過單檔4GB\n -請格式化為exfat" "0"
@@ -89,6 +94,7 @@ if [[ $PU != "" ]]; then
 else
 	echoRgb "沒有檢測到隨身碟於本地備份" "1"
 fi
+echoRgb "$outshow" "1"
 [[ $Backup_user_data == false ]] && echoRgb "當前backup_settings.conf的\n -Backup_user_data為0將不備份user數據" "0"
 [[ $Backup_obb_data == false ]] && echoRgb "當前backup_settings.conf的\n -Backup_obb_data為0將不備份外部數據" "0"
 [[ $backup_media == false ]] && echoRgb "當前backup_settings.conf的\n -backup_media為0將不備份自定義資料夾" "0"
@@ -142,6 +148,7 @@ Backup_apk() {
 			)
 			echo_log "備份$apk_number個Apk"
 			if [[ $result == 0 ]]; then
+				pm list packages --show-versioncode "$name2"
 				echo "apk_version=\"$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)\"" >>"$app_details"
 				[[ $PackageName == "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
 				[[ $ChineseName == "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
@@ -188,16 +195,16 @@ Backup_data() {
 			case $1 in
 			user)
 				case $Compression_method in
-				tar | Tar | TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f >"$Backup_folder/$1.tar" ;;
-				zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
-				lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+				tar | Tar | TAR)  tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f >"$Backup_folder/$1.tar" ;;
+				zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
+				lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 				esac
 				;;
 			*)
 				case $Compression_method in
-				tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f >"$Backup_folder/$1.tar" ;;
-				zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
-				lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+				tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f >"$Backup_folder/$1.tar" ;;
+				zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
+				lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 				esac
 				[[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1"
 				unset Compression_method1
@@ -266,8 +273,11 @@ en=118
 					[[ -f $app_details ]] && . "$app_details"
 				fi
 			fi
-			Occupation_status="$(df -h "$data" | cut -f3 -d 'use' | cut -f1 -d '%')%"
-			lxj="$(echo "$Occupation_status" | awk '{print $5}' | sed 's/%//g')"
+			#我剛剛寫的
+			#df -h "$data" | cut -d 'Use%' -f4 | cut -f1 -d '%' | cut -f3,4 -d 'G'
+			Occupation_status="$(df -h "$data" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
+			#Occupation_status="$(echo "$Occupation_status" | cut -f3,4 -d 'G')"
+			lxj="$(echo "$Occupation_status" | awk '{print $2}' | sed 's/%//g')"
 			[[ $hx == USB && $PT == "" ]] && echoRgb "隨身碟意外斷開 請檢查穩定性" "0" && exit 1
 			starttime2="$(date -u "+%s")"
 			echoRgb "備份$name1 ($name2)"
@@ -295,7 +305,7 @@ en=118
 				[[ $name2 == github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)"
 			fi
 			endtime 2 "$name1備份"
-			echoRgb "完成$((i * 100 / r))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$4"使用率:"$5}')"
+			echoRgb "完成$((i * 100 / r))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')"
 			echoRgb "____________________________________" "3"
 		else
 			echoRgb "$name1[$name2]不在安裝列表，備份個寂寞？" "0"
@@ -318,7 +328,7 @@ en=118
 						starttime2="$(date -u "+%s")"
 						Backup_data "${REPLY##*/}" "$REPLY"
 						endtime 2 "${REPLY##*/}備份"
-						echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$4"使用率:"$5}')" && echoRgb "____________________________________" "3" && let A++
+						echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" && echoRgb "____________________________________" "3" && let A++
 					done
 					endtime 1 "自定義備份"
 				else
@@ -333,7 +343,7 @@ en=118
 	#計算出備份大小跟差異性
 	filesizee="$(du -ks "$Backup" | awk '{print $1}')"
 	dsize="$(($((filesizee - filesize)) / 1024))"
-	echoRgb "備份資料夾路徑:$Backup" "2"
+	echoRgb "備份資料夾路徑↓↓↓\n -$Backup" "2"
 	echoRgb "備份資料夾總體大小$(du -ksh "$Backup" | awk '{print $1}')"
 	if [[ $dsize -gt 0 ]]; then
 		if [[ $((dsize / 1024)) -gt 0 ]]; then
