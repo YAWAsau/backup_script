@@ -63,7 +63,7 @@ if [[ $Output_path != "" ]]; then
 else
 	Backup="$MODDIR/Backup_$Compression_method"
 	if [[ $APP_ENV == 1 ]]; then
-		Backup="/data/media/0/Download/Backup_$Compression_method"
+		Backup="/storage/emulated/0/Backup_$Compression_method"
 		outshow="沒有設定備份目錄 使用默認路徑↓↓↓\n -$Backup"
 	fi
 fi
@@ -95,6 +95,10 @@ if [[ $PU != "" ]]; then
 else
 	echoRgb "沒有檢測到隨身碟於本地備份" "1"
 fi
+#全部顯示 
+#echoRgb "$hx備份資料夾所使用分區統計如下↓\n -$(df -h "$data" | sed -n 's|% /.*|%|p' | awk '{print $(NF-3),$(NF-2),$(NF-1),$(NF)}' | awk 'END{print "總大小:"$1"已使用:"$2"剩餘:"$3"使用率:"$4}')"
+#簡單顯示
+echoRgb "$hx備份資料夾所使用分區統計如下↓\n -$(df -h "$data" | sed -n 's|% /.*|%|p' | awk '{print $(NF-3),$(NF-1),$(NF)}' | sed 's/G//g' | awk 'END{print "剩餘:"$1"/"$2"G使用率:"$3}')檔案系統:$(df -T "$data" | awk 'END{print $1}')"
 echoRgb "$outshow" "1"
 [[ $Backup_user_data == false ]] && echoRgb "當前backup_settings.conf的\n -Backup_user_data為0將不備份user數據" "0"
 [[ $Backup_obb_data == false ]] && echoRgb "當前backup_settings.conf的\n -Backup_obb_data為0將不備份外部數據" "0"
@@ -194,16 +198,16 @@ Backup_data() {
 			case $1 in
 			user)
 				case $Compression_method in
-				tar | Tar | TAR)  tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f >"$Backup_folder/$1.tar" ;;
-				zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
-				lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+				tar | Tar | TAR)  tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
+				zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
+				lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -| lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 				esac
 				;;
 			*)
 				case $Compression_method in
-				tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f >"$Backup_folder/$1.tar" ;;
-				zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
-				lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+				tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
+				zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
+				lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 				esac
 				[[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1"
 				unset Compression_method1
@@ -273,11 +277,8 @@ en=118
 					[[ -f $app_details ]] && . "$app_details"
 				fi
 			fi
-			#我剛剛寫的
-			#df -h "$data" | cut -d 'Use%' -f4 | cut -f1 -d '%' | cut -f3,4 -d 'G'
 			Occupation_status="$(df -h "$data" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
-			#Occupation_status="$(echo "$Occupation_status" | cut -f3,4 -d 'G')"
-			lxj="$(echo "$Occupation_status" | awk '{print $2}' | sed 's/%//g')"
+			lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
 			[[ $hx == USB && $PT == "" ]] && echoRgb "隨身碟意外斷開 請檢查穩定性" "0" && exit 1
 			starttime2="$(date -u "+%s")"
 			echoRgb "備份$name1 ($name2)"
