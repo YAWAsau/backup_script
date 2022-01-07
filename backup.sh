@@ -57,6 +57,7 @@ hx="本地"
 echoRgb "壓縮方式:$Compression_method"
 echoRgb "提示 腳本支持後台壓縮 可以直接離開腳本\n -或是關閉終端也能備份 如需終止腳本\n -請再次執行$script即可停止\n -備份結束將發送toast提示語" "2"
 if [[ $Output_path != "" ]]; then
+	[[ ${Output_path: -1} == / ]] && Output_path="${Output_path%?}"
 	Backup="$Output_path/Backup_$Compression_method"
 	outshow="使用自定義目錄\n -輸出位置↓↓↓\n -$Backup"
 else
@@ -138,17 +139,15 @@ Backup_apk() {
 				m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
 				echoRgb "${path##*/} ${m_size}MB(${k_size}KB)" "2"
 			done
-			(
-				cd "$apk_path2"
-				case $Compression_method in
-				tar | TAR | Tar) tar -cf "$Backup_folder/apk.tar" *.apk ;;
-				lz4 | LZ4 | Lz4) tar -cf - *.apk | lz4 -1 >"$Backup_folder/apk.tar.lz4" ;;
-				zstd | Zstd | ZSTD) tar -cf - *apk | zstd -r -T0 --ultra -6 -q >"$Backup_folder/apk.tar.zst" ;;
-				esac
-			)
+			cd "$apk_path2"
+			case $Compression_method in
+			tar | TAR | Tar) tar -cf "$Backup_folder/apk.tar" *.apk ;;
+			lz4 | LZ4 | Lz4) tar -cf - *.apk | lz4 -1 >"$Backup_folder/apk.tar.lz4" ;;
+			zstd | Zstd | ZSTD) tar -cf - *apk | zstd -r -T0 --ultra -6 -q >"$Backup_folder/apk.tar.zst" ;;
+			esac
 			echo_log "備份$apk_number個Apk"
 			if [[ $result == 0 ]]; then
-				pm list packages --show-versioncode "$name2"
+				#pm list packages --show-versioncode "$name2"
 				echo "apk_version=\"$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)\"" >>"$app_details"
 				[[ $PackageName == "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
 				[[ $ChineseName == "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
@@ -195,16 +194,16 @@ Backup_data() {
 			case $1 in
 			user)
 				case $Compression_method in
-				tar | Tar | TAR)  tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f >"$Backup_folder/$1.tar" ;;
-				zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
-				lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+				tar | Tar | TAR)  tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f >"$Backup_folder/$1.tar" ;;
+				zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
+				lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 				esac
 				;;
 			*)
 				case $Compression_method in
-				tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f >"$Backup_folder/$1.tar" ;;
-				zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
-				lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+				tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f >"$Backup_folder/$1.tar" ;;
+				zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
+				lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 				esac
 				[[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1"
 				unset Compression_method1
@@ -248,6 +247,7 @@ en=118
 {
 	while [[ $i -le $r ]]; do
 		[[ $en -ge 229 ]] && en=118
+		unset name1 name2 apk_path apk_path2
 		name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
 		name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
 		[[ $name2 == "" ]] && echoRgb "警告! appList.txt應用包名獲取失敗，可能修改有問題" "0" && exit 1
