@@ -30,9 +30,9 @@ Release_data() {
 	user)
 		if [[ -d $X ]]; then
 			case ${FILE_NAME##*.} in
-			lz4) pv -f "$tar_path" | tar --recursive-unlink -I lz4 -xmpf - -C "$path2" ;;
-			zst) pv -f "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$path2" ;;
-			tar) pv -f "$tar_path" | tar --recursive-unlink -xmpf - -C "$path2" ;;
+			lz4) pv "$tar_path" | tar --recursive-unlink -I lz4 -xmpf - -C "$path2" ;;
+			zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$path2" ;;
+			tar) pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$path2" ;;
 			*)
 				echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
 				Set_back
@@ -45,9 +45,9 @@ Release_data() {
 		;;
 	data | obb)
 		case ${FILE_NAME##*.} in
-		lz4) pv -f "$tar_path" | tar --recursive-unlink -I lz4 -xmPpf - ;;
-		zst) pv -f "$tar_path" | tar --recursive-unlink -I zstd -xmPpf - ;;
-		tar) pv -f "$tar_path" | tar --recursive-unlink -xmPpf - ;;
+		lz4) pv "$tar_path" | tar --recursive-unlink -I lz4 -xmPpf - ;;
+		zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmPpf - ;;
+		tar) pv "$tar_path" | tar --recursive-unlink -xmPpf - ;;
 		*)
 			echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
 			Set_back
@@ -57,9 +57,9 @@ Release_data() {
 	*)
 		[[ $FILE_NAME2 == thanox ]] && rm -rf "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)"
 		case ${FILE_NAME##*.} in
-		lz4) pv -f "$tar_path" | tar -I lz4 -xPpf - ;;
-		zst) pv -f "$tar_path" | tar -I zstd -xPpf - ;;
-		tar) pv -f "$tar_path" | tar -xPpf - ;;
+		lz4) pv "$tar_path" | tar -I lz4 -xPpf - ;;
+		zst) pv "$tar_path" | tar -I zstd -xPpf - ;;
+		tar) pv "$tar_path" | tar -xPpf - ;;
 		*)
 			echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
 			Set_back
@@ -142,9 +142,9 @@ en=118
 				if [[ $apkfile != "" ]]; then
 					rm -rf "$TMPDIR"/*
 					case ${apkfile##*.} in
-					lz4) pv -f "$apkfile" | tar -I lz4 -xmpf - -C "$TMPDIR" ;;
-					zst) pv -f "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
-					tar) pv -f "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
+					lz4) pv "$apkfile" | tar -I lz4 -xmpf - -C "$TMPDIR" ;;
+					zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
+					tar) pv "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
 					*)
 						echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
 						Set_back
@@ -226,4 +226,4 @@ en=118
 	echoRgb "批量恢複完成" && endtime 1 "批量恢複開始到結束" && echoRgb "如發現應用閃退請重新開機"
 	longToast "批量恢復完成"
 	Print "批量恢復完成 執行過程請查看$Status_log" && rm -rf "$TMPDIR"/*
-}
+} &

@@ -56,10 +56,10 @@ if [[ -f $nametxt ]]; then
 		name=($REPLY $REPLY)
 		if [[ $REPLY != "" && $(pm path "${name[1]}" | cut -f2 -d ':') = "" ]]; then
 			echoRgb "${name[2]}不存在系統，從列表中刪除"
-			cat "$nametxt" | sed -e "s/$REPLY//g ; /^$/d" >"$nametxt.tmp" && mv "$nametxt.tmp" "$nametxt"
+			echo "$(cat "$nametxt" | sed -e "s/$REPLY//g ; /^$/d")" >"$nametxt"
 		fi
 	done
-	cat "$nametxt" | sed -e '/^$/d' >"$nametxt.tmp" && mv "$nametxt.tmp" "$nametxt"
+	echo "$(cat "$nametxt" | sed -e '/^$/d')" >"$nametxt"
 fi
 endtime 1
 [[ ! -e $MODDIR/tmp ]] && echoRgb "無新增應用" || echoRgb "輸出包名結束 請查看$nametxt"

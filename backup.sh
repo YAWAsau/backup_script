@@ -43,9 +43,8 @@ else
 	cat "$txt" | grep -v "#" | while read; do
 		name=($REPLY $REPLY)
 		if [[ $REPLY != "" && $(pm path "${name[1]}" | cut -f2 -d ':') == "" ]]; then
-			echo "$REPLY"
 			echoRgb "${name[2]}不存在系統，從列表中刪除"
-			cat "$txt" | sed -e "s/$REPLY//g ; /^$/d" >"$txt.tmp" && mv "$txt.tmp" "$txt"
+			echo "$(cat "$txt" | sed -e "s/$REPLY//g ; /^$/d")" > "$txt"
 		fi
 	done
 	cat "$txt" | sed -e '/^$/d' >"$txt.tmp" && mv "$txt.tmp" "$txt"
@@ -61,10 +60,12 @@ if [[ $Output_path != "" ]]; then
 	Backup="$Output_path/Backup_$Compression_method"
 	outshow="使用自定義目錄\n -輸出位置↓↓↓\n -$Backup"
 else
-	Backup="$MODDIR/Backup_$Compression_method"
 	if [[ $APP_ENV == 1 ]]; then
 		Backup="/storage/emulated/0/Backup_$Compression_method"
 		outshow="沒有設定備份目錄 使用默認路徑↓↓↓\n -$Backup"
+	else
+		Backup="$MODDIR/Backup_$Compression_method"
+		outshow="使用當前路徑作為備份目錄↓↓↓\n -$Backup"
 	fi
 fi
 if [[ $PU != "" ]]; then
@@ -95,6 +96,7 @@ if [[ $PU != "" ]]; then
 else
 	echoRgb "沒有檢測到隨身碟於本地備份" "1"
 fi
+rm -rf "$Backup/STOP"
 #全部顯示 
 #echoRgb "$hx備份資料夾所使用分區統計如下↓\n -$(df -h "$data" | sed -n 's|% /.*|%|p' | awk '{print $(NF-3),$(NF-2),$(NF-1),$(NF)}' | awk 'END{print "總大小:"$1"已使用:"$2"剩餘:"$3"使用率:"$4}')"
 #簡單顯示
@@ -143,12 +145,14 @@ Backup_apk() {
 				m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
 				echoRgb "${path##*/} ${m_size}MB(${k_size}KB)" "2"
 			done
-			cd "$apk_path2"
-			case $Compression_method in
-			tar | TAR | Tar) tar -cf "$Backup_folder/apk.tar" *.apk ;;
-			lz4 | LZ4 | Lz4) tar -cf - *.apk | lz4 -1 >"$Backup_folder/apk.tar.lz4" ;;
-			zstd | Zstd | ZSTD) tar -cf - *apk | zstd -r -T0 --ultra -6 -q >"$Backup_folder/apk.tar.zst" ;;
-			esac
+			(
+				cd "$apk_path2"
+				case $Compression_method in
+				tar | TAR | Tar) tar -cf "$Backup_folder/apk.tar" *.apk ;;
+				lz4 | LZ4 | Lz4) tar -cf - *.apk | lz4 -1 >"$Backup_folder/apk.tar.lz4" ;;
+				zstd | Zstd | ZSTD) tar -cf - *apk | zstd -r -T0 --ultra -6 -q >"$Backup_folder/apk.tar.zst" ;;
+				esac
+			)
 			echo_log "備份$apk_number個Apk"
 			if [[ $result == 0 ]]; then
 				#pm list packages --show-versioncode "$name2"
@@ -200,7 +204,7 @@ Backup_data() {
 				case $Compression_method in
 				tar | Tar | TAR)  tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
 				zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
-				lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -| lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+				lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 				esac
 				;;
 			*)
@@ -277,6 +281,7 @@ en=118
 					[[ -f $app_details ]] && . "$app_details"
 				fi
 			fi
+			[[ -f $Backup/STOP ]] && echoRgb "離開腳本" "0" && exit 1
 			Occupation_status="$(df -h "$data" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
 			lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
 			[[ $hx == USB && $PT == "" ]] && echoRgb "隨身碟意外斷開 請檢查穩定性" "0" && exit 1
@@ -361,4 +366,4 @@ en=118
 	longToast "批量備份完成"
 	Print "批量備份完成 執行過程請查看$Status_log"
 	exit 0
-}
+} &

@@ -15,7 +15,7 @@ find "$MODDIR" -maxdepth 2 -type d | sort | while read; do
 			echoRgb "${REPLY##*/}不存在系統，刪除備份"
 			rm -rf "$REPLY"
 			if [[ ${REPLY%/*}/應用列表.txt ]]; then
-				cat "${REPLY%/*}/應用列表.txt" | sed -e "s/${REPLY##*/} $PackageName//g ; /^$/d" | sort >"${REPLY%/*}/應用列表.tmp" && mv "${REPLY%/*}/應用列表.tmp" "${REPLY%/*}/應用列表.txt"
+				echo "$(cat "${REPLY%/*}/應用列表.txt" | sed -e "s/${REPLY##*/} $PackageName//g ; /^$/d" | sort)" >"${REPLY%/*}/應用列表.txt"
 			fi
 		fi
 	fi
