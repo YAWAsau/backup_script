@@ -100,7 +100,7 @@ rm -rf "$Backup/STOP"
 #全部顯示 
 #echoRgb "$hx備份資料夾所使用分區統計如下↓\n -$(df -h "$data" | sed -n 's|% /.*|%|p' | awk '{print $(NF-3),$(NF-2),$(NF-1),$(NF)}' | awk 'END{print "總大小:"$1"已使用:"$2"剩餘:"$3"使用率:"$4}')"
 #簡單顯示
-echoRgb "$hx備份資料夾所使用分區統計如下↓\n -$(df -h "$data" | sed -n 's|% /.*|%|p' | awk '{print $(NF-3),$(NF-1),$(NF)}' | sed 's/G//g' | awk 'END{print "剩餘:"$1"/"$2"G使用率:"$3}')檔案系統:$(df -T "$data" | awk 'END{print $1}')"
+echoRgb "$hx備份資料夾所使用分區統計如下↓\n -$(df -h "$data" | sed -n 's|% /.*|%|p' | awk '{print $(NF-3),$(NF-1),$(NF)}' | sed 's/G//g' | awk 'END{print "剩餘:"$1"/"$2"G使用率:"$3}')檔案系統:$(df -T "$data" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')"
 echoRgb "$outshow" "1"
 [[ $Backup_user_data == false ]] && echoRgb "當前backup_settings.conf的\n -Backup_user_data為0將不備份user數據" "0"
 [[ $Backup_obb_data == false ]] && echoRgb "當前backup_settings.conf的\n -Backup_obb_data為0將不備份外部數據" "0"
@@ -202,16 +202,16 @@ Backup_data() {
 			case $1 in
 			user)
 				case $Compression_method in
-				tar | Tar | TAR)  tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-				zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
-				lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+				tar | Tar | TAR)  tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f >"$Backup_folder/$1.tar" ;;
+				zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
+				lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 				esac
 				;;
 			*)
 				case $Compression_method in
-				tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-				zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
-				lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+				tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f >"$Backup_folder/$1.tar" ;;
+				zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
+				lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv -f -f -f -f -f -f -f -f -f | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
 				esac
 				[[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1"
 				unset Compression_method1

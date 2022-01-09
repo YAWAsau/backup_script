@@ -167,10 +167,23 @@ echo_log() {
 		result=1
 	fi
 }
+ykj() {
+    # uptime
+    awk -F '.' '{run_days=$1 / 86400;run_hour=($1 % 86400)/3600;run_minute=($1 % 3600)/60;run_second=$1 % 60;printf("%d天%d时%d分%d秒",run_days,run_hour,run_minute,run_second)}' /proc/uptime
+}
+[[ -f /sys/block/sda/size ]] && ROM_TYPE="UFS" || ROM_TYPE="eMMC"
+if [[ -f /proc/scsi/scsi ]]; then
+	UFS_MODEL="$(sed -n 3p /proc/scsi/scsi | awk '/Vendor/{print $2}')"
+	Particles="$(sed -n 3p /proc/scsi/scsi | awk '/Vendor/{print $4}')"
+else
+	UFS_MODEL="unknown"
+fi
+#-閃存類型:$ROM_TYPE
+#-閃存顆粒:$UFS_MODEL $Particles
 Open_apps="$(appinfo -d "(" -ed ")" -o ands,pn -ta c)"
 Open_apps2="$(echo "$Open_apps" | cut -f2 -d '(' | sed 's/)//g')"
 bn=147
-echoRgb "\n --------------###############--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand)\n -設備代號:$(getprop ro.product.device)\n -型號:$(getprop ro.product.model)\n -Android版本:$(getprop ro.build.version.release)\n -SDK:$(getprop ro.build.version.sdk)\n -終端:$Open_apps"
+echoRgb "\n --------------###############--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand || echo "未知")\n -設備代號:$(getprop ro.product.device || echo "未知")\n -型號:$(getprop ro.product.model || echo "未知")-$(getprop ro.serialno || echo "")\n -RAM:$(cat /proc/meminfo | head -n 1 | awk '{print $2/1000"MB"}' 2>/dev/null || echo "null")\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL $Particles\n -Android版本:$(getprop ro.build.version.release || echo "未知")\n -SDK:$(getprop ro.build.version.sdk || echo "未知")\n -終端:$Open_apps"
 bn=195
 if [[ $script != "" ]]; then
 	if [[ ! -f $TMPDIR/scriptTMP ]]; then
