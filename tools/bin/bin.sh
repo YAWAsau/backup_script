@@ -36,6 +36,7 @@ busybox2="$bin_path/busybox"
 exclude="
 update
 busybox_path
+tools
 update
 bin.sh"
 if [[ ! -d $filepath ]]; then
@@ -168,8 +169,8 @@ echo_log() {
 	fi
 }
 ykj() {
-    # uptime
-    awk -F '.' '{run_days=$1 / 86400;run_hour=($1 % 86400)/3600;run_minute=($1 % 3600)/60;run_second=$1 % 60;printf("%d天%d时%d分%d秒",run_days,run_hour,run_minute,run_second)}' /proc/uptime
+	# uptime
+	awk -F '.' '{run_days=$1 / 86400;run_hour=($1 % 86400)/3600;run_minute=($1 % 3600)/60;run_second=$1 % 60;printf("%d天%d时%d分%d秒",run_days,run_hour,run_minute,run_second)}' /proc/uptime
 }
 [[ -f /sys/block/sda/size ]] && ROM_TYPE="UFS" || ROM_TYPE="eMMC"
 if [[ -f /proc/scsi/scsi ]]; then
@@ -206,6 +207,7 @@ if [[ $(pm path ice.message) == "" ]]; then
 fi
 #sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p'
 #sed -r -n 's/.*"browser_download_url": *"(.*-linux64\..*\.so\.bz2)".*/\1/p'
+cdn=2
 if [[ -e $bin_path/update ]]; then
 	LANG="$(getprop "persist.sys.locale")"
 	zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
@@ -227,9 +229,7 @@ if [[ -e $bin_path/update ]]; then
 	else
 		echoRgb "獲取系統語系失敗 默認簡體中文" "0"
 	fi
-	#dns="1.1.1.1,1.0.0.1"
 	dns="8.8.8.8"
-	#dns="114.114.114.114"
 	# Curl uses boringssl - first appeared in Marshmallow - don't try using ssl in older android versions
 	[[ $(getprop ro.build.version.sdk) -lt 23 ]] && alias curl="curl -kL --dns-servers $dns$flag" || alias curl="curl -L --dns-servers $dns$flag"
 	echoRgb "DNS:$dns"
@@ -243,9 +243,40 @@ if [[ -e $bin_path/update ]]; then
 	if [[ $json != "" ]]; then
 		tag="$(echo "$json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
 		if [[ $backup_version != $tag ]]; then
-			echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(curl "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p' || down -s -L "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
 			download="$(echo "$json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
-			curl -O "https://gh.api.99988866.xyz/$download" || down -s -L -o "$MODDIR/$tag.zip" "https://gh.api.99988866.xyz/$download"
+			case $cdn in
+			1)
+				zip_url="http://huge.cf/download/?huge-url=$download"
+				NJ="huge.cf"
+				;;
+
+			2)
+				zip_url="https://url.ccaeo.workers.dev/?url=$download"
+				NJ="url.ccaeo.workers.dev"
+				;;
+
+			3)
+				zip_url="https://ghproxy.com/$download"
+				NJ="ghproxy.com"
+				;;
+
+			4)
+				zip_url="https://gh.api.99988866.xyz/$download"
+				NJ="gh.api.99988866.xyz"
+				;;
+
+			5)
+				zip_url="https://github.lx164.workers.dev/$download"
+				NJ="github.lx164.workers.dev"
+				;;
+
+			6)
+				zip_url="https://shrill-pond-3e81.hunsh.workers.dev/$download"
+				NJ="shrill-pond-3e81.hunsh.workers.dev"
+				;;
+			esac
+			echoRgb "發現新版本 從GitHub更新 版本:$tag\n -中轉供應商:${NJ}\n -Download_url:$zip_url\n -更新日誌:\n$(curl "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p' || down -s -L "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
+			curl -O "$zip_url" || down -s -L -o "$MODDIR/$tag.zip" "$zip_url"
 			echo_log "下載${download##*/}"
 			if [[ $result == 0 ]]; then
 				echoRgb "update $backup_version > $tag"

@@ -1,22 +1,7 @@
-#!/system/bin/sh
-MODDIR="${0%/*}"
-tools_path="$MODDIR/tools"
-bin_path="$MODDIR/tools/bin"
-[[ ! -d $tools_path ]] && echo "$tools_path二進制目錄遺失" && EXIT="true"
-[[ ! -d $bin_path ]] && echo "$bin_path關鍵目錄遺失" && EXIT="true"
-[[ ! -f $bin_path/bin.sh ]] && echo "$bin_path/bin.sh關鍵腳本遺失" && EXIT="true"
-[[ $EXIT == true ]] && exit 1
-txt="$MODDIR/appList.txt"
-txt="${txt/'/storage/emulated/'/'/data/media/'}"
-. "$bin_path/bin.sh"
-echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt"
-find "$MODDIR" -maxdepth 1 -type d | sort | while read; do
-	if [[ -f $REPLY/app_details ]]; then
-		unset PackageName
-		. "$REPLY/app_details"
-		if [[ $PackageName != "" ]]; then
-			echo "${REPLY##*/} $PackageName">>"$txt"
-		fi
-	fi
-done
-echoRgb "$txt重新生成"
+if [ -f "${0%/*}/tools/bin/tools" ]; then
+	MODDIR="${0%/*}"
+	operate="dumpname"
+	. "${0%/*}/tools/bin/tools"
+else
+	echo "${0%/*}/tools/bin/tools遺失"
+fi
