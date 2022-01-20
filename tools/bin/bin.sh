@@ -22,12 +22,12 @@ fi
 export PATH="$PATH"
 backup_version="V13.7"
 #設置二進制命令目錄位置
-[[ $bin_path == "" ]] && echo "未正確指定bin.sh位置" && exit 2
+[[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
 Status_log="$MODDIR/Log.txt"
 rm -rf "$Status_log"
 filepath="/data/backup_tools"
-if [[ $APP_ENV == 1 ]]; then
+if [[ $APP_ENV = 1 ]]; then
 	filepath="/data/user/0/com.xayah.databackup/backup_tools"
 fi
 busybox="$filepath/busybox"
@@ -36,12 +36,11 @@ busybox2="$bin_path/busybox"
 exclude="
 update
 busybox_path
-tools
 update
 bin.sh"
 if [[ ! -d $filepath ]]; then
 	mkdir -p "$filepath"
-	[[ $? == 0 ]] && echo "設置busybox環境中"
+	[[ $? = 0 ]] && echo "設置busybox環境中"
 fi
 [[ ! -f $bin_path/busybox_path ]] && touch "$bin_path/busybox_path"
 if [[ $filepath != $(cat "$bin_path/busybox_path") ]]; then
@@ -59,7 +58,7 @@ if [[ -d $bin_path ]]; then
 			rm -rf "$filepath"/*
 		fi
 	fi
-	find "$bin_path" -maxdepth 1 -type f | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read; do
+	find "$bin_path" -maxdepth 1 ! -path "$bin_path/tools" -type f | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read; do
 		File_name="${REPLY##*/}"
 		if [[ ! -f $filepath/$File_name ]]; then
 			cp -r "$REPLY" "$filepath"
@@ -91,7 +90,7 @@ export PATH="$filepath:$PATH"
 export TZ=Asia/Taipei
 TMPDIR="/data/local/tmp"
 [[ ! -d $TMPDIR ]] && mkdir "$TMPDIR"
-if [[ $(which busybox) == "" ]]; then
+if [[ $(which busybox) = "" ]]; then
 	echo "環境變量中沒有找到busybox 請在tools/bin內添加一個\narm64可用的busybox\n或是安裝搞機助手 scene或是Magisk busybox模塊...."
 	exit 1
 fi
@@ -115,19 +114,21 @@ Print() {
 }
 echoRgb() {
 	#轉換echo顏色提高可讀性
-	if [[ $2 == 0 ]]; then
+	if [[ $2 = 0 ]]; then
 		echo -e "\e[38;5;196m -$1\e[0m"
 	elif [[ $2 == 1 ]]; then
 		echo -e "\e[38;5;82m -$1\e[0m"
-	elif [[ $2 == 2 ]]; then
-		echo -e "\e[38;5;87m -$1\e[0m"
-	elif [[ $2 == 3 ]]; then
-		echo -e "\e[38;5;${en}m -$1\e[0m"
 	else
 		echo -e "\e[38;5;${bn}m -$1\e[0m"
 	fi
 	echo " -$(date '+%T') $1" >>"$Status_log"
 }
+bn=1
+l=200
+#while [[ $bn -le $l ]]; do
+#echoRgb "test $bn"
+#let bn++
+#done
 get_version() {
 	while :; do
 		version="$(getevent -qlc 1 | awk '{ print $3 }')"
@@ -150,16 +151,16 @@ get_version() {
 }
 isBoolean() {
 	nsx="$1"
-	if [[ $1 == 1 ]]; then
+	if [[ $1 = 1 ]]; then
 		nsx=true
-	elif [[ $1 == 0 ]]; then
+	elif [[ $1 = 0 ]]; then
 		nsx=false
 	else
 		echoRgb "$MODDIR/backup_settings.conf $1填寫錯誤" "0" && exit 2
 	fi
 }
 echo_log() {
-	if [[ $? == 0 ]]; then
+	if [[ $? = 0 ]]; then
 		echoRgb "$1成功" "1"
 		result=0
 	else
@@ -183,32 +184,46 @@ fi
 #-閃存顆粒:$UFS_MODEL $Particles
 Open_apps="$(appinfo -d "(" -ed ")" -o ands,pn -ta c)"
 Open_apps2="$(echo "$Open_apps" | cut -f2 -d '(' | sed 's/)//g')"
-bn=147
-echoRgb "\n --------------###############--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand || echo "未知")\n -設備代號:$(getprop ro.product.device || echo "未知")\n -型號:$(getprop ro.product.model || echo "未知")-$(getprop ro.serialno || echo "")\n -RAM:$(cat /proc/meminfo | head -n 1 | awk '{print $2/1000"MB"}' 2>/dev/null || echo "null")\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL $Particles\n -Android版本:$(getprop ro.build.version.release || echo "未知")\n -SDK:$(getprop ro.build.version.sdk || echo "未知")\n -終端:$Open_apps"
-bn=195
-if [[ $script != "" ]]; then
-	if [[ ! -f $TMPDIR/scriptTMP ]]; then
-		touch "$TMPDIR/scriptTMP"
-	else
-		echoRgb "檢測到進程殘留，請重新執行腳本 已銷毀進程" "0"
-		rm -rf "$TMPDIR/scriptTMP"
-		pgrep -f "tar" | while read; do
-			kill -KILL " $REPLY" >/dev/null
-		done
-		pgrep -f "$script" | while read; do
-			kill -KILL " $REPLY" >/dev/null
-		done
-	fi
-fi
-if [[ $(pm path ice.message) == "" ]]; then
+bn=159
+echoRgb "\n --------------###############--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(cat "/data/adb/magisk/util_functions.sh" 2>/dev/null | grep "MAGISK_VER_CODE" | cut -f2 -d '=')\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)-$(getprop ro.serialno 2>/dev/null)\n -RAM:$(cat /proc/meminfo 2>/dev/null | head -n 1 | awk '{print $2/1000"MB"}' 2>/dev/null)\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL $Particles\n -Android版本:$(getprop ro.build.version.release 2>/dev/null)\n -SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps"
+#bn=195
+if [[ $(pm path ice.message) = "" ]]; then
 	echoRgb "未安裝toast 開始安裝" "0"
 	cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user 0 -r "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
-	[[ $? == 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
+	[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
 fi
 #sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p'
 #sed -r -n 's/.*"browser_download_url": *"(.*-linux64\..*\.so\.bz2)".*/\1/p'
 cdn=2
+download_zip() {
+	case $cdn in
+	1)
+		zip_url="http://huge.cf/download/?huge-url=$download"
+		NJ="huge.cf"
+		;;
+	2)
+		zip_url="https://ghproxy.com/$download"
+		NJ="ghproxy.com"
+		;;
+	3)
+		zip_url="https://gh.api.99988866.xyz/$download"
+		NJ="gh.api.99988866.xyz"
+		;;
+	4)
+		zip_url="https://github.lx164.workers.dev/$download"
+		NJ="github.lx164.workers.dev"
+		;;
+	5)
+		zip_url="https://shrill-pond-3e81.hunsh.workers.dev/$download"
+		NJ="shrill-pond-3e81.hunsh.workers.dev"
+		;;
+	esac
+	echoRgb "中轉供應商:${NJ}\n -Download_url:$zip_url"
+	curl -O "$zip_url" || down -s -L -o "$MODDIR/${download##*/}" "$zip_url"
+	echo_log "下載${download##*/}"
+}
 if [[ -e $bin_path/update ]]; then
+	#settings get system system_locales
 	LANG="$(getprop "persist.sys.locale")"
 	zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
 	echoRgb "檢查更新中 請稍後......."
@@ -230,7 +245,9 @@ if [[ -e $bin_path/update ]]; then
 		echoRgb "獲取系統語系失敗 默認簡體中文" "0"
 	fi
 	dns="8.8.8.8"
+	#dns="223.5.5.5,223.6.6.6"
 	# Curl uses boringssl - first appeared in Marshmallow - don't try using ssl in older android versions
+	#flag="https://dns.alidns.com/dns-query"
 	[[ $(getprop ro.build.version.sdk) -lt 23 ]] && alias curl="curl -kL --dns-servers $dns$flag" || alias curl="curl -L --dns-servers $dns$flag"
 	echoRgb "DNS:$dns"
 	json="$(curl "$Language" 2>/dev/null)"
@@ -243,47 +260,23 @@ if [[ -e $bin_path/update ]]; then
 	if [[ $json != "" ]]; then
 		tag="$(echo "$json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
 		if [[ $backup_version != $tag ]]; then
+			echoRgb "發現新版本 從GitHub更新 版本:$tag\n -更新日誌:\n$(curl "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p' || down -s -L "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
 			download="$(echo "$json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
-			case $cdn in
-			1)
-				zip_url="http://huge.cf/download/?huge-url=$download"
-				NJ="huge.cf"
-				;;
-
-			2)
-				zip_url="https://url.ccaeo.workers.dev/?url=$download"
-				NJ="url.ccaeo.workers.dev"
-				;;
-
-			3)
-				zip_url="https://ghproxy.com/$download"
-				NJ="ghproxy.com"
-				;;
-
-			4)
-				zip_url="https://gh.api.99988866.xyz/$download"
-				NJ="gh.api.99988866.xyz"
-				;;
-
-			5)
-				zip_url="https://github.lx164.workers.dev/$download"
-				NJ="github.lx164.workers.dev"
-				;;
-
-			6)
-				zip_url="https://shrill-pond-3e81.hunsh.workers.dev/$download"
-				NJ="shrill-pond-3e81.hunsh.workers.dev"
-				;;
-			esac
-			echoRgb "發現新版本 從GitHub更新 版本:$tag\n -中轉供應商:${NJ}\n -Download_url:$zip_url\n -更新日誌:\n$(curl "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p' || down -s -L "https://api.github.com/repos/YAWAsau/backup_script/releases/latest" 2>/dev/null | sed -r -n 's/.*"body": *"(.*)".*/\1/p')"
-			curl -O "$zip_url" || down -s -L -o "$MODDIR/$tag.zip" "$zip_url"
-			echo_log "下載${download##*/}"
-			if [[ $result == 0 ]]; then
+			download_zip
+			if [[ $result = 0 ]]; then
 				echoRgb "update $backup_version > $tag"
 				zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
 				GitHub="true"
 			else
-				echoRgb "請手動將備份腳本壓縮包放置在\n -$MODDIR後再次執行腳本進行更新" "0"
+				echoRgb "嘗試更換cdn直到下載成功"
+				unset result
+				n=0
+				while [[ $result != 0 && n != 6 ]]; do
+					let cdn++ n++
+					download_zip
+					sleep 0.5
+				done
+				echoRgb "如果還是下載失敗請手動將備份腳本壓縮包放置在\n -$MODDIR後再次執行腳本進行本地更新" "0"
 			fi
 		else
 			echoRgb "本地版本:$backup_version 線上版本:$tag 版本一致無須更新"
@@ -298,14 +291,14 @@ if [[ $zippath != "" ]]; then
 	case $(echo "$zippath" | wc -l) in
 	1)
 		[[ $GitHub != true ]] && echoRgb "從$zippath更新"
-		if [[ $(unzip -l "$zippath" | awk '{print $4}' | grep -oE "^backup_settings.conf$") == "" ]]; then
+		if [[ $(unzip -l "$zippath" | awk '{print $4}' | grep -oE "^backup_settings.conf$") = "" ]]; then
 			echoRgb "${zippath##*/}並非指定的備份zip，請刪除後重新放置\n -何謂更新zip? 就是GitHub release頁面下載的zip" "0"
 		else
 			cp -r "$tools_path" "$TMPDIR" && rm -rf "$tools_path"
 			find "$MODDIR" -maxdepth 3 -name "*.sh" -type f -exec rm -rf {} \;
 			unzip -o "$zippath" -x "backup_settings.conf" -d "$MODDIR"
 			echo_log "解壓縮${zippath##*/}"
-			if [[ $result == 0 ]]; then
+			if [[ $result = 0 ]]; then
 				case $MODDIR in
 				*Backup_*)
 					if [[ -f $MODDIR/app_details ]]; then
@@ -313,12 +306,12 @@ if [[ $zippath != "" ]]; then
 						echoRgb "更新當前${MODDIR##*/}目錄下恢復相關腳本+外部tools目錄"
 						cp -r "$tools_path/script/Get_DirName" "${MODDIR%/*}/DumpName.sh"
 						cp -r "$tools_path/script/restore" "${MODDIR%/*}/Restorebackup.sh"
-						[[ -d ${MODDIR%/}/媒體 ]] && cp -r "$tools_path/script/restore3" "${MODDIR%/*}/媒體/恢復多媒體數據.sh"
+						[[ -d ${MODDIR%/}/Media ]] && cp -r "$tools_path/script/restore3" "${MODDIR%/*}/Media/恢復多媒體數據.sh"
 						. "$MODDIR/app_details"
 						if [[ $PackageName != "" ]]; then
 							cp -r "$tools_path/script/restore2" "$MODDIR/Restorebackup.sh"
 						else
-							cp -r "$tools_path/script/restore3" "${MODDIR%/*}/媒體/恢復多媒體數據.sh"
+							cp -r "$tools_path/script/restore3" "${MODDIR%/*}/Media/恢復多媒體數據.sh"
 						fi
 						if [[ -d ${MODDIR%/*/*}/tools && -f ${MODDIR%/*/*}/backup.sh ]]; then
 							echoRgb "更新${MODDIR%/*/*}/tools與備份相關腳本"
@@ -331,7 +324,7 @@ if [[ $zippath != "" ]]; then
 						echoRgb "更新當前${MODDIR##*/}目錄下恢復相關腳本+tools目錄"
 						cp -r "$tools_path/script/Get_DirName" "$MODDIR/DumpName.sh"
 						cp -r "$tools_path/script/restore" "$MODDIR/Restorebackup.sh"
-						[[ -d $MODDIR/媒體 ]] && cp -r "$tools_path/script/restore3" "$MODDIR/媒體/恢復多媒體數據.sh"
+						[[ -d $MODDIR/Media ]] && cp -r "$tools_path/script/restore3" "$MODDIR/Media/恢復多媒體數據.sh"
 						find "$MODDIR" -maxdepth 1 -type d | sort | while read; do
 							if [[ -f $REPLY/app_details ]]; then
 								unset PackageName
@@ -358,7 +351,7 @@ if [[ $zippath != "" ]]; then
 								cp -r "$tools_path" "$backup_path" && rm -rf "$backup_path/tools/bin/zip" "$backup_path/tools/script"
 								cp -r "$tools_path/script/restore" "$backup_path/Restorebackup.sh"
 								cp -r "$tools_path/script/Get_DirName" "$backup_path/DumpName.sh"
-								[[ -d $backup_path/媒體 ]] && cp -r "$tools_path/script/restore3" "$backup_path/媒體/恢復多媒體數據.sh"
+								[[ -d $backup_path/Media ]] && cp -r "$tools_path/script/restore3" "$backup_path/Media/恢復多媒體數據.sh"
 								find "$MODDIR" -maxdepth 2 -type d | sort | while read; do
 									if [[ -f $REPLY/app_details ]]; then
 										unset PackageName
@@ -386,7 +379,3 @@ if [[ $zippath != "" ]]; then
 		;;
 	esac
 fi
-#down -s -L "https://magisk-modules-repo.github.io/submission/modules.json" | jq -r '.modules[] | {id,prop_url,zip_url}'
-#down -s -L "https://magisk-modules-repo.github.io/submission/modules.json" | jq -r '.modules[].zip_url' | egrep -w "Ainur_Narsil|riru_lsposed|busybox-ndk|riru_storage_redirect|riru-core|HideNavBar|ccbins" | while read; do
-#	down -s -L -o "$MODDIR/${REPLY##*/}" "$REPLY"
-#done

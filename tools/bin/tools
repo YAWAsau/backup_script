@@ -19,7 +19,6 @@ fi
 [[ $EXIT = true ]] && exit 1
 . "$bin_path/bin.sh"
 #appinfo --help
-#appinfo -sort-i -d " " -o ands,pn,ft,lut -pn -3 
 case $operate in
 backup)
 	{
@@ -333,6 +332,8 @@ backup)
 					[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)"
 				fi
 				endtime 2 "$name1備份"
+				Occupation_status="$(df -h "$MODDIR" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
+				lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
 				echoRgb "完成$((i * 100 / r))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')"
 				echoRgb "____________________________________"
 			else
@@ -355,6 +356,8 @@ backup)
 							echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個"
 							starttime2="$(date -u "+%s")"
 							Backup_data "${REPLY##*/}" "$REPLY"
+							Occupation_status="$(df -h "$MODDIR" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
+							lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
 							endtime 2 "${REPLY##*/}備份"
 							echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" && echoRgb "____________________________________" && let A++
 						done
@@ -407,6 +410,16 @@ dumpname)
 	echoRgb "$txt重新生成"
 	;;
 Restore)
+	#禁用apk驗證
+	settings put global verifier_verify_adb_installs 0
+	#禁用安裝包驗證
+	settings put global package_verifier_enable 0
+	#關閉play安全效驗
+	if [[ $(settings get global package_verifier_user_consent) != "" && $(settings get global package_verifier_user_consent) != -1 ]]; then 
+		settings put global package_verifier_user_consent -1
+		settings put global upload_apk_enable 0
+		echoRgb "PLAY安全驗證為開啟狀態已被腳本關閉防止apk安裝失敗" "0"
+	fi
 	[[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
 	i=1
 	txt="$MODDIR/appList.txt"
@@ -506,7 +519,6 @@ Restore)
 	#記錄開始時間
 	starttime1="$(date -u "+%s")"
 	TIME="$starttime1"
-	[[ $(pm path "com.android.vending") != "" ]] && echoRgb "注意 為了避免還原失敗請關閉PLAY的安全檢查"
 	en=118
 	{
 		while [[ $i -le $r ]]; do
@@ -617,11 +629,20 @@ Restore)
 	} &
 	;;
 Restore2)
+	#禁用apk驗證
+	settings put global verifier_verify_adb_installs 0
+	#禁用安裝包驗證
+	settings put global package_verifier_enable 0
+	#關閉play安全效驗
+	if [[ $(settings get global package_verifier_user_consent) != "" && $(settings get global package_verifier_user_consent) != -1 ]]; then 
+		settings put global package_verifier_user_consent -1
+		settings put global upload_apk_enable 0
+		echoRgb "PLAY安全驗證為開啟狀態已被腳本關閉防止apk安裝失敗" "0"
+	fi
 	[[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
 	[[ $(which restorecon) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
 	#記錄開始時間
 	starttime1="$(date -u "+%s")"
-	[[ $(pm path "com.android.vending") != "" ]] && echoRgb "注意 為了避免還原失敗請關閉PLAY的安全檢查"
 	{
 		Backup_folder="$MODDIR"
 		if [[ ! -f $Backup_folder/app_details ]]; then
@@ -765,7 +786,7 @@ Restore3)
 	starttime1="$(date -u "+%s")"
 	echo_log() {
 		if [[ $? = 0 ]]; then
-			echoRgb "$1成功" && result=0
+			echoRgb "$1成功" "1" && result=0
 		else
 			echoRgb "$1恢複失敗，過世了" "0" && result=1
 		fi
@@ -818,47 +839,61 @@ com.android.chrome"
 	[[ ! -e $nametxt ]] && echo '#不需要備份的應用請在開頭注釋# 比如#酷安 xxxxxxxx\n#不需要備份數據比如酷安! xxxxxxxx應用名後方加一個驚嘆號即可 注意是應用名不是包名' >"$nametxt"
 	echo >>"$nametxt"
 	echoRgb "請勿關閉腳本，等待提示結束"
-	i=1
 	bn=118
 	rm -rf "$MODDIR/tmp"
 	starttime1="$(date -u "+%s")"
 	echoRgb "提示!因為系統自帶app(位於data分區或是可卸載預裝應用)備份恢復可能存在問題\n -所以不會輸出..但是檢測為Xposed類型包名將輸出\n -如果提示不是Xposed但他就是Xposed可能為此應用元數據不符合規範導致" "0"
-	appinfo -sort-i -d " " -o ands,pn -pn $system $launcher_app -3 2>/dev/null | sed 's/\///g ; s/\://g ; s/(//g ; s/)//g ; s/\[//g ; s/\]//g ; s/\-//g ; s/!//g' | egrep -v 'ice.message|com.topjohnwu.magisk' | while read; do
+	xposed_name="$(appinfo -o pn -xm)"
+	#appinfo -o pn -pn $system $launcher_app -3 | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u>>k
+	Apk_info="$(appinfo -sort-i -d " " -o ands,pn -pn $system $launcher_app -3 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+	Apk_Quantity="$(echo "$Apk_info" | wc -l)"
+	LR="1"
+	echo "$Apk_info" | sed 's/\///g ; s/\://g ; s/(//g ; s/)//g ; s/\[//g ; s/\]//g ; s/\-//g ; s/!//g' | while read; do
 		[[ $bn -ge 229 ]] && bn=118
 		app_1=($REPLY $REPLY)
-		if [[ $(cat "$nametxt" | grep -oE "${app_1[1]}$") = "" ]]; then
+		[[ $i = "" ]] && i="0"
+		[[ $rc = "" ]] && rc="0"
+		[[ $rd = "" ]] && rd="0"
+		[[ $Q = "" ]] && Q="0"
+		if [[ $(cat "$nametxt" | grep -oE "${app_1[1]}$") != ${app_1[1]} ]]; then
 			case ${app_1[1]} in
 			*oneplus* | *miui* | *xiaomi* | *oppo* | *flyme* | *meizu* | com.android.soundrecorder | com.mfashiongallery.emag | com.mi.health | *coloros*)
-				echoRgb "$REPLY 可能是廠商自帶應用 比對中....." "0"
-				if [[ $(appinfo -sort-i -d " " -o ands,pn -xm | grep -w "$REPLY") = $REPLY ]]; then
-					echoRgb "為Xposed模塊 進行添加"
-					echo "$REPLY" >>"$nametxt" && xz=1 && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
-					echoRgb "$i.$REPLY"
+				if [[ $(echo "$xposed_name" | grep -w "${app_1[1]}") = ${app_1[1]} ]]; then
+					echoRgb "${app_1[2]}為Xposed模塊 進行添加" "0"
+					echo "$REPLY" >>"$nametxt" && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
+					let i++ rd++
 				else
-					echoRgb "非Xposed模塊 忽略輸出" "0"
+					echoRgb "${app_1[2]}非Xposed模塊 忽略輸出" "0"
+					let rc++
 				fi
 				;;
 			*)
-				echo "$REPLY" >>"$nametxt" && xz=1 && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
-				echoRgb "$i.$REPLY"
+				echo "$REPLY" >>"$nametxt" && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
+				echoRgb "$REPLY"
+				let i++
 				;;
 			esac
 		else
-			unset xz
+			let Q++
 		fi
-		[[ $xz != "" ]] && let i++ bn++
+		if [[ $LR = $Apk_Quantity ]]; then
+			[[ -e $MODDIR/tmp ]] && echoRgb "\n -apk數量=\"$Apk_Quantity\"\n -已過濾=\"$rc\"\n -xposed=\"$rd\"\n -存在列表中=\"$Q\"\n -輸出=\"$i\""
+		fi
+		let bn++ LR++
 	done
 	if [[ -f $nametxt ]]; then
-		echoRgb "列表:$nametxt"
 		cat "$nametxt" | grep -v "#" | while read; do
 			name=($REPLY $REPLY)
+			{
 			if [[ $REPLY != "" && $(pm path "${name[1]}" | cut -f2 -d ':') = "" ]]; then
 				echoRgb "${name[2]}不存在系統，從列表中刪除"
 				echo "$(cat "$nametxt" | sed -e "s/$REPLY//g ; /^$/d")" >"$nametxt"
 			fi
+			} &
 		done
 		echo "$(cat "$nametxt" | sed -e '/^$/d')" >"$nametxt"
 	fi
+	wait
 	endtime 1
 	[[ ! -e $MODDIR/tmp ]] && echoRgb "無新增應用" || echoRgb "輸出包名結束 請查看$nametxt"
 	rm -rf "$MODDIR/tmp"
