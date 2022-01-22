@@ -115,20 +115,30 @@ Print() {
 echoRgb() {
 	#轉換echo顏色提高可讀性
 	if [[ $2 = 0 ]]; then
-		echo -e "\e[38;5;196m -$1\e[0m"
-	elif [[ $2 == 1 ]]; then
-		echo -e "\e[38;5;82m -$1\e[0m"
+		echo -e "\e[38;5;197m -$1\e[0m"
+	elif [[ $2 = 1 ]]; then
+		echo -e "\e[38;5;121m -$1\e[0m"
+	elif [[ $2 = 2 ]]; then
+		echo -e "\e[38;5;223m -$1\e[0m"
+	elif [[ $2 = 3 ]]; then
+		echo -e "\e[38;5;220m -$1\e[0m"
 	else
 		echo -e "\e[38;5;${bn}m -$1\e[0m"
 	fi
 	echo " -$(date '+%T') $1" >>"$Status_log"
 }
 bn=1
-l=200
-#while [[ $bn -le $l ]]; do
-#echoRgb "test $bn"
-#let bn++
-#done
+l=300 
+debug() {
+	while [[ $bn -le $l ]]; do
+		echoRgb "色號$bn\n  -當前腳本執行路徑:/data/user/0/com.xayah.databackup/scripts
+		 -busybox路徑:/data/user/0/com.xayah.databackup/backup_tools/busybox
+		 -busybox版本:v1.34.1-osm0sis
+		 -appinfo版本:2021-12-08（84） "
+		let bn++
+	done
+}
+# debug
 get_version() {
 	while :; do
 		version="$(getevent -qlc 1 | awk '{ print $3 }')"
@@ -156,7 +166,7 @@ isBoolean() {
 	elif [[ $1 = 0 ]]; then
 		nsx=false
 	else
-		echoRgb "$MODDIR/backup_settings.conf $1填寫錯誤" "0" && exit 2
+		echoRgb "$MODDIR/backup_settings.conf $2=$1填寫錯誤，正確值1or0" "0" && exit 2
 	fi
 }
 echo_log() {
@@ -184,9 +194,9 @@ fi
 #-閃存顆粒:$UFS_MODEL $Particles
 Open_apps="$(appinfo -d "(" -ed ")" -o ands,pn -ta c)"
 Open_apps2="$(echo "$Open_apps" | cut -f2 -d '(' | sed 's/)//g')"
-bn=159
+bn=214
 echoRgb "\n --------------###############--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(cat "/data/adb/magisk/util_functions.sh" 2>/dev/null | grep "MAGISK_VER_CODE" | cut -f2 -d '=')\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)-$(getprop ro.serialno 2>/dev/null)\n -RAM:$(cat /proc/meminfo 2>/dev/null | head -n 1 | awk '{print $2/1000"MB"}' 2>/dev/null)\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL $Particles\n -Android版本:$(getprop ro.build.version.release 2>/dev/null)\n -SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps"
-#bn=195
+bn=117
 if [[ $(pm path ice.message) = "" ]]; then
 	echoRgb "未安裝toast 開始安裝" "0"
 	cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user 0 -r "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
