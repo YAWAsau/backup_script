@@ -52,13 +52,13 @@ backup)
 		isBoolean "$Backup_user_data" "Backup_user_data" && Backup_user_data="$nsx"
 		isBoolean "$backup_media" "backup_media" && backup_media="$nsx"
 	else
-		echoRgb "選擇是否只備份split apk(分割apk檔)\n -如果你不知道這意味什麼請選擇音量下進行混合備份\n 音量上是，音量下不是" "1"
+		echoRgb "選擇是否只備份split apk(分割apk檔)\n -如果你不知道這意味什麼請選擇音量下進行混合備份\n -音量上僅備份split apk，音量下混合備份" "2"
 		get_version "是" "不是，混合備份" && Splist="$branch"
-		echoRgb "是否備份外部數據 即比如原神的數據包\n -音量上備份，音量下不備份" "1"
+		echoRgb "是否備份外部數據 即比如原神的數據包\n -音量上備份，音量下不備份" "2"
 		get_version "備份" "不備份" && Backup_obb_data="$branch"
-		echoRgb "是否備份使用者數據\n -音量上備份，音量下不備份" "1"
+		echoRgb "是否備份使用者數據\n -音量上備份，音量下不備份" "2"
 		get_version "備份" "不備份" && Backup_user_data="$branch"
-		echoRgb "全部應用備份結束後是否備份自定義目錄\n -音量上備份，音量下不備份" "1"
+		echoRgb "全部應用備份結束後是否備份自定義目錄\n -音量上備份，音量下不備份" "2"
 		get_version "備份" "不備份" && backup_media="$branch"
 	fi
 	i=1
@@ -105,17 +105,17 @@ backup)
 			if [[ $(echo "$MODDIR" | grep -oE "^${PT}") != "" || $USBdefault = true ]]; then
 				hx="USB"
 			else
-				echoRgb "檢測到隨身碟 是否在隨身碟備份\n -音量上是，音量下不是"
+				echoRgb "檢測到隨身碟 是否在隨身碟備份\n -音量上是，音量下不是" "2"
 				get_version "選擇了隨身碟備份" "選擇了本地備份"
 				[[ $branch = true ]] && hx="USB"
 			fi
 			if [[ $hx = USB ]]; then
 				Backup="$PT/Backup_$Compression_method"
 				data="/dev/block/vold/$PU"
-				mountinfo="$(df -T "${Backup%/*}" | awk 'END{print $1}')"
+				mountinfo="$(df -T "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')"
 				case $mountinfo in
 				vfat | fuseblk | exfat | NTFS | ext4 | f2fs)
-					outshow="於隨身碟備份" "1"
+					outshow="於隨身碟備份"
 					;;
 				*)
 					echoRgb "隨身碟檔案系統$mountinfo不支持超過單檔4GB\n -請格式化為exfat" "0"
@@ -128,10 +128,13 @@ backup)
 		echoRgb "沒有檢測到隨身碟於本地備份" "0"
 	fi
 	rm -rf "$Backup/STOP"
-	#全部顯示
-	#echoRgb "$hx備份資料夾所使用分區統計如下↓\n -$(df -h "$MODDIR" | sed -n 's|% /.*|%|p' | awk '{print $(NF-3),$(NF-2),$(NF-1),$(NF)}' | awk 'END{print "總大小:"$1"已使用:"$2"剩餘:"$3"使用率:"$4}')"
-	#簡單顯示
-	echoRgb "$hx備份資料夾所使用分區統計如下↓\n -$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-3),$(NF-2),$(NF-1),$(NF)}' | sed 's/G//g' | awk 'END{print "總共:"$1"G已用:"$2"G剩餘:"$3"G使用率:"$4}')檔案系統:$(df -T "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')\n -備份目錄輸出位置↓\n -$Backup"
+	#分區詳細
+	if [[ $(echo "$Backup" | egrep -o "^/storage/emulated") != "" ]]; then
+		Backup_path="/data"
+	else
+		Backup_path="${Backup%/*}"
+	fi
+	echoRgb "$hx備份資料夾所使用分區統計如下↓\n -$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-3),$(NF-2),$(NF-1),$(NF)}' | sed 's/G//g' | awk 'END{print "總共:"$1"G已用:"$2"G剩餘:"$3"G使用率:"$4}')檔案系統:$(df -T "$Backup_path" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')\n -備份目錄輸出位置↓\n -$Backup"
 	echoRgb "$outshow" "2"
 	[[ $Backup_user_data = false ]] && echoRgb "當前backup_settings.conf的\n -Backup_user_data為0將不備份user數據" "0"
 	[[ $Backup_obb_data = false ]] && echoRgb "當前backup_settings.conf的\n -Backup_obb_data為0將不備份外部數據" "0"
@@ -832,8 +835,6 @@ Getlist)
 	[[ ! -f $MODDIR/backup_settings.conf ]] && echo "backup_settings.conf配置遺失" && EXIT="true"
 	[[ $EXIT = true ]] && exit 1
 	. "$MODDIR/backup_settings.conf"
-	#echo "$MODDIR/backup_settings.conf"
-	#cat "$MODDIR/backup_settings.conf"
 	system="
 com.google.android.apps.messaging
 com.google.android.inputmethod.latin

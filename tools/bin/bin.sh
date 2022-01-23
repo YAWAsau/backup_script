@@ -20,7 +20,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V13.8"
+backup_version="V13.9"
 #設置二進制命令目錄位置
 [[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
@@ -58,7 +58,7 @@ if [[ -d $bin_path ]]; then
 			rm -rf "$filepath"/*
 		fi
 	fi
-	find "$bin_path" -maxdepth 1 ! -path "$bin_path/tools" -type f | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read; do
+	find "$bin_path" -maxdepth 1 ! -path "$bin_path/tools.sh" -type f | egrep -v "$(echo $exclude | sed 's/ /\|/g')" | while read; do
 		File_name="${REPLY##*/}"
 		if [[ ! -f $filepath/$File_name ]]; then
 			cp -r "$REPLY" "$filepath"
