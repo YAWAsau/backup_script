@@ -119,9 +119,9 @@ echoRgb() {
 	elif [[ $2 = 1 ]]; then
 		echo -e "\e[38;5;121m -$1\e[0m"
 	elif [[ $2 = 2 ]]; then
-		echo -e "\e[38;5;223m -$1\e[0m"
+		echo -e "\e[38;5;218m -$1\e[0m"
 	elif [[ $2 = 3 ]]; then
-		echo -e "\e[38;5;220m -$1\e[0m"
+		echo -e "\e[38;5;183m -$1\e[0m"
 	else
 		echo -e "\e[38;5;${bn}m -$1\e[0m"
 	fi
@@ -194,7 +194,7 @@ fi
 #-閃存顆粒:$UFS_MODEL $Particles
 Open_apps="$(appinfo -d "(" -ed ")" -o ands,pn -ta c)"
 Open_apps2="$(echo "$Open_apps" | cut -f2 -d '(' | sed 's/)//g')"
-bn=214
+bn=218
 echoRgb "\n --------------###############--------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(cat "/data/adb/magisk/util_functions.sh" 2>/dev/null | grep "MAGISK_VER_CODE" | cut -f2 -d '=')\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)-$(getprop ro.serialno 2>/dev/null)\n -RAM:$(cat /proc/meminfo 2>/dev/null | head -n 1 | awk '{print $2/1000"MB"}' 2>/dev/null)\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL $Particles\n -Android版本:$(getprop ro.build.version.release 2>/dev/null)\n -SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps"
 bn=117
 if [[ $(pm path ice.message) = "" ]]; then
