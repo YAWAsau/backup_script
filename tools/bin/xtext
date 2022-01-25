@@ -1,0 +1,6 @@
+#!/system/bin/sh
+base=/system
+unset LD_LIBRARY_PATH LD_PRELOAD
+
+export CLASSPATH="${0%/*}/xtext.jar"
+exec su 2000 -c app_process /system/bin --nice-name=xtext xmx.Clipboard.XM "$@"

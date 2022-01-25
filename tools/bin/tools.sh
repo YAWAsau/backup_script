@@ -16,26 +16,111 @@ if [[ ! -d $bin_path ]]; then
 	[[ ! -d $bin_path ]] && echo "$bin_path關鍵目錄遺失" && EXIT="true"
 fi
 [[ ! -f $bin_path/bin.sh ]] && echo "$bin_path/bin.sh關鍵腳本遺失" && EXIT="true"
+[[ $conf_path != "" ]] && conf_path="$conf_path" || conf_path="$MODDIR/backup_settings.conf"
+[[ ! -f $conf_path ]] && echo "backup_settings.conf配置遺失" && EXIT="true"
 [[ $EXIT = true ]] && exit 1
 . "$bin_path/bin.sh"
+. "$conf_path"
+update_script() {
+	cdn=2
+	download_zip() {
+		download="$(echo "$json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
+		case $cdn in
+		1)
+			zip_url="http://huge.cf/download/?huge-url=$download"
+			NJ="huge.cf"
+			;;
+		2)
+			zip_url="https://ghproxy.com/$download"
+			NJ="ghproxy.com"
+			;;
+		3)
+			zip_url="https://gh.api.99988866.xyz/$download"
+			NJ="gh.api.99988866.xyz"
+			;;
+		4)
+			zip_url="https://github.lx164.workers.dev/$download"
+			NJ="github.lx164.workers.dev"
+			;;
+		5)
+			zip_url="https://shrill-pond-3e81.hunsh.workers.dev/$download"
+			NJ="shrill-pond-3e81.hunsh.workers.dev"
+			;;
+		esac
+		if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(echo "$download" | tr -d "a-zA-Z")") -eq 0 ]]; then
+			echoRgb "發現新版本:$tag"
+			if [[ $update = true ]]; then
+				isBoolean "$update_behavior" "update_behavior" && update_behavior="$nsx"
+				if [[ $update_behavior = true ]]; then
+					echoRgb "更新腳本步驟如下\n -1.將跳轉時下載的zip壓縮包完整不解壓縮放在$MODDIR\n -2.在$MODDIR目錄隨便執行一個腳本\n -3.假設沒有提示錯誤重新進入腳本如版本號發生變化則更新成功" "2"
+					am start -a android.intent.action.VIEW -d "$zip_url"
+					echo_log "跳轉瀏覽器"
+				else
+					echoRgb "更新腳本步驟如下\n -1.將剪貼簿內的連結用瀏覽器下載\n -2.將zip壓縮包完整不解壓縮放在$MODDIR\n -3.在$MODDIR目錄隨便執行一個腳本\n -4.假設沒有提示錯誤重新進入腳本如版本號發生變化則更新成功" "2"
+					starttime1="$(date -u "+%s")"
+					xtext "$zip_url" 
+					echo_log "複製連結到剪裁版"
+					endtime 1
+				fi
+				exit 0
+			else
+				echoRgb "backup_settings.conf內update選項為0忽略更新僅提示更新" "0"
+			fi
+		fi
+	}
+	#settings get system system_locales
+	LANG="$(getprop "persist.sys.locale")"
+	zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
+	echoRgb "檢查更新中 請稍後......."
+	Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest"
+	if [[ $LANG != "" ]]; then
+		case $LANG in
+		*-TW | *-tw)
+			echoRgb "系統語系:繁體中文"
+			Language="https://api.github.com/repos/YAWAsau/backup_script/releases/latest"
+			;;
+		*-CN | *-cn)
+			echoRgb "系統語系:簡體中文"
+			;;
+		*)
+			echoRgb "$LANG不支持 默認簡體中文" "0"
+			;;
+		esac
+	else
+		echoRgb "獲取系統語系失敗 默認簡體中文" "0"
+	fi
+	dns="8.8.8.8"
+	[[ $(getprop ro.build.version.sdk) -lt 23 ]] && alias curl="curl -kL --dns-servers $dns$flag" || alias curl="curl -L --dns-servers $dns$flag"
+	json="$(curl "$Language" 2>/dev/null)"
+	if [[ $json != "" ]]; then
+		echoRgb "使用curl"
+	else
+		json="$(down -s -L "$Language" 2>/dev/null)"
+		[[ $json != "" ]] && echoRgb "使用down"
+	fi
+	if [[ $json != "" ]]; then
+		tag="$(echo "$json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
+		if [[ $backup_version != $tag ]]; then
+			if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(echo "$tag" | tr -d "a-zA-Z")") -eq 0 ]]; then
+				download_zip
+			fi
+		fi
+	else
+		echoRgb "更新獲取失敗" "0"
+	fi
+}
 #appinfo --help
 case $operate in
 backup)
-	{
-		script="${0##*/}"
-		if [[ $script != "" ]]; then
-			pgrep -f "tar" | while read; do
-				kill -KILL " $REPLY" >/dev/null
+	script="${0##*/}"
+	if [[ $script != "" ]]; then
+		for x in zstd tar pv lz4; do
+			pgrep -f "$x" | while read; do
+				kill -KILL "$REPLY" >/dev/null
 			done
-			#pgrep -f "$script" | while read; do
-			#kill -KILL " $REPLY" >/dev/null
-			#done
-		fi
-	} &
-	[[ ! -d $script_path ]] && echo "$script_path腳本目錄遺失" && EXIT="true"
-	[[ ! -f $MODDIR/backup_settings.conf ]] && echo "backup_settings.conf配置遺失" && EXIT="true"
-	[[ $EXIT = true ]] && exit 1
-	. "$MODDIR/backup_settings.conf"
+		done
+	fi
+	[[ ! -d $script_path ]] && echo "$script_path腳本目錄遺失" && exit 2
 	case $MODDIR in
 	/storage/emulated/0/Android/* | /data/media/0/Android/* | /sdcard/Android/*) echoRgb "請勿在$MODDIR內備份" "0" && exit 2 ;;
 	esac
@@ -46,12 +131,18 @@ backup)
 	#效驗選填是否正確
 	isBoolean "$Lo" "LO" && Lo="$nsx"
 	if [[ $Lo = false ]]; then
+		isBoolean "$update" "update" && update="$nsx"
 		isBoolean "$Splist" "Splist" && Splist="$nsx"
+		isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
 		isBoolean "$USBdefault" "USBdefault" && USBdefault="$nsx"
 		isBoolean "$Backup_obb_data" "Backup_obb_data" && Backup_obb_data="$nsx"
 		isBoolean "$Backup_user_data" "Backup_user_data" && Backup_user_data="$nsx"
 		isBoolean "$backup_media" "backup_media" && backup_media="$nsx"
 	else
+		echoRgb "檢測到腳本更新跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
+		get_version "跳轉" "不跳轉" && update="$branch"
+		echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
+		get_version "提示" "靜默備份" && toast_info="$branch"
 		echoRgb "選擇是否只備份split apk(分割apk檔)\n -如果你不知道這意味什麼請選擇音量下進行混合備份\n -音量上僅備份split apk，音量下混合備份" "2"
 		get_version "是" "不是，混合備份" && Splist="$branch"
 		echoRgb "是否備份外部數據 即比如原神的數據包\n -音量上備份，音量下不備份" "2"
@@ -61,6 +152,7 @@ backup)
 		echoRgb "全部應用備份結束後是否備份自定義目錄\n -音量上備份，音量下不備份" "2"
 		get_version "備份" "不備份" && backup_media="$branch"
 	fi
+	update_script
 	i=1
 	#數據目錄
 	path="/data/media/0/Android"
@@ -72,13 +164,13 @@ backup)
 		echoRgb "請執行\"Getlist.sh\"獲取應用列表再來備份" "0" && exit 1
 	else
 		cat "$txt" | grep -v "#" | while read; do
-			name=($REPLY $REPLY)
+			name=($REPLY $REPLY $REPLY)
 			if [[ $REPLY != "" && ${name[1]} != "" && $(pm path "${name[1]}" | cut -f2 -d ':') = "" ]]; then
-				echoRgb "${name[2]}不存在系統，從列表中刪除" "0"
-				echo "$(cat "$txt" | sed -e "s/$REPLY//g ; /^$/d")" >"$txt"
+				echoRgb "${name[3]}不存在系統，從列表中刪除" "0"
+				echo "$(sed -e "s/$REPLY//g ; /^$/d" "$txt")" >"$txt"
 			fi
 		done
-		echo "$(cat "$txt" | sed -e '/^$/d')" >"$txt"
+		echo "$(sed -e '/^$/d' "$txt")" >"$txt"
 		if [[ -f $MODDIR/systemList.txt ]]; then
 			cat "$txt" >"$TMPDIR/applist" && cat "$MODDIR/systemList.txt" >>"$TMPDIR/applist"
 			[[ -f $TMPDIR/applist ]] && txt="$TMPDIR/applist"
@@ -152,6 +244,7 @@ backup)
 	[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
 	[[ ! -f $Backup/Restorebackup.sh ]] && cp -r "$script_path/restore" "$Backup/Restorebackup.sh"
 	[[ ! -f $Backup/DumpName.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/DumpName.sh"
+	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 	filesize="$(du -ks "$Backup" | awk '{print $1}')"
 	Quantity=0
 	#分區佔用信息
@@ -377,12 +470,13 @@ backup)
 						[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
 						app_details="$Backup_folder/app_details"
 						[[ -f $app_details ]] && . "$app_details"
-						[[ ! -f $Backup/mediaList.txt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$Backup/mediaList.txt"
+						mediatxt="$Backup/mediaList.txt"
+						[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$mediatxt"
 						echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | while read; do
 							echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
 							starttime2="$(date -u "+%s")"
 							Backup_data "${REPLY##*/}" "$REPLY"
-							[[ $result = 0 ]] && echo "${REPLY##*/}.tar" >> "$Backup/mediaList.txt"
+							[[ $result = 0 ]] && [[ $(cat "$mediatxt" | grep -v "#" | sed -e '/^$/d' | grep -w "^${REPLY##*/}.tar$" | head -1) = "" ]] && echo "${REPLY##*/}.tar" >> "$mediatxt"
 							endtime 2 "${REPLY##*/}備份" "1"
 							echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "2" && echoRgb "____________________________________" && let A++
 						done
@@ -421,16 +515,25 @@ backup)
 	wait && exit
 	;;
 dumpname)
+	#效驗選填是否正確
+	isBoolean "$Lo" "LO" && Lo="$nsx"
+	if [[ $Lo = false ]]; then
+		isBoolean "$update" "update" && update="$nsx"
+	else
+		echoRgb "檢測到腳本更新跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
+		get_version "跳轉" "不跳轉" && update="$branch"
+	fi
+	update_script
 	txt="$MODDIR/appList.txt"
 	txt2="$MODDIR/mediaList.txt"
+	rm -rf *.txt
 	txt="${txt/'/storage/emulated/'/'/data/media/'}"
 	echoRgb "列出全部資料夾內應用名與自定義目錄壓縮包名稱" "3"
-	echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
-	echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$txt2"
 	find "$MODDIR" -maxdepth 1 -type d | sort | while read; do
 		if [[ -f $REPLY/app_details ]]; then
 			if [[ ${REPLY##*/} = Media ]]; then
 				echoRgb "存在媒體資料夾" "2"
+				[[ ! -f $txt2 ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$txt2"
 				find "$REPLY" -maxdepth 1 -name "*.tar*" -type f | while read; do
 					echo "${REPLY##*/}" >> "$txt2"
 				done
@@ -438,12 +541,27 @@ dumpname)
 			fi
 			unset PackageName
 			. "$REPLY/app_details"
-			[[ $PackageName != "" ]] && echo "${REPLY##*/} $PackageName $type" >>"$txt"
+			if [[ $PackageName != "" ]]; then
+				[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
+				echo "${REPLY##*/} $PackageName $type" >>"$txt"
+			fi
 		fi
 	done
 	echoRgb "$txt重新生成" "1"
 	;;
 Restore)
+	#效驗選填是否正確
+	isBoolean "$Lo" "LO" && Lo="$nsx"
+	if [[ $Lo = false ]]; then
+		isBoolean "$update" "update" && update="$nsx"
+		isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
+	else
+		echoRgb "檢測到腳本更新跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
+		get_version "跳轉" "不跳轉" && update="$branch"
+		echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
+		get_version "提示" "靜默備份" && toast_info="$branch"
+	fi
+	update_script
 	#禁用apk驗證
 	settings put global verifier_verify_adb_installs 0
 	#禁用安裝包驗證
@@ -523,7 +641,7 @@ Restore)
 					else
 						G="$(dumpsys package "$name2" | awk '/userId=/{print $1}' | cut -f2 -d '=' | head -1)"
 					fi
-					G="$(echo "$G" | grep -Eo '[0-9]+')"
+					G="$(echo "$G" | egrep -o '[0-9]+')"
 					if [[ $G != "" ]]; then
 						echoRgb "路徑:$X"
 						Path_details="$(stat -c "%A/%a %U/%G" "$X")"
@@ -668,6 +786,18 @@ Restore)
 	wait && exit
 	;;
 Restore2)
+	#效驗選填是否正確
+	isBoolean "$Lo" "LO" && Lo="$nsx"
+	if [[ $Lo = false ]]; then
+		isBoolean "$update" "update" && update="$nsx"
+		isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
+	else
+		echoRgb "檢測到腳本更新跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
+		get_version "跳轉" "不跳轉" && update="$branch"
+		echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
+		get_version "提示" "靜默備份" && toast_info="$branch"
+	fi
+	update_script
 	#禁用apk驗證
 	settings put global verifier_verify_adb_installs 0
 	#禁用安裝包驗證
@@ -727,7 +857,7 @@ Restore2)
 						;;
 					*)
 						echoRgb "恢復split apk" "2"
-						b="$(pm install-create -i com.android.vending --user 0 | grep -Eo '[0-9]+')"
+						b="$(pm install-create -i com.android.vending --user 0 | egrep -o '[0-9]+')"
 						if [[ -f $TMPDIR/nmsl.apk ]]; then
 							pm install --user 0 -r "$TMPDIR/nmsl.apk" >/dev/null 2>&1
 							echo_log "nmsl.apk安裝"
@@ -793,7 +923,7 @@ Restore2)
 							else
 								G="$(dumpsys package "$name" | awk '/userId=/{print $1}' | cut -f2 -d '=' | head -1)"
 							fi
-							G="$(echo "$G" | grep -Eo '[0-9]+')"
+							G="$(echo "$G" | egrep -o '[0-9]+')"
 							if [[ $G != "" ]]; then
 								echoRgb "路徑:$X"
 								Path_details="$(stat -c "%A/%a %U/%G" "$X")"
@@ -833,6 +963,18 @@ Restore3)
 	[[ ! -d $mediaDir ]] && echoRgb "媒體資料夾不存在" "0" && exit 2
 	txt="$MODDIR/mediaList.txt"
 	[[ ! -f $txt ]] && echoRgb "請執行\"DumpName.sh\"獲取媒體列表再來恢復" "0" && exit 2
+	#效驗選填是否正確
+	isBoolean "$Lo" "LO" && Lo="$nsx"
+	if [[ $Lo = false ]]; then
+		isBoolean "$update" "update" && update="$nsx"
+		isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
+	else
+		echoRgb "檢測到腳本更新跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
+		get_version "跳轉" "不跳轉" && update="$branch"
+		echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
+		get_version "提示" "靜默備份" && toast_info="$branch"
+	fi
+	update_script
 	#記錄開始時間
 	starttime1="$(date -u "+%s")"
 	echo_log() {
@@ -876,15 +1018,16 @@ Restore3)
 	rm -rf "$TMPDIR/scriptTMP"
 	;;
 Getlist)
-	[[ ! -f $MODDIR/backup_settings.conf ]] && echo "backup_settings.conf配置遺失" && EXIT="true"
-	[[ $EXIT = true ]] && exit 1
-	. "$MODDIR/backup_settings.conf"
 	system="
+com.xiaomi.smarthome
+com.xiaomi.xmsf
+com.xiaomi.hm.health
+cn.wps.moffice_eng.xiaomi.lite
+com.xiaomi.xiaoailite
 com.google.android.apps.messaging
 com.google.android.inputmethod.latin
 com.android.chrome"
 	# 获取默认桌面
-	[[ ! -f $MODDIR/backup_settings.conf ]] && echo "backup_settings.conf配置遺失" && EXIT=
 	launcher_app="$(pm resolve-activity --brief -c android.intent.category.HOME -a android.intent.action.MAIN | grep '/' | cut -f1 -d '/')"
 	for launcher_app in $launcher_app; do
 		[[ $launcher_app != "android" ]] && [[ $(pgrep -f "$launcher_app" | grep -v 'grep' | wc -l) -ge 1 ]] && launcher_app="$launcher_app"
@@ -894,13 +1037,18 @@ com.android.chrome"
 	nametxt="$txtpath/appList.txt"
 	[[ ! -e $nametxt ]] && echo '#不需要備份的應用請在開頭注釋# 比如#酷安 xxxxxxxx\n#不需要備份數據比如酷安! xxxxxxxx應用名後方加一個驚嘆號即可 注意是應用名不是包名' >"$nametxt"
 	echo >>"$nametxt"
+	#效驗選填是否正確
 	isBoolean "$Lo" "LO" && Lo="$nsx"
 	if [[ $Lo = false ]]; then
+		isBoolean "$update" "update" && update="$nsx"
 		isBoolean "$system_name" "system_name" && system_name="$nsx"
 	else
+		echoRgb "檢測到腳本更新跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
+		get_version "跳轉" "不跳轉" && update="$branch"
 		echoRgb "列出系統應用？\n -音量上列出，音量下不列出" "2"
 		get_version "列出" "不列出" && system_name="$branch"
 	fi
+	update_script
 	echoRgb "請勿關閉腳本，等待提示結束"
 	bn=118
 	rm -rf "$MODDIR/tmp"
@@ -912,7 +1060,7 @@ com.android.chrome"
 	LR="1"
 	if [[ $system_name = true ]]; then
 		echoRgb "第三方+系統應用\n -列出系統應用....." "2"
-		echoRgb "警告!系統應用將不備份apk僅備份數據\n -請勿跨系統恢復防止出現問題，原生系統則不受此限制\n -另外腳本會自動檢測系統應用是否存在，負責不進行數據恢復" "0"
+		echoRgb "警告!系統應用將不備份apk僅備份數據\n -請勿跨系統恢復防止出現問題，原生系統則不受此限制\n -另外腳本會自動檢測系統應用是否存在，否則不進行數據恢復" "0"
 		nametxt2="$txtpath/systemList.txt"
 		Apk_info2="$(appinfo -sort-i -d " " -o ands,pn -s 2>/dev/null | egrep -v "$(echo $system | sed 's/ /\|/g')")"
 		Apk_Quantity2="$(echo "$Apk_info2" | wc -l)"
@@ -937,7 +1085,7 @@ com.android.chrome"
 	echoRgb "列出第三方應用......." "2"
 	echo "$Apk_info" | sed 's/\///g ; s/\://g ; s/(//g ; s/)//g ; s/\[//g ; s/\]//g ; s/\-//g ; s/!//g' | while read; do
 		[[ $bn -ge 229 ]] && bn=118
-		app_1=($REPLY $REPLY)
+		app_1=($REPLY $REPLY $REPLY)
 		[[ $i = "" ]] && i="0"
 		[[ $rc = "" ]] && rc="0"
 		[[ $rd = "" ]] && rd="0"
@@ -946,11 +1094,11 @@ com.android.chrome"
 			case ${app_1[1]} in
 			*oneplus* | *miui* | *xiaomi* | *oppo* | *flyme* | *meizu* | com.android.soundrecorder | com.mfashiongallery.emag | com.mi.health | *coloros*)
 				if [[ $(echo "$xposed_name" | grep -w "${app_1[1]}") = ${app_1[1]} ]]; then
-					echoRgb "${app_1[2]}為Xposed模塊 進行添加" "0"
+					echoRgb "${app_1[3]}為Xposed模塊 進行添加" "0"
 					echo "$REPLY user" >>"$nametxt" && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
 					let i++ rd++
 				else
-					echoRgb "${app_1[2]}非Xposed模塊 忽略輸出" "0"
+					echoRgb "${app_1[3]}非Xposed模塊 忽略輸出" "0"
 					let rc++
 				fi
 				;;
@@ -974,11 +1122,11 @@ com.android.chrome"
 			{
 				if [[ $REPLY != "" && $(pm path "${name[1]}" | cut -f2 -d ':') = "" ]]; then
 					echoRgb "${name[2]}不存在系統，從列表中刪除"
-					echo "$(cat "$nametxt" | sed -e "s/$REPLY//g ; /^$/d")" >"$nametxt"
+					echo "$(sed -e "s/$REPLY//g ; /^$/d" "$nametxt")" >"$nametxt"
 				fi
 			} &
 		done
-		echo "$(cat "$nametxt" | sed -e '/^$/d')" >"$nametxt"
+		echo "$(sed -e '/^$/d' "$nametxt" | sort)" >"$nametxt"
 	fi
 	wait
 	endtime 1
@@ -986,9 +1134,6 @@ com.android.chrome"
 	rm -rf "$MODDIR/tmp"
 	;;
 backup_media)
-	[[ ! -f $MODDIR/backup_settings.conf ]] && echo "backup_settings.conf配置遺失" && EXIT="true"
-	[[ $EXIT = true ]] && exit 1
-	. "$MODDIR/backup_settings.conf"
 	{
 		script="${0##*/}"
 		if [[ $script != "" ]]; then
@@ -998,6 +1143,15 @@ backup_media)
 		fi
 	} &
 	PU="$(ls /dev/block/vold | grep public)"
+	#效驗選填是否正確
+	isBoolean "$Lo" "LO" && Lo="$nsx"
+	if [[ $Lo = false ]]; then
+		isBoolean "$update" "update" && update="$nsx"
+	else
+		echoRgb "檢測到腳本更新跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
+		get_version "跳轉" "不跳轉" && update="$branch"
+	fi
+	update_script
 	if [[ $Output_path != "" ]]; then
 		[[ ${Output_path: -1} = / ]] && Output_path="${Output_path%?}"
 		Backup="$Output_path/Backup_$Compression_method"
@@ -1087,14 +1241,19 @@ backup_media)
 		Backup_folder="$Backup/Media"
 		[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
 		[[ ! -f $Backup/Restoremedia.sh ]] && cp -r "$script_path/restore3" "$Backup/Restoremedia.sh"
+		[[ ! -f $Backup/DumpName.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/DumpName.sh"
+		[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
+		[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 		app_details="$Backup_folder/app_details"
 		[[ -f $app_details ]] && . "$app_details"
-		[[ ! -f $Backup/mediaList.txt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$Backup/mediaList.txt"
+		mediatxt="$Backup/mediaList.txt"
+		[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$mediatxt"
 		echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | while read; do
 			echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
-			starttime2="$(date -u "+%s")"
+			starttime2="$(date -u "+%s")" 
+			[[ ${REPLY: -1} = / ]] && REPLY="${REPLY%?}"
 			Backup_data "${REPLY##*/}" "$REPLY"
-			[[ $result = 0 ]] && echo "${REPLY##*/}" >> "$Backup/mediaList.txt"
+			[[ $result = 0 ]] && [[ $(cat "$mediatxt" | grep -v "#" | sed -e '/^$/d' | grep -w "^${REPLY##*/}.tar$" | head -1) = "" ]] && echo "${REPLY##*/}.tar" >> "$mediatxt"
 			endtime 2 "${REPLY##*/}備份" "1"
 			echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "2" && echoRgb "____________________________________" && let A++
 		done
