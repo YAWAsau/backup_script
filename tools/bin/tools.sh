@@ -1018,12 +1018,24 @@ Restore3)
 	rm -rf "$TMPDIR/scriptTMP"
 	;;
 Getlist)
-	system="
-com.xiaomi.smarthome
-com.xiaomi.xmsf
-com.xiaomi.hm.health
-cn.wps.moffice_eng.xiaomi.lite
+	#白名單
+	whitelist="com.xiaomi.xmsf
 com.xiaomi.xiaoailite
+com.duokan.phone.remotecontroller
+com.miui.weather2
+com.milink.service
+com.android.soundrecorder
+com.miui.virtualsim
+com.xiaomi.vipaccount
+com.miui.fm
+com.xiaomi.shop
+com.xiaomi.smarthome
+com.miui.notes
+com.mi.health
+com.xiaomi.router
+com.xiaomi.mico
+dev.miuiicons.pedroz"
+	system="
 com.google.android.apps.messaging
 com.google.android.inputmethod.latin
 com.android.chrome"
@@ -1064,11 +1076,11 @@ com.android.chrome"
 		nametxt2="$txtpath/systemList.txt"
 		Apk_info2="$(appinfo -sort-i -d " " -o ands,pn -s 2>/dev/null | egrep -v "$(echo $system | sed 's/ /\|/g')")"
 		Apk_Quantity2="$(echo "$Apk_info2" | wc -l)"
+		i="0"
+		Q="0"
 		echo "$Apk_info2" | sed 's/\///g ; s/\://g ; s/(//g ; s/)//g ; s/\[//g ; s/\]//g ; s/\-//g ; s/!//g' | while read; do
 			[[ $bn -ge 229 ]] && bn=118
 			app_1=($REPLY $REPLY)
-			[[ $i = "" ]] && i="0"
-			[[ $Q = "" ]] && Q="0"
 			if [[ $(cat "$nametxt2" 2>/dev/null | cut -f2 -d ' ' | egrep "^${app_1[1]}$") != ${app_1[1]} ]]; then
 				echo "$REPLY system" >>"$nametxt2" && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
 				echoRgb "$REPLY($bn)"
@@ -1083,23 +1095,29 @@ com.android.chrome"
 		echoRgb "僅第三方" "2"
 	fi
 	echoRgb "列出第三方應用......." "2"
+	i="0"
+	rc="0"
+	rd="0"
+	Q="0"
 	echo "$Apk_info" | sed 's/\///g ; s/\://g ; s/(//g ; s/)//g ; s/\[//g ; s/\]//g ; s/\-//g ; s/!//g' | while read; do
 		[[ $bn -ge 229 ]] && bn=118
-		app_1=($REPLY $REPLY $REPLY)
-		[[ $i = "" ]] && i="0"
-		[[ $rc = "" ]] && rc="0"
-		[[ $rd = "" ]] && rd="0"
-		[[ $Q = "" ]] && Q="0"
+		app_1=($REPLY $REPLY)
 		if [[ $(cat "$nametxt" | cut -f2 -d ' ' | egrep "^${app_1[1]}$") != ${app_1[1]} ]]; then
 			case ${app_1[1]} in
 			*oneplus* | *miui* | *xiaomi* | *oppo* | *flyme* | *meizu* | com.android.soundrecorder | com.mfashiongallery.emag | com.mi.health | *coloros*)
 				if [[ $(echo "$xposed_name" | grep -w "${app_1[1]}") = ${app_1[1]} ]]; then
-					echoRgb "${app_1[3]}為Xposed模塊 進行添加" "0"
+					echoRgb "${app_1[2]}為Xposed模塊 進行添加" "0"
 					echo "$REPLY user" >>"$nametxt" && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
 					let i++ rd++
 				else
-					echoRgb "${app_1[3]}非Xposed模塊 忽略輸出" "0"
-					let rc++
+					if [[ $(echo "$whitelist" | egrep -w "^${app_1[1]}$") = ${app_1[1]} ]]; then
+						echo "$REPLY user" >>"$nametxt" && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
+						echoRgb "$REPLY($bn)"
+						let i++
+					else
+						echoRgb "${app_1[2]}非Xposed模塊 忽略輸出" "0"
+						let rc++
+					fi
 				fi
 				;;
 			*)
