@@ -23,51 +23,6 @@ fi
 . "$conf_path"
 update_script() {
 	cdn=2
-	download_zip() {
-		download="$(echo "$json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
-		case $cdn in
-		1)
-			zip_url="http://huge.cf/download/?huge-url=$download"
-			NJ="huge.cf"
-			;;
-		2)
-			zip_url="https://ghproxy.com/$download"
-			NJ="ghproxy.com"
-			;;
-		3)
-			zip_url="https://gh.api.99988866.xyz/$download"
-			NJ="gh.api.99988866.xyz"
-			;;
-		4)
-			zip_url="https://github.lx164.workers.dev/$download"
-			NJ="github.lx164.workers.dev"
-			;;
-		5)
-			zip_url="https://shrill-pond-3e81.hunsh.workers.dev/$download"
-			NJ="shrill-pond-3e81.hunsh.workers.dev"
-			;;
-		esac
-		if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(echo "$download" | tr -d "a-zA-Z")") -eq 0 ]]; then
-			echoRgb "發現新版本:$tag"
-			if [[ $update = true ]]; then
-				isBoolean "$update_behavior" "update_behavior" && update_behavior="$nsx"
-				if [[ $update_behavior = true ]]; then
-					echoRgb "更新腳本步驟如下\n -1.將跳轉時下載的zip壓縮包完整不解壓縮放在$MODDIR\n -2.在$MODDIR目錄隨便執行一個腳本\n -3.假設沒有提示錯誤重新進入腳本如版本號發生變化則更新成功" "2"
-					am start -a android.intent.action.VIEW -d "$zip_url"
-					echo_log "跳轉瀏覽器"
-				else
-					echoRgb "更新腳本步驟如下\n -1.將剪貼簿內的連結用瀏覽器下載\n -2.將zip壓縮包完整不解壓縮放在$MODDIR\n -3.在$MODDIR目錄隨便執行一個腳本\n -4.假設沒有提示錯誤重新進入腳本如版本號發生變化則更新成功" "2"
-					starttime1="$(date -u "+%s")"
-					xtext "$zip_url" 
-					echo_log "複製連結到剪裁版"
-					endtime 1
-				fi
-				exit 0
-			else
-				echoRgb "backup_settings.conf內update選項為0忽略更新僅提示更新" "0"
-			fi
-		fi
-	}
 	#settings get system system_locales
 	LANG="$(getprop "persist.sys.locale")"
 	zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
@@ -102,14 +57,55 @@ update_script() {
 		tag="$(echo "$json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
 		if [[ $backup_version != $tag ]]; then
 			if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(echo "$tag" | tr -d "a-zA-Z")") -eq 0 ]]; then
-				download_zip
+				download="$(echo "$json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
+				case $cdn in
+				1)
+					zip_url="http://huge.cf/download/?huge-url=$download"
+					NJ="huge.cf"
+					;;
+				2)
+					zip_url="https://ghproxy.com/$download"
+					NJ="ghproxy.com"
+					;;
+				3)
+					zip_url="https://gh.api.99988866.xyz/$download"
+					NJ="gh.api.99988866.xyz"
+					;;
+				4)
+					zip_url="https://github.lx164.workers.dev/$download"
+					NJ="github.lx164.workers.dev"
+					;;
+				5)
+					zip_url="https://shrill-pond-3e81.hunsh.workers.dev/$download"
+					NJ="shrill-pond-3e81.hunsh.workers.dev"
+					;;
+				esac
+				if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(echo "$download" | tr -d "a-zA-Z")") -eq 0 ]]; then
+					echoRgb "發現新版本:$tag"
+					if [[ $update = true ]]; then
+						isBoolean "$update_behavior" "update_behavior" && update_behavior="$nsx"
+						if [[ $update_behavior = true ]]; then
+							echoRgb "更新腳本步驟如下\n -1.將跳轉時下載的zip壓縮包完整不解壓縮放在$MODDIR\n -2.在$MODDIR目錄隨便執行一個腳本\n -3.假設沒有提示錯誤重新進入腳本如版本號發生變化則更新成功" "2"
+							am start -a android.intent.action.VIEW -d "$zip_url"
+							echo_log "跳轉瀏覽器"
+						else
+							echoRgb "更新腳本步驟如下\n -1.將剪貼簿內的連結用瀏覽器下載\n -2.將zip壓縮包完整不解壓縮放在$MODDIR\n -3.在$MODDIR目錄隨便執行一個腳本\n -4.假設沒有提示錯誤重新進入腳本如版本號發生變化則更新成功" "2"
+							starttime1="$(date -u "+%s")"
+							xtext "$zip_url" 
+							echo_log "複製連結到剪裁版"
+							endtime 1
+						fi
+						exit 0
+					else
+						echoRgb "backup_settings.conf內update選項為0忽略更新僅提示更新" "0"
+					fi
+				fi
 			fi
 		fi
 	else
 		echoRgb "更新獲取失敗" "0"
 	fi
 }
-#appinfo --help
 case $operate in
 backup)
 	script="${0##*/}"
@@ -139,7 +135,7 @@ backup)
 		isBoolean "$Backup_user_data" "Backup_user_data" && Backup_user_data="$nsx"
 		isBoolean "$backup_media" "backup_media" && backup_media="$nsx"
 	else
-		echoRgb "檢測到腳本更新跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
+		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
 		get_version "跳轉" "不跳轉" && update="$branch"
 		echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
 		get_version "提示" "靜默備份" && toast_info="$branch"
@@ -520,7 +516,7 @@ dumpname)
 	if [[ $Lo = false ]]; then
 		isBoolean "$update" "update" && update="$nsx"
 	else
-		echoRgb "檢測到腳本更新跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
+		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
 		get_version "跳轉" "不跳轉" && update="$branch"
 	fi
 	update_script
@@ -556,7 +552,7 @@ Restore)
 		isBoolean "$update" "update" && update="$nsx"
 		isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
 	else
-		echoRgb "檢測到腳本更新跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
+		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
 		get_version "跳轉" "不跳轉" && update="$branch"
 		echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
 		get_version "提示" "靜默備份" && toast_info="$branch"
@@ -792,7 +788,7 @@ Restore2)
 		isBoolean "$update" "update" && update="$nsx"
 		isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
 	else
-		echoRgb "檢測到腳本更新跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
+		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
 		get_version "跳轉" "不跳轉" && update="$branch"
 		echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
 		get_version "提示" "靜默備份" && toast_info="$branch"
@@ -969,7 +965,7 @@ Restore3)
 		isBoolean "$update" "update" && update="$nsx"
 		isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
 	else
-		echoRgb "檢測到腳本更新跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
+		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
 		get_version "跳轉" "不跳轉" && update="$branch"
 		echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
 		get_version "提示" "靜默備份" && toast_info="$branch"
@@ -1055,7 +1051,7 @@ com.android.chrome"
 		isBoolean "$update" "update" && update="$nsx"
 		isBoolean "$system_name" "system_name" && system_name="$nsx"
 	else
-		echoRgb "檢測到腳本更新跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
+		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
 		get_version "跳轉" "不跳轉" && update="$branch"
 		echoRgb "列出系統應用？\n -音量上列出，音量下不列出" "2"
 		get_version "列出" "不列出" && system_name="$branch"
@@ -1166,7 +1162,7 @@ backup_media)
 	if [[ $Lo = false ]]; then
 		isBoolean "$update" "update" && update="$nsx"
 	else
-		echoRgb "檢測到腳本更新跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
+		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
 		get_version "跳轉" "不跳轉" && update="$branch"
 	fi
 	update_script
