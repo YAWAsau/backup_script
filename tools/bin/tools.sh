@@ -236,7 +236,7 @@ backup)
 	[[ $backup_media = false ]] && echoRgb "當前backup_settings.conf的\n -backup_media為0將不備份自定義資料夾" "0"
 	[[ ! -d $Backup ]] && mkdir -p "$Backup"
 	txt2="$Backup/appList.txt"
-	[[ ! -f $txt2 ]] && echo "#不需要備份的應用請在開頭注釋# 比如#酷安 xxxxxxxx\n#不需要恢復數據比如酷安! xxxxxxxx應用名後方加一個驚嘆號即可 注意是應用名不是包名" >"$txt2"
+	[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
 	[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
 	[[ ! -f $Backup/Restorebackup.sh ]] && cp -r "$script_path/restore" "$Backup/Restorebackup.sh"
 	[[ ! -f $Backup/DumpName.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/DumpName.sh"
@@ -257,7 +257,6 @@ backup)
 			result=0
 			echoRgb "Apk版本無更新 跳過備份" "2"
 		else
-			[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2 $name3" >>"$txt2"
 			if [[ $name3 != system ]]; then
 				case $name2 in
 				com.google.android.youtube)
@@ -268,6 +267,7 @@ backup)
 					;;
 				esac
 				if [[ $nobackup != true ]]; then
+					[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2 $name3" >>"$txt2"
 					partition_info
 					[[ $lxj -ge 95 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
 					rm -rf "$Backup_folder"/*.apk
