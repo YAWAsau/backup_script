@@ -20,7 +20,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V14.1"
+backup_version="V14.2"
 #設置二進制命令目錄位置
 [[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
@@ -148,17 +148,18 @@ debug() {
 # debug
 get_version() {
 	while :; do
-		version="$(getevent -qlc 1 | awk '{ print $3 }')"
-		case $version in
-		KEY_VOLUMEUP)
+		keycheck
+		case $? in
+		42)
 			branch=true
 			echoRgb "$1" "1"
 			;;
-		KEY_VOLUMEDOWN)
+		41)
 			branch=false
 			echoRgb "$2" "0"
 			;;
 		*)
+			echoRgb "keycheck錯誤" "0"
 			continue
 			;;
 		esac

@@ -285,8 +285,8 @@ backup)
 						cd "$apk_path2"
 						case $Compression_method in
 						tar | TAR | Tar) tar -cf "$Backup_folder/apk.tar" *.apk ;;
-						lz4 | LZ4 | Lz4) tar -cf - *.apk | lz4 -1 >"$Backup_folder/apk.tar.lz4" ;;
-						zstd | Zstd | ZSTD) tar -cf - *apk | zstd -r -T0 --ultra -6 -q >"$Backup_folder/apk.tar.zst" ;;
+						lz4 | LZ4 | Lz4) tar -cf - *.apk | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/apk.tar.lz4" ;;
+						zstd | Zstd | ZSTD) tar -cf - *apk | zstd -r -T0 --ultra -6 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
 						esac
 					)
 					echo_log "備份$apk_number個Apk"
@@ -348,15 +348,15 @@ backup)
 				user)
 					case $Compression_method in
 					tar | Tar | TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-					zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
-					lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+					zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+					lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/$1.tar.lz4" ;;
 					esac
 					;;
 				*)
 					case $Compression_method in
 					tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-					zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q >"$Backup_folder/$1.tar.zst" ;;
-					lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | lz4 -1 >"$Backup_folder/$1.tar.lz4" ;;
+					zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+					lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/$1.tar.lz4" ;;
 					esac
 					[[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1"
 					unset Compression_method1
@@ -586,8 +586,7 @@ Restore)
 		user)
 			if [[ -d $X ]]; then
 				case ${FILE_NAME##*.} in
-				lz4) pv "$tar_path" | tar --recursive-unlink -I lz4 -xmpf - -C "$path2" ;;
-				zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$path2" ;;
+				lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$path2" ;;
 				tar) pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$path2" ;;
 				*)
 					echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
@@ -601,8 +600,7 @@ Restore)
 			;;
 		data | obb)
 			case ${FILE_NAME##*.} in
-			lz4) pv "$tar_path" | tar --recursive-unlink -I lz4 -xmPpf - ;;
-			zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmPpf - ;;
+			lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmPpf - ;;
 			tar) pv "$tar_path" | tar --recursive-unlink -xmPpf - ;;
 			*)
 				echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
@@ -613,8 +611,7 @@ Restore)
 		*)
 			[[ $FILE_NAME2 = thanox ]] && rm -rf "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)"
 			case ${FILE_NAME##*.} in
-			lz4) pv "$tar_path" | tar -I lz4 -xPpf - ;;
-			zst) pv "$tar_path" | tar -I zstd -xPpf - ;;
+			lz4 | zst) pv "$tar_path" | tar -I zstd -xmPpf - ;;
 			tar) pv "$tar_path" | tar -xPpf - ;;
 			*)
 				echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
@@ -692,8 +689,7 @@ Restore)
 						if [[ $apkfile != "" ]]; then
 							rm -rf "$TMPDIR"/*
 							case ${apkfile##*.} in
-							lz4) pv "$apkfile" | tar -I lz4 -xmpf - -C "$TMPDIR" ;;
-							zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
+							lz4 | zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
 							tar) pv "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
 							*)
 								echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
@@ -829,8 +825,7 @@ Restore2)
 				if [[ $apkfile != "" ]]; then
 					rm -rf "$TMPDIR"/*
 					case ${apkfile##*.} in
-					lz4) pv "$apkfile" | tar -I lz4 -xmpf - -C "$TMPDIR" ;;
-					zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
+					lz4 | zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
 					tar) pv "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
 					*)
 						echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
@@ -885,8 +880,7 @@ Restore2)
 				if [[ $FILE_NAME2 = user ]]; then
 					if [[ -d $X ]]; then
 						case ${FILE_NAME##*.} in
-						lz4) pv "$tar_path" | tar --recursive-unlink -I lz4 -xmpf - -C "$path2" ;;
-						zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$path2" ;;
+						lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$path2" ;;
 						tar) pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$path2" ;;
 						*)
 							echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
@@ -900,8 +894,7 @@ Restore2)
 				else
 					[[ $FILE_NAME2 = thanox ]] && rm -rf "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)"
 					case ${FILE_NAME##*.} in
-					lz4) pv "$tar_path" | tar --recursive-unlink -I lz4 -xmPpf - ;;
-					zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmPpf - ;;
+					lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmPpf - ;;
 					tar) pv "$tar_path" | tar --recursive-unlink -xmPpf - ;;
 					*)
 						echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
@@ -1041,7 +1034,7 @@ com.android.chrome"
 		[[ $launcher_app != "android" ]] && [[ $(pgrep -f "$launcher_app" | grep -v 'grep' | wc -l) -ge 1 ]] && launcher_app="$launcher_app"
 	done
 	txtpath="$MODDIR"
-	txtpath="${txtpath/'/storage/emulated/'/'/data/media/'}"
+	#txtpath="${txtpath/'/storage/emulated/'/'/data/media/'}"
 	nametxt="$txtpath/appList.txt"
 	[[ ! -e $nametxt ]] && echo '#不需要備份的應用請在開頭注釋# 比如#酷安 xxxxxxxx\n#不需要備份數據比如酷安! xxxxxxxx應用名後方加一個驚嘆號即可 注意是應用名不是包名' >"$nametxt"
 	echo >>"$nametxt"
@@ -1088,7 +1081,7 @@ com.android.chrome"
 			let bn++ LR++
 		done
 	else
-		echoRgb "僅第三方" "2"
+		echoRgb "僅第三方" "2" && rm -rf "$txtpath/systemList.txt"
 	fi
 	echoRgb "列出第三方應用......." "2"
 	i="0"
@@ -1140,7 +1133,7 @@ com.android.chrome"
 				fi
 			} &
 		done
-		echo "$(sed -e '/^$/d' "$nametxt" | sort)" >"$nametxt"
+		echo "$(sort "$nametxt" | sed -e '/^$/d')" >"$nametxt"
 	fi
 	wait
 	endtime 1
