@@ -20,7 +20,7 @@ fi
 [[ ! -f $conf_path ]] && echo "backup_settings.conf配置遺失" && EXIT="true"
 [[ $EXIT = true ]] && exit 1
 . "$bin_path/bin.sh"
-. "$conf_path"
+. "$conf_path" 
 update_script() {
 	cdn=2
 	#settings get system system_locales
@@ -160,20 +160,13 @@ backup)
 		echoRgb "請執行\"Getlist.sh\"獲取應用列表再來備份" "0" && exit 1
 	else
 		cat "$txt" | grep -v "#" | while read; do
-			name=($REPLY $REPLY $REPLY)
+			name=($REPLY $REPLY)
 			if [[ $REPLY != "" && ${name[1]} != "" && $(pm path "${name[1]}" | cut -f2 -d ':') = "" ]]; then
-				echoRgb "${name[3]}不存在系統，從列表中刪除" "0"
+				echoRgb "${name[2]}不存在系統，從列表中刪除" "0"
 				echo "$(sed -e "s/$REPLY//g ; /^$/d" "$txt")" >"$txt"
 			fi
 		done
 		echo "$(sed -e '/^$/d' "$txt")" >"$txt"
-		if [[ -f $MODDIR/systemList.txt ]]; then
-			cat "$txt" >"$TMPDIR/applist" && cat "$MODDIR/systemList.txt" >>"$TMPDIR/applist"
-			[[ -f $TMPDIR/applist ]] && txt="$TMPDIR/applist"
-			echoRgb "列表內包含系統應用 針對系統應用僅備份數據不備份apk" "2"
-		else
-			echoRgb "僅第三方應用" "2"
-		fi
 	fi
 	r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	[[ $r = "" ]] && echoRgb "爬..appList.txt是空的或是包名被注釋了這樣備份個鬼" "0" && exit 1
@@ -194,6 +187,7 @@ backup)
 			outshow="使用當前路徑作為備份目錄"
 		fi
 	fi
+	PU="$(ls /dev/block/vold | grep public)"
 	if [[ $PU != "" ]]; then
 		[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts | grep "$PU" | awk '{print $2}')"
 		if [[ -d $PT ]]; then
@@ -257,67 +251,58 @@ backup)
 			result=0
 			echoRgb "Apk版本無更新 跳過備份" "2"
 		else
-			if [[ $name3 != system ]]; then
-				case $name2 in
-				com.google.android.youtube)
-					[[ -d /data/adb/Vanced ]] && nobackup="true"
-					;;
-				com.google.android.apps.youtube.music)
-					[[ -d /data/adb/Music ]] && nobackup="true"
-					;;
-				esac
-				if [[ $nobackup != true ]]; then
-					[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2 $name3" >>"$txt2"
-					partition_info
-					[[ $lxj -ge 95 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
-					rm -rf "$Backup_folder"/*.apk
-					#備份apk
-					echoRgb "$1"
-					[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
-					echo "$apk_path" | sed -e '/^$/d' | while read; do
-						path="$REPLY"
-						b_size="$(ls -l "$path" | awk '{print $5}')"
-						k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
-						m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
-						echoRgb "${path##*/} ${m_size}MB(${k_size}KB)"
+			case $name2 in
+			com.google.android.youtube)
+				[[ -d /data/adb/Vanced ]] && nobackup="true"
+				;;
+			com.google.android.apps.youtube.music)
+				[[ -d /data/adb/Music ]] && nobackup="true"
+				;;
+			esac
+			if [[ $nobackup != true ]]; then
+				[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
+				partition_info
+				[[ $lxj -ge 95 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
+				rm -rf "$Backup_folder"/*.apk
+				#備份apk
+				echoRgb "$1"
+				[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
+				echo "$apk_path" | sed -e '/^$/d' | while read; do
+					path="$REPLY"
+					b_size="$(ls -l "$path" | awk '{print $5}')"
+					k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
+					m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
+					echoRgb "${path##*/} ${m_size}MB(${k_size}KB)"
+				done
+				(
+					cd "$apk_path2"
+					case $Compression_method in
+					tar | TAR | Tar) tar -cf "$Backup_folder/apk.tar" *.apk ;;
+					lz4 | LZ4 | Lz4) tar -cf - *.apk | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/apk.tar.lz4" ;;
+					zstd | Zstd | ZSTD) tar -cf - *apk | zstd -r -T0 --ultra -6 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
+					esac
+				)
+				echo_log "備份$apk_number個Apk"
+				if [[ $result = 0 ]]; then
+					#pm list packages --show-versioncode "$name2"
+					echo "apk_version=\"$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)\"" >>"$app_details"
+					[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
+					[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
+					[[ ! -f $Backup_folder/Restorebackup.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/Restorebackup.sh"
+				fi
+				if [[ $name2 = com.android.chrome ]]; then
+					#刪除所有舊apk ,保留一個最新apk進行備份
+					ReservedNum=1
+					FileNum="$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)"
+					while [[ $FileNum -gt $ReservedNum ]]; do
+						OldFile="$(ls -rt /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | head -1)"
+						rm -rf "${OldFile%/*/*}" && echoRgb "刪除文件:${OldFile%/*/*}"
+						let "FileNum--"
 					done
-					(
-						cd "$apk_path2"
-						case $Compression_method in
-						tar | TAR | Tar) tar -cf "$Backup_folder/apk.tar" *.apk ;;
-						lz4 | LZ4 | Lz4) tar -cf - *.apk | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/apk.tar.lz4" ;;
-						zstd | Zstd | ZSTD) tar -cf - *apk | zstd -r -T0 --ultra -6 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
-						esac
-					)
-					echo_log "備份$apk_number個Apk"
-					if [[ $result = 0 ]]; then
-						#pm list packages --show-versioncode "$name2"
-						echo "apk_version=\"$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)\"" >>"$app_details"
-						[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
-						[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
-						[[ $type = "" ]] && echo "type=\"$name3\"" >>"$app_details"
-						[[ ! -f $Backup_folder/Restorebackup.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/Restorebackup.sh"
-					fi
-					if [[ $name2 = com.android.chrome ]]; then
-						#刪除所有舊apk ,保留一個最新apk進行備份
-						ReservedNum=1
-						FileNum="$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)"
-						while [[ $FileNum -gt $ReservedNum ]]; do
-							OldFile="$(ls -rt /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | head -1)"
-							rm -rf "${OldFile%/*/*}" && echoRgb "刪除文件:${OldFile%/*/*}"
-							let "FileNum--"
-						done
-						[[ -f $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null) && $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l) = 1 ]] && cp -r "$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null)" "$Backup_folder/nmsl.apk"
-					fi
-				else
-					echoRgb "$name不支持備份 需要使用vanced安裝" "0" && rm -rf "$Backup_folder"
+					[[ -f $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null) && $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l) = 1 ]] && cp -r "$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null)" "$Backup_folder/nmsl.apk"
 				fi
 			else
-				echoRgb "$name2為系統應用不備份apk" "3" && result="0"
-				[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
-				[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
-				[[ $type = "" ]] && echo "type=\"$name3\"" >>"$app_details"
-				[[ ! -f $Backup_folder/Restorebackup.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/Restorebackup.sh"
+				echoRgb "$name不支持備份 需要使用vanced安裝" "0" && rm -rf "$Backup_folder"
 			fi
 		fi
 		[[ $name2 = bin.mt.plus && ! -f $Backup/$name1.apk ]] && cp -r "$apk_path" "$Backup/$name1.apk"
@@ -394,7 +379,6 @@ backup)
 			unset name1 name2 apk_path apk_path2 result
 			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
 			name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
-			name3="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $3}')"
 			[[ $name2 = "" ]] && echoRgb "警告! appList.txt應用包名獲取失敗，可能修改有問題" "0" && exit 1
 			apk_path="$(pm path "$name2" | cut -f2 -d ':')"
 			apk_path2="$(echo "$apk_path" | head -1)"
@@ -670,7 +654,6 @@ Restore)
 			echoRgb "恢複第$i/$r個應用 剩下$((r - i))個" "3"
 			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
 			name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
-			name3="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $3}')"
 			unset No_backupdata
 			if [[ $name1 = *! || $name1 = *！ ]]; then
 				name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
@@ -683,54 +666,50 @@ Restore)
 			if [[ -d $Backup_folder ]]; then
 				echoRgb "恢複$name1 ($name2)"
 				starttime2="$(date -u "+%s")"
-				if [[ $name3 != system ]]; then
-					if [[ $(pm path "$name2") = "" ]]; then
-						apkfile="$(find "$Backup_folder" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
-						if [[ $apkfile != "" ]]; then
-							rm -rf "$TMPDIR"/*
-							case ${apkfile##*.} in
-							lz4 | zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
-							tar) pv "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
-							*)
-								echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
-								Set_back
-								;;
-							esac
-							echo_log "${apkfile##*/}解壓縮" && [[ -f $Backup_folder/nmsl.apk ]] && cp -r "$Backup_folder/nmsl.apk" "$TMPDIR"
-						else
-							echoRgb "你的Apk壓縮包離家出走了，可能備份後移動過程遺失了\n -解決辦法手動安裝Apk後再執行恢復腳本" "0"
-						fi
-						if [[ $result = 0 ]]; then
-							case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
-							1)
-								echoRgb "恢復普通apk" "2"
-								pm install -i com.android.vending --user 0 -r "$TMPDIR"/*.apk >/dev/null 2>&1
-								echo_log "Apk安裝"
-								;;
-							0)
-								echoRgb "$TMPDIR中沒有apk" "0"
-								;;
-							*)
-								echoRgb "恢復split apk" "2"
-								b="$(pm install-create -i -i com.android.vending --user 0 | grep -E -o '[0-9]+')"
-								if [[ -f $TMPDIR/nmsl.apk ]]; then
-									pm install -i com.android.vending --user 0 -r "$TMPDIR/nmsl.apk" >/dev/null 2>&1
-									echo_log "nmsl.apk安裝"
-								fi
-								find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f | grep -v 'nmsl.apk' | while read; do
-									pm install-write "$b" "${REPLY##*/}" "$REPLY" >/dev/null 2>&1
-									echo_log "${REPLY##*/}安裝"
-								done
-								pm install-commit "$b" >/dev/null 2>&1
-								echo_log "split Apk安裝"
-								;;
-							esac
-						fi
+				if [[ $(pm path "$name2") = "" ]]; then
+					apkfile="$(find "$Backup_folder" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
+					if [[ $apkfile != "" ]]; then
+						rm -rf "$TMPDIR"/*
+						case ${apkfile##*.} in
+						lz4 | zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
+						tar) pv "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
+						*)
+							echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
+							Set_back
+							;;
+						esac
+						echo_log "${apkfile##*/}解壓縮" && [[ -f $Backup_folder/nmsl.apk ]] && cp -r "$Backup_folder/nmsl.apk" "$TMPDIR"
 					else
-						echoRgb "存在當前系統中略過安裝Apk" "2"
+						echoRgb "你的Apk壓縮包離家出走了，可能備份後移動過程遺失了\n -解決辦法手動安裝Apk後再執行恢復腳本" "0"
+					fi
+					if [[ $result = 0 ]]; then
+						case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
+						1)
+							echoRgb "恢復普通apk" "2"
+							pm install -i com.android.vending --user 0 -r "$TMPDIR"/*.apk >/dev/null 2>&1
+							echo_log "Apk安裝"
+						;;
+						0)
+							echoRgb "$TMPDIR中沒有apk" "0"
+							;;
+						*)
+							echoRgb "恢復split apk" "2"
+							b="$(pm install-create -i -i com.android.vending --user 0 | grep -E -o '[0-9]+')"
+							if [[ -f $TMPDIR/nmsl.apk ]]; then
+								pm install -i com.android.vending --user 0 -r "$TMPDIR/nmsl.apk" >/dev/null 2>&1
+								echo_log "nmsl.apk安裝"
+							fi
+							find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f | grep -v 'nmsl.apk' | while read; do
+								pm install-write "$b" "${REPLY##*/}" "$REPLY" >/dev/null 2>&1
+								echo_log "${REPLY##*/}安裝"
+							done
+							pm install-commit "$b" >/dev/null 2>&1
+							echo_log "split Apk安裝"
+							;;
+						esac
 					fi
 				else
-					echoRgb "$name2是系統應用" "3"
+					echoRgb "存在當前系統中略過安裝Apk" "2"
 				fi
 				if [[ $No_backupdata = "" ]]; then
 					if [[ $(pm path "$name2") != "" ]]; then
@@ -815,58 +794,52 @@ Restore2)
 		[[ $name = "" ]] && echoRgb "包名獲取失敗" "0" && exit 2
 		name2="$ChineseName"
 		[[ $name2 = "" ]] && echoRgb "應用名獲取失敗" "0" && exit 2
-		name3="$type"
-		[[ $name3 = "" ]] && echoRgb "應用類型獲取失敗" "0" && exit 2
 		echoRgb "恢複$name2 ($name)" "3"
 		starttime2="$(date -u "+%s")"
-		if [[ $name3 != "" ]]; then
-			if [[ $(pm path "$name") = "" ]]; then
-				apkfile="$(find "$Backup_folder" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
-				if [[ $apkfile != "" ]]; then
-					rm -rf "$TMPDIR"/*
-					case ${apkfile##*.} in
-					lz4 | zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
-					tar) pv "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
-					*)
-						echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
-						Set_back
-						;;
-					esac
-					echo_log "${apkfile##*/}解壓縮" && [[ -f $Backup_folder/nmsl.apk ]] && cp -r "$Backup_folder/nmsl.apk" "$TMPDIR"
-				else
-					echoRgb "你的Apk壓縮包離家出走了，可能備份後移動過程遺失了\n -解決辦法手動安裝Apk後再執行恢復腳本" "0"
-				fi
-				if [[ $result = 0 ]]; then
-					case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
-					1)
-						echoRgb "恢復普通apk" "2"
-						pm install -i com.android.vending --user 0 -r "$TMPDIR"/*.apk >/dev/null 2>&1
-						echo_log "Apk安裝"
-						;;
-					0)
-						echoRgb "$TMPDIR中沒有apk" "0"
-						;;
-					*)
-						echoRgb "恢復split apk" "2"
-						b="$(pm install-create -i com.android.vending --user 0 | egrep -o '[0-9]+')"
-						if [[ -f $TMPDIR/nmsl.apk ]]; then
-							pm install --user 0 -r "$TMPDIR/nmsl.apk" >/dev/null 2>&1
-							echo_log "nmsl.apk安裝"
-						fi
-						find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f | grep -v 'nmsl.apk' | while read; do
-							pm install-write "$b" "${REPLY##*/}" "$REPLY" >/dev/null 2>&1
-							echo_log "${REPLY##*/}安裝"
-						done
-						pm install-commit "$b" >/dev/null 2>&1
-						echo_log "split Apk安裝"
-						;;
-					esac
-				fi
+		if [[ $(pm path "$name") = "" ]]; then
+			apkfile="$(find "$Backup_folder" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
+			if [[ $apkfile != "" ]]; then
+				rm -rf "$TMPDIR"/*
+				case ${apkfile##*.} in
+				lz4 | zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
+				tar) pv "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
+				*)
+					echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
+					Set_back
+					;;
+				esac
+				echo_log "${apkfile##*/}解壓縮" && [[ -f $Backup_folder/nmsl.apk ]] && cp -r "$Backup_folder/nmsl.apk" "$TMPDIR"
 			else
-				echoRgb "存在當前系統中略過安裝Apk" "2"
+				echoRgb "你的Apk壓縮包離家出走了，可能備份後移動過程遺失了\n -解決辦法手動安裝Apk後再執行恢復腳本" "0"
+			fi
+			if [[ $result = 0 ]]; then
+				case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
+				1)
+					echoRgb "恢復普通apk" "2"
+					pm install -i com.android.vending --user 0 -r "$TMPDIR"/*.apk >/dev/null 2>&1
+					echo_log "Apk安裝"
+					;;
+				0)
+					echoRgb "$TMPDIR中沒有apk" "0"
+					;;
+				*)
+					echoRgb "恢復split apk" "2"
+					b="$(pm install-create -i com.android.vending --user 0 | egrep -o '[0-9]+')"
+					if [[ -f $TMPDIR/nmsl.apk ]]; then
+						pm install --user 0 -r "$TMPDIR/nmsl.apk" >/dev/null 2>&1
+						echo_log "nmsl.apk安裝"
+					fi
+					find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f | grep -v 'nmsl.apk' | while read; do
+						pm install-write "$b" "${REPLY##*/}" "$REPLY" >/dev/null 2>&1
+						echo_log "${REPLY##*/}安裝"
+					done
+					pm install-commit "$b" >/dev/null 2>&1
+					echo_log "split Apk安裝"
+					;;
+				esac
 			fi
 		else
-			echoRgb "$name2是系統應用" "3"
+			echoRgb "存在當前系統中略過安裝Apk" "2"
 		fi
 		if [[ $(pm path "$name") != "" ]]; then
 			#停止應用
@@ -1042,12 +1015,9 @@ com.android.chrome"
 	isBoolean "$Lo" "LO" && Lo="$nsx"
 	if [[ $Lo = false ]]; then
 		isBoolean "$update" "update" && update="$nsx"
-		isBoolean "$system_name" "system_name" && system_name="$nsx"
 	else
 		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
 		get_version "跳轉" "不跳轉" && update="$branch"
-		echoRgb "列出系統應用？\n -音量上列出，音量下不列出" "2"
-		get_version "列出" "不列出" && system_name="$branch"
 	fi
 	update_script
 	echoRgb "請勿關閉腳本，等待提示結束"
@@ -1059,30 +1029,6 @@ com.android.chrome"
 	Apk_info="$(appinfo -sort-i -d " " -o ands,pn -pn $system $launcher_app -3 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	Apk_Quantity="$(echo "$Apk_info" | wc -l)"
 	LR="1"
-	if [[ $system_name = true ]]; then
-		echoRgb "第三方+系統應用\n -列出系統應用....." "2"
-		echoRgb "警告!系統應用將不備份apk僅備份數據\n -請勿跨系統恢復防止出現問題，原生系統則不受此限制\n -另外腳本會自動檢測系統應用是否存在，否則不進行數據恢復" "0"
-		nametxt2="$txtpath/systemList.txt"
-		Apk_info2="$(appinfo -sort-i -d " " -o ands,pn -s 2>/dev/null | egrep -v "$(echo $system | sed 's/ /\|/g')")"
-		Apk_Quantity2="$(echo "$Apk_info2" | wc -l)"
-		i="0"
-		Q="0"
-		echo "$Apk_info2" | sed 's/\///g ; s/\://g ; s/(//g ; s/)//g ; s/\[//g ; s/\]//g ; s/\-//g ; s/!//g' | while read; do
-			[[ $bn -ge 229 ]] && bn=118
-			app_1=($REPLY $REPLY)
-			if [[ $(cat "$nametxt2" 2>/dev/null | cut -f2 -d ' ' | egrep "^${app_1[1]}$") != ${app_1[1]} ]]; then
-				echo "$REPLY system" >>"$nametxt2" && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
-				echoRgb "$REPLY($bn)"
-				let i++
-			else
-				let Q++
-			fi
-			[[ $LR = $Apk_Quantity2 ]] && [[ -e $MODDIR/tmp ]] && echoRgb "\n -系統apk數量=\"$Apk_Quantity2\"\n -存在列表中=\"$Q\"\n -輸出=\"$i\"" && LR="1"
-			let bn++ LR++
-		done
-	else
-		echoRgb "僅第三方" "2" && rm -rf "$txtpath/systemList.txt"
-	fi
 	echoRgb "列出第三方應用......." "2"
 	i="0"
 	rc="0"
