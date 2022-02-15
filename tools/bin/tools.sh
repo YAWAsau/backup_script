@@ -1006,19 +1006,19 @@ com.android.chrome"
 	for launcher_app in $launcher_app; do
 		[[ $launcher_app != "android" ]] && [[ $(pgrep -f "$launcher_app" | grep -v 'grep' | wc -l) -ge 1 ]] && launcher_app="$launcher_app"
 	done
-	txtpath="$MODDIR"
-	#txtpath="${txtpath/'/storage/emulated/'/'/data/media/'}"
-	nametxt="$txtpath/appList.txt"
-	[[ ! -e $nametxt ]] && echo '#不需要備份的應用請在開頭注釋# 比如#酷安 xxxxxxxx\n#不需要備份數據比如酷安! xxxxxxxx應用名後方加一個驚嘆號即可 注意是應用名不是包名' >"$nametxt"
-	echo >>"$nametxt"
 	#效驗選填是否正確
 	isBoolean "$Lo" "LO" && Lo="$nsx"
+	isBoolean "$debug_list" "debug_list" && debug_list="$nsx"
 	if [[ $Lo = false ]]; then
 		isBoolean "$update" "update" && update="$nsx"
 	else
 		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
 		get_version "跳轉" "不跳轉" && update="$branch"
 	fi
+	txtpath="$MODDIR"
+	[[ $debug_list = true ]] && txtpath="${txtpath/'/storage/emulated/'/'/data/media/'}"
+	nametxt="$txtpath/appList.txt"
+	[[ ! -e $nametxt ]] && echo '#不需要備份的應用請在開頭注釋# 比如#酷安 xxxxxxxx\n#不需要備份數據比如酷安! xxxxxxxx應用名後方加一個驚嘆號即可 注意是應用名不是包名' >"$nametxt"
 	update_script
 	echoRgb "請勿關閉腳本，等待提示結束"
 	bn=118
@@ -1042,11 +1042,11 @@ com.android.chrome"
 			*oneplus* | *miui* | *xiaomi* | *oppo* | *flyme* | *meizu* | com.android.soundrecorder | com.mfashiongallery.emag | com.mi.health | *coloros*)
 				if [[ $(echo "$xposed_name" | grep -w "${app_1[1]}") = ${app_1[1]} ]]; then
 					echoRgb "${app_1[2]}為Xposed模塊 進行添加" "0"
-					echo "$REPLY user" >>"$nametxt" && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
+					echo "$REPLY" >>"$nametxt" && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
 					let i++ rd++
 				else
 					if [[ $(echo "$whitelist" | egrep -w "^${app_1[1]}$") = ${app_1[1]} ]]; then
-						echo "$REPLY user" >>"$nametxt" && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
+						echo "$REPLY" >>"$nametxt" && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
 						echoRgb "$REPLY($bn)"
 						let i++
 					else
@@ -1056,7 +1056,7 @@ com.android.chrome"
 				fi
 				;;
 			*)
-				echo "$REPLY user" >>"$nametxt" && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
+				echo "$REPLY" >>"$nametxt" && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
 				echoRgb "$REPLY($bn)"
 				let i++
 				;;
@@ -1065,6 +1065,11 @@ com.android.chrome"
 			let Q++
 		fi
 		if [[ $LR = $Apk_Quantity ]]; then
+			if [[ $(cat "$nametxt" | wc -l | awk '{print $1-2}') -lt $i ]]; then
+				rm -rf "$nametxt" "$MODDIR/tmp"
+				echoRgb "\n -輸出異常 請將$conf_path中的debug_list=\"0\"改為1" "0"
+				exit
+			fi
 			[[ -e $MODDIR/tmp ]] && echoRgb "\n -第三方apk數量=\"$Apk_Quantity\"\n -已過濾=\"$rc\"\n -xposed=\"$rd\"\n -存在列表中=\"$Q\"\n -輸出=\"$i\""
 		fi
 		let bn++ LR++
