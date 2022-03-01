@@ -20,7 +20,25 @@ fi
 [[ ! -f $conf_path ]] && echo "backup_settings.conf配置遺失" && EXIT="true"
 [[ $EXIT = true ]] && exit 1
 . "$bin_path/bin.sh"
-. "$conf_path" 
+. "$conf_path"
+isBoolean "$Lo" "LO" && Lo="$nsx"
+if [[ $Lo = false ]]; then
+		isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
+else
+	echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
+	get_version "提示" "靜默備份" && toast_info="$branch"
+fi
+Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
+if [[ $toast_info = true ]]; then
+	pm enable "ice.message" &>/dev/null
+	if [[ $(pm path ice.message) = "" ]]; then
+		echoRgb "未安裝toast 開始安裝" "0"
+		cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user 0 -r "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
+		[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
+	fi
+else
+	pm disable "ice.message" &>/dev/null
+fi
 update_script() {
 	cdn=2
 	#settings get system system_locales
@@ -129,7 +147,6 @@ backup)
 	if [[ $Lo = false ]]; then
 		isBoolean "$update" "update" && update="$nsx"
 		isBoolean "$Splist" "Splist" && Splist="$nsx"
-		isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
 		isBoolean "$USBdefault" "USBdefault" && USBdefault="$nsx"
 		isBoolean "$Backup_obb_data" "Backup_obb_data" && Backup_obb_data="$nsx"
 		isBoolean "$Backup_user_data" "Backup_user_data" && Backup_user_data="$nsx"
@@ -137,8 +154,6 @@ backup)
 	else
 		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
 		get_version "跳轉" "不跳轉" && update="$branch"
-		echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
-		get_version "提示" "靜默備份" && toast_info="$branch"
 		echoRgb "選擇是否只備份split apk(分割apk檔)\n -如果你不知道這意味什麼請選擇音量下進行混合備份\n -音量上僅備份split apk，音量下混合備份" "2"
 		get_version "是" "不是，混合備份" && Splist="$branch"
 		echoRgb "是否備份外部數據 即比如原神的數據包\n -音量上備份，音量下不備份" "2"
@@ -151,8 +166,6 @@ backup)
 	update_script
 	i=1
 	#數據目錄
-	path="/data/media/0/Android"
-	path2="/data/user/0"
 	txt="$MODDIR/appList.txt"
 	txt="${txt/'/storage/emulated/'/'/data/media/'}"
 	PU="$(ls /dev/block/vold | grep public)"
@@ -203,7 +216,7 @@ backup)
 				data="/dev/block/vold/$PU"
 				mountinfo="$(df -T "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')"
 				case $mountinfo in
-				vfat | fuseblk | exfat | NTFS | ext4 | f2fs)
+				fuseblk | exfat | NTFS | ext4 | f2fs)
 					outshow="於隨身碟備份"
 					;;
 				*)
@@ -534,12 +547,9 @@ Restore)
 	isBoolean "$Lo" "LO" && Lo="$nsx"
 	if [[ $Lo = false ]]; then
 		isBoolean "$update" "update" && update="$nsx"
-		isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
 	else
 		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
 		get_version "跳轉" "不跳轉" && update="$branch"
-		echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
-		get_version "提示" "靜默備份" && toast_info="$branch"
 	fi
 	update_script
 	#禁用apk驗證
@@ -761,12 +771,9 @@ Restore2)
 	isBoolean "$Lo" "LO" && Lo="$nsx"
 	if [[ $Lo = false ]]; then
 		isBoolean "$update" "update" && update="$nsx"
-		isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
 	else
 		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
 		get_version "跳轉" "不跳轉" && update="$branch"
-		echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
-		get_version "提示" "靜默備份" && toast_info="$branch"
 	fi
 	update_script
 	#禁用apk驗證
@@ -929,12 +936,9 @@ Restore3)
 	isBoolean "$Lo" "LO" && Lo="$nsx"
 	if [[ $Lo = false ]]; then
 		isBoolean "$update" "update" && update="$nsx"
-		isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
 	else
 		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
 		get_version "跳轉" "不跳轉" && update="$branch"
-		echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
-		get_version "提示" "靜默備份" && toast_info="$branch"
 	fi
 	update_script
 	#記錄開始時間

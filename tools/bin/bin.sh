@@ -110,24 +110,12 @@ endtime() {
 }
 nskg=1
 Print() {
-	if [[ $toast_info = true ]]; then
-		if [[ $(pm path ice.message) = "" ]]; then
-			echoRgb "未安裝toast 開始安裝" "0"
-			cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user 0 -r "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
-			[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
-		fi
-		a=$(echo "backup-$(date '+%T')" | sed 's#/#{xiegang}#g')
-		b=$(echo "$1" | sed 's#/#{xiegang}#g')
-		content query --uri content://ice.message/notify/"$nskg<|>$a<|>$b<|>bs" >/dev/null 2>&1
-	fi
+	a=$(echo "backup-$(date '+%T')" | sed 's#/#{xiegang}#g')
+	b=$(echo "$1" | sed 's#/#{xiegang}#g')
+	content query --uri content://ice.message/notify/"$nskg<|>$a<|>$b<|>bs" >/dev/null 2>&1
 }
 longToast() {
-	if [[ $(pm path ice.message) = "" ]]; then
-		echoRgb "未安裝toast 開始安裝" "0"
-		cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user 0 -r "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
-		[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
-	fi
-	[[ $toast_info = true ]] && content query --uri content://ice.message/long/"$*" >/dev/null 2>&1
+	content query --uri content://ice.message/long/"$*" >/dev/null 2>&1
 }
 echoRgb() {
 	#轉換echo顏色提高可讀性
