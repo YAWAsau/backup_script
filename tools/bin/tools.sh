@@ -172,12 +172,18 @@ backup)
 	if [[ ! -f $txt ]]; then
 		echoRgb "請執行\"Getlist.sh\"獲取應用列表再來備份" "0" && exit 1
 	else
-		cat "$txt" | grep -v "#" | while read; do
-			name=($REPLY $REPLY)
-			if [[ $REPLY != "" && ${name[1]} != "" && $(pm path "${name[1]}" | cut -f2 -d ':') = "" ]]; then
-				echoRgb "${name[2]}不存在系統，從列表中刪除" "0"
-				echo "$(sed -e "s/$REPLY//g ; /^$/d" "$txt")" >"$txt"
+		D="1"
+		C="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
+		while [[ $D -le $C ]]; do
+			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $1}')"
+			name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
+			{
+			if [[ $name2 != "" && $(pm path "$name2" | cut -f2 -d ':') = "" ]]; then
+				echoRgb "$name1不存在系統，從列表中刪除" "0"
+				echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$txt")" >"$txt"
 			fi
+			} &
+			let D++
 		done
 		echo "$(sed -e '/^$/d' "$txt")" >"$txt"
 	fi
@@ -273,6 +279,12 @@ backup)
 				;;
 			esac
 			if [[ $nobackup != true ]]; then
+				apk_version2="$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)"
+				if [[ $apk_version != "" ]]; then
+					echoRgb "版本:$apk_version>$apk_version2"
+				else
+					echoRgb "版本:$apk_version2"
+				fi
 				[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
 				partition_info
 				[[ $lxj -ge 95 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
@@ -297,8 +309,12 @@ backup)
 				)
 				echo_log "備份$apk_number個Apk"
 				if [[ $result = 0 ]]; then
-					#pm list packages --show-versioncode "$name2"
-					echo "apk_version=\"$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)\"" >>"$app_details"
+					#pm list packages --show-versioncode "com.facebook.katana"
+					if [[ $apk_version = "" ]]; then
+						echo "apk_version=\"$apk_version2\"" >>"$app_details"
+					else
+						echo "$(cat "$app_details" | sed "s/"${apk_version}"/"${apk_version2}"/g")">"$app_details"
+					fi
 					[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
 					[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
 					[[ ! -f $Backup_folder/Restorebackup.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/Restorebackup.sh"
@@ -363,10 +379,15 @@ backup)
 				echo_log "備份$1數據"
 				if [[ $result = 0 ]]; then
 					if [[ $zsize != "" ]]; then
+						#cat "$app_details" | sed "s/$apk_version/$apk_version2/g"
 						echo "#$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
 						[[ $2 != $(cat "$app_details" | awk "/$1path/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g') ]] && echo "#$1path=\"$2\"" >>"$app_details"
 					else
-						echo "$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
+						if [[ $Size != "" ]]; then
+							echo "$(cat "$app_details" | sed "s/"$Size"/"$(du -ks "$data_path" | awk '{print $1}')"/g")">"$app_details"
+						else
+							echo "$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
+						fi
 					fi
 				fi
 			else
@@ -398,10 +419,15 @@ backup)
 			apk_path2="${apk_path2%/*}"
 			if [[ -d $apk_path2 ]]; then
 				echoRgb "備份第$i/$r個應用 剩下$((r - i))個" "3"
-				unset ChineseName PackageName nobackup No_backupdata result type
+				echoRgb "備份$name1 ($name2)"
+				unset ChineseName PackageName nobackup No_backupdata result
 				if [[ $name1 = *! || $name1 = *！ ]]; then
 					name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
-					echoRgb "跳過備份$name1 所有數據" "0"
+					echoRgb "跳過備份所有數據" "0"
+					No_backupdata=1
+				fi
+				if [[ $(echo "$blacklist" | egrep -w "$name2") = $name2 ]]; then
+					echoRgb "黑名單應用跳過備份所有數據" "0"
 					No_backupdata=1
 				fi
 				Backup_folder="$Backup/$name1"
@@ -409,7 +435,7 @@ backup)
 				if [[ -f $app_details ]]; then
 					. "$app_details"
 					if [[ $PackageName != $name2 ]]; then
-						unset userSize ChineseName PackageName apk_version type result
+						unset userSize ChineseName PackageName apk_version apk_version2 result
 						Backup_folder="$Backup/${name1}[${name2}]"
 						app_details="$Backup_folder/app_details"
 						[[ -f $app_details ]] && . "$app_details"
@@ -418,7 +444,6 @@ backup)
 				[[ -f $Backup/STOP ]] && echoRgb "離開腳本" "0" && exit 1
 				[[ $hx = USB && $PT = "" ]] && echoRgb "隨身碟意外斷開 請檢查穩定性" "0" && exit 1
 				starttime2="$(date -u "+%s")"
-				echoRgb "備份$name1 ($name2)"
 				[[ $name2 = com.tencent.mobileqq ]] && echoRgb "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
 				[[ $name2 = com.tencent.mm ]] && echoRgb "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
 				apk_number="$(echo "$apk_path" | wc -l)"
@@ -536,7 +561,7 @@ dumpname)
 			. "$REPLY/app_details"
 			if [[ $PackageName != "" ]]; then
 				[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
-				echo "${REPLY##*/} $PackageName $type" >>"$txt"
+				echo "${REPLY##*/} $PackageName" >>"$txt"
 			fi
 		fi
 	done
@@ -553,13 +578,13 @@ Restore)
 	fi
 	update_script
 	#禁用apk驗證
-	settings put global verifier_verify_adb_installs 0
+	settings put global verifier_verify_adb_installs 0 2>/dev/null
 	#禁用安裝包驗證
-	settings put global package_verifier_enable 0
+	settings put global package_verifier_enable 0 2>/dev/null
 	#關閉play安全效驗
-	if [[ $(settings get global package_verifier_user_consent) != "" && $(settings get global package_verifier_user_consent) != -1 ]]; then
-		settings put global package_verifier_user_consent -1
-		settings put global upload_apk_enable 0
+	if [[ $(settings get global package_verifier_user_consent 2>/dev/null) != -1 ]]; then
+		settings put global package_verifier_user_consent -1 2>/dev/null
+		settings put global upload_apk_enable 0 2>/dev/null
 		echoRgb "PLAY安全驗證為開啟狀態已被腳本關閉防止apk安裝失敗" "3"
 	fi
 	[[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
@@ -777,13 +802,13 @@ Restore2)
 	fi
 	update_script
 	#禁用apk驗證
-	settings put global verifier_verify_adb_installs 0
+	settings put global verifier_verify_adb_installs 0 2>/dev/null
 	#禁用安裝包驗證
-	settings put global package_verifier_enable 0
+	settings put global package_verifier_enable 0 2>/dev/null
 	#關閉play安全效驗
-	if [[ $(settings get global package_verifier_user_consent) != "" && $(settings get global package_verifier_user_consent) != -1 ]]; then
-		settings put global package_verifier_user_consent -1
-		settings put global upload_apk_enable 0
+	if [[ $(settings get global package_verifier_user_consent 2>/dev/null) != -1 ]]; then
+		settings put global package_verifier_user_consent -1 2>/dev/null
+		settings put global upload_apk_enable 0 2>/dev/null
 		echoRgb "PLAY安全驗證為開啟狀態已被腳本關閉防止apk安裝失敗" "3"
 	fi
 	[[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
@@ -1079,14 +1104,18 @@ com.android.chrome"
 		let bn++ LR++
 	done
 	if [[ -f $nametxt ]]; then
-		cat "$nametxt" | grep -v "#" | while read; do
-			name=($REPLY $REPLY)
+		D="1"
+		C="$(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
+		while [[ $D -le $C ]]; do
+			name1="$(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $1}')"
+			name2="$(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
 			{
-				if [[ $REPLY != "" && $(pm path "${name[1]}" | cut -f2 -d ':') = "" ]]; then
-					echoRgb "${name[2]}不存在系統，從列表中刪除"
-					echo "$(sed -e "s/$REPLY//g ; /^$/d" "$nametxt")" >"$nametxt"
-				fi
+			if [[ $name2 != "" && $(pm path "$name2" | cut -f2 -d ':') = "" ]]; then
+				echoRgb "$name1不存在系統，從列表中刪除" "0"
+				echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$nametxt")" >"$nametxt"
+			fi
 			} &
+			let D++
 		done
 		echo "$(sort "$nametxt" | sed -e '/^$/d')" >"$nametxt"
 	fi
