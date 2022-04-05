@@ -370,7 +370,7 @@ backup)
 	}
 	#檢測數據位置進行備份
 	Backup_data() {
-		unset zsize
+		unset zsize Size
 		case $1 in
 		user) Size="$userSize" && data_path="$path2/$name2" ;;
 		data) Size="$dataSize" && data_path="$path/$1/$name2" ;;
@@ -441,7 +441,7 @@ backup)
 	{
 		while [[ $i -le $r ]]; do
 			[[ $en -ge 229 ]] && en=118
-			unset name1 name2 apk_path apk_path2 result
+			unset name1 name2 apk_path apk_path2
 			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
 			name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
 			[[ $name2 = "" ]] && echoRgb "警告! appList.txt應用包名獲取失敗，可能修改有問題" "0" && exit 1
@@ -451,7 +451,7 @@ backup)
 			if [[ -d $apk_path2 ]]; then
 				echoRgb "備份第$i/$r個應用 剩下$((r - i))個" "3"
 				echoRgb "備份$name1 ($name2)"
-				unset ChineseName PackageName nobackup No_backupdata result
+				unset ChineseName PackageName nobackup No_backupdata result apk_version apk_version2 userSize dataSize obbSize
 				if [[ $name1 = *! || $name1 = *！ ]]; then
 					name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
 					echoRgb "跳過備份所有數據" "0"
@@ -466,7 +466,7 @@ backup)
 				if [[ -f $app_details ]]; then
 					. "$app_details"
 					if [[ $PackageName != $name2 ]]; then
-						unset userSize ChineseName PackageName apk_version apk_version2 result
+						unset userSize ChineseName PackageName apk_version apk_version2 result userSize dataSize obbSize
 						Backup_folder="$Backup/${name1}[${name2}]"
 						app_details="$Backup_folder/app_details"
 						[[ -f $app_details ]] && . "$app_details"
