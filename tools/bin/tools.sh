@@ -497,6 +497,7 @@ backup)
 					#備份user數據
 					[[ $Backup_user_data = true ]] && Backup_data "user"
 					[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)"
+					[[ $name2 = moe.shizuku.redirectstorage ]] && Backup_data "storage-isolation" "/data/adb/storage-isolation"
 				fi
 				endtime 2 "$name1備份" "3"
 				Occupation_status="$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
@@ -660,6 +661,7 @@ Restore)
 			;;
 		*)
 			[[ $FILE_NAME2 = thanox ]] && rm -rf "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)"
+			[[ $FILE_NAME2 = storage-isolation ]] && rm -rf "/data/adb/storage-isolation"
 			case ${FILE_NAME##*.} in
 			lz4 | zst) pv "$tar_path" | tar -I zstd -xmPpf - ;;
 			tar) pv "$tar_path" | tar -xPpf - ;;
@@ -705,6 +707,10 @@ Restore)
 			thanox)
 				restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)/" >/dev/null 2>&1
 				echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
+				;;
+			storage-isolation)
+				restorecon -RF "/data/adb/storage-isolation/" >/dev/null 2>&1
+				echo_log "selinux上下文設置"
 				;;
 			esac
 		fi
@@ -929,6 +935,7 @@ Restore2)
 					fi
 				else
 					[[ $FILE_NAME2 = thanox ]] && rm -rf "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)"
+					[[ $FILE_NAME2 = storage-isolation ]] && rm -rf "/data/adb/storage-isolation"
 					case ${FILE_NAME##*.} in
 					lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmPpf - ;;
 					tar) pv "$tar_path" | tar --recursive-unlink -xmPpf - ;;
@@ -969,6 +976,10 @@ Restore2)
 					thanox)
 						restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)/" >/dev/null 2>&1
 						echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
+						;;
+					storage-isolation)
+						restorecon -RF "/data/adb/storage-isolation/" >/dev/null 2>&1
+						echo_log "selinux上下文設置"
 						;;
 					esac
 				fi
