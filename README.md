@@ -60,6 +60,7 @@ PS. 簡體版本使用 Github Action 自動構建，30分鐘執行一次，所�
 - 如果使用過程中出現問題，請攜帶截圖並詳細說明問題，建立 [issues](https://github.com/YAWAsau/backup_script/issues)。
 - 酷安 @[落葉淒涼TEL](http://www.coolapk.com/u/2277637)
 - QQ組 976613477
+- TG https://t.me/backup_script
 
 ## 常見問題
 ```
