@@ -191,6 +191,7 @@ backup)
 		fi
 	fi
 	PU="$(ls /dev/block/vold | grep public)"
+	echo $PU
 	if [[ $PU != "" ]]; then
 		[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts | grep "$PU" | awk '{print $2}')"
 		if [[ -d $PT ]]; then
@@ -222,36 +223,38 @@ backup)
 	D="1"
 	C="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	if [[ $delete_folder = true ]]; then
-		echoRgb "腳本開始前檢查備份目錄中是否存在已經卸載應用" "3"
-		echoRgb "檢查到已卸載應用操作?\n -音量上刪除資料夾，下移動到其他處"
-		get_version "刪除" "移動到其他處" && operate="$branch"
-		find "$Backup" -maxdepth 1 -type d | sort | while read; do
-			if [[ -f $REPLY/app_details ]]; then
-				unset PackageName
-				. "$REPLY/app_details"
-				if [[ $PackageName != "" && $(pm path "$PackageName" | cut -f2 -d ':') = "" ]]; then
-					if [[ $operate = true ]]; then
-						rm -rf "$REPLY"
-						echoRgb "${REPLY##*/}不存在系統 刪除資料夾" "0"
-					else
-						if [[ ! -d $Backup/被卸載的應用 ]]; then
-							mkdir -p "$Backup/被卸載的應用" && mv "$REPLY" "$Backup/被卸載的應用/"
+		if [[ -d $Backup ]]; then
+			echoRgb "腳本開始前檢查備份目錄中是否存在已經卸載應用" "3"
+			echoRgb "檢查到已卸載應用操作?\n -音量上刪除資料夾，下移動到其他處"
+			get_version "刪除" "移動到其他處" && operate="$branch"
+			find "$Backup" -maxdepth 1 -type d | sort | while read; do
+				if [[ -f $REPLY/app_details ]]; then
+					unset PackageName
+					. "$REPLY/app_details"
+					if [[ $PackageName != "" && $(pm path "$PackageName" | cut -f2 -d ':') = "" ]]; then
+						if [[ $operate = true ]]; then
+							rm -rf "$REPLY"
+							echoRgb "${REPLY##*/}不存在系統 刪除資料夾" "0"
 						else
-							mv "$REPLY" "$Backup/被卸載的應用/"
+							if [[ ! -d $Backup/被卸載的應用 ]]; then
+								mkdir -p "$Backup/被卸載的應用" && mv "$REPLY" "$Backup/被卸載的應用/"
+							else
+								mv "$REPLY" "$Backup/被卸載的應用/"
+							fi
+							[[ ! -d $Backup/被卸載的應用/tools ]] && cp -r "$tools_path" "$Backup/被卸載的應用" && rm -rf "$Backup/被卸載的應用/tools/bin/zip" "$Backup/被卸載的應用/tools/script"
+							[[ ! -f $Backup/被卸載的應用/Restorebackup.sh ]] && cp -r "$script_path/restore" "$Backup/被卸載的應用/Restorebackup.sh"
+							[[ ! -f $Backup/被卸載的應用/DumpName.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/被卸載的應用/DumpName.sh"
+							[[ ! -f $Backup/被卸載的應用/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/被卸載的應用/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf"
+							txt2="$Backup/被卸載的應用/appList.txt"
+							[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
+							echo "${REPLY##*/} $PackageName">>"$txt2"
+							echo "$(sed -e "s/${REPLY##*/} $PackageName//g ; /^$/d" "$Backup/appList.txt")" >"$Backup/appList.txt"
+							echoRgb "${REPLY##*/}不存在系統 已移動到$Backup/被卸載的應用" "0"
 						fi
-						[[ ! -d $Backup/被卸載的應用/tools ]] && cp -r "$tools_path" "$Backup/被卸載的應用" && rm -rf "$Backup/被卸載的應用/tools/bin/zip" "$Backup/被卸載的應用/tools/script"
-						[[ ! -f $Backup/被卸載的應用/Restorebackup.sh ]] && cp -r "$script_path/restore" "$Backup/被卸載的應用/Restorebackup.sh"
-						[[ ! -f $Backup/被卸載的應用/DumpName.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/被卸載的應用/DumpName.sh"
-						[[ ! -f $Backup/被卸載的應用/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/被卸載的應用/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf"
-						txt2="$Backup/被卸載的應用/appList.txt"
-						[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
-						echo "${REPLY##*/} $PackageName">>"$txt2"
-						echo "$(sed -e "s/${REPLY##*/} $PackageName//g ; /^$/d" "$Backup/appList.txt")" >"$Backup/appList.txt"
-						echoRgb "${REPLY##*/}不存在系統 已移動到$Backup/被卸載的應用" "0"
 					fi
 				fi
-			fi
-		done
+			done
+		fi
 	fi
 	echoRgb "檢查備份列表中是否存在已經卸載應用" "3"
 	while [[ $D -le $C ]]; do
@@ -298,6 +301,7 @@ backup)
 		[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
 		if [[ $apk_version = $(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1) ]]; then
 			unset xb
+			let osj++
 			result=0
 			echoRgb "Apk版本無更新 跳過備份" "2"
 		else
@@ -310,6 +314,7 @@ backup)
 				;;
 			esac
 			if [[ $nobackup != true ]]; then
+				let osn++
 				apk_version2="$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)"
 				if [[ $apk_version != "" ]]; then
 					echoRgb "版本:$apk_version>$apk_version2"
@@ -391,6 +396,7 @@ backup)
 				echoRgb "備份$1數據"
 				case $1 in
 				user)
+					let osx++
 					case $Compression_method in
 					tar | Tar | TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
 					zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
@@ -398,6 +404,10 @@ backup)
 					esac
 					;;
 				*)
+					case $1 in
+					data)	let osb++ ;;
+					obb)	let osg++ ;;
+					esac
 					case $Compression_method in
 					tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
 					zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
@@ -428,6 +438,11 @@ backup)
 			if [[ -f $data_path ]]; then
 				echoRgb "$1是一個文件 不支持備份" "0"
 			else
+				case $1 in
+				user)	let osz++ ;;
+				data)	let osd++ ;;
+				obb)	let ose++ ;;
+				esac
 				echoRgb "$1數據不存在跳過備份" "2"
 			fi
 		fi
@@ -439,6 +454,14 @@ backup)
 	TIME="$starttime1"
 	en=118
 	{
+		osn=0
+		osx=0
+		osb=0
+		osg=0
+		osz=0
+		osd=0
+		ose=0
+		osj=0
 		while [[ $i -le $r ]]; do
 			[[ $en -ge 229 ]] && en=118
 			unset name1 name2 apk_path apk_path2
@@ -509,6 +532,7 @@ backup)
 			fi
 			if [[ $i = $r ]]; then
 				endtime 1 "應用備份" "3"
+				echoRgb "\n -已更新的apk=\"$osn\"\n -apk版本號無變化=\"$osj\"\n -user數據已備份=\"$osx\"\n -data數據已備份=\"$osb\"\n -obb數據已備份=\"$osg\"\n -user數據不存在=\"$osz\"\n -obb數據不存在=\"$osd\"\n -obb數據不存在=\"$ose\""
 				if [[ $backup_media = true ]]; then
 					A=1
 					B="$(echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
@@ -705,7 +729,7 @@ Restore)
 				[[ -d $path/$FILE_NAME2/$name2 ]] && chmod -R 0777 "$path/$FILE_NAME2/$name2"
 				;;
 			thanox)
-				restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)/" >/dev/null 2>&1
+				restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2)/" >/dev/null 2>&1
 				echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
 				;;
 			storage-isolation)
@@ -1054,6 +1078,7 @@ Getlist)
 	#白名單
 	whitelist="com.xiaomi.xmsf
 com.xiaomi.xiaoailite
+com.xiaomi.hm.health
 com.duokan.phone.remotecontroller
 com.miui.weather2
 com.milink.service
