@@ -367,6 +367,7 @@ backup)
 					[[ -f $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null) && $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l) = 1 ]] && cp -r "$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null)" "$Backup_folder/nmsl.apk"
 				fi
 			else
+				let osj++
 				echoRgb "$name不支持備份 需要使用vanced安裝" "0" && rm -rf "$Backup_folder"
 			fi
 		fi
@@ -462,6 +463,11 @@ backup)
 		osd=0
 		ose=0
 		osj=0
+		#獲取已經開啟的無障礙
+		var="$(settings get secure enabled_accessibility_services)"
+		#獲取預設鍵盤
+		keyboard="$(settings get secure default_input_method)"
+		[[ $(cat "$txt" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${keyboard%/*}$") != ${keyboard%/*} ]] && unset keyboard
 		while [[ $i -le $r ]]; do
 			[[ $en -ge 229 ]] && en=118
 			unset name1 name2 apk_path apk_path2
@@ -532,6 +538,20 @@ backup)
 			fi
 			if [[ $i = $r ]]; then
 				endtime 1 "應用備份" "3"
+				#設置無障礙開關
+				if [[ $var != "" ]]; then
+					settings put secure enabled_accessibility_services "$var" >/dev/null 2>&1
+				    echo_log "設置無障礙"
+					settings put secure accessibility_enabled 1 >/dev/null 2>&1
+					echo_log "打開無障礙開關"
+				fi
+				#設置鍵盤
+				if [[ $keyboard != "" ]]; then
+					ime enable "$keyboard" >/dev/null 2>&1
+					ime set "$keyboard" >/dev/null 2>&1
+					settings put secure default_input_method "$keyboard" >/dev/null 2>&1
+					echo_log "設置鍵盤$(appinfo -d "(" -ed ")" -o ands,pn -pn "${keyboard%/*}" 2>/dev/null)"
+				fi
 				echoRgb "\n -已更新的apk=\"$osn\"\n -apk版本號無變化=\"$osj\"\n -user數據已備份=\"$osx\"\n -data數據已備份=\"$osb\"\n -obb數據已備份=\"$osg\"\n -user數據不存在=\"$osz\"\n -obb數據不存在=\"$osd\"\n -obb數據不存在=\"$ose\""
 				if [[ $backup_media = true ]]; then
 					A=1
@@ -584,6 +604,12 @@ backup)
 		endtime 1 "批量備份開始到結束"
 		longToast "批量備份完成"
 		Print "批量備份完成 執行過程請查看$Status_log"
+		#打開應用
+		appinfo -sort-i -d "/" -o pn,sa -pn $am_start >/dev/null 2>&1 | while read; do
+			am start -n "$REPLY" >/dev/null 2>&1
+		done
+		#回到桌面
+		input keyevent 3 >/dev/null 2>&1
 		exit 0
 	} &
 	wait && exit
@@ -1075,29 +1101,7 @@ Restore3)
 	rm -rf "$TMPDIR/scriptTMP"
 	;;
 Getlist)
-	#白名單
-	whitelist="com.xiaomi.xmsf
-com.xiaomi.xiaoailite
-com.xiaomi.hm.health
-com.duokan.phone.remotecontroller
-com.miui.weather2
-com.milink.service
-com.android.soundrecorder
-com.miui.virtualsim
-com.xiaomi.vipaccount
-com.miui.fm
-com.xiaomi.shop
-com.xiaomi.smarthome
-com.miui.notes
-com.mi.health
-com.xiaomi.router
-com.xiaomi.mico
-dev.miuiicons.pedroz"
-	system="
-com.google.android.apps.messaging
-com.google.android.inputmethod.latin
-com.android.chrome"
-	# 获取默认桌面
+	#獲取桌面
 	launcher_app="$(pm resolve-activity --brief -c android.intent.category.HOME -a android.intent.action.MAIN | grep '/' | cut -f1 -d '/')"
 	for launcher_app in $launcher_app; do
 		[[ $launcher_app != "android" ]] && [[ $(pgrep -f "$launcher_app" | grep -v 'grep' | wc -l) -ge 1 ]] && launcher_app="$launcher_app"
