@@ -33,7 +33,7 @@ if [[ $toast_info = true ]]; then
 	pm enable "ice.message" &>/dev/null
 	if [[ $(pm path ice.message) = "" ]]; then
 		echoRgb "未安裝toast 開始安裝" "0"
-		cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user 0 -r "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
+		cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user 0 -r -t"$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
 		[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
 	fi
 else
@@ -299,7 +299,7 @@ backup)
 	Backup_apk() {
 		#創建APP備份文件夾
 		[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
-		if [[ $apk_version = $(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1) ]]; then
+		if [[ $apk_version = $(pm list packages --show-versioncode "$name2" | cut -f3 -d ':') ]]; then
 			unset xb
 			let osj++
 			result=0
@@ -315,7 +315,7 @@ backup)
 			esac
 			if [[ $nobackup != true ]]; then
 				let osn++
-				apk_version2="$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)"
+				apk_version2="$(pm list packages --show-versioncode "$name2" | cut -f3 -d ':')"
 				if [[ $apk_version != "" ]]; then
 					echoRgb "版本:$apk_version>$apk_version2"
 				else
@@ -540,10 +540,12 @@ backup)
 				endtime 1 "應用備份" "3"
 				#設置無障礙開關
 				if [[ $var != "" ]]; then
-					settings put secure enabled_accessibility_services "$var" >/dev/null 2>&1
-				    echo_log "設置無障礙"
-					settings put secure accessibility_enabled 1 >/dev/null 2>&1
-					echo_log "打開無障礙開關"
+					if [[ $var != null ]]; then
+						settings put secure enabled_accessibility_services "$var" >/dev/null 2>&1
+						echo_log "設置無障礙"
+						settings put secure accessibility_enabled 1 >/dev/null 2>&1
+						echo_log "打開無障礙開關"
+					fi
 				fi
 				#設置鍵盤
 				if [[ $keyboard != "" ]]; then
@@ -765,6 +767,49 @@ Restore)
 			esac
 		fi
 	}
+	installapk() {
+		apkfile="$(find "$Backup_folder" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
+		if [[ $apkfile != "" ]]; then
+			rm -rf "$TMPDIR"/*
+			case ${apkfile##*.} in
+			lz4 | zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
+			tar) pv "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
+			*)
+				echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
+				Set_back
+				;;
+			esac
+			echo_log "${apkfile##*/}解壓縮" && [[ -f $Backup_folder/nmsl.apk ]] && cp -r "$Backup_folder/nmsl.apk" "$TMPDIR"
+		else
+			echoRgb "你的Apk壓縮包離家出走了，可能備份後移動過程遺失了\n -解決辦法手動安裝Apk後再執行恢復腳本" "0"
+		fi
+		if [[ $result = 0 ]]; then
+			case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
+			1)
+				echoRgb "恢復普通apk" "2"
+				pm install -i com.android.vending --user 0 -r -t "$TMPDIR"/*.apk >/dev/null 2>&1
+				echo_log "Apk安裝"
+				;;
+			0)
+				echoRgb "$TMPDIR中沒有apk" "0"
+				;;
+			*)
+				echoRgb "恢復split apk" "2"
+				b="$(pm install-create -i -i com.android.vending --user 0 | grep -E -o '[0-9]+')"
+				if [[ -f $TMPDIR/nmsl.apk ]]; then
+					pm install -i com.android.vending --user 0 -r -t"$TMPDIR/nmsl.apk" >/dev/null 2>&1
+					echo_log "nmsl.apk安裝"
+				fi
+				find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f | grep -v 'nmsl.apk' | while read; do
+					pm install-write "$b" "${REPLY##*/}" "$REPLY" >/dev/null 2>&1
+					echo_log "${REPLY##*/}安裝"
+				done
+				pm install-commit "$b" >/dev/null 2>&1
+				echo_log "split Apk安裝"
+				;;
+			esac
+		fi
+	}
 	#開始循環$txt內的資料進行恢複
 	#記錄開始時間
 	starttime1="$(date -u "+%s")"
@@ -789,49 +834,16 @@ Restore)
 				echoRgb "恢複$name1 ($name2)"
 				starttime2="$(date -u "+%s")"
 				if [[ $(pm path "$name2") = "" ]]; then
-					apkfile="$(find "$Backup_folder" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
-					if [[ $apkfile != "" ]]; then
-						rm -rf "$TMPDIR"/*
-						case ${apkfile##*.} in
-						lz4 | zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
-						tar) pv "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
-						*)
-							echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
-							Set_back
-							;;
-						esac
-						echo_log "${apkfile##*/}解壓縮" && [[ -f $Backup_folder/nmsl.apk ]] && cp -r "$Backup_folder/nmsl.apk" "$TMPDIR"
-					else
-						echoRgb "你的Apk壓縮包離家出走了，可能備份後移動過程遺失了\n -解決辦法手動安裝Apk後再執行恢復腳本" "0"
-					fi
-					if [[ $result = 0 ]]; then
-						case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
-						1)
-							echoRgb "恢復普通apk" "2"
-							pm install -i com.android.vending --user 0 -r "$TMPDIR"/*.apk >/dev/null 2>&1
-							echo_log "Apk安裝"
-						;;
-						0)
-							echoRgb "$TMPDIR中沒有apk" "0"
-							;;
-						*)
-							echoRgb "恢復split apk" "2"
-							b="$(pm install-create -i -i com.android.vending --user 0 | grep -E -o '[0-9]+')"
-							if [[ -f $TMPDIR/nmsl.apk ]]; then
-								pm install -i com.android.vending --user 0 -r "$TMPDIR/nmsl.apk" >/dev/null 2>&1
-								echo_log "nmsl.apk安裝"
-							fi
-							find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f | grep -v 'nmsl.apk' | while read; do
-								pm install-write "$b" "${REPLY##*/}" "$REPLY" >/dev/null 2>&1
-								echo_log "${REPLY##*/}安裝"
-							done
-							pm install-commit "$b" >/dev/null 2>&1
-							echo_log "split Apk安裝"
-							;;
-						esac
-					fi
+					installapk
 				else
-					echoRgb "存在當前系統中略過安裝Apk" "2"
+					unset apk_version
+					[[ -f "$Backup_folder/app_details" ]] && . "$Backup_folder/app_details"
+					if [[ $apk_version -gt $(pm list packages --show-versioncode "$name2" | cut -f3 -d ':') ]]; then
+						installapk
+						echoRgb "版本提升$(pm list packages --show-versioncode "$name2" | cut -f3 -d ':')>$apk_version" "1"
+					else
+						echoRgb "本地版本大於備份版本略過安裝" "2"
+					fi
 				fi
 				if [[ $No_backupdata = "" ]]; then
 					if [[ $(pm path "$name2") != "" ]]; then
@@ -900,6 +912,49 @@ Restore2)
 	fi
 	[[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
 	[[ $(which restorecon) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
+	installapk() {
+		apkfile="$(find "$Backup_folder" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
+		if [[ $apkfile != "" ]]; then
+			rm -rf "$TMPDIR"/*
+			case ${apkfile##*.} in
+			lz4 | zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
+			tar) pv "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
+			*)
+				echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
+				Set_back
+				;;
+			esac
+			echo_log "${apkfile##*/}解壓縮" && [[ -f $Backup_folder/nmsl.apk ]] && cp -r "$Backup_folder/nmsl.apk" "$TMPDIR"
+		else
+			echoRgb "你的Apk壓縮包離家出走了，可能備份後移動過程遺失了\n -解決辦法手動安裝Apk後再執行恢復腳本" "0"
+		fi
+		if [[ $result = 0 ]]; then
+			case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
+			1)
+				echoRgb "恢復普通apk" "2"
+				pm install -i com.android.vending --user 0 -r -t "$TMPDIR"/*.apk >/dev/null 2>&1
+				echo_log "Apk安裝"
+				;;
+			0)
+				echoRgb "$TMPDIR中沒有apk" "0"
+				;;
+			*)
+				echoRgb "恢復split apk" "2"
+				b="$(pm install-create -i -i com.android.vending --user 0 | grep -E -o '[0-9]+')"
+				if [[ -f $TMPDIR/nmsl.apk ]]; then
+					pm install -i com.android.vending --user 0 -r -t"$TMPDIR/nmsl.apk" >/dev/null 2>&1
+					echo_log "nmsl.apk安裝"
+				fi
+				find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f | grep -v 'nmsl.apk' | while read; do
+					pm install-write "$b" "${REPLY##*/}" "$REPLY" >/dev/null 2>&1
+					echo_log "${REPLY##*/}安裝"
+				done
+				pm install-commit "$b" >/dev/null 2>&1
+				echo_log "split Apk安裝"
+				;;
+			esac
+		fi
+	}
 	#記錄開始時間
 	starttime1="$(date -u "+%s")"
 	{
@@ -916,49 +971,14 @@ Restore2)
 		echoRgb "恢複$name2 ($name)" "3"
 		starttime2="$(date -u "+%s")"
 		if [[ $(pm path "$name") = "" ]]; then
-			apkfile="$(find "$Backup_folder" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
-			if [[ $apkfile != "" ]]; then
-				rm -rf "$TMPDIR"/*
-				case ${apkfile##*.} in
-				lz4 | zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
-				tar) pv "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
-				*)
-					echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
-					Set_back
-					;;
-				esac
-				echo_log "${apkfile##*/}解壓縮" && [[ -f $Backup_folder/nmsl.apk ]] && cp -r "$Backup_folder/nmsl.apk" "$TMPDIR"
-			else
-				echoRgb "你的Apk壓縮包離家出走了，可能備份後移動過程遺失了\n -解決辦法手動安裝Apk後再執行恢復腳本" "0"
-			fi
-			if [[ $result = 0 ]]; then
-				case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
-				1)
-					echoRgb "恢復普通apk" "2"
-					pm install -i com.android.vending --user 0 -r "$TMPDIR"/*.apk >/dev/null 2>&1
-					echo_log "Apk安裝"
-					;;
-				0)
-					echoRgb "$TMPDIR中沒有apk" "0"
-					;;
-				*)
-					echoRgb "恢復split apk" "2"
-					b="$(pm install-create -i com.android.vending --user 0 | egrep -o '[0-9]+')"
-					if [[ -f $TMPDIR/nmsl.apk ]]; then
-						pm install --user 0 -r "$TMPDIR/nmsl.apk" >/dev/null 2>&1
-						echo_log "nmsl.apk安裝"
-					fi
-					find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f | grep -v 'nmsl.apk' | while read; do
-						pm install-write "$b" "${REPLY##*/}" "$REPLY" >/dev/null 2>&1
-						echo_log "${REPLY##*/}安裝"
-					done
-					pm install-commit "$b" >/dev/null 2>&1
-					echo_log "split Apk安裝"
-					;;
-				esac
-			fi
+			installapk
 		else
-			echoRgb "存在當前系統中略過安裝Apk" "2"
+			if [[ $apk_version -gt $(pm list packages --show-versioncode "$name" | cut -f3 -d ':') ]]; then
+				installapk
+				echoRgb "版本提升$(pm list packages --show-versioncode "$name" | cut -f3 -d ':')>$apk_version" "1"
+			else
+				echoRgb "本地版本大於備份版本略過安裝" "2"
+			fi
 		fi
 		if [[ $(pm path "$name") != "" ]]; then
 			#停止應用
