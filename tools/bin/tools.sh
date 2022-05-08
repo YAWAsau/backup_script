@@ -223,50 +223,54 @@ backup)
 	C="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	if [[ $delete_folder = true ]]; then
 		if [[ -d $Backup ]]; then
-			echoRgb "腳本開始前檢查備份目錄中是否存在已經卸載應用" "3"
-			echoRgb "檢查到已卸載應用操作?\n -音量上刪除資料夾，下移動到其他處"
-			get_version "刪除" "移動到其他處" && operate="$branch"
-			find "$Backup" -maxdepth 1 -type d | sort | while read; do
-				if [[ -f $REPLY/app_details ]]; then
-					unset PackageName
-					. "$REPLY/app_details"
-					if [[ $PackageName != "" && $(pm path "$PackageName" | cut -f2 -d ':') = "" ]]; then
-						if [[ $operate = true ]]; then
-							rm -rf "$REPLY"
-							echoRgb "${REPLY##*/}不存在系統 刪除資料夾" "0"
-						else
-							if [[ ! -d $Backup/被卸載的應用 ]]; then
-								mkdir -p "$Backup/被卸載的應用" && mv "$REPLY" "$Backup/被卸載的應用/"
+			if [[ $1 = "" ]]; then
+				echoRgb "腳本開始前檢查備份目錄中是否存在已經卸載應用" "3"
+				echoRgb "檢查到已卸載應用操作?\n -音量上刪除資料夾，下移動到其他處"
+				get_version "刪除" "移動到其他處" && operate="$branch"
+				find "$Backup" -maxdepth 1 -type d | sort | while read; do
+					if [[ -f $REPLY/app_details ]]; then
+						unset PackageName
+						. "$REPLY/app_details"
+						if [[ $PackageName != "" && $(pm path "$PackageName" | cut -f2 -d ':') = "" ]]; then
+							if [[ $operate = true ]]; then
+								rm -rf "$REPLY"
+								echoRgb "${REPLY##*/}不存在系統 刪除資料夾" "0"
 							else
-								mv "$REPLY" "$Backup/被卸載的應用/"
+								if [[ ! -d $Backup/被卸載的應用 ]]; then
+									mkdir -p "$Backup/被卸載的應用" && mv "$REPLY" "$Backup/被卸載的應用/"
+								else
+									mv "$REPLY" "$Backup/被卸載的應用/"
+								fi
+								[[ ! -d $Backup/被卸載的應用/tools ]] && cp -r "$tools_path" "$Backup/被卸載的應用" && rm -rf "$Backup/被卸載的應用/tools/bin/zip" "$Backup/被卸載的應用/tools/script"
+								[[ ! -f $Backup/被卸載的應用/恢復備份.sh ]] && cp -r "$script_path/restore" "$Backup/被卸載的應用/恢復備份.sh"
+								[[ ! -f $Backup/被卸載的應用/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/被卸載的應用/重新生成應用列表.sh"
+								[[ ! -f $Backup/被卸載的應用/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/被卸載的應用/終止腳本.sh"
+								[[ ! -f $Backup/被卸載的應用/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/被卸載的應用/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf"
+								txt2="$Backup/被卸載的應用/appList.txt"
+								[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
+								echo "${REPLY##*/} $PackageName">>"$txt2"
+								echo "$(sed -e "s/${REPLY##*/} $PackageName//g ; /^$/d" "$Backup/appList.txt")" >"$Backup/appList.txt"
+								echoRgb "${REPLY##*/}不存在系統 已移動到$Backup/被卸載的應用" "0"
 							fi
-							[[ ! -d $Backup/被卸載的應用/tools ]] && cp -r "$tools_path" "$Backup/被卸載的應用" && rm -rf "$Backup/被卸載的應用/tools/bin/zip" "$Backup/被卸載的應用/tools/script"
-							[[ ! -f $Backup/被卸載的應用/恢復備份.sh ]] && cp -r "$script_path/restore" "$Backup/被卸載的應用/恢復備份.sh"
-							[[ ! -f $Backup/被卸載的應用/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/被卸載的應用/重新生成應用列表.sh"
-							[[ ! -f $Backup/被卸載的應用/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/被卸載的應用/終止腳本.sh"
-							[[ ! -f $Backup/被卸載的應用/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/被卸載的應用/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf"
-							txt2="$Backup/被卸載的應用/appList.txt"
-							[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
-							echo "${REPLY##*/} $PackageName">>"$txt2"
-							echo "$(sed -e "s/${REPLY##*/} $PackageName//g ; /^$/d" "$Backup/appList.txt")" >"$Backup/appList.txt"
-							echoRgb "${REPLY##*/}不存在系統 已移動到$Backup/被卸載的應用" "0"
 						fi
 					fi
-				fi
-			done
+				done
+			fi
 		fi
 	fi
-	echoRgb "檢查備份列表中是否存在已經卸載應用" "3"
-	while [[ $D -le $C ]]; do
-		name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $1}')"
-		name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
-		if [[ $name2 != "" && $(pm path "$name2" | cut -f2 -d ':') = "" ]]; then
-			echoRgb "$name1不存在系統，從列表中刪除" "0"
-			echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$txt")" >"$txt"
-		fi
-		let D++
-	done
-	echo "$(sed -e '/^$/d' "$txt")" >"$txt"
+	if [[ $1 = "" ]]; then
+		echoRgb "檢查備份列表中是否存在已經卸載應用" "3"
+		while [[ $D -le $C ]]; do
+			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $1}')"
+			name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
+			if [[ $name2 != "" && $(pm path "$name2" | cut -f2 -d ':') = "" ]]; then
+				echoRgb "$name1不存在系統，從列表中刪除" "0"
+				echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$txt")" >"$txt"
+			fi
+			let D++
+		done
+		echo "$(sed -e '/^$/d' "$txt")" >"$txt"
+	fi
 	r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	[[ $1 != "" ]] && r=1
 	[[ $r = "" ]] && echoRgb "爬..appList.txt是空的或是包名被注釋了這樣備份個鬼" "0" && exit 1
