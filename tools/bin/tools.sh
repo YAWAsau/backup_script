@@ -176,7 +176,7 @@ backup)
 	data="$MODDIR"
 	hx="本地"
 	echoRgb "壓縮方式:$Compression_method"
-	echoRgb "提示 腳本支持後台壓縮 可以直接離開腳本\n -或是關閉終端也能備份 如需終止腳本\n -請執行$script即可停止\n -備份結束將發送toast提示語" "3"
+	echoRgb "提示 腳本支持後台壓縮 可以直接離開腳本\n -或是關閉終端也能備份 如需終止腳本\n -請執行終止腳本.sh即可停止\n -備份結束將發送toast提示語" "3"
 	if [[ $Output_path != "" ]]; then
 		[[ ${Output_path: -1} = / ]] && Output_path="${Output_path%?}"
 		Backup="$Output_path/Backup_$Compression_method"
@@ -191,7 +191,6 @@ backup)
 		fi
 	fi
 	PU="$(ls /dev/block/vold | grep public)"
-	echo $PU
 	if [[ $PU != "" ]]; then
 		[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts | grep "$PU" | awk '{print $2}')"
 		if [[ -d $PT ]]; then
@@ -244,6 +243,7 @@ backup)
 							[[ ! -d $Backup/被卸載的應用/tools ]] && cp -r "$tools_path" "$Backup/被卸載的應用" && rm -rf "$Backup/被卸載的應用/tools/bin/zip" "$Backup/被卸載的應用/tools/script"
 							[[ ! -f $Backup/被卸載的應用/恢復備份.sh ]] && cp -r "$script_path/restore" "$Backup/被卸載的應用/恢復備份.sh"
 							[[ ! -f $Backup/被卸載的應用/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/被卸載的應用/重新生成應用列表.sh"
+							[[ ! -f $Backup/被卸載的應用/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/被卸載的應用/終止腳本.sh"
 							[[ ! -f $Backup/被卸載的應用/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/被卸載的應用/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf"
 							txt2="$Backup/被卸載的應用/appList.txt"
 							[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
@@ -268,6 +268,7 @@ backup)
 	done
 	echo "$(sed -e '/^$/d' "$txt")" >"$txt"
 	r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
+	[[ $1 != "" ]] && r=1
 	[[ $r = "" ]] && echoRgb "爬..appList.txt是空的或是包名被注釋了這樣備份個鬼" "0" && exit 1
 	rm -rf "$Backup/STOP"
 	#分區詳細
@@ -300,7 +301,9 @@ backup)
 	Backup_apk() {
 		#創建APP備份文件夾
 		[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
-		if [[ $apk_version = $(pm list packages --show-versioncode "$name2" | cut -f3 -d ':') ]]; then
+		apk_version2="$(pm list packages --show-versioncode "$name2" | cut -f3 -d ':')"
+		apk_version3="$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)"
+		if [[ $apk_version = $apk_version2 ]]; then
 			unset xb
 			let osj++
 			result=0
@@ -316,7 +319,6 @@ backup)
 			esac
 			if [[ $nobackup != true ]]; then
 				let osn++
-				apk_version2="$(pm list packages --show-versioncode "$name2" | cut -f3 -d ':')"
 				if [[ $apk_version != "" ]]; then
 					echoRgb "版本:$apk_version>$apk_version2"
 				else
@@ -346,11 +348,15 @@ backup)
 				)
 				echo_log "備份$apk_number個Apk"
 				if [[ $result = 0 ]]; then
-					#pm list packages --show-versioncode "com.facebook.katana"
 					if [[ $apk_version = "" ]]; then
 						echo "apk_version=\"$apk_version2\"" >>"$app_details"
 					else
 						echo "$(cat "$app_details" | sed "s/${apk_version}/${apk_version2}/g")">"$app_details"
+					fi
+					if [[ $versionName = "" ]]; then
+						echo "versionName=\"$apk_version3\"" >>"$app_details"
+					else
+						echo "$(cat "$app_details" | sed "s/${versionName}/${apk_version3}/g")">"$app_details"
 					fi
 					[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
 					[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
@@ -422,7 +428,6 @@ backup)
 				echo_log "備份$1數據"
 				if [[ $result = 0 ]]; then
 					if [[ $zsize != "" ]]; then
-						#cat "$app_details" | sed "s/$apk_version/$apk_version2/g"
 						echo "#$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
 						[[ $2 != $(cat "$app_details" | awk "/$1path/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g') ]] && echo "#$1path=\"$2\"" >>"$app_details"
 					else
@@ -456,14 +461,7 @@ backup)
 	TIME="$starttime1"
 	en=118
 	{
-		osn=0
-		osx=0
-		osb=0
-		osg=0
-		osz=0
-		osd=0
-		ose=0
-		osj=0
+		osn=0; osx=0; osb=0; osg=0; osz=0; osd=0; ose=0; osj=0
 		#獲取已經開啟的無障礙
 		var="$(settings get secure enabled_accessibility_services)"
 		#獲取預設鍵盤
@@ -473,8 +471,13 @@ backup)
 			stopscript
 			[[ $en -ge 229 ]] && en=118
 			unset name1 name2 apk_path apk_path2
-			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-			name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+			if [[ $1 != "" ]]; then
+				name1="$(appinfo -sort-i -d " " -o ands -pn "$1")"
+				name2="$1"
+			else
+				name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+				name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+			fi
 			[[ $name2 = "" ]] && echoRgb "警告! appList.txt應用包名獲取失敗，可能修改有問題" "0" && exit 1
 			apk_path="$(pm path "$name2" | cut -f2 -d ':')"
 			apk_path2="$(echo "$apk_path" | head -1)"
@@ -482,7 +485,7 @@ backup)
 			if [[ -d $apk_path2 ]]; then
 				echoRgb "備份第$i/$r個應用 剩下$((r - i))個" "3"
 				echoRgb "備份$name1 ($name2)"
-				unset ChineseName PackageName nobackup No_backupdata result apk_version apk_version2 userSize dataSize obbSize
+				unset ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 userSize dataSize obbSize
 				if [[ $name1 = *! || $name1 = *！ ]]; then
 					name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
 					echoRgb "跳過備份所有數據" "0"
@@ -497,7 +500,7 @@ backup)
 				if [[ -f $app_details ]]; then
 					. "$app_details"
 					if [[ $PackageName != $name2 ]]; then
-						unset userSize ChineseName PackageName apk_version apk_version2 result userSize dataSize obbSize
+						unset userSize ChineseName PackageName apk_version versionName apk_version2 apk_version3 result userSize dataSize obbSize
 						Backup_folder="$Backup/${name1}[${name2}]"
 						app_details="$Backup_folder/app_details"
 						[[ -f $app_details ]] && . "$app_details"
