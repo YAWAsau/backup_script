@@ -1,11 +1,39 @@
-test "$(whoami)" != root && echo "你是憨批？不給Root用你媽 爬" && exit 1
+echoRgb() {
+	#轉換echo顏色提高可讀性
+	if [[ $2 = 0 ]]; then
+		echo -e "\e[38;5;197m -$1\e[0m"
+	elif [[ $2 = 1 ]]; then
+		echo -e "\e[38;5;121m -$1\e[0m"
+	elif [[ $2 = 2 ]]; then
+		echo -e "\e[38;5;218m -$1\e[0m"
+	elif [[ $2 = 3 ]]; then
+		echo -e "\e[38;5;183m -$1\e[0m"
+	else
+		echo -e "\e[38;5;${bn}m -$1\e[0m"
+	fi
+	[[ $Status_log != "" ]] && echo " -$(date '+%T') $1" >>"$Status_log"
+}
+bn=214
+if [ "$(whoami)" != root ]; then
+	echoRgb "你是憨批？不給Root用你媽 爬" "0"
+	exit 1
+fi
 abi="$(getprop ro.product.cpu.abi)"
 case $abi in
 arm64*)
-	[[ $(getprop ro.build.version.sdk) -lt 28 ]] && echo "設備Android $(getprop ro.build.version.release)版本過低 請升級至Android 9+" && exit 1
+	if [[ $(getprop ro.build.version.sdk) -lt 26 ]]; then
+		echoRgb "設備Android $(getprop ro.build.version.release)版本過低 請升級至Android 8+" "0"
+		exit 1
+	else
+		case $(getprop ro.build.version.sdk) in
+		26|27|28)
+			echoRgb "設備Android $(getprop ro.build.version.release)版本偏低，無法確定腳本能正確的使用" "0"
+			;;
+		esac
+	fi
 	;;
 *)
-	echo "-未知的架構: $abi"
+	echoRgb "未知的架構: $abi" "0"
 	exit 1
 	;;
 esac
@@ -20,9 +48,12 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V14.7"
+backup_version="V14.8"
 #設置二進制命令目錄位置
-[[ $bin_path = "" ]] && echo "未正確指定bin.sh位置" && exit 2
+if [[ $bin_path = "" ]]; then
+	echoRgb "未正確指定bin.sh位置" "0"
+	exit 2
+fi
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
 Status_log="$MODDIR/Log.txt"
 rm -rf "$Status_log"
@@ -40,12 +71,12 @@ update
 bin.sh"
 if [[ ! -d $filepath ]]; then
 	mkdir -p "$filepath"
-	[[ $? = 0 ]] && echo "設置busybox環境中"
+	[[ $? = 0 ]] && echoRgb "設置busybox環境中"
 fi
 [[ ! -f $bin_path/busybox_path ]] && touch "$bin_path/busybox_path"
 if [[ $filepath != $(cat "$bin_path/busybox_path") ]]; then
 	[[ -d $(cat "$bin_path/busybox_path") ]] && rm -rf "$(cat "$bin_path/busybox_path")"
-	echo "$filepath" >"$bin_path/busybox_path"
+	echoRgb "$filepath" >"$bin_path/busybox_path"
 fi
 #刪除無效軟連結
 find -L "$filepath" -maxdepth 1 -type l -exec rm -rf {} \;
@@ -54,7 +85,7 @@ if [[ -d $bin_path ]]; then
 		filesha256="$(sha256sum "$busybox" | cut -d" " -f1)"
 		filesha256_1="$(sha256sum "$busybox2" | cut -d" " -f1)"
 		if [[ $filesha256 != $filesha256_1 ]]; then
-			echo "busybox sha256不一致 重新創立環境中"
+			echoRgb "busybox sha256不一致 重新創立環境中"
 			rm -rf "$filepath"/*
 		fi
 	fi
@@ -63,15 +94,15 @@ if [[ -d $bin_path ]]; then
 		if [[ ! -f $filepath/$File_name ]]; then
 			cp -r "$REPLY" "$filepath"
 			chmod 0777 "$filepath/$File_name"
-			echo "$File_name > $filepath/$File_name"
+			echoRgb "$File_name > $filepath/$File_name"
 		else
 			filesha256="$(sha256sum "$filepath/$File_name" | cut -d" " -f1)"
 			filesha256_1="$(sha256sum "$bin_path/$File_name" | cut -d" " -f1)"
 			if [[ $filesha256 != $filesha256_1 ]]; then
-				echo "$File_name sha256不一致 重新創建"
+				echoRgb "$File_name sha256不一致 重新創建"
 				cp -r "$REPLY" "$filepath"
 				chmod 0777 "$filepath/$File_name"
-				echo "$File_name > $filepath/$File_name"
+				echoRgb "$File_name > $filepath/$File_name"
 			fi
 		fi
 	done
@@ -83,7 +114,7 @@ if [[ -d $bin_path ]]; then
 		done
 	fi
 else
-	echo "遺失$bin_path"
+	echoRgb "遺失$bin_path" "0"
 	exit 1
 fi
 export PATH="$filepath:$PATH"
@@ -91,7 +122,7 @@ export TZ=Asia/Taipei
 TMPDIR="/data/local/tmp"
 [[ ! -d $TMPDIR ]] && mkdir "$TMPDIR"
 if [[ $(which busybox) = "" ]]; then
-	echo "環境變量中沒有找到busybox 請在tools/bin內添加一個\narm64可用的busybox\n或是安裝搞機助手 scene或是Magisk busybox模塊...."
+	echoRgb "環境變量中沒有找到busybox 請在tools/bin內添加一個\narm64可用的busybox\n或是安裝搞機助手 scene或是Magisk busybox模塊...." "0"
 	exit 1
 fi
 #下列為自定義函數
@@ -108,6 +139,15 @@ endtime() {
 	duration="$(echo $((endtime - starttime)) | awk '{t=split("60 秒 60 分 24 時 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')"
 	[[ $duration != "" ]] && echoRgb "$2用時:$duration" || echoRgb "$2用時:0秒"
 }
+stopscript() {
+	if [[ -f $TMPDIR/STOP_script ]]; then
+		echoRgb "停止腳本"
+		longToast "停止腳本"
+		Print "腳本被終止-停止腳本"
+		rm -rf "$TMPDIR/STOP_script"
+		exit
+	fi
+}
 nskg=1
 Print() {
 	a=$(echo "backup-$(date '+%T')" | sed 's#/#{xiegang}#g')
@@ -116,21 +156,6 @@ Print() {
 }
 longToast() {
 	content query --uri content://ice.message/long/"$*" >/dev/null 2>&1
-}
-echoRgb() {
-	#轉換echo顏色提高可讀性
-	if [[ $2 = 0 ]]; then
-		echo -e "\e[38;5;197m -$1\e[0m"
-	elif [[ $2 = 1 ]]; then
-		echo -e "\e[38;5;121m -$1\e[0m"
-	elif [[ $2 = 2 ]]; then
-		echo -e "\e[38;5;218m -$1\e[0m"
-	elif [[ $2 = 3 ]]; then
-		echo -e "\e[38;5;183m -$1\e[0m"
-	else
-		echo -e "\e[38;5;${bn}m -$1\e[0m"
-	fi
-	echo " -$(date '+%T') $1" >>"$Status_log"
 }
 bn=1
 l=300 
@@ -172,7 +197,8 @@ isBoolean() {
 	elif [[ $1 = 0 ]]; then
 		nsx=false
 	else
-		echoRgb "$MODDIR/backup_settings.conf $2=$1填寫錯誤，正確值1or0" "0" && exit 2
+		echoRgb "$MODDIR/backup_settings.conf $2=$1填寫錯誤，正確值1or0" "0"
+		exit 2
 	fi
 }
 echo_log() {
@@ -199,11 +225,11 @@ else
 		UFS_MODEL="unknown"
 	fi
 fi
-Open_apps="$(appinfo -d "(" -ed ")" -o ands,pn -ta c)"
+Open_apps="$(appinfo -d "(" -ed ")" -o ands,pn -ta c 2>/dev/null)"
 Open_apps2="$(echo "$Open_apps" | cut -f2 -d '(' | sed 's/)//g')"
 bn=214
-raminfo="$(awk '($1 == "MemTotal:"){print $2/1000"MB"}' /proc/meminfo)"
-echoRgb "\n ----------------------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(cat "/data/adb/magisk/util_functions.sh" 2>/dev/null | grep "MAGISK_VER_CODE" | cut -f2 -d '=')\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)-$(getprop ro.serialno 2>/dev/null)\n -RAM:$raminfo\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps"
+raminfo="$(awk '($1 == "MemTotal:"){print $2/1000"MB"}' /proc/meminfo 2>/dev/null)"
+echoRgb "\n ----------------------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(cat "/data/adb/magisk/util_functions.sh" 2>/dev/null | grep "MAGISK_VER_CODE" | cut -f2 -d '=')\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)\n -RAM:$raminfo\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
 zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f 2>/dev/null)"
 if [[ $zippath != "" ]]; then
 	case $(echo "$zippath" | wc -l) in
@@ -221,44 +247,47 @@ if [[ $zippath != "" ]]; then
 				*Backup_*)
 					if [[ -f $MODDIR/app_details ]]; then
 						mv "$MODDIR/tools" "${MODDIR%/*}"
-						echoRgb "更新當前${MODDIR##*/}目錄下恢復相關腳本+外部tools目錄"
-						cp -r "$tools_path/script/Get_DirName" "${MODDIR%/*}/DumpName.sh"
-						cp -r "$tools_path/script/restore" "${MODDIR%/*}/Restorebackup.sh"
-						[[ -d ${MODDIR%/}/Media ]] && cp -r "$tools_path/script/restore3" "${MODDIR%/*}/Media/恢復多媒體數據.sh"
-						. "$MODDIR/app_details"
-						if [[ $PackageName != "" ]]; then
-							cp -r "$tools_path/script/restore2" "$MODDIR/Restorebackup.sh"
-						else
-							cp -r "$tools_path/script/restore3" "${MODDIR%/*}/Media/恢復多媒體數據.sh"
-						fi
-						if [[ -d ${MODDIR%/*/*}/tools && -f ${MODDIR%/*/*}/backup.sh ]]; then
+						echoRgb "更新當前${MODDIR##*/}目錄下恢復相關腳本+外部tools目錄與腳本"
+						cp -r "$tools_path/script/Get_DirName" "${MODDIR%/*}/重新生成應用列表.sh"
+						cp -r "$tools_path/script/restore" "${MODDIR%/*}/恢復備份.sh"
+						cp -r "$MODDIR/終止腳本.sh" "${MODDIR%/*}/終止腳本.sh"
+						[[ -d ${MODDIR%/*}/Media ]] && cp -r "$tools_path/script/restore3" "${MODDIR%/*}/恢復自定義資料夾.sh"
+						find "${MODDIR%/*}" -maxdepth 1 -type d | sort | while read; do
+							if [[ -f $REPLY/app_details ]]; then
+								unset PackageName
+								. "$REPLY/app_details"
+								[[ $PackageName != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/恢復備份.sh"
+							fi
+						done
+						if [[ -d ${MODDIR%/*/*}/tools && -f ${MODDIR%/*/*}/備份應用.sh ]]; then
 							echoRgb "更新${MODDIR%/*/*}/tools與備份相關腳本"
 							rm -rf "${MODDIR%/*/*}/tools"
 							find "${MODDIR%/*/*}" -maxdepth 1 -name "*.sh" -type f -exec rm -rf {} \;
-							mv "$MODDIR/backup_settings.conf" "$MODDIR/backup.sh" "$MODDIR/Getlist.sh" "${MODDIR%/*/*}"
+							mv "$MODDIR/備份應用.sh" "$MODDIR/生成應用列表.sh" "$MODDIR/備份自定義資料夾.sh" "$MODDIR/終止腳本.sh" "${MODDIR%/*/*}"
 							cp -r "$tools_path" "${MODDIR%/*/*}"
 						fi
+						rm -rf "$MODDIR/終止腳本.sh"
 					else
 						echoRgb "更新當前${MODDIR##*/}目錄下恢復相關腳本+tools目錄"
-						cp -r "$tools_path/script/Get_DirName" "$MODDIR/DumpName.sh"
-						cp -r "$tools_path/script/restore" "$MODDIR/Restorebackup.sh"
-						[[ -d $MODDIR/Media ]] && cp -r "$tools_path/script/restore3" "$MODDIR/Media/恢復多媒體數據.sh"
+						cp -r "$tools_path/script/Get_DirName" "$MODDIR/重新生成應用列表.sh"
+						cp -r "$tools_path/script/restore" "$MODDIR/恢復備份.sh"
+						[[ -d $MODDIR/Media ]] && cp -r "$tools_path/script/restore3" "$MODDIR/恢復自定義資料夾.sh"
 						find "$MODDIR" -maxdepth 1 -type d | sort | while read; do
 							if [[ -f $REPLY/app_details ]]; then
 								unset PackageName
 								. "$REPLY/app_details"
-								[[ $PackageName != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/Restorebackup.sh"
+								[[ $PackageName != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/恢復備份.sh"
 							fi
 						done
-						if [[ -d ${MODDIR%/*}/tools && -f ${MODDIR%/*}/backup.sh ]]; then
+						if [[ -d ${MODDIR%/*}/tools && -f ${MODDIR%/*}/備份應用.sh ]]; then
 							echoRgb "更新${MODDIR%/*}/tools與備份相關腳本"
 							rm -rf "${MODDIR%/*}/tools"
 							find "${MODDIR%/*}" -maxdepth 1 -name "*.sh" -type f -exec rm -rf {} \;
-							mv "$MODDIR/backup_settings.conf" "$MODDIR/backup.sh" "$MODDIR/Getlist.sh" "${MODDIR%/*}"
+							cp -r "$MODDIR/備份應用.sh" "$MODDIR/終止腳本.sh" "$MODDIR/生成應用列表.sh" "$MODDIR/備份自定義資料夾.sh" "${MODDIR%/*}"
 							cp -r "$tools_path" "${MODDIR%/*}"
 						fi
 					fi
-					rm -rf "$tools_path/script" "$MODDIR/backup_settings.conf" "$MODDIR/backup.sh" "$MODDIR/Getlist.sh"
+					rm -rf "$MODDIR/備份自定義資料夾.sh" "$MODDIR/生成應用列表.sh" "$MODDIR/備份應用.sh" "$tools_path/script"
 					;;
 				*)
 					if [[ $(find "$MODDIR" -maxdepth 1 -name "Backup_*" -type d) != "" ]]; then
@@ -267,14 +296,15 @@ if [[ $zippath != "" ]]; then
 								echoRgb "更新當前目錄下備份相關腳本&tools目錄+${backup_path##*/}內tools目錄+恢復腳本+tools"
 								rm -rf "$backup_path/tools"
 								cp -r "$tools_path" "$backup_path" && rm -rf "$backup_path/tools/bin/zip" "$backup_path/tools/script"
-								cp -r "$tools_path/script/restore" "$backup_path/Restorebackup.sh"
-								cp -r "$tools_path/script/Get_DirName" "$backup_path/DumpName.sh"
-								[[ -d $backup_path/Media ]] && cp -r "$tools_path/script/restore3" "$backup_path/Media/恢復多媒體數據.sh"
+								cp -r "$tools_path/script/restore" "$backup_path/恢復備份.sh"
+								cp -r "$tools_path/script/Get_DirName" "$backup_path/重新生成應用列表.sh"
+								cp -r "$MODDIR/終止腳本.sh" "$backup_path/終止腳本.sh"
+								[[ -d $backup_path/Media ]] && cp -r "$tools_path/script/restore3" "$backup_path/恢復自定義資料夾.sh"
 								find "$MODDIR" -maxdepth 2 -type d | sort | while read; do
 									if [[ -f $REPLY/app_details ]]; then
 										unset PackageName
 										. "$REPLY/app_details"
-										[[ $PackageName != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/Restorebackup.sh"
+										[[ $PackageName != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/恢復備份.sh"
 									fi
 								done
 							fi
@@ -289,11 +319,14 @@ if [[ $zippath != "" ]]; then
 			fi
 			rm -rf "$TMPDIR"/*
 			find "$MODDIR" -maxdepth 1 -name "*.zip" -type f -exec rm -rf {} \;
-			echoRgb "更新完成 請重新執行腳本" "2" && exit
+			echoRgb "更新完成 請重新執行腳本" "2"
+			exit
 		fi
 		;;
 	*)
-		echoRgb "錯誤 請刪除當前目錄多餘zip\n -保留一個最新的數據備份.zip\n -下列為當前目錄zip\n$zippath" "0" && exit 1
+		echoRgb "錯誤 請刪除當前目錄多餘zip\n -保留一個最新的數據備份.zip\n -下列為當前目錄zip\n$zippath" "0"
+		exit 1
 		;;
 	esac
 fi
+#buzexe /data/tmp false tools.sh

@@ -33,7 +33,7 @@ if [[ $toast_info = true ]]; then
 	pm enable "ice.message" &>/dev/null
 	if [[ $(pm path ice.message) = "" ]]; then
 		echoRgb "未安裝toast 開始安裝" "0"
-		cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user 0 -r -t"$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
+		cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user 0 -r -t "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
 		[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
 	fi
 else
@@ -172,11 +172,11 @@ backup)
 	txt="$MODDIR/appList.txt"
 	txt="${txt/'/storage/emulated/'/'/data/media/'}"
 	PU="$(ls /dev/block/vold | grep public)"
-	[[ ! -f $txt ]] && echoRgb "請執行\"Getlist.sh\"獲取應用列表再來備份" "0" && exit 1
+	[[ ! -f $txt ]] && echoRgb "請執行\"生成應用列表.sh\"獲取應用列表再來備份" "0" && exit 1
 	data="$MODDIR"
 	hx="本地"
-	echoRgb "壓縮方式:$Compression_method" "1"
-	echoRgb "提示 腳本支持後台壓縮 可以直接離開腳本\n -或是關閉終端也能備份 如需終止腳本\n -請再次執行$script即可停止\n -備份結束將發送toast提示語" "1"
+	echoRgb "壓縮方式:$Compression_method"
+	echoRgb "提示 腳本支持後台壓縮 可以直接離開腳本\n -或是關閉終端也能備份 如需終止腳本\n -請執行$script即可停止\n -備份結束將發送toast提示語" "3"
 	if [[ $Output_path != "" ]]; then
 		[[ ${Output_path: -1} = / ]] && Output_path="${Output_path%?}"
 		Backup="$Output_path/Backup_$Compression_method"
@@ -242,8 +242,8 @@ backup)
 								mv "$REPLY" "$Backup/被卸載的應用/"
 							fi
 							[[ ! -d $Backup/被卸載的應用/tools ]] && cp -r "$tools_path" "$Backup/被卸載的應用" && rm -rf "$Backup/被卸載的應用/tools/bin/zip" "$Backup/被卸載的應用/tools/script"
-							[[ ! -f $Backup/被卸載的應用/Restorebackup.sh ]] && cp -r "$script_path/restore" "$Backup/被卸載的應用/Restorebackup.sh"
-							[[ ! -f $Backup/被卸載的應用/DumpName.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/被卸載的應用/DumpName.sh"
+							[[ ! -f $Backup/被卸載的應用/恢復備份.sh ]] && cp -r "$script_path/restore" "$Backup/被卸載的應用/恢復備份.sh"
+							[[ ! -f $Backup/被卸載的應用/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/被卸載的應用/重新生成應用列表.sh"
 							[[ ! -f $Backup/被卸載的應用/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/被卸載的應用/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf"
 							txt2="$Backup/被卸載的應用/appList.txt"
 							[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
@@ -285,8 +285,9 @@ backup)
 	txt2="$Backup/appList.txt"
 	[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
 	[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
-	[[ ! -f $Backup/Restorebackup.sh ]] && cp -r "$script_path/restore" "$Backup/Restorebackup.sh"
-	[[ ! -f $Backup/DumpName.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/DumpName.sh"
+	[[ ! -f $Backup/恢復備份.sh ]] && cp -r "$script_path/restore" "$Backup/恢復備份.sh"
+	[[ ! -f $Backup/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/終止腳本.sh"
+	[[ ! -f $Backup/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/重新生成應用列表.sh"
 	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 	filesize="$(du -ks "$Backup" | awk '{print $1}')"
 	Quantity=0
@@ -353,7 +354,7 @@ backup)
 					fi
 					[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
 					[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
-					[[ ! -f $Backup_folder/Restorebackup.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/Restorebackup.sh"
+					[[ ! -f $Backup_folder/恢復備份.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/恢復備份.sh"
 				fi
 				if [[ $name2 = com.android.chrome ]]; then
 					#刪除所有舊apk ,保留一個最新apk進行備份
@@ -469,6 +470,7 @@ backup)
 		keyboard="$(settings get secure default_input_method)"
 		[[ $(cat "$txt" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${keyboard%/*}$") != ${keyboard%/*} ]] && unset keyboard
 		while [[ $i -le $r ]]; do
+			stopscript
 			[[ $en -ge 229 ]] && en=118
 			unset name1 name2 apk_path apk_path2
 			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
@@ -532,7 +534,7 @@ backup)
 				Occupation_status="$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
 				lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
 				echoRgb "完成$((i * 100 / r))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "3"
-				echoRgb "____________________________________"
+				echoRgb "_________________$(endtime 1 "已經")___________________"
 			else
 				echoRgb "$name1[$name2]不在安裝列表，備份個寂寞？" "0"
 			fi
@@ -562,19 +564,20 @@ backup)
 						echoRgb "備份結束，備份多媒體" "1"
 						starttime1="$(date -u "+%s")"
 						Backup_folder="$Backup/Media"
-						[[ ! -f $Backup/Restoremedia.sh ]] && cp -r "$script_path/restore3" "$Backup/Restoremedia.sh"
+						[[ ! -f $Backup/恢復自定義資料夾.sh ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
 						[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
 						app_details="$Backup_folder/app_details"
 						[[ -f $app_details ]] && . "$app_details"
 						mediatxt="$Backup/mediaList.txt"
 						[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$mediatxt"
 						echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | while read; do
+							stopscript
 							echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
 							starttime2="$(date -u "+%s")"
 							Backup_data "${REPLY##*/}" "$REPLY"
 							[[ $result = 0 ]] && [[ $(cat "$mediatxt" | grep -v "#" | sed -e '/^$/d' | grep -w "^${REPLY##*/}.tar$" | head -1) = "" ]] && echo "${REPLY##*/}.tar" >> "$mediatxt"
 							endtime 2 "${REPLY##*/}備份" "1"
-							echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "2" && echoRgb "____________________________________" && let A++
+							echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "2" && echoRgb "_________________$(endtime 1 "已經")___________________" && let A++
 						done
 						echoRgb "目錄↓↓↓\n -$Backup_folder"
 						endtime 1 "自定義備份"
@@ -586,7 +589,6 @@ backup)
 			let i++ en++ nskg++
 		done
 		rm -rf "$TMPDIR/scriptTMP"
-		echoRgb "你要備份跑路？祝你卡米9008"
 		#計算出備份大小跟差異性
 		filesizee="$(du -ks "$Backup" | awk '{print $1}')"
 		dsize="$(($((filesizee - filesize)) / 1024))"
@@ -652,6 +654,7 @@ dumpname)
 	echoRgb "$txt重新生成" "1"
 	;;
 Restore)
+	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
 	#效驗選填是否正確
 	isBoolean "$Lo" "LO" && Lo="$nsx"
 	if [[ $Lo = false ]]; then
@@ -674,9 +677,9 @@ Restore)
 	[[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
 	i=1
 	txt="$MODDIR/appList.txt"
-	[[ ! -f $txt ]] && echoRgb "請執行\"DumpName.sh\"獲取應用列表再來恢復" "0" && exit 2
+	[[ ! -f $txt ]] && echoRgb "請執行\"重新生成應用列表.sh\"獲取應用列表再來恢復" "0" && exit 2
 	r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
-	[[ $r = "" ]] && echoRgb "appList.txt包名為空或是被注釋了\n -請執行\"DumpName.sh\"獲取應用列表再來恢復" "0" && exit 1
+	[[ $r = "" ]] && echoRgb "appList.txt包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取應用列表再來恢復" "0" && exit 1
 	[[ $(which restorecon) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
 	#顯示執行結果
 	Release_data() {
@@ -817,6 +820,7 @@ Restore)
 	en=118
 	{
 		while [[ $i -le $r ]]; do
+			stopscript
 			[[ $en -ge 229 ]] && en=118
 			echoRgb "恢複第$i/$r個應用 剩下$((r - i))個" "3"
 			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
@@ -1064,11 +1068,12 @@ Restore2)
 	;;
 Restore3)
 	echoRgb "點錯了?這是恢復自定義資料夾腳本 如果你是要恢復應用那你就點錯了\n -音量上繼續恢復自定義資料夾，音量下離開腳本" "2"
+	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
 	get_version "恢復自定義資料夾" "離開腳本" && [[ "$branch" = false ]] && exit 0
 	mediaDir="$MODDIR/Media"
 	[[ ! -d $mediaDir ]] && echoRgb "媒體資料夾不存在" "0" && exit 2
 	txt="$MODDIR/mediaList.txt"
-	[[ ! -f $txt ]] && echoRgb "請執行\"DumpName.sh\"獲取媒體列表再來恢復" "0" && exit 2
+	[[ ! -f $txt ]] && echoRgb "請執行\"重新生成應用列表.sh\"獲取媒體列表再來恢復" "0" && exit 2
 	#效驗選填是否正確
 	isBoolean "$Lo" "LO" && Lo="$nsx"
 	if [[ $Lo = false ]]; then
@@ -1109,8 +1114,9 @@ Restore3)
 	starttime1="$(date -u "+%s")"
 	A=1
 	B="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
-	[[ $B = "" ]] && echoRgb "mediaList.txt壓縮包名為空或是被注釋了\n -請執行\"DumpName.sh\"獲取列表再來恢復" "0" && exit 1
+	[[ $B = "" ]] && echoRgb "mediaList.txt壓縮包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取列表再來恢復" "0" && exit 1
 	while [[ $A -le $B ]]; do
+		stopscript
 		name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${A}p" | awk '{print $1}')"
 		starttime2="$(date -u "+%s")"
 		echoRgb "恢復第$A/$B個壓縮包 剩下$((B - A))個" "3"
@@ -1262,7 +1268,7 @@ backup_media)
 				data="/dev/block/vold/$PU"
 				mountinfo="$(df -T "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')"
 				case $mountinfo in
-				vfat | fuseblk | exfat | NTFS | ext4 | f2fs)
+				fuseblk | exfat | NTFS | ext4 | f2fs)
 					outshow="於隨身碟備份"
 					;;
 				*)
@@ -1316,14 +1322,15 @@ backup_media)
 		fi
 		partition_info
 	}
+	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
 	A=1
 	B="$(echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	if [[ $B != "" ]]; then
 		starttime1="$(date -u "+%s")"
 		Backup_folder="$Backup/Media"
 		[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
-		[[ ! -f $Backup/Restoremedia.sh ]] && cp -r "$script_path/restore3" "$Backup/Restoremedia.sh"
-		[[ ! -f $Backup/DumpName.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/DumpName.sh"
+		[[ ! -f $Backup/恢復自定義資料夾.sh ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
+		[[ ! -f $Backup/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/重新生成應用列表.sh"
 		[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
 		[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 		app_details="$Backup_folder/app_details"
@@ -1331,6 +1338,7 @@ backup_media)
 		mediatxt="$Backup/mediaList.txt"
 		[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$mediatxt"
 		echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | while read; do
+			stopscript
 			echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
 			starttime2="$(date -u "+%s")" 
 			[[ ${REPLY: -1} = / ]] && REPLY="${REPLY%?}"
