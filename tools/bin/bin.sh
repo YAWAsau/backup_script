@@ -5,15 +5,15 @@ echoRgb() {
 	elif [[ $2 = 1 ]]; then
 		echo -e "\e[38;5;121m -$1\e[0m"
 	elif [[ $2 = 2 ]]; then
-		echo -e "\e[38;5;218m -$1\e[0m"
+		echo -e "\e[38;5;${rgb_c}m -$1\e[0m"
 	elif [[ $2 = 3 ]]; then
-		echo -e "\e[38;5;183m -$1\e[0m"
+		echo -e "\e[38;5;${rgb_b}m -$1\e[0m"
 	else
-		echo -e "\e[38;5;${bn}m -$1\e[0m"
+		echo -e "\e[38;5;${rgb_a}m -$1\e[0m"
 	fi
 	[[ $Status_log != "" ]] && echo " -$(date '+%T') $1" >>"$Status_log"
 }
-bn=214
+[ "$rgb_a" = "" ] && rgb_a=214
 if [ "$(whoami)" != root ]; then
 	echoRgb "你是憨批？不給Root用你媽 爬" "0"
 	exit 1
@@ -157,7 +157,6 @@ Print() {
 longToast() {
 	content query --uri content://ice.message/long/"$*" >/dev/null 2>&1
 }
-bn=1
 l=300 
 debug() {
 	while [[ $bn -le $l ]]; do
@@ -227,7 +226,6 @@ else
 fi
 Open_apps="$(appinfo -d "(" -ed ")" -o ands,pn -ta c 2>/dev/null)"
 Open_apps2="$(echo "$Open_apps" | cut -f2 -d '(' | sed 's/)//g')"
-bn=214
 raminfo="$(awk '($1 == "MemTotal:"){print $2/1000"MB"}' /proc/meminfo 2>/dev/null)"
 echoRgb "\n ----------------------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(cat "/data/adb/magisk/util_functions.sh" 2>/dev/null | grep "MAGISK_VER_CODE" | cut -f2 -d '=')\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)\n -RAM:$raminfo\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
 zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f 2>/dev/null)"

@@ -19,8 +19,8 @@ fi
 [[ $conf_path != "" ]] && conf_path="$conf_path" || conf_path="$MODDIR/backup_settings.conf"
 [[ ! -f $conf_path ]] && echo "backup_settings.conf配置遺失" && EXIT="true"
 [[ $EXIT = true ]] && exit 1
-. "$bin_path/bin.sh"
 . "$conf_path"
+. "$bin_path/bin.sh"
 isBoolean "$Lo" "LO" && Lo="$nsx"
 if [[ $Lo = false ]]; then
 		isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
@@ -620,7 +620,7 @@ backup)
 			am start -n "$REPLY" >/dev/null 2>&1
 		done
 		#回到桌面
-		input keyevent 3 >/dev/null 2>&1
+		#input keyevent 3 >/dev/null 2>&1
 		exit 0
 	} &
 	wait && exit
@@ -1154,7 +1154,7 @@ Getlist)
 	[[ ! -e $nametxt ]] && echo '#不需要備份的應用請在開頭注釋# 比如#酷安 xxxxxxxx\n#不需要備份數據比如酷安! xxxxxxxx應用名後方加一個驚嘆號即可 注意是應用名不是包名' >"$nametxt"
 	update_script
 	echoRgb "請勿關閉腳本，等待提示結束"
-	bn=118
+	rgb_a=118
 	rm -rf "$MODDIR/tmp"
 	starttime1="$(date -u "+%s")"
 	echoRgb "提示!因為系統自帶app(位於data分區或是可卸載預裝應用)備份恢復可能存在問題\n -所以不會輸出..但是檢測為Xposed類型包名將輸出\n -如果提示不是Xposed但他就是Xposed可能為此應用元數據不符合規範導致" "0"
@@ -1168,7 +1168,7 @@ Getlist)
 	rd="0"
 	Q="0"
 	echo "$Apk_info" | sed 's/\///g ; s/\://g ; s/(//g ; s/)//g ; s/\[//g ; s/\]//g ; s/\-//g ; s/!//g' | while read; do
-		[[ $bn -ge 229 ]] && bn=118
+		[[ $rgb_a -ge 229 ]] && rgb_a=118
 		app_1=($REPLY $REPLY)
 		if [[ $(cat "$nametxt" | cut -f2 -d ' ' | egrep "^${app_1[1]}$") != ${app_1[1]} ]]; then
 			case ${app_1[1]} in
@@ -1180,7 +1180,7 @@ Getlist)
 				else
 					if [[ $(echo "$whitelist" | egrep -w "^${app_1[1]}$") = ${app_1[1]} ]]; then
 						echo "$REPLY" >>"$nametxt" && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
-						echoRgb "$REPLY($bn)"
+						echoRgb "$REPLY($rgb_a)"
 						let i++
 					else
 						echoRgb "${app_1[2]}非Xposed模塊 忽略輸出" "0"
@@ -1190,7 +1190,7 @@ Getlist)
 				;;
 			*)
 				echo "$REPLY" >>"$nametxt" && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
-				echoRgb "$REPLY($bn)"
+				echoRgb "$REPLY($rgb_a)"
 				let i++
 				;;
 			esac
@@ -1205,7 +1205,7 @@ Getlist)
 			fi
 			[[ -e $MODDIR/tmp ]] && echoRgb "\n -第三方apk數量=\"$Apk_Quantity\"\n -已過濾=\"$rc\"\n -xposed=\"$rd\"\n -存在列表中=\"$Q\"\n -輸出=\"$i\""
 		fi
-		let bn++ LR++
+		let rgb_a++ LR++
 	done
 	if [[ -f $nametxt ]]; then
 		D="1"
