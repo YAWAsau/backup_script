@@ -42,7 +42,7 @@ fi
 cdn=2
 #settings get system system_locales
 LANG="$(getprop "persist.sys.locale")"
-zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f)"
+zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f 2>/dev/null)"
 echoRgb "檢查更新中 請稍後......."
 Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest"
 if [[ $LANG != "" ]]; then
@@ -236,7 +236,7 @@ backup)
 				echoRgb "腳本開始前檢查備份目錄中是否存在已經卸載應用" "3"
 				echoRgb "檢查到已卸載應用操作?\n -音量上刪除資料夾，下移動到其他處"
 				get_version "刪除" "移動到其他處" && operate="$branch"
-				find "$Backup" -maxdepth 1 -type d | sort | while read; do
+				find "$Backup" -maxdepth 1 -type d 2>/dev/null | sort | while read; do
 					if [[ -f $REPLY/app_details ]]; then
 						unset PackageName
 						. "$REPLY/app_details"
@@ -304,6 +304,7 @@ backup)
 		apk_version2="$(pm list packages --show-versioncode "$name2" | cut -f3 -d ':')"
 		apk_version3="$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)"
 		if [[ $apk_version = $apk_version2 ]]; then
+			[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
 			unset xb
 			let osj++
 			result=0
@@ -528,7 +529,7 @@ backup)
 					fi
 					#備份user數據
 					[[ $Backup_user_data = true ]] && Backup_data "user"
-					[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)"
+					[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)"
 					[[ $name2 = moe.shizuku.redirectstorage ]] && Backup_data "storage-isolation" "/data/adb/storage-isolation"
 				fi
 				endtime 2 "$name1備份" "3"
@@ -640,12 +641,12 @@ dumpname)
 	rm -rf *.txt
 	txt="${txt/'/storage/emulated/'/'/data/media/'}"
 	echoRgb "列出全部資料夾內應用名與自定義目錄壓縮包名稱" "3"
-	find "$MODDIR" -maxdepth 1 -type d | sort | while read; do
+	find "$MODDIR" -maxdepth 1 -type d 2>/dev/null | sort | while read; do
 		if [[ -f $REPLY/app_details ]]; then
 			if [[ ${REPLY##*/} = Media ]]; then
 				echoRgb "存在媒體資料夾" "2"
 				[[ ! -f $txt2 ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$txt2"
-				find "$REPLY" -maxdepth 1 -name "*.tar*" -type f | while read; do
+				find "$REPLY" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | while read; do
 					echo "${REPLY##*/}" >> "$txt2"
 				done
 				echoRgb "$txt2重新生成" "1"
@@ -722,7 +723,7 @@ Restore)
 			esac
 			;;
 		*)
-			[[ $FILE_NAME2 = thanox ]] && rm -rf "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)"
+			[[ $FILE_NAME2 = thanox ]] && rm -rf "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/)"
 			[[ $FILE_NAME2 = storage-isolation ]] && rm -rf "/data/adb/storage-isolation"
 			case ${FILE_NAME##*.} in
 			lz4 | zst) pv "$tar_path" | tar -I zstd -xmPpf - ;;
@@ -767,7 +768,7 @@ Restore)
 				[[ -d $path/$FILE_NAME2/$name2 ]] && chmod -R 0777 "$path/$FILE_NAME2/$name2"
 				;;
 			thanox)
-				restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2)/" >/dev/null 2>&1
+				restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)/" >/dev/null 2>&1
 				echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
 				;;
 			storage-isolation)
@@ -811,7 +812,7 @@ Restore)
 					pm install -i com.android.vending --user 0 -r -t"$TMPDIR/nmsl.apk" >/dev/null 2>&1
 					echo_log "nmsl.apk安裝"
 				fi
-				find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f | grep -v 'nmsl.apk' | while read; do
+				find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | grep -v 'nmsl.apk' | while read; do
 					pm install-write "$b" "${REPLY##*/}" "$REPLY" >/dev/null 2>&1
 					echo_log "${REPLY##*/}安裝"
 				done
@@ -861,7 +862,7 @@ Restore)
 					if [[ $(pm path "$name2") != "" ]]; then
 						#停止應用
 						[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
-						find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f | sort | while read; do
+						find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
 							Release_data "$REPLY"
 						done
 					else
@@ -884,9 +885,9 @@ Restore)
 					get_version "恢復媒體數據" "跳過恢復媒體數據"
 					starttime1="$(date -u "+%s")"
 					A=1
-					B="$(find "$Backup_folder2" -maxdepth 1 -name "*.tar*" -type f | wc -l)"
+					B="$(find "$Backup_folder2" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | wc -l)"
 					if [[ $branch = true ]]; then
-						find "$Backup_folder2" -maxdepth 1 -name "*.tar*" -type f | while read; do
+						find "$Backup_folder2" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | while read; do
 							starttime2="$(date -u "+%s")"
 							echoRgb "恢復第$A/$B個壓縮包 剩下$((B - A))個" "3"
 							Release_data "$REPLY"
@@ -960,7 +961,7 @@ Restore2)
 					pm install -i com.android.vending --user 0 -r -t"$TMPDIR/nmsl.apk" >/dev/null 2>&1
 					echo_log "nmsl.apk安裝"
 				fi
-				find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f | grep -v 'nmsl.apk' | while read; do
+				find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | grep -v 'nmsl.apk' | while read; do
 					pm install-write "$b" "${REPLY##*/}" "$REPLY" >/dev/null 2>&1
 					echo_log "${REPLY##*/}安裝"
 				done
@@ -998,7 +999,7 @@ Restore2)
 		if [[ $(pm path "$name") != "" ]]; then
 			#停止應用
 			[[ $name != $Open_apps2 ]] && am force-stop "$name"
-			find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f | sort | while read; do
+			find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
 				tar_path="$REPLY"
 				X="$path2/$name"
 				FILE_NAME="${tar_path##*/}"
@@ -1019,7 +1020,7 @@ Restore2)
 						Set_back
 					fi
 				else
-					[[ $FILE_NAME2 = thanox ]] && rm -rf "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)"
+					[[ $FILE_NAME2 = thanox ]] && rm -rf "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)"
 					[[ $FILE_NAME2 = storage-isolation ]] && rm -rf "/data/adb/storage-isolation"
 					case ${FILE_NAME##*.} in
 					lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmPpf - ;;
@@ -1059,7 +1060,7 @@ Restore2)
 						[[ -d $path/$FILE_NAME2/$name2 ]] && chmod -R 0777 "$path/$FILE_NAME2/$name2"
 						;;
 					thanox)
-						restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d)/" >/dev/null 2>&1
+						restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)/" >/dev/null 2>&1
 						echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
 						;;
 					storage-isolation)
