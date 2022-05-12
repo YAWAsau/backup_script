@@ -23,7 +23,7 @@ fi
 . "$bin_path/bin.sh"
 isBoolean "$Lo" "LO" && Lo="$nsx"
 if [[ $Lo = false ]]; then
-		isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
+	isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
 else
 	echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
 	get_version "提示" "靜默備份" && toast_info="$branch"
@@ -70,6 +70,15 @@ else
 	json="$(down -s -L "$Language" 2>/dev/null)"
 	[[ $json != "" ]] && echoRgb "使用down"
 fi
+#效驗選填是否正確
+isBoolean "$Lo" "LO" && Lo="$nsx"
+if [[ $Lo = false ]]; then
+	isBoolean "$update" "update" && update="$nsx"
+else
+	echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
+	get_version "跳轉" "不跳轉" && update="$branch"
+fi
+Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
 if [[ $json != "" ]]; then
 	tag="$(echo "$json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
 	if [[ $backup_version != $tag ]]; then
@@ -331,7 +340,6 @@ backup)
 	isBoolean "$Lo" "LO" && Lo="$nsx"
 	if [[ $Lo = false ]]; then
 		isBoolean "$delete_folder" "delete_folder" && delete_folder="$nsx"
-		isBoolean "$update" "update" && update="$nsx"
 		isBoolean "$Splist" "Splist" && Splist="$nsx"
 		isBoolean "$USBdefault" "USBdefault" && USBdefault="$nsx"
 		isBoolean "$Backup_obb_data" "Backup_obb_data" && Backup_obb_data="$nsx"
@@ -340,8 +348,6 @@ backup)
 	else
 		echoRgb "檢查目錄是否存在已卸載應用?\n -音量上檢查，下不檢查"
 		get_version "檢查" "不檢查" && delete_folder="$branch"
-		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
-		get_version "跳轉" "不跳轉" && update="$branch"
 		echoRgb "選擇是否只備份split apk(分割apk檔)\n -如果你不知道這意味什麼請選擇音量下進行混合備份\n -音量上僅備份split apk，音量下混合備份" "2"
 		get_version "是" "不是，混合備份" && Splist="$branch"
 		echoRgb "是否備份外部數據 即比如原神的數據包\n -音量上備份，音量下不備份" "2"
@@ -387,7 +393,7 @@ backup)
 								[[ ! -f $Backup/被卸載的應用/恢復備份.sh ]] && cp -r "$script_path/restore" "$Backup/被卸載的應用/恢復備份.sh"
 								[[ ! -f $Backup/被卸載的應用/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/被卸載的應用/重新生成應用列表.sh"
 								[[ ! -f $Backup/被卸載的應用/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/被卸載的應用/終止腳本.sh"
-								[[ ! -f $Backup/被卸載的應用/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/被卸載的應用/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf"
+								[[ ! -f $Backup/被卸載的應用/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf"
 								txt2="$Backup/被卸載的應用/appList.txt"
 								[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
 								echo "${REPLY##*/} $PackageName">>"$txt2"
@@ -426,6 +432,7 @@ backup)
 	[[ ! -f $Backup/恢復備份.sh ]] && cp -r "$script_path/restore" "$Backup/恢復備份.sh"
 	[[ ! -f $Backup/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/終止腳本.sh"
 	[[ ! -f $Backup/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/重新生成應用列表.sh"
+	[[ -d $Backup/Media ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
 	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 	filesize="$(du -ks "$Backup" | awk '{print $1}')"
 	Quantity=0
@@ -762,14 +769,6 @@ backup)
 	wait && exit
 	;;
 dumpname)
-	#效驗選填是否正確
-	isBoolean "$Lo" "LO" && Lo="$nsx"
-	if [[ $Lo = false ]]; then
-		isBoolean "$update" "update" && update="$nsx"
-	else
-		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
-		get_version "跳轉" "不跳轉" && update="$branch"
-	fi
 	txt="$MODDIR/appList.txt"
 	txt2="$MODDIR/mediaList.txt"
 	rm -rf *.txt
@@ -810,14 +809,6 @@ dumpname)
 	;;
 Restore)
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
-	#效驗選填是否正確
-	isBoolean "$Lo" "LO" && Lo="$nsx"
-	if [[ $Lo = false ]]; then
-		isBoolean "$update" "update" && update="$nsx"
-	else
-		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
-		get_version "跳轉" "不跳轉" && update="$branch"
-	fi
 	#禁用apk驗證
 	settings put global verifier_verify_adb_installs 0 2>/dev/null
 	#禁用安裝包驗證
@@ -926,14 +917,6 @@ Restore)
 	wait && exit
 	;;
 Restore2)
-	#效驗選填是否正確
-	isBoolean "$Lo" "LO" && Lo="$nsx"
-	if [[ $Lo = false ]]; then
-		isBoolean "$update" "update" && update="$nsx"
-	else
-		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
-		get_version "跳轉" "不跳轉" && update="$branch"
-	fi
 	#禁用apk驗證
 	settings put global verifier_verify_adb_installs 0 2>/dev/null
 	#禁用安裝包驗證
@@ -1006,14 +989,6 @@ Restore3)
 	[[ ! -d $mediaDir ]] && echoRgb "媒體資料夾不存在" "0" && exit 2
 	txt="$MODDIR/mediaList.txt"
 	[[ ! -f $txt ]] && echoRgb "請執行\"重新生成應用列表.sh\"獲取媒體列表再來恢復" "0" && exit 2
-	#效驗選填是否正確
-	isBoolean "$Lo" "LO" && Lo="$nsx"
-	if [[ $Lo = false ]]; then
-		isBoolean "$update" "update" && update="$nsx"
-	else
-		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
-		get_version "跳轉" "不跳轉" && update="$branch"
-	fi
 	#記錄開始時間
 	starttime1="$(date -u "+%s")"
 	echo_log() {
@@ -1067,12 +1042,6 @@ Getlist)
 	#效驗選填是否正確
 	isBoolean "$Lo" "LO" && Lo="$nsx"
 	isBoolean "$debug_list" "debug_list" && debug_list="$nsx"
-	if [[ $Lo = false ]]; then
-		isBoolean "$update" "update" && update="$nsx"
-	else
-		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
-		get_version "跳轉" "不跳轉" && update="$branch"
-	fi
 	txtpath="$MODDIR"
 	[[ $debug_list = true ]] && txtpath="${txtpath/'/storage/emulated/'/'/data/media/'}"
 	nametxt="$txtpath/appList.txt"
@@ -1161,14 +1130,6 @@ backup_media)
 			done
 		fi
 	} &
-	#效驗選填是否正確
-	isBoolean "$Lo" "LO" && Lo="$nsx"
-	if [[ $Lo = false ]]; then
-		isBoolean "$update" "update" && update="$nsx"
-	else
-		echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
-		get_version "跳轉" "不跳轉" && update="$branch"
-	fi
 	backup_path
 	Backup_data() {
 		unset zsize
