@@ -48,7 +48,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V14.8"
+backup_version="V14.9"
 #設置二進制命令目錄位置
 if [[ $bin_path = "" ]]; then
 	echoRgb "未正確指定bin.sh位置" "0"
@@ -58,16 +58,12 @@ fi
 Status_log="$MODDIR/Log.txt"
 rm -rf "$Status_log"
 filepath="/data/backup_tools"
-if [[ $APP_ENV = 1 ]]; then
-	filepath="/data/user/0/com.xayah.databackup/backup_tools"
-fi
 busybox="$filepath/busybox"
 busybox2="$bin_path/busybox"
 #排除自身
 exclude="
 update
 busybox_path
-update
 bin.sh"
 if [[ ! -d $filepath ]]; then
 	mkdir -p "$filepath"
@@ -157,17 +153,6 @@ Print() {
 longToast() {
 	content query --uri content://ice.message/long/"$*" >/dev/null 2>&1
 }
-l=300 
-debug() {
-	while [[ $bn -le $l ]]; do
-		echoRgb "色號$bn\n  -當前腳本執行路徑:/data/user/0/com.xayah.databackup/scripts
-		 -busybox路徑:/data/user/0/com.xayah.databackup/backup_tools/busybox
-		 -busybox版本:v1.34.1-osm0sis
-		 -appinfo版本:2021-12-08（84） "
-		let bn++
-	done
-}
- #debug
 get_version() {
 	while :; do
 		keycheck
