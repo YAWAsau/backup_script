@@ -176,6 +176,139 @@ partition_info() {
 	lxj="$(echo "$Occupation_status" | awk '{print $2}' | sed 's/%//g')"
 	[[ $lxj -ge 97 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
 }
+Release_data() {
+	stopscript
+	tar_path="$1"
+	X="$path2/$name2"
+	FILE_NAME="${tar_path##*/}"
+	FILE_NAME2="${FILE_NAME%%.*}"
+	echoRgb "恢復$FILE_NAME2數據" "3"
+	case $FILE_NAME2 in
+	user)
+		if [[ -d $X ]]; then
+			case ${FILE_NAME##*.} in
+			lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$path2" ;;
+			tar) pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$path2" ;;
+			*)
+				echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
+				Set_back
+				;;
+			esac
+		else
+			echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0"
+			Set_back
+		fi
+		;;
+	data | obb)
+		case ${FILE_NAME##*.} in
+		lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmPpf - ;;
+		tar) pv "$tar_path" | tar --recursive-unlink -xmPpf - ;;
+		*)
+			echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
+			Set_back
+			;;
+		esac
+		;;
+	*)
+		[[ $FILE_NAME2 = thanox ]] && rm -rf "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/)"
+		[[ $FILE_NAME2 = storage-isolation ]] && rm -rf "/data/adb/storage-isolation"
+		case ${FILE_NAME##*.} in
+		lz4 | zst) pv "$tar_path" | tar -I zstd -xmPpf - ;;
+		tar) pv "$tar_path" | tar -xPpf - ;;
+		*)
+			echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
+			Set_back
+			;;
+		esac
+		;;
+	esac
+	echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
+	if [[ $result = 0 ]]; then
+		if [[ $A != "" ]]; then
+			app_details="$Backup_folder2/app_details"
+			[[ -f $app_details ]] && echoRgb "解壓路徑↓\n -$(cat "$app_details" | awk "/${FILE_NAME2}path/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" "2" || echoRgb "已經成功解壓縮 但是解壓路徑獲取失敗" "0"
+		fi
+		case $FILE_NAME2 in
+		user)
+			if [[ -d $X ]]; then
+				if [[ -f /config/sdcardfs/$name2/appid ]]; then
+					G="$(cat "/config/sdcardfs/$name2/appid")"
+				else
+					G="$(dumpsys package "$name2" | awk '/userId=/{print $1}' | cut -f2 -d '=' | head -1)"
+				fi
+				G="$(echo "$G" | egrep -o '[0-9]+')"
+				if [[ $G != "" ]]; then
+					echoRgb "路徑:$X"
+					Path_details="$(stat -c "%A/%a %U/%G" "$X")"
+					chown -hR "$G:$G" "$X/"
+					echo_log "設置用戶組:$(echo "$Path_details" | awk '{print $2}')"
+					restorecon -RF "$X/" >/dev/null 2>&1
+					echo_log "selinux上下文設置"
+				else
+					echoRgb "uid獲取失敗" "0"
+				fi
+			else
+				echoRgb "路徑$X不存在" "0"
+			fi
+			;;
+		data | obb)
+			[[ -d $path/$FILE_NAME2/$name2 ]] && chmod -R 0777 "$path/$FILE_NAME2/$name2"
+			;;
+		thanox)
+			restorecon  -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)/" >/dev/null 2>&1
+			echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
+			;;
+		storage-isolation)
+			restorecon -RF "/data/adb/storage-isolation/" >/dev/null 2>&1
+			echo_log "selinux上下文設置"
+			;;
+		esac
+	fi
+}
+installapk() {
+	stopscript
+	apkfile="$(find "$Backup_folder" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
+	if [[ $apkfile != "" ]]; then
+		rm -rf "$TMPDIR"/*
+		case ${apkfile##*.} in
+		lz4 | zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
+		tar) pv "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
+		*)
+			echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
+			Set_back
+			;;
+		esac
+		echo_log "${apkfile##*/}解壓縮" && [[ -f $Backup_folder/nmsl.apk ]] && cp -r "$Backup_folder/nmsl.apk" "$TMPDIR"
+	else
+		echoRgb "你的Apk壓縮包離家出走了，可能備份後移動過程遺失了\n -解決辦法手動安裝Apk後再執行恢復腳本" "0"
+	fi
+	if [[ $result = 0 ]]; then
+		case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
+		1)
+			echoRgb "恢復普通apk" "2"
+			pm install -i com.android.vending --user 0 -r -t "$TMPDIR"/*.apk >/dev/null 2>&1
+			echo_log "Apk安裝"
+			;;
+		0)
+			echoRgb "$TMPDIR中沒有apk" "0"
+			;;
+		*)
+			echoRgb "恢復split apk" "2"
+			b="$(pm install-create -i -i com.android.vending --user 0 | grep -E -o '[0-9]+')"
+			if [[ -f $TMPDIR/nmsl.apk ]]; then
+				pm install -i com.android.vending --user 0 -r -t"$TMPDIR/nmsl.apk" >/dev/null 2>&1
+				echo_log "nmsl.apk安裝"
+			fi
+			find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | grep -v 'nmsl.apk' | while read; do
+				pm install-write "$b" "${REPLY##*/}" "$REPLY" >/dev/null 2>&1
+				echo_log "${REPLY##*/}安裝"
+			done
+			pm install-commit "$b" >/dev/null 2>&1
+			echo_log "split Apk安裝"
+			;;
+		esac
+	fi
+}
 case $operate in
 backup)
 	script="${0##*/}"
@@ -239,7 +372,7 @@ backup)
 				find "$Backup" -maxdepth 1 -type d 2>/dev/null | sort | while read; do
 					if [[ -f $REPLY/app_details ]]; then
 						unset PackageName
-						. "$REPLY/app_details"
+						. "$REPLY/app_details" &>/dev/null
 						if [[ $PackageName != "" && $(pm path "$PackageName" | cut -f2 -d ':') = "" ]]; then
 							if [[ $operate = true ]]; then
 								rm -rf "$REPLY"
@@ -360,7 +493,7 @@ backup)
 					fi
 					[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
 					[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
-					[[ ! -f $Backup_folder/恢復備份.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/恢復備份.sh"
+					[[ ! -f $Backup_folder/$name2.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/$name2.sh"
 				fi
 				if [[ $name2 = com.android.chrome ]]; then
 					#刪除所有舊apk ,保留一個最新apk進行備份
@@ -548,7 +681,7 @@ backup)
 				#設置無障礙開關
 				if [[ $var != "" ]]; then
 					if [[ $var != null ]]; then
-						settings put secure enabled_accessibility_services "$var" >/dev/null 2>&1
+						settings put secure enabled_accessibility_services "$var" >/dev/null 2>&1 
 						echo_log "設置無障礙"
 						settings put secure accessibility_enabled 1 >/dev/null 2>&1
 						echo_log "打開無障礙開關"
@@ -652,10 +785,21 @@ dumpname)
 				echoRgb "$txt2重新生成" "1"
 			fi
 			unset PackageName
-			. "$REPLY/app_details"
+			. "$REPLY/app_details" &>/dev/null
+			unset PackageName
 			if [[ $PackageName != "" ]]; then
 				[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
 				echo "${REPLY##*/} $PackageName" >>"$txt"
+			else
+				Script_path="$(find "$REPLY" -maxdepth 1 -name "*.sh*" -type f 2>/dev/null)"
+				NAME="$(echo "${Script_path##*/}" | sed 's/.sh//g')"
+				if [[ $NAME != "" ]]; then
+					name2="$NAME"
+					[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
+					echo "${REPLY##*/} $name2" >>"$txt"
+				else
+					[[ ${REPLY##*/} != Media ]] && echoRgb "包名獲取失敗" "0" && exit 2
+				fi
 			fi
 		fi
 	done
@@ -688,140 +832,6 @@ Restore)
 	r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	[[ $r = "" ]] && echoRgb "appList.txt包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取應用列表再來恢復" "0" && exit 1
 	[[ $(which restorecon) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
-	#顯示執行結果
-	Release_data() {
-		stopscript
-		tar_path="$1"
-		X="$path2/$name2"
-		FILE_NAME="${tar_path##*/}"
-		FILE_NAME2="${FILE_NAME%%.*}"
-		echoRgb "恢復$FILE_NAME2數據" "3"
-		case $FILE_NAME2 in
-		user)
-			if [[ -d $X ]]; then
-				case ${FILE_NAME##*.} in
-				lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$path2" ;;
-				tar) pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$path2" ;;
-				*)
-					echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
-					Set_back
-					;;
-				esac
-			else
-				echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0"
-				Set_back
-			fi
-			;;
-		data | obb)
-			case ${FILE_NAME##*.} in
-			lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmPpf - ;;
-			tar) pv "$tar_path" | tar --recursive-unlink -xmPpf - ;;
-			*)
-				echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
-				Set_back
-				;;
-			esac
-			;;
-		*)
-			[[ $FILE_NAME2 = thanox ]] && rm -rf "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/)"
-			[[ $FILE_NAME2 = storage-isolation ]] && rm -rf "/data/adb/storage-isolation"
-			case ${FILE_NAME##*.} in
-			lz4 | zst) pv "$tar_path" | tar -I zstd -xmPpf - ;;
-			tar) pv "$tar_path" | tar -xPpf - ;;
-			*)
-				echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
-				Set_back
-				;;
-			esac
-			;;
-		esac
-		echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
-		if [[ $result = 0 ]]; then
-			if [[ $A != "" ]]; then
-				app_details="$Backup_folder2/app_details"
-				[[ -f $app_details ]] && echoRgb "解壓路徑↓\n -$(cat "$app_details" | awk "/${FILE_NAME2}path/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" "2" || echoRgb "已經成功解壓縮 但是解壓路徑獲取失敗" "0"
-			fi
-			case $FILE_NAME2 in
-			user)
-				if [[ -d $X ]]; then
-					if [[ -f /config/sdcardfs/$name2/appid ]]; then
-						G="$(cat "/config/sdcardfs/$name2/appid")"
-					else
-						G="$(dumpsys package "$name2" | awk '/userId=/{print $1}' | cut -f2 -d '=' | head -1)"
-					fi
-					G="$(echo "$G" | egrep -o '[0-9]+')"
-					if [[ $G != "" ]]; then
-						echoRgb "路徑:$X"
-						Path_details="$(stat -c "%A/%a %U/%G" "$X")"
-						chown -hR "$G:$G" "$X/"
-						echo_log "設置用戶組:$(echo "$Path_details" | awk '{print $2}')"
-						restorecon -RF "$X/" >/dev/null 2>&1
-						echo_log "selinux上下文設置"
-					else
-						echoRgb "uid獲取失敗" "0"
-					fi
-				else
-					echoRgb "路徑$X不存在" "0"
-				fi
-				;;
-			data | obb)
-				[[ -d $path/$FILE_NAME2/$name2 ]] && chmod -R 0777 "$path/$FILE_NAME2/$name2"
-				;;
-			thanox)
-				restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)/" >/dev/null 2>&1
-				echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
-				;;
-			storage-isolation)
-				restorecon -RF "/data/adb/storage-isolation/" >/dev/null 2>&1
-				echo_log "selinux上下文設置"
-				;;
-			esac
-		fi
-	}
-	installapk() {
-		stopscript
-		apkfile="$(find "$Backup_folder" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
-		if [[ $apkfile != "" ]]; then
-			rm -rf "$TMPDIR"/*
-			case ${apkfile##*.} in
-			lz4 | zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
-			tar) pv "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
-			*)
-				echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
-				Set_back
-				;;
-			esac
-			echo_log "${apkfile##*/}解壓縮" && [[ -f $Backup_folder/nmsl.apk ]] && cp -r "$Backup_folder/nmsl.apk" "$TMPDIR"
-		else
-			echoRgb "你的Apk壓縮包離家出走了，可能備份後移動過程遺失了\n -解決辦法手動安裝Apk後再執行恢復腳本" "0"
-		fi
-		if [[ $result = 0 ]]; then
-			case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
-			1)
-				echoRgb "恢復普通apk" "2"
-				pm install -i com.android.vending --user 0 -r -t "$TMPDIR"/*.apk >/dev/null 2>&1
-				echo_log "Apk安裝"
-				;;
-			0)
-				echoRgb "$TMPDIR中沒有apk" "0"
-				;;
-			*)
-				echoRgb "恢復split apk" "2"
-				b="$(pm install-create -i -i com.android.vending --user 0 | grep -E -o '[0-9]+')"
-				if [[ -f $TMPDIR/nmsl.apk ]]; then
-					pm install -i com.android.vending --user 0 -r -t"$TMPDIR/nmsl.apk" >/dev/null 2>&1
-					echo_log "nmsl.apk安裝"
-				fi
-				find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | grep -v 'nmsl.apk' | while read; do
-					pm install-write "$b" "${REPLY##*/}" "$REPLY" >/dev/null 2>&1
-					echo_log "${REPLY##*/}安裝"
-				done
-				pm install-commit "$b" >/dev/null 2>&1
-				echo_log "split Apk安裝"
-				;;
-			esac
-		fi
-	}
 	#開始循環$txt內的資料進行恢複
 	#記錄開始時間
 	starttime1="$(date -u "+%s")"
@@ -928,49 +938,6 @@ Restore2)
 	fi
 	[[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
 	[[ $(which restorecon) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
-	installapk() {
-		apkfile="$(find "$Backup_folder" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
-		if [[ $apkfile != "" ]]; then
-			rm -rf "$TMPDIR"/*
-			case ${apkfile##*.} in
-			lz4 | zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
-			tar) pv "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
-			*)
-				echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
-				Set_back
-				;;
-			esac
-			echo_log "${apkfile##*/}解壓縮" && [[ -f $Backup_folder/nmsl.apk ]] && cp -r "$Backup_folder/nmsl.apk" "$TMPDIR"
-		else
-			echoRgb "你的Apk壓縮包離家出走了，可能備份後移動過程遺失了\n -解決辦法手動安裝Apk後再執行恢復腳本" "0"
-		fi
-		if [[ $result = 0 ]]; then
-			case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
-			1)
-				echoRgb "恢復普通apk" "2"
-				pm install -i com.android.vending --user 0 -r -t "$TMPDIR"/*.apk >/dev/null 2>&1
-				echo_log "Apk安裝"
-				;;
-			0)
-				echoRgb "$TMPDIR中沒有apk" "0"
-				;;
-			*)
-				echoRgb "恢復split apk" "2"
-				b="$(pm install-create -i -i com.android.vending --user 0 | grep -E -o '[0-9]+')"
-				if [[ -f $TMPDIR/nmsl.apk ]]; then
-					pm install -i com.android.vending --user 0 -r -t"$TMPDIR/nmsl.apk" >/dev/null 2>&1
-					echo_log "nmsl.apk安裝"
-				fi
-				find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | grep -v 'nmsl.apk' | while read; do
-					pm install-write "$b" "${REPLY##*/}" "$REPLY" >/dev/null 2>&1
-					echo_log "${REPLY##*/}安裝"
-				done
-				pm install-commit "$b" >/dev/null 2>&1
-				echo_log "split Apk安裝"
-				;;
-			esac
-		fi
-	}
 	#記錄開始時間
 	starttime1="$(date -u "+%s")"
 	{
@@ -978,100 +945,41 @@ Restore2)
 		if [[ ! -f $Backup_folder/app_details ]]; then
 			echoRgb "$Backup_folder/app_details遺失，無法獲取包名" "0" && exit 1
 		else
-			. "$Backup_folder/app_details"
+			. "$Backup_folder/app_details" &>/dev/null
 		fi
-		name="$PackageName"
-		[[ $name = "" ]] && echoRgb "包名獲取失敗" "0" && exit 2
-		name2="$ChineseName"
-		[[ $name2 = "" ]] && echoRgb "應用名獲取失敗" "0" && exit 2
-		echoRgb "恢複$name2 ($name)" "3"
+		name1="$ChineseName"
+		[[ $name1 = "" ]] && echoRgb "應用名獲取失敗" "0" && exit 2
+		name2="$PackageName"
+		if [[ $name2 = "" ]]; then
+			NAME="${MODDIR##*/}"
+			echo $NAME
+			NAME2="${NAME%%.*}"
+			if [[ $NAME2 != "" ]]; then
+				name2="$NAME2"
+			else
+				echoRgb "包名獲取失敗" "0" && exit 2
+			fi
+		fi
+		echoRgb "恢複$name1 ($name2)" "3"
 		starttime2="$(date -u "+%s")"
-		if [[ $(pm path "$name") = "" ]]; then
+		if [[ $(pm path "$name2") = "" ]]; then
 			installapk
 		else
-			if [[ $apk_version -gt $(pm list packages --show-versioncode "$name" | cut -f3 -d ':') ]]; then
+			if [[ $apk_version -gt $(pm list packages --show-versioncode "$name2" | cut -f3 -d ':') ]]; then
 				installapk
-				echoRgb "版本提升$(pm list packages --show-versioncode "$name" | cut -f3 -d ':')>$apk_version" "1"
+				echoRgb "版本提升$(pm list packages --show-versioncode "$name2" | cut -f3 -d ':')>$apk_version" "1"
 			else
 				echoRgb "本地版本大於備份版本略過安裝" "2"
 			fi
 		fi
-		if [[ $(pm path "$name") != "" ]]; then
+		if [[ $(pm path "$name2") != "" ]]; then
 			#停止應用
-			[[ $name != $Open_apps2 ]] && am force-stop "$name"
+			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
 			find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
-				tar_path="$REPLY"
-				X="$path2/$name"
-				FILE_NAME="${tar_path##*/}"
-				FILE_NAME2="${FILE_NAME%%.*}"
-				echoRgb "恢復$FILE_NAME2數據" "3"
-				if [[ $FILE_NAME2 = user ]]; then
-					if [[ -d $X ]]; then
-						case ${FILE_NAME##*.} in
-						lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$path2" ;;
-						tar) pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$path2" ;;
-						*)
-							echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
-							Set_back
-							;;
-						esac
-					else
-						echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0"
-						Set_back
-					fi
-				else
-					[[ $FILE_NAME2 = thanox ]] && rm -rf "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)"
-					[[ $FILE_NAME2 = storage-isolation ]] && rm -rf "/data/adb/storage-isolation"
-					case ${FILE_NAME##*.} in
-					lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmPpf - ;;
-					tar) pv "$tar_path" | tar --recursive-unlink -xmPpf - ;;
-					*)
-						echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
-						Set_back
-						;;
-					esac
-				fi
-				echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
-				if [[ $result = 0 ]]; then
-					case $FILE_NAME2 in
-					user)
-						if [[ -d $X ]]; then
-							if [[ -f /config/sdcardfs/$name/appid ]]; then
-								G="$(cat "/config/sdcardfs/$name/appid")"
-							else
-								G="$(dumpsys package "$name" | awk '/userId=/{print $1}' | cut -f2 -d '=' | head -1)"
-							fi
-							G="$(echo "$G" | egrep -o '[0-9]+')"
-							if [[ $G != "" ]]; then
-								echoRgb "路徑:$X"
-								Path_details="$(stat -c "%A/%a %U/%G" "$X")"
-								chown -hR "$G:$G" "$X/"
-								echo_log "設置用戶組:$(echo "$Path_details" | awk '{print $2}')"
-								restorecon -RF "$X/" >/dev/null 2>&1
-								echo_log "selinux上下文設置"
-							else
-								echoRgb "uid獲取失敗" "0"
-							fi
-						else
-							echoRgb "路徑$X不存在" "0"
-						fi
-						;;
-					data | obb)
-						[[ -d $path/$FILE_NAME2/$name2 ]] && chmod -R 0777 "$path/$FILE_NAME2/$name2"
-						;;
-					thanox)
-						restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)/" >/dev/null 2>&1
-						echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
-						;;
-					storage-isolation)
-						restorecon -RF "/data/adb/storage-isolation/" >/dev/null 2>&1
-						echo_log "selinux上下文設置"
-						;;
-					esac
-				fi
+				Release_data "$REPLY"
 			done
 		else
-			echoRgb "$name2沒有安裝無法恢復數據" "0"
+			echoRgb "$name1沒有安裝無法恢復數據" "0"
 		fi
 		endtime 1 "恢複開始到結束" && echoRgb "如發現應用閃退請重新開機" && rm -rf "$TMPDIR"/*
 		rm -rf "$TMPDIR/scriptTMP"
@@ -1218,7 +1126,7 @@ Getlist)
 			name1="$(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $1}')"
 			name2="$(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
 			{
-			if [[ $name2 != "" && $(pm path "$name2" | cut -f2 -d ':') = "" ]]; then
+			if [[ $name2 != "" && $(pm path "$name2" | cut -f2 -d ':' ) = "" ]]; then
 				echoRgb "$name1不存在系統，從列表中刪除" "0"
 				echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$nametxt")" >"$nametxt"
 			fi
