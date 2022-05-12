@@ -434,7 +434,7 @@ backup)
 		stopscript
 		#創建APP備份文件夾
 		[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
-		apk_version2="$(pm list packages --show-versioncode "$name2" | cut -f3 -d ':')"
+		apk_version2="$(pm list packages --show-versioncode "$name2" | cut -f3 -d ':' | head -n 1)"
 		apk_version3="$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)"
 		if [[ $apk_version = $apk_version2 ]]; then
 			[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
@@ -695,6 +695,7 @@ backup)
 					echo_log "設置鍵盤$(appinfo -d "(" -ed ")" -o ands,pn -pn "${keyboard%/*}" 2>/dev/null)"
 				fi
 				echoRgb "\n -已更新的apk=\"$osn\"\n -apk版本號無變化=\"$osj\"\n -user數據已備份=\"$osx\"\n -data數據已備份=\"$osb\"\n -obb數據已備份=\"$osg\"\n -user數據不存在=\"$osz\"\n -obb數據不存在=\"$osd\"\n -obb數據不存在=\"$ose\"" "3"
+				echo "$(sort "$txt2" | sed -e '/^$/d')" >"$txt2"
 				if [[ $backup_media = true ]]; then
 					A=1
 					B="$(echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
@@ -774,34 +775,36 @@ dumpname)
 	rm -rf *.txt
 	txt="${txt/'/storage/emulated/'/'/data/media/'}"
 	echoRgb "列出全部資料夾內應用名與自定義目錄壓縮包名稱" "3"
+	rgb_a=118
 	find "$MODDIR" -maxdepth 1 -type d 2>/dev/null | sort | while read; do
+		[[ $rgb_a -ge 229 ]] && rgb_a=118
 		if [[ -f $REPLY/app_details ]]; then
 			if [[ ${REPLY##*/} = Media ]]; then
 				echoRgb "存在媒體資料夾" "2"
 				[[ ! -f $txt2 ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$txt2"
 				find "$REPLY" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | while read; do
-					echo "${REPLY##*/}" >> "$txt2"
+					echoRgb "${REPLY##*/}" && echo "${REPLY##*/}" >> "$txt2"
 				done
 				echoRgb "$txt2重新生成" "1"
 			fi
 			unset PackageName
 			. "$REPLY/app_details" &>/dev/null
-			unset PackageName
 			if [[ $PackageName != "" ]]; then
 				[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
-				echo "${REPLY##*/} $PackageName" >>"$txt"
+				echoRgb "${REPLY##*/} $PackageName" && echo "${REPLY##*/} $PackageName" >>"$txt"
 			else
 				Script_path="$(find "$REPLY" -maxdepth 1 -name "*.sh*" -type f 2>/dev/null)"
 				NAME="$(echo "${Script_path##*/}" | sed 's/.sh//g')"
 				if [[ $NAME != "" ]]; then
 					name2="$NAME"
 					[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
-					echo "${REPLY##*/} $name2" >>"$txt"
+					echoRgb "${REPLY##*/} $name2" && echo "${REPLY##*/} $name2" >>"$txt"
 				else
 					[[ ${REPLY##*/} != Media ]] && echoRgb "包名獲取失敗" "0" && exit 2
 				fi
 			fi
 		fi
+		let rgb_a++
 	done
 	echoRgb "$txt重新生成" "1"
 	;;
@@ -860,12 +863,17 @@ Restore)
 					installapk
 				else
 					unset apk_version
+					apk_version="$(echo "$apk_version" | head -n 1)"
 					[[ -f "$Backup_folder/app_details" ]] && . "$Backup_folder/app_details"
-					if [[ $apk_version -gt $(pm list packages --show-versioncode "$name2" | cut -f3 -d ':') ]]; then
+					if [[ $apk_version -gt $(pm list packages --show-versioncode "$name2" | cut -f3 -d ':' | head -n 1) ]]; then
 						installapk
-						echoRgb "版本提升$(pm list packages --show-versioncode "$name2" | cut -f3 -d ':')>$apk_version" "1"
+						echoRgb "版本提升$(pm list packages --show-versioncode "$name2" | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
 					else
-						echoRgb "本地版本大於備份版本略過安裝" "2"
+						if [[ $apk_version = $(pm list packages --show-versioncode "$name2" | cut -f3 -d ':' | head -n 1) ]]; then
+							echoRgb "本地版本與備份版本一致略過安裝" "2"
+						else
+							echoRgb "本地版本大於備份版本略過安裝" "2"
+						fi
 					fi
 				fi
 				if [[ $No_backupdata = "" ]]; then
@@ -951,11 +959,10 @@ Restore2)
 		[[ $name1 = "" ]] && echoRgb "應用名獲取失敗" "0" && exit 2
 		name2="$PackageName"
 		if [[ $name2 = "" ]]; then
-			NAME="${MODDIR##*/}"
-			echo $NAME
-			NAME2="${NAME%%.*}"
-			if [[ $NAME2 != "" ]]; then
-				name2="$NAME2"
+			Script_path="$(find "$MODDIR" -maxdepth 1 -name "*.sh*" -type f 2>/dev/null)"
+			NAME="$(echo "${Script_path##*/}" | sed 's/.sh//g')"
+			if [[ $NAME != "" ]]; then
+				name2="$NAME"
 			else
 				echoRgb "包名獲取失敗" "0" && exit 2
 			fi
@@ -965,11 +972,16 @@ Restore2)
 		if [[ $(pm path "$name2") = "" ]]; then
 			installapk
 		else
-			if [[ $apk_version -gt $(pm list packages --show-versioncode "$name2" | cut -f3 -d ':') ]]; then
+			apk_version="$(echo "$apk_version" | head -n 1)"
+			if [[ $apk_version -gt $(pm list packages --show-versioncode "$name2" | cut -f3 -d ':' | head -n 1) ]]; then
 				installapk
-				echoRgb "版本提升$(pm list packages --show-versioncode "$name2" | cut -f3 -d ':')>$apk_version" "1"
+				echoRgb "版本提升$(pm list packages --show-versioncode "$name2" | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
 			else
-				echoRgb "本地版本大於備份版本略過安裝" "2"
+				if [[ $apk_version = $(pm list packages --show-versioncode "$name2" | cut -f3 -d ':' | head -n 1) ]]; then
+					echoRgb "本地版本與備份版本一致略過安裝" "2"
+				else
+					echoRgb "本地版本大於備份版本略過安裝" "2"
+				fi
 			fi
 		fi
 		if [[ $(pm path "$name2") != "" ]]; then
