@@ -638,12 +638,12 @@ backup)
 				Backup_folder="$Backup/$name1"
 				app_details="$Backup_folder/app_details"
 				if [[ -f $app_details ]]; then
-					. "$app_details"
+					. "$app_details" &>/dev/null
 					if [[ $PackageName != $name2 ]]; then
 						unset userSize ChineseName PackageName apk_version versionName apk_version2 apk_version3 result userSize dataSize obbSize
 						Backup_folder="$Backup/${name1}[${name2}]"
 						app_details="$Backup_folder/app_details"
-						[[ -f $app_details ]] && . "$app_details"
+						[[ -f $app_details ]] && . "$app_details" &>/dev/null
 					fi
 				fi
 				[[ $hx = USB && $PT = "" ]] && echoRgb "隨身碟意外斷開 請檢查穩定性" "0" && exit 1
@@ -713,7 +713,7 @@ backup)
 						[[ ! -f $Backup/恢復自定義資料夾.sh ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
 						[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
 						app_details="$Backup_folder/app_details"
-						[[ -f $app_details ]] && . "$app_details"
+						[[ -f $app_details ]] && . "$app_details" &>/dev/null
 						mediatxt="$Backup/mediaList.txt"
 						[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$mediatxt"
 						echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | while read; do
@@ -786,7 +786,7 @@ dumpname)
 				done
 				echoRgb "$txt2重新生成" "1"
 			fi
-			unset PackageName
+			unset PackageName NAME
 			. "$REPLY/app_details" &>/dev/null
 			if [[ $PackageName != "" ]]; then
 				[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
@@ -1170,7 +1170,7 @@ backup_media)
 		[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
 		[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 		app_details="$Backup_folder/app_details"
-		[[ -f $app_details ]] && . "$app_details"
+		[[ -f $app_details ]] && . "$app_details" &>/dev/null
 		mediatxt="$Backup/mediaList.txt"
 		[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$mediatxt"
 		echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | while read; do

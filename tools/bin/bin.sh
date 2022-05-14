@@ -233,13 +233,22 @@ if [[ $zippath != "" ]]; then
 						echoRgb "更新當前${MODDIR##*/}目錄下恢復相關腳本+外部tools目錄與腳本"
 						cp -r "$tools_path/script/Get_DirName" "${MODDIR%/*}/重新生成應用列表.sh"
 						cp -r "$tools_path/script/restore" "${MODDIR%/*}/恢復備份.sh"
+						echo ${MODDIR%/*}
 						cp -r "$MODDIR/終止腳本.sh" "${MODDIR%/*}/終止腳本.sh"
 						[[ -d ${MODDIR%/*}/Media ]] && cp -r "$tools_path/script/restore3" "${MODDIR%/*}/恢復自定義資料夾.sh"
 						find "${MODDIR%/*}" -maxdepth 1 -type d | sort | while read; do
 							if [[ -f $REPLY/app_details ]]; then
 								unset PackageName
-								. "$REPLY/app_details"
-								[[ $PackageName != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/恢復備份.sh"
+								. "$REPLY/app_details" &>/dev/null
+								if [[ $PackageName != "" ]]; then
+									cp -r "$tools_path/script/restore2" "$REPLY/$PackageName.sh"
+								else
+									if [[ ${REPLY##*/} != Media ]]; then
+										NAME="${REPLY##*/}"
+										NAME="${NAME%%.*}"
+										[[ $NAME != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/$NAME.sh"
+									fi
+								fi
 							fi
 						done
 						if [[ -d ${MODDIR%/*/*}/tools && -f ${MODDIR%/*/*}/備份應用.sh ]]; then
@@ -258,8 +267,16 @@ if [[ $zippath != "" ]]; then
 						find "$MODDIR" -maxdepth 1 -type d | sort | while read; do
 							if [[ -f $REPLY/app_details ]]; then
 								unset PackageName
-								. "$REPLY/app_details"
-								[[ $PackageName != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/恢復備份.sh"
+								. "$REPLY/app_details" &>/dev/null
+								if [[ $PackageName != "" ]]; then
+									cp -r "$tools_path/script/restore2" "$REPLY/$PackageName.sh"
+								else
+									if [[ ${REPLY##*/} != Media ]]; then
+										NAME="${REPLY##*/}"
+										NAME="${NAME%%.*}"
+										[[ $NAME != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/$NAME.sh"
+									fi
+								fi
 							fi
 						done
 						if [[ -d ${MODDIR%/*}/tools && -f ${MODDIR%/*}/備份應用.sh ]]; then
@@ -286,8 +303,16 @@ if [[ $zippath != "" ]]; then
 								find "$MODDIR" -maxdepth 2 -type d | sort | while read; do
 									if [[ -f $REPLY/app_details ]]; then
 										unset PackageName
-										. "$REPLY/app_details"
-										[[ $PackageName != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/恢復備份.sh"
+										. "$REPLY/app_details" &>/dev/null
+										if [[ $PackageName != "" ]]; then
+											cp -r "$tools_path/script/restore2" "$REPLY/$PackageName.sh"
+										else
+											if [[ ${REPLY##*/} != Media ]]; then
+												NAME="${REPLY##*/}"
+												NAME="${NAME%%.*}"
+												[[ $NAME != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/$NAME.sh"
+											fi
+										fi
 									fi
 								done
 							fi
@@ -312,4 +337,5 @@ if [[ $zippath != "" ]]; then
 		;;
 	esac
 fi
+unset NAME
 #buzexe /data/tmp false tools.sh
