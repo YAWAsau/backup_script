@@ -31,7 +31,7 @@ fi
 Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
 if [[ $toast_info = true ]]; then
 	pm enable "ice.message" &>/dev/null
-	if [[ $(pm path ice.message) = "" ]]; then
+	if [[ $(pm path ice.message 2>/dev/null) = "" ]]; then
 		echoRgb "未安裝toast 開始安裝" "0"
 		cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user 0 -r -t "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
 		[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
@@ -219,7 +219,7 @@ Release_data() {
 		esac
 		;;
 	*)
-		[[ $FILE_NAME2 = thanox ]] && rm -rf "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/)"
+		[[ $FILE_NAME2 = thanox ]] && rm -rf "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)"
 		[[ $FILE_NAME2 = storage-isolation ]] && rm -rf "/data/adb/storage-isolation"
 		case ${FILE_NAME##*.} in
 		lz4 | zst) pv "$tar_path" | tar -I zstd -xmPpf - ;;
@@ -303,7 +303,7 @@ installapk() {
 			;;
 		*)
 			echoRgb "恢復split apk" "2"
-			b="$(pm install-create -i -i com.android.vending --user 0 | grep -E -o '[0-9]+')"
+			b="$(pm install-create -i -i com.android.vending --user 0 2>/dev/null | grep -E -o '[0-9]+')"
 			if [[ -f $TMPDIR/nmsl.apk ]]; then
 				pm install -i com.android.vending --user 0 -r -t"$TMPDIR/nmsl.apk" >/dev/null 2>&1
 				echo_log "nmsl.apk安裝"
@@ -316,6 +316,18 @@ installapk() {
 			echo_log "split Apk安裝"
 			;;
 		esac
+	fi
+}
+disable_verify() {
+	#禁用apk驗證
+	settings put global verifier_verify_adb_installs 0 2>/dev/null
+	#禁用安裝包驗證
+	settings put global package_verifier_enable 0 2>/dev/null
+	#關閉play安全效驗
+	if [[ $(settings get global package_verifier_user_consent 2>/dev/null) != -1 ]]; then
+		settings put global package_verifier_user_consent -1 2>/dev/null
+		settings put global upload_apk_enable 0 2>/dev/null
+		echoRgb "PLAY安全驗證為開啟狀態已被腳本關閉防止apk安裝失敗" "3"
 	fi
 }
 case $operate in
@@ -379,7 +391,7 @@ backup)
 					if [[ -f $REPLY/app_details ]]; then
 						unset PackageName
 						. "$REPLY/app_details" &>/dev/null
-						if [[ $PackageName != "" && $(pm path "$PackageName" | cut -f2 -d ':') = "" ]]; then
+						if [[ $PackageName != "" && $(pm path "$PackageName" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
 							if [[ $operate = true ]]; then
 								rm -rf "$REPLY"
 								echoRgb "${REPLY##*/}不存在系統 刪除資料夾" "0"
@@ -411,7 +423,7 @@ backup)
 		while [[ $D -le $C ]]; do
 			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $1}')"
 			name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
-			if [[ $name2 != "" && $(pm path "$name2" | cut -f2 -d ':') = "" ]]; then
+			if [[ $name2 != "" && $(pm path "$name2" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
 				echoRgb "$name1不存在系統，從列表中刪除" "0"
 				echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$txt")" >"$txt"
 			fi
@@ -434,6 +446,9 @@ backup)
 	[[ ! -f $Backup/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/重新生成應用列表.sh"
 	[[ -d $Backup/Media ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
 	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
+	filesha256="$(sha256sum "$bin_path/tools.sh" | cut -d" " -f1)"
+	filesha256_1="$(sha256sum "$Backup/tools/bin/tools.sh" | cut -d" " -f1)"
+	[[ $filesha256 != $filesha256_1 ]] && cp -r "$bin_path/tools.sh" "$Backup/tools/bin/tools.sh"
 	filesize="$(du -ks "$Backup" | awk '{print $1}')"
 	Quantity=0
 	#檢測apk狀態進行備份
@@ -441,7 +456,7 @@ backup)
 		stopscript
 		#創建APP備份文件夾
 		[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
-		apk_version2="$(pm list packages --show-versioncode "$name2" | cut -f3 -d ':' | head -n 1)"
+		apk_version2="$(pm list packages --show-versioncode "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)"
 		apk_version3="$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)"
 		if [[ $apk_version = $apk_version2 ]]; then
 			[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
@@ -619,7 +634,7 @@ backup)
 				name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
 			fi
 			[[ $name2 = "" ]] && echoRgb "警告! appList.txt應用包名獲取失敗，可能修改有問題" "0" && exit 1
-			apk_path="$(pm path "$name2" | cut -f2 -d ':')"
+			apk_path="$(pm path "$name2" 2>/dev/null | cut -f2 -d ':')"
 			apk_path2="$(echo "$apk_path" | head -1)"
 			apk_path2="${apk_path2%/*}"
 			if [[ -d $apk_path2 ]]; then
@@ -809,16 +824,7 @@ dumpname)
 	;;
 Restore)
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
-	#禁用apk驗證
-	settings put global verifier_verify_adb_installs 0 2>/dev/null
-	#禁用安裝包驗證
-	settings put global package_verifier_enable 0 2>/dev/null
-	#關閉play安全效驗
-	if [[ $(settings get global package_verifier_user_consent 2>/dev/null) != -1 ]]; then
-		settings put global package_verifier_user_consent -1 2>/dev/null
-		settings put global upload_apk_enable 0 2>/dev/null
-		echoRgb "PLAY安全驗證為開啟狀態已被腳本關閉防止apk安裝失敗" "3"
-	fi
+	disable_verify
 	[[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
 	i=1
 	txt="$MODDIR/appList.txt"
@@ -850,17 +856,17 @@ Restore)
 			if [[ -d $Backup_folder ]]; then
 				echoRgb "恢複$name1 ($name2)" "2"
 				starttime2="$(date -u "+%s")"
-				if [[ $(pm path "$name2") = "" ]]; then
+				if [[ $(pm path "$name2" 2>/dev/null) = "" ]]; then
 					installapk
 				else
 					unset apk_version
 					apk_version="$(echo "$apk_version" | head -n 1)"
 					[[ -f "$Backup_folder/app_details" ]] && . "$Backup_folder/app_details"
-					if [[ $apk_version -gt $(pm list packages --show-versioncode "$name2" | cut -f3 -d ':' | head -n 1) ]]; then
+					if [[ $apk_version -gt $(pm list packages --show-versioncode "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
 						installapk
-						echoRgb "版本提升$(pm list packages --show-versioncode "$name2" | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
+						echoRgb "版本提升$(pm list packages --show-versioncode "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
 					else
-						if [[ $apk_version = $(pm list packages --show-versioncode "$name2" | cut -f3 -d ':' | head -n 1) ]]; then
+						if [[ $apk_version = $(pm list packages --show-versioncode "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
 							echoRgb "本地版本與備份版本一致略過安裝" "2"
 						else
 							echoRgb "本地版本大於備份版本略過安裝" "2"
@@ -868,7 +874,7 @@ Restore)
 					fi
 				fi
 				if [[ $No_backupdata = "" ]]; then
-					if [[ $(pm path "$name2") != "" ]]; then
+					if [[ $(pm path "$name2" 2>/dev/null) != "" ]]; then
 						#停止應用
 						[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
 						find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
@@ -917,16 +923,7 @@ Restore)
 	wait && exit
 	;;
 Restore2)
-	#禁用apk驗證
-	settings put global verifier_verify_adb_installs 0 2>/dev/null
-	#禁用安裝包驗證
-	settings put global package_verifier_enable 0 2>/dev/null
-	#關閉play安全效驗
-	if [[ $(settings get global package_verifier_user_consent 2>/dev/null) != -1 ]]; then
-		settings put global package_verifier_user_consent -1 2>/dev/null
-		settings put global upload_apk_enable 0 2>/dev/null
-		echoRgb "PLAY安全驗證為開啟狀態已被腳本關閉防止apk安裝失敗" "3"
-	fi
+	disable_verify
 	[[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
 	[[ $(which restorecon) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
 	#記錄開始時間
@@ -952,22 +949,22 @@ Restore2)
 		fi
 		echoRgb "恢複$name1 ($name2)" "3"
 		starttime2="$(date -u "+%s")"
-		if [[ $(pm path "$name2") = "" ]]; then
+		if [[ $(pm path "$name2" 2>/dev/null) = "" ]]; then
 			installapk
 		else
 			apk_version="$(echo "$apk_version" | head -n 1)"
-			if [[ $apk_version -gt $(pm list packages --show-versioncode "$name2" | cut -f3 -d ':' | head -n 1) ]]; then
+			if [[ $apk_version -gt $(pm list packages --show-versioncode "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
 				installapk
-				echoRgb "版本提升$(pm list packages --show-versioncode "$name2" | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
+				echoRgb "版本提升$(pm list packages --show-versioncode "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
 			else
-				if [[ $apk_version = $(pm list packages --show-versioncode "$name2" | cut -f3 -d ':' | head -n 1) ]]; then
+				if [[ $apk_version = $(pm list packages --show-versioncode "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
 					echoRgb "本地版本與備份版本一致略過安裝" "2"
 				else
 					echoRgb "本地版本大於備份版本略過安裝" "2"
 				fi
 			fi
 		fi
-		if [[ $(pm path "$name2") != "" ]]; then
+		if [[ $(pm path "$name2" 2>/dev/null) != "" ]]; then
 			#停止應用
 			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
 			find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
@@ -1034,11 +1031,6 @@ Restore3)
 	rm -rf "$TMPDIR/scriptTMP"
 	;;
 Getlist)
-	#獲取桌面
-	launcher_app="$(pm resolve-activity --brief -c android.intent.category.HOME -a android.intent.action.MAIN | grep '/' | cut -f1 -d '/')"
-	for launcher_app in $launcher_app; do
-		[[ $launcher_app != "android" ]] && [[ $(pgrep -f "$launcher_app" | grep -v 'grep' | wc -l) -ge 1 ]] && launcher_app="$launcher_app"
-	done
 	#效驗選填是否正確
 	isBoolean "$Lo" "LO" && Lo="$nsx"
 	isBoolean "$debug_list" "debug_list" && debug_list="$nsx"
@@ -1052,7 +1044,7 @@ Getlist)
 	starttime1="$(date -u "+%s")"
 	echoRgb "提示!因為系統自帶app(位於data分區或是可卸載預裝應用)備份恢復可能存在問題\n -所以不會輸出..但是檢測為Xposed類型包名將輸出\n -如果提示不是Xposed但他就是Xposed可能為此應用元數據不符合規範導致" "0"
 	xposed_name="$(appinfo -o pn -xm)"
-	Apk_info="$(appinfo -sort-i -d " " -o ands,pn -pn $system $launcher_app -3 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+	Apk_info="$(appinfo -sort-i -d " " -o ands,pn -pn $system -3 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	Apk_Quantity="$(echo "$Apk_info" | wc -l)"
 	LR="1"
 	echoRgb "列出第三方應用......." "2"
@@ -1107,7 +1099,7 @@ Getlist)
 			name1="$(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $1}')"
 			name2="$(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
 			{
-			if [[ $name2 != "" && $(pm path "$name2" | cut -f2 -d ':' ) = "" ]]; then
+			if [[ $name2 != "" && $(pm path "$name2" 2>/dev/null | cut -f2 -d ':' ) = "" ]]; then
 				echoRgb "$name1不存在系統，從列表中刪除" "0"
 				echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$nametxt")" >"$nametxt"
 			fi
