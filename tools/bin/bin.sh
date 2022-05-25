@@ -48,7 +48,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V14.9"
+backup_version="V15.2"
 #設置二進制命令目錄位置
 if [[ $bin_path = "" ]]; then
 	echoRgb "未正確指定bin.sh位置" "0"
@@ -213,128 +213,131 @@ Open_apps="$(appinfo -d "(" -ed ")" -o ands,pn -ta c 2>/dev/null)"
 Open_apps2="$(echo "$Open_apps" | cut -f2 -d '(' | sed 's/)//g')"
 raminfo="$(awk '($1 == "MemTotal:"){print $2/1000"MB"}' /proc/meminfo 2>/dev/null)"
 echoRgb "\n ----------------------------\n -當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(cat "/data/adb/magisk/util_functions.sh" 2>/dev/null | grep "MAGISK_VER_CODE" | cut -f2 -d '=')\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)\n -RAM:$raminfo\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
-zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f 2>/dev/null)"
-if [[ $zippath != "" ]]; then
-	case $(echo "$zippath" | wc -l) in
-	1)
-		[[ $GitHub != true ]] && echoRgb "從$zippath更新"
-		if [[ $(unzip -l "$zippath" | awk '{print $4}' | grep -oE "^backup_settings.conf$") = "" ]]; then
-			echoRgb "${zippath##*/}並非指定的備份zip，請刪除後重新放置\n -何謂更新zip? 就是GitHub release頁面下載的zip" "0"
-		else
-			cp -r "$tools_path" "$TMPDIR" && rm -rf "$tools_path"
-			find "$MODDIR" -maxdepth 3 -name "*.sh" -type f -exec rm -rf {} \;
-			unzip -o "$zippath" -x "backup_settings.conf" -d "$MODDIR"
-			echo_log "解壓縮${zippath##*/}"
-			if [[ $result = 0 ]]; then
-				case $MODDIR in
-				*Backup_*)
-					if [[ -f $MODDIR/app_details ]]; then
-						mv "$MODDIR/tools" "${MODDIR%/*}"
-						echoRgb "更新當前${MODDIR##*/}目錄下恢復相關腳本+外部tools目錄與腳本"
-						cp -r "$tools_path/script/Get_DirName" "${MODDIR%/*}/重新生成應用列表.sh"
-						cp -r "$tools_path/script/restore" "${MODDIR%/*}/恢復備份.sh"
-						cp -r "$MODDIR/終止腳本.sh" "${MODDIR%/*}/終止腳本.sh"
-						[[ -d ${MODDIR%/*}/Media ]] && cp -r "$tools_path/script/restore3" "${MODDIR%/*}/恢復自定義資料夾.sh"
-						find "${MODDIR%/*}" -maxdepth 1 -type d | sort | while read; do
-							if [[ -f $REPLY/app_details ]]; then
-								unset PackageName
-								. "$REPLY/app_details" &>/dev/null
-								if [[ $PackageName != "" ]]; then
-									cp -r "$tools_path/script/restore2" "$REPLY/$PackageName.sh"
-								else
-									if [[ ${REPLY##*/} != Media ]]; then
-										NAME="${REPLY##*/}"
-										NAME="${NAME%%.*}"
-										[[ $NAME != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/$NAME.sh"
-									fi
-								fi
-							fi
-						done
-						if [[ -d ${MODDIR%/*/*}/tools && -f ${MODDIR%/*/*}/備份應用.sh ]]; then
-							echoRgb "更新${MODDIR%/*/*}/tools與備份相關腳本"
-							rm -rf "${MODDIR%/*/*}/tools"
-							find "${MODDIR%/*/*}" -maxdepth 1 -name "*.sh" -type f -exec rm -rf {} \;
-							mv "$MODDIR/備份應用.sh" "$MODDIR/生成應用列表.sh" "$MODDIR/備份自定義資料夾.sh" "$MODDIR/終止腳本.sh" "${MODDIR%/*/*}"
-							cp -r "$tools_path" "${MODDIR%/*/*}"
-						fi
-						rm -rf "$MODDIR/終止腳本.sh"
-					else
-						echoRgb "更新當前${MODDIR##*/}目錄下恢復相關腳本+tools目錄"
-						cp -r "$tools_path/script/Get_DirName" "$MODDIR/重新生成應用列表.sh"
-						cp -r "$tools_path/script/restore" "$MODDIR/恢復備份.sh"
-						[[ -d $MODDIR/Media ]] && cp -r "$tools_path/script/restore3" "$MODDIR/恢復自定義資料夾.sh"
-						find "$MODDIR" -maxdepth 1 -type d | sort | while read; do
-							if [[ -f $REPLY/app_details ]]; then
-								unset PackageName
-								. "$REPLY/app_details" &>/dev/null
-								if [[ $PackageName != "" ]]; then
-									cp -r "$tools_path/script/restore2" "$REPLY/$PackageName.sh"
-								else
-									if [[ ${REPLY##*/} != Media ]]; then
-										NAME="${REPLY##*/}"
-										NAME="${NAME%%.*}"
-										[[ $NAME != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/$NAME.sh"
-									fi
-								fi
-							fi
-						done
-						if [[ -d ${MODDIR%/*}/tools && -f ${MODDIR%/*}/備份應用.sh ]]; then
-							echoRgb "更新${MODDIR%/*}/tools與備份相關腳本"
-							rm -rf "${MODDIR%/*}/tools"
-							find "${MODDIR%/*}" -maxdepth 1 -name "*.sh" -type f -exec rm -rf {} \;
-							cp -r "$MODDIR/備份應用.sh" "$MODDIR/終止腳本.sh" "$MODDIR/生成應用列表.sh" "$MODDIR/備份自定義資料夾.sh" "${MODDIR%/*}"
-							cp -r "$tools_path" "${MODDIR%/*}"
-						fi
-					fi
-					rm -rf "$MODDIR/備份自定義資料夾.sh" "$MODDIR/生成應用列表.sh" "$MODDIR/備份應用.sh" "$tools_path/script"
-					;;
-				*)
-					if [[ $(find "$MODDIR" -maxdepth 1 -name "Backup_*" -type d) != "" ]]; then
-						find "$MODDIR" -maxdepth 1 -name "Backup_*" -type d | while read backup_path; do
-							if [[ -d $backup_path && $backup_path != $MODDIR ]]; then
-								echoRgb "更新當前目錄下備份相關腳本&tools目錄+${backup_path##*/}內tools目錄+恢復腳本+tools"
-								rm -rf "$backup_path/tools"
-								cp -r "$tools_path" "$backup_path" && rm -rf "$backup_path/tools/bin/zip" "$backup_path/tools/script"
-								cp -r "$tools_path/script/restore" "$backup_path/恢復備份.sh"
-								cp -r "$tools_path/script/Get_DirName" "$backup_path/重新生成應用列表.sh"
-								cp -r "$MODDIR/終止腳本.sh" "$backup_path/終止腳本.sh"
-								[[ -d $backup_path/Media ]] && cp -r "$tools_path/script/restore3" "$backup_path/恢復自定義資料夾.sh"
-								find "$MODDIR" -maxdepth 2 -type d | sort | while read; do
-									if [[ -f $REPLY/app_details ]]; then
-										unset PackageName
-										. "$REPLY/app_details" &>/dev/null
-										if [[ $PackageName != "" ]]; then
-											cp -r "$tools_path/script/restore2" "$REPLY/$PackageName.sh"
-										else
-											if [[ ${REPLY##*/} != Media ]]; then
-												NAME="${REPLY##*/}"
-												NAME="${NAME%%.*}"
-												[[ $NAME != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/$NAME.sh"
-											fi
+update_script() {
+	zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f 2>/dev/null)"
+	if [[ $zippath != "" ]]; then
+		case $(echo "$zippath" | wc -l) in
+		1)
+			[[ $GitHub != true ]] && echoRgb "從$zippath更新"
+			if [[ $(unzip -l "$zippath" | awk '{print $4}' | grep -oE "^backup_settings.conf$") = "" ]]; then
+				echoRgb "${zippath##*/}並非指定的備份zip，請刪除後重新放置\n -何謂更新zip? 就是GitHub release頁面下載的zip" "0"
+			else
+				cp -r "$tools_path" "$TMPDIR" && rm -rf "$tools_path"
+				find "$MODDIR" -maxdepth 3 -name "*.sh" -type f -exec rm -rf {} \;
+				unzip -o "$zippath" -x "backup_settings.conf" -d "$MODDIR"
+				echo_log "解壓縮${zippath##*/}"
+				if [[ $result = 0 ]]; then
+					case $MODDIR in
+					*Backup_*)
+						if [[ -f $MODDIR/app_details ]]; then
+							mv "$MODDIR/tools" "${MODDIR%/*}"
+							echoRgb "更新當前${MODDIR##*/}目錄下恢復相關腳本+外部tools目錄與腳本"
+							cp -r "$tools_path/script/Get_DirName" "${MODDIR%/*}/重新生成應用列表.sh"
+							cp -r "$tools_path/script/restore" "${MODDIR%/*}/恢復備份.sh"
+							cp -r "$MODDIR/終止腳本.sh" "${MODDIR%/*}/終止腳本.sh"
+							[[ -d ${MODDIR%/*}/Media ]] && cp -r "$tools_path/script/restore3" "${MODDIR%/*}/恢復自定義資料夾.sh"
+							find "${MODDIR%/*}" -maxdepth 1 -type d | sort | while read; do
+								if [[ -f $REPLY/app_details ]]; then
+									unset PackageName
+									. "$REPLY/app_details" &>/dev/null
+									if [[ $PackageName != "" ]]; then
+										cp -r "$tools_path/script/restore2" "$REPLY/$PackageName.sh"
+									else
+										if [[ ${REPLY##*/} != Media ]]; then
+											NAME="${REPLY##*/}"
+											NAME="${NAME%%.*}"
+											[[ $NAME != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/$NAME.sh"
 										fi
 									fi
-								done
+								fi
+							done
+							if [[ -d ${MODDIR%/*/*}/tools && -f ${MODDIR%/*/*}/備份應用.sh ]]; then
+								echoRgb "更新${MODDIR%/*/*}/tools與備份相關腳本"
+								rm -rf "${MODDIR%/*/*}/tools"
+								find "${MODDIR%/*/*}" -maxdepth 1 -name "*.sh" -type f -exec rm -rf {} \;
+								mv "$MODDIR/備份應用.sh" "$MODDIR/生成應用列表.sh" "$MODDIR/備份自定義資料夾.sh" "$MODDIR/終止腳本.sh" "${MODDIR%/*/*}"
+								cp -r "$tools_path" "${MODDIR%/*/*}"
 							fi
-						done
-					else
-						echoRgb "更新當前${MODDIR##*/}目錄下備份相關腳本+tools目錄"
-					fi
-					;;
-				esac
-			else
-				cp -r "$TMPDIR/tools" "$MODDIR"
+							rm -rf "$MODDIR/終止腳本.sh"
+						else
+							echoRgb "更新當前${MODDIR##*/}目錄下恢復相關腳本+tools目錄"
+							cp -r "$tools_path/script/Get_DirName" "$MODDIR/重新生成應用列表.sh"
+							cp -r "$tools_path/script/restore" "$MODDIR/恢復備份.sh"
+							[[ -d $MODDIR/Media ]] && cp -r "$tools_path/script/restore3" "$MODDIR/恢復自定義資料夾.sh"
+							find "$MODDIR" -maxdepth 1 -type d | sort | while read; do
+								if [[ -f $REPLY/app_details ]]; then
+									unset PackageName
+									. "$REPLY/app_details" &>/dev/null
+									if [[ $PackageName != "" ]]; then
+										cp -r "$tools_path/script/restore2" "$REPLY/$PackageName.sh"
+									else
+										if [[ ${REPLY##*/} != Media ]]; then
+											NAME="${REPLY##*/}"
+											NAME="${NAME%%.*}"
+											[[ $NAME != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/$NAME.sh"
+										fi
+									fi
+								fi
+							done
+							if [[ -d ${MODDIR%/*}/tools && -f ${MODDIR%/*}/備份應用.sh ]]; then
+								echoRgb "更新${MODDIR%/*}/tools與備份相關腳本"
+								rm -rf "${MODDIR%/*}/tools"
+								find "${MODDIR%/*}" -maxdepth 1 -name "*.sh" -type f -exec rm -rf {} \;
+								cp -r "$MODDIR/備份應用.sh" "$MODDIR/終止腳本.sh" "$MODDIR/生成應用列表.sh" "$MODDIR/備份自定義資料夾.sh" "${MODDIR%/*}"
+								cp -r "$tools_path" "${MODDIR%/*}"
+							fi
+						fi
+						rm -rf "$MODDIR/備份自定義資料夾.sh" "$MODDIR/生成應用列表.sh" "$MODDIR/備份應用.sh" "$tools_path/script"
+						;;
+					*)
+						if [[ $(find "$MODDIR" -maxdepth 1 -name "Backup_*" -type d) != "" ]]; then
+							find "$MODDIR" -maxdepth 1 -name "Backup_*" -type d | while read backup_path; do
+								if [[ -d $backup_path && $backup_path != $MODDIR ]]; then
+									echoRgb "更新當前目錄下備份相關腳本&tools目錄+${backup_path##*/}內tools目錄+恢復腳本+tools"
+									rm -rf "$backup_path/tools"
+									cp -r "$tools_path" "$backup_path" && rm -rf "$backup_path/tools/bin/zip" "$backup_path/tools/script"
+									cp -r "$tools_path/script/restore" "$backup_path/恢復備份.sh"
+									cp -r "$tools_path/script/Get_DirName" "$backup_path/重新生成應用列表.sh"
+									cp -r "$MODDIR/終止腳本.sh" "$backup_path/終止腳本.sh"
+									[[ -d $backup_path/Media ]] && cp -r "$tools_path/script/restore3" "$backup_path/恢復自定義資料夾.sh"
+									find "$MODDIR" -maxdepth 2 -type d | sort | while read; do
+										if [[ -f $REPLY/app_details ]]; then
+											unset PackageName
+											. "$REPLY/app_details" &>/dev/null
+											if [[ $PackageName != "" ]]; then
+												cp -r "$tools_path/script/restore2" "$REPLY/$PackageName.sh"
+											else
+												if [[ ${REPLY##*/} != Media ]]; then
+													NAME="${REPLY##*/}"
+													NAME="${NAME%%.*}"
+													[[ $NAME != "" ]] && cp -r "$tools_path/script/restore2" "$REPLY/$NAME.sh"
+												fi
+											fi
+										fi
+									done
+								fi
+							done
+						else
+							echoRgb "更新當前${MODDIR##*/}目錄下備份相關腳本+tools目錄"
+						fi
+						;;
+					esac
+				else
+					cp -r "$TMPDIR/tools" "$MODDIR"
+				fi
+				rm -rf "$TMPDIR"/*
+				find "$MODDIR" -maxdepth 1 -name "*.zip" -type f -exec rm -rf {} \;
+				echoRgb "更新完成 請重新執行腳本" "2"
+				exit
 			fi
-			rm -rf "$TMPDIR"/*
-			find "$MODDIR" -maxdepth 1 -name "*.zip" -type f -exec rm -rf {} \;
-			echoRgb "更新完成 請重新執行腳本" "2"
-			exit
-		fi
-		;;
-	*)
-		echoRgb "錯誤 請刪除當前目錄多餘zip\n -保留一個最新的數據備份.zip\n -下列為當前目錄zip\n$zippath" "0"
-		exit 1
-		;;
-	esac
-fi
-unset NAME
+			;;
+		*)
+			echoRgb "錯誤 請刪除當前目錄多餘zip\n -保留一個最新的數據備份.zip\n -下列為當前目錄zip\n$zippath" "0"
+			exit 1
+			;;
+		esac
+	fi
+	unset NAME
+}
+update_script
 #buzexe /data/tmp false tools.sh

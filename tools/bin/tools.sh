@@ -21,6 +21,13 @@ fi
 [[ $EXIT = true ]] && exit 1
 . "$conf_path"
 . "$bin_path/bin.sh"
+zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
+FILE_NAME="${zipFile##*/}"
+if [[ $(unzip -l "$zipFile" | awk '{print $4}' | grep -oE "^backup_settings.conf$") != "" ]]; then
+	echoRgb "發現$zipFile\n移動並解壓縮中...."
+	mv "$zipFile" "$MODDIR"
+	update_script
+fi
 isBoolean "$Lo" "LO" && Lo="$nsx"
 if [[ $Lo = false ]]; then
 	isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
@@ -111,9 +118,24 @@ if [[ $json != "" ]]; then
 				if [[ $update = true ]]; then
 					isBoolean "$update_behavior" "update_behavior" && update_behavior="$nsx"
 					if [[ $update_behavior = true ]]; then
-						echoRgb "更新腳本步驟如下\n -1.將跳轉時下載的zip壓縮包完整不解壓縮放在$MODDIR\n -2.在$MODDIR目錄隨便執行一個腳本\n -3.假設沒有提示錯誤重新進入腳本如版本號發生變化則更新成功" "2"
 						am start -a android.intent.action.VIEW -d "$zip_url"
 						echo_log "跳轉瀏覽器"
+						if [[ $result = 0 ]]; then
+							echoRgb "等待下載中.....請儘速點擊下載 否則腳本將等待10秒後自動退出"
+							zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
+							FILE_NAME="${zipFile##*/}"
+							seconds=1
+							while [[ $(unzip -l "$zipFile" | awk '{print $4}' | grep -oE "^backup_settings.conf$") = "" ]]; do
+								zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
+								FILE_NAME="${zipFile##*/}"
+								echoRgb "$seconds秒"
+								[[ $seconds = 10 ]] && exit 2
+								sleep 1 && let seconds++
+							done
+							echoRgb "發現$zipFile\n移動並解壓縮中...."
+							mv "$zipFile" "$MODDIR"
+							update_script
+						fi
 					else
 						echoRgb "更新腳本步驟如下\n -1.將剪貼簿內的連結用瀏覽器下載\n -2.將zip壓縮包完整不解壓縮放在$MODDIR\n -3.在$MODDIR目錄隨便執行一個腳本\n -4.假設沒有提示錯誤重新進入腳本如版本號發生變化則更新成功" "2"
 						starttime1="$(date -u "+%s")"
@@ -251,7 +273,7 @@ Release_data() {
 					Path_details="$(stat -c "%A/%a %U/%G" "$X")"
 					chown -hR "$G:$G" "$X/"
 					echo_log "設置用戶組:$(echo "$Path_details" | awk '{print $2}')"
-					restorecon -RF "$X/" >/dev/null 2>&1
+					restorecon -RF "$X/" 2>/dev/null
 					echo_log "selinux上下文設置"
 				else
 					echoRgb "uid獲取失敗" "0"
@@ -264,11 +286,11 @@ Release_data() {
 			[[ -d $path/$FILE_NAME2/$name2 ]] && chmod -R 0777 "$path/$FILE_NAME2/$name2"
 			;;
 		thanox)
-			restorecon  -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)/" >/dev/null 2>&1
+			restorecon  -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)/" 2>/dev/null
 			echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
 			;;
 		storage-isolation)
-			restorecon -RF "/data/adb/storage-isolation/" >/dev/null 2>&1
+			restorecon -RF "/data/adb/storage-isolation/" 2>/dev/null
 			echo_log "selinux上下文設置"
 			;;
 		esac
@@ -295,7 +317,7 @@ installapk() {
 		case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
 		1)
 			echoRgb "恢復普通apk" "2"
-			pm install -i com.android.vending --user 0 -r -t "$TMPDIR"/*.apk >/dev/null 2>&1
+			pm install -i com.android.vending --user 0 -r -t "$TMPDIR"/*.apk 2>/dev/null
 			echo_log "Apk安裝"
 			;;
 		0)
@@ -305,14 +327,14 @@ installapk() {
 			echoRgb "恢復split apk" "2"
 			b="$(pm install-create -i -i com.android.vending --user 0 2>/dev/null | grep -E -o '[0-9]+')"
 			if [[ -f $TMPDIR/nmsl.apk ]]; then
-				pm install -i com.android.vending --user 0 -r -t"$TMPDIR/nmsl.apk" >/dev/null 2>&1
+				pm install -i com.android.vending --user 0 -r -t"$TMPDIR/nmsl.apk" 2>/dev/null
 				echo_log "nmsl.apk安裝"
 			fi
 			find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | grep -v 'nmsl.apk' | while read; do
-				pm install-write "$b" "${REPLY##*/}" "$REPLY" >/dev/null 2>&1
+				pm install-write "$b" "${REPLY##*/}" "$REPLY" 2>/dev/null
 				echo_log "${REPLY##*/}安裝"
 			done
-			pm install-commit "$b" >/dev/null 2>&1
+			pm install-commit "$b" 2>/dev/null
 			echo_log "split Apk安裝"
 			;;
 		esac
@@ -336,7 +358,7 @@ backup)
 	if [[ $script != "" ]]; then
 		for x in zstd tar pv lz4; do
 			pgrep -f "$x" | while read; do
-				kill -KILL "$REPLY" >/dev/null
+				kill -KILL "$REPLY" 2>/dev/null
 			done
 		done
 	fi
@@ -703,17 +725,17 @@ backup)
 				#設置無障礙開關
 				if [[ $var != "" ]]; then
 					if [[ $var != null ]]; then
-						settings put secure enabled_accessibility_services "$var" >/dev/null 2>&1 
+						settings put secure enabled_accessibility_services "$var" 2>/dev/null 
 						echo_log "設置無障礙"
-						settings put secure accessibility_enabled 1 >/dev/null 2>&1
+						settings put secure accessibility_enabled 1 2>/dev/null
 						echo_log "打開無障礙開關"
 					fi
 				fi
 				#設置鍵盤
 				if [[ $keyboard != "" ]]; then
-					ime enable "$keyboard" >/dev/null 2>&1
-					ime set "$keyboard" >/dev/null 2>&1
-					settings put secure default_input_method "$keyboard" >/dev/null 2>&1
+					ime enable "$keyboard" 2>/dev/null
+					ime set "$keyboard" 2>/dev/null
+					settings put secure default_input_method "$keyboard" 2>/dev/null
 					echo_log "設置鍵盤$(appinfo -d "(" -ed ")" -o ands,pn -pn "${keyboard%/*}" 2>/dev/null)"
 				fi
 				echoRgb "\n -已更新的apk=\"$osn\"\n -apk版本號無變化=\"$osj\"\n -user數據已備份=\"$osx\"\n -data數據已備份=\"$osb\"\n -obb數據已備份=\"$osg\"\n -user數據不存在=\"$osz\"\n -obb數據不存在=\"$osd\"\n -obb數據不存在=\"$ose\"" "3"
@@ -774,11 +796,11 @@ backup)
 		longToast "批量備份完成"
 		Print "批量備份完成 執行過程請查看$Status_log"
 		#打開應用
-		appinfo -sort-i -d "/" -o pn,sa -pn $am_start >/dev/null 2>&1 | while read; do
-			am start -n "$REPLY" >/dev/null 2>&1
+		appinfo -sort-i -d "/" -o pn,sa -pn $am_start 2>/dev/null | while read; do
+			am start -n "$REPLY" 2>/dev/null
 		done
 		#回到桌面
-		#input keyevent 3 >/dev/null 2>&1
+		#input keyevent 3 2>/dev/null
 		exit 0
 	} &
 	wait && exit
@@ -860,8 +882,8 @@ Restore)
 					installapk
 				else
 					unset apk_version
-					apk_version="$(echo "$apk_version" | head -n 1)"
 					[[ -f "$Backup_folder/app_details" ]] && . "$Backup_folder/app_details"
+					apk_version="$(echo "$apk_version" | head -n 1)"
 					if [[ $apk_version -gt $(pm list packages --show-versioncode "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
 						installapk
 						echoRgb "版本提升$(pm list packages --show-versioncode "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
@@ -940,13 +962,9 @@ Restore2)
 		name2="$PackageName"
 		if [[ $name2 = "" ]]; then
 			Script_path="$(find "$MODDIR" -maxdepth 1 -name "*.sh*" -type f 2>/dev/null)"
-			NAME="$(echo "${Script_path##*/}" | sed 's/.sh//g')"
-			if [[ $NAME != "" ]]; then
-				name2="$NAME"
-			else
-				echoRgb "包名獲取失敗" "0" && exit 2
-			fi
+			name2="$(echo "${Script_path##*/}" | sed 's/.sh//g')"
 		fi
+		[[ $name2 = "" ]] && echoRgb "包名獲取失敗" "0" && exit 2
 		echoRgb "恢複$name1 ($name2)" "3"
 		starttime2="$(date -u "+%s")"
 		if [[ $(pm path "$name2" 2>/dev/null) = "" ]]; then
