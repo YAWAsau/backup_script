@@ -825,18 +825,42 @@ dumpname)
 			fi
 			unset PackageName NAME
 			. "$REPLY/app_details" &>/dev/null
+			[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
 			if [[ $PackageName != "" ]]; then
-				[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
 				echoRgb "${REPLY##*/} $PackageName" && echo "${REPLY##*/} $PackageName" >>"$txt"
 			else
 				Script_path="$(find "$REPLY" -maxdepth 1 -name "*.sh*" -type f 2>/dev/null)"
 				NAME="$(echo "${Script_path##*/}" | sed 's/.sh//g')"
 				if [[ $NAME != "" ]]; then
 					name2="$NAME"
-					[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
 					echoRgb "${REPLY##*/} $name2" && echo "${REPLY##*/} $name2" >>"$txt"
 				else
-					[[ ${REPLY##*/} != Media ]] && echoRgb "包名獲取失敗" "0" && exit 2
+					if [[ ${REPLY##*/} != Media ]]; then
+						echoRgb "包名獲取失敗，解壓縮獲取包名中..." "0"
+						compressed_file="$(find "$REPLY" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
+						if [[ $compressed_file != "" ]]; then
+							rm -rf "$TMPDIR"/*
+							case ${compressed_file##*.} in
+							lz4 | zst) pv "$compressed_file" | tar -I zstd -xmpf - -C "$TMPDIR"  --wildcards --no-anchored 'base.apk' ;;
+							tar) pv "$compressed_file" | tar -xmpf - -C "$TMPDIR"  --wildcards --no-anchored 'base.apk' ;;
+							*)
+								echoRgb "${compressed_file##*/} 壓縮包不支持解壓縮" "0"
+								Set_back
+								;;
+							esac
+							echo_log "${compressed_file##*/}解壓縮"
+							if [[ $result = 0 ]]; then
+								if [[ -f $TMPDIR/base.apk ]]; then
+									DUMPAPK="$(appinfo -sort-i -d " " -o ands,pn -f "$TMPDIR/base.apk")"
+									if [[ $DUMPAPK != "" ]]; then
+										echoRgb "$DUMPAPK" && echo "$DUMPAPK">>"$txt" && rm -rf "$TMPDIR"/*
+									else
+										echoRgb "appinfo輸出失敗" "0"
+									fi
+								fi
+							fi
+						fi
+					fi
 				fi
 			fi
 		fi
@@ -1063,6 +1087,7 @@ Getlist)
 	echoRgb "提示!因為系統自帶app(位於data分區或是可卸載預裝應用)備份恢復可能存在問題\n -所以不會輸出..但是檢測為Xposed類型包名將輸出\n -如果提示不是Xposed但他就是Xposed可能為此應用元數據不符合規範導致" "0"
 	xposed_name="$(appinfo -o pn -xm)"
 	Apk_info="$(appinfo -sort-i -d " " -o ands,pn -pn $system -3 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+	[[ $Apk_info = "" ]] && echoRgb "appinfo輸出失敗" "0" && exit 2
 	Apk_Quantity="$(echo "$Apk_info" | wc -l)"
 	LR="1"
 	echoRgb "列出第三方應用......." "2"
