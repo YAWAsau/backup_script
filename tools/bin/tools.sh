@@ -23,7 +23,7 @@ fi
 . "$bin_path/bin.sh"
 zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 FILE_NAME="${zipFile##*/}"
-if [[ $(unzip -l "$zipFile" | awk '{print $4}' | grep -oE "^backup_settings.conf$") != "" ]]; then
+if [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | grep -oE "^backup_settings.conf$") != "" ]]; then
 	echoRgb "發現$zipFile\n移動並解壓縮中...."
 	mv "$zipFile" "$MODDIR"
 	update_script
@@ -125,7 +125,7 @@ if [[ $json != "" ]]; then
 							zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 							FILE_NAME="${zipFile##*/}"
 							seconds=1
-							while [[ $(unzip -l "$zipFile" | awk '{print $4}' | grep -oE "^backup_settings.conf$") = "" ]]; do
+							while [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | grep -oE "^backup_settings.conf$") = "" ]]; do
 								zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 								FILE_NAME="${zipFile##*/}"
 								echoRgb "$seconds秒"
