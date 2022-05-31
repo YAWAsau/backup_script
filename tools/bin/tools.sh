@@ -22,12 +22,7 @@ fi
 . "$conf_path"
 . "$bin_path/bin.sh"
 zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
-FILE_NAME="${zipFile##*/}"
-if [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | grep -oE "^backup_settings.conf$") != "" ]]; then
-	echoRgb "發現$zipFile\n移動並解壓縮中...."
-	mv "$zipFile" "$MODDIR"
-	update_script
-fi
+[[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | grep -oE "^backup_settings.conf$") != "" ]] && update_script
 isBoolean "$Lo" "LO" && Lo="$nsx"
 if [[ $Lo = false ]]; then
 	isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
@@ -49,7 +44,6 @@ fi
 cdn=2
 #settings get system system_locales
 LANG="$(getprop "persist.sys.locale")"
-zippath="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f 2>/dev/null)"
 echoRgb "檢查更新中 請稍後......."
 Language="https://api.github.com/repos/Petit-Abba/backup_script_zh-CN/releases/latest"
 if [[ $LANG != "" ]]; then
@@ -88,7 +82,7 @@ fi
 Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
 if [[ $json != "" ]]; then
 	tag="$(echo "$json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
-	if [[ $backup_version != $tag ]]; then
+	if [[ $tag != "" && $backup_version != $tag ]]; then
 		if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(echo "$tag" | tr -d "a-zA-Z")") -eq 0 ]]; then
 			download="$(echo "$json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
 			case $cdn in
@@ -118,22 +112,19 @@ if [[ $json != "" ]]; then
 				if [[ $update = true ]]; then
 					isBoolean "$update_behavior" "update_behavior" && update_behavior="$nsx"
 					if [[ $update_behavior = true ]]; then
-						am start -a android.intent.action.VIEW -d "$zip_url"
+						am start -a android.intent.action.VIEW -d "$zip_url" 2>/dev/null
 						echo_log "跳轉瀏覽器"
 						if [[ $result = 0 ]]; then
 							echoRgb "等待下載中.....請儘速點擊下載 否則腳本將等待10秒後自動退出"
 							zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
-							FILE_NAME="${zipFile##*/}"
 							seconds=1
 							while [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | grep -oE "^backup_settings.conf$") = "" ]]; do
 								zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
-								FILE_NAME="${zipFile##*/}"
 								echoRgb "$seconds秒"
 								[[ $seconds = 10 ]] && exit 2
 								sleep 1 && let seconds++
 							done
 							echoRgb "發現$zipFile\n移動並解壓縮中...."
-							mv "$zipFile" "$MODDIR"
 							update_script
 						fi
 					else
@@ -662,7 +653,7 @@ backup)
 			if [[ -d $apk_path2 ]]; then
 				echoRgb "備份第$i/$r個應用 剩下$((r - i))個" "3"
 				echoRgb "備份$name1 ($name2)" "2"
-				unset ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 userSize dataSize obbSize
+				unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 userSize dataSize obbSize
 				if [[ $name1 = *! || $name1 = *！ ]]; then
 					name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
 					echoRgb "跳過備份所有數據" "0"
@@ -677,7 +668,7 @@ backup)
 				if [[ -f $app_details ]]; then
 					. "$app_details" &>/dev/null
 					if [[ $PackageName != $name2 ]]; then
-						unset userSize ChineseName PackageName apk_version versionName apk_version2 apk_version3 result userSize dataSize obbSize
+						unset Backup_folder userSize ChineseName PackageName apk_version versionName apk_version2 apk_version3 result userSize dataSize obbSize
 						Backup_folder="$Backup/${name1}[${name2}]"
 						app_details="$Backup_folder/app_details"
 						[[ -f $app_details ]] && . "$app_details" &>/dev/null
@@ -725,17 +716,17 @@ backup)
 				#設置無障礙開關
 				if [[ $var != "" ]]; then
 					if [[ $var != null ]]; then
-						settings put secure enabled_accessibility_services "$var" 2>/dev/null 
+						settings put secure enabled_accessibility_services "$var" &>/dev/null 
 						echo_log "設置無障礙"
-						settings put secure accessibility_enabled 1 2>/dev/null
+						settings put secure accessibility_enabled 1 &>/dev/null
 						echo_log "打開無障礙開關"
 					fi
 				fi
 				#設置鍵盤
 				if [[ $keyboard != "" ]]; then
-					ime enable "$keyboard" 2>/dev/null
-					ime set "$keyboard" 2>/dev/null
-					settings put secure default_input_method "$keyboard" 2>/dev/null
+					ime enable "$keyboard" &>/dev/null
+					ime set "$keyboard" &>/dev/null
+					settings put secure default_input_method "$keyboard" &>/dev/null
 					echo_log "設置鍵盤$(appinfo -d "(" -ed ")" -o ands,pn -pn "${keyboard%/*}" 2>/dev/null)"
 				fi
 				echoRgb "\n -已更新的apk=\"$osn\"\n -apk版本號無變化=\"$osj\"\n -user數據已備份=\"$osx\"\n -data數據已備份=\"$osb\"\n -obb數據已備份=\"$osg\"\n -user數據不存在=\"$osz\"\n -obb數據不存在=\"$osd\"\n -obb數據不存在=\"$ose\"" "3"
@@ -797,7 +788,7 @@ backup)
 		Print "批量備份完成 執行過程請查看$Status_log"
 		#打開應用
 		appinfo -sort-i -d "/" -o pn,sa -pn $am_start 2>/dev/null | while read; do
-			am start -n "$REPLY" 2>/dev/null
+			am start -n "$REPLY" &>/dev/null
 		done
 		#回到桌面
 		#input keyevent 3 2>/dev/null
