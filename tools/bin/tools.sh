@@ -399,9 +399,9 @@ get_name(){
 						echoRgb "$ChineseName $PackageName" && echo "$ChineseName $PackageName" >>"$txt"
 					else
 						if [[ ${REPLY##*/} = $PackageName ]]; then
-							mv "$REPLY" "${REPLY%/*}/$ChineseName"
+							mv "$REPLY" "${REPLY%/*}/$ChineseName" && echoRgb "${REPLY##*/} > $ChineseName"
 						else
-							mv "$REPLY" "${REPLY%/*}/$PackageName"
+							mv "$REPLY" "${REPLY%/*}/$PackageName" && echoRgb "${REPLY##*/} > $PackageName"
 						fi
 					fi
 				fi
@@ -410,6 +410,7 @@ get_name(){
 		let rgb_a++
 	done
 	[[ $1 = Apkname ]] && sort -u "$txt" -o "$txt" 2>/dev/null && echoRgb "$txt重新生成" "1"
+	exit 0
 }
 case $operate in
 backup)
@@ -580,7 +581,7 @@ backup)
 				(
 					cd "$apk_path2"
 					case $Compression_method in
-					tar | TAR | Tar) tar -cf - | pv > "$Backup_folder/apk.tar" *.apk ;;
+					tar | TAR | Tar) tar -cf - *.apk | pv > "$Backup_folder/apk.tar" ;;
 					lz4 | LZ4 | Lz4) tar -cf - *.apk | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/apk.tar.lz4" ;;
 					zstd | Zstd | ZSTD) tar -cf - *apk | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
 					esac
@@ -645,9 +646,9 @@ backup)
 				user)
 					let osx++
 					case $Compression_method in
-					tar | Tar | TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-					zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
-					lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/$1.tar.lz4" ;;
+					tar | Tar | TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
+					zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+					lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/$1.tar.lz4" ;;
 					esac
 					;;
 				*)
