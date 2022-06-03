@@ -308,7 +308,7 @@ installapk() {
 		case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
 		1)
 			echoRgb "恢復普通apk" "2"
-			pm install -i com.android.vending --user 0 -r -t "$TMPDIR"/*.apk 2>/dev/null
+			pm install -i com.android.vending --user 0 -r -t "$TMPDIR"/*.apk &>/dev/null
 			echo_log "Apk安裝"
 			;;
 		0)
@@ -318,14 +318,14 @@ installapk() {
 			echoRgb "恢復split apk" "2"
 			b="$(pm install-create -i -i com.android.vending --user 0 2>/dev/null | grep -E -o '[0-9]+')"
 			if [[ -f $TMPDIR/nmsl.apk ]]; then
-				pm install -i com.android.vending --user 0 -r -t"$TMPDIR/nmsl.apk" 2>/dev/null
+				pm install -i com.android.vending --user 0 -r -t"$TMPDIR/nmsl.apk" &>/dev/null
 				echo_log "nmsl.apk安裝"
 			fi
 			find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | grep -v 'nmsl.apk' | while read; do
-				pm install-write "$b" "${REPLY##*/}" "$REPLY" 2>/dev/null
+				pm install-write "$b" "${REPLY##*/}" "$REPLY" &>/dev/null
 				echo_log "${REPLY##*/}安裝"
 			done
-			pm install-commit "$b" 2>/dev/null
+			pm install-commit "$b" &>/dev/null
 			echo_log "split Apk安裝"
 			;;
 		esac
@@ -342,6 +342,74 @@ disable_verify() {
 		settings put global upload_apk_enable 0 2>/dev/null
 		echoRgb "PLAY安全驗證為開啟狀態已被腳本關閉防止apk安裝失敗" "3"
 	fi
+}
+get_name(){
+	txt="$MODDIR/appList.txt"
+	txt2="$MODDIR/mediaList.txt"
+	txt="${txt/'/storage/emulated/'/'/data/media/'}"
+	[[ $1 = Apkname ]] && rm -rf *.txt && echoRgb "列出全部資料夾內應用名與自定義目錄壓縮包名稱" "3"
+	rgb_a=118
+	find "$MODDIR" -maxdepth 1 -type d 2>/dev/null | sort | while read; do
+		[[ $rgb_a -ge 229 ]] && rgb_a=118
+		if [[ -f $REPLY/app_details ]]; then
+			if [[ ${REPLY##*/} = Media && $1 = Apkname ]]; then
+				echoRgb "存在媒體資料夾" "2"
+				[[ ! -f $txt2 ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$txt2"
+				find "$REPLY" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | while read; do
+					echoRgb "${REPLY##*/}" && echo "${REPLY##*/}" >> "$txt2"
+				done
+				echoRgb "$txt2重新生成" "1"
+			else
+				unset PackageName NAME DUMPAPK ChineseName
+				. "$REPLY/app_details" &>/dev/null
+				[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
+				if [[ $PackageName = "" || $ChineseName = "" ]]; then
+					if [[ ${REPLY##*/} != Media ]]; then
+						echoRgb "${REPLY##*/}包名獲取失敗，解壓縮獲取包名中..." "0"
+						compressed_file="$(find "$REPLY" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
+						if [[ $compressed_file != "" ]]; then
+							rm -rf "$TMPDIR"/*
+							case ${compressed_file##*.} in
+							lz4 | zst) pv "$compressed_file" | tar -I zstd -xmpf - -C "$TMPDIR"  --wildcards --no-anchored 'base.apk' ;;
+							tar) pv "$compressed_file" | tar -xmpf - -C "$TMPDIR"  --wildcards --no-anchored 'base.apk' ;;
+							*)
+								echoRgb "${compressed_file##*/} 壓縮包不支持解壓縮" "0"
+								Set_back
+								;;
+							esac
+							echo_log "${compressed_file##*/}解壓縮"
+							if [[ $result = 0 ]]; then
+								if [[ -f $TMPDIR/base.apk ]]; then
+									DUMPAPK="$(appinfo -sort-i -d " " -o ands,pn -f "$TMPDIR/base.apk")"
+									if [[ $DUMPAPK != "" ]]; then
+										app=($DUMPAPK $DUMPAPK)
+										PackageName="${app[1]}"
+										ChineseName="${app[2]}"
+										rm -rf "$TMPDIR"/*
+									else
+										echoRgb "appinfo輸出失敗" "0"
+									fi
+								fi
+							fi
+						fi
+					fi
+				fi
+				if [[ $PackageName != "" && $ChineseName != "" ]]; then
+					if [[ $1 = Apkname ]]; then
+						echoRgb "$ChineseName $PackageName" && echo "$ChineseName $PackageName" >>"$txt"
+					else
+						if [[ ${REPLY##*/} = $PackageName ]]; then
+							mv "$REPLY" "${REPLY%/*}/$ChineseName"
+						else
+							mv "$REPLY" "${REPLY%/*}/$PackageName"
+						fi
+					fi
+				fi
+			fi
+		fi
+		let rgb_a++
+	done
+	[[ $1 = Apkname ]] && sort -u "$txt" -o "$txt" 2>/dev/null && echoRgb "$txt重新生成" "1"
 }
 case $operate in
 backup)
@@ -387,6 +455,7 @@ backup)
 	txt="$MODDIR/appList.txt"
 	txt="${txt/'/storage/emulated/'/'/data/media/'}"
 	[[ ! -f $txt ]] && echoRgb "請執行\"生成應用列表.sh\"獲取應用列表再來備份" "0" && exit 1
+	sort -u "$txt" -o "$txt" 2>/dev/null
 	data="$MODDIR"
 	hx="本地"
 	echoRgb "壓縮方式:$Compression_method"
@@ -417,6 +486,7 @@ backup)
 								[[ ! -d $Backup/被卸載的應用/tools ]] && cp -r "$tools_path" "$Backup/被卸載的應用" && rm -rf "$Backup/被卸載的應用/tools/bin/zip" "$Backup/被卸載的應用/tools/script"
 								[[ ! -f $Backup/被卸載的應用/恢復備份.sh ]] && cp -r "$script_path/restore" "$Backup/被卸載的應用/恢復備份.sh"
 								[[ ! -f $Backup/被卸載的應用/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/被卸載的應用/重新生成應用列表.sh"
+								[[ ! -f $Backup/被卸載的應用/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/被卸載的應用/轉換資料夾名稱.sh"
 								[[ ! -f $Backup/被卸載的應用/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/被卸載的應用/終止腳本.sh"
 								[[ ! -f $Backup/被卸載的應用/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf"
 								txt2="$Backup/被卸載的應用/appList.txt"
@@ -457,6 +527,7 @@ backup)
 	[[ ! -f $Backup/恢復備份.sh ]] && cp -r "$script_path/restore" "$Backup/恢復備份.sh"
 	[[ ! -f $Backup/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/終止腳本.sh"
 	[[ ! -f $Backup/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/重新生成應用列表.sh"
+	[[ ! -f $Backup/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/轉換資料夾名稱.sh"
 	[[ -d $Backup/Media ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
 	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 	filesha256="$(sha256sum "$bin_path/tools.sh" | cut -d" " -f1)"
@@ -509,9 +580,9 @@ backup)
 				(
 					cd "$apk_path2"
 					case $Compression_method in
-					tar | TAR | Tar) tar -cf "$Backup_folder/apk.tar" *.apk ;;
-					lz4 | LZ4 | Lz4) tar -cf - *.apk | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/apk.tar.lz4" ;;
-					zstd | Zstd | ZSTD) tar -cf - *apk | zstd -r -T0 --ultra -6 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
+					tar | TAR | Tar) tar -cf - | pv > "$Backup_folder/apk.tar" *.apk ;;
+					lz4 | LZ4 | Lz4) tar -cf - *.apk | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/apk.tar.lz4" ;;
+					zstd | Zstd | ZSTD) tar -cf - *apk | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
 					esac
 				)
 				echo_log "備份$apk_number個Apk"
@@ -575,7 +646,7 @@ backup)
 					let osx++
 					case $Compression_method in
 					tar | Tar | TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-					zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+					zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
 					lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/$1.tar.lz4" ;;
 					esac
 					;;
@@ -586,7 +657,7 @@ backup)
 					esac
 					case $Compression_method in
 					tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-					zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 --ultra -6 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+					zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
 					lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/$1.tar.lz4" ;;
 					esac
 					[[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1"
@@ -797,75 +868,20 @@ backup)
 	wait && exit
 	;;
 dumpname)
-	txt="$MODDIR/appList.txt"
-	txt2="$MODDIR/mediaList.txt"
-	rm -rf *.txt
-	txt="${txt/'/storage/emulated/'/'/data/media/'}"
-	echoRgb "列出全部資料夾內應用名與自定義目錄壓縮包名稱" "3"
-	rgb_a=118
-	find "$MODDIR" -maxdepth 1 -type d 2>/dev/null | sort | while read; do
-		[[ $rgb_a -ge 229 ]] && rgb_a=118
-		if [[ -f $REPLY/app_details ]]; then
-			if [[ ${REPLY##*/} = Media ]]; then
-				echoRgb "存在媒體資料夾" "2"
-				[[ ! -f $txt2 ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$txt2"
-				find "$REPLY" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | while read; do
-					echoRgb "${REPLY##*/}" && echo "${REPLY##*/}" >> "$txt2"
-				done
-				echoRgb "$txt2重新生成" "1"
-			fi
-			unset PackageName NAME
-			. "$REPLY/app_details" &>/dev/null
-			[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
-			if [[ $PackageName != "" ]]; then
-				echoRgb "${REPLY##*/} $PackageName" && echo "${REPLY##*/} $PackageName" >>"$txt"
-			else
-				Script_path="$(find "$REPLY" -maxdepth 1 -name "*.sh*" -type f 2>/dev/null)"
-				NAME="$(echo "${Script_path##*/}" | sed 's/.sh//g')"
-				if [[ $NAME != "" ]]; then
-					name2="$NAME"
-					echoRgb "${REPLY##*/} $name2" && echo "${REPLY##*/} $name2" >>"$txt"
-				else
-					if [[ ${REPLY##*/} != Media ]]; then
-						echoRgb "包名獲取失敗，解壓縮獲取包名中..." "0"
-						compressed_file="$(find "$REPLY" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
-						if [[ $compressed_file != "" ]]; then
-							rm -rf "$TMPDIR"/*
-							case ${compressed_file##*.} in
-							lz4 | zst) pv "$compressed_file" | tar -I zstd -xmpf - -C "$TMPDIR"  --wildcards --no-anchored 'base.apk' ;;
-							tar) pv "$compressed_file" | tar -xmpf - -C "$TMPDIR"  --wildcards --no-anchored 'base.apk' ;;
-							*)
-								echoRgb "${compressed_file##*/} 壓縮包不支持解壓縮" "0"
-								Set_back
-								;;
-							esac
-							echo_log "${compressed_file##*/}解壓縮"
-							if [[ $result = 0 ]]; then
-								if [[ -f $TMPDIR/base.apk ]]; then
-									DUMPAPK="$(appinfo -sort-i -d " " -o ands,pn -f "$TMPDIR/base.apk")"
-									if [[ $DUMPAPK != "" ]]; then
-										echoRgb "$DUMPAPK" && echo "$DUMPAPK">>"$txt" && rm -rf "$TMPDIR"/*
-									else
-										echoRgb "appinfo輸出失敗" "0"
-									fi
-								fi
-							fi
-						fi
-					fi
-				fi
-			fi
-		fi
-		let rgb_a++
-	done
-	echoRgb "$txt重新生成" "1"
+	get_name "Apkname"
+	;;
+convert)
+	get_name "convert"
 	;;
 Restore)
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
+	echoRgb "如果大量提示找不到資料夾請執行$MODDIR/轉換資料夾名稱.sh"
 	disable_verify
 	[[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
 	i=1
 	txt="$MODDIR/appList.txt"
 	[[ ! -f $txt ]] && echoRgb "請執行\"重新生成應用列表.sh\"獲取應用列表再來恢復" "0" && exit 2
+	sort -u "$txt" -o "$txt" 2>/dev/null
 	r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	[[ $r = "" ]] && echoRgb "appList.txt包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取應用列表再來恢復" "0" && exit 1
 	[[ $(which restorecon) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
@@ -1019,6 +1035,7 @@ Restore3)
 	[[ ! -d $mediaDir ]] && echoRgb "媒體資料夾不存在" "0" && exit 2
 	txt="$MODDIR/mediaList.txt"
 	[[ ! -f $txt ]] && echoRgb "請執行\"重新生成應用列表.sh\"獲取媒體列表再來恢復" "0" && exit 2
+	sort -u "$txt" -o "$txt" 2>/dev/null
 	#記錄開始時間
 	starttime1="$(date -u "+%s")"
 	echo_log() {
@@ -1193,6 +1210,7 @@ backup_media)
 		[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
 		[[ ! -f $Backup/恢復自定義資料夾.sh ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
 		[[ ! -f $Backup/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/重新生成應用列表.sh"
+		[[ ! -f $Backup/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/轉換資料夾名稱.sh"
 		[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
 		[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 		app_details="$Backup_folder/app_details"
