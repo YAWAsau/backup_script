@@ -48,7 +48,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.3"
+backup_version="V15.5"
 #設置二進制命令目錄位置
 if [[ $bin_path = "" ]]; then
 	echoRgb "未正確指定bin.sh位置" "0"
@@ -234,6 +234,7 @@ update_script() {
 							mv "$MODDIR/tools" "${MODDIR%/*}"
 							echoRgb "更新當前${MODDIR##*/}目錄下恢復相關腳本+外部tools目錄與腳本"
 							cp -r "$tools_path/script/Get_DirName" "${MODDIR%/*}/重新生成應用列表.sh"
+							cp -r "$tools_path/script/convert" "${MODDIR%/*}/轉換資料夾名稱.sh"
 							cp -r "$tools_path/script/restore" "${MODDIR%/*}/恢復備份.sh"
 							cp -r "$MODDIR/終止腳本.sh" "${MODDIR%/*}/終止腳本.sh"
 							[[ -d ${MODDIR%/*}/Media ]] && cp -r "$tools_path/script/restore3" "${MODDIR%/*}/恢復自定義資料夾.sh"
@@ -263,6 +264,7 @@ update_script() {
 						else
 							echoRgb "更新當前${MODDIR##*/}目錄下恢復相關腳本+tools目錄"
 							cp -r "$tools_path/script/Get_DirName" "$MODDIR/重新生成應用列表.sh"
+							cp -r "$tools_path/script/convert" "$MODDIR/轉換資料夾名稱.sh"
 							cp -r "$tools_path/script/restore" "$MODDIR/恢復備份.sh"
 							[[ -d $MODDIR/Media ]] && cp -r "$tools_path/script/restore3" "$MODDIR/恢復自定義資料夾.sh"
 							find "$MODDIR" -maxdepth 1 -type d | sort | while read; do
@@ -299,6 +301,7 @@ update_script() {
 									cp -r "$tools_path" "$backup_path" && rm -rf "$backup_path/tools/bin/zip" "$backup_path/tools/script"
 									cp -r "$tools_path/script/restore" "$backup_path/恢復備份.sh"
 									cp -r "$tools_path/script/Get_DirName" "$backup_path/重新生成應用列表.sh"
+									cp -r "$tools_path/script/convert" "$backup_path/轉換資料夾名稱.sh"
 									cp -r "$MODDIR/終止腳本.sh" "$backup_path/終止腳本.sh"
 									[[ -d $backup_path/Media ]] && cp -r "$tools_path/script/restore3" "$backup_path/恢復自定義資料夾.sh"
 									find "$MODDIR" -maxdepth 2 -type d | sort | while read; do

@@ -46,7 +46,7 @@ if [[ $toast_info = true ]]; then
 	pm enable "ice.message" &>/dev/null
 	if [[ $(pm path --user "$user" ice.message 2>/dev/null) = "" ]]; then
 		echoRgb "未安裝toast 開始安裝" "0"
-		cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user 0 -r -t "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
+		cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user "$user" -r -t "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
 		[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
 	fi
 else
@@ -158,10 +158,10 @@ fi
 backup_path() {
 	if [[ $Output_path != "" ]]; then
 		[[ ${Output_path: -1} = / ]] && Output_path="${Output_path%?}"
-		Backup="$Output_path/Backup_$Compression_method"
+		Backup="$Output_path/Backup_${Compression_method}_$user"
 		outshow="使用自定義目錄"
 	else
-		Backup="$MODDIR/Backup_$Compression_method"
+		Backup="$MODDIR/Backup_${Compression_method}_$user"
 		outshow="使用當前路徑作為備份目錄"
 	fi
 	PU="$(ls /dev/block/vold 2>/dev/null | grep public)"
@@ -176,7 +176,7 @@ backup_path() {
 				[[ $branch = true ]] && hx="USB"
 			fi
 			if [[ $hx = USB ]]; then
-				Backup="$PT/Backup_$Compression_method"
+				Backup="$PT/Backup_${Compression_method}_$user"
 				data="/dev/block/vold/$PU"
 				mountinfo="$(df -T "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')"
 				case $mountinfo in
@@ -417,7 +417,7 @@ Release_data() {
 				if [[ $G != "" ]]; then
 					echoRgb "路徑:$X"
 					Path_details="$(stat -c "%A/%a %U/%G" "$X")"
-					chown -hR "$G:$G" "$X/"
+					[[ $user = 0 ]] && chown -hR "$G:$G" "$X/" || chown -hR "$user$G:$user$G" "$X/"
 					echo_log "設置用戶組:$(echo "$Path_details" | awk '{print $2}')"
 					restorecon -RFD "$X/" 2>/dev/null
 					echo_log "selinux上下文設置"
