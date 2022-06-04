@@ -199,6 +199,165 @@ partition_info() {
 	lxj="$(echo "$Occupation_status" | awk '{print $2}' | sed 's/%//g')"
 	[[ $lxj -ge 97 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
 }
+#檢測apk狀態進行備份
+Backup_apk() {
+	stopscript
+	#創建APP備份文件夾
+	[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
+	apk_version2="$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)"
+	apk_version3="$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)"
+	if [[ $apk_version = $apk_version2 ]]; then
+		[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
+		unset xb
+		let osj++
+		result=0
+		echoRgb "Apk版本無更新 跳過備份" "2"
+	else
+		case $name2 in
+		com.google.android.youtube)
+			[[ -d /data/adb/Vanced ]] && nobackup="true"
+			;;
+		com.google.android.apps.youtube.music)
+			[[ -d /data/adb/Music ]] && nobackup="true"
+			;;
+		esac
+		if [[ $nobackup != true ]]; then
+			let osn++
+			if [[ $apk_version != "" ]]; then
+				echoRgb "版本:$apk_version>$apk_version2"
+			else
+				echoRgb "版本:$apk_version2"
+			fi
+			[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
+			partition_info "$Backup"
+			rm -rf "$Backup_folder"/*.apk
+			#備份apk
+			echoRgb "$1"
+			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
+			echo "$apk_path" | sed -e '/^$/d' | while read; do
+				path="$REPLY"
+				b_size="$(ls -l "$path" | awk '{print $5}')"
+				k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
+				m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
+				echoRgb "${path##*/} ${m_size}MB(${k_size}KB)"
+			done
+			(
+				cd "$apk_path2"
+				case $Compression_method in
+				tar | TAR | Tar) tar -cf - *.apk | pv > "$Backup_folder/apk.tar" ;;
+				lz4 | LZ4 | Lz4) tar -cf - *.apk | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/apk.tar.lz4" ;;
+				zstd | Zstd | ZSTD) tar -cf - *apk | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
+				esac
+			)
+			echo_log "備份$apk_number個Apk"
+			if [[ $result = 0 ]]; then
+				if [[ $apk_version = "" ]]; then
+					echo "apk_version=\"$apk_version2\"" >>"$app_details"
+				else
+					echo "$(cat "$app_details" | sed "s/${apk_version}/${apk_version2}/g")">"$app_details"
+				fi
+				if [[ $versionName = "" ]]; then
+					echo "versionName=\"$apk_version3\"" >>"$app_details"
+				else
+					echo "$(cat "$app_details" | sed "s/${versionName}/${apk_version3}/g")">"$app_details"
+				fi
+				[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
+				[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
+				[[ ! -f $Backup_folder/$name2.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/$name2.sh"
+			fi
+			if [[ $name2 = com.android.chrome ]]; then
+				#刪除所有舊apk ,保留一個最新apk進行備份
+				ReservedNum=1
+				FileNum="$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)"
+				while [[ $FileNum -gt $ReservedNum ]]; do
+					OldFile="$(ls -rt /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | head -1)"
+					rm -rf "${OldFile%/*/*}" && echoRgb "刪除文件:${OldFile%/*/*}"
+					let "FileNum--"
+				done
+				[[ -f $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null) && $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l) = 1 ]] && cp -r "$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null)" "$Backup_folder/nmsl.apk"
+			fi
+		else
+			let osj++
+			echoRgb "$name不支持備份 需要使用vanced安裝" "0" && rm -rf "$Backup_folder"
+		fi
+	fi
+	[[ $name2 = bin.mt.plus && ! -f $Backup/$name1.apk ]] && cp -r "$apk_path" "$Backup/$name1.apk"
+	D=1
+}
+#檢測數據位置進行備份
+Backup_data() {
+	unset zsize Size data_path && data_path="$path/$1/$name2"
+	stopscript
+	case $1 in
+	user) Size="$userSize" && data_path="$path2/$name2" ;;
+	data) Size="$dataSize" ;;
+	obb) Size="$obbSize" ;;
+	*)
+		[[ -f $app_details ]] && Size="$(cat "$app_details" | awk "/$1Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')"
+		data_path="$2"
+		Compression_method1="$Compression_method"
+		Compression_method=tar
+		zsize=1
+		;;
+	esac
+	if [[ -d $data_path ]]; then
+		if [[ $Size != $(du -ks "$data_path" | awk '{print $1}') ]]; then
+			partition_info "$Backup"
+			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
+			echoRgb "備份$1數據"
+			case $1 in
+			user)
+				let osx++
+				case $Compression_method in
+				tar | Tar | TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
+				zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+				lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/$1.tar.lz4" ;;
+				esac
+				;;
+			*)
+				case $1 in
+				data)	let osb++ ;;
+				obb)	let osg++ ;;
+				esac
+				case $Compression_method in
+				tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
+				zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+				lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/$1.tar.lz4" ;;
+				esac
+				[[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1"
+				unset Compression_method1
+				;;
+			esac
+			echo_log "備份$1數據"
+			if [[ $result = 0 ]]; then
+				if [[ $zsize != "" ]]; then
+					echo "#$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
+					[[ $2 != $(cat "$app_details" | awk "/$1path/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g') ]] && echo "#$1path=\"$2\"" >>"$app_details"
+				else
+					if [[ $Size != "" ]]; then
+						echo "$(cat "$app_details" | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
+					else
+						echo "$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
+					fi
+				fi
+			fi
+		else
+			echoRgb "$1數據無發生變化 跳過備份" "2"
+		fi
+	else
+		if [[ -f $data_path ]]; then
+			echoRgb "$1是一個文件 不支持備份" "0"
+		else
+			case $1 in
+			user)	let osz++ ;;
+			data)	let osd++ ;;
+			obb)	let ose++ ;;
+			esac
+			echoRgb "$1數據不存在跳過備份" "2"
+		fi
+	fi
+	partition_info "$Backup"
+}
 Release_data() {
 	stopscript
 	tar_path="$1"
@@ -225,7 +384,7 @@ Release_data() {
 	if [[ $FILE_PATH != "" ]]; then
 		case ${FILE_NAME##*.} in
 		lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$FILE_PATH" ;;
-		tar) pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$FILE_PATH" ;;
+		tar) [[ ${Backup_folder2##*/} = Media ]] && pv "$tar_path" | tar --recursive-unlink -xpf - -C "$FILE_PATH" || tar --recursive-unlink -xmpf - -C "$FILE_PATH" ;;
 		*)
 			echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
 			Set_back
@@ -522,165 +681,6 @@ backup)
 	[[ $filesha256 != $filesha256_1 ]] && cp -r "$bin_path/tools.sh" "$Backup/tools/bin/tools.sh"
 	filesize="$(du -ks "$Backup" | awk '{print $1}')"
 	Quantity=0
-	#檢測apk狀態進行備份
-	Backup_apk() {
-		stopscript
-		#創建APP備份文件夾
-		[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
-		apk_version2="$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)"
-		apk_version3="$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)"
-		if [[ $apk_version = $apk_version2 ]]; then
-			[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
-			unset xb
-			let osj++
-			result=0
-			echoRgb "Apk版本無更新 跳過備份" "2"
-		else
-			case $name2 in
-			com.google.android.youtube)
-				[[ -d /data/adb/Vanced ]] && nobackup="true"
-				;;
-			com.google.android.apps.youtube.music)
-				[[ -d /data/adb/Music ]] && nobackup="true"
-				;;
-			esac
-			if [[ $nobackup != true ]]; then
-				let osn++
-				if [[ $apk_version != "" ]]; then
-					echoRgb "版本:$apk_version>$apk_version2"
-				else
-					echoRgb "版本:$apk_version2"
-				fi
-				[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
-				partition_info "$Backup"
-				rm -rf "$Backup_folder"/*.apk
-				#備份apk
-				echoRgb "$1"
-				[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
-				echo "$apk_path" | sed -e '/^$/d' | while read; do
-					path="$REPLY"
-					b_size="$(ls -l "$path" | awk '{print $5}')"
-					k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
-					m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
-					echoRgb "${path##*/} ${m_size}MB(${k_size}KB)"
-				done
-				(
-					cd "$apk_path2"
-					case $Compression_method in
-					tar | TAR | Tar) tar -cf - *.apk | pv > "$Backup_folder/apk.tar" ;;
-					lz4 | LZ4 | Lz4) tar -cf - *.apk | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/apk.tar.lz4" ;;
-					zstd | Zstd | ZSTD) tar -cf - *apk | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
-					esac
-				)
-				echo_log "備份$apk_number個Apk"
-				if [[ $result = 0 ]]; then
-					if [[ $apk_version = "" ]]; then
-						echo "apk_version=\"$apk_version2\"" >>"$app_details"
-					else
-						echo "$(cat "$app_details" | sed "s/${apk_version}/${apk_version2}/g")">"$app_details"
-					fi
-					if [[ $versionName = "" ]]; then
-						echo "versionName=\"$apk_version3\"" >>"$app_details"
-					else
-						echo "$(cat "$app_details" | sed "s/${versionName}/${apk_version3}/g")">"$app_details"
-					fi
-					[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
-					[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
-					[[ ! -f $Backup_folder/$name2.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/$name2.sh"
-				fi
-				if [[ $name2 = com.android.chrome ]]; then
-					#刪除所有舊apk ,保留一個最新apk進行備份
-					ReservedNum=1
-					FileNum="$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)"
-					while [[ $FileNum -gt $ReservedNum ]]; do
-						OldFile="$(ls -rt /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | head -1)"
-						rm -rf "${OldFile%/*/*}" && echoRgb "刪除文件:${OldFile%/*/*}"
-						let "FileNum--"
-					done
-					[[ -f $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null) && $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l) = 1 ]] && cp -r "$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null)" "$Backup_folder/nmsl.apk"
-				fi
-			else
-				let osj++
-				echoRgb "$name不支持備份 需要使用vanced安裝" "0" && rm -rf "$Backup_folder"
-			fi
-		fi
-		[[ $name2 = bin.mt.plus && ! -f $Backup/$name1.apk ]] && cp -r "$apk_path" "$Backup/$name1.apk"
-		D=1
-	}
-	#檢測數據位置進行備份
-	Backup_data() {
-		unset zsize Size
-		stopscript
-		case $1 in
-		user) Size="$userSize" && data_path="$path2/$name2" ;;
-		data) Size="$dataSize" && data_path="$path/$1/$name2" ;;
-		obb) Size="$obbSize" && data_path="$path/$1/$name2" ;;
-		*)
-			[[ -f $app_details ]] && Size="$(cat "$app_details" | awk "/$1Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')"
-			data_path="$2"
-			Compression_method1="$Compression_method"
-			Compression_method=tar
-			zsize=1
-			;;
-		esac
-		if [[ -d $data_path ]]; then
-			if [[ $Size != $(du -ks "$data_path" | awk '{print $1}') ]]; then
-				partition_info "$Backup"
-				[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
-				echoRgb "備份$1數據"
-				case $1 in
-				user)
-					let osx++
-					case $Compression_method in
-					tar | Tar | TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-					zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
-					lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/$1.tar.lz4" ;;
-					esac
-					;;
-				*)
-					case $1 in
-					data)	let osb++ ;;
-					obb)	let osg++ ;;
-					esac
-					case $Compression_method in
-					tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-					zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
-					lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/$1.tar.lz4" ;;
-					esac
-					[[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1"
-					unset Compression_method1
-					;;
-				esac
-				echo_log "備份$1數據"
-				if [[ $result = 0 ]]; then
-					if [[ $zsize != "" ]]; then
-						echo "#$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
-						[[ $2 != $(cat "$app_details" | awk "/$1path/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g') ]] && echo "#$1path=\"$2\"" >>"$app_details"
-					else
-						if [[ $Size != "" ]]; then
-							echo "$(cat "$app_details" | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
-						else
-							echo "$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
-						fi
-					fi
-				fi
-			else
-				echoRgb "$1數據無發生變化 跳過備份" "2"
-			fi
-		else
-			if [[ -f $data_path ]]; then
-				echoRgb "$1是一個文件 不支持備份" "0"
-			else
-				case $1 in
-				user)	let osz++ ;;
-				data)	let osd++ ;;
-				obb)	let ose++ ;;
-				esac
-				echoRgb "$1數據不存在跳過備份" "2"
-			fi
-		fi
-		partition_info "$Backup"
-	}
 	#開始循環$txt內的資料進行備份
 	#記錄開始時間
 	starttime1="$(date -u "+%s")"
@@ -1019,6 +1019,7 @@ Restore3)
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
 	get_version "恢復自定義資料夾" "離開腳本" && [[ "$branch" = false ]] && exit 0
 	mediaDir="$MODDIR/Media"
+	Backup_folder2="$mediaDir"
 	[[ ! -d $mediaDir ]] && echoRgb "媒體資料夾不存在" "0" && exit 2
 	txt="$MODDIR/mediaList.txt"
 	[[ ! -f $txt ]] && echoRgb "請執行\"重新生成應用列表.sh\"獲取媒體列表再來恢復" "0" && exit 2
@@ -1030,26 +1031,6 @@ Restore3)
 			echoRgb "$1成功" "1" && result=0
 		else
 			echoRgb "$1恢複失敗，過世了" "0" && result=1
-		fi
-	}
-	Release_data() {
-		stopscript
-		tar_path="$1"
-		if [[ -f $tar_path ]]; then
-			FILE_NAME="${tar_path##*/}"
-			FILE_NAME2="${FILE_NAME%%.*}"
-			echoRgb "恢復$FILE_NAME2數據" "3"
-			if [[ ${FILE_NAME##*.} = tar ]]; then
-				pv "$1" | tar -xPpf -
-			else
-				echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
-				Set_back
-			fi
-			echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
-			app_details="$mediaDir/app_details"
-			[[ $result = 0 ]] && [[ -f $app_details ]] && echoRgb "解壓路徑↓\n -$(cat "$app_details" | awk "/${FILE_NAME2}path/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" "2"
-		else
-			echoRgb "$tar_path壓縮包不存在" "0"
 		fi
 	}
 	starttime1="$(date -u "+%s")"
@@ -1161,33 +1142,6 @@ backup_media)
 		fi
 	} &
 	backup_path
-	Backup_data() {
-		unset zsize
-		stopscript
-		[[ -f $app_details ]] && Size="$(cat "$app_details" | awk "/$1Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')"
-		data_path="$2"
-		if [[ -d $data_path ]]; then
-			if [[ $Size != $(du -ks "$data_path" | awk '{print $1}') ]]; then
-				partition_info "$Backup"
-				echoRgb "備份$1數據"
-				tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv >"$Backup_folder/$1.tar"
-				echo_log "備份$1數據"
-				if [[ $result = 0 ]]; then
-					echo "#$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
-					[[ $2 != $(cat "$app_details" | awk "/$1path/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g') ]] && echo "#$1path=\"$2\"" >>"$app_details"
-				fi
-			else
-				echoRgb "$1數據無發生變化 跳過備份" "2"
-			fi
-		else
-			if [[ -f $data_path ]]; then
-				echoRgb "$1是一個文件 不支持備份" "0"
-			else
-				echoRgb "$1數據不存在跳過備份" "2"
-			fi
-		fi
-		partition_info "$Backup"
-	}
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
 	A=1
 	B="$(echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
