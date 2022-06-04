@@ -2,8 +2,9 @@
 #MODDIR="${0%/*}"
 MODDIR="$MODDIR"
 tools_path="$MODDIR/tools"
-path="/data/media/0/Android"
-path2="/data/data"
+user=0
+path="/data/media/$user/Android"
+path2="/data/user/$user"
 if [[ ! -d $tools_path ]]; then
 	tools_path="${MODDIR%/*}/tools"
 	[[ ! -d $tools_path ]] && echo "$tools_path二進制目錄遺失" && EXIT="true"
@@ -33,7 +34,7 @@ fi
 Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
 if [[ $toast_info = true ]]; then
 	pm enable "ice.message" &>/dev/null
-	if [[ $(pm path ice.message 2>/dev/null) = "" ]]; then
+	if [[ $(pm path --user "$user" ice.message 2>/dev/null) = "" ]]; then
 		echoRgb "未安裝toast 開始安裝" "0"
 		cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user 0 -r -t "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
 		[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
@@ -205,51 +206,36 @@ Release_data() {
 	FILE_NAME="${tar_path##*/}"
 	FILE_NAME2="${FILE_NAME%%.*}"
 	echoRgb "恢復$FILE_NAME2數據" "3"
+	unset FILE_PATH
 	case $FILE_NAME2 in
-	user)
-		if [[ -d $X ]]; then
-			case ${FILE_NAME##*.} in
-			lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$path2" ;;
-			tar) pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$path2" ;;
-			*)
-				echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
-				Set_back
-				;;
-			esac
-		else
-			echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0"
-			Set_back
-		fi
-		;;
-	data | obb)
-		case ${FILE_NAME##*.} in
-		lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmPpf - ;;
-		tar) pv "$tar_path" | tar --recursive-unlink -xmPpf - ;;
-		*)
-			echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
-			Set_back
-			;;
-		esac
-		;;
+	user)	[[ -d $X ]] && FILE_PATH="$path2" || echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0" ;;
+	data | obb)	FILE_PATH="$path" ;;
+	thanox)	FILE_PATH="/data/system" && find "/data/system" -name "thanos*" -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
+	storage-isolation)	FILE_PATH="/data/adb" && rm -rf "/data/adb/storage-isolation" ;;
 	*)
-		[[ $FILE_NAME2 = thanox ]] && rm -rf "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)"
-		[[ $FILE_NAME2 = storage-isolation ]] && rm -rf "/data/adb/storage-isolation"
-		case ${FILE_NAME##*.} in
-		lz4 | zst) pv "$tar_path" | tar -I zstd -xmPpf - ;;
-		tar) pv "$tar_path" | tar -xPpf - ;;
-		*)
-			echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
-			Set_back
-			;;
-		esac
-		;;
-	esac
-	echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
-	if [[ $result = 0 ]]; then
 		if [[ $A != "" ]]; then
 			app_details="$Backup_folder2/app_details"
-			[[ -f $app_details ]] && echoRgb "解壓路徑↓\n -$(cat "$app_details" | awk "/${FILE_NAME2}path/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" "2" || echoRgb "已經成功解壓縮 但是解壓路徑獲取失敗" "0"
+			if [[ -f $app_details ]]; then
+				FILE_PATH="$(cat "$app_details" | awk "/${FILE_NAME2}path/"'{print $1}' | cut -f2 -d '=' | sed 's/\"//g')"
+				[[ $FILE_PATH = "" ]] && echoRgb "解壓路徑獲取失敗" "0" || echoRgb "解壓路徑↓\n -$FILE_PATH" "2"
+				FILE_PATH="${FILE_PATH%/*}"
+			fi
 		fi
+	esac
+	if [[ $FILE_PATH != "" ]]; then
+		case ${FILE_NAME##*.} in
+		lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$FILE_PATH" ;;
+		tar) pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$FILE_PATH" ;;
+		*)
+			echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
+			Set_back
+			;;
+		esac
+	else
+		Set_back
+	fi
+	echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
+	if [[ $result = 0 ]]; then
 		case $FILE_NAME2 in
 		user)
 			if [[ -d $X ]]; then
@@ -264,7 +250,7 @@ Release_data() {
 					Path_details="$(stat -c "%A/%a %U/%G" "$X")"
 					chown -hR "$G:$G" "$X/"
 					echo_log "設置用戶組:$(echo "$Path_details" | awk '{print $2}')"
-					restorecon -RF "$X/" 2>/dev/null
+					restorecon -RFD "$X/" 2>/dev/null
 					echo_log "selinux上下文設置"
 				else
 					echoRgb "uid獲取失敗" "0"
@@ -277,7 +263,7 @@ Release_data() {
 			[[ -d $path/$FILE_NAME2/$name2 ]] && chmod -R 0777 "$path/$FILE_NAME2/$name2"
 			;;
 		thanox)
-			restorecon  -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)/" 2>/dev/null
+			restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)/" 2>/dev/null
 			echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
 			;;
 		storage-isolation)
@@ -308,7 +294,7 @@ installapk() {
 		case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
 		1)
 			echoRgb "恢復普通apk" "2"
-			pm install -i com.android.vending --user 0 -r -t "$TMPDIR"/*.apk &>/dev/null
+			pm install -i com.android.vending --user "$user" -r -t "$TMPDIR"/*.apk &>/dev/null
 			echo_log "Apk安裝"
 			;;
 		0)
@@ -316,9 +302,9 @@ installapk() {
 			;;
 		*)
 			echoRgb "恢復split apk" "2"
-			b="$(pm install-create -i -i com.android.vending --user 0 2>/dev/null | grep -E -o '[0-9]+')"
+			b="$(pm install-create -i -i com.android.vending --user "$user" 2>/dev/null | grep -E -o '[0-9]+')"
 			if [[ -f $TMPDIR/nmsl.apk ]]; then
-				pm install -i com.android.vending --user 0 -r -t"$TMPDIR/nmsl.apk" &>/dev/null
+				pm install -i com.android.vending --user "$user" -r -t"$TMPDIR/nmsl.apk" &>/dev/null
 				echo_log "nmsl.apk安裝"
 			fi
 			find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | grep -v 'nmsl.apk' | while read; do
@@ -474,7 +460,7 @@ backup)
 					if [[ -f $REPLY/app_details ]]; then
 						unset PackageName
 						. "$REPLY/app_details" &>/dev/null
-						if [[ $PackageName != "" && $(pm path "$PackageName" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
+						if [[ $PackageName != "" && $(pm path --user "$user" "$PackageName" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
 							if [[ $operate = true ]]; then
 								rm -rf "$REPLY"
 								echoRgb "${REPLY##*/}不存在系統 刪除資料夾" "0"
@@ -507,7 +493,7 @@ backup)
 		while [[ $D -le $C ]]; do
 			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $1}')"
 			name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
-			if [[ $name2 != "" && $(pm path "$name2" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
+			if [[ $name2 != "" && $(pm path --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
 				echoRgb "$name1不存在系統，從列表中刪除" "0"
 				echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$txt")" >"$txt"
 			fi
@@ -541,7 +527,7 @@ backup)
 		stopscript
 		#創建APP備份文件夾
 		[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
-		apk_version2="$(pm list packages --show-versioncode "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)"
+		apk_version2="$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)"
 		apk_version3="$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)"
 		if [[ $apk_version = $apk_version2 ]]; then
 			[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
@@ -657,9 +643,9 @@ backup)
 					obb)	let osg++ ;;
 					esac
 					case $Compression_method in
-					tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-					zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
-					lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cPpf - "$data_path" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/$1.tar.lz4" ;;
+					tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
+					zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+					lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/$1.tar.lz4" ;;
 					esac
 					[[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1"
 					unset Compression_method1
@@ -719,7 +705,7 @@ backup)
 				name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
 			fi
 			[[ $name2 = "" ]] && echoRgb "警告! appList.txt應用包名獲取失敗，可能修改有問題" "0" && exit 1
-			apk_path="$(pm path "$name2" 2>/dev/null | cut -f2 -d ':')"
+			apk_path="$(pm path --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':')"
 			apk_path2="$(echo "$apk_path" | head -1)"
 			apk_path2="${apk_path2%/*}"
 			if [[ -d $apk_path2 ]]; then
@@ -910,17 +896,17 @@ Restore)
 			if [[ -d $Backup_folder ]]; then
 				echoRgb "恢複$name1 ($name2)" "2"
 				starttime2="$(date -u "+%s")"
-				if [[ $(pm path "$name2" 2>/dev/null) = "" ]]; then
+				if [[ $(pm path --user "$user" "$name2" 2>/dev/null) = "" ]]; then
 					installapk
 				else
 					unset apk_version
 					[[ -f "$Backup_folder/app_details" ]] && . "$Backup_folder/app_details"
 					apk_version="$(echo "$apk_version" | head -n 1)"
-					if [[ $apk_version -gt $(pm list packages --show-versioncode "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
+					if [[ $apk_version -gt $(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
 						installapk
-						echoRgb "版本提升$(pm list packages --show-versioncode "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
+						echoRgb "版本提升$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
 					else
-						if [[ $apk_version = $(pm list packages --show-versioncode "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
+						if [[ $apk_version = $(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
 							echoRgb "本地版本與備份版本一致略過安裝" "2"
 						else
 							echoRgb "本地版本大於備份版本略過安裝" "2"
@@ -928,7 +914,7 @@ Restore)
 					fi
 				fi
 				if [[ $No_backupdata = "" ]]; then
-					if [[ $(pm path "$name2" 2>/dev/null) != "" ]]; then
+					if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
 						#停止應用
 						[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
 						find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
@@ -999,22 +985,22 @@ Restore2)
 		[[ $name2 = "" ]] && echoRgb "包名獲取失敗" "0" && exit 2
 		echoRgb "恢複$name1 ($name2)" "3"
 		starttime2="$(date -u "+%s")"
-		if [[ $(pm path "$name2" 2>/dev/null) = "" ]]; then
+		if [[ $(pm path --user "$user" "$name2" 2>/dev/null) = "" ]]; then
 			installapk
 		else
 			apk_version="$(echo "$apk_version" | head -n 1)"
-			if [[ $apk_version -gt $(pm list packages --show-versioncode "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
+			if [[ $apk_version -gt $(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
 				installapk
-				echoRgb "版本提升$(pm list packages --show-versioncode "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
+				echoRgb "版本提升$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
 			else
-				if [[ $apk_version = $(pm list packages --show-versioncode "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
+				if [[ $apk_version = $(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
 					echoRgb "本地版本與備份版本一致略過安裝" "2"
 				else
 					echoRgb "本地版本大於備份版本略過安裝" "2"
 				fi
 			fi
 		fi
-		if [[ $(pm path "$name2" 2>/dev/null) != "" ]]; then
+		if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
 			#停止應用
 			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
 			find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
@@ -1151,7 +1137,7 @@ Getlist)
 			name1="$(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $1}')"
 			name2="$(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
 			{
-			if [[ $name2 != "" && $(pm path "$name2" 2>/dev/null | cut -f2 -d ':' ) = "" ]]; then
+			if [[ $name2 != "" && $(pm path --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':' ) = "" ]]; then
 				echoRgb "$name1不存在系統，從列表中刪除" "0"
 				echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$nametxt")" >"$nametxt"
 			fi
