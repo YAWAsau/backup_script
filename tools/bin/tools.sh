@@ -1,10 +1,7 @@
 #!/system/bin/sh
-#MODDIR="${0%/*}"
 MODDIR="$MODDIR"
 tools_path="$MODDIR/tools"
-user=0
-path="/data/media/$user/Android"
-path2="/data/user/$user"
+userinfo="$MODDIR/userinfo"
 if [[ ! -d $tools_path ]]; then
 	tools_path="${MODDIR%/*}/tools"
 	[[ ! -d $tools_path ]] && echo "$tools_path二進制目錄遺失" && EXIT="true"
@@ -22,6 +19,19 @@ fi
 [[ $EXIT = true ]] && exit 1
 . "$conf_path"
 . "$bin_path/bin.sh"
+path="/data/media/$user/Android"
+path2="/data/user/$user"
+user_id="$(ls -1 "/data/user")"
+if [[ $user_id != "" ]]; then
+	rm -rf "$userinfo"
+	echo "$user_id" | while read ; do
+		echoRgb "使用者: $REPLY" "2" && echo "$REPLY">>"$userinfo"
+	done
+fi
+echoRgb "設備全部使用者id已輸出到$userinfo" "2"
+[[ $user = "" ]] && echoRgb "backup_settings.conf配置項user=為空\n -請將$userinfo內要備份的用戶填入" "0" && exit 2
+[[ ! -d $path2 ]] && echoRgb "$user分區不存在" "0" && exit 2
+echoRgb "當前操作為用戶$user"
 zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | grep -oE "^backup_settings.conf$") != "" ]] && update_script
 isBoolean "$Lo" "LO" && Lo="$nsx"
@@ -401,7 +411,7 @@ Release_data() {
 				if [[ -f /config/sdcardfs/$name2/appid ]]; then
 					G="$(cat "/config/sdcardfs/$name2/appid")"
 				else
-					G="$(dumpsys package "$name2" | awk '/userId=/{print $1}' | cut -f2 -d '=' | head -1)"
+					G="$(dumpsys package "$name2" | grep -w 'userId' | head -1)"
 				fi
 				G="$(echo "$G" | egrep -o '[0-9]+')"
 				if [[ $G != "" ]]; then
@@ -461,7 +471,7 @@ installapk() {
 			;;
 		*)
 			echoRgb "恢復split apk" "2"
-			b="$(pm install-create -i -i com.android.vending --user "$user" 2>/dev/null | grep -E -o '[0-9]+')"
+			b="$(pm install-create -i com.android.vending --user "$user" 2>/dev/null | grep -E -o '[0-9]+')"
 			if [[ -f $TMPDIR/nmsl.apk ]]; then
 				pm install -i com.android.vending --user "$user" -r -t"$TMPDIR/nmsl.apk" &>/dev/null
 				echo_log "nmsl.apk安裝"
@@ -675,7 +685,7 @@ backup)
 	[[ ! -f $Backup/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/重新生成應用列表.sh"
 	[[ ! -f $Backup/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/轉換資料夾名稱.sh"
 	[[ -d $Backup/Media ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
-	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
+	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#使用者\nuser=\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 	filesha256="$(sha256sum "$bin_path/tools.sh" | cut -d" " -f1)"
 	filesha256_1="$(sha256sum "$Backup/tools/bin/tools.sh" | cut -d" " -f1)"
 	[[ $filesha256 != $filesha256_1 ]] && cp -r "$bin_path/tools.sh" "$Backup/tools/bin/tools.sh"
@@ -1062,7 +1072,7 @@ Getlist)
 	starttime1="$(date -u "+%s")"
 	echoRgb "提示!因為系統自帶app(位於data分區或是可卸載預裝應用)備份恢復可能存在問題\n -所以不會輸出..但是檢測為Xposed類型包名將輸出\n -如果提示不是Xposed但他就是Xposed可能為此應用元數據不符合規範導致" "0"
 	xposed_name="$(appinfo -o pn -xm)"
-	Apk_info="$(appinfo -sort-i -d " " -o ands,pn -pn $system -3 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+	[[ $user = 0 ]] && Apk_info="$(appinfo -sort-i -d " " -o ands,pn -pn $system -3 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)" || Apk_info="$(appinfo -sort-i -d " " -o ands,pn -pn $system $(pm list packages -3 --user "$user" | cut -f2 -d ':') 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	[[ $Apk_info = "" ]] && echoRgb "appinfo輸出失敗" "0" && exit 2
 	Apk_Quantity="$(echo "$Apk_info" | wc -l)"
 	LR="1"
@@ -1118,7 +1128,7 @@ Getlist)
 			name1="$(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $1}')"
 			name2="$(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
 			{
-			if [[ $name2 != "" && $(pm path --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':' ) = "" ]]; then
+			if [[ $name2 != "" && $(pm path --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
 				echoRgb "$name1不存在系統，從列表中刪除" "0"
 				echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$nametxt")" >"$nametxt"
 			fi
