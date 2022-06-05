@@ -1,7 +1,6 @@
 #!/system/bin/sh
 MODDIR="$MODDIR"
 tools_path="$MODDIR/tools"
-userinfo="$MODDIR/userinfo"
 if [[ ! -d $tools_path ]]; then
 	tools_path="${MODDIR%/*}/tools"
 	[[ ! -d $tools_path ]] && echo "$tools_path二進制目錄遺失" && EXIT="true"
@@ -21,16 +20,14 @@ fi
 . "$bin_path/bin.sh"
 path="/data/media/$user/Android"
 path2="/data/user/$user"
-user_id="$(ls -1 "/data/user")"
+user_id="$(ls -1 "/data/user" 2>/dev/null)"
 if [[ $user_id != "" ]]; then
-	rm -rf "$userinfo"
 	echo "$user_id" | while read ; do
-		echoRgb "使用者: $REPLY" "2" && echo "$REPLY">>"$userinfo"
+		[[ $REPLY = 0 ]] && echoRgb "主用戶:$REPLY" "2" || echoRgb "分身用戶:$REPLY" "2"
 	done
 fi
-echoRgb "設備全部使用者id已輸出到$userinfo" "2"
-[[ $user = "" ]] && echoRgb "backup_settings.conf配置項user=為空\n -請將$userinfo內要備份的用戶填入" "0" && exit 2
-[[ ! -d $path2 ]] && echoRgb "$user分區不存在" "0" && exit 2
+[[ $user = "" ]] && echoRgb "backup_settings.conf配置項user=為空\n -請將上方提示的用戶id按照需求填入,一次只能填寫一個" "0" && exit 2
+[[ ! -d $path2 ]] && echoRgb "$user分區不存在，請將上方提示的用戶id按照需求填入\n -backup_settings.conf配置項user=,一次只能填寫一個" "0" && exit 2
 echoRgb "當前操作為用戶$user"
 zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | grep -oE "^backup_settings.conf$") != "" ]] && update_script

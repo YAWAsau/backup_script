@@ -331,7 +331,6 @@ update_script() {
 				fi
 				rm -rf "$TMPDIR"/*
 				rm -rf "$zipFile"
-				#find "$MODDIR" -maxdepth 1 -name "*.zip" -type f -exec rm -rf {} \;
 				echoRgb "更新完成 請重新執行腳本" "2"
 				exit
 			fi
