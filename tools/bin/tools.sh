@@ -90,6 +90,7 @@ fi
 Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
 if [[ $json != "" ]]; then
 	tag="$(echo "$json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
+	#echo "$json" | grep body|cut -f4 -d "\""
 	if [[ $tag != "" && $backup_version != $tag ]]; then
 		if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(echo "$tag" | tr -d "a-zA-Z")") -eq 0 ]]; then
 			download="$(echo "$json" | sed -r -n 's/.*"browser_download_url": *"(.*.zip)".*/\1/p')"
@@ -118,31 +119,36 @@ if [[ $json != "" ]]; then
 			if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(echo "$download" | tr -d "a-zA-Z")") -eq 0 ]]; then
 				echoRgb "發現新版本:$tag"
 				if [[ $update = true ]]; then
-					isBoolean "$update_behavior" "update_behavior" && update_behavior="$nsx"
-					if [[ $update_behavior = true ]]; then
-						am start -a android.intent.action.VIEW -d "$zip_url" 2>/dev/null
-						echo_log "跳轉瀏覽器"
-						if [[ $result = 0 ]]; then
-							echoRgb "等待下載中.....請儘速點擊下載 否則腳本將等待10秒後自動退出"
-							zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
-							seconds=1
-							while [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | grep -oE "^backup_settings.conf$") = "" ]]; do
+					echo "$json" | sed 's/\"body\": \"/body=\"/g'>"$TMPDIR/updateinfo" && . "$TMPDIR/updateinfo" &>/dev/null ; [[ $body != "" ]] && echoRgb "更新日誌:$body" && rm -rf "$TMPDIR/updateinfo"
+					echoRgb "是否更新腳本？\n -音量上更新，音量下不更新" "2"
+					get_version "更新" "不更新" && choose="$branch"
+					if [[ $choose = true ]]; then
+						isBoolean "$update_behavior" "update_behavior" && update_behavior="$nsx"
+						if [[ $update_behavior = true ]]; then
+							am start -a android.intent.action.VIEW -d "$zip_url" 2>/dev/null
+							echo_log "跳轉瀏覽器"
+							if [[ $result = 0 ]]; then
+								echoRgb "等待下載中.....請儘速點擊下載 否則腳本將等待10秒後自動退出"
 								zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
-								echoRgb "$seconds秒"
-								[[ $seconds = 10 ]] && exit 2
-								sleep 1 && let seconds++
-							done
-							echoRgb "發現$zipFile\n移動並解壓縮中...."
-							update_script
+								seconds=1
+								while [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | grep -oE "^backup_settings.conf$") = "" ]]; do
+									zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
+									echoRgb "$seconds秒"
+									[[ $seconds = 10 ]] && exit 2
+									sleep 1 && let seconds++
+								done
+								echoRgb "發現$zipFile\n移動並解壓縮中...."
+								update_script
+							fi
+						else
+							echoRgb "更新腳本步驟如下\n -1.將剪貼簿內的連結用瀏覽器下載\n -2.將zip壓縮包完整不解壓縮放在$MODDIR\n -3.在$MODDIR目錄隨便執行一個腳本\n -4.假設沒有提示錯誤重新進入腳本如版本號發生變化則更新成功" "2"
+							starttime1="$(date -u "+%s")"
+							xtext "$zip_url" 
+							echo_log "複製連結到剪裁版"
+							endtime 1
 						fi
-					else
-						echoRgb "更新腳本步驟如下\n -1.將剪貼簿內的連結用瀏覽器下載\n -2.將zip壓縮包完整不解壓縮放在$MODDIR\n -3.在$MODDIR目錄隨便執行一個腳本\n -4.假設沒有提示錯誤重新進入腳本如版本號發生變化則更新成功" "2"
-						starttime1="$(date -u "+%s")"
-						xtext "$zip_url" 
-						echo_log "複製連結到剪裁版"
-						endtime 1
+						exit 0
 					fi
-					exit 0
 				else
 					echoRgb "backup_settings.conf內update選項為0忽略更新僅提示更新" "0"
 				fi
@@ -620,13 +626,15 @@ backup)
 		if [[ -d $Backup ]]; then
 			if [[ $1 = "" ]]; then
 				echoRgb "腳本開始前檢查備份目錄中是否存在已經卸載應用" "3"
-				echoRgb "檢查到已卸載應用操作?\n -音量上刪除資料夾，下移動到其他處"
-				get_version "刪除" "移動到其他處" && operate="$branch"
 				find "$Backup" -maxdepth 1 -type d 2>/dev/null | sort | while read; do
 					if [[ -f $REPLY/app_details ]]; then
 						unset PackageName
 						. "$REPLY/app_details" &>/dev/null
 						if [[ $PackageName != "" && $(pm path --user "$user" "$PackageName" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
+							if [[ $operate = "" ]]; then
+								echoRgb "檢查到已卸載應用\n -音量上刪除資料夾，下移動到其他處"
+								get_version "刪除" "移動到其他處" && operate="$branch"
+							fi
 							if [[ $operate = true ]]; then
 								rm -rf "$REPLY"
 								echoRgb "${REPLY##*/}不存在系統 刪除資料夾" "0"
