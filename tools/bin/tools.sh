@@ -20,35 +20,42 @@ fi
 . "$bin_path/bin.sh"
 path="/data/media/$user/Android"
 path2="/data/user/$user"
-user_id="$(ls -1 "/data/user" 2>/dev/null)"
-if [[ $user_id != "" ]]; then
-	echo "$user_id" | while read ; do
-		[[ $REPLY = 0 ]] && echoRgb "主用戶:$REPLY" "2" || echoRgb "分身用戶:$REPLY" "2"
-	done
-fi
-[[ $user = "" ]] && echoRgb "backup_settings.conf配置項user=為空\n -請將上方提示的用戶id按照需求填入,一次只能填寫一個" "0" && exit 2
-[[ ! -d $path2 ]] && echoRgb "$user分區不存在，請將上方提示的用戶id按照需求填入\n -backup_settings.conf配置項user=,一次只能填寫一個" "0" && exit 2
-echoRgb "當前操作為用戶$user"
 zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | grep -oE "^backup_settings.conf$") != "" ]] && update_script
-isBoolean "$Lo" "LO" && Lo="$nsx"
-if [[ $Lo = false ]]; then
-	isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
-else
-	echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
-	get_version "提示" "靜默備份" && toast_info="$branch"
-fi
-Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
-if [[ $toast_info = true ]]; then
-	pm enable "ice.message" &>/dev/null
-	if [[ $(pm path --user "$user" ice.message 2>/dev/null) = "" ]]; then
-		echoRgb "未安裝toast 開始安裝" "0"
-		cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user "$user" -r -t "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
-		[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
+case $operate in
+backup|Restore|Restore2|Getlist)
+	user_id="$(ls -1 "/data/user" 2>/dev/null)"
+	if [[ $user_id != "" ]]; then
+		echo "$user_id" | while read ; do
+			[[ $REPLY = 0 ]] && echoRgb "主用戶:$REPLY" "2" || echoRgb "分身用戶:$REPLY" "2"
+		done
 	fi
-else
-	pm disable "ice.message" &>/dev/null
-fi
+	[[ $user = "" ]] && echoRgb "backup_settings.conf配置項user=為空\n -請將上方提示的用戶id按照需求填入,一次只能填寫一個" "0" && exit 2
+	[[ ! -d $path2 ]] && echoRgb "$user分區不存在，請將上方提示的用戶id按照需求填入\n -backup_settings.conf配置項user=,一次只能填寫一個" "0" && exit 2
+	echoRgb "當前操作為用戶$user"
+	if [[ $operate != Getlist && Restore2 ]]; then
+		isBoolean "$Lo" "Lo" && Lo="$nsx"
+		if [[ $Lo = false ]]; then
+			isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
+		else
+			echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
+			get_version "提示" "靜默備份" && toast_info="$branch"
+		fi
+		Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
+		if [[ $toast_info = true ]]; then
+			pm enable "ice.message" &>/dev/null
+			if [[ $(pm path --user "$user" ice.message 2>/dev/null) = "" ]]; then
+				echoRgb "未安裝toast 開始安裝" "0"
+				cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user "$user" -r -t "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
+				[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
+			fi
+		else
+			pm disable "ice.message" &>/dev/null
+		fi
+	fi
+	;;
+esac
+Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
 cdn=2
 #settings get system system_locales
 LANG="$(getprop "persist.sys.locale")"
@@ -80,7 +87,7 @@ else
 	[[ $json != "" ]] && echoRgb "使用down"
 fi
 #效驗選填是否正確
-isBoolean "$Lo" "LO" && Lo="$nsx"
+isBoolean "$Lo" "Lo" && Lo="$nsx"
 if [[ $Lo = false ]]; then
 	isBoolean "$update" "update" && update="$nsx"
 else
@@ -158,6 +165,7 @@ if [[ $json != "" ]]; then
 else
 	echoRgb "更新獲取失敗" "0"
 fi
+
 backup_path() {
 	if [[ $Output_path != "" ]]; then
 		[[ ${Output_path: -1} = / ]] && Output_path="${Output_path%?}"
@@ -212,8 +220,8 @@ partition_info() {
 	lxj="$(echo "$Occupation_status" | awk '{print $2}' | sed 's/%//g')"
 	[[ $lxj -ge 97 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
 }
-#檢測apk狀態進行備份
 Backup_apk() {
+	#檢測apk狀態進行備份
 	stopscript
 	#創建APP備份文件夾
 	[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
@@ -474,7 +482,7 @@ installapk() {
 			;;
 		*)
 			echoRgb "恢復split apk" "2"
-			b="$(pm install-create -i com.android.vending --user "$user" 2>/dev/null | grep -E -o '[0-9]+')"
+			b="$(pm install-create -i com.android.vending --user "$user" 2>/dev/null | grep -Eo '[0-9]+')"
 			if [[ -f $TMPDIR/nmsl.apk ]]; then
 				pm install -i com.android.vending --user "$user" -r -t"$TMPDIR/nmsl.apk" &>/dev/null
 				echo_log "nmsl.apk安裝"
@@ -589,7 +597,7 @@ backup)
 	*) echoRgb "$Compression_method為不支持的壓縮算法" "0" && exit 2 ;;
 	esac
 	#效驗選填是否正確
-	isBoolean "$Lo" "LO" && Lo="$nsx"
+	isBoolean "$Lo" "Lo" && Lo="$nsx"
 	if [[ $Lo = false ]]; then
 		isBoolean "$delete_folder" "delete_folder" && delete_folder="$nsx"
 		isBoolean "$Splist" "Splist" && Splist="$nsx"
@@ -631,10 +639,8 @@ backup)
 						unset PackageName
 						. "$REPLY/app_details" &>/dev/null
 						if [[ $PackageName != "" && $(pm path --user "$user" "$PackageName" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
-							if [[ $operate = "" ]]; then
-								echoRgb "檢查到已卸載應用\n -音量上刪除資料夾，下移動到其他處"
-								get_version "刪除" "移動到其他處" && operate="$branch"
-							fi
+							echoRgb "檢查到已卸載應用\n -音量上刪除資料夾，下移動到其他處"
+							get_version "刪除" "移動到其他處" && 操作="$branch"
 							if [[ $operate = true ]]; then
 								rm -rf "$REPLY"
 								echoRgb "${REPLY##*/}不存在系統 刪除資料夾" "0"
@@ -860,8 +866,19 @@ backup)
 		longToast "批量備份完成"
 		Print "批量備份完成 執行過程請查看$Status_log"
 		#打開應用
-		appinfo -sort-i -d "/" -o pn,sa -pn $am_start 2>/dev/null | while read; do
-			am start -n "$REPLY" &>/dev/null
+		i=1
+		while [[ $i -le $r ]]; do
+			unset pkg name1
+			pkg="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+			#echo $pkg
+			if [[ $(cat "$txt" | egrep -wo "^$am_start$") = $pkg ]]; then
+				appinfo -sort-i -d "/" -o pn,sa -pn $pkg 2>/dev/null | while read; do
+					am start -n "$REPLY" &>/dev/null
+					echo_log "啟動$name1"
+				done
+			fi
+			let i++
 		done
 		#回到桌面
 		#input keyevent 3 2>/dev/null
@@ -1065,7 +1082,7 @@ Restore3)
 	;;
 Getlist)
 	#效驗選填是否正確
-	isBoolean "$Lo" "LO" && Lo="$nsx"
+	isBoolean "$Lo" "Lo" && Lo="$nsx"
 	isBoolean "$debug_list" "debug_list" && debug_list="$nsx"
 	txtpath="$MODDIR"
 	[[ $debug_list = true ]] && txtpath="${txtpath/'/storage/emulated/'/'/data/media/'}"
@@ -1089,10 +1106,10 @@ Getlist)
 	echo "$Apk_info" | sed 's/\///g ; s/\://g ; s/(//g ; s/)//g ; s/\[//g ; s/\]//g ; s/\-//g ; s/!//g' | while read; do
 		[[ $rgb_a -ge 229 ]] && rgb_a=118
 		app_1=($REPLY $REPLY)
-		if [[ $(cat "$nametxt" | cut -f2 -d ' ' | egrep "^${app_1[1]}$") != ${app_1[1]} ]]; then
+		if [[ $(cat "$nametxt" | cut -f2 -d ' ' | egrep -w "^${app_1[1]}$") != ${app_1[1]} ]]; then
 			case ${app_1[1]} in
 			*oneplus* | *miui* | *xiaomi* | *oppo* | *flyme* | *meizu* | com.android.soundrecorder | com.mfashiongallery.emag | com.mi.health | *coloros*)
-				if [[ $(echo "$xposed_name" | grep -w "${app_1[1]}") = ${app_1[1]} ]]; then
+				if [[ $(echo "$xposed_name" | egrep -w "${app_1[1]}$") = ${app_1[1]} ]]; then
 					echoRgb "${app_1[2]}為Xposed模塊 進行添加" "0"
 					echo "$REPLY" >>"$nametxt" && [[ ! -e $MODDIR/tmp ]] && touch "$MODDIR/tmp"
 					let i++ rd++
@@ -1119,7 +1136,7 @@ Getlist)
 		if [[ $LR = $Apk_Quantity ]]; then
 			if [[ $(cat "$nametxt" | wc -l | awk '{print $1-2}') -lt $i ]]; then
 				rm -rf "$nametxt" "$MODDIR/tmp"
-				echoRgb "\n -輸出異常 請將$conf_path中的debug_list=\"0\"改為1" "0"
+				echoRgb "\n -輸出異常 請將$conf_path中的debug_list=\"0\"改為1或是重新執行本腳本" "0"
 				exit
 			fi
 			[[ -e $MODDIR/tmp ]] && echoRgb "\n -第三方apk數量=\"$Apk_Quantity\"\n -已過濾=\"$rc\"\n -xposed=\"$rd\"\n -存在列表中=\"$Q\"\n -輸出=\"$i\""
@@ -1134,7 +1151,7 @@ Getlist)
 			name2="$(cat "$nametxt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
 			{
 			if [[ $name2 != "" && $(pm path --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
-				echoRgb "$name1不存在系統，從列表中刪除" "0"
+				echoRgb "$name1 $name2不存在系統，從列表中刪除" "0"
 				echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$nametxt")" >"$nametxt"
 			fi
 			} &
