@@ -1,0 +1,7 @@
+if [ -f "${0%/*}/tools/bin/tools.sh" ]; then
+	MODDIR="${0%/*}"
+	operate="check_file"
+	. "${0%/*}/tools/bin/tools.sh"
+else
+	echo "${0%/*}/tools/bin/tools.sh遺失"
+fi

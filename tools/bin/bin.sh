@@ -48,7 +48,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.5"
+backup_version="V15.5.2"
 #設置二進制命令目錄位置
 if [[ $bin_path = "" ]]; then
 	echoRgb "未正確指定bin.sh位置" "0"
@@ -181,7 +181,7 @@ isBoolean() {
 	elif [[ $1 = 0 ]]; then
 		nsx=false
 	else
-		echoRgb "$MODDIR/backup_settings.conf $2=$1填寫錯誤，正確值1or0" "0"
+		echoRgb "$MODDIR_NAME/backup_settings.conf $2=$1填寫錯誤，正確值1or0" "0"
 		exit 2
 	fi
 }
@@ -194,6 +194,21 @@ echo_log() {
 		Print "$1失敗，過世了"
 		result=1
 	fi
+}
+process_name() {
+	pgrep -f "$1" | while read; do
+		kill -KILL "$REPLY" 2>/dev/null
+	done
+}
+kill_Serve() {
+	{
+	script="${0##*/}"
+	if [[ $script != "" ]]; then
+		process_name tar
+		process_name pv
+	fi
+	} &
+	wait
 }
 ykj() {
 	# uptime
@@ -235,6 +250,7 @@ update_script() {
 							echoRgb "更新當前${MODDIR##*/}目錄下恢復相關腳本+外部tools目錄與腳本"
 							cp -r "$tools_path/script/Get_DirName" "${MODDIR%/*}/重新生成應用列表.sh"
 							cp -r "$tools_path/script/convert" "${MODDIR%/*}/轉換資料夾名稱.sh"
+							cp -r "$tools_path/script/check_file" "${MODDIR%/*}/壓縮檔完整性檢查.sh"
 							cp -r "$tools_path/script/restore" "${MODDIR%/*}/恢復備份.sh"
 							cp -r "$MODDIR/終止腳本.sh" "${MODDIR%/*}/終止腳本.sh"
 							[[ -d ${MODDIR%/*}/Media ]] && cp -r "$tools_path/script/restore3" "${MODDIR%/*}/恢復自定義資料夾.sh"
@@ -265,6 +281,7 @@ update_script() {
 							echoRgb "更新當前${MODDIR##*/}目錄下恢復相關腳本+tools目錄"
 							cp -r "$tools_path/script/Get_DirName" "$MODDIR/重新生成應用列表.sh"
 							cp -r "$tools_path/script/convert" "$MODDIR/轉換資料夾名稱.sh"
+							cp -r "$tools_path/script/check_file" "$MODDIR/壓縮檔完整性檢查.sh"
 							cp -r "$tools_path/script/restore" "$MODDIR/恢復備份.sh"
 							[[ -d $MODDIR/Media ]] && cp -r "$tools_path/script/restore3" "$MODDIR/恢復自定義資料夾.sh"
 							find "$MODDIR" -maxdepth 1 -type d | sort | while read; do
@@ -302,6 +319,7 @@ update_script() {
 									cp -r "$tools_path/script/restore" "$backup_path/恢復備份.sh"
 									cp -r "$tools_path/script/Get_DirName" "$backup_path/重新生成應用列表.sh"
 									cp -r "$tools_path/script/convert" "$backup_path/轉換資料夾名稱.sh"
+									cp -r "$tools_path/script/check_file" "$backup_path/壓縮檔完整性檢查.sh"
 									cp -r "$MODDIR/終止腳本.sh" "$backup_path/終止腳本.sh"
 									[[ -d $backup_path/Media ]] && cp -r "$tools_path/script/restore3" "$backup_path/恢復自定義資料夾.sh"
 									find "$MODDIR" -maxdepth 2 -type d | sort | while read; do

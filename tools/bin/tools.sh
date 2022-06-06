@@ -580,17 +580,9 @@ get_name(){
 	[[ $1 = Apkname ]] && sort -u "$txt" -o "$txt" 2>/dev/null && echoRgb "$txt重新生成" "1"
 	exit 0
 }
-{
-	for x in zstd tar pv lz4; do
-		pgrep -f "$x" | while read; do
-			echo $REPLY
-			#kill -KILL "$REPLY" 2>/dev/null
-		done
-	done
-} &
-wait
 case $operate in
 backup)
+	kill_Serve
 	[[ ! -d $script_path ]] && echo "$script_path腳本目錄遺失" && exit 2
 	case $MODDIR in
 	/storage/emulated/0/Android/* | /data/media/0/Android/* | /sdcard/Android/*) echoRgb "請勿在$MODDIR內備份" "0" && exit 2 ;;
@@ -657,6 +649,7 @@ backup)
 								[[ ! -f $Backup/被卸載的應用/恢復備份.sh ]] && cp -r "$script_path/restore" "$Backup/被卸載的應用/恢復備份.sh"
 								[[ ! -f $Backup/被卸載的應用/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/被卸載的應用/重新生成應用列表.sh"
 								[[ ! -f $Backup/被卸載的應用/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/被卸載的應用/轉換資料夾名稱.sh"
+								[[ ! -f $Backup/被卸載的應用/壓縮檔完整性檢查.sh ]] && cp -r "$script_path/check_file" "$Backup/被卸載的應用/壓縮檔完整性檢查.sh"
 								[[ ! -f $Backup/被卸載的應用/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/被卸載的應用/終止腳本.sh"
 								[[ ! -f $Backup/被卸載的應用/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf"
 								txt2="$Backup/被卸載的應用/appList.txt"
@@ -698,6 +691,7 @@ backup)
 	[[ ! -f $Backup/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/終止腳本.sh"
 	[[ ! -f $Backup/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/重新生成應用列表.sh"
 	[[ ! -f $Backup/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/轉換資料夾名稱.sh"
+	[[ ! -f $Backup/壓縮檔完整性檢查.sh ]] && cp -r "$script_path/check_file" "$Backup/壓縮檔完整性檢查.sh"
 	[[ -d $Backup/Media ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
 	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#使用者\nuser=\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 	filesha256="$(sha256sum "$bin_path/tools.sh" | cut -d" " -f1)"
@@ -874,7 +868,6 @@ backup)
 			unset pkg name1
 			pkg="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
 			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-			#echo $pkg
 			if [[ $(cat "$txt" | egrep -wo "^$am_start$") = $pkg ]]; then
 				appinfo -sort-i -d "/" -o pn,sa -pn $pkg 2>/dev/null | while read; do
 					am start -n "$REPLY" &>/dev/null
@@ -883,8 +876,6 @@ backup)
 			fi
 			let i++
 		done
-		#回到桌面
-		#input keyevent 3 2>/dev/null
 		exit 0
 	} &
 	wait && exit
@@ -899,22 +890,33 @@ check_file)
 	starttime1="$(date -u "+%s")"
 	error_log="$TMPDIR/error_log"
 	rm -rf "$error_log"
-	find "$MODDIR" -maxdepth 2 -name "*.tar*" -type f 2>/dev/null | sort | while read; do
+	FIND_PATH="$(find "$MODDIR" -maxdepth 2 -name "*.tar*" -type f 2>/dev/null | sort)"
+	i=1
+	r="$(echo "$FIND_PATH" | wc -l)"
+	Check_archive() {
+		case ${1##*.} in
+		lz4 | zst) zstd -t "$2" &>/dev/null ;;
+		tar) tar -tf "$2" &>/dev/null ;;
+		esac
+		echo_log "效驗$MODDIR_NAME/$1"
+		[[ $result != 0 ]] && echo "效驗失敗:$MODDIR_NAME/$1">>"$error_log"
+	}
+	while [[ $i -le $r ]]; do
+		unset REPLY
+		REPLY="$(echo "$FIND_PATH" | sed -n "${i}p")"
 		MODDIR_NAME="${REPLY%/*}"
 		MODDIR_NAME="${MODDIR_NAME##*/}"
 		FILE_NAME="${REPLY##*/}"
-		case ${FILE_NAME##*.} in
-		lz4 | zst) zstd -t "$REPLY" &>/dev/null ;;
-		tar) tar -tf "$REPLY" &>/dev/null ;;
-		esac
-		echo_log "效驗$MODDIR_NAME/$FILE_NAME"
-		[[ $result != 0 ]] && echo "效驗失敗:$MODDIR_NAME/$FILE_NAME">>"$error_log"
+		Check_archive "$FILE_NAME" "$REPLY"
+		echoRgb "$i/$r個剩$((r - i))個 $((i * 100 / r))%"
+		let i++ nskg++
 	done
 	endtime 1
-	[[ -f $error_log ]] && echoRgb "以下為失敗的檔案\n -$(cat "$error_log")" || echoRgb "恭喜~~全數效驗通過" 
+	[[ -f $error_log ]] && echoRgb "以下為失敗的檔案\n$(cat "$error_log")" || echoRgb "恭喜~~全數效驗通過" 
 	rm -rf "$error_log"
 	;;
 Restore)
+	kill_Serve
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
 	echoRgb "如果大量提示找不到資料夾請執行$MODDIR/轉換資料夾名稱.sh"
 	disable_verify
@@ -1017,6 +1019,7 @@ Restore)
 	wait && exit
 	;;
 Restore2)
+	kill_Serve
 	disable_verify
 	[[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
 	[[ $(which restorecon) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
@@ -1069,6 +1072,7 @@ Restore2)
 	wait && exit
 	;;
 Restore3)
+	kill_Serve
 	echoRgb "點錯了?這是恢復自定義資料夾腳本 如果你是要恢復應用那你就點錯了\n -音量上繼續恢復自定義資料夾，音量下離開腳本" "2"
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
 	get_version "恢復自定義資料夾" "離開腳本" && [[ "$branch" = false ]] && exit 0
@@ -1187,6 +1191,7 @@ Getlist)
 	rm -rf "$MODDIR/tmp"
 	;;
 backup_media)
+	kill_Serve
 	backup_path
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
 	A=1
@@ -1198,6 +1203,7 @@ backup_media)
 		[[ ! -f $Backup/恢復自定義資料夾.sh ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
 		[[ ! -f $Backup/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/重新生成應用列表.sh"
 		[[ ! -f $Backup/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/轉換資料夾名稱.sh"
+		[[ ! -f $Backup/壓縮檔完整性檢查.sh ]] && cp -r "$script_path/check_file" "$Backup/壓縮檔完整性檢查.sh"
 		[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
 		[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 		app_details="$Backup_folder/app_details"
