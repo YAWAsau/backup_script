@@ -529,7 +529,7 @@ get_name(){
 			else
 				unset PackageName NAME DUMPAPK ChineseName
 				. "$REPLY/app_details" &>/dev/null
-				[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
+				[[ ! -f $txt && $1 = Apkname ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
 				if [[ $PackageName = "" || $ChineseName = "" ]]; then
 					if [[ ${REPLY##*/} != Media ]]; then
 						echoRgb "${REPLY##*/}包名獲取失敗，解壓縮獲取包名中..." "0"
@@ -562,15 +562,16 @@ get_name(){
 					fi
 				fi
 				if [[ $PackageName != "" && $ChineseName != "" ]]; then
-					if [[ $1 = Apkname ]]; then
-						echoRgb "$ChineseName $PackageName" && echo "$ChineseName $PackageName" >>"$txt"
-					else
+					case $1 in
+					Apkname)
+						echoRgb "$ChineseName $PackageName" && echo "$ChineseName $PackageName" >>"$txt" ;; 
+					convert)
 						if [[ ${REPLY##*/} = $PackageName ]]; then
 							mv "$REPLY" "${REPLY%/*}/$ChineseName" && echoRgb "${REPLY##*/} > $ChineseName"
 						else
 							mv "$REPLY" "${REPLY%/*}/$PackageName" && echoRgb "${REPLY##*/} > $PackageName"
-						fi
-					fi
+						fi ;;
+					esac
 				fi
 			fi
 		fi
@@ -582,7 +583,8 @@ get_name(){
 {
 	for x in zstd tar pv lz4; do
 		pgrep -f "$x" | while read; do
-			kill -KILL "$REPLY" 2>/dev/null
+			echo $REPLY
+			#kill -KILL "$REPLY" 2>/dev/null
 		done
 	done
 } &
@@ -685,9 +687,9 @@ backup)
 	r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	[[ $1 != "" ]] && r=1
 	[[ $r = "" ]] && echoRgb "爬..appList.txt是空的或是包名被注釋了這樣備份個鬼" "0" && exit 1
-	[[ $Backup_user_data = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -Backup_user_data為0將不備份user數據" "0"
-	[[ $Backup_obb_data = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -Backup_obb_data為0將不備份外部數據" "0"
-	[[ $backup_media = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -backup_media為0將不備份自定義資料夾" "0"
+	[[ $Backup_user_data = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -Backup_user_data=0將不備份user數據" "0"
+	[[ $Backup_obb_data = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -Backup_obb_data=0將不備份外部數據" "0"
+	[[ $backup_media = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -backup_media=0將不備份自定義資料夾" "0"
 	[[ ! -d $Backup ]] && mkdir -p "$Backup"
 	txt2="$Backup/appList.txt"
 	[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
@@ -892,6 +894,25 @@ dumpname)
 	;;
 convert)
 	get_name "convert"
+	;;
+check_file)
+	starttime1="$(date -u "+%s")"
+	error_log="$TMPDIR/error_log"
+	rm -rf "$error_log"
+	find "$MODDIR" -maxdepth 2 -name "*.tar*" -type f 2>/dev/null | sort | while read; do
+		MODDIR_NAME="${REPLY%/*}"
+		MODDIR_NAME="${MODDIR_NAME##*/}"
+		FILE_NAME="${REPLY##*/}"
+		case ${FILE_NAME##*.} in
+		lz4 | zst) zstd -t "$REPLY" &>/dev/null ;;
+		tar) tar -tf "$REPLY" &>/dev/null ;;
+		esac
+		echo_log "效驗$MODDIR_NAME/$FILE_NAME"
+		[[ $result != 0 ]] && echo "效驗失敗:$MODDIR_NAME/$FILE_NAME">>"$error_log"
+	done
+	endtime 1
+	[[ -f $error_log ]] && echoRgb "以下為失敗的檔案\n -$(cat "$error_log")" || echoRgb "恭喜~~全數效驗通過" 
+	rm -rf "$error_log"
 	;;
 Restore)
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
