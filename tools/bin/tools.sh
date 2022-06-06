@@ -1,5 +1,6 @@
 #!/system/bin/sh
 MODDIR="$MODDIR"
+MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 if [[ ! -d $tools_path ]]; then
 	tools_path="${MODDIR%/*}/tools"
@@ -14,14 +15,14 @@ if [[ ! -d $bin_path ]]; then
 fi
 [[ ! -f $bin_path/bin.sh ]] && echo "$bin_path/bin.sh關鍵腳本遺失" && EXIT="true"
 [[ $conf_path != "" ]] && conf_path="$conf_path" || conf_path="$MODDIR/backup_settings.conf"
-[[ ! -f $conf_path ]] && echo "backup_settings.conf配置遺失" && EXIT="true"
+[[ ! -f $conf_path ]] && echo "$conf_path配置遺失" && EXIT="true"
 [[ $EXIT = true ]] && exit 1
 . "$conf_path"
 . "$bin_path/bin.sh"
 path="/data/media/$user/Android"
 path2="/data/user/$user"
 zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
-[[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | grep -oE "^backup_settings.conf$") != "" ]] && update_script
+[[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | egrep -wo "^backup_settings.conf$") != "" ]] && update_script
 case $operate in
 backup|Restore|Restore2|Getlist)
 	user_id="$(ls -1 "/data/user" 2>/dev/null)"
@@ -30,8 +31,8 @@ backup|Restore|Restore2|Getlist)
 			[[ $REPLY = 0 ]] && echoRgb "主用戶:$REPLY" "2" || echoRgb "分身用戶:$REPLY" "2"
 		done
 	fi
-	[[ $user = "" ]] && echoRgb "backup_settings.conf配置項user=為空\n -請將上方提示的用戶id按照需求填入,一次只能填寫一個" "0" && exit 2
-	[[ ! -d $path2 ]] && echoRgb "$user分區不存在，請將上方提示的用戶id按照需求填入\n -backup_settings.conf配置項user=,一次只能填寫一個" "0" && exit 2
+	[[ $user = "" ]] && echoRgb "$MODDIR_NAME/backup_settings.conf配置項user=為空\n -請將上方提示的用戶id按照需求填入,一次只能填寫一個" "0" && exit 2
+	[[ ! -d $path2 ]] && echoRgb "$user分區不存在，請將上方提示的用戶id按照需求填入\n -$MODDIR_NAME/backup_settings.conf配置項user=,一次只能填寫一個" "0" && exit 2
 	echoRgb "當前操作為用戶$user"
 	if [[ $operate != Getlist && Restore2 ]]; then
 		isBoolean "$Lo" "Lo" && Lo="$nsx"
@@ -138,7 +139,7 @@ if [[ $json != "" ]]; then
 								echoRgb "等待下載中.....請儘速點擊下載 否則腳本將等待10秒後自動退出"
 								zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 								seconds=1
-								while [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | grep -oE "^backup_settings.conf$") = "" ]]; do
+								while [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | egrep -wo "^backup_settings.conf$") = "" ]]; do
 									zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 									echoRgb "$seconds秒"
 									[[ $seconds = 10 ]] && exit 2
@@ -157,7 +158,7 @@ if [[ $json != "" ]]; then
 						exit 0
 					fi
 				else
-					echoRgb "backup_settings.conf內update選項為0忽略更新僅提示更新" "0"
+					echoRgb "$MODDIR_NAME/backup_settings.conf內update選項為0忽略更新僅提示更新" "0"
 				fi
 			fi
 		fi
@@ -175,11 +176,11 @@ backup_path() {
 		Backup="$MODDIR/Backup_${Compression_method}_$user"
 		outshow="使用當前路徑作為備份目錄"
 	fi
-	PU="$(ls /dev/block/vold 2>/dev/null | grep public)"
+	PU="$(ls /dev/block/vold 2>/dev/null | grep -w 'public')"
 	if [[ $PU != "" ]]; then
-		[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts | grep "$PU" | awk '{print $2}')"
+		[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts | grep -w "$PU" | awk '{print $2}')"
 		if [[ -d $PT ]]; then
-			if [[ $(echo "$MODDIR" | grep -oE "^${PT}") != "" || $USBdefault = true ]]; then
+			if [[ $(echo "$MODDIR" | egrep -o "^${PT}") != "" || $USBdefault = true ]]; then
 				hx="USB"
 			else
 				echoRgb "檢測到隨身碟 是否在隨身碟備份\n -音量上是，音量下不是" "2"
@@ -482,7 +483,7 @@ installapk() {
 			;;
 		*)
 			echoRgb "恢復split apk" "2"
-			b="$(pm install-create -i com.android.vending --user "$user" 2>/dev/null | grep -Eo '[0-9]+')"
+			b="$(pm install-create -i com.android.vending --user "$user" 2>/dev/null | egrep -o '[0-9]+')"
 			if [[ -f $TMPDIR/nmsl.apk ]]; then
 				pm install -i com.android.vending --user "$user" -r -t"$TMPDIR/nmsl.apk" &>/dev/null
 				echo_log "nmsl.apk安裝"
@@ -578,16 +579,16 @@ get_name(){
 	[[ $1 = Apkname ]] && sort -u "$txt" -o "$txt" 2>/dev/null && echoRgb "$txt重新生成" "1"
 	exit 0
 }
+{
+	for x in zstd tar pv lz4; do
+		pgrep -f "$x" | while read; do
+			kill -KILL "$REPLY" 2>/dev/null
+		done
+	done
+} &
+wait
 case $operate in
 backup)
-	script="${0##*/}"
-	if [[ $script != "" ]]; then
-		for x in zstd tar pv lz4; do
-			pgrep -f "$x" | while read; do
-				kill -KILL "$REPLY" 2>/dev/null
-			done
-		done
-	fi
 	[[ ! -d $script_path ]] && echo "$script_path腳本目錄遺失" && exit 2
 	case $MODDIR in
 	/storage/emulated/0/Android/* | /data/media/0/Android/* | /sdcard/Android/*) echoRgb "請勿在$MODDIR內備份" "0" && exit 2 ;;
@@ -684,9 +685,9 @@ backup)
 	r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	[[ $1 != "" ]] && r=1
 	[[ $r = "" ]] && echoRgb "爬..appList.txt是空的或是包名被注釋了這樣備份個鬼" "0" && exit 1
-	[[ $Backup_user_data = false ]] && echoRgb "當前backup_settings.conf的\n -Backup_user_data為0將不備份user數據" "0"
-	[[ $Backup_obb_data = false ]] && echoRgb "當前backup_settings.conf的\n -Backup_obb_data為0將不備份外部數據" "0"
-	[[ $backup_media = false ]] && echoRgb "當前backup_settings.conf的\n -backup_media為0將不備份自定義資料夾" "0"
+	[[ $Backup_user_data = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -Backup_user_data為0將不備份user數據" "0"
+	[[ $Backup_obb_data = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -Backup_obb_data為0將不備份外部數據" "0"
+	[[ $backup_media = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -backup_media為0將不備份自定義資料夾" "0"
 	[[ ! -d $Backup ]] && mkdir -p "$Backup"
 	txt2="$Backup/appList.txt"
 	[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
@@ -738,7 +739,7 @@ backup)
 					echoRgb "跳過備份所有數據" "0"
 					No_backupdata=1
 				fi
-				if [[ $(echo "$blacklist" | egrep -w "$name2") = $name2 ]]; then
+				if [[ $(echo "$blacklist" | grep -w "$name2") = $name2 ]]; then
 					echoRgb "黑名單應用跳過備份所有數據" "0"
 					No_backupdata=1
 				fi
@@ -1136,7 +1137,7 @@ Getlist)
 		if [[ $LR = $Apk_Quantity ]]; then
 			if [[ $(cat "$nametxt" | wc -l | awk '{print $1-2}') -lt $i ]]; then
 				rm -rf "$nametxt" "$MODDIR/tmp"
-				echoRgb "\n -輸出異常 請將$conf_path中的debug_list=\"0\"改為1或是重新執行本腳本" "0"
+				echoRgb "\n -輸出異常 請將$MODDIR_NAME/backup_settings.conf中的debug_list=\"0\"改為1或是重新執行本腳本" "0"
 				exit
 			fi
 			[[ -e $MODDIR/tmp ]] && echoRgb "\n -第三方apk數量=\"$Apk_Quantity\"\n -已過濾=\"$rc\"\n -xposed=\"$rd\"\n -存在列表中=\"$Q\"\n -輸出=\"$i\""
@@ -1165,14 +1166,6 @@ Getlist)
 	rm -rf "$MODDIR/tmp"
 	;;
 backup_media)
-	{
-		script="${0##*/}"
-		if [[ $script != "" ]]; then
-			pgrep -f "tar" | while read; do
-				kill -KILL " $REPLY" >/dev/null
-			done
-		fi
-	} &
 	backup_path
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
 	A=1
