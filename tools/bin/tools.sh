@@ -19,6 +19,7 @@ fi
 [[ $EXIT = true ]] && exit 1
 . "$conf_path"
 . "$bin_path/bin.sh"
+[[ $user = "" ]] && user=0
 path="/data/media/$user/Android"
 path2="/data/user/$user"
 zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
@@ -31,7 +32,6 @@ backup|Restore|Restore2|Getlist)
 			[[ $REPLY = 0 ]] && echoRgb "主用戶:$REPLY" "2" || echoRgb "分身用戶:$REPLY" "2"
 		done
 	fi
-	[[ $user = "" ]] && echoRgb "$MODDIR_NAME/backup_settings.conf配置項user=為空\n -請將上方提示的用戶id按照需求填入,一次只能填寫一個" "0" && exit 2
 	[[ ! -d $path2 ]] && echoRgb "$user分區不存在，請將上方提示的用戶id按照需求填入\n -$MODDIR_NAME/backup_settings.conf配置項user=,一次只能填寫一個" "0" && exit 2
 	echoRgb "當前操作為用戶$user"
 	if [[ $operate != Getlist && Restore2 ]]; then
@@ -42,7 +42,6 @@ backup|Restore|Restore2|Getlist)
 			echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
 			get_version "提示" "靜默備份" && toast_info="$branch"
 		fi
-		Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
 		if [[ $toast_info = true ]]; then
 			pm enable "ice.message" &>/dev/null
 			if [[ $(pm path --user "$user" ice.message 2>/dev/null) = "" ]]; then
@@ -56,7 +55,6 @@ backup|Restore|Restore2|Getlist)
 	fi
 	;;
 esac
-Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
 cdn=2
 #settings get system system_locales
 LANG="$(getprop "persist.sys.locale")"
@@ -88,14 +86,15 @@ else
 	[[ $json != "" ]] && echoRgb "使用down"
 fi
 #效驗選填是否正確
+Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
 isBoolean "$Lo" "Lo" && Lo="$nsx"
 if [[ $Lo = false ]]; then
 	isBoolean "$update" "update" && update="$nsx"
+	isBoolean "$update_behavior" "update_behavior" && update_behavior="$nsx"
 else
-	echoRgb "如果檢測到更新後跳轉瀏覽器下載?\n -音量上跳轉，下不跳轉"
-	get_version "跳轉" "不跳轉" && update="$branch"
+	echoRgb "自動更新腳本?\n -音量上更新，下不更新"
+	get_version "更新" "不更新" && update="$branch"
 fi
-Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
 if [[ $json != "" ]]; then
 	tag="$(echo "$json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
 	#echo "$json" | grep body|cut -f4 -d "\""
@@ -127,11 +126,14 @@ if [[ $json != "" ]]; then
 			if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(echo "$download" | tr -d "a-zA-Z")") -eq 0 ]]; then
 				echoRgb "發現新版本:$tag"
 				if [[ $update = true ]]; then
-					echo "$json" | sed 's/\"body\": \"/body=\"/g'>"$TMPDIR/updateinfo" && . "$TMPDIR/updateinfo" &>/dev/null ; [[ $body != "" ]] && echoRgb "更新日誌:$body" && rm -rf "$TMPDIR/updateinfo"
+					echo "$json" | sed 's/\"body\": \"/body=\"/g'>"$TMPDIR/updateinfo" && . "$TMPDIR/updateinfo" &>/dev/null ; [[ $body != "" ]] && echoRgb "更新日誌:\n$body" && rm -rf "$TMPDIR/updateinfo"
 					echoRgb "是否更新腳本？\n -音量上更新，音量下不更新" "2"
 					get_version "更新" "不更新" && choose="$branch"
 					if [[ $choose = true ]]; then
-						isBoolean "$update_behavior" "update_behavior" && update_behavior="$nsx"
+						if [[ $Lo = true ]]; then
+							echoRgb "更新方式\n -音量上跳轉瀏覽器，下複製"
+							get_version "跳轉" "複製" && update_behavior="$branch"
+						fi
 						if [[ $update_behavior = true ]]; then
 							am start -a android.intent.action.VIEW -d "$zip_url" 2>/dev/null
 							echo_log "跳轉瀏覽器"
@@ -145,7 +147,6 @@ if [[ $json != "" ]]; then
 									[[ $seconds = 10 ]] && exit 2
 									sleep 1 && let seconds++
 								done
-								echoRgb "發現$zipFile\n移動並解壓縮中...."
 								update_script
 							fi
 						else
@@ -166,7 +167,7 @@ if [[ $json != "" ]]; then
 else
 	echoRgb "更新獲取失敗" "0"
 fi
-
+Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
 backup_path() {
 	if [[ $Output_path != "" ]]; then
 		[[ ${Output_path: -1} = / ]] && Output_path="${Output_path%?}"
@@ -181,19 +182,19 @@ backup_path() {
 		[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts | grep -w "$PU" | awk '{print $2}')"
 		if [[ -d $PT ]]; then
 			if [[ $(echo "$MODDIR" | egrep -o "^${PT}") != "" || $USBdefault = true ]]; then
-				hx="USB"
+				hx="true"
 			else
 				echoRgb "檢測到隨身碟 是否在隨身碟備份\n -音量上是，音量下不是" "2"
 				get_version "選擇了隨身碟備份" "選擇了本地備份"
-				[[ $branch = true ]] && hx="USB"
+				[[ $branch = true ]] && hx="$branch"
 			fi
-			if [[ $hx = USB ]]; then
+			if [[ $hx = true ]]; then
 				Backup="$PT/Backup_${Compression_method}_$user"
 				data="/dev/block/vold/$PU"
 				mountinfo="$(df -T "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')"
 				case $mountinfo in
 				fuseblk | exfat | NTFS | ext4 | f2fs)
-					outshow="於隨身碟備份"
+					outshow="於隨身碟備份" && hx=usb
 					;;
 				*)
 					echoRgb "隨身碟檔案系統$mountinfo不支持超過單檔4GB\n -請格式化為exfat" "0"
@@ -304,7 +305,6 @@ Backup_apk() {
 		fi
 	fi
 	[[ $name2 = bin.mt.plus && ! -f $Backup/$name1.apk ]] && cp -r "$apk_path" "$Backup/$name1.apk"
-	D=1
 }
 #檢測數據位置進行備份
 Backup_data() {
@@ -595,7 +595,6 @@ backup)
 	isBoolean "$Lo" "Lo" && Lo="$nsx"
 	if [[ $Lo = false ]]; then
 		isBoolean "$delete_folder" "delete_folder" && delete_folder="$nsx"
-		isBoolean "$Splist" "Splist" && Splist="$nsx"
 		isBoolean "$USBdefault" "USBdefault" && USBdefault="$nsx"
 		isBoolean "$Backup_obb_data" "Backup_obb_data" && Backup_obb_data="$nsx"
 		isBoolean "$Backup_user_data" "Backup_user_data" && Backup_user_data="$nsx"
@@ -603,8 +602,8 @@ backup)
 	else
 		echoRgb "檢查目錄是否存在已卸載應用?\n -音量上檢查，下不檢查"
 		get_version "檢查" "不檢查" && delete_folder="$branch"
-		echoRgb "選擇是否只備份split apk(分割apk檔)\n -如果你不知道這意味什麼請選擇音量下進行混合備份\n -音量上僅備份split apk，音量下混合備份" "2"
-		get_version "是" "不是，混合備份" && Splist="$branch"
+		echoRgb "存在usb隨身碟是否默認使用隨身碟?\n -音量上默認，下進行詢問"
+		get_version "默認" "詢問" && USBdefault="$branch"
 		echoRgb "是否備份外部數據 即比如原神的數據包\n -音量上備份，音量下不備份" "2"
 		get_version "備份" "不備份" && Backup_obb_data="$branch"
 		echoRgb "是否備份使用者數據\n -音量上備份，音量下不備份" "2"
@@ -623,19 +622,19 @@ backup)
 	echoRgb "壓縮方式:$Compression_method"
 	echoRgb "提示 腳本支持後台壓縮 可以直接離開腳本\n -或是關閉終端也能備份 如需終止腳本\n -請執行終止腳本.sh即可停止\n -備份結束將發送toast提示語" "3"
 	backup_path
+	echoRgb "配置詳細:\n -音量鍵確認:$Lo\n -Toast:$toast_info\n -更新:$update\n -已卸載應用檢查:$delete_folder\n -默認使用usb:$USBdefault\n -備份外部數據:$Backup_obb_data\n -備份user數據:$Backup_user_data\n -自定義目錄備份:$backup_media"
 	D="1"
 	C="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	if [[ $delete_folder = true ]]; then
 		if [[ -d $Backup ]]; then
 			if [[ $1 = "" ]]; then
-				echoRgb "腳本開始前檢查備份目錄中是否存在已經卸載應用" "3"
 				find "$Backup" -maxdepth 1 -type d 2>/dev/null | sort | while read; do
 					if [[ -f $REPLY/app_details ]]; then
 						unset PackageName
 						. "$REPLY/app_details" &>/dev/null
 						if [[ $PackageName != "" && $(pm path --user "$user" "$PackageName" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
 							echoRgb "檢查到已卸載應用\n -音量上刪除資料夾，下移動到其他處"
-							get_version "刪除" "移動到其他處" && 操作="$branch"
+							get_version "刪除" "移動到其他處" && operate="$branch"
 							if [[ $operate = true ]]; then
 								rm -rf "$REPLY"
 								echoRgb "${REPLY##*/}不存在系統 刪除資料夾" "0"
@@ -651,7 +650,7 @@ backup)
 								[[ ! -f $Backup/被卸載的應用/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/被卸載的應用/轉換資料夾名稱.sh"
 								[[ ! -f $Backup/被卸載的應用/壓縮檔完整性檢查.sh ]] && cp -r "$script_path/check_file" "$Backup/被卸載的應用/壓縮檔完整性檢查.sh"
 								[[ ! -f $Backup/被卸載的應用/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/被卸載的應用/終止腳本.sh"
-								[[ ! -f $Backup/被卸載的應用/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf"
+								[[ ! -f $Backup/被卸載的應用/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf"
 								txt2="$Backup/被卸載的應用/appList.txt"
 								[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
 								echo "${REPLY##*/} $PackageName">>"$txt2"
@@ -679,7 +678,7 @@ backup)
 	fi
 	r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	[[ $1 != "" ]] && r=1
-	[[ $r = "" ]] && echoRgb "爬..appList.txt是空的或是包名被注釋了這樣備份個鬼" "0" && exit 1
+	[[ $r = "" ]] && echoRgb "$MODDIR_NAME/appList.txt是空的或是包名被注釋備份個鬼\n -檢查是否注釋亦或者執行$MODDIR_NAME/生成應用列表.sh" "0" && exit 1
 	[[ $Backup_user_data = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -Backup_user_data=0將不備份user數據" "0"
 	[[ $Backup_obb_data = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -Backup_obb_data=0將不備份外部數據" "0"
 	[[ $backup_media = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -backup_media=0將不備份自定義資料夾" "0"
@@ -693,7 +692,7 @@ backup)
 	[[ ! -f $Backup/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/轉換資料夾名稱.sh"
 	[[ ! -f $Backup/壓縮檔完整性檢查.sh ]] && cp -r "$script_path/check_file" "$Backup/壓縮檔完整性檢查.sh"
 	[[ -d $Backup/Media ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
-	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#使用者\nuser=\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
+	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#使用者\nuser=\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 	filesha256="$(sha256sum "$bin_path/tools.sh" | cut -d" " -f1)"
 	filesha256_1="$(sha256sum "$Backup/tools/bin/tools.sh" | cut -d" " -f1)"
 	[[ $filesha256 != $filesha256_1 ]] && cp -r "$bin_path/tools.sh" "$Backup/tools/bin/tools.sh"
@@ -756,15 +755,11 @@ backup)
 				[[ $name2 = com.tencent.mm ]] && echoRgb "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
 				apk_number="$(echo "$apk_path" | wc -l)"
 				if [[ $apk_number = 1 ]]; then
-					if [[ $Splist = false ]]; then
-						Backup_apk "非Split Apk" "3"
-					else
-						echoRgb "非Split Apk跳過備份" "0" && unset D
-					fi
+					Backup_apk "非Split Apk" "3"
 				else
 					Backup_apk "Split Apk支持備份" "3"
 				fi
-				if [[ $D != "" && $result = 0 && $No_backupdata = "" && $nobackup != true ]]; then
+				if [[ $result = 0 && $No_backupdata = "" && $nobackup != true ]]; then
 					if [[ $Backup_obb_data = true ]]; then
 						#備份data數據
 						Backup_data "data"
@@ -917,8 +912,8 @@ check_file)
 	;;
 Restore)
 	kill_Serve
-	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
-	echoRgb "如果大量提示找不到資料夾請執行$MODDIR/轉換資料夾名稱.sh"
+	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊$MODDIR_NAME/終止腳本.sh\n -否則腳本將繼續執行直到結束" "0"
+	echoRgb "如果大量提示找不到資料夾請執行$MODDIR_NAME/轉換資料夾名稱.sh"
 	disable_verify
 	[[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
 	i=1
@@ -1205,7 +1200,7 @@ backup_media)
 		[[ ! -f $Backup/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/轉換資料夾名稱.sh"
 		[[ ! -f $Backup/壓縮檔完整性檢查.sh ]] && cp -r "$script_path/check_file" "$Backup/壓縮檔完整性檢查.sh"
 		[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
-		[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行跳轉瀏覽器或是複製連結?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
+		[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 		app_details="$Backup_folder/app_details"
 		[[ -f $app_details ]] && . "$app_details" &>/dev/null
 		mediatxt="$Backup/mediaList.txt"
