@@ -269,7 +269,7 @@ Backup_apk() {
 				case $Compression_method in
 				tar | TAR | Tar) tar -cf - *.apk | pv > "$Backup_folder/apk.tar" ;;
 				lz4 | LZ4 | Lz4) tar -cf - *.apk | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/apk.tar.lz4" ;;
-				zstd | Zstd | ZSTD) tar -cf - *apk | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
+				zstd | Zstd | ZSTD) tar -cf - *.apk | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
 				esac
 			)
 			echo_log "備份$apk_number個Apk"
@@ -580,6 +580,32 @@ get_name(){
 	[[ $1 = Apkname ]] && sort -u "$txt" -o "$txt" 2>/dev/null && echoRgb "$txt重新生成" "1"
 	exit 0
 }
+Check_archive() {
+	starttime1="$(date -u "+%s")"
+	error_log="$TMPDIR/error_log"
+	rm -rf "$error_log"
+	FIND_PATH="$(find "$1" -maxdepth 3 -name "*.tar*" -type f 2>/dev/null | sort)"
+	i=1
+	r="$(echo "$FIND_PATH" | wc -l)"
+	while [[ $i -le $r ]]; do
+		unset REPLY
+		REPLY="$(echo "$FIND_PATH" | sed -n "${i}p")"
+		MODDIR_NAME="${REPLY%/*}"
+		MODDIR_NAME="${MODDIR_NAME##*/}"
+		FILE_NAME="${REPLY##*/}"
+		case ${FILE_NAME##*.} in
+		lz4 | zst) zstd -t "$REPLY" &>/dev/null ;;
+		tar) tar -tf "$REPLY" &>/dev/null ;;
+		esac
+		echo_log "效驗$MODDIR_NAME/$FILE_NAME"
+		[[ $result != 0 ]] && echo "效驗失敗:$MODDIR_NAME/$1">>"$error_log"
+		echoRgb "$i/$r個剩$((r - i))個 $((i * 100 / r))%"
+		let i++ nskg++
+	done
+	endtime 1
+	[[ -f $error_log ]] && echoRgb "以下為失敗的檔案\n$(cat "$error_log")" || echoRgb "恭喜~~全數效驗通過" 
+	rm -rf "$error_log"
+}
 case $operate in
 backup)
 	kill_Serve
@@ -882,33 +908,7 @@ convert)
 	get_name "convert"
 	;;
 check_file)
-	starttime1="$(date -u "+%s")"
-	error_log="$TMPDIR/error_log"
-	rm -rf "$error_log"
-	FIND_PATH="$(find "$MODDIR" -maxdepth 2 -name "*.tar*" -type f 2>/dev/null | sort)"
-	i=1
-	r="$(echo "$FIND_PATH" | wc -l)"
-	Check_archive() {
-		case ${1##*.} in
-		lz4 | zst) zstd -t "$2" &>/dev/null ;;
-		tar) tar -tf "$2" &>/dev/null ;;
-		esac
-		echo_log "效驗$MODDIR_NAME/$1"
-		[[ $result != 0 ]] && echo "效驗失敗:$MODDIR_NAME/$1">>"$error_log"
-	}
-	while [[ $i -le $r ]]; do
-		unset REPLY
-		REPLY="$(echo "$FIND_PATH" | sed -n "${i}p")"
-		MODDIR_NAME="${REPLY%/*}"
-		MODDIR_NAME="${MODDIR_NAME##*/}"
-		FILE_NAME="${REPLY##*/}"
-		Check_archive "$FILE_NAME" "$REPLY"
-		echoRgb "$i/$r個剩$((r - i))個 $((i * 100 / r))%"
-		let i++ nskg++
-	done
-	endtime 1
-	[[ -f $error_log ]] && echoRgb "以下為失敗的檔案\n$(cat "$error_log")" || echoRgb "恭喜~~全數效驗通過" 
-	rm -rf "$error_log"
+	Check_archive "$MODDIR"
 	;;
 Restore)
 	kill_Serve
