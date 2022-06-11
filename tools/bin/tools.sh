@@ -338,8 +338,8 @@ Backup_data() {
 				;;
 			*)
 				case $1 in
-				data)	let osb++ ;;
-				obb)	let osg++ ;;
+				data) let osb++ ;;
+				obb) let osg++ ;;
 				esac
 				case $Compression_method in
 				tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
@@ -371,9 +371,9 @@ Backup_data() {
 			echoRgb "$1是一個文件 不支持備份" "0"
 		else
 			case $1 in
-			user)	let osz++ ;;
-			data)	let osd++ ;;
-			obb)	let ose++ ;;
+			user) let osz++ ;;
+			data) let osd++ ;;
+			obb) let ose++ ;;
 			esac
 			echoRgb "$1數據不存在跳過備份" "2"
 		fi
@@ -384,15 +384,18 @@ Release_data() {
 	stopscript
 	tar_path="$1"
 	X="$path2/$name2"
+	MODDIR_NAME="${tar_path%/*}"
+	MODDIR_NAME="${MODDIR_NAME##*/}"
 	FILE_NAME="${tar_path##*/}"
 	FILE_NAME2="${FILE_NAME%%.*}"
 	echoRgb "恢復$FILE_NAME2數據" "3"
 	unset FILE_PATH
 	case $FILE_NAME2 in
-	user)	[[ -d $X ]] && FILE_PATH="$path2" || echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0" ;;
-	data | obb)	FILE_PATH="$path" ;;
+	user) [[ -d $X ]] && FILE_PATH="$path2" || echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0" ;;
+	data) FILE_PATH="$path/data" ;;
+	obb) FILE_PATH="$path/obb" ;;
 	thanox)	FILE_PATH="/data/system" && find "/data/system" -name "thanos*" -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
-	storage-isolation)	FILE_PATH="/data/adb" && rm -rf "/data/adb/storage-isolation" ;;
+	storage-isolation)	FILE_PATH="/data/adb" ;;
 	*)
 		if [[ $A != "" ]]; then
 			app_details="$Backup_folder2/app_details"
@@ -406,7 +409,7 @@ Release_data() {
 	if [[ $FILE_PATH != "" ]]; then
 		case ${FILE_NAME##*.} in
 		lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$FILE_PATH" ;;
-		tar) [[ ${Backup_folder2##*/} = Media ]] && pv "$tar_path" | tar --recursive-unlink -xpf - -C "$FILE_PATH" || tar --recursive-unlink -xmpf - -C "$FILE_PATH" ;;
+		tar) [[ ${MODDIR_NAME##*/} = Media ]] && pv "$tar_path" | tar --recursive-unlink -xpf - -C "$FILE_PATH" || pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$FILE_PATH" ;;
 		*)
 			echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
 			Set_back
@@ -885,15 +888,14 @@ backup)
 		Print "批量備份完成 執行過程請查看$Status_log"
 		#打開應用
 		i=1
+		am_start="$(echo "$am_start" | head -n 4 | xargs | sed 's/ /\|/g')"
 		while [[ $i -le $r ]]; do
 			unset pkg name1
 			pkg="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
 			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-			if [[ $(cat "$txt" | egrep -wo "^$am_start$") = $pkg ]]; then
-				appinfo -sort-i -d "/" -o pn,sa -pn $pkg 2>/dev/null | while read; do
-					am start -n "$REPLY" &>/dev/null
-					echo_log "啟動$name1"
-				done
+			if [[ $(echo "$pkg" | egrep -wo "^$am_start$") = $pkg ]]; then
+				am start -n "$(appinfo -sort-i -d "/" -o pn,sa -pn "$pkg" 2>/dev/null)" &>/dev/null
+				echo_log "啟動$name1"
 			fi
 			let i++
 		done
