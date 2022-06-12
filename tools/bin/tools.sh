@@ -376,8 +376,12 @@ Backup_data() {
 			echo_log "備份$1數據"
 			if [[ $result = 0 ]]; then
 				if [[ $zsize != "" ]]; then
-					echo "#$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
 					[[ $2 != $(cat "$app_details" | awk "/$1path/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g') ]] && echo "#$1path=\"$2\"" >>"$app_details"
+					if [[ $Size != "" ]]; then
+						echo "$(cat "$app_details" | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
+					else
+						echo "#$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
+					fi
 				else
 					if [[ $Size != "" ]]; then
 						echo "$(cat "$app_details" | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
