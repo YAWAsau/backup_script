@@ -24,6 +24,13 @@ path="/data/media/$user/Android"
 path2="/data/user/$user"
 zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | egrep -wo "^backup_settings.conf$") != "" ]] && update_script
+if [[ $(getprop ro.build.version.sdk) -lt 30 ]]; then
+	alias INSTALL="pm install --user $user -r -t"
+	alias create="pm install-create --user $user"
+else
+	alias INSTALL="pm install -i com.android.vending --user $user -r -t"
+	alias create="pm install-create -i com.android.vending --user $user"
+fi
 case $operate in
 backup|Restore|Restore2|Getlist)
 	user_id="$(ls -1 "/data/user" 2>/dev/null)"
@@ -46,7 +53,7 @@ backup|Restore|Restore2|Getlist)
 			pm enable "ice.message" &>/dev/null
 			if [[ $(pm path --user "$user" ice.message 2>/dev/null) = "" ]]; then
 				echoRgb "未安裝toast 開始安裝" "0"
-				cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && pm install --user "$user" -r -t "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
+				cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && INSTALL "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
 				[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
 			fi
 		else
@@ -214,6 +221,22 @@ backup_path() {
 	fi
 	echoRgb "$hx備份資料夾所使用分區統計如下↓\n -$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-3),$(NF-2),$(NF-1),$(NF)}' | sed 's/G//g' | awk 'END{print "總共:"$1"G已用:"$2"G剩餘:"$3"G使用率:"$4}')檔案系統:$(df -T "$Backup_path" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')\n -備份目錄輸出位置↓\n -$Backup"
 	echoRgb "$outshow" "2"
+}
+Calculate_size() {
+	#計算出備份大小跟差異性
+	filesizee="$(du -ks "$1" | awk '{print $1}')"
+	dsize="$(($((filesizee - filesize)) / 1024))"
+	echoRgb "備份資料夾路徑↓↓↓\n -$1"
+	echoRgb "備份資料夾總體大小$(du -ksh "$1" | awk '{print $1}')"
+	if [[ $dsize -gt 0 ]]; then
+		if [[ $((dsize / 1024)) -gt 0 ]]; then
+			echoRgb "本次備份: $((dsize / 1024))gb"
+		else
+			echoRgb "本次備份: ${dsize}mb"
+		fi
+	else
+		echoRgb "本次備份: $(($((filesizee - filesize)) * 1000 / 1024))kb"
+	fi
 }
 #分區佔用信息
 partition_info() {
@@ -478,7 +501,7 @@ installapk() {
 		case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
 		1)
 			echoRgb "恢復普通apk" "2"
-			pm install -i com.android.vending --user "$user" -r -t "$TMPDIR"/*.apk &>/dev/null
+			INSTALL "$TMPDIR"/*.apk &>/dev/null
 			echo_log "Apk安裝"
 			;;
 		0)
@@ -486,9 +509,9 @@ installapk() {
 			;;
 		*)
 			echoRgb "恢復split apk" "2"
-			b="$(pm install-create -i com.android.vending --user "$user" 2>/dev/null | egrep -o '[0-9]+')"
+			b="$(create 2>/dev/null | egrep -o '[0-9]+')"
 			if [[ -f $TMPDIR/nmsl.apk ]]; then
-				pm install -i com.android.vending --user "$user" -r -t"$TMPDIR/nmsl.apk" &>/dev/null
+				INSTALL "$TMPDIR/nmsl.apk" &>/dev/null
 				echo_log "nmsl.apk安裝"
 			fi
 			find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | grep -v 'nmsl.apk' | while read; do
@@ -867,20 +890,7 @@ backup)
 			let i++ en++ nskg++
 		done
 		rm -rf "$TMPDIR/scriptTMP"
-		#計算出備份大小跟差異性
-		filesizee="$(du -ks "$Backup" | awk '{print $1}')"
-		dsize="$(($((filesizee - filesize)) / 1024))"
-		echoRgb "備份資料夾路徑↓↓↓\n -$Backup"
-		echoRgb "備份資料夾總體大小$(du -ksh "$Backup" | awk '{print $1}')"
-		if [[ $dsize -gt 0 ]]; then
-			if [[ $((dsize / 1024)) -gt 0 ]]; then
-				echoRgb "本次備份: $((dsize / 1024))gb"
-			else
-				echoRgb "本次備份: ${dsize}mb"
-			fi
-		else
-			echoRgb "本次備份: $(($((filesizee - filesize)) * 1000 / 1024))kb"
-		fi
+		Calculate_size "$Backup"
 		echoRgb "批量備份完成"
 		starttime1="$TIME"
 		endtime 1 "批量備份開始到結束"
@@ -1196,6 +1206,7 @@ backup_media)
 	if [[ $B != "" ]]; then
 		starttime1="$(date -u "+%s")"
 		Backup_folder="$Backup/Media"
+		filesize="$(du -ks "$Backup_folder" | awk '{print $1}')"
 		[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
 		[[ ! -f $Backup/恢復自定義資料夾.sh ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
 		[[ ! -f $Backup/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/重新生成應用列表.sh"
@@ -1217,6 +1228,7 @@ backup_media)
 			endtime 2 "${REPLY##*/}備份" "1"
 			echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "2" && echoRgb "____________________________________" && let A++
 		done
+		Calculate_size "$Backup_folder"
 		echoRgb "目錄↓↓↓\n -$Backup_folder"
 		endtime 1 "自定義備份"
 	else
