@@ -115,7 +115,7 @@ else
 fi
 export PATH="$filepath:$PATH"
 export TZ=Asia/Taipei
-TMPDIR="/data/local/tmp"
+TMPDIR="/data/local/tmp/data_backup"
 [[ ! -d $TMPDIR ]] && mkdir "$TMPDIR"
 if [[ $(which busybox) = "" ]]; then
 	echoRgb "環境變量中沒有找到busybox 請在tools/bin內添加一個\narm64可用的busybox\n或是安裝搞機助手 scene或是Magisk busybox模塊...." "0"
