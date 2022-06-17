@@ -85,13 +85,6 @@ else
 fi
 dns="8.8.8.8"
 [[ $(getprop ro.build.version.sdk) -lt 23 ]] && alias curl="curl -kL --dns-servers $dns$flag" || alias curl="curl -L --dns-servers $dns$flag"
-json="$(curl "$Language" 2>/dev/null)"
-if [[ $json != "" ]]; then
-	echoRgb "使用curl"
-else
-	json="$(down -s -L "$Language" 2>/dev/null)"
-	[[ $json != "" ]] && echoRgb "使用down"
-fi
 #效驗選填是否正確
 Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
 isBoolean "$Lo" "Lo" && Lo="$nsx"
@@ -101,6 +94,18 @@ if [[ $Lo = false ]]; then
 else
 	echoRgb "自動更新腳本?\n -音量上更新，下不更新"
 	get_version "更新" "不更新" && update="$branch"
+fi
+if [[ $update = true ]]; then
+	json="$(curl "$Language" 2>/dev/null)"
+	if [[ $json != "" ]]; then
+		echoRgb "使用curl"
+	else
+		json="$(down -s -L "$Language" 2>/dev/null)"
+		[[ $json != "" ]] && echoRgb "使用down"
+	fi
+	[[ $json = "" ]] && echoRgb "更新獲取失敗" "0"
+else
+	echoRgb "自動更新被關閉" "0"
 fi
 if [[ $json != "" ]]; then
 	tag="$(echo "$json" | sed -r -n 's/.*"tag_name": *"(.*)".*/\1/p')"
@@ -171,8 +176,6 @@ if [[ $json != "" ]]; then
 			fi
 		fi
 	fi
-else
-	echoRgb "更新獲取失敗" "0"
 fi
 Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
 backup_path() {
@@ -245,6 +248,18 @@ partition_info() {
 	lxj="$(echo "$Occupation_status" | awk '{print $2}' | sed 's/%//g')"
 	[[ $lxj -ge 97 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
 }
+
+restore_permissions() {
+	if [[ -f $Backup_folder/permission ]]; then
+		echoRgb "恢復權限"
+		while read ; do
+			echo $REPLY
+			pm grant "$name2" "$REPLY" 2>/dev/null
+		done < "$Backup_folder/permission"
+	else
+		echoRgb "遺失\"${Backup_folder##*/}/permission\" 無法恢復權限"
+	fi
+}
 Backup_apk() {
 	#檢測apk狀態進行備份
 	stopscript
@@ -258,6 +273,7 @@ Backup_apk() {
 		let osj++
 		result=0
 		echoRgb "Apk版本無更新 跳過備份" "2"
+		Backup_permissions
 	else
 		case $name2 in
 		com.google.android.youtube)
@@ -297,6 +313,7 @@ Backup_apk() {
 			)
 			echo_log "備份$apk_number個Apk"
 			if [[ $result = 0 ]]; then
+				Backup_permissions
 				if [[ $apk_version = "" ]]; then
 					echo "apk_version=\"$apk_version2\"" >>"$app_details"
 				else
@@ -324,7 +341,7 @@ Backup_apk() {
 			fi
 		else
 			let osj++
-			echoRgb "$name不支持備份 需要使用vanced安裝" "0" && rm -rf "$Backup_folder"
+			echoRgb "$name1不支持備份 需要使用vanced安裝" "0" && rm -rf "$Backup_folder"
 		fi
 	fi
 	[[ $name2 = bin.mt.plus && ! -f $Backup/$name1.apk ]] && cp -r "$apk_path" "$Backup/$name1.apk"
@@ -533,6 +550,8 @@ disable_verify() {
 	settings put global verifier_verify_adb_installs 0 2>/dev/null
 	#禁用安裝包驗證
 	settings put global package_verifier_enable 0 2>/dev/null
+	#未知來源
+	settings put secure install_non_market_apps 1 2>/dev/null
 	#關閉play安全效驗
 	if [[ $(settings get global package_verifier_user_consent 2>/dev/null) != -1 ]]; then
 		settings put global package_verifier_user_consent -1 2>/dev/null
@@ -754,6 +773,19 @@ backup)
 	[[ $filesha256 != $filesha256_1 ]] && cp -r "$bin_path/tools.sh" "$Backup/tools/bin/tools.sh"
 	filesize="$(du -ks "$Backup" | awk '{print $1}')"
 	Quantity=0
+	if [[ -f /data/misc_de/$user/apexdata/com.android.permission/runtime-permissions.xml ]]; then
+		permission="/data/misc_de/$user/apexdata/com.android.permission/runtime-permissions.xml"
+	else
+		[[ -f /data/system/users/$user/runtime-permissions.xml ]] && permission="/data/system/users/$user/runtime-permissions.xml"
+	fi
+	if [[ $permission != "" ]]; then
+		Backup_permissions() {
+			sed -n "/$name2/,/\<\//p" "$permission" | grep -w 'granted=\"true\"' | grep -o 'android.permission.*[A-Z]'> "$Backup_folder/permission"
+			echo_log "權限備份"
+		}
+	else
+		Backup_permissions() { }
+	fi
 	#開始循環$txt內的資料進行備份
 	#記錄開始時間
 	starttime1="$(date -u "+%s")"
@@ -980,16 +1012,17 @@ Restore)
 						fi
 					fi
 				fi
-				if [[ $No_backupdata = "" ]]; then
-					if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
+				if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
+					restore_permissions
+					if [[ $No_backupdata = "" ]]; then
 						#停止應用
 						[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
 						find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
 							Release_data "$REPLY"
 						done
-					else
-						echoRgb "$name1沒有安裝無法恢復數據" "0"
 					fi
+				else
+					[[ $No_backupdata = "" ]]&& echoRgb "$name1沒有安裝無法恢復數據" "0"
 				fi
 				endtime 2 "$name1恢複" "2" && echoRgb "完成$((i * 100 / r))%" "3"
 				rgb_d="$rgb_a"
@@ -1069,6 +1102,7 @@ Restore2)
 			fi
 		fi
 		if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
+			restore_permissions
 			#停止應用
 			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
 			find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
