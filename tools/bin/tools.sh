@@ -248,13 +248,18 @@ partition_info() {
 	lxj="$(echo "$Occupation_status" | awk '{print $2}' | sed 's/%//g')"
 	[[ $lxj -ge 97 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
 }
-
 restore_permissions() {
 	if [[ -f $Backup_folder/permission ]]; then
 		echoRgb "恢復權限"
 		while read ; do
-			echo $REPLY
-			pm grant "$name2" "$REPLY" 2>/dev/null
+			REPLY=($REPLY $REPLY)
+			permission_name="$(echo "${REPLY[2]}")"
+			permission_status="$(echo "${REPLY[1]}")"
+			if [[ $(echo "$permission_status") = true ]]; then
+				pm grant "$name2" "$permission_name" 2>/dev/null
+			elif [[ $(echo "$permission_status") = false ]]; then
+				pm revoke "$name2" "$permission_name" 2>/dev/null
+			fi
 		done < "$Backup_folder/permission"
 	else
 		echoRgb "遺失\"${Backup_folder##*/}/permission\" 無法恢復權限"
@@ -780,7 +785,18 @@ backup)
 	fi
 	if [[ $permission != "" ]]; then
 		Backup_permissions() {
-			sed -n "/$name2/,/\<\//p" "$permission" | grep -w 'granted=\"true\"' | grep -o 'android.permission.*[A-Z]'> "$Backup_folder/permission"
+			rm -rf "$Backup_folder/permission"
+			sed -n "/name=\"$name2\"/,/\<\//p" "$permission" | egrep -w 'granted=\"true\"|granted=\"false\"' | while read ; do
+				permission_name="$(echo "$REPLY" | grep -o 'android.permission.*[A-Z]')"
+				permission_status="$(echo "$REPLY" | egrep -o 'true|false')"
+				if [[ $(echo "$permission_name") != "" ]]; then
+					if [[ $(echo "$permission_status") = true ]]; then
+						echo "$permission_name true">>"$Backup_folder/permission"
+					elif [[ $(echo "$permission_status") = false ]]; then
+						echo "$permission_name false">>"$Backup_folder/permission"
+					fi
+				fi
+			done
 			echo_log "權限備份"
 		}
 	else
