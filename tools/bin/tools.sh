@@ -25,11 +25,11 @@ path2="/data/user/$user"
 zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | egrep -wo "^backup_settings.conf$") != "" ]] && update_script
 if [[ $(getprop ro.build.version.sdk) -lt 30 ]]; then
-	alias INSTALL="pm install --user $user -r -t"
-	alias create="pm install-create --user $user"
+	alias INSTALL="pm install --user $user -rt"
+	alias create="pm install-create --user $user -t"
 else
-	alias INSTALL="pm install -i com.android.vending --user $user -r -t"
-	alias create="pm install-create -i com.android.vending --user $user"
+	alias INSTALL="pm install -i com.android.vending --user $user -rt"
+	alias create="pm install-create -i com.android.vending --user $user -t"
 fi
 case $operate in
 backup|Restore|Restore2|Getlist)
@@ -256,9 +256,9 @@ restore_permissions() {
 			permission_name="$(echo "${REPLY[2]}")"
 			permission_status="$(echo "${REPLY[1]}")"
 			if [[ $(echo "$permission_status") = true ]]; then
-				pm grant "$name2" "$permission_name" 2>/dev/null
+				pm grant --user "$user" "$name2" "$permission_name" 2>/dev/null
 			elif [[ $(echo "$permission_status") = false ]]; then
-				pm revoke "$name2" "$permission_name" 2>/dev/null
+				pm revoke --user "$user" "$name2" "$permission_name" 2>/dev/null
 			fi
 		done < "$Backup_folder/permission"
 	else
