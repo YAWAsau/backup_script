@@ -25,10 +25,10 @@ path2="/data/user/$user"
 zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | egrep -wo "^backup_settings.conf$") != "" ]] && update_script
 if [[ $(getprop ro.build.version.sdk) -lt 30 ]]; then
-	alias INSTALL="pm install --user $user -rt"
+	alias INSTALL="pm install --user $user -r -t"
 	alias create="pm install-create --user $user -t"
 else
-	alias INSTALL="pm install -i com.android.vending --user $user -rt"
+	alias INSTALL="pm install -i com.android.vending --user $user -r -t"
 	alias create="pm install-create -i com.android.vending --user $user -t"
 fi
 case $operate in
@@ -248,23 +248,6 @@ partition_info() {
 	lxj="$(echo "$Occupation_status" | awk '{print $2}' | sed 's/%//g')"
 	[[ $lxj -ge 97 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
 }
-restore_permissions() {
-	if [[ -f $Backup_folder/permission ]]; then
-		echoRgb "恢復權限"
-		while read ; do
-			REPLY=($REPLY $REPLY)
-			permission_name="$(echo "${REPLY[2]}")"
-			permission_status="$(echo "${REPLY[1]}")"
-			if [[ $(echo "$permission_status") = true ]]; then
-				pm grant --user "$user" "$name2" "$permission_name" 2>/dev/null
-			elif [[ $(echo "$permission_status") = false ]]; then
-				pm revoke --user "$user" "$name2" "$permission_name" 2>/dev/null
-			fi
-		done < "$Backup_folder/permission"
-	else
-		echoRgb "遺失\"${Backup_folder##*/}/permission\" 無法恢復權限"
-	fi
-}
 Backup_apk() {
 	#檢測apk狀態進行備份
 	stopscript
@@ -278,7 +261,6 @@ Backup_apk() {
 		let osj++
 		result=0
 		echoRgb "Apk版本無更新 跳過備份" "2"
-		Backup_permissions
 	else
 		case $name2 in
 		com.google.android.youtube)
@@ -318,7 +300,6 @@ Backup_apk() {
 			)
 			echo_log "備份$apk_number個Apk"
 			if [[ $result = 0 ]]; then
-				Backup_permissions
 				if [[ $apk_version = "" ]]; then
 					echo "apk_version=\"$apk_version2\"" >>"$app_details"
 				else
@@ -778,30 +759,6 @@ backup)
 	[[ $filesha256 != $filesha256_1 ]] && cp -r "$bin_path/tools.sh" "$Backup/tools/bin/tools.sh"
 	filesize="$(du -ks "$Backup" | awk '{print $1}')"
 	Quantity=0
-	if [[ -f /data/misc_de/$user/apexdata/com.android.permission/runtime-permissions.xml ]]; then
-		permission="/data/misc_de/$user/apexdata/com.android.permission/runtime-permissions.xml"
-	else
-		[[ -f /data/system/users/$user/runtime-permissions.xml ]] && permission="/data/system/users/$user/runtime-permissions.xml"
-	fi
-	if [[ $permission != "" ]]; then
-		Backup_permissions() {
-			rm -rf "$Backup_folder/permission"
-			sed -n "/name=\"$name2\"/,/\<\//p" "$permission" | egrep -w 'granted=\"true\"|granted=\"false\"' | while read ; do
-				permission_name="$(echo "$REPLY" | grep -o 'android.permission.*[A-Z]')"
-				permission_status="$(echo "$REPLY" | egrep -o 'true|false')"
-				if [[ $(echo "$permission_name") != "" ]]; then
-					if [[ $(echo "$permission_status") = true ]]; then
-						echo "$permission_name true">>"$Backup_folder/permission"
-					elif [[ $(echo "$permission_status") = false ]]; then
-						echo "$permission_name false">>"$Backup_folder/permission"
-					fi
-				fi
-			done
-			echo_log "權限備份"
-		}
-	else
-		Backup_permissions() { }
-	fi
 	#開始循環$txt內的資料進行備份
 	#記錄開始時間
 	starttime1="$(date -u "+%s")"
@@ -999,7 +956,7 @@ Restore)
 			echoRgb "恢複第$i/$r個應用 剩下$((r - i))個" "3"
 			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
 			name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
-			unset No_backupdata
+			unset No_backupdata apk_version
 			if [[ $name1 = *! || $name1 = *！ ]]; then
 				name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
 				echoRgb "跳過恢復$name1 所有數據" "0"
@@ -1007,6 +964,7 @@ Restore)
 			fi
 			Backup_folder="$MODDIR/$name1"
 			Backup_folder2="$MODDIR/Media"
+			[[ -f "$Backup_folder/app_details" ]] && . "$Backup_folder/app_details" &>/dev/null
 			[[ $name2 = "" ]] && echoRgb "應用包名獲取失敗" "0" && exit 1
 			if [[ -d $Backup_folder ]]; then
 				echoRgb "恢複$name1 ($name2)" "2"
@@ -1014,22 +972,12 @@ Restore)
 				if [[ $(pm path --user "$user" "$name2" 2>/dev/null) = "" ]]; then
 					installapk
 				else
-					unset apk_version
-					[[ -f "$Backup_folder/app_details" ]] && . "$Backup_folder/app_details"
-					apk_version="$(echo "$apk_version" | head -n 1)"
 					if [[ $apk_version -gt $(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
 						installapk
 						echoRgb "版本提升$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
-					else
-						if [[ $apk_version = $(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
-							echoRgb "本地版本與備份版本一致略過安裝" "2"
-						else
-							echoRgb "本地版本大於備份版本略過安裝" "2"
-						fi
 					fi
 				fi
 				if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
-					restore_permissions
 					if [[ $No_backupdata = "" ]]; then
 						#停止應用
 						[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
@@ -1100,7 +1048,7 @@ Restore2)
 			name2="$(echo "${Script_path##*/}" | sed 's/.sh//g')"
 		fi
 		[[ $name2 = "" ]] && echoRgb "包名獲取失敗" "0" && exit 2
-		echoRgb "恢複$name1 ($name2)" "3"
+		echoRgb "恢複$name1 ($name2)" "2"
 		starttime2="$(date -u "+%s")"
 		if [[ $(pm path --user "$user" "$name2" 2>/dev/null) = "" ]]; then
 			installapk
@@ -1109,16 +1057,9 @@ Restore2)
 			if [[ $apk_version -gt $(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
 				installapk
 				echoRgb "版本提升$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
-			else
-				if [[ $apk_version = $(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
-					echoRgb "本地版本與備份版本一致略過安裝" "2"
-				else
-					echoRgb "本地版本大於備份版本略過安裝" "2"
-				fi
 			fi
 		fi
 		if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
-			restore_permissions
 			#停止應用
 			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
 			find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do

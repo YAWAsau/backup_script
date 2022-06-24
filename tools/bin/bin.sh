@@ -21,7 +21,7 @@ fi
 abi="$(getprop ro.product.cpu.abi)"
 case $abi in
 arm64*)
-	if [[ $(getprop ro.build.version.sdk) -lt 26 ]]; then
+	if [[ $(getprop ro.build.version.sdk) -lt 24 ]]; then
 		echoRgb "設備Android $(getprop ro.build.version.release)版本過低 請升級至Android 8+" "0"
 		exit 1
 	else
@@ -115,6 +115,7 @@ else
 fi
 export PATH="$filepath:$PATH"
 export TZ=Asia/Taipei
+export CLASSPATH="$bin_path/classes.dex"
 TMPDIR="/data/local/tmp"
 [[ ! -d $TMPDIR ]] && mkdir "$TMPDIR"
 if [[ $(which busybox) = "" ]]; then
@@ -122,6 +123,12 @@ if [[ $(which busybox) = "" ]]; then
 	exit 1
 fi
 #下列為自定義函數
+appinfo() {
+	exec app_process /system/bin --nice-name=appinfo indi.appinfo.AppInfo "$@"
+}
+down() {
+	exec app_process /system/bin --nice-name=down Han.download.Down "$@"
+}
 Set_back() {
 	return 1
 }
@@ -146,8 +153,8 @@ stopscript() {
 }
 nskg=1
 Print() {
-	a=$(echo "backup-$(date '+%T')" | sed 's#/#{xiegang}#g')
-	b=$(echo "$1" | sed 's#/#{xiegang}#g')
+	a=$(echo "SpeedBackup" | sed 's#/#{xiegang}#g')
+	b=$(echo "$(date '+%T')\n$1" | sed 's#/#{xiegang}#g')
 	content query --uri content://ice.message/notify/"$nskg<|>$a<|>$b<|>bs" >/dev/null 2>&1
 }
 longToast() {
@@ -210,9 +217,8 @@ kill_Serve() {
 	} &
 	wait
 }
-ykj() {
-	# uptime
-	awk -F '.' '{run_days=$1 / 86400;run_hour=($1 % 86400)/3600;run_minute=($1 % 3600)/60;run_second=$1 % 60;printf("%d天%d时%d分%d秒",run_days,run_hour,run_minute,run_second)}' /proc/uptime
+Show_boottime() {
+	awk -F '.' '{run_days=$1 / 86400;run_hour=($1 % 86400)/3600;run_minute=($1 % 3600)/60;run_second=$1 % 60;printf("%d天%d时%d分%d秒",run_days,run_hour,run_minute,run_second)}' /proc/uptime 2>/dev/null
 }
 [[ -f /sys/block/sda/size ]] && ROM_TYPE="UFS" || ROM_TYPE="eMMC"
 if [[ -f /proc/scsi/scsi ]]; then
@@ -228,7 +234,7 @@ Open_apps="$(appinfo -d "(" -ed ")" -o ands,pn -ta c 2>/dev/null)"
 Open_apps2="$(echo "$Open_apps" | cut -f2 -d '(' | sed 's/)//g')"
 raminfo="$(awk '($1 == "MemTotal:"){print $2/1000"MB"}' /proc/meminfo 2>/dev/null)"
 echoRgb "---------------------SpeedBackup---------------------"
-echoRgb "-當前腳本執行路徑:$MODDIR\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(cat "/data/adb/magisk/util_functions.sh" 2>/dev/null | grep "MAGISK_VER_CODE" | cut -f2 -d '=')\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)\n -RAM:$raminfo\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
+echoRgb "當前腳本執行路徑:$MODDIR\n -已開機:$(Show_boottime)\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(cat "/data/adb/magisk/util_functions.sh" 2>/dev/null | grep "MAGISK_VER_CODE" | cut -f2 -d '=')\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)\n -RAM:$raminfo\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
 update_script() {
 	[[ $zipFile = "" ]] && zipFile="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f 2>/dev/null)"
 	if [[ $zipFile != "" ]]; then
