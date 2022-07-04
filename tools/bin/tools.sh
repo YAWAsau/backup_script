@@ -41,7 +41,7 @@ backup|Restore|Restore2|Getlist)
 	fi
 	[[ ! -d $path2 ]] && echoRgb "$user分區不存在，請將上方提示的用戶id按照需求填入\n -$MODDIR_NAME/backup_settings.conf配置項user=,一次只能填寫一個" "0" && exit 2
 	echoRgb "當前操作為用戶$user"
-	if [[ $operate != Getlist && Restore2 ]]; then
+	if [[ $operate != Getlist && $operate != Restore2 ]]; then
 		isBoolean "$Lo" "Lo" && Lo="$nsx"
 		if [[ $Lo = false ]]; then
 			isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
@@ -277,9 +277,7 @@ Backup_apk() {
 			else
 				echoRgb "版本:$apk_version2"
 			fi
-			[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
 			partition_info "$Backup"
-			rm -rf "$Backup_folder"/*.apk
 			#備份apk
 			echoRgb "$1"
 			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
@@ -300,30 +298,42 @@ Backup_apk() {
 			)
 			echo_log "備份$apk_number個Apk"
 			if [[ $result = 0 ]]; then
-				if [[ $apk_version = "" ]]; then
-					echo "apk_version=\"$apk_version2\"" >>"$app_details"
+				case $Compression_method in
+				tar | Tar | TAR) Validation_file "$Backup_folder/apk.tar" ;;
+				zstd | Zstd | ZSTD) Validation_file "$Backup_folder/apk.tar.zst" ;;
+				lz4 | Lz4 | LZ4) Validation_file "$Backup_folder/apk.tar.lz4" ;;
+				esac
+				if [[ $result = 0 ]]; then
+					[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
+					if [[ $apk_version = "" ]]; then
+						echo "apk_version=\"$apk_version2\"" >>"$app_details"
+					else
+						echo "$(cat "$app_details" | sed "s/${apk_version}/${apk_version2}/g")">"$app_details"
+					fi
+					if [[ $versionName = "" ]]; then
+						echo "versionName=\"$apk_version3\"" >>"$app_details"
+					else
+						echo "$(cat "$app_details" | sed "s/${versionName}/${apk_version3}/g")">"$app_details"
+					fi
+					[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
+					[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
+					[[ ! -f $Backup_folder/$name2.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/$name2.sh"
 				else
-					echo "$(cat "$app_details" | sed "s/${apk_version}/${apk_version2}/g")">"$app_details"
+					rm -rf "$Backup_folder"
 				fi
-				if [[ $versionName = "" ]]; then
-					echo "versionName=\"$apk_version3\"" >>"$app_details"
-				else
-					echo "$(cat "$app_details" | sed "s/${versionName}/${apk_version3}/g")">"$app_details"
+				if [[ $name2 = com.android.chrome ]]; then
+					#刪除所有舊apk ,保留一個最新apk進行備份
+					ReservedNum=1
+					FileNum="$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)"
+					while [[ $FileNum -gt $ReservedNum ]]; do
+						OldFile="$(ls -rt /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | head -1)"
+						rm -rf "${OldFile%/*/*}" && echoRgb "刪除文件:${OldFile%/*/*}"
+						let "FileNum--"
+					done
+					[[ -f $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null) && $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l) = 1 ]] && cp -r "$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null)" "$Backup_folder/nmsl.apk"
 				fi
-				[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
-				[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
-				[[ ! -f $Backup_folder/$name2.sh ]] && cp -r "$script_path/restore2" "$Backup_folder/$name2.sh"
-			fi
-			if [[ $name2 = com.android.chrome ]]; then
-				#刪除所有舊apk ,保留一個最新apk進行備份
-				ReservedNum=1
-				FileNum="$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)"
-				while [[ $FileNum -gt $ReservedNum ]]; do
-					OldFile="$(ls -rt /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | head -1)"
-					rm -rf "${OldFile%/*/*}" && echoRgb "刪除文件:${OldFile%/*/*}"
-					let "FileNum--"
-				done
-				[[ -f $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null) && $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l) = 1 ]] && cp -r "$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null)" "$Backup_folder/nmsl.apk"
+			else
+				rm -rf "$Backup_folder"
 			fi
 		else
 			let osj++
@@ -343,8 +353,10 @@ Backup_data() {
 	*)
 		[[ -f $app_details ]] && Size="$(cat "$app_details" | awk "/$1Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')"
 		data_path="$2"
-		Compression_method1="$Compression_method"
-		Compression_method=tar
+		if [[ $1 != storage-isolation && $1 != thanox ]]; then
+			Compression_method1="$Compression_method"
+			Compression_method=tar
+		fi
 		zsize=1
 		;;
 	esac
@@ -372,27 +384,34 @@ Backup_data() {
 				zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
 				lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/$1.tar.lz4" ;;
 				esac
-				[[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1"
-				unset Compression_method1
 				;;
 			esac
 			echo_log "備份$1數據"
 			if [[ $result = 0 ]]; then
-				if [[ $zsize != "" ]]; then
-					[[ $2 != $(cat "$app_details" | awk "/$1path/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g') ]] && echo "#$1path=\"$2\"" >>"$app_details"
-					if [[ $Size != "" ]]; then
-						echo "$(cat "$app_details" | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
+				case $Compression_method in
+				tar | Tar | TAR) Validation_file "$Backup_folder/$1.tar" ;;
+				zstd | Zstd | ZSTD) Validation_file "$Backup_folder/$1.tar.zst" ;;
+				lz4 | Lz4 | LZ4) Validation_file "$Backup_folder/$1.tar.lz4" ;;
+				esac
+				if [[ $result = 0 ]]; then
+					if [[ $zsize != "" ]]; then
+						[[ $2 != $(cat "$app_details" | awk "/$1path/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g') ]] && echo "#$1path=\"$2\"" >>"$app_details"
+						if [[ $Size != "" ]]; then
+							echo "$(cat "$app_details" | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
+						else
+							echo "#$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
+						fi
 					else
-						echo "#$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
-					fi
-				else
-					if [[ $Size != "" ]]; then
-						echo "$(cat "$app_details" | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
-					else
-						echo "$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
+						if [[ $Size != "" ]]; then
+							echo "$(cat "$app_details" | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
+						else
+							echo "$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
+						fi
 					fi
 				fi
 			fi
+			[[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1"
+			unset Compression_method1
 		else
 			echoRgb "$1數據無發生變化 跳過備份" "2"
 		fi
@@ -615,6 +634,16 @@ get_name(){
 	[[ $1 = Apkname ]] && sort -u "$txt" -o "$txt" 2>/dev/null && echoRgb "$txt重新生成" "1"
 	exit 0
 }
+Validation_file() {
+	MODDIR_NAME="${1%/*}"
+	MODDIR_NAME="${MODDIR_NAME##*/}"
+	FILE_NAME="${1##*/}"
+	case ${FILE_NAME##*.} in
+	lz4 | zst) zstd -t "$1" &>/dev/null ;;
+	tar) tar -tf "$1" &>/dev/null ;;
+	esac
+	echo_log "效驗$MODDIR_NAME/$FILE_NAME"
+}
 Check_archive() {
 	starttime1="$(date -u "+%s")"
 	error_log="$TMPDIR/error_log"
@@ -625,14 +654,7 @@ Check_archive() {
 	while [[ $i -le $r ]]; do
 		unset REPLY
 		REPLY="$(echo "$FIND_PATH" | sed -n "${i}p")"
-		MODDIR_NAME="${REPLY%/*}"
-		MODDIR_NAME="${MODDIR_NAME##*/}"
-		FILE_NAME="${REPLY##*/}"
-		case ${FILE_NAME##*.} in
-		lz4 | zst) zstd -t "$REPLY" &>/dev/null ;;
-		tar) tar -tf "$REPLY" &>/dev/null ;;
-		esac
-		echo_log "效驗$MODDIR_NAME/$FILE_NAME"
+		Validation_file "$REPLY"
 		[[ $result != 0 ]] && echo "效驗失敗:$MODDIR_NAME/$1">>"$error_log"
 		echoRgb "$i/$r個剩$((r - i))個 $((i * 100 / r))%"
 		let i++ nskg++
