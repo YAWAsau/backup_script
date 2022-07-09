@@ -48,7 +48,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.5.6"
+backup_version="V15.5.7"
 #設置二進制命令目錄位置
 if [[ $bin_path = "" ]]; then
 	echoRgb "未正確指定bin.sh位置" "0"
@@ -243,12 +243,12 @@ update_script() {
 			if [[ $(unzip -l "$zipFile" | awk '{print $4}' | egrep -o "^backup_settings.conf$") = "" ]]; then
 				echoRgb "${zipFile##*/}並非指定的備份zip，請刪除後重新放置\n -何謂更新zip? 就是GitHub release頁面下載的zip" "0"
 			else
-				unzip -o "$zipFile" -j "tools/bin/bin.sh" -d "$MODDIR"
+				unzip -o "$zipFile" -j "tools/bin/bin.sh" -d "$MODDIR" &>/dev/null
 				if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(cat "$MODDIR/bin.sh" | awk '/backup_version/{print $1}' | cut -f2 -d '=' | head -1 | sed 's/\"//g' | tr -d "a-zA-Z")") -eq 0 ]]; then
 					echoRgb "從$zipFile更新"
 					cp -r "$tools_path" "$TMPDIR" && rm -rf "$tools_path"
 					find "$MODDIR" -maxdepth 3 -name "*.sh" -type f -exec rm -rf {} \;
-					unzip -o "$zipFile" -x "backup_settings.conf" -d "$MODDIR"
+					unzip -o "$zipFile" -x "backup_settings.conf" -d "$MODDIR" | sed 's/inflating/釋放/g ; s/creating/創建/g ; s/Archive/解壓縮/g'
 					echo_log "解壓縮${zipFile##*/}"
 					if [[ $result = 0 ]]; then
 						case $MODDIR in
@@ -360,7 +360,7 @@ update_script() {
 					echoRgb "更新完成 請重新執行腳本" "2"
 					exit
 				else
-					echoRgb "${zipFile##*/}版本低於當前版本,自動刪除"
+					echoRgb "${zipFile##*/}版本低於當前版本,自動刪除" "0"
 					rm -rf "$zipFile" "$MODDIR/bin.sh"
 				fi
 			fi

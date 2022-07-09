@@ -203,7 +203,7 @@ backup_path() {
 				data="/dev/block/vold/$PU"
 				mountinfo="$(df -T "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')"
 				case $mountinfo in
-				fuseblk | exfat | NTFS | ext4 | f2fs)
+				sdfat | fuseblk | exfat | NTFS | ext4 | f2fs)
 					outshow="於隨身碟備份" && hx=usb
 					;;
 				*)
@@ -408,6 +408,8 @@ Backup_data() {
 							echo "$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
 						fi
 					fi
+				else
+					rm -rf "$Backup_folder/$1".tar.*
 				fi
 			fi
 			[[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1"
@@ -570,63 +572,62 @@ get_name(){
 	txt="${txt/'/storage/emulated/'/'/data/media/'}"
 	[[ $1 = Apkname ]] && rm -rf *.txt && echoRgb "列出全部資料夾內應用名與自定義目錄壓縮包名稱" "3"
 	rgb_a=118
-	find "$MODDIR" -maxdepth 1 -type d 2>/dev/null | sort | while read; do
+	find "$MODDIR" -maxdepth 2 -name "app_details" -type f 2>/dev/null | sort | while read; do
+		REPLY="${REPLY%/*}"
 		[[ $rgb_a -ge 229 ]] && rgb_a=118
-		if [[ -f $REPLY/app_details ]]; then
-			if [[ ${REPLY##*/} = Media && $1 = Apkname ]]; then
-				echoRgb "存在媒體資料夾" "2"
-				[[ ! -f $txt2 ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$txt2"
-				find "$REPLY" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | while read; do
-					echoRgb "${REPLY##*/}" && echo "${REPLY##*/}" >> "$txt2"
-				done
-				echoRgb "$txt2重新生成" "1"
-			else
-				unset PackageName NAME DUMPAPK ChineseName
-				. "$REPLY/app_details" &>/dev/null
-				[[ ! -f $txt && $1 = Apkname ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
-				if [[ $PackageName = "" || $ChineseName = "" ]]; then
-					if [[ ${REPLY##*/} != Media ]]; then
-						echoRgb "${REPLY##*/}包名獲取失敗，解壓縮獲取包名中..." "0"
-						compressed_file="$(find "$REPLY" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
-						if [[ $compressed_file != "" ]]; then
-							rm -rf "$TMPDIR"/*
-							case ${compressed_file##*.} in
-							lz4 | zst) pv "$compressed_file" | tar -I zstd -xmpf - -C "$TMPDIR"  --wildcards --no-anchored 'base.apk' ;;
-							tar) pv "$compressed_file" | tar -xmpf - -C "$TMPDIR"  --wildcards --no-anchored 'base.apk' ;;
-							*)
-								echoRgb "${compressed_file##*/} 壓縮包不支持解壓縮" "0"
-								Set_back
-								;;
-							esac
-							echo_log "${compressed_file##*/}解壓縮"
-							if [[ $result = 0 ]]; then
-								if [[ -f $TMPDIR/base.apk ]]; then
-									DUMPAPK="$(appinfo -sort-i -d " " -o ands,pn -f "$TMPDIR/base.apk")"
-									if [[ $DUMPAPK != "" ]]; then
-										app=($DUMPAPK $DUMPAPK)
-										PackageName="${app[1]}"
-										ChineseName="${app[2]}"
-										rm -rf "$TMPDIR"/*
-									else
-										echoRgb "appinfo輸出失敗" "0"
-									fi
+		if [[ ${REPLY##*/} = Media && $1 = Apkname ]]; then
+			echoRgb "存在媒體資料夾" "2"
+			[[ ! -f $txt2 ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$txt2"
+			find "$REPLY" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | while read; do
+				echoRgb "${REPLY##*/}" && echo "${REPLY##*/}" >> "$txt2"
+			done
+			echoRgb "$txt2重新生成" "1"
+		else
+			unset PackageName NAME DUMPAPK ChineseName
+			. "$REPLY/app_details" &>/dev/null
+			[[ ! -f $txt && $1 = Apkname ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
+			if [[ $PackageName = "" || $ChineseName = "" ]]; then
+				if [[ ${REPLY##*/} != Media ]]; then
+					echoRgb "${REPLY##*/}包名獲取失敗，解壓縮獲取包名中..." "0"
+					compressed_file="$(find "$REPLY" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
+					if [[ $compressed_file != "" ]]; then
+						rm -rf "$TMPDIR"/*
+						case ${compressed_file##*.} in
+						lz4 | zst) pv "$compressed_file" | tar -I zstd -xmpf - -C "$TMPDIR"  --wildcards --no-anchored 'base.apk' ;;
+						tar) pv "$compressed_file" | tar -xmpf - -C "$TMPDIR"  --wildcards --no-anchored 'base.apk' ;;
+						*)
+							echoRgb "${compressed_file##*/} 壓縮包不支持解壓縮" "0"
+							Set_back
+							;;
+						esac
+						echo_log "${compressed_file##*/}解壓縮"
+						if [[ $result = 0 ]]; then
+							if [[ -f $TMPDIR/base.apk ]]; then
+								DUMPAPK="$(appinfo -sort-i -d " " -o ands,pn -f "$TMPDIR/base.apk")"
+								if [[ $DUMPAPK != "" ]]; then
+									app=($DUMPAPK $DUMPAPK)
+									PackageName="${app[1]}"
+									ChineseName="${app[2]}"
+									rm -rf "$TMPDIR"/*
+								else
+									echoRgb "appinfo輸出失敗" "0"
 								fi
 							fi
 						fi
 					fi
 				fi
-				if [[ $PackageName != "" && $ChineseName != "" ]]; then
-					case $1 in
-					Apkname)
-						echoRgb "$ChineseName $PackageName" && echo "$ChineseName $PackageName" >>"$txt" ;; 
-					convert)
-						if [[ ${REPLY##*/} = $PackageName ]]; then
-							mv "$REPLY" "${REPLY%/*}/$ChineseName" && echoRgb "${REPLY##*/} > $ChineseName"
-						else
-							mv "$REPLY" "${REPLY%/*}/$PackageName" && echoRgb "${REPLY##*/} > $PackageName"
-						fi ;;
-					esac
-				fi
+			fi
+			if [[ $PackageName != "" && $ChineseName != "" ]]; then
+				case $1 in
+				Apkname)
+					echoRgb "$ChineseName $PackageName" && echo "$ChineseName $PackageName" >>"$txt" ;; 
+				convert)
+					if [[ ${REPLY##*/} = $PackageName ]]; then
+						mv "$REPLY" "${REPLY%/*}/$ChineseName" && echoRgb "${REPLY##*/} > $ChineseName"
+					else
+						mv "$REPLY" "${REPLY%/*}/$PackageName" && echoRgb "${REPLY##*/} > $PackageName"
+					fi ;;
+				esac
 			fi
 		fi
 		let rgb_a++
@@ -650,13 +651,16 @@ Check_archive() {
 	rm -rf "$error_log"
 	FIND_PATH="$(find "$1" -maxdepth 3 -name "*.tar*" -type f 2>/dev/null | sort)"
 	i=1
-	r="$(echo "$FIND_PATH" | wc -l)"
-	while [[ $i -le $r ]]; do
-		unset REPLY
-		REPLY="$(echo "$FIND_PATH" | sed -n "${i}p")"
-		Validation_file "$REPLY"
-		[[ $result != 0 ]] && echo "效驗失敗:$MODDIR_NAME/$1">>"$error_log"
-		echoRgb "$i/$r個剩$((r - i))個 $((i * 100 / r))%"
+	r="$(find "$MODDIR" -maxdepth 2 -name "app_details" -type f 2>/dev/null | wc -l)"
+	find "$MODDIR" -maxdepth 2 -name "app_details" -type f 2>/dev/null | sort | while read; do
+		REPLY="${REPLY%/*}"
+		echoRgb "效驗第$i/$r個資料夾 剩下$((r - i))個" "3"
+		echoRgb "效驗:${REPLY##*/}"
+		find "$REPLY" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | sort | while read; do
+			Validation_file "$REPLY"
+			[[ $result != 0 ]] && echo "效驗失敗:$MODDIR_NAME/$1">>"$error_log"
+		done
+		echoRgb "$((i * 100 / r))%"
 		let i++ nskg++
 	done
 	endtime 1
@@ -1131,6 +1135,9 @@ Restore3)
 	rm -rf "$TMPDIR/scriptTMP"
 	;;
 Getlist)
+	case $MODDIR in
+	/storage/emulated/0/Android/* | /data/media/0/Android/* | /sdcard/Android/*) echoRgb "請勿在$MODDIR內生成列表" "0" && exit 2 ;;
+	esac
 	#效驗選填是否正確
 	isBoolean "$Lo" "Lo" && Lo="$nsx"
 	isBoolean "$debug_list" "debug_list" && debug_list="$nsx"
@@ -1246,7 +1253,6 @@ backup_media)
 			echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "2" && echoRgb "____________________________________" && let A++
 		done
 		Calculate_size "$Backup_folder"
-		echoRgb "目錄↓↓↓\n -$Backup_folder"
 		endtime 1 "自定義備份"
 	else
 		echoRgb "自定義路徑為空 無法備份" "0"
