@@ -222,7 +222,7 @@ backup_path() {
 	else
 		Backup_path="${Backup%/*}"
 	fi
-	echoRgb "$hx備份資料夾所使用分區統計如下↓\n -$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-3),$(NF-2),$(NF-1),$(NF)}' | sed 's/G//g' | awk 'END{print "總共:"$1"G已用:"$2"G剩餘:"$3"G使用率:"$4}')檔案系統:$(df -T "$Backup_path" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')\n -備份目錄輸出位置↓\n -$Backup"
+	echoRgb "$hx備份資料夾所使用分區統計如下↓\n -$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-3),$(NF-2),$(NF-1),$(NF)}' | sed 's/.$//g' | awk 'END{print "總共:"$1"G已用:"$2"G剩餘:"$3"G使用率:"$4}')檔案系統:$(df -T "$Backup_path" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')\n -備份目錄輸出位置↓\n -$Backup"
 	echoRgb "$outshow" "2"
 }
 Calculate_size() {
@@ -452,8 +452,13 @@ Release_data() {
 			app_details="$Backup_folder2/app_details"
 			if [[ -f $app_details ]]; then
 				FILE_PATH="$(cat "$app_details" | awk "/${FILE_NAME2}path/"'{print $1}' | cut -f2 -d '=' | sed 's/\"//g')"
-				[[ $FILE_PATH = "" ]] && echoRgb "解壓路徑獲取失敗" "0" || echoRgb "解壓路徑↓\n -$FILE_PATH" "2"
-				FILE_PATH="${FILE_PATH%/*}"
+				if [[ $FILE_PATH = "" ]]; then
+					echoRgb "解壓路徑獲取失敗" "0"
+				else
+					echoRgb "解壓路徑↓\n -$FILE_PATH" "2"
+					FILE_PATH="${FILE_PATH%/*}"
+					[[ ! -d $FILE_PATH ]] && mkdir -p "$FILE_PATH"
+				fi
 			fi
 		fi
 	esac
@@ -814,7 +819,7 @@ backup)
 			apk_path2="${apk_path2%/*}"
 			if [[ -d $apk_path2 ]]; then
 				echoRgb "備份第$i/$r個應用 剩下$((r - i))個" "3"
-				echoRgb "備份$name1 ($name2)" "2"
+				echoRgb "備份 $name1 \"$name2\"" "2"
 				unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 userSize dataSize obbSize
 				if [[ $name1 = *! || $name1 = *！ ]]; then
 					name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
@@ -858,7 +863,7 @@ backup)
 					[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)"
 					[[ $name2 = moe.shizuku.redirectstorage ]] && Backup_data "storage-isolation" "/data/adb/storage-isolation"
 				fi
-				endtime 2 "$name1備份" "3"
+				endtime 2 "$name1 備份" "3"
 				Occupation_status="$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
 				lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
 				echoRgb "完成$((i * 100 / r))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "3"
@@ -867,7 +872,7 @@ backup)
 				echoRgb "_________________$(endtime 1 "已經")___________________"
 				rgb_a="$rgb_d"
 			else
-				echoRgb "$name1[$name2]不在安裝列表，備份個寂寞？" "0"
+				echoRgb "$name1[$name2] 不在安裝列表，備份個寂寞？" "0"
 			fi
 			if [[ $i = $r ]]; then
 				endtime 1 "應用備份" "3"
