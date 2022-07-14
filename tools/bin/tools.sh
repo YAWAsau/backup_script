@@ -351,6 +351,7 @@ Backup_data() {
 	data) Size="$dataSize" ;;
 	obb) Size="$obbSize" ;;
 	*)
+		echo "$2" >"$2/PATH"
 		[[ -f $app_details ]] && Size="$(cat "$app_details" | awk "/$1Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')"
 		data_path="$2"
 		if [[ $1 != storage-isolation && $1 != thanox ]]; then
@@ -395,7 +396,7 @@ Backup_data() {
 				esac
 				if [[ $result = 0 ]]; then
 					if [[ $zsize != "" ]]; then
-						[[ $2 != $(cat "$app_details" | awk "/$1path/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g') ]] && echo "#$1path=\"$2\"" >>"$app_details"
+						rm -rf "$2/PATH"
 						if [[ $Size != "" ]]; then
 							echo "$(cat "$app_details" | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
 						else
@@ -439,79 +440,87 @@ Release_data() {
 	MODDIR_NAME="${MODDIR_NAME##*/}"
 	FILE_NAME="${tar_path##*/}"
 	FILE_NAME2="${FILE_NAME%%.*}"
-	echoRgb "恢復$FILE_NAME2數據" "3"
-	unset FILE_PATH
-	case $FILE_NAME2 in
-	user) [[ -d $X ]] && FILE_PATH="$path2" || echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0" ;;
-	data) FILE_PATH="$path/data" ;;
-	obb) FILE_PATH="$path/obb" ;;
-	thanox)	FILE_PATH="/data/system" && find "/data/system" -name "thanos*" -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
-	storage-isolation)	FILE_PATH="/data/adb" ;;
-	*)
-		if [[ $A != "" ]]; then
-			app_details="$Backup_folder2/app_details"
-			if [[ -f $app_details ]]; then
-				FILE_PATH="$(cat "$app_details" | awk "/${FILE_NAME2}path/"'{print $1}' | cut -f2 -d '=' | sed 's/\"//g')"
-				if [[ $FILE_PATH = "" ]]; then
-					echoRgb "解壓路徑獲取失敗" "0"
-				else
-					echoRgb "解壓路徑↓\n -$FILE_PATH" "2"
-					FILE_PATH="${FILE_PATH%/*}"
-					[[ ! -d $FILE_PATH ]] && mkdir -p "$FILE_PATH"
-				fi
-			fi
-		fi
-	esac
-	if [[ $FILE_PATH != "" ]]; then
-		case ${FILE_NAME##*.} in
-		lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$FILE_PATH" ;;
-		tar) [[ ${MODDIR_NAME##*/} = Media ]] && pv "$tar_path" | tar --recursive-unlink -xpf - -C "$FILE_PATH" || pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$FILE_PATH" ;;
-		*)
-			echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
-			Set_back
-			;;
-		esac
-	else
-		Set_back
-	fi
-	echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
-	if [[ $result = 0 ]]; then
+	case ${FILE_NAME##*.} in
+	lz4 | zst | tar)
+		echoRgb "恢復$FILE_NAME2數據" "3"
+		unset FILE_PATH
 		case $FILE_NAME2 in
-		user)
-			if [[ -d $X ]]; then
-				if [[ -f /config/sdcardfs/$name2/appid ]]; then
-					G="$(cat "/config/sdcardfs/$name2/appid")"
-				else
-					G="$(dumpsys package "$name2" | grep -w 'userId' | head -1)"
+		user) [[ -d $X ]] && FILE_PATH="$path2" || echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0" ;;
+		data) FILE_PATH="$path/data" ;;
+		obb) FILE_PATH="$path/obb" ;;
+		thanox)	FILE_PATH="/data/system" && find "/data/system" -name "thanos*" -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
+		storage-isolation)	FILE_PATH="/data/adb" ;;
+		*)
+			if [[ $A != "" ]]; then
+				if [[ ${MODDIR_NAME##*/} = Media ]]; then
+					case ${FILE_NAME##*.} in
+					tar) tar -xpf "$tar_path" -C "$TMPDIR" --wildcards --no-anchored 'PATH' && FILE_PATH="$(cat "$TMPDIR/$FILE_NAME2/PATH" 2>/dev/null)" ;;
+					esac
+					if [[ $FILE_PATH = "" ]]; then
+						echoRgb "解壓路徑獲取失敗" "0"
+					else
+						echoRgb "解壓路徑↓\n -$FILE_PATH" "2"
+						TMPPATH="$FILE_PATH"
+						FILE_PATH="${FILE_PATH%/*}"
+						[[ ! -d $FILE_PATH ]] && mkdir -p "$FILE_PATH"
+					fi
 				fi
-				G="$(echo "$G" | egrep -o '[0-9]+')"
-				if [[ $G != "" ]]; then
-					echoRgb "路徑:$X"
-					Path_details="$(stat -c "%A/%a %U/%G" "$X")"
-					[[ $user = 0 ]] && chown -hR "$G:$G" "$X/" || chown -hR "$user$G:$user$G" "$X/"
-					echo_log "設置用戶組:$(echo "$Path_details" | awk '{print $2}')"
-					restorecon -RFD "$X/" 2>/dev/null
-					echo_log "selinux上下文設置"
-				else
-					echoRgb "uid獲取失敗" "0"
-				fi
-			else
-				echoRgb "路徑$X不存在" "0"
 			fi
-			;;
-		data | obb)
-			[[ -d $path/$FILE_NAME2/$name2 ]] && chmod -R 0777 "$path/$FILE_NAME2/$name2"
-			;;
-		thanox)
-			restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)/" 2>/dev/null
-			echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
-			;;
-		storage-isolation)
-			restorecon -RF "/data/adb/storage-isolation/" 2>/dev/null
-			echo_log "selinux上下文設置"
-			;;
 		esac
-	fi
+		if [[ $FILE_PATH != "" ]]; then
+			case ${FILE_NAME##*.} in
+			lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$FILE_PATH" ;;
+			tar) [[ ${MODDIR_NAME##*/} = Media ]] && pv "$tar_path" | tar --recursive-unlink -xpf - -C "$FILE_PATH" || pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$FILE_PATH" ;;
+			esac
+		else
+			Set_back
+		fi
+		echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
+		if [[ $result = 0 ]]; then
+			[[ -d $TMPPATH ]] && rm -rf "$TMPPATH/PATH"
+			case $FILE_NAME2 in
+			user)
+				if [[ -d $X ]]; then
+					if [[ -f /config/sdcardfs/$name2/appid ]]; then
+						G="$(cat "/config/sdcardfs/$name2/appid")"
+					else
+						G="$(dumpsys package "$name2" | grep -w 'userId' | head -1)"
+					fi
+					G="$(echo "$G" | egrep -o '[0-9]+')"
+					if [[ $G != "" ]]; then
+						echoRgb "路徑:$X"
+						Path_details="$(stat -c "%A/%a %U/%G" "$X")"
+						[[ $user = 0 ]] && chown -hR "$G:$G" "$X/" || chown -hR "$user$G:$user$G" "$X/"
+						echo_log "設置用戶組:$(echo "$Path_details" | awk '{print $2}')"
+						restorecon -RFD "$X/" 2>/dev/null
+						echo_log "selinux上下文設置"
+					else
+						echoRgb "uid獲取失敗" "0"
+					fi
+				else
+					echoRgb "路徑$X不存在" "0"
+				fi
+				;;
+			data | obb)
+				[[ -d $path/$FILE_NAME2/$name2 ]] && chmod -R 0777 "$path/$FILE_NAME2/$name2"
+				;;
+			thanox)
+				restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)/" 2>/dev/null
+				echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
+				;;
+			storage-isolation)
+				restorecon -RF "/data/adb/storage-isolation/" 2>/dev/null
+				echo_log "selinux上下文設置"
+				;;
+			esac
+		fi
+		;;
+	*)
+		echoRgb "$FILE_NAME 壓縮包不支持解壓縮" "0"
+		Set_back
+		;;
+	esac
+	rm -rf "$TMPDIR"/*
 }
 installapk() {
 	stopscript
@@ -598,8 +607,8 @@ get_name(){
 					if [[ $compressed_file != "" ]]; then
 						rm -rf "$TMPDIR"/*
 						case ${compressed_file##*.} in
-						lz4 | zst) pv "$compressed_file" | tar -I zstd -xmpf - -C "$TMPDIR"  --wildcards --no-anchored 'base.apk' ;;
-						tar) pv "$compressed_file" | tar -xmpf - -C "$TMPDIR"  --wildcards --no-anchored 'base.apk' ;;
+						lz4 | zst) pv "$compressed_file" | tar -I zstd -xmpf - -C "$TMPDIR" --wildcards --no-anchored 'base.apk' ;;
+						tar) pv "$compressed_file" | tar -xmpf - -C "$TMPDIR" --wildcards --no-anchored 'base.apk' ;;
 						*)
 							echoRgb "${compressed_file##*/} 壓縮包不支持解壓縮" "0"
 							Set_back
