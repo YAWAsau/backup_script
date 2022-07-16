@@ -222,7 +222,7 @@ backup_path() {
 	else
 		Backup_path="${Backup%/*}"
 	fi
-	echoRgb "$hx備份資料夾所使用分區統計如下↓\n -$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-3),$(NF-2),$(NF-1),$(NF)}' | sed 's/.$//g' | awk 'END{print "總共:"$1"G已用:"$2"G剩餘:"$3"G使用率:"$4}')檔案系統:$(df -T "$Backup_path" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')\n -備份目錄輸出位置↓\n -$Backup"
+	echoRgb "$hx備份資料夾所使用分區統計如下↓\n -$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-3),$(NF-2),$(NF-1),$(NF)}' | awk 'END{print "總共:"$1"已用:"$2"剩餘:"$3"使用率:"$4}')檔案系統:$(df -T "$Backup_path" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')\n -備份目錄輸出位置↓\n -$Backup"
 	echoRgb "$outshow" "2"
 }
 Calculate_size() {
@@ -351,12 +351,12 @@ Backup_data() {
 	data) Size="$dataSize" ;;
 	obb) Size="$obbSize" ;;
 	*)
-		echo "$2" >"$2/PATH"
 		[[ -f $app_details ]] && Size="$(cat "$app_details" | awk "/$1Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')"
 		data_path="$2"
 		if [[ $1 != storage-isolation && $1 != thanox ]]; then
 			Compression_method1="$Compression_method"
 			Compression_method=tar
+			echo "$2" >"$2/PATH"
 		fi
 		zsize=1
 		;;
