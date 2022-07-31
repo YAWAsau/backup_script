@@ -322,6 +322,12 @@ Backup_apk() {
 					rm -rf "$Backup_folder"
 				fi
 				if [[ $name2 = com.android.chrome ]]; then
+					webview_stat="$(dumpsys webviewupdate)"
+					current_ver="$(echo "$webview_stat" | grep 'Current WebView package' | grep -oE '[0-9\.]{2,}')"
+					current_code="$(echo "$webview_stat" | grep "$current_ver" | grep -oE '[0-9]{9}')"
+					dumpsys package | grep 'name:com.google.android.trichromelibrary' | sed "s/ version:/_/g ; /$current_code/d" | cut -f2 -d ':' | while read ; do
+						pm uninstall "$REPLY"
+					done
 					#刪除所有舊apk ,保留一個最新apk進行備份
 					ReservedNum=1
 					FileNum="$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)"
@@ -356,7 +362,7 @@ Backup_data() {
 		if [[ $1 != storage-isolation && $1 != thanox ]]; then
 			Compression_method1="$Compression_method"
 			Compression_method=tar
-			echo "$2" >"$2/PATH"
+			[[ -d $data_path ]] && echo "$2" >"$2/PATH"
 		fi
 		zsize=1
 		;;
