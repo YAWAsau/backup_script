@@ -8,7 +8,6 @@ if [[ ! -d $tools_path ]]; then
 fi
 bin_path="$tools_path/bin"
 script_path="$tools_path/script"
-[[ ! -d $tools_path/apk ]] && echo "$tools_path/apk目錄遺失" && EXIT="true"
 if [[ ! -d $bin_path ]]; then
 	bin_path="${MODDIR%/*}/tools/bin"
 	[[ ! -d $bin_path ]] && echo "$bin_path關鍵目錄遺失" && EXIT="true"
@@ -53,8 +52,12 @@ backup|Restore|Restore2|Getlist)
 			pm enable "ice.message" &>/dev/null
 			if [[ $(pm path --user "$user" ice.message 2>/dev/null) = "" ]]; then
 				echoRgb "未安裝toast 開始安裝" "0"
-				cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && INSTALL "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
-				[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
+				if [[ ! -d $tools_path/apk ]] ; then
+					cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && INSTALL "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
+					[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
+				else
+					echo "$tools_path/apk目錄遺失"
+				fi
 			fi
 		else
 			pm disable "ice.message" &>/dev/null
