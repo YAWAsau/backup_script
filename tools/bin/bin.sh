@@ -48,7 +48,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.5.8"
+backup_version="V15.5.9"
 #設置二進制命令目錄位置
 if [[ $bin_path = "" ]]; then
 	echoRgb "未正確指定bin.sh位置" "0"
@@ -128,6 +128,16 @@ appinfo() {
 }
 down() {
 	exec app_process /system/bin --nice-name=down Han.download.Down "$@"
+}
+unset tar zstd pv
+tar() {
+	backup_tar "$@"
+}
+zstd() {
+	backup_zstd "$@"
+}
+pv() {
+	backup_pv "$@"
 }
 Set_back() {
 	return 1
@@ -211,8 +221,9 @@ kill_Serve() {
 	{
 	script="${0##*/}"
 	if [[ $script != "" ]]; then
-		process_name tar
-		process_name pv
+		process_name backup_tar
+		process_name backup_pv
+		process_name backup_zstd
 	fi
 	} &
 	wait

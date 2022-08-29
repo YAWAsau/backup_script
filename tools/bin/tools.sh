@@ -325,12 +325,6 @@ Backup_apk() {
 					rm -rf "$Backup_folder"
 				fi
 				if [[ $name2 = com.android.chrome ]]; then
-					webview_stat="$(dumpsys webviewupdate)"
-					current_ver="$(echo "$webview_stat" | grep 'Current WebView package' | grep -oE '[0-9\.]{2,}')"
-					current_code="$(echo "$webview_stat" | grep "$current_ver" | grep -oE '[0-9]{9}')"
-					dumpsys package | grep 'name:com.google.android.trichromelibrary' | sed "s/ version:/_/g ; /$current_code/d" | cut -f2 -d ':' | while read ; do
-						pm uninstall "$REPLY"
-					done
 					#刪除所有舊apk ,保留一個最新apk進行備份
 					ReservedNum=1
 					FileNum="$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)"
@@ -484,7 +478,7 @@ Release_data() {
 		else
 			Set_back
 		fi
-		echo_log "$FILE_NAME 解壓縮($FILE_NAME2)"
+		echo_log "解壓縮${FILE_NAME##*.}"
 		if [[ $result = 0 ]]; then
 			[[ -d $TMPPATH ]] && rm -rf "$TMPPATH/PATH"
 			case $FILE_NAME2 in
@@ -666,7 +660,7 @@ Validation_file() {
 	lz4 | zst) zstd -t "$1" &>/dev/null ;;
 	tar) tar -tf "$1" &>/dev/null ;;
 	esac
-	echo_log "效驗$MODDIR_NAME/$FILE_NAME"
+	echo_log "效驗$FILE_NAME"
 }
 Check_archive() {
 	starttime1="$(date -u "+%s")"
