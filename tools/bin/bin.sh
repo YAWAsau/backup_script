@@ -48,7 +48,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.5.9"
+backup_version="V15.6.0"
 #設置二進制命令目錄位置
 if [[ $bin_path = "" ]]; then
 	echoRgb "未正確指定bin.sh位置" "0"
@@ -109,6 +109,7 @@ if [[ -d $bin_path ]]; then
 			fi
 		done
 	fi
+	[[ -f $filepath/backup_zstd ]] && ln -fs "$filepath/backup_zstd" "$filepath/zstd"
 else
 	echoRgb "遺失$bin_path" "0"
 	exit 1
@@ -123,22 +124,8 @@ if [[ $(which busybox) = "" ]]; then
 	exit 1
 fi
 #下列為自定義函數
-appinfo() {
-	exec app_process /system/bin --nice-name=appinfo indi.appinfo.AppInfo "$@"
-}
-down() {
-	exec app_process /system/bin --nice-name=down Han.download.Down "$@"
-}
-unset tar zstd pv
-tar() {
-	backup_tar "$@"
-}
-zstd() {
-	backup_zstd "$@"
-}
-pv() {
-	backup_pv "$@"
-}
+alias appinfo="exec app_process /system/bin --nice-name=appinfo indi.appinfo.AppInfo $@"
+alias down="exec app_process /system/bin --nice-name=down Han.download.Down $@"
 Set_back() {
 	return 1
 }
@@ -222,7 +209,7 @@ kill_Serve() {
 	script="${0##*/}"
 	if [[ $script != "" ]]; then
 		process_name backup_tar
-		process_name backup_pv
+		process_name pv
 		process_name backup_zstd
 	fi
 	} &

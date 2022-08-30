@@ -30,6 +30,8 @@ else
 	alias INSTALL="pm install -i com.android.vending --user $user -r -t"
 	alias create="pm install-create -i com.android.vending --user $user -t"
 fi
+alias tar="backup_tar $@"
+alias zstd="backup_zstd $@"
 case $operate in
 backup|Restore|Restore2|Getlist)
 	user_id="$(ls -1 "/data/user" 2>/dev/null)"
