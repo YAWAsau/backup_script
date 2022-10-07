@@ -48,7 +48,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.6.0"
+backup_version="V15.6.3"
 #設置二進制命令目錄位置
 if [[ $bin_path = "" ]]; then
 	echoRgb "未正確指定bin.sh位置" "0"
@@ -109,7 +109,8 @@ if [[ -d $bin_path ]]; then
 			fi
 		done
 	fi
-	[[ -f $filepath/backup_zstd ]] && ln -fs "$filepath/backup_zstd" "$filepath/zstd"
+	[[ -f $filepath/Zstd ]] && ln -fs "$filepath/Zstd" "$filepath/zstd"
+	[[ -f $filepath/Tar ]] && ln -fs "$filepath/Tar" "$filepath/tar"
 else
 	echoRgb "遺失$bin_path" "0"
 	exit 1
@@ -138,15 +139,6 @@ endtime() {
 	endtime="$(date -u "+%s")"
 	duration="$(echo $((endtime - starttime)) | awk '{t=split("60 秒 60 分 24 時 999 天",a);for(n=1;n<t;n+=2){if($1==0)break;s=$1%a[n]a[n+1]s;$1=int($1/a[n])}print s}')"
 	[[ $duration != "" ]] && echoRgb "$2用時:$duration" || echoRgb "$2用時:0秒"
-}
-stopscript() {
-	if [[ -f $TMPDIR/STOP_script ]]; then
-		echoRgb "停止腳本"
-		longToast "停止腳本"
-		Print "腳本被終止-停止腳本"
-		rm -rf "$TMPDIR/STOP_script"
-		exit
-	fi
 }
 nskg=1
 Print() {
@@ -206,11 +198,15 @@ process_name() {
 }
 kill_Serve() {
 	{
-	script="${0##*/}"
-	if [[ $script != "" ]]; then
-		process_name backup_tar
-		process_name pv
-		process_name backup_zstd
+	process_name Tar
+	process_name pv
+	process_name Zstd
+	if [[ -e $TMPDIR/scriptTMP ]]; then
+		scriptname="$(cat "$TMPDIR/scriptTMP")"
+		echoRgb "腳本殘留進程，將殺死後退出腳本，請重新執行一次\n -殺死$scriptname" "0"
+		rm -rf "$TMPDIR/scriptTMP"
+		process_name "$scriptname"
+		exit
 	fi
 	} &
 	wait
@@ -232,7 +228,7 @@ Open_apps="$(appinfo -d "(" -ed ")" -o ands,pn -ta c 2>/dev/null)"
 Open_apps2="$(echo "$Open_apps" | cut -f2 -d '(' | sed 's/)//g')"
 raminfo="$(awk '($1 == "MemTotal:"){print $2/1000"MB"}' /proc/meminfo 2>/dev/null)"
 echoRgb "---------------------SpeedBackup---------------------"
-echoRgb "當前腳本執行路徑:$MODDIR\n -已開機:$(Show_boottime)\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(cat "/data/adb/magisk/util_functions.sh" 2>/dev/null | grep "MAGISK_VER_CODE" | cut -f2 -d '=')\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)\n -RAM:$raminfo\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
+echoRgb "當前腳本執行路徑:$MODDIR\n -已開機:$(Show_boottime)\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(magisk -c)\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)\n -RAM:$raminfo\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
 update_script() {
 	[[ $zipFile = "" ]] && zipFile="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f 2>/dev/null)"
 	if [[ $zipFile != "" ]]; then

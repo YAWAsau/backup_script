@@ -2,6 +2,7 @@
 MODDIR="$MODDIR"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
+script="${0##*/}"
 if [[ ! -d $tools_path ]]; then
 	tools_path="${MODDIR%/*}/tools"
 	[[ ! -d $tools_path ]] && echo "$tools_path二進制目錄遺失" && EXIT="true"
@@ -18,6 +19,7 @@ fi
 [[ $EXIT = true ]] && exit 1
 . "$conf_path"
 . "$bin_path/bin.sh"
+echo "$(sed 's/true/1/g ; s/false/0/g' "$conf_path")">"$conf_path"
 [[ $user = "" ]] && user=0
 path="/data/media/$user/Android"
 path2="/data/user/$user"
@@ -30,8 +32,6 @@ else
 	alias INSTALL="pm install -i com.android.vending --user $user -r -t"
 	alias create="pm install-create -i com.android.vending --user $user -t"
 fi
-alias tar="backup_tar $@"
-alias zstd="backup_zstd $@"
 case $operate in
 backup|Restore|Restore2|Getlist)
 	user_id="$(ls -1 "/data/user" 2>/dev/null)"
@@ -155,13 +155,13 @@ if [[ $json != "" ]]; then
 							am start -a android.intent.action.VIEW -d "$zip_url" 2>/dev/null
 							echo_log "跳轉瀏覽器"
 							if [[ $result = 0 ]]; then
-								echoRgb "等待下載中.....請儘速點擊下載 否則腳本將等待10秒後自動退出"
+								echoRgb "等待下載中.....請儘速點擊下載 否則腳本將等待15秒後自動退出"
 								zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 								seconds=1
 								while [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | egrep -wo "^backup_settings.conf$") = "" ]]; do
 									zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 									echoRgb "$seconds秒"
-									[[ $seconds = 10 ]] && exit 2
+									[[ $seconds = 15 ]] && exit 2
 									sleep 1 && let seconds++
 								done
 								update_script
@@ -248,14 +248,12 @@ Calculate_size() {
 }
 #分區佔用信息
 partition_info() {
-	stopscript
 	Occupation_status="$(df -h "${1%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
 	lxj="$(echo "$Occupation_status" | awk '{print $2}' | sed 's/%//g')"
 	[[ $lxj -ge 97 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
 }
 Backup_apk() {
 	#檢測apk狀態進行備份
-	stopscript
 	#創建APP備份文件夾
 	[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
 	apk_version2="$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)"
@@ -276,10 +274,15 @@ Backup_apk() {
 			;;
 		esac
 		if [[ $nobackup != true ]]; then
-			let osn++
 			if [[ $apk_version != "" ]]; then
+				let osn++
+				update_apk="$(echo "$name1 \"$name2\"")"
+				update_apk2="$(echo "$update_apk\n$update_apk2")"
 				echoRgb "版本:$apk_version>$apk_version2"
 			else
+				let osk++
+				add_app="$(echo "$name1 \"$name2\"")"
+				add_app2="$(echo "$add_app\n$add_app2")"
 				echoRgb "版本:$apk_version2"
 			fi
 			partition_info "$Backup"
@@ -350,7 +353,6 @@ Backup_apk() {
 #檢測數據位置進行備份
 Backup_data() {
 	unset zsize Size data_path && data_path="$path/$1/$name2"
-	stopscript
 	case $1 in
 	user) Size="$userSize" && data_path="$path2/$name2" ;;
 	data) Size="$dataSize" ;;
@@ -373,7 +375,6 @@ Backup_data() {
 			echoRgb "備份$1數據"
 			case $1 in
 			user)
-				let osx++
 				case $Compression_method in
 				tar | Tar | TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
 				zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
@@ -381,10 +382,6 @@ Backup_data() {
 				esac
 				;;
 			*)
-				case $1 in
-				data) let osb++ ;;
-				obb) let osg++ ;;
-				esac
 				case $Compression_method in
 				tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
 				zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
@@ -424,21 +421,11 @@ Backup_data() {
 			echoRgb "$1數據無發生變化 跳過備份" "2"
 		fi
 	else
-		if [[ -f $data_path ]]; then
-			echoRgb "$1是一個文件 不支持備份" "0"
-		else
-			case $1 in
-			user) let osz++ ;;
-			data) let osd++ ;;
-			obb) let ose++ ;;
-			esac
-			echoRgb "$1數據不存在跳過備份" "2"
-		fi
+		[[ -f $data_path ]] && echoRgb "$1是一個文件 不支持備份" "0" || echoRgb "$1數據不存在跳過備份" "2"
 	fi
 	partition_info "$Backup"
 }
 Release_data() {
-	stopscript
 	tar_path="$1"
 	X="$path2/$name2"
 	MODDIR_NAME="${tar_path%/*}"
@@ -528,7 +515,6 @@ Release_data() {
 	rm -rf "$TMPDIR"/*
 }
 installapk() {
-	stopscript
 	apkfile="$(find "$Backup_folder" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
 	if [[ $apkfile != "" ]]; then
 		rm -rf "$TMPDIR"/*
@@ -658,11 +644,12 @@ Validation_file() {
 	MODDIR_NAME="${1%/*}"
 	MODDIR_NAME="${MODDIR_NAME##*/}"
 	FILE_NAME="${1##*/}"
+	echoRgb "效驗$FILE_NAME"
 	case ${FILE_NAME##*.} in
 	lz4 | zst) zstd -t "$1" &>/dev/null ;;
 	tar) tar -tf "$1" &>/dev/null ;;
 	esac
-	echo_log "效驗$FILE_NAME"
+	echo_log "效驗"
 }
 Check_archive() {
 	starttime1="$(date -u "+%s")"
@@ -677,13 +664,13 @@ Check_archive() {
 		echoRgb "效驗:${REPLY##*/}"
 		find "$REPLY" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | sort | while read; do
 			Validation_file "$REPLY"
-			[[ $result != 0 ]] && echo "效驗失敗:$MODDIR_NAME/$1">>"$error_log"
+			[[ $result != 0 ]] && echo "$REPLY">>"$error_log"
 		done
 		echoRgb "$((i * 100 / r))%"
 		let i++ nskg++
 	done
 	endtime 1
-	[[ -f $error_log ]] && echoRgb "以下為失敗的檔案\n$(cat "$error_log")" || echoRgb "恭喜~~全數效驗通過" 
+	[[ -f $error_log ]] && echoRgb "以下為失敗的檔案\n $(cat "$error_log")" || echoRgb "恭喜~~全數效驗通過" 
 	rm -rf "$error_log"
 }
 case $operate in
@@ -810,14 +797,14 @@ backup)
 	TIME="$starttime1"
 	en=118
 	{
-		osn=0; osx=0; osb=0; osg=0; osz=0; osd=0; ose=0; osj=0
+		echo "$script">"$TMPDIR/scriptTMP" && echo "$script">"$TMPDIR/scriptTMP"
+		osn=0; osj=0; osk=0
 		#獲取已經開啟的無障礙
 		var="$(settings get secure enabled_accessibility_services)"
 		#獲取預設鍵盤
 		keyboard="$(settings get secure default_input_method)"
 		[[ $(cat "$txt" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${keyboard%/*}$") != ${keyboard%/*} ]] && unset keyboard
 		while [[ $i -le $r ]]; do
-			stopscript
 			[[ $en -ge 229 ]] && en=118
 			unset name1 name2 apk_path apk_path2
 			if [[ $1 != "" ]]; then
@@ -835,7 +822,7 @@ backup)
 				echoRgb "備份第$i/$r個應用 剩下$((r - i))個" "3"
 				echoRgb "備份 $name1 \"$name2\"" "2"
 				unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 userSize dataSize obbSize
-				if [[ $name1 = *! || $name1 = *！ ]]; then
+				if [[ $name1 = !* || $name1 = ！* ]]; then
 					name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
 					echoRgb "跳過備份所有數據" "0"
 					No_backupdata=1
@@ -906,7 +893,9 @@ backup)
 					settings put secure default_input_method "$keyboard" &>/dev/null
 					echo_log "設置鍵盤$(appinfo -d "(" -ed ")" -o ands,pn -pn "${keyboard%/*}" 2>/dev/null)"
 				fi
-				echoRgb "\n -已更新的apk=\"$osn\"\n -apk版本號無變化=\"$osj\"\n -user數據已備份=\"$osx\"\n -data數據已備份=\"$osb\"\n -obb數據已備份=\"$osg\"\n -user數據不存在=\"$osz\"\n -obb數據不存在=\"$osd\"\n -obb數據不存在=\"$ose\"" "3"
+				[[ $update_apk2 = "" ]] && update_apk2="暫無更新"
+				[[ $add_app2 = "" ]] && add_app2="暫無更新"
+				echoRgb "\n -已更新的apk=\"$osn\"\n -已新增的備份=\"$osk\"\n -apk版本號無變化=\"$osj\"\n -下列為版本號已變更的應用\n$update_apk2\n -新增的備份....\n$add_app2" "3"
 				echo "$(sort "$txt2" | sed -e '/^$/d')" >"$txt2"
 				if [[ $backup_media = true ]]; then
 					A=1
@@ -922,7 +911,6 @@ backup)
 						mediatxt="$Backup/mediaList.txt"
 						[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$mediatxt"
 						echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | while read; do
-							stopscript
 							echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
 							starttime2="$(date -u "+%s")"
 							Backup_data "${REPLY##*/}" "$REPLY"
@@ -995,8 +983,8 @@ Restore)
 	TIME="$starttime1"
 	en=118
 	{
+		echo "$script">"$TMPDIR/scriptTMP"
 		while [[ $i -le $r ]]; do
-			stopscript
 			[[ $en -ge 229 ]] && en=118
 			echoRgb "恢複第$i/$r個應用 剩下$((r - i))個" "3"
 			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
@@ -1079,6 +1067,7 @@ Restore2)
 	#記錄開始時間
 	starttime1="$(date -u "+%s")"
 	{
+		echo "$script">"$TMPDIR/scriptTMP"
 		Backup_folder="$MODDIR"
 		if [[ ! -f $Backup_folder/app_details ]]; then
 			echoRgb "$Backup_folder/app_details遺失，無法獲取包名" "0" && exit 1
@@ -1086,6 +1075,7 @@ Restore2)
 			. "$Backup_folder/app_details" &>/dev/null
 		fi
 		name1="$ChineseName"
+		[[ $name1 = "" ]] && name1="${Backup_folder##*/}"
 		[[ $name1 = "" ]] && echoRgb "應用名獲取失敗" "0" && exit 2
 		name2="$PackageName"
 		if [[ $name2 = "" ]]; then
@@ -1142,8 +1132,8 @@ Restore3)
 	A=1
 	B="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	[[ $B = "" ]] && echoRgb "mediaList.txt壓縮包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取列表再來恢復" "0" && exit 1
+	echo "$script">"$TMPDIR/scriptTMP"
 	while [[ $A -le $B ]]; do
-		stopscript
 		name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${A}p" | awk '{print $1}')"
 		starttime2="$(date -u "+%s")"
 		echoRgb "恢復第$A/$B個壓縮包 剩下$((B - A))個" "3"
@@ -1163,7 +1153,7 @@ Getlist)
 	txtpath="$MODDIR"
 	[[ $debug_list = true ]] && txtpath="${txtpath/'/storage/emulated/'/'/data/media/'}"
 	nametxt="$txtpath/appList.txt"
-	[[ ! -e $nametxt ]] && echo '#不需要備份的應用請在開頭注釋# 比如#酷安 xxxxxxxx\n#不需要備份數據比如酷安! xxxxxxxx應用名後方加一個驚嘆號即可 注意是應用名不是包名' >"$nametxt"
+	[[ ! -e $nametxt ]] && echo '#不需要備份的應用請在開頭注釋# 比如#酷安 xxxxxxxx\n#不需要備份數據比如!酷安 xxxxxxxx應用名前方方加一個驚嘆號即可 注意是應用名不是包名' >"$nametxt"
 	echoRgb "請勿關閉腳本，等待提示結束"
 	rgb_a=118
 	rm -rf "$MODDIR/tmp"
@@ -1261,8 +1251,8 @@ backup_media)
 		[[ -f $app_details ]] && . "$app_details" &>/dev/null || touch "$app_details"
 		mediatxt="$Backup/mediaList.txt"
 		[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$mediatxt"
+		echo "$script">"$TMPDIR/scriptTMP"
 		echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | while read; do
-			stopscript
 			echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
 			starttime2="$(date -u "+%s")" 
 			[[ ${REPLY: -1} = / ]] && REPLY="${REPLY%?}"
@@ -1273,6 +1263,7 @@ backup_media)
 		done
 		Calculate_size "$Backup_folder"
 		endtime 1 "自定義備份"
+		rm -rf "$TMPDIR/scriptTMP"
 	else
 		echoRgb "自定義路徑為空 無法備份" "0"
 	fi
