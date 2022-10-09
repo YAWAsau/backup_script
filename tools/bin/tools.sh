@@ -183,6 +183,75 @@ if [[ $json != "" ]]; then
 	fi
 fi
 Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
+install_YT() {
+	ls -t "$MODDIR"/*.zip &>/dev/bull | while read ; do
+		unset model PKG apkname
+		if [[ $(unzip -l "$REPLY" | awk '{print $4}' | egrep -o "^music.apk$") != "" ]]; then
+			model=YouTubeMusic
+			PKG=com.google.android.apps.youtube.music
+			apkname=music.apk
+		else
+			if [[ $(unzip -l "$REPLY" | awk '{print $4}' | egrep -o "^revanced.apk$") != "" ]]; then
+				model=YouTube
+				PKG=com.google.android.youtube
+				apkname=revanced.apk
+			fi
+		fi
+		if [[ $model != "" ]]; then
+			echoRgb "安裝Re $model" "1"
+			modules_path="/data/adb/modules/$model"
+			app_path="$(pm path "$PKG" | grep -v '/data/app/' | sed 's/package://g')"
+			rm -rf "$modules_path" &>/dev/null
+			[[ ! -d $modules_path ]] && mkdir -p "$modules_path"
+			[[ $app_path != "" ]] && File_Dir="$modules_path/system/${app_path%/*}" || File_Dir="$modules_path/system/priv-app"
+			mkdir -p "$File_Dir"
+			touch "$File_Dir/.replace"
+			chown root:root "$File_Dir/.replace"
+			[[ ! -d $modules_path/system/etc/permissions ]] && mkdir -p "$modules_path/system/etc/permissions"
+			unzip -o "$REPLY" -j bin/sqlite3_arm64-v8a -d "$modules_path/bin" &>/dev/null
+			unzip -o "$REPLY" -j system/priv-app/* -d "$File_Dir" &>/dev/null
+			if [[ $app_path = "" ]]; then
+				if [[ $(pm path "$PKG" | sed 's/package://g') = "" ]]; then
+					echoRgb "install $model apk"
+					cp -r "$File_Dir/"*.apk "$TMPDIR" && INSTALL "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
+				fi
+			fi
+			unzip -o "$REPLY" -j system/etc/permissions/* -d "$modules_path/system/etc/permissions" &>/dev/null
+			ln -sfT "$modules_path/bin/sqlite3_arm64-v8a" "$modules_path/bin/sqlite3"
+			unzip -o "$REPLY" -j "$apkname" -d "$modules_path" &>/dev/null
+			unzip -o "$File_Dir/base.apk" lib/$abi/* -d "$File_Dir" &>/dev/null
+			find "$modules_path" -type d | while read ;do
+				chmod 755 "$REPLY"
+			done
+			find "$modules_path" -type f | while read ;do
+				chmod 644 "$REPLY"
+			done
+			echo '#!/system/bin/sh\nMODDIR="${0%/*}"'>"$modules_path/service.sh"
+			echo 'while [[ "$(getprop sys.boot_completed | tr -d '\r')" != "1" ]]; do sleep 1; done'>>"$modules_path/service.sh"
+			echo "base_path=\"$modules_path/$apkname\"\nstock_path=\"\$(pm path "$PKG" | head -1 | sed 's/package://g')\"\numount -l \"\$stock_path\"\nchmod 666 \"\$base_path\"\nchcon u:object_r:system_file:s0 \"\$base_path\"\nmount -o bind \"\$base_path\" \"\$stock_path\"">>"$modules_path/service.sh"
+			echo "PS=com.android.vending\ncmd appops set --uid \"\$PS\" GET_USAGE_STATS ignore
+for user_id in \$(ls /data/user); do
+	pm disable --user \"\$user_id\" \"\$PS\"
+	\"\$MODDIR/bin/sqlite3\" \"/data/user/\$user_id/\$PS/databases/library.db\" \"UPDATE ownership SET doc_type = '25' WHERE doc_id = '$PKG'\"; 
+	\"\$MODDIR/bin/sqlite3\" \"/data/user/\$user_id/\$PS/databases/localappstate.db\" \"UPDATE appstate SET auto_update = '2' WHERE package_name = '$PKG'\"; 
+	rm -rf \"/data/user/\$user_id/\$PS/cache/\"*
+	pm enable --user \"\$user_id\" \"\$PS\"
+done">>"$modules_path/service.sh"
+			chmod -R 755 "$File_Dir/lib/$abi"
+			chmod -R 755 "$modules_path/bin"
+			mv "$File_Dir/lib/$abi" "$File_Dir/lib/$ARCH"
+			echo "id=$model
+name=$model的破解版本 替代Vanced
+version="V$(appinfo -o vn -f "$modules_path/$apkname")"
+versionCode="$(appinfo -o vc -f "$modules_path/$apkname")"
+author=selfmuser，落葉淒涼(修改啟動腳本與優化刷入過程)
+description=$model Revanced Extended Installer">"$modules_path/module.prop"
+			#rm -rf "$REPLY"
+			echoRgb "安裝完成" "2"
+		fi
+	done
+	[[ $(ls -t "$MODDIR"/*.zip &>/dev/bull) = "" ]] && echoRgb "未發現任何YT模塊，請放到本腳本目錄後重新嘗試" "0"
+}
 backup_path() {
 	if [[ $Output_path != "" ]]; then
 		[[ ${Output_path: -1} = / ]] && Output_path="${Output_path%?}"
@@ -719,6 +788,8 @@ backup)
 	D="1"
 	C="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	if [[ $delete_folder = true ]]; then
+		echoRgb "假設檢查到已卸載應用時操作？\n -音量上刪除資料夾，下移動到其他處"
+		get_version "刪除" "移動到其他處" && operate="$branch"
 		if [[ -d $Backup ]]; then
 			if [[ $1 = "" ]]; then
 				find "$Backup" -maxdepth 1 -type d 2>/dev/null | sort | while read; do
@@ -726,8 +797,6 @@ backup)
 						unset PackageName
 						. "$REPLY/app_details" &>/dev/null
 						if [[ $PackageName != "" && $(pm path --user "$user" "$PackageName" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
-							echoRgb "檢查到已卸載應用\n -音量上刪除資料夾，下移動到其他處"
-							get_version "刪除" "移動到其他處" && operate="$branch"
 							if [[ $operate = true ]]; then
 								rm -rf "$REPLY"
 								echoRgb "${REPLY##*/}不存在系統 刪除資料夾" "0"
@@ -784,6 +853,7 @@ backup)
 	[[ ! -f $Backup/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/重新生成應用列表.sh"
 	[[ ! -f $Backup/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/轉換資料夾名稱.sh"
 	[[ ! -f $Backup/壓縮檔完整性檢查.sh ]] && cp -r "$script_path/check_file" "$Backup/壓縮檔完整性檢查.sh"
+	[[ ! -f $Backup/安裝YT或是YTmusic.sh ]] && cp -r "$MODDIR/安裝YT或是YTmusic.sh" "$Backup/安裝YT或是YTmusic.sh"
 	[[ -d $Backup/Media ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
 	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#使用者\nuser=\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 	filesha256="$(sha256sum "$bin_path/tools.sh" | cut -d" " -f1)"
@@ -1244,6 +1314,7 @@ backup_media)
 		[[ ! -f $Backup/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/重新生成應用列表.sh"
 		[[ ! -f $Backup/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/轉換資料夾名稱.sh"
 		[[ ! -f $Backup/壓縮檔完整性檢查.sh ]] && cp -r "$script_path/check_file" "$Backup/壓縮檔完整性檢查.sh"
+		[[ ! -f $Backup/安裝YT或是YTmusic.sh ]] && cp -r "$MODDIR/安裝YT或是YTmusic.sh" "$Backup/安裝YT或是YTmusic.sh"
 		[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
 		[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 		app_details="$Backup_folder/app_details"
@@ -1267,5 +1338,8 @@ backup_media)
 	else
 		echoRgb "自定義路徑為空 無法備份" "0"
 	fi
+	;;
+YT)
+	install_YT
 	;;
 esac
