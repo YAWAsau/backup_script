@@ -11,7 +11,7 @@ echoRgb() {
 	else
 		echo -e "\e[38;5;${rgb_a}m -$1\e[0m"
 	fi
-	[[ $Status_log != "" ]] && echo " -$(date '+%T') $1" >>"$Status_log"
+	#[[ $Status_log != "" ]] && echo " -$(date '+%T') $1" >>"$Status_log"
 }
 [ "$rgb_a" = "" ] && rgb_a=214
 if [ "$(whoami)" != root ]; then
@@ -21,7 +21,6 @@ fi
 abi="$(getprop ro.product.cpu.abi)"
 case $abi in
 arm64*)
-	ARCH=arm64
 	if [[ $(getprop ro.build.version.sdk) -lt 24 ]]; then
 		echoRgb "設備Android $(getprop ro.build.version.release)版本過低 請升級至Android 8+" "0"
 		exit 1
@@ -49,15 +48,15 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.6.4"
+backup_version="V15.6.5"
 #設置二進制命令目錄位置
 if [[ $bin_path = "" ]]; then
 	echoRgb "未正確指定bin.sh位置" "0"
 	exit 2
 fi
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
-Status_log="$MODDIR/Log.txt"
-rm -rf "$Status_log"
+#Status_log="$MODDIR/Log.txt"
+#rm -rf "$Status_log"
 filepath="/data/backup_tools"
 busybox="$filepath/busybox"
 busybox2="$bin_path/busybox"
@@ -236,13 +235,7 @@ update_script() {
 		case $(echo "$zipFile" | wc -l) in
 		1)
 			if [[ $(unzip -l "$zipFile" | awk '{print $4}' | egrep -o "^backup_settings.conf$") = "" ]]; then
-				if [[ $(unzip -l "$zipFile" | awk '{print $4}' | egrep -o "^music.apk$") != "" ]]; then
-					echoRgb "發現YTmusic模塊" "1"
-				elif [[ $(unzip -l "$zipFile" | awk '{print $4}' | egrep -o "^revanced.apk$") != "" ]]; then
-					echoRgb "發現YouTube模塊" "1"
-				else
-					echoRgb "${zipFile##*/}並非指定的備份zip，請刪除後重新放置\n -何謂更新zip? 就是GitHub release頁面下載的zip" "0"
-				fi
+				echoRgb "${zipFile##*/}並非指定的備份zip，請刪除後重新放置\n -何謂更新zip? 就是GitHub release頁面下載的zip" "0"
 			else
 				unzip -o "$zipFile" -j "tools/bin/bin.sh" -d "$MODDIR" &>/dev/null
 				if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(cat "$MODDIR/bin.sh" | awk '/backup_version/{print $1}' | cut -f2 -d '=' | head -1 | sed 's/\"//g' | tr -d "a-zA-Z")") -eq 0 ]]; then
@@ -367,19 +360,8 @@ update_script() {
 			fi
 			;;
 		*)
-			echo "$zipFile" | while read ; do
-				if [[ $(unzip -l "$REPLY" | awk '{print $4}' | egrep -o "^music.apk$") != "" ]]; then
-					echoRgb "發現YTmusic模塊" "1" && touch "$TMPDIR/OLK"
-				elif [[ $(unzip -l "$REPLY" | awk '{print $4}' | egrep -o "^revanced.apk$") != "" ]]; then
-					echoRgb "發現YouTube模塊" "1" && touch "$TMPDIR/OLK"
-				fi
-			done
-			if [[ ! -e $TMPDIR/OLK ]]; then
-				echoRgb "錯誤 請刪除當前目錄多餘zip\n -保留一個最新的數據備份.zip\n -下列為當前目錄zip\n$zipFile" "0"
-				exit 1
-			else
-				rm -rf "$TMPDIR/OLK"
-			fi
+			echoRgb "錯誤 請刪除當前目錄多餘zip\n -保留一個最新的數據備份.zip\n -下列為當前目錄zip\n$zipFile" "0"
+			exit 1
 			;;
 		esac
 	fi

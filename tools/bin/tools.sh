@@ -17,9 +17,9 @@ fi
 [[ $conf_path != "" ]] && conf_path="$conf_path" || conf_path="$MODDIR/backup_settings.conf"
 [[ ! -f $conf_path ]] && echo "$conf_path配置遺失" && EXIT="true"
 [[ $EXIT = true ]] && exit 1
-. "$conf_path"
-. "$bin_path/bin.sh"
 echo "$(sed 's/true/1/g ; s/false/0/g' "$conf_path")">"$conf_path"
+. "$conf_path" &>/dev/null
+. "$bin_path/bin.sh"
 [[ $user = "" ]] && user=0
 path="/data/media/$user/Android"
 path2="/data/user/$user"
@@ -54,7 +54,7 @@ backup|Restore|Restore2|Getlist)
 			pm enable "ice.message" &>/dev/null
 			if [[ $(pm path --user "$user" ice.message 2>/dev/null) = "" ]]; then
 				echoRgb "未安裝toast 開始安裝" "0"
-				if [[ ! -d $tools_path/apk ]] ; then
+				if [[ -d $tools_path/apk ]] ; then
 					cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && INSTALL "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
 					[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
 				else
@@ -183,75 +183,6 @@ if [[ $json != "" ]]; then
 	fi
 fi
 Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
-install_YT() {
-	ls -t "$MODDIR"/*.zip &>/dev/bull | while read ; do
-		unset model PKG apkname
-		if [[ $(unzip -l "$REPLY" | awk '{print $4}' | egrep -o "^music.apk$") != "" ]]; then
-			model=YouTubeMusic
-			PKG=com.google.android.apps.youtube.music
-			apkname=music.apk
-		else
-			if [[ $(unzip -l "$REPLY" | awk '{print $4}' | egrep -o "^revanced.apk$") != "" ]]; then
-				model=YouTube
-				PKG=com.google.android.youtube
-				apkname=revanced.apk
-			fi
-		fi
-		if [[ $model != "" ]]; then
-			echoRgb "安裝Re $model" "1"
-			modules_path="/data/adb/modules/$model"
-			app_path="$(pm path "$PKG" | grep -v '/data/app/' | sed 's/package://g')"
-			rm -rf "$modules_path" &>/dev/null
-			[[ ! -d $modules_path ]] && mkdir -p "$modules_path"
-			[[ $app_path != "" ]] && File_Dir="$modules_path/system/${app_path%/*}" || File_Dir="$modules_path/system/priv-app"
-			mkdir -p "$File_Dir"
-			touch "$File_Dir/.replace"
-			chown root:root "$File_Dir/.replace"
-			[[ ! -d $modules_path/system/etc/permissions ]] && mkdir -p "$modules_path/system/etc/permissions"
-			unzip -o "$REPLY" -j bin/sqlite3_arm64-v8a -d "$modules_path/bin" &>/dev/null
-			unzip -o "$REPLY" -j system/priv-app/* -d "$File_Dir" &>/dev/null
-			if [[ $app_path = "" ]]; then
-				if [[ $(pm path "$PKG" | sed 's/package://g') = "" ]]; then
-					echoRgb "install $model apk"
-					cp -r "$File_Dir/"*.apk "$TMPDIR" && INSTALL "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
-				fi
-			fi
-			unzip -o "$REPLY" -j system/etc/permissions/* -d "$modules_path/system/etc/permissions" &>/dev/null
-			ln -sfT "$modules_path/bin/sqlite3_arm64-v8a" "$modules_path/bin/sqlite3"
-			unzip -o "$REPLY" -j "$apkname" -d "$modules_path" &>/dev/null
-			unzip -o "$File_Dir/base.apk" lib/$abi/* -d "$File_Dir" &>/dev/null
-			find "$modules_path" -type d | while read ;do
-				chmod 755 "$REPLY"
-			done
-			find "$modules_path" -type f | while read ;do
-				chmod 644 "$REPLY"
-			done
-			echo '#!/system/bin/sh\nMODDIR="${0%/*}"'>"$modules_path/service.sh"
-			echo 'while [[ "$(getprop sys.boot_completed | tr -d '\r')" != "1" ]]; do sleep 1; done'>>"$modules_path/service.sh"
-			echo "base_path=\"$modules_path/$apkname\"\nstock_path=\"\$(pm path "$PKG" | head -1 | sed 's/package://g')\"\numount -l \"\$stock_path\"\nchmod 666 \"\$base_path\"\nchcon u:object_r:system_file:s0 \"\$base_path\"\nmount -o bind \"\$base_path\" \"\$stock_path\"">>"$modules_path/service.sh"
-			echo "PS=com.android.vending\ncmd appops set --uid \"\$PS\" GET_USAGE_STATS ignore
-for user_id in \$(ls /data/user); do
-	pm disable --user \"\$user_id\" \"\$PS\"
-	\"\$MODDIR/bin/sqlite3\" \"/data/user/\$user_id/\$PS/databases/library.db\" \"UPDATE ownership SET doc_type = '25' WHERE doc_id = '$PKG'\"; 
-	\"\$MODDIR/bin/sqlite3\" \"/data/user/\$user_id/\$PS/databases/localappstate.db\" \"UPDATE appstate SET auto_update = '2' WHERE package_name = '$PKG'\"; 
-	rm -rf \"/data/user/\$user_id/\$PS/cache/\"*
-	pm enable --user \"\$user_id\" \"\$PS\"
-done">>"$modules_path/service.sh"
-			chmod -R 755 "$File_Dir/lib/$abi"
-			chmod -R 755 "$modules_path/bin"
-			mv "$File_Dir/lib/$abi" "$File_Dir/lib/$ARCH"
-			echo "id=$model
-name=$model的破解版本 替代Vanced
-version="V$(appinfo -o vn -f "$modules_path/$apkname")"
-versionCode="$(appinfo -o vc -f "$modules_path/$apkname")"
-author=selfmuser，落葉淒涼(修改啟動腳本與優化刷入過程)
-description=$model Revanced Extended Installer">"$modules_path/module.prop"
-			#rm -rf "$REPLY"
-			echoRgb "安裝完成" "2"
-		fi
-	done
-	[[ $(ls -t "$MODDIR"/*.zip &>/dev/bull) = "" ]] && echoRgb "未發現任何YT模塊，請放到本腳本目錄後重新嘗試" "0"
-}
 backup_path() {
 	if [[ $Output_path != "" ]]; then
 		[[ ${Output_path: -1} = / ]] && Output_path="${Output_path%?}"
@@ -263,7 +194,7 @@ backup_path() {
 	fi
 	PU="$(ls /dev/block/vold 2>/dev/null | grep -w 'public')"
 	if [[ $PU != "" ]]; then
-		[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts | grep -w "$PU" | awk '{print $2}')"
+		[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts 2>/dev/null | grep -w "$PU" | awk '{print $2}')"
 		if [[ -d $PT ]]; then
 			if [[ $(echo "$MODDIR" | egrep -o "^${PT}") != "" || $USBdefault = true ]]; then
 				hx="true"
@@ -385,12 +316,12 @@ Backup_apk() {
 					if [[ $apk_version = "" ]]; then
 						echo "apk_version=\"$apk_version2\"" >>"$app_details"
 					else
-						echo "$(cat "$app_details" | sed "s/${apk_version}/${apk_version2}/g")">"$app_details"
+						echo "$(cat "$app_details" &>/dev/null | sed "s/${apk_version}/${apk_version2}/g")">"$app_details"
 					fi
 					if [[ $versionName = "" ]]; then
 						echo "versionName=\"$apk_version3\"" >>"$app_details"
 					else
-						echo "$(cat "$app_details" | sed "s/${versionName}/${apk_version3}/g")">"$app_details"
+						echo "$(cat "$app_details" &>/dev/null | sed "s/${versionName}/${apk_version3}/g")">"$app_details"
 					fi
 					[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
 					[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
@@ -427,7 +358,7 @@ Backup_data() {
 	data) Size="$dataSize" ;;
 	obb) Size="$obbSize" ;;
 	*)
-		[[ -f $app_details ]] && Size="$(cat "$app_details" | awk "/$1Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')"
+		[[ -f $app_details ]] && Size="$(cat "$app_details" &>/dev/null | awk "/$1Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')"
 		data_path="$2"
 		if [[ $1 != storage-isolation && $1 != thanox ]]; then
 			Compression_method1="$Compression_method"
@@ -469,13 +400,13 @@ Backup_data() {
 					if [[ $zsize != "" ]]; then
 						rm -rf "$2/PATH"
 						if [[ $Size != "" ]]; then
-							echo "$(cat "$app_details" | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
+							echo "$(cat "$app_details" &>/dev/null | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
 						else
 							echo "#$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
 						fi
 					else
 						if [[ $Size != "" ]]; then
-							echo "$(cat "$app_details" | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
+							echo "$(cat "$app_details" &>/dev/null | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
 						else
 							echo "$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
 						fi
@@ -756,6 +687,7 @@ backup)
 	#效驗選填是否正確
 	isBoolean "$Lo" "Lo" && Lo="$nsx"
 	if [[ $Lo = false ]]; then
+		isBoolean "$default_behavior" "default_behavior" && default_behavior="$nsx"
 		isBoolean "$delete_folder" "delete_folder" && delete_folder="$nsx"
 		isBoolean "$USBdefault" "USBdefault" && USBdefault="$nsx"
 		isBoolean "$Backup_obb_data" "Backup_obb_data" && Backup_obb_data="$nsx"
@@ -764,6 +696,8 @@ backup)
 	else
 		echoRgb "檢查目錄是否存在已卸載應用?\n -音量上檢查，下不檢查"
 		get_version "檢查" "不檢查" && delete_folder="$branch"
+		echoRgb "檢查到已卸載應用\n -音量上刪除資料夾，下移動到其他處"
+		get_version "刪除" "移動到其他處" && default_behavior="$branch"
 		echoRgb "存在usb隨身碟是否默認使用隨身碟?\n -音量上默認，下進行詢問"
 		get_version "默認" "詢問" && USBdefault="$branch"
 		echoRgb "是否備份外部數據 即比如原神的數據包\n -音量上備份，音量下不備份" "2"
@@ -784,12 +718,10 @@ backup)
 	echoRgb "壓縮方式:$Compression_method"
 	echoRgb "提示 腳本支持後台壓縮 可以直接離開腳本\n -或是關閉終端也能備份 如需終止腳本\n -請執行終止腳本.sh即可停止\n -備份結束將發送toast提示語" "3"
 	backup_path
-	echoRgb "配置詳細:\n -音量鍵確認:$Lo\n -Toast:$toast_info\n -更新:$update\n -已卸載應用檢查:$delete_folder\n -默認使用usb:$USBdefault\n -備份外部數據:$Backup_obb_data\n -備份user數據:$Backup_user_data\n -自定義目錄備份:$backup_media"
+	echoRgb "配置詳細:\n -音量鍵確認:$Lo\n -Toast:$toast_info\n -更新:$update\n -已卸載應用檢查:$delete_folder\n -卸載應用默認操作(true刪除false移動):$default_behavior\n -默認使用usb:$USBdefault\n -備份外部數據:$Backup_obb_data\n -備份user數據:$Backup_user_data\n -自定義目錄備份:$backup_media"
 	D="1"
 	C="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	if [[ $delete_folder = true ]]; then
-		echoRgb "假設檢查到已卸載應用時操作？\n -音量上刪除資料夾，下移動到其他處"
-		get_version "刪除" "移動到其他處" && operate="$branch"
 		if [[ -d $Backup ]]; then
 			if [[ $1 = "" ]]; then
 				find "$Backup" -maxdepth 1 -type d 2>/dev/null | sort | while read; do
@@ -797,7 +729,7 @@ backup)
 						unset PackageName
 						. "$REPLY/app_details" &>/dev/null
 						if [[ $PackageName != "" && $(pm path --user "$user" "$PackageName" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
-							if [[ $operate = true ]]; then
+							if [[ $default_behavior = true ]]; then
 								rm -rf "$REPLY"
 								echoRgb "${REPLY##*/}不存在系統 刪除資料夾" "0"
 							else
@@ -853,9 +785,8 @@ backup)
 	[[ ! -f $Backup/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/重新生成應用列表.sh"
 	[[ ! -f $Backup/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/轉換資料夾名稱.sh"
 	[[ ! -f $Backup/壓縮檔完整性檢查.sh ]] && cp -r "$script_path/check_file" "$Backup/壓縮檔完整性檢查.sh"
-	[[ ! -f $Backup/安裝YT或是YTmusic.sh ]] && cp -r "$MODDIR/安裝YT或是YTmusic.sh" "$Backup/安裝YT或是YTmusic.sh"
 	[[ -d $Backup/Media ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
-	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#使用者\nuser=\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
+	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#使用者\nuser=\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n\n#恢復模式(1僅恢復未安裝應用0全恢復)\nrecovery_mode=0\n\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 	filesha256="$(sha256sum "$bin_path/tools.sh" | cut -d" " -f1)"
 	filesha256_1="$(sha256sum "$Backup/tools/bin/tools.sh" | cut -d" " -f1)"
 	[[ $filesha256 != $filesha256_1 ]] && cp -r "$bin_path/tools.sh" "$Backup/tools/bin/tools.sh"
@@ -1046,6 +977,35 @@ Restore)
 	sort -u "$txt" -o "$txt" 2>/dev/null
 	r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	[[ $r = "" ]] && echoRgb "appList.txt包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取應用列表再來恢復" "0" && exit 1
+	#效驗選填是否正確
+	isBoolean "$Lo" "Lo" && Lo="$nsx"
+	if [[ $Lo = false ]]; then
+		isBoolean "$recovery_mode" "recovery_mode" && recovery_mode="$nsx"
+	else
+		echoRgb "選擇應用恢復模式\n -音量上僅恢復未安裝，下全恢復"
+		get_version "恢復未安裝" "全恢復" && recovery_mode="$branch"
+	fi
+	if [[ $recovery_mode = true ]]; then
+		echoRgb "獲取未安裝應用中"
+		TXT="$MODDIR/TEMP.txt"
+		while [[ $i -le $r ]]; do
+			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+			name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+			if [[ $(pm list packages --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
+				echo "$name1 $name2">>"$TXT"
+			fi
+			let i++
+		done
+		i=1
+		sort -u "$TXT" -o "$TXT" 2>/dev/null
+		r="$(cat "$TXT" 2>/dev/null | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
+		if [[ $r != "" ]]; then
+			echoRgb "獲取完成 預計安裝$r個應用"
+			txt="$TXT"
+		else
+			echoRgb "獲取完成 但備份內應用都已安裝....正在退出腳本" "0" && exit 0
+		fi
+	fi
 	[[ $(which restorecon) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
 	#開始循環$txt內的資料進行恢複
 	#記錄開始時間
@@ -1121,7 +1081,7 @@ Restore)
 			fi
 			let i++ en++ nskg++
 		done
-		rm -rf "$TMPDIR/scriptTMP"
+		rm -rf "$TMPDIR/scriptTMP" "$TXT"
 		starttime1="$TIME"
 		echoRgb "批量恢複完成" && endtime 1 "批量恢複開始到結束" && echoRgb "如發現應用閃退請重新開機"
 		longToast "批量恢復完成"
@@ -1314,7 +1274,6 @@ backup_media)
 		[[ ! -f $Backup/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/重新生成應用列表.sh"
 		[[ ! -f $Backup/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/轉換資料夾名稱.sh"
 		[[ ! -f $Backup/壓縮檔完整性檢查.sh ]] && cp -r "$script_path/check_file" "$Backup/壓縮檔完整性檢查.sh"
-		[[ ! -f $Backup/安裝YT或是YTmusic.sh ]] && cp -r "$MODDIR/安裝YT或是YTmusic.sh" "$Backup/安裝YT或是YTmusic.sh"
 		[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
 		[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 		app_details="$Backup_folder/app_details"
@@ -1338,8 +1297,5 @@ backup_media)
 	else
 		echoRgb "自定義路徑為空 無法備份" "0"
 	fi
-	;;
-YT)
-	install_YT
 	;;
 esac

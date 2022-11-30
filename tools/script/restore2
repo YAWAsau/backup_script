@@ -2,7 +2,7 @@ if [ -f "${0%/*/*}/tools/bin/tools.sh" ]; then
 	MODDIR="${0%/*}"
 	operate="Restore2"
 	conf_path="${0%/*/*}/backup_settings.conf"
-	. "${0%/*/*}/tools/bin/tools.sh"
+	. "${0%/*/*}/tools/bin/tools.sh" | tee "$MODDIR/log.txt"
 else
 	echo "${0%/*/*}/tools/bin/tools.sh遺失"
 fi
