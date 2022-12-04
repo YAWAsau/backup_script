@@ -23,6 +23,7 @@ echo "$(sed 's/true/1/g ; s/false/0/g' "$conf_path")">"$conf_path"
 [[ $user = "" ]] && user=0
 path="/data/media/$user/Android"
 path2="/data/user/$user"
+path3="/data/user_de/$user"
 zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | egrep -wo "^backup_settings.conf$") != "" ]] && update_script
 if [[ $(getprop ro.build.version.sdk) -lt 30 ]]; then
@@ -316,12 +317,12 @@ Backup_apk() {
 					if [[ $apk_version = "" ]]; then
 						echo "apk_version=\"$apk_version2\"" >>"$app_details"
 					else
-						echo "$(cat "$app_details" &>/dev/null | sed "s/${apk_version}/${apk_version2}/g")">"$app_details"
+						echo "$(cat "$app_details" | sed "s/${apk_version}/${apk_version2}/g")">"$app_details"
 					fi
 					if [[ $versionName = "" ]]; then
 						echo "versionName=\"$apk_version3\"" >>"$app_details"
 					else
-						echo "$(cat "$app_details" &>/dev/null | sed "s/${versionName}/${apk_version3}/g")">"$app_details"
+						echo "$(cat "$app_details" | sed "s/${versionName}/${apk_version3}/g")">"$app_details"
 					fi
 					[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
 					[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
@@ -355,10 +356,11 @@ Backup_data() {
 	unset zsize Size data_path && data_path="$path/$1/$name2"
 	case $1 in
 	user) Size="$userSize" && data_path="$path2/$name2" ;;
+	user_de) Size="$user_deSize" && data_path="$path3/$name2" ;;
 	data) Size="$dataSize" ;;
 	obb) Size="$obbSize" ;;
 	*)
-		[[ -f $app_details ]] && Size="$(cat "$app_details" &>/dev/null | awk "/$1Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')"
+		[[ -f $app_details ]] && Size="$(cat "$app_details" | awk "/$1Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')"
 		data_path="$2"
 		if [[ $1 != storage-isolation && $1 != thanox ]]; then
 			Compression_method1="$Compression_method"
@@ -374,7 +376,7 @@ Backup_data() {
 			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
 			echoRgb "備份$1數據"
 			case $1 in
-			user)
+			user|user_de)
 				case $Compression_method in
 				tar | Tar | TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
 				zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
@@ -400,13 +402,13 @@ Backup_data() {
 					if [[ $zsize != "" ]]; then
 						rm -rf "$2/PATH"
 						if [[ $Size != "" ]]; then
-							echo "$(cat "$app_details" &>/dev/null | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
+							echo "$(cat "$app_details" | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
 						else
 							echo "#$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
 						fi
 					else
 						if [[ $Size != "" ]]; then
-							echo "$(cat "$app_details" &>/dev/null | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
+							echo "$(cat "$app_details" | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
 						else
 							echo "$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
 						fi
@@ -575,7 +577,10 @@ get_name(){
 	txt="$MODDIR/appList.txt"
 	txt2="$MODDIR/mediaList.txt"
 	txt="${txt/'/storage/emulated/'/'/data/media/'}"
-	[[ $1 = Apkname ]] && rm -rf *.txt && echoRgb "列出全部資料夾內應用名與自定義目錄壓縮包名稱" "3"
+	if [[ $1 = Apkname ]]; then
+		rm -rf "$txt" "$txt2"
+		echoRgb "列出全部資料夾內應用名與自定義目錄壓縮包名稱" "3"
+	fi
 	rgb_a=118
 	find "$MODDIR" -maxdepth 2 -name "app_details" -type f 2>/dev/null | sort | while read; do
 		REPLY="${REPLY%/*}"
@@ -640,6 +645,11 @@ get_name(){
 	[[ $1 = Apkname ]] && sort -u "$txt" -o "$txt" 2>/dev/null && echoRgb "$txt重新生成" "1"
 	exit 0
 }
+self_test() {
+	if [[ $(dumpsys deviceidle get charging) = false && $(dumpsys battery | awk '/level/{print $2}' | egrep -o '[0-9]+') -le 20 ]]; then
+		echoRgb "電量$(dumpsys battery | awk '/level/{print $2}' | egrep -o '[0-9]+')%太低且未充電\n -為防止備份檔案或是恢復因低電量強制關機導致檔案損毀\n -請連接充電器後備份" "0" && exit 2
+	fi
+}
 Validation_file() {
 	MODDIR_NAME="${1%/*}"
 	MODDIR_NAME="${MODDIR_NAME##*/}"
@@ -676,6 +686,7 @@ Check_archive() {
 case $operate in
 backup)
 	kill_Serve
+	self_test
 	[[ ! -d $script_path ]] && echo "$script_path腳本目錄遺失" && exit 2
 	case $MODDIR in
 	/storage/emulated/0/Android/* | /data/media/0/Android/* | /sdcard/Android/*) echoRgb "請勿在$MODDIR內備份" "0" && exit 2 ;;
@@ -715,10 +726,9 @@ backup)
 	sort -u "$txt" -o "$txt" 2>/dev/null
 	data="$MODDIR"
 	hx="本地"
-	echoRgb "壓縮方式:$Compression_method"
 	echoRgb "提示 腳本支持後台壓縮 可以直接離開腳本\n -或是關閉終端也能備份 如需終止腳本\n -請執行終止腳本.sh即可停止\n -備份結束將發送toast提示語" "3"
 	backup_path
-	echoRgb "配置詳細:\n -音量鍵確認:$Lo\n -Toast:$toast_info\n -更新:$update\n -已卸載應用檢查:$delete_folder\n -卸載應用默認操作(true刪除false移動):$default_behavior\n -默認使用usb:$USBdefault\n -備份外部數據:$Backup_obb_data\n -備份user數據:$Backup_user_data\n -自定義目錄備份:$backup_media"
+	echoRgb "配置詳細:\n -壓縮方式:$Compression_method\n -音量鍵確認:$Lo\n -Toast:$toast_info\n -更新:$update\n -已卸載應用檢查:$delete_folder\n -卸載應用默認操作(true刪除false移動):$default_behavior\n -默認使用usb:$USBdefault\n -備份外部數據:$Backup_obb_data\n -備份user數據:$Backup_user_data\n -自定義目錄備份:$backup_media"
 	D="1"
 	C="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	if [[ $delete_folder = true ]]; then
@@ -797,163 +807,164 @@ backup)
 	starttime1="$(date -u "+%s")"
 	TIME="$starttime1"
 	en=118
-	{
-		echo "$script">"$TMPDIR/scriptTMP" && echo "$script">"$TMPDIR/scriptTMP"
-		osn=0; osj=0; osk=0
-		#獲取已經開啟的無障礙
-		var="$(settings get secure enabled_accessibility_services)"
-		#獲取預設鍵盤
-		keyboard="$(settings get secure default_input_method)"
-		[[ $(cat "$txt" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${keyboard%/*}$") != ${keyboard%/*} ]] && unset keyboard
-		while [[ $i -le $r ]]; do
-			[[ $en -ge 229 ]] && en=118
-			unset name1 name2 apk_path apk_path2
-			if [[ $1 != "" ]]; then
-				name1="$(appinfo -sort-i -d " " -o ands -pn "$1")"
-				name2="$1"
-			else
-				name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-				name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
-			fi
-			[[ $name2 = "" ]] && echoRgb "警告! appList.txt應用包名獲取失敗，可能修改有問題" "0" && exit 1
-			apk_path="$(pm path --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':')"
-			apk_path2="$(echo "$apk_path" | head -1)"
-			apk_path2="${apk_path2%/*}"
-			if [[ -d $apk_path2 ]]; then
-				echoRgb "備份第$i/$r個應用 剩下$((r - i))個" "3"
-				echoRgb "備份 $name1 \"$name2\"" "2"
-				unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 userSize dataSize obbSize
-				if [[ $name1 = !* || $name1 = ！* ]]; then
-					name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
-					echoRgb "跳過備份所有數據" "0"
-					No_backupdata=1
-				fi
-				if [[ $(echo "$blacklist" | grep -w "$name2") = $name2 ]]; then
-					echoRgb "黑名單應用跳過備份所有數據" "0"
-					No_backupdata=1
-				fi
-				Backup_folder="$Backup/$name1"
-				app_details="$Backup_folder/app_details"
-				if [[ -f $app_details ]]; then
-					. "$app_details" &>/dev/null
-					if [[ $PackageName != $name2 ]]; then
-						unset Backup_folder userSize ChineseName PackageName apk_version versionName apk_version2 apk_version3 result userSize dataSize obbSize
-						Backup_folder="$Backup/${name1}[${name2}]"
-						app_details="$Backup_folder/app_details"
-						[[ -f $app_details ]] && . "$app_details" &>/dev/null
-					fi
-				fi
-				[[ $hx = USB && $PT = "" ]] && echoRgb "隨身碟意外斷開 請檢查穩定性" "0" && exit 1
-				starttime2="$(date -u "+%s")"
-				[[ $name2 = com.tencent.mobileqq ]] && echoRgb "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
-				[[ $name2 = com.tencent.mm ]] && echoRgb "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
-				apk_number="$(echo "$apk_path" | wc -l)"
-				if [[ $apk_number = 1 ]]; then
-					Backup_apk "非Split Apk" "3"
-				else
-					Backup_apk "Split Apk支持備份" "3"
-				fi
-				if [[ $result = 0 && $No_backupdata = "" && $nobackup != true ]]; then
-					if [[ $Backup_obb_data = true ]]; then
-						#備份data數據
-						Backup_data "data"
-						#備份obb數據
-						Backup_data "obb"
-					fi
-					#備份user數據
-					[[ $Backup_user_data = true ]] && Backup_data "user"
-					[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)"
-					[[ $name2 = moe.shizuku.redirectstorage ]] && Backup_data "storage-isolation" "/data/adb/storage-isolation"
-				fi
-				endtime 2 "$name1 備份" "3"
-				Occupation_status="$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
-				lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
-				echoRgb "完成$((i * 100 / r))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "3"
-				rgb_d="$rgb_a"
-				rgb_a=188
-				echoRgb "_________________$(endtime 1 "已經")___________________"
-				rgb_a="$rgb_d"
-			else
-				echoRgb "$name1[$name2] 不在安裝列表，備份個寂寞？" "0"
-			fi
-			if [[ $i = $r ]]; then
-				endtime 1 "應用備份" "3"
-				#設置無障礙開關
-				if [[ $var != "" ]]; then
-					if [[ $var != null ]]; then
-						settings put secure enabled_accessibility_services "$var" &>/dev/null 
-						echo_log "設置無障礙"
-						settings put secure accessibility_enabled 1 &>/dev/null
-						echo_log "打開無障礙開關"
-					fi
-				fi
-				#設置鍵盤
-				if [[ $keyboard != "" ]]; then
-					ime enable "$keyboard" &>/dev/null
-					ime set "$keyboard" &>/dev/null
-					settings put secure default_input_method "$keyboard" &>/dev/null
-					echo_log "設置鍵盤$(appinfo -d "(" -ed ")" -o ands,pn -pn "${keyboard%/*}" 2>/dev/null)"
-				fi
-				[[ $update_apk2 = "" ]] && update_apk2="暫無更新"
-				[[ $add_app2 = "" ]] && add_app2="暫無更新"
-				echoRgb "\n -已更新的apk=\"$osn\"\n -已新增的備份=\"$osk\"\n -apk版本號無變化=\"$osj\"\n -下列為版本號已變更的應用\n$update_apk2\n -新增的備份....\n$add_app2" "3"
-				echo "$(sort "$txt2" | sed -e '/^$/d')" >"$txt2"
-				if [[ $backup_media = true ]]; then
-					A=1
-					B="$(echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
-					if [[ $B != "" ]]; then
-						echoRgb "備份結束，備份多媒體" "1"
-						starttime1="$(date -u "+%s")"
-						Backup_folder="$Backup/Media"
-						[[ ! -f $Backup/恢復自定義資料夾.sh ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
-						[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
-						app_details="$Backup_folder/app_details"
-						[[ -f $app_details ]] && . "$app_details" &>/dev/null
-						mediatxt="$Backup/mediaList.txt"
-						[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$mediatxt"
-						echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | while read; do
-							echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
-							starttime2="$(date -u "+%s")"
-							Backup_data "${REPLY##*/}" "$REPLY"
-							[[ $result = 0 ]] && [[ $(cat "$mediatxt" | grep -v "#" | sed -e '/^$/d' | grep -w "^${REPLY##*/}.tar$" | head -1) = "" ]] && echo "${REPLY##*/}.tar" >> "$mediatxt"
-							endtime 2 "${REPLY##*/}備份" "1"
-							echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "2"
-							rgb_d="$rgb_a"
-							rgb_a=188
-							echoRgb "_________________$(endtime 1 "已經")___________________"
-							rgb_a="$rgb_d" && let A++
-						done
-						echoRgb "目錄↓↓↓\n -$Backup_folder"
-						endtime 1 "自定義備份"
-					else
-						echoRgb "自定義路徑為空 無法備份" "0"
-					fi
-				fi
-			fi
-			let i++ en++ nskg++
-		done
-		rm -rf "$TMPDIR/scriptTMP"
-		Calculate_size "$Backup"
-		echoRgb "批量備份完成"
-		starttime1="$TIME"
-		endtime 1 "批量備份開始到結束"
-		longToast "批量備份完成"
-		Print "批量備份完成 執行過程請查看$Status_log"
-		#打開應用
-		i=1
-		am_start="$(echo "$am_start" | head -n 4 | xargs | sed 's/ /\|/g')"
-		while [[ $i -le $r ]]; do
-			unset pkg name1
-			pkg="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+	echo "$script">"$TMPDIR/scriptTMP" && echo "$script">"$TMPDIR/scriptTMP"
+	osn=0; osj=0; osk=0
+	#獲取已經開啟的無障礙
+	var="$(settings get secure enabled_accessibility_services 2>/dev/null)"
+	#獲取預設鍵盤
+	keyboard="$(settings get secure default_input_method 2>/dev/null)"
+	[[ $(cat "$txt" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${keyboard%/*}$") != ${keyboard%/*} ]] && unset keyboard
+	while [[ $i -le $r ]]; do
+		[[ $en -ge 229 ]] && en=118
+		unset name1 name2 apk_path apk_path2
+		if [[ $1 != "" ]]; then
+			name1="$(appinfo -sort-i -d " " -o ands -pn "$1")"
+			name2="$1"
+		else
 			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-			if [[ $(echo "$pkg" | egrep -wo "^$am_start$") = $pkg ]]; then
-				am start -n "$(appinfo -sort-i -d "/" -o pn,sa -pn "$pkg" 2>/dev/null)" &>/dev/null
-				echo_log "啟動$name1"
+			name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+		fi
+		[[ $name2 = "" ]] && echoRgb "警告! appList.txt應用包名獲取失敗，可能修改有問題" "0" && exit 1
+		apk_path="$(pm path --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':')"
+		apk_path2="$(echo "$apk_path" | head -1)"
+		apk_path2="${apk_path2%/*}"
+		if [[ -d $apk_path2 ]]; then
+			echoRgb "備份第$i/$r個應用 剩下$((r - i))個" "3"
+			echoRgb "備份 $name1 \"$name2\"" "2"
+			unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3
+			if [[ $name1 = !* || $name1 = ！* ]]; then
+				name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
+				echoRgb "跳過備份所有數據" "0"
+				No_backupdata=1
 			fi
-			let i++
-		done
-		exit 0
-	} &
+			if [[ $(echo "$blacklist" | grep -w "$name2") = $name2 ]]; then
+				echoRgb "黑名單應用跳過備份所有數據" "0"
+				No_backupdata=1
+			fi
+			Backup_folder="$Backup/$name1"
+			app_details="$Backup_folder/app_details"
+			if [[ -f $app_details ]]; then
+				. "$app_details" &>/dev/null
+				if [[ $PackageName != $name2 ]]; then
+					unset Backup_folder ChineseName PackageName apk_version versionName apk_version2 apk_version3 result
+					Backup_folder="$Backup/${name1}[${name2}]"
+					app_details="$Backup_folder/app_details"
+					[[ -f $app_details ]] && . "$app_details" &>/dev/null
+				fi
+			fi
+			[[ $hx = USB && $PT = "" ]] && echoRgb "隨身碟意外斷開 請檢查穩定性" "0" && exit 1
+			starttime2="$(date -u "+%s")"
+			[[ $name2 = com.tencent.mobileqq ]] && echoRgb "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
+			[[ $name2 = com.tencent.mm ]] && echoRgb "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
+			apk_number="$(echo "$apk_path" | wc -l)"
+			if [[ $apk_number = 1 ]]; then
+				Backup_apk "非Split Apk" "3"
+			else
+				Backup_apk "Split Apk支持備份" "3"
+			fi
+			if [[ $result = 0 && $No_backupdata = "" && $nobackup != true ]]; then
+				if [[ $Backup_obb_data = true ]]; then
+					#備份data數據
+					Backup_data "data"
+					#備份obb數據
+					Backup_data "obb"
+				fi
+				#備份user數據
+				[[ $Backup_user_data = true ]] && {
+				Backup_data "user"
+				Backup_data "user_de"
+				}
+				[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)"
+				[[ $name2 = moe.shizuku.redirectstorage ]] && Backup_data "storage-isolation" "/data/adb/storage-isolation"
+			fi
+			endtime 2 "$name1 備份" "3"
+			Occupation_status="$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
+			lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
+			echoRgb "完成$((i * 100 / r))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "3"
+			rgb_d="$rgb_a"
+			rgb_a=188
+			echoRgb "_________________$(endtime 1 "已經")___________________"
+			rgb_a="$rgb_d"
+		else
+			echoRgb "$name1[$name2] 不在安裝列表，備份個寂寞？" "0"
+		fi
+		if [[ $i = $r ]]; then
+			endtime 1 "應用備份" "3"
+			#設置無障礙開關
+			if [[ $var != "" ]]; then
+				if [[ $var != null ]]; then
+					settings put secure enabled_accessibility_services "$var" &>/dev/null 
+					echo_log "設置無障礙"
+					settings put secure accessibility_enabled 1 &>/dev/null
+					echo_log "打開無障礙開關"
+				fi
+			fi
+			#設置鍵盤
+			if [[ $keyboard != "" ]]; then
+				ime enable "$keyboard" &>/dev/null
+				ime set "$keyboard" &>/dev/null
+				settings put secure default_input_method "$keyboard" &>/dev/null
+				echo_log "設置鍵盤$(appinfo -d "(" -ed ")" -o ands,pn -pn "${keyboard%/*}" 2>/dev/null)"
+			fi
+			[[ $update_apk2 = "" ]] && update_apk2="暫無更新"
+			[[ $add_app2 = "" ]] && add_app2="暫無更新"
+			echoRgb "\n -已更新的apk=\"$osn\"\n -已新增的備份=\"$osk\"\n -apk版本號無變化=\"$osj\"\n -下列為版本號已變更的應用\n$update_apk2\n -新增的備份....\n$add_app2" "3"
+			echo "$(sort "$txt2" | sed -e '/^$/d')" >"$txt2"
+			if [[ $backup_media = true ]]; then
+				A=1
+				B="$(echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
+				if [[ $B != "" ]]; then
+					echoRgb "備份結束，備份多媒體" "1"
+					starttime1="$(date -u "+%s")"
+					Backup_folder="$Backup/Media"
+					[[ ! -f $Backup/恢復自定義資料夾.sh ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
+					[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
+					app_details="$Backup_folder/app_details"
+					[[ -f $app_details ]] && . "$app_details" &>/dev/null
+					mediatxt="$Backup/mediaList.txt"
+					[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$mediatxt"
+					echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | while read; do
+						echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
+						starttime2="$(date -u "+%s")"
+						Backup_data "${REPLY##*/}" "$REPLY"
+						[[ $result = 0 ]] && [[ $(cat "$mediatxt" | grep -v "#" | sed -e '/^$/d' | grep -w "^${REPLY##*/}.tar$" | head -1) = "" ]] && echo "${REPLY##*/}.tar" >> "$mediatxt"
+						endtime 2 "${REPLY##*/}備份" "1"
+						echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "2"
+						rgb_d="$rgb_a"
+						rgb_a=188
+						echoRgb "_________________$(endtime 1 "已經")___________________"
+						rgb_a="$rgb_d" && let A++
+					done
+					echoRgb "目錄↓↓↓\n -$Backup_folder"
+					endtime 1 "自定義備份"
+				else
+					echoRgb "自定義路徑為空 無法備份" "0"
+				fi
+			fi
+		fi
+		let i++ en++ nskg++
+	done
+	rm -rf "$TMPDIR/scriptTMP"
+	Calculate_size "$Backup"
+	echoRgb "批量備份完成"
+	starttime1="$TIME"
+	endtime 1 "批量備份開始到結束"
+	longToast "批量備份完成"
+	Print "批量備份完成 執行過程請查看$Status_log"
+	#打開應用
+	i=1
+	am_start="$(echo "$am_start" | head -n 4 | xargs | sed 's/ /\|/g')"
+	while [[ $i -le $r ]]; do
+		unset pkg name1
+		pkg="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+		name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+		if [[ $(echo "$pkg" | egrep -wo "^$am_start$") = $pkg ]]; then
+			am start -n "$(appinfo -sort-i -d "/" -o pn,sa -pn "$pkg" 2>/dev/null)" &>/dev/null
+			echo_log "啟動$name1"
+		fi
+		let i++
+	done
+	exit 0
 	wait && exit
 	;;
 dumpname)
@@ -967,6 +978,7 @@ check_file)
 	;;
 Restore)
 	kill_Serve
+	self_test
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊$MODDIR_NAME/終止腳本.sh\n -否則腳本將繼續執行直到結束" "0"
 	echoRgb "如果大量提示找不到資料夾請執行$MODDIR_NAME/轉換資料夾名稱.sh"
 	disable_verify
@@ -1012,134 +1024,132 @@ Restore)
 	starttime1="$(date -u "+%s")"
 	TIME="$starttime1"
 	en=118
-	{
-		echo "$script">"$TMPDIR/scriptTMP"
-		while [[ $i -le $r ]]; do
-			[[ $en -ge 229 ]] && en=118
-			echoRgb "恢複第$i/$r個應用 剩下$((r - i))個" "3"
-			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-			name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
-			unset No_backupdata apk_version
-			if [[ $name1 = *! || $name1 = *！ ]]; then
-				name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
-				echoRgb "跳過恢復$name1 所有數據" "0"
-				No_backupdata=1
-			fi
-			Backup_folder="$MODDIR/$name1"
-			Backup_folder2="$MODDIR/Media"
-			[[ -f "$Backup_folder/app_details" ]] && . "$Backup_folder/app_details" &>/dev/null
-			[[ $name2 = "" ]] && echoRgb "應用包名獲取失敗" "0" && exit 1
-			if [[ -d $Backup_folder ]]; then
-				echoRgb "恢複$name1 ($name2)" "2"
-				starttime2="$(date -u "+%s")"
-				if [[ $(pm path --user "$user" "$name2" 2>/dev/null) = "" ]]; then
-					installapk
-				else
-					if [[ $apk_version -gt $(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
-						installapk
-						echoRgb "版本提升$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
-					fi
-				fi
-				if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
-					if [[ $No_backupdata = "" ]]; then
-						#停止應用
-						[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
-						find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
-							Release_data "$REPLY"
-						done
-					fi
-				else
-					[[ $No_backupdata = "" ]]&& echoRgb "$name1沒有安裝無法恢復數據" "0"
-				fi
-				endtime 2 "$name1恢複" "2" && echoRgb "完成$((i * 100 / r))%" "3"
-				rgb_d="$rgb_a"
-				rgb_a=188
-				echoRgb "_________________$(endtime 1 "已經")___________________"
-				rgb_a="$rgb_d"
+	echo "$script">"$TMPDIR/scriptTMP"
+	while [[ $i -le $r ]]; do
+		[[ $en -ge 229 ]] && en=118
+		echoRgb "恢複第$i/$r個應用 剩下$((r - i))個" "3"
+		name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+		name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+		unset No_backupdata apk_version
+		if [[ $name1 = *! || $name1 = *！ ]]; then
+			name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
+			echoRgb "跳過恢復$name1 所有數據" "0"
+			No_backupdata=1
+		fi
+		Backup_folder="$MODDIR/$name1"
+		Backup_folder2="$MODDIR/Media"
+		[[ -f "$Backup_folder/app_details" ]] && . "$Backup_folder/app_details" &>/dev/null
+		[[ $name2 = "" ]] && echoRgb "應用包名獲取失敗" "0" && exit 1
+		if [[ -d $Backup_folder ]]; then
+			echoRgb "恢複$name1 ($name2)" "2"
+			starttime2="$(date -u "+%s")"
+			if [[ $(pm path --user "$user" "$name2" 2>/dev/null) = "" ]]; then
+				installapk
 			else
-				echoRgb "$Backup_folder資料夾遺失，無法恢複" "0"
-			fi
-			if [[ $i = $r ]]; then
-				endtime 1 "應用恢復" "2"
-				if [[ -d $Backup_folder2 ]]; then
-					Print "是否恢復多媒體數據 音量上恢復，音量下不恢復"
-					echoRgb "是否恢復多媒體數據\n -音量上恢復，音量下不恢復" "2"
-					get_version "恢復媒體數據" "跳過恢復媒體數據"
-					starttime1="$(date -u "+%s")"
-					A=1
-					B="$(find "$Backup_folder2" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | wc -l)"
-					if [[ $branch = true ]]; then
-						find "$Backup_folder2" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | while read; do
-							starttime2="$(date -u "+%s")"
-							echoRgb "恢復第$A/$B個壓縮包 剩下$((B - A))個" "3"
-							Release_data "$REPLY"
-							endtime 2 "$FILE_NAME2恢複" "2" && echoRgb "完成$((A * 100 / B))%" "3" && echoRgb "____________________________________" && let A++
-						done
-						endtime 1 "自定義恢復" "2"
-					fi
+				if [[ $apk_version -gt $(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
+					installapk
+					echoRgb "版本提升$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
 				fi
 			fi
-			let i++ en++ nskg++
-		done
-		rm -rf "$TMPDIR/scriptTMP" "$TXT"
-		starttime1="$TIME"
-		echoRgb "批量恢複完成" && endtime 1 "批量恢複開始到結束" && echoRgb "如發現應用閃退請重新開機"
-		longToast "批量恢復完成"
-		Print "批量恢復完成 執行過程請查看$Status_log" && rm -rf "$TMPDIR"/*
-	} &
+			if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
+				if [[ $No_backupdata = "" ]]; then
+					#停止應用
+					[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
+					find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
+						Release_data "$REPLY"
+					done
+				fi
+			else
+				[[ $No_backupdata = "" ]]&& echoRgb "$name1沒有安裝無法恢復數據" "0"
+			fi
+			endtime 2 "$name1恢複" "2" && echoRgb "完成$((i * 100 / r))%" "3"
+			rgb_d="$rgb_a"
+			rgb_a=188
+			echoRgb "_________________$(endtime 1 "已經")___________________"
+			rgb_a="$rgb_d"
+		else
+			echoRgb "$Backup_folder資料夾遺失，無法恢複" "0"
+		fi
+		if [[ $i = $r ]]; then
+			endtime 1 "應用恢復" "2"
+			if [[ -d $Backup_folder2 ]]; then
+				Print "是否恢復多媒體數據 音量上恢復，音量下不恢復"
+				echoRgb "是否恢復多媒體數據\n -音量上恢復，音量下不恢復" "2"
+				get_version "恢復媒體數據" "跳過恢復媒體數據"
+				starttime1="$(date -u "+%s")"
+				A=1
+				B="$(find "$Backup_folder2" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | wc -l)"
+				if [[ $branch = true ]]; then
+					find "$Backup_folder2" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | while read; do
+						starttime2="$(date -u "+%s")"
+						echoRgb "恢復第$A/$B個壓縮包 剩下$((B - A))個" "3"
+						Release_data "$REPLY"
+						endtime 2 "$FILE_NAME2恢複" "2" && echoRgb "完成$((A * 100 / B))%" "3" && echoRgb "____________________________________" && let A++
+					done
+					endtime 1 "自定義恢復" "2"
+				fi
+			fi
+		fi
+		let i++ en++ nskg++
+	done
+	rm -rf "$TMPDIR/scriptTMP" "$TXT"
+	starttime1="$TIME"
+	echoRgb "批量恢複完成" && endtime 1 "批量恢複開始到結束" && echoRgb "如發現應用閃退請重新開機"
+	longToast "批量恢復完成"
+	Print "批量恢復完成 執行過程請查看$Status_log" && rm -rf "$TMPDIR"/*
 	wait && exit
 	;;
 Restore2)
 	kill_Serve
+	self_test
 	disable_verify
 	[[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
 	[[ $(which restorecon) = "" ]] && echoRgb "restorecon命令不存在" "0" && exit 1
 	#記錄開始時間
 	starttime1="$(date -u "+%s")"
-	{
-		echo "$script">"$TMPDIR/scriptTMP"
-		Backup_folder="$MODDIR"
-		if [[ ! -f $Backup_folder/app_details ]]; then
-			echoRgb "$Backup_folder/app_details遺失，無法獲取包名" "0" && exit 1
-		else
-			. "$Backup_folder/app_details" &>/dev/null
-		fi
-		name1="$ChineseName"
-		[[ $name1 = "" ]] && name1="${Backup_folder##*/}"
-		[[ $name1 = "" ]] && echoRgb "應用名獲取失敗" "0" && exit 2
-		name2="$PackageName"
-		if [[ $name2 = "" ]]; then
-			Script_path="$(find "$MODDIR" -maxdepth 1 -name "*.sh*" -type f 2>/dev/null)"
-			name2="$(echo "${Script_path##*/}" | sed 's/.sh//g')"
-		fi
-		[[ $name2 = "" ]] && echoRgb "包名獲取失敗" "0" && exit 2
-		echoRgb "恢複$name1 ($name2)" "2"
-		starttime2="$(date -u "+%s")"
-		if [[ $(pm path --user "$user" "$name2" 2>/dev/null) = "" ]]; then
+	echo "$script">"$TMPDIR/scriptTMP"
+	Backup_folder="$MODDIR"
+	if [[ ! -f $Backup_folder/app_details ]]; then
+		echoRgb "$Backup_folder/app_details遺失，無法獲取包名" "0" && exit 1
+	else
+		. "$Backup_folder/app_details" &>/dev/null
+	fi
+	name1="$ChineseName"
+	[[ $name1 = "" ]] && name1="${Backup_folder##*/}"
+	[[ $name1 = "" ]] && echoRgb "應用名獲取失敗" "0" && exit 2
+	name2="$PackageName"
+	if [[ $name2 = "" ]]; then
+		Script_path="$(find "$MODDIR" -maxdepth 1 -name "*.sh*" -type f 2>/dev/null)"
+		name2="$(echo "${Script_path##*/}" | sed 's/.sh//g')"
+	fi
+	[[ $name2 = "" ]] && echoRgb "包名獲取失敗" "0" && exit 2
+	echoRgb "恢複$name1 ($name2)" "2"
+	starttime2="$(date -u "+%s")"
+	if [[ $(pm path --user "$user" "$name2" 2>/dev/null) = "" ]]; then
+		installapk
+	else
+		apk_version="$(echo "$apk_version" | head -n 1)"
+		if [[ $apk_version -gt $(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
 			installapk
-		else
-			apk_version="$(echo "$apk_version" | head -n 1)"
-			if [[ $apk_version -gt $(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
-				installapk
-				echoRgb "版本提升$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
-			fi
+			echoRgb "版本提升$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
 		fi
-		if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
-			#停止應用
-			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
-			find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
-				Release_data "$REPLY"
-			done
-		else
-			echoRgb "$name1沒有安裝無法恢復數據" "0"
-		fi
-		endtime 1 "恢複開始到結束" && echoRgb "如發現應用閃退請重新開機" && rm -rf "$TMPDIR"/*
-		rm -rf "$TMPDIR/scriptTMP"
-	} &
+	fi
+	if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
+		#停止應用
+		[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
+		find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
+			Release_data "$REPLY"
+		done
+	else
+		echoRgb "$name1沒有安裝無法恢復數據" "0"
+	fi
+	endtime 1 "恢複開始到結束" && echoRgb "如發現應用閃退請重新開機" && rm -rf "$TMPDIR"/*
+	rm -rf "$TMPDIR/scriptTMP"
 	wait && exit
 	;;
 Restore3)
 	kill_Serve
+	self_test
 	echoRgb "點錯了?這是恢復自定義資料夾腳本 如果你是要恢復應用那你就點錯了\n -音量上繼續恢復自定義資料夾，音量下離開腳本" "2"
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
 	get_version "恢復自定義資料夾" "離開腳本" && [[ "$branch" = false ]] && exit 0
@@ -1262,6 +1272,7 @@ Getlist)
 	;;
 backup_media)
 	kill_Serve
+	self_test
 	backup_path
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
 	A=1
