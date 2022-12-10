@@ -27,11 +27,11 @@ path3="/data/user_de/$user"
 zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | egrep -wo "^backup_settings.conf$") != "" ]] && update_script
 if [[ $(getprop ro.build.version.sdk) -lt 30 ]]; then
-	alias INSTALL="pm install --user $user -r -t"
-	alias create="pm install-create --user $user -t"
+	alias INSTALL="pm install --user $user -r -t &>/dev/null"
+	alias create="pm install-create --user $user -t 2>/dev/null"
 else
-	alias INSTALL="pm install -i com.android.vending --user $user -r -t"
-	alias create="pm install-create -i com.android.vending --user $user -t"
+	alias INSTALL="pm install -i com.android.vending --user $user -r -t &>/dev/null"
+	alias create="pm install-create -i com.android.vending --user $user -t 2>/dev/null"
 fi
 case $operate in
 backup|Restore|Restore2|Getlist)
@@ -56,7 +56,7 @@ backup|Restore|Restore2|Getlist)
 			if [[ $(pm path --user "$user" ice.message 2>/dev/null) = "" ]]; then
 				echoRgb "未安裝toast 開始安裝" "0"
 				if [[ -d $tools_path/apk ]] ; then
-					cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && INSTALL "$TMPDIR"/*.apk &>/dev/null && rm -rf "$TMPDIR"/*
+					cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && INSTALL "$TMPDIR"/*.apk && rm -rf "$TMPDIR"/*
 					[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
 				else
 					echo "$tools_path/apk目錄遺失"
@@ -440,6 +440,7 @@ Release_data() {
 		unset FILE_PATH
 		case $FILE_NAME2 in
 		user) [[ -d $X ]] && FILE_PATH="$path2" || echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0" ;;
+		user_de) FILE_PATH="$path3" ;;
 		data) FILE_PATH="$path/data" ;;
 		obb) FILE_PATH="$path/obb" ;;
 		thanox)	FILE_PATH="/data/system" && find "/data/system" -name "thanos*" -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
@@ -461,9 +462,10 @@ Release_data() {
 				fi
 			fi
 		esac
+		echo "$FILE_PATH"
 		if [[ $FILE_PATH != "" ]]; then
 			case ${FILE_NAME##*.} in
-			lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$FILE_PATH" ;;
+			lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -T0 -xmpf - -C "$FILE_PATH" ;;
 			tar) [[ ${MODDIR_NAME##*/} = Media ]] && pv "$tar_path" | tar --recursive-unlink -xpf - -C "$FILE_PATH" || pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$FILE_PATH" ;;
 			esac
 		else
@@ -536,7 +538,7 @@ installapk() {
 		case $(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l) in
 		1)
 			echoRgb "恢復普通apk" "2"
-			INSTALL "$TMPDIR"/*.apk &>/dev/null
+			INSTALL "$TMPDIR"/*.apk
 			echo_log "Apk安裝"
 			;;
 		0)
@@ -546,7 +548,7 @@ installapk() {
 			echoRgb "恢復split apk" "2"
 			b="$(create 2>/dev/null | egrep -o '[0-9]+')"
 			if [[ -f $TMPDIR/nmsl.apk ]]; then
-				INSTALL "$TMPDIR/nmsl.apk" &>/dev/null
+				INSTALL "$TMPDIR/nmsl.apk"
 				echo_log "nmsl.apk安裝"
 			fi
 			find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | grep -v 'nmsl.apk' | while read; do
@@ -814,6 +816,7 @@ backup)
 	#獲取預設鍵盤
 	keyboard="$(settings get secure default_input_method 2>/dev/null)"
 	[[ $(cat "$txt" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${keyboard%/*}$") != ${keyboard%/*} ]] && unset keyboard
+	{
 	while [[ $i -le $r ]]; do
 		[[ $en -ge 229 ]] && en=118
 		unset name1 name2 apk_path apk_path2
@@ -964,7 +967,7 @@ backup)
 		fi
 		let i++
 	done
-	exit 0
+	} &
 	wait && exit
 	;;
 dumpname)
@@ -1025,6 +1028,7 @@ Restore)
 	TIME="$starttime1"
 	en=118
 	echo "$script">"$TMPDIR/scriptTMP"
+	{
 	while [[ $i -le $r ]]; do
 		[[ $en -ge 229 ]] && en=118
 		echoRgb "恢複第$i/$r個應用 剩下$((r - i))個" "3"
@@ -1097,6 +1101,7 @@ Restore)
 	echoRgb "批量恢複完成" && endtime 1 "批量恢複開始到結束" && echoRgb "如發現應用閃退請重新開機"
 	longToast "批量恢復完成"
 	Print "批量恢復完成 執行過程請查看$Status_log" && rm -rf "$TMPDIR"/*
+	} &
 	wait && exit
 	;;
 Restore2)
@@ -1173,6 +1178,7 @@ Restore3)
 	B="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
 	[[ $B = "" ]] && echoRgb "mediaList.txt壓縮包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取列表再來恢復" "0" && exit 1
 	echo "$script">"$TMPDIR/scriptTMP"
+	{
 	while [[ $A -le $B ]]; do
 		name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${A}p" | awk '{print $1}')"
 		starttime2="$(date -u "+%s")"
@@ -1182,6 +1188,7 @@ Restore3)
 	done
 	endtime 1 "恢複結束"
 	rm -rf "$TMPDIR/scriptTMP"
+	} &
 	;;
 Getlist)
 	case $MODDIR in
@@ -1293,6 +1300,7 @@ backup_media)
 		mediatxt="$Backup/mediaList.txt"
 		[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$mediatxt"
 		echo "$script">"$TMPDIR/scriptTMP"
+		{
 		echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | while read; do
 			echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
 			starttime2="$(date -u "+%s")" 
@@ -1305,6 +1313,7 @@ backup_media)
 		Calculate_size "$Backup_folder"
 		endtime 1 "自定義備份"
 		rm -rf "$TMPDIR/scriptTMP"
+		} &
 	else
 		echoRgb "自定義路徑為空 無法備份" "0"
 	fi
