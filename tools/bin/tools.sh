@@ -23,7 +23,6 @@ echo "$(sed 's/true/1/g ; s/false/0/g' "$conf_path")">"$conf_path"
 [[ $user = "" ]] && user=0
 path="/data/media/$user/Android"
 path2="/data/user/$user"
-path3="/data/user_de/$user"
 zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | egrep -wo "^backup_settings.conf$") != "" ]] && update_script
 if [[ $(getprop ro.build.version.sdk) -lt 30 ]]; then
@@ -195,7 +194,7 @@ backup_path() {
 	fi
 	PU="$(ls /dev/block/vold 2>/dev/null | grep -w 'public')"
 	if [[ $PU != "" ]]; then
-		[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts 2>/dev/null | grep -w "$PU" | awk '{print $2}')"
+		[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts 2>/dev/null | grep -w "$PU" | awk '{print $2}' | head -1)"
 		if [[ -d $PT ]]; then
 			if [[ $(echo "$MODDIR" | egrep -o "^${PT}") != "" || $USBdefault = true ]]; then
 				hx="true"
@@ -209,7 +208,7 @@ backup_path() {
 				data="/dev/block/vold/$PU"
 				mountinfo="$(df -T "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')"
 				case $mountinfo in
-				sdfat | fuseblk | exfat | NTFS | ext4 | f2fs)
+				texfat | sdfat | fuseblk | exfat | NTFS | ext4 | f2fs)
 					outshow="於隨身碟備份" && hx=usb
 					;;
 				*)
@@ -356,7 +355,6 @@ Backup_data() {
 	unset zsize Size data_path && data_path="$path/$1/$name2"
 	case $1 in
 	user) Size="$userSize" && data_path="$path2/$name2" ;;
-	user_de) Size="$user_deSize" && data_path="$path3/$name2" ;;
 	data) Size="$dataSize" ;;
 	obb) Size="$obbSize" ;;
 	*)
@@ -376,7 +374,7 @@ Backup_data() {
 			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
 			echoRgb "備份$1數據"
 			case $1 in
-			user|user_de)
+			user)
 				case $Compression_method in
 				tar | Tar | TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
 				zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
@@ -440,7 +438,6 @@ Release_data() {
 		unset FILE_PATH
 		case $FILE_NAME2 in
 		user) [[ -d $X ]] && FILE_PATH="$path2" || echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0" ;;
-		user_de) FILE_PATH="$path3" ;;
 		data) FILE_PATH="$path/data" ;;
 		obb) FILE_PATH="$path/obb" ;;
 		thanox)	FILE_PATH="/data/system" && find "/data/system" -name "thanos*" -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
@@ -460,12 +457,11 @@ Release_data() {
 						[[ ! -d $FILE_PATH ]] && mkdir -p "$FILE_PATH"
 					fi
 				fi
-			fi
+			fi ;;
 		esac
-		echo "$FILE_PATH"
 		if [[ $FILE_PATH != "" ]]; then
 			case ${FILE_NAME##*.} in
-			lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -T0 -xmpf - -C "$FILE_PATH" ;;
+			lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$FILE_PATH" ;;
 			tar) [[ ${MODDIR_NAME##*/} = Media ]] && pv "$tar_path" | tar --recursive-unlink -xpf - -C "$FILE_PATH" || pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$FILE_PATH" ;;
 			esac
 		else
@@ -496,9 +492,6 @@ Release_data() {
 				else
 					echoRgb "路徑$X不存在" "0"
 				fi
-				;;
-			data | obb)
-				[[ -d $path/$FILE_NAME2/$name2 ]] && chmod -R 0777 "$path/$FILE_NAME2/$name2"
 				;;
 			thanox)
 				restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)/" 2>/dev/null
@@ -873,10 +866,7 @@ backup)
 					Backup_data "obb"
 				fi
 				#備份user數據
-				[[ $Backup_user_data = true ]] && {
-				Backup_data "user"
-				Backup_data "user_de"
-				}
+				[[ $Backup_user_data = true ]] && Backup_data "user"
 				[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)"
 				[[ $name2 = moe.shizuku.redirectstorage ]] && Backup_data "storage-isolation" "/data/adb/storage-isolation"
 			fi
