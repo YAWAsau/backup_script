@@ -33,8 +33,6 @@ echoRgb() {
 	fi
 	#[[ $Status_log != "" ]] && echo " -$(date '+%T') $1" >>"$Status_log"
 }
-ls -Zd /storage/emulated/0/Yawasau/Backup_zstd_0/tools/bin/busybox
-exit
 [ "$rgb_a" = "" ] && rgb_a=214
 if [ "$(whoami)" != root ]; then
 	echoRgb "你是憨批？不給Root用你媽 爬" "0"
@@ -65,7 +63,7 @@ if [[ $id != "" && -d /data/user/0/com.tencent.mobileqq/files/aladdin_configs/$i
 fi
 PATH="/sbin/.magisk/busybox:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/Han.GJZS/files/usr/busybox:/data/data/Han.GJZS/files/usr/bin:/data/data/com.omarea.vtools/files/toolkit:/data/user/0/com.termux/files/usr/bin"
 if [[ -d $(magisk --path 2>/dev/null) ]]; then
-	PATH="$(magisk --path 2>/dev/null)/.magisk/busybox:$PATH"
+	PATH="$(magisk --path)/.magisk/busybox:$PATH"
 else
 	echo "Magisk busybox Path does not exist"
 fi
@@ -241,7 +239,7 @@ Open_apps="$(appinfo -d "(" -ed ")" -o ands,pn -ta c 2>/dev/null)"
 Open_apps2="$(echo "$Open_apps" | cut -f2 -d '(' | sed 's/)//g')"
 raminfo="$(awk '($1 == "MemTotal:"){print $2/1000"MB"}' /proc/meminfo 2>/dev/null)"
 echoRgb "---------------------SpeedBackup---------------------"
-echoRgb "當前腳本執行路徑:$MODDIR\n -已開機:$(Show_boottime)\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(magisk -c 2>/dev/null)\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)\n$(memory_status)\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
+echoRgb "當前腳本執行路徑:$MODDIR\n -已開機:$(Show_boottime)\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(magisk -c)\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)\n$(memory_status)\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
 update_script() {
 	[[ $zipFile = "" ]] && zipFile="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f 2>/dev/null)"
 	if [[ $zipFile != "" ]]; then
@@ -832,31 +830,26 @@ Release_data() {
 		if [[ $result = 0 ]]; then
 			[[ -d $TMPPATH ]] && rm -rf "$TMPPATH/PATH"
 			case $FILE_NAME2 in
-			user|data|obb)
-			    if [[ -f /config/sdcardfs/$name2/appid ]]; then
-					G="$(cat "/config/sdcardfs/$name2/appid")"
-				else
-					G="$(dumpsys package "$name2" | grep -w 'userId' | head -1)"
-				fi
-                G="$(echo "$G" | egrep -o '[0-9]+')"
-				if [[ $G != "" ]]; then
-					if [[ -d $X ]]; then
-                        if [[ $FILE_NAME2 = user ]]; then
-						    echoRgb "路徑:$X"
-						    Path_details="$(stat -c "%A/%a %U/%G" "$X")"
-						    [[ $user = 0 ]] && chown -hR "$G:$G" "$X/" || chown -hR "$user$G:$user$G" "$X/"
-						    echo_log "設置用戶組:$(echo "$Path_details" | awk '{print $2}')"
-						    restorecon -RFD "$X/" 2>/dev/null
-						    echo_log "selinux上下文設置"
-					    elif [[ $FILE_NAME2 = data ]]; then
-                            chown -hR "$G:1078" "$FILE_PATH/$name2/"
-                            echo_log "data:$G:1078"
-					    fi
-				    else
-				        echoRgb "路徑$X不存在" "0"
+			user)
+				if [[ -d $X ]]; then
+					if [[ -f /config/sdcardfs/$name2/appid ]]; then
+						G="$(cat "/config/sdcardfs/$name2/appid")"
+					else
+						G="$(dumpsys package "$name2" | grep -w 'userId' | head -1)"
+					fi
+					G="$(echo "$G" | egrep -o '[0-9]+')"
+					if [[ $G != "" ]]; then
+						echoRgb "路徑:$X"
+						Path_details="$(stat -c "%A/%a %U/%G" "$X")"
+						[[ $user = 0 ]] && chown -hR "$G:$G" "$X/" || chown -hR "$user$G:$user$G" "$X/"
+						echo_log "設置用戶組:$(echo "$Path_details" | awk '{print $2}')"
+						restorecon -RFD "$X/" 2>/dev/null
+						echo_log "selinux上下文設置"
+					else
+						echoRgb "uid獲取失敗" "0"
 					fi
 				else
-                    echoRgb "uid獲取失敗" "0"
+					echoRgb "路徑$X不存在" "0"
 				fi
 				;;
 			thanox)
