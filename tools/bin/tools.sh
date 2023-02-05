@@ -34,7 +34,7 @@ echoRgb() {
 	#[[ $Status_log != "" ]] && echo " -$(date '+%T') $1" >>"$Status_log"
 }
 ls -Zd /storage/emulated/0/Yawasau/Backup_zstd_0/tools/bin/busybox
-exit
+#exit
 [ "$rgb_a" = "" ] && rgb_a=214
 if [ "$(whoami)" != root ]; then
 	echoRgb "你是憨批？不給Root用你媽 爬" "0"
@@ -70,7 +70,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.6.7"
+backup_version="V15.6.8"
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
 filepath="/data/backup_tools"
 busybox="$filepath/busybox"
@@ -553,31 +553,28 @@ backup_path() {
 		Backup="$MODDIR/Backup_${Compression_method}_$user"
 		outshow="使用當前路徑作為備份目錄"
 	fi
-	PU="$(ls /dev/block/vold 2>/dev/null | grep -w 'public')"
-	if [[ $PU != "" ]]; then
-		[[ -f /proc/mounts ]] && PT="$(cat /proc/mounts 2>/dev/null | grep -w "$PU" | awk '{print $2}' | head -1)"
-		if [[ -d $PT ]]; then
-			if [[ $(echo "$MODDIR" | egrep -o "^${PT}") != "" || $USBdefault = true ]]; then
-				hx="true"
-			else
-				echoRgb "檢測到隨身碟 是否在隨身碟備份\n -音量上是，音量下不是" "2"
-				get_version "選擇了隨身碟備份" "選擇了本地備份"
-				[[ $branch = true ]] && hx="$branch"
-			fi
-			if [[ $hx = true ]]; then
-				Backup="$PT/Backup_${Compression_method}_$user"
-				data="/dev/block/vold/$PU"
-				mountinfo="$(df -T "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')"
-				case $mountinfo in
-				texfat | sdfat | fuseblk | exfat | NTFS | ext4 | f2fs)
-					outshow="於隨身碟備份" && hx=usb
-					;;
-				*)
-					echoRgb "隨身碟檔案系統$mountinfo不支持超過單檔4GB\n -請格式化為exfat" "0"
-					exit 1
-					;;
-				esac
-			fi
+    PU="$(mount | egrep -v "rannki|0000-1" | grep -w "/mnt/media_rw" | awk '{print $3,$5}')"
+	OTGPATH="$(echo "$PU" | awk '{print $1}')"
+	OTGFormat="$(echo "$PU" | awk '{print $2}')"
+	if [[ -d $OTGPATH ]]; then
+		if [[ $(echo "$MODDIR" | egrep -o "^${OTGPATH}") != "" || $USBdefault = true ]]; then
+			hx="true"
+		else
+			echoRgb "檢測到隨身碟 是否在隨身碟備份\n -音量上是，音量下不是" "2"
+			get_version "選擇了隨身碟備份" "選擇了本地備份"
+			[[ $branch = true ]] && hx="$branch"
+		fi
+		if [[ $hx = true ]]; then
+			Backup="$OTGPATH/Backup_${Compression_method}_$user"
+			case $OTGFormat in
+			texfat | sdfat | fuseblk | exfat | NTFS | ext4 | f2fs)
+				outshow="於隨身碟備份" && hx=usb
+				;;
+			*)
+				echoRgb "隨身碟檔案系統$OTGFormat不支持超過單檔4GB\n -請格式化為exfat" "0"
+				exit 1
+				;;
+			esac
 		fi
 	else
 		echoRgb "沒有檢測到隨身碟於本地備份" "0"
@@ -660,9 +657,9 @@ Backup_apk() {
 			(
 				cd "$apk_path2"
 				case $Compression_method in
-				tar | TAR | Tar) tar -cf - *.apk | pv > "$Backup_folder/apk.tar" ;;
-				lz4 | LZ4 | Lz4) tar -cf - *.apk | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/apk.tar.lz4" ;;
-				zstd | Zstd | ZSTD) tar -cf - *.apk | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
+				tar | TAR | Tar) tar --checkpoint-action="ttyout=%T\r" -cf "$Backup_folder/apk.tar" *.apk ;;
+				lz4 | LZ4 | Lz4) tar --checkpoint-action="ttyout=%T\r" -cf "$Backup_folder/apk.tar.lz4" *.apk "-I zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4" ;;
+				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" -cf "$Backup_folder/apk.tar.zst" *.apk "-I zstd -r -T0 --ultra -1 -q --priority=rt" ;;
 				esac
 			)
 			echo_log "備份$apk_number個Apk"
@@ -737,16 +734,16 @@ Backup_data() {
 			case $1 in
 			user)
 				case $Compression_method in
-				tar | Tar | TAR) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-				zstd | Zstd | ZSTD) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
-				lz4 | Lz4 | LZ4) tar --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/$1.tar.lz4" ;;
+				tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null ;;
+				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf "$Backup_folder/$1.tar.zst" -C "${data_path%/*}" "${data_path##*/}" "-I zstd -r -T0 --ultra -1 -q --priority=rt" 2>/dev/null ;;
+				lz4 | Lz4 | LZ4) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf "$Backup_folder/$1.tar.lz4" -C "${data_path%/*}" "${data_path##*/}" "-I zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4" 2>/dev/null ;;
 				esac
 				;;
 			*)
 				case $Compression_method in
-				tar | Tar | TAR) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv >"$Backup_folder/$1.tar" ;;
-				zstd | Zstd | ZSTD) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
-				lz4 | Lz4 | LZ4) tar --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null | pv | zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4 >"$Backup_folder/$1.tar.lz4" ;;
+				tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
+				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf "$Backup_folder/$1.tar.zst" -C "${data_path%/*}" "${data_path##*/}" "-I zstd -r -T0 --ultra -1 -q --priority=rt" 2>/dev/null ;;
+				lz4 | Lz4 | LZ4) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf "$Backup_folder/$1.tar.lz4" -C "${data_path%/*}" "${data_path##*/}" "-I zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4" 2>/dev/null ;;
 				esac
 				;;
 			esac
@@ -821,9 +818,21 @@ Release_data() {
 			fi ;;
 		esac
 		if [[ $FILE_PATH != "" ]]; then
-			case ${FILE_NAME##*.} in
-			lz4 | zst) pv "$tar_path" | tar --recursive-unlink -I zstd -xmpf - -C "$FILE_PATH" ;;
-			tar) [[ ${MODDIR_NAME##*/} = Media ]] && pv "$tar_path" | tar --recursive-unlink -xpf - -C "$FILE_PATH" || pv "$tar_path" | tar --recursive-unlink -xmpf - -C "$FILE_PATH" ;;
+			b_size="$(ls -l "$tar_path" | awk '{print $5}')"
+			k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
+			m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
+            if [[ $(expr "$m_size" \> 1) -eq 0 ]]; then
+                echoRgb "total_size:${k_size}KB"
+            else
+                [[ $(echo "$m_size" | cut -d '.' -f1) -lt 1000 ]] && echoRgb "total_size:${m_size}MB" || echoRgb "total_size:$(awk 'BEGIN{printf "%.2f\n", "'$m_size'"/'1024'}')GB"
+            fi
+		    case ${FILE_NAME##*.} in
+			lz4 | zst)
+			    tar --checkpoint-action="ttyout=%T\r" --recursive-unlink -I zstd -xmpf "$tar_path" -C "$FILE_PATH"
+		        ;;
+			tar)
+			    [[ ${MODDIR_NAME##*/} = Media ]] && tar --checkpoint-action="ttyout=%T\r" -axf "$tar_path" -C "$FILE_PATH" || tar --checkpoint-action="ttyout=%T\r" -amxf "$tar_path" -C "$FILE_PATH"
+			    ;;
 			esac
 		else
 			Set_back
@@ -850,7 +859,6 @@ Release_data() {
 						    echo_log "selinux上下文設置"
 					    elif [[ $FILE_NAME2 = data ]]; then
                             chown -hR "$G:1078" "$FILE_PATH/$name2/"
-                            echo_log "data:$G:1078"
 					    fi
 				    else
 				        echoRgb "路徑$X不存在" "0"
@@ -882,8 +890,8 @@ installapk() {
 	if [[ $apkfile != "" ]]; then
 		rm -rf "$TMPDIR"/*
 		case ${apkfile##*.} in
-		lz4 | zst) pv "$apkfile" | tar -I zstd -xmpf - -C "$TMPDIR" ;;
-		tar) pv "$apkfile" | tar -xmpf - -C "$TMPDIR" ;;
+		lz4 | zst) tar --checkpoint-action="ttyout=%T\r" -I zstd -xmpf "$apkfile" -C "$TMPDIR" ;;
+		tar) tar --checkpoint-action="ttyout=%T\r" -xmpf "$apkfile" -C "$TMPDIR" ;;
 		*)
 			echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
 			Set_back
@@ -964,8 +972,8 @@ get_name(){
 					if [[ $compressed_file != "" ]]; then
 						rm -rf "$TMPDIR"/*
 						case ${compressed_file##*.} in
-						lz4 | zst) pv "$compressed_file" | tar -I zstd -xmpf - -C "$TMPDIR" --wildcards --no-anchored 'base.apk' ;;
-						tar) pv "$compressed_file" | tar -xmpf - -C "$TMPDIR" --wildcards --no-anchored 'base.apk' ;;
+						lz4 | zst) tar -I zstd -xmpf "$compressed_file" -C "$TMPDIR" --wildcards --no-anchored 'base.apk' ;;
+						tar) tar -xmpf "$compressed_file" -C "$TMPDIR" --wildcards --no-anchored 'base.apk' ;;
 						*)
 							echoRgb "${compressed_file##*/} 壓縮包不支持解壓縮" "0"
 							Set_back
