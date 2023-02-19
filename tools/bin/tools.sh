@@ -63,7 +63,7 @@ id=
 if [[ $id != "" && -d /data/user/0/com.tencent.mobileqq/files/aladdin_configs/$id ]]; then
 	exit 2
 fi
-PATH="/sbin/.magisk/busybox:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/Han.GJZS/files/usr/busybox:/data/data/Han.GJZS/files/usr/bin:/data/data/com.omarea.vtools/files/toolkit:/data/user/0/com.termux/files/usr/bin"
+PATH="/sbin/.magisk/busybox:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/Han.GJZS/files/usr/busybox:/data/data/Han.GJZS/files/usr/bin:/data/data/com.omarea.vtools/files/toolkit:/data/user/0/com.termux/files/usr/bin:/data/user/0/Han.GJK/files/usr/busybox"
 if [[ -d $(magisk --path 2>/dev/null) ]]; then
 	PATH="$(magisk --path 2>/dev/null)/.magisk/busybox:$PATH"
 else
@@ -134,8 +134,8 @@ if [[ $(which busybox) = "" ]]; then
 	exit 1
 fi
 #下列為自定義函數
-alias appinfo="exec app_process /system/bin --nice-name=appinfo indi.appinfo.AppInfo $@"
-alias down="exec app_process /system/bin --nice-name=down Han.download.Down $@"
+alias appinfo="exec app_process /system/bin --nice-name=appinfo han.core.order.appinfo.AppInfo $@"
+alias down="exec app_process /system/bin --nice-name=down han.core.order.down.Down $@"
 Set_back() {
 	return 1
 }
@@ -604,6 +604,21 @@ Calculate_size() {
 		echoRgb "本次備份: $(($((filesizee - filesize)) * 1000 / 1024))kb"
 	fi
 }
+size () {
+    var="$(echo "$1" | bc 2>/dev/null)"
+    if [[ $var != $1 ]]; then
+        b_size="$(ls -l "$1" | awk '{print $5}')"
+    else
+        b_size="$1"
+    fi
+	k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
+	m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
+    if [[ $(expr "$m_size" \> 1) -eq 0 ]]; then
+        echo "${k_size}KB"
+    else
+        [[ $(echo "$m_size" | cut -d '.' -f1) -lt 1024 ]] && echo "${m_size}MB" || echo "$(awk 'BEGIN{printf "%.2f\n", "'$m_size'"/'1024'}')GB"
+    fi
+}
 #分區佔用信息
 partition_info() {
 	Occupation_status="$(df -h "${1%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
@@ -648,11 +663,7 @@ Backup_apk() {
 			echoRgb "$1"
 			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
 			echo "$apk_path" | sed -e '/^$/d' | while read; do
-				path="$REPLY"
-				b_size="$(ls -l "$path" | awk '{print $5}')"
-				k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
-				m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
-				echoRgb "${path##*/} ${m_size}MB(${k_size}KB)"
+				echoRgb "${REPLY##*/} $(size "$REPLY")"
 			done
 			(
 				cd "$apk_path2"
@@ -710,7 +721,7 @@ Backup_apk() {
 }
 #檢測數據位置進行備份
 Backup_data() {
-	unset zsize Size data_path && data_path="$path/$1/$name2"
+	unset zsize Size data_path Filesize && data_path="$path/$1/$name2"
 	case $1 in
 	user) Size="$userSize" && data_path="$path2/$name2" ;;
 	data) Size="$dataSize" ;;
@@ -727,10 +738,18 @@ Backup_data() {
 		;;
 	esac
 	if [[ -d $data_path ]]; then
-		if [[ $Size != $(du -ks "$data_path" | awk '{print $1}') ]]; then
+        Filesize="$(du -ks "$data_path" | awk '{print $1}')"
+        k_size="$(awk 'BEGIN{printf "%.2f\n", "'$Filesize'"'*1024'/'1024'}')"
+	    m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
+        if [[ $(expr "$m_size" \> 1) -eq 0 ]]; then
+            get_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')KB"
+        else
+            [[ $(echo "$m_size" | cut -d '.' -f1) -lt 1000 ]] && get_size="${m_size}MB" || get_size="$(awk 'BEGIN{printf "%.2f\n", "'$m_size'"/'1024'}')GB"
+        fi
+		if [[ $Size != $Filesize ]]; then
 			partition_info "$Backup"
 			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
-			echoRgb "備份$1數據"
+			echoRgb "備份$1數據($get_size)"
 			case $1 in
 			user)
 				case $Compression_method in
@@ -758,15 +777,15 @@ Backup_data() {
 					if [[ $zsize != "" ]]; then
 						rm -rf "$2/PATH"
 						if [[ $Size != "" ]]; then
-							echo "$(cat "$app_details" | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
+							echo "$(cat "$app_details" | sed "s/$Size/$Filesize/g")">"$app_details"
 						else
-							echo "#$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
+							echo "#$1Size=\"$Filesize\"" >>"$app_details"
 						fi
 					else
 						if [[ $Size != "" ]]; then
-							echo "$(cat "$app_details" | sed "s/$Size/$(du -ks "$data_path" | awk '{print $1}')/g")">"$app_details"
+							echo "$(cat "$app_details" | sed "s/$Size/$Filesize/g")">"$app_details"
 						else
-							echo "$1Size=\"$(du -ks "$data_path" | awk '{print $1}')\"" >>"$app_details"
+							echo "$1Size=\"$Filesize\"" >>"$app_details"
 						fi
 					fi
 				else
@@ -792,14 +811,13 @@ Release_data() {
 	FILE_NAME2="${FILE_NAME%%.*}"
 	case ${FILE_NAME##*.} in
 	lz4 | zst | tar)
-		echoRgb "恢復$FILE_NAME2數據" "3"
-		unset FILE_PATH
+		unset FILE_PATH Size
 		case $FILE_NAME2 in
-		user) [[ -d $X ]] && FILE_PATH="$path2" || echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0" ;;
-		data) FILE_PATH="$path/data" ;;
-		obb) FILE_PATH="$path/obb" ;;
-		thanox)	FILE_PATH="/data/system" && find "/data/system" -name "thanos*" -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
-		storage-isolation)	FILE_PATH="/data/adb" ;;
+		user) [[ -d $X ]] && FILE_PATH="$path2" Size="$userSize" || echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0" ;;
+		data) FILE_PATH="$path/data" Size="$dataSize";;
+		obb) FILE_PATH="$path/obb" Size="$obbSize";;
+		thanox)	FILE_PATH="/data/system" Size="$(cat "$app_details" | awk "/${FILE_NAME2}Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" && find "/data/system" -name "thanos*" -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
+		storage-isolation)	FILE_PATH="/data/adb" Size="$(cat "$app_details" | awk "/${FILE_NAME2}Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" ;;
 		*)
 			if [[ $A != "" ]]; then
 				if [[ ${MODDIR_NAME##*/} = Media ]]; then
@@ -812,23 +830,18 @@ Release_data() {
 						echoRgb "解壓路徑↓\n -$FILE_PATH" "2"
 						TMPPATH="$FILE_PATH"
 						FILE_PATH="${FILE_PATH%/*}"
+						Size="$(cat "$app_details" | awk "/${FILE_NAME2}Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')"
 						[[ ! -d $FILE_PATH ]] && mkdir -p "$FILE_PATH"
 					fi
 				fi
 			fi ;;
 		esac
-		if [[ $FILE_PATH != "" ]]; then
-			b_size="$(ls -l "$tar_path" | awk '{print $5}')"
-			k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
-			m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
-            if [[ $(expr "$m_size" \> 1) -eq 0 ]]; then
-                echoRgb "total_size:${k_size}KB"
-            else
-                [[ $(echo "$m_size" | cut -d '.' -f1) -lt 1000 ]] && echoRgb "total_size:${m_size}MB" || echoRgb "total_size:$(awk 'BEGIN{printf "%.2f\n", "'$m_size'"/'1024'}')GB"
-            fi
+        echoRgb "恢復$FILE_NAME2數據$(size "$(awk 'BEGIN{printf "%.2f\n", "'$Size'"*'1024'}')")" "3"
+   		if [[ $FILE_PATH != "" ]]; then
+            [[ ${MODDIR_NAME##*/} != Media ]] && rm -rf "$FILE_PATH/$name2"
 		    case ${FILE_NAME##*.} in
 			lz4 | zst)
-			    tar --checkpoint-action="ttyout=%T\r" --recursive-unlink -I zstd -xmpf "$tar_path" -C "$FILE_PATH"
+			    tar --checkpoint-action="ttyout=%T\r" -I zstd -xmpf "$tar_path" -C "$FILE_PATH"
 		        ;;
 			tar)
 			    [[ ${MODDIR_NAME##*/} = Media ]] && tar --checkpoint-action="ttyout=%T\r" -axf "$tar_path" -C "$FILE_PATH" || tar --checkpoint-action="ttyout=%T\r" -amxf "$tar_path" -C "$FILE_PATH"
@@ -1406,7 +1419,7 @@ Restore)
 		fi
 		Backup_folder="$MODDIR/$name1"
 		Backup_folder2="$MODDIR/Media"
-		[[ -f "$Backup_folder/app_details" ]] && . "$Backup_folder/app_details" &>/dev/null
+		[[ -f "$Backup_folder/app_details" ]] && app_details="$Backup_folder/app_details" . "$Backup_folder/app_details" &>/dev/null
 		[[ $name2 = "" ]] && echoRgb "應用包名獲取失敗" "0" && exit 1
 		if [[ -d $Backup_folder ]]; then
 			echoRgb "恢複$name1 ($name2)" "2"
@@ -1445,6 +1458,7 @@ Restore)
 				echoRgb "是否恢復多媒體數據\n -音量上恢復，音量下不恢復" "2"
 				get_version "恢復媒體數據" "跳過恢復媒體數據"
 				starttime1="$(date -u "+%s")"
+				app_details="$Backup_folder2/app_details"
 				A=1
 				B="$(find "$Backup_folder2" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | wc -l)"
 				if [[ $branch = true ]]; then
@@ -1523,6 +1537,7 @@ Restore3)
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
 	get_version "恢復自定義資料夾" "離開腳本" && [[ "$branch" = false ]] && exit 0
 	mediaDir="$MODDIR/Media"
+	[[ -f "$mediaDir/app_details" ]] && app_details="$mediaDir/app_details" &>/dev/null
 	Backup_folder2="$mediaDir"
 	[[ ! -d $mediaDir ]] && echoRgb "媒體資料夾不存在" "0" && exit 2
 	txt="$MODDIR/mediaList.txt"
