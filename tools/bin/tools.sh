@@ -33,7 +33,7 @@ echoRgb() {
 	fi
 	#[[ $Status_log != "" ]] && echo " -$(date '+%T') $1" >>"$Status_log"
 }
-ls -Zd /storage/emulated/0/Yawasau/Backup_zstd_0/tools/bin/busybox
+#ls -Zd /storage/emulated/0/Yawasau/Backup_zstd_0/tools/bin/busybox
 #exit
 [ "$rgb_a" = "" ] && rgb_a=214
 if [ "$(whoami)" != root ]; then
@@ -63,14 +63,14 @@ id=
 if [[ $id != "" && -d /data/user/0/com.tencent.mobileqq/files/aladdin_configs/$id ]]; then
 	exit 2
 fi
-PATH="/sbin/.magisk/busybox:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/Han.GJZS/files/usr/busybox:/data/data/Han.GJZS/files/usr/bin:/data/data/com.omarea.vtools/files/toolkit:/data/user/0/com.termux/files/usr/bin:/data/user/0/Han.GJK/files/usr/busybox"
+PATH="/sbin/.magisk/busybox:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/Han.GJZS/files/usr/busybox:/data/data/Han.GJZS/files/usr/bin:/data/data/com.omarea.vtools/files/toolkit:/data/user/0/Han.GJK/files/usr/busybox:/data/user/0/com.termux/files/usr/bin"
 if [[ -d $(magisk --path 2>/dev/null) ]]; then
 	PATH="$(magisk --path 2>/dev/null)/.magisk/busybox:$PATH"
 else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.6.8"
+backup_version="V15.6.9"
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
 filepath="/data/backup_tools"
 busybox="$filepath/busybox"
@@ -661,7 +661,6 @@ Backup_apk() {
 			partition_info "$Backup"
 			#備份apk
 			echoRgb "$1"
-			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
 			echo "$apk_path" | sed -e '/^$/d' | while read; do
 				echoRgb "${REPLY##*/} $(size "$REPLY")"
 			done
@@ -670,7 +669,7 @@ Backup_apk() {
 				case $Compression_method in
 				tar | TAR | Tar) tar --checkpoint-action="ttyout=%T\r" -cf "$Backup_folder/apk.tar" *.apk ;;
 				lz4 | LZ4 | Lz4) tar --checkpoint-action="ttyout=%T\r" -cf "$Backup_folder/apk.tar.lz4" *.apk "-I zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4" ;;
-				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" -cf "$Backup_folder/apk.tar.zst" *.apk "-I zstd -r -T0 --ultra -1 -q --priority=rt" ;;
+				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" "-I zstd -r -T0 -1 -q --priority=rt" -cf "$Backup_folder/apk.tar.zst" *.apk ;;
 				esac
 			)
 			echo_log "備份$apk_number個Apk"
@@ -721,7 +720,7 @@ Backup_apk() {
 }
 #檢測數據位置進行備份
 Backup_data() {
-	unset zsize Size data_path Filesize && data_path="$path/$1/$name2"
+	data_path="$path/$1/$name2"
 	case $1 in
 	user) Size="$userSize" && data_path="$path2/$name2" ;;
 	data) Size="$dataSize" ;;
@@ -738,6 +737,7 @@ Backup_data() {
 		;;
 	esac
 	if [[ -d $data_path ]]; then
+	    unset Filesize m_size k_size
         Filesize="$(du -ks "$data_path" | awk '{print $1}')"
         k_size="$(awk 'BEGIN{printf "%.2f\n", "'$Filesize'"'*1024'/'1024'}')"
 	    m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
@@ -748,7 +748,6 @@ Backup_data() {
         fi
 		if [[ $Size != $Filesize ]]; then
 			partition_info "$Backup"
-			[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
 			echoRgb "備份$1數據($get_size)"
 			case $1 in
 			user)
@@ -836,7 +835,7 @@ Release_data() {
 				fi
 			fi ;;
 		esac
-        echoRgb "恢復$FILE_NAME2數據$(size "$(awk 'BEGIN{printf "%.2f\n", "'$Size'"*'1024'}')")" "3"
+        echoRgb "恢復$FILE_NAME2數據 釋放$(size "$(awk 'BEGIN{printf "%.2f\n", "'$Size'"*'1024'}')")" "3"
    		if [[ $FILE_PATH != "" ]]; then
             [[ ${MODDIR_NAME##*/} != Media ]] && rm -rf "$FILE_PATH/$name2"
 		    case ${FILE_NAME##*.} in
@@ -1038,7 +1037,7 @@ Validation_file() {
 	FILE_NAME="${1##*/}"
 	echoRgb "效驗$FILE_NAME"
 	case ${FILE_NAME##*.} in
-	lz4 | zst) zstd -t "$1" &>/dev/null ;;
+	lz4 | zst) zstd -t "$1" 2>/dev/null ;;
 	tar) tar -tf "$1" &>/dev/null ;;
 	esac
 	echo_log "效驗"
@@ -1214,7 +1213,7 @@ backup)
 		if [[ -d $apk_path2 ]]; then
 			echoRgb "備份第$i/$r個應用 剩下$((r - i))個" "3"
 			echoRgb "備份 $name1 \"$name2\"" "2"
-			unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3
+			unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 zsize Size data_path userSize dataSize obbSize
 			if [[ $name1 = !* || $name1 = ！* ]]; then
 				name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
 				echoRgb "跳過備份所有數據" "0"
@@ -1229,7 +1228,7 @@ backup)
 			if [[ -f $app_details ]]; then
 				. "$app_details" &>/dev/null
 				if [[ $PackageName != $name2 ]]; then
-					unset Backup_folder ChineseName PackageName apk_version versionName apk_version2 apk_version3 result
+					unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 zsize Size data_path userSize dataSize obbSize
 					Backup_folder="$Backup/${name1}[${name2}]"
 					app_details="$Backup_folder/app_details"
 					[[ -f $app_details ]] && . "$app_details" &>/dev/null
@@ -1240,6 +1239,7 @@ backup)
 			[[ $name2 = com.tencent.mobileqq ]] && echoRgb "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
 			[[ $name2 = com.tencent.mm ]] && echoRgb "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
 			apk_number="$(echo "$apk_path" | wc -l)"
+		    [[ $name2 != $Open_apps2 ]] && pm suspend "$name2" &>/dev/null
 			if [[ $apk_number = 1 ]]; then
 				Backup_apk "非Split Apk" "3"
 			else
@@ -1257,6 +1257,7 @@ backup)
 				[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)"
 				[[ $name2 = moe.shizuku.redirectstorage ]] && Backup_data "storage-isolation" "/data/adb/storage-isolation"
 			fi
+            pm unsuspend "$name2" &>/dev/null
 			endtime 2 "$name1 備份" "3"
 			Occupation_status="$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
 			lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
@@ -1270,6 +1271,9 @@ backup)
 		fi
 		if [[ $i = $r ]]; then
 			endtime 1 "應用備份" "3"
+			appinfo -d " " -o pn -p | while read ; do
+			    pm unsuspend "$REPLY" &>/dev/null
+			done
 			#設置無障礙開關
 			if [[ $var != "" ]]; then
 				if [[ $var != null ]]; then
@@ -1435,10 +1439,11 @@ Restore)
 			if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
 				if [[ $No_backupdata = "" ]]; then
 					#停止應用
-					[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
+					[[ $name2 != $Open_apps2 ]] && pm suspend "$name2" &>/dev/null
 					find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
 						Release_data "$REPLY"
 					done
+					pm unsuspend "$name2" &>/dev/null
 				fi
 			else
 				[[ $No_backupdata = "" ]]&& echoRgb "$name1沒有安裝無法恢復數據" "0"
@@ -1452,6 +1457,9 @@ Restore)
 			echoRgb "$Backup_folder資料夾遺失，無法恢複" "0"
 		fi
 		if [[ $i = $r ]]; then
+            appinfo -d " " -o pn -p | while read ; do
+			    pm unsuspend "$REPLY" &>/dev/null
+			done
 			endtime 1 "應用恢復" "2"
 			if [[ -d $Backup_folder2 ]]; then
 				Print "是否恢復多媒體數據 音量上恢復，音量下不恢復"
@@ -1519,10 +1527,11 @@ Restore2)
 	fi
 	if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
 		#停止應用
-		[[ $name2 != $Open_apps2 ]] && am force-stop "$name2"
+		[[ $name2 != $Open_apps2 ]] && pm suspend "$name2" &>/dev/null
 		find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
 			Release_data "$REPLY"
 		done
+        pm unsuspend "$name2" &>/dev/null
 	else
 		echoRgb "$name1沒有安裝無法恢復數據" "0"
 	fi
