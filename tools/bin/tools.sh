@@ -31,10 +31,7 @@ echoRgb() {
 	else
 		echo -e "\e[38;5;${rgb_a}m -$1\e[0m"
 	fi
-	#[[ $Status_log != "" ]] && echo " -$(date '+%T') $1" >>"$Status_log"
 }
-#ls -Zd /storage/emulated/0/Yawasau/Backup_zstd_0/tools/bin/busybox
-#exit
 [ "$rgb_a" = "" ] && rgb_a=214
 if [ "$(whoami)" != root ]; then
 	echoRgb "你是憨批？不給Root用你媽 爬" "0"
@@ -136,6 +133,8 @@ fi
 #下列為自定義函數
 alias appinfo="exec app_process /system/bin --nice-name=appinfo han.core.order.appinfo.AppInfo $@"
 alias down="exec app_process /system/bin --nice-name=down han.core.order.down.Down $@"
+alias zstd="zstd -T0 -1 -q --priority=rt"
+alias lz4="zstd -T0 -1 -q --priority=rt --format=lz4"
 Set_back() {
 	return 1
 }
@@ -241,7 +240,7 @@ Open_apps="$(appinfo -d "(" -ed ")" -o ands,pn -ta c 2>/dev/null)"
 Open_apps2="$(echo "$Open_apps" | cut -f2 -d '(' | sed 's/)//g')"
 raminfo="$(awk '($1 == "MemTotal:"){print $2/1000"MB"}' /proc/meminfo 2>/dev/null)"
 echoRgb "---------------------SpeedBackup---------------------"
-echoRgb "當前腳本執行路徑:$MODDIR\n -已開機:$(Show_boottime)\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(magisk -c 2>/dev/null)\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)\n$(memory_status)\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
+echoRgb "腳本路徑:$MODDIR\n -已開機:$(Show_boottime)\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(magisk -c 2>/dev/null)\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)\n$(memory_status)\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
 update_script() {
 	[[ $zipFile = "" ]] && zipFile="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f 2>/dev/null)"
 	if [[ $zipFile != "" ]]; then
@@ -605,8 +604,8 @@ Calculate_size() {
 	fi
 }
 size () {
-    var="$(echo "$1" | bc 2>/dev/null)"
-    if [[ $var != $1 ]]; then
+    varr="$(echo "$1" | bc 2>/dev/null)"
+    if [[ $varr != $1 ]]; then
         b_size="$(ls -l "$1" | awk '{print $5}')"
     else
         b_size="$1"
@@ -630,7 +629,7 @@ Backup_apk() {
 	#創建APP備份文件夾
 	[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
 	apk_version2="$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)"
-	apk_version3="$(dumpsys package "$name2" | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)"
+	apk_version3="$(dumpsys package "$name2" 2>/dev/null | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)"
 	if [[ $apk_version = $apk_version2 ]]; then
 		[[ $(cat "$txt2" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
 		unset xb
@@ -668,8 +667,8 @@ Backup_apk() {
 				cd "$apk_path2"
 				case $Compression_method in
 				tar | TAR | Tar) tar --checkpoint-action="ttyout=%T\r" -cf "$Backup_folder/apk.tar" *.apk ;;
-				lz4 | LZ4 | Lz4) tar --checkpoint-action="ttyout=%T\r" -cf "$Backup_folder/apk.tar.lz4" *.apk "-I zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4" ;;
-				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" "-I zstd -r -T0 -1 -q --priority=rt" -cf "$Backup_folder/apk.tar.zst" *.apk ;;
+				lz4 | LZ4 | Lz4) tar --checkpoint-action="ttyout=%T\r" -cf - *.apk | lz4>"$Backup_folder/apk.tar.lz4" ;;
+				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" -cf - *.apk | zstd >"$Backup_folder/apk.tar.zst" ;;
 				esac
 			)
 			echo_log "備份$apk_number個Apk"
@@ -753,15 +752,15 @@ Backup_data() {
 			user)
 				case $Compression_method in
 				tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null ;;
-				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf "$Backup_folder/$1.tar.zst" -C "${data_path%/*}" "${data_path##*/}" "-I zstd -r -T0 --ultra -1 -q --priority=rt" 2>/dev/null ;;
-				lz4 | Lz4 | LZ4) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf "$Backup_folder/$1.tar.lz4" -C "${data_path%/*}" "${data_path##*/}" "-I zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4" 2>/dev/null ;;
+				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd>"$Backup_folder/$1.tar.zst" 2>/dev/null ;;
+				lz4 | Lz4 | LZ4) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" -cpf - -C "${data_path%/*}" "${data_path##*/}" | lz4>"$Backup_folder/$1.tar.lz4" 2>/dev/null ;;
 				esac
 				;;
 			*)
 				case $Compression_method in
 				tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
-				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf "$Backup_folder/$1.tar.zst" -C "${data_path%/*}" "${data_path##*/}" "-I zstd -r -T0 --ultra -1 -q --priority=rt" 2>/dev/null ;;
-				lz4 | Lz4 | LZ4) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf "$Backup_folder/$1.tar.lz4" -C "${data_path%/*}" "${data_path##*/}" "-I zstd -r -T0 --ultra -1 -q --priority=rt --format=lz4" 2>/dev/null ;;
+				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd>"$Backup_folder/$1.tar.zst" 2>/dev/null ;;
+				lz4 | Lz4 | LZ4) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" -cpf - -C "${data_path%/*}" "${data_path##*/}" | lz4>"$Backup_folder/$1.tar.lz4" 2>/dev/null ;;
 				esac
 				;;
 			esac
@@ -857,7 +856,7 @@ Release_data() {
 			    if [[ -f /config/sdcardfs/$name2/appid ]]; then
 					G="$(cat "/config/sdcardfs/$name2/appid")"
 				else
-					G="$(dumpsys package "$name2" | grep -w 'userId' | head -1)"
+					G="$(dumpsys package "$name2" 2>/dev/null | grep -w 'userId' | head -1)"
 				fi
                 G="$(echo "$G" | egrep -o '[0-9]+')"
 				if [[ $G != "" ]]; then
@@ -1239,7 +1238,7 @@ backup)
 			[[ $name2 = com.tencent.mobileqq ]] && echoRgb "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
 			[[ $name2 = com.tencent.mm ]] && echoRgb "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
 			apk_number="$(echo "$apk_path" | wc -l)"
-		    [[ $name2 != $Open_apps2 ]] && pm suspend "$name2" &>/dev/null
+		    [[ $name2 != $Open_apps2 ]] && pm suspend "$name2" 2>/dev/null | sed 's/Package / -包名:/g ; s/new suspended state: true/暫停狀態:true/g'
 			if [[ $apk_number = 1 ]]; then
 				Backup_apk "非Split Apk" "3"
 			else
@@ -1257,7 +1256,7 @@ backup)
 				[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)"
 				[[ $name2 = moe.shizuku.redirectstorage ]] && Backup_data "storage-isolation" "/data/adb/storage-isolation"
 			fi
-            pm unsuspend "$name2" &>/dev/null
+            pm unsuspend "$name2" 2>/dev/null | sed 's/Package / -包名:/g ; s/new suspended state: false/暫停狀態:false/g'
 			endtime 2 "$name1 備份" "3"
 			Occupation_status="$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
 			lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
@@ -1272,7 +1271,7 @@ backup)
 		if [[ $i = $r ]]; then
 			endtime 1 "應用備份" "3"
 			appinfo -d " " -o pn -p | while read ; do
-			    pm unsuspend "$REPLY" &>/dev/null
+			    pm unsuspend "$REPLY" | sed 's/Package / -包名:/g ; s/new suspended state: false/暫停狀態:true/g'
 			done
 			#設置無障礙開關
 			if [[ $var != "" ]]; then
@@ -1439,11 +1438,11 @@ Restore)
 			if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
 				if [[ $No_backupdata = "" ]]; then
 					#停止應用
-					[[ $name2 != $Open_apps2 ]] && pm suspend "$name2" &>/dev/null
+					[[ $name2 != $Open_apps2 ]] && pm suspend "$name2" 2>/dev/null | sed 's/Package / -包名:/g ; s/new suspended state: true/暫停狀態:true/g'
 					find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
 						Release_data "$REPLY"
 					done
-					pm unsuspend "$name2" &>/dev/null
+    					pm unsuspend "$name2" 2>/dev/null | sed 's/Package / -包名:/g ; s/new suspended state: false/暫停狀態:false/g'
 				fi
 			else
 				[[ $No_backupdata = "" ]]&& echoRgb "$name1沒有安裝無法恢復數據" "0"
@@ -1458,7 +1457,7 @@ Restore)
 		fi
 		if [[ $i = $r ]]; then
             appinfo -d " " -o pn -p | while read ; do
-			    pm unsuspend "$REPLY" &>/dev/null
+			    pm unsuspend "$REPLY" | sed 's/Package / -包名:/g ; s/new suspended state: false/暫停狀態:false/g'
 			done
 			endtime 1 "應用恢復" "2"
 			if [[ -d $Backup_folder2 ]]; then
@@ -1527,11 +1526,11 @@ Restore2)
 	fi
 	if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
 		#停止應用
-		[[ $name2 != $Open_apps2 ]] && pm suspend "$name2" &>/dev/null
+		[[ $name2 != $Open_apps2 ]] && pm suspend "$name2" 2>/dev/null | sed 's/Package / -包名:/g ; s/new suspended state: true/暫停狀態:true/g'
 		find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
 			Release_data "$REPLY"
 		done
-        pm unsuspend "$name2" &>/dev/null
+        pm unsuspend "$name2" 2>/dev/null | sed 's/Package / -包名:/g ; s/new suspended state: false/暫停狀態:false/g'
 	else
 		echoRgb "$name1沒有安裝無法恢復數據" "0"
 	fi
