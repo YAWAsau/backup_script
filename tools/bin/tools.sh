@@ -962,67 +962,60 @@ get_name(){
 		echoRgb "列出全部資料夾內應用名與自定義目錄壓縮包名稱" "3"
 	fi
 	rgb_a=118
-	find "$MODDIR" -maxdepth 2 -name "app_details" -type f 2>/dev/null | sort | while read; do
-		REPLY="${REPLY%/*}"
+	find "$MODDIR" -maxdepth 2 -name "apk.*" -type f 2>/dev/null | sort | while read; do
+		Folder="${REPLY%/*}"
 		[[ $rgb_a -ge 229 ]] && rgb_a=118
-		if [[ ${REPLY##*/} = Media && $1 = Apkname ]]; then
-			echoRgb "存在媒體資料夾" "2"
-			[[ ! -f $txt2 ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$txt2"
-			find "$REPLY" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | while read; do
-				echoRgb "${REPLY##*/}" && echo "${REPLY##*/}" >> "$txt2"
-			done
-			echoRgb "$txt2重新生成" "1"
-		else
-			unset PackageName NAME DUMPAPK ChineseName
-			. "$REPLY/app_details" &>/dev/null
-			[[ ! -f $txt && $1 = Apkname ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
-			if [[ $PackageName = "" || $ChineseName = "" ]]; then
-				if [[ ${REPLY##*/} != Media ]]; then
-					echoRgb "${REPLY##*/}包名獲取失敗，解壓縮獲取包名中..." "0"
-					compressed_file="$(find "$REPLY" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
-					if [[ $compressed_file != "" ]]; then
+		unset PackageName NAME DUMPAPK ChineseName
+		[[ -f $Folder/app_details ]] && . "$Folder/app_details" &>/dev/null
+		[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
+		if [[ $PackageName = "" || $ChineseName = "" ]]; then
+			echoRgb "${Folder##*/}包名獲取失敗，解壓縮獲取包名中..." "0"
+			rm -rf "$TMPDIR"/*
+			case ${REPLY##*.} in
+			lz4 | zst) tar -I zstd -xmpf "$REPLY" -C "$TMPDIR" --wildcards --no-anchored 'base.apk' ;;
+			tar) tar -xmpf "$REPLY" -C "$TMPDIR" --wildcards --no-anchored 'base.apk' ;;
+			*)
+			    echoRgb "${REPLY##*/} 壓縮包不支持解壓縮" "0"
+				Set_back
+				;;
+			esac
+			echo_log "${REPLY##*/}解壓縮"
+			if [[ $result = 0 ]]; then
+				if [[ -f $TMPDIR/base.apk ]]; then
+					DUMPAPK="$(appinfo -sort-i -d " " -o ands,pn -f "$TMPDIR/base.apk")"
+					if [[ $DUMPAPK != "" ]]; then
+						app=($DUMPAPK $DUMPAPK)
+						PackageName="${app[1]}"
+						ChineseName="${app[2]}"
 						rm -rf "$TMPDIR"/*
-						case ${compressed_file##*.} in
-						lz4 | zst) tar -I zstd -xmpf "$compressed_file" -C "$TMPDIR" --wildcards --no-anchored 'base.apk' ;;
-						tar) tar -xmpf "$compressed_file" -C "$TMPDIR" --wildcards --no-anchored 'base.apk' ;;
-						*)
-							echoRgb "${compressed_file##*/} 壓縮包不支持解壓縮" "0"
-							Set_back
-							;;
-						esac
-						echo_log "${compressed_file##*/}解壓縮"
-						if [[ $result = 0 ]]; then
-							if [[ -f $TMPDIR/base.apk ]]; then
-								DUMPAPK="$(appinfo -sort-i -d " " -o ands,pn -f "$TMPDIR/base.apk")"
-								if [[ $DUMPAPK != "" ]]; then
-									app=($DUMPAPK $DUMPAPK)
-									PackageName="${app[1]}"
-									ChineseName="${app[2]}"
-									rm -rf "$TMPDIR"/*
-								else
-									echoRgb "appinfo輸出失敗" "0"
-								fi
-							fi
-						fi
+					else
+						echoRgb "appinfo輸出失敗" "0"
 					fi
 				fi
 			fi
-			if [[ $PackageName != "" && $ChineseName != "" ]]; then
-				case $1 in
-				Apkname)
-					echoRgb "$ChineseName $PackageName" && echo "$ChineseName $PackageName" >>"$txt" ;; 
-				convert)
-					if [[ ${REPLY##*/} = $PackageName ]]; then
-						mv "$REPLY" "${REPLY%/*}/$ChineseName" && echoRgb "${REPLY##*/} > $ChineseName"
-					else
-						mv "$REPLY" "${REPLY%/*}/$PackageName" && echoRgb "${REPLY##*/} > $PackageName"
-					fi ;;
-				esac
-			fi
+		fi
+		if [[ $PackageName != "" && $ChineseName != "" ]]; then
+			case $1 in
+			Apkname)
+				echoRgb "$ChineseName $PackageName" && echo "$ChineseName $PackageName" >>"$txt" ;; 
+			convert)
+				if [[ ${Folder##*/} = $PackageName ]]; then
+					mv "$Folder" "${Folder%/*}/$ChineseName" && echoRgb "${Folder##*/} > $ChineseName"
+				else
+					mv "$Folder" "${Folder%/*}/$PackageName" && echoRgb "${Folder##*/} > $PackageName"
+				fi ;;
+			esac
 		fi
 		let rgb_a++
 	done
-	[[ $1 = Apkname ]] && sort -u "$txt" -o "$txt" 2>/dev/null && echoRgb "$txt重新生成" "1"
+	if [[ -d $MODDIR/Media ]]; then
+		echoRgb "存在媒體資料夾" "2"
+		[[ ! -f $txt2 ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$txt2"
+		find "$MODDIR/Media" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | while read; do
+			echoRgb "${REPLY##*/}" && echo "${REPLY##*/}" >> "$txt2"
+		done
+		echoRgb "$txt2重新生成" "1"
+	fi
 	exit 0
 }
 self_test() {
@@ -1238,7 +1231,7 @@ backup)
 			[[ $name2 = com.tencent.mobileqq ]] && echoRgb "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
 			[[ $name2 = com.tencent.mm ]] && echoRgb "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
 			apk_number="$(echo "$apk_path" | wc -l)"
-		    [[ $name2 != $Open_apps2 ]] && pm suspend "$name2" 2>/dev/null | sed 's/Package / -包名:/g ; s/new suspended state: true/暫停狀態:true/g'
+		    [[ $name2 != $Open_apps2 ]] && pm suspend "$name2" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: true/暫停狀態:凍結/g"
 			if [[ $apk_number = 1 ]]; then
 				Backup_apk "非Split Apk" "3"
 			else
@@ -1256,7 +1249,7 @@ backup)
 				[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)"
 				[[ $name2 = moe.shizuku.redirectstorage ]] && Backup_data "storage-isolation" "/data/adb/storage-isolation"
 			fi
-            pm unsuspend "$name2" 2>/dev/null | sed 's/Package / -包名:/g ; s/new suspended state: false/暫停狀態:false/g'
+            pm unsuspend "$name2" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: false/暫停狀態:解凍/g"
 			endtime 2 "$name1 備份" "3"
 			Occupation_status="$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
 			lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
@@ -1271,7 +1264,7 @@ backup)
 		if [[ $i = $r ]]; then
 			endtime 1 "應用備份" "3"
 			appinfo -d " " -o pn -p | while read ; do
-			    pm unsuspend "$REPLY" | sed 's/Package / -包名:/g ; s/new suspended state: false/暫停狀態:true/g'
+			    pm unsuspend "$REPLY" | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: false/暫停狀態:凍結/g"
 			done
 			#設置無障礙開關
 			if [[ $var != "" ]]; then
@@ -1438,11 +1431,11 @@ Restore)
 			if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
 				if [[ $No_backupdata = "" ]]; then
 					#停止應用
-					[[ $name2 != $Open_apps2 ]] && pm suspend "$name2" 2>/dev/null | sed 's/Package / -包名:/g ; s/new suspended state: true/暫停狀態:true/g'
+					[[ $name2 != $Open_apps2 ]] && pm suspend "$name2" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: true/暫停狀態:凍結/g"
 					find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
 						Release_data "$REPLY"
 					done
-    					pm unsuspend "$name2" 2>/dev/null | sed 's/Package / -包名:/g ; s/new suspended state: false/暫停狀態:false/g'
+    					pm unsuspend "$name2" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: false/暫停狀態:解凍/g"
 				fi
 			else
 				[[ $No_backupdata = "" ]]&& echoRgb "$name1沒有安裝無法恢復數據" "0"
@@ -1457,7 +1450,7 @@ Restore)
 		fi
 		if [[ $i = $r ]]; then
             appinfo -d " " -o pn -p | while read ; do
-			    pm unsuspend "$REPLY" | sed 's/Package / -包名:/g ; s/new suspended state: false/暫停狀態:false/g'
+			    pm unsuspend "$REPLY" | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: false/暫停狀態:解凍/g"
 			done
 			endtime 1 "應用恢復" "2"
 			if [[ -d $Backup_folder2 ]]; then
@@ -1526,11 +1519,11 @@ Restore2)
 	fi
 	if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
 		#停止應用
-		[[ $name2 != $Open_apps2 ]] && pm suspend "$name2" 2>/dev/null | sed 's/Package / -包名:/g ; s/new suspended state: true/暫停狀態:true/g'
+		[[ $name2 != $Open_apps2 ]] && pm suspend "$name2" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: true/暫停狀態:凍結/g"
 		find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
 			Release_data "$REPLY"
 		done
-        pm unsuspend "$name2" 2>/dev/null | sed 's/Package / -包名:/g ; s/new suspended state: false/暫停狀態:false/g'
+        pm unsuspend "$name2" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: false/暫停狀態:解凍/g"
 	else
 		echoRgb "$name1沒有安裝無法恢復數據" "0"
 	fi
