@@ -67,7 +67,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.6.9"
+backup_version="V15.7.0"
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
 filepath="/data/backup_tools"
 busybox="$filepath/busybox"
@@ -129,11 +129,16 @@ TMPDIR="/data/local/tmp"
 if [[ $(which busybox) = "" ]]; then
 	echoRgb "環境變量中沒有找到busybox 請在tools/bin內添加一個\narm64可用的busybox\n或是安裝搞機助手 scene或是Magisk busybox模塊...." "0"
 	exit 1
+elif [[ $(which toybox | egrep -o "system") != system ]]; then
+	echoRgb "環境變量中沒有找到toybox" "0"
+	exit 1
 fi
+
 #下列為自定義函數
 alias appinfo="exec app_process /system/bin --nice-name=appinfo han.core.order.appinfo.AppInfo $@"
 alias down="exec app_process /system/bin --nice-name=down han.core.order.down.Down $@"
 alias zstd="zstd -T0 -1 -q --priority=rt"
+alias LS="toybox ls -Zd"
 alias lz4="zstd -T0 -1 -q --priority=rt --format=lz4"
 Set_back() {
 	return 1
@@ -809,11 +814,18 @@ Release_data() {
 	FILE_NAME2="${FILE_NAME%%.*}"
 	case ${FILE_NAME##*.} in
 	lz4 | zst | tar)
-		unset FILE_PATH Size
+		unset FILE_PATH Size Selinux_state
 		case $FILE_NAME2 in
-		user) [[ -d $X ]] && FILE_PATH="$path2" Size="$userSize" || echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0" ;;
-		data) FILE_PATH="$path/data" Size="$dataSize";;
-		obb) FILE_PATH="$path/obb" Size="$obbSize";;
+		user) 
+		    if [[ -d $X ]]; then
+		        FILE_PATH="$path2"
+		        Size="$userSize"
+		        Selinux_state="$(LS "$X" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)"
+		    else
+		        echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0"
+		    fi;;
+		data) FILE_PATH="$path/data" Size="$dataSize" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)";;
+		obb) FILE_PATH="$path/obb" Size="$obbSize" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)";;
 		thanox)	FILE_PATH="/data/system" Size="$(cat "$app_details" | awk "/${FILE_NAME2}Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" && find "/data/system" -name "thanos*" -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
 		storage-isolation)	FILE_PATH="/data/adb" Size="$(cat "$app_details" | awk "/${FILE_NAME2}Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" ;;
 		*)
@@ -861,15 +873,17 @@ Release_data() {
                 G="$(echo "$G" | egrep -o '[0-9]+')"
 				if [[ $G != "" ]]; then
 					if [[ -d $X ]]; then
+					    [[ $user = 0 ]] && uid="$G:$G" || uid="$user$G:$user$G"
                         if [[ $FILE_NAME2 = user ]]; then
 						    echoRgb "路徑:$X"
 						    Path_details="$(stat -c "%A/%a %U/%G" "$X")"
-						    [[ $user = 0 ]] && chown -hR "$G:$G" "$X/" || chown -hR "$user$G:$user$G" "$X/"
-						    echo_log "設置用戶組:$(echo "$Path_details" | awk '{print $2}')"
-						    restorecon -RFD "$X/" 2>/dev/null
+						    chown -hR "$uid" "$X/"
+						    echo_log "設置用戶組:$(echo "$Path_details" | awk '{print $2}'),shell in :$uid"
+						    chcon -hR "$Selinux_state" "$X/" 2>/dev/null
 						    echo_log "selinux上下文設置"
-					    elif [[ $FILE_NAME2 = data ]]; then
-                            chown -hR "$G:1078" "$FILE_PATH/$name2/"
+					    elif [[ $FILE_NAME2 = data || $FILE_NAME2 = obb ]]; then
+                            chown -hR "$uid" "$FILE_PATH/$name2/"
+                            chcon -hR "$Selinux_state" "$FILE_PATH/$name2/" 2>/dev/null
 					    fi
 				    else
 				        echoRgb "路徑$X不存在" "0"
@@ -1019,7 +1033,7 @@ get_name(){
 	exit 0
 }
 self_test() {
-	if [[ $(dumpsys deviceidle get charging) = false && $(dumpsys battery | awk '/level/{print $2}' | egrep -o '[0-9]+') -le 20 ]]; then
+	if [[ $(dumpsys deviceidle get charging) = false && $(dumpsys battery | awk '/level/{print $2}' | egrep -o '[0-9]+') -le 15 ]]; then
 		echoRgb "電量$(dumpsys battery | awk '/level/{print $2}' | egrep -o '[0-9]+')%太低且未充電\n -為防止備份檔案或是恢復因低電量強制關機導致檔案損毀\n -請連接充電器後備份" "0" && exit 2
 	fi
 }
@@ -1231,7 +1245,6 @@ backup)
 			[[ $name2 = com.tencent.mobileqq ]] && echoRgb "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
 			[[ $name2 = com.tencent.mm ]] && echoRgb "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
 			apk_number="$(echo "$apk_path" | wc -l)"
-		    [[ $name2 != $Open_apps2 ]] && pm suspend "$name2" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: true/暫停狀態:凍結/g"
 			if [[ $apk_number = 1 ]]; then
 				Backup_apk "非Split Apk" "3"
 			else
@@ -1249,7 +1262,6 @@ backup)
 				[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)"
 				[[ $name2 = moe.shizuku.redirectstorage ]] && Backup_data "storage-isolation" "/data/adb/storage-isolation"
 			fi
-            pm unsuspend "$name2" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: false/暫停狀態:解凍/g"
 			endtime 2 "$name1 備份" "3"
 			Occupation_status="$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
 			lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
@@ -1263,9 +1275,6 @@ backup)
 		fi
 		if [[ $i = $r ]]; then
 			endtime 1 "應用備份" "3"
-			appinfo -d " " -o pn -p | while read ; do
-			    pm unsuspend "$REPLY" | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: false/暫停狀態:凍結/g"
-			done
 			#設置無障礙開關
 			if [[ $var != "" ]]; then
 				if [[ $var != null ]]; then
@@ -1373,6 +1382,12 @@ Restore)
 		echoRgb "選擇應用恢復模式\n -音量上僅恢復未安裝，下全恢復"
 		get_version "恢復未安裝" "全恢復" && recovery_mode="$branch"
 	fi
+	Get_user="$(echo "$MODDIR" | rev | cut -d '/' -f1 | cut -d '_' -f1 | rev | egrep -o '[0-9]+')"
+	if [[ $Get_user != $user ]]; then
+	    echoRgb "檢測當前用戶$user與恢復資料夾用戶:$Get_user不同\n -音量上繼續恢復，下不恢復並離開腳本"
+		get_version "恢復安裝" "不恢復安裝" && recovery_mode2="$branch"
+	fi
+	[[ $recovery_mode2 = false ]] && exit 2
 	if [[ $recovery_mode = true ]]; then
 		echoRgb "獲取未安裝應用中"
 		TXT="$MODDIR/TEMP.txt"
@@ -1430,12 +1445,9 @@ Restore)
 			fi
 			if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
 				if [[ $No_backupdata = "" ]]; then
-					#停止應用
-					[[ $name2 != $Open_apps2 ]] && pm suspend "$name2" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: true/暫停狀態:凍結/g"
 					find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
 						Release_data "$REPLY"
 					done
-    					pm unsuspend "$name2" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: false/暫停狀態:解凍/g"
 				fi
 			else
 				[[ $No_backupdata = "" ]]&& echoRgb "$name1沒有安裝無法恢復數據" "0"
@@ -1449,9 +1461,6 @@ Restore)
 			echoRgb "$Backup_folder資料夾遺失，無法恢複" "0"
 		fi
 		if [[ $i = $r ]]; then
-            appinfo -d " " -o pn -p | while read ; do
-			    pm unsuspend "$REPLY" | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: false/暫停狀態:解凍/g"
-			done
 			endtime 1 "應用恢復" "2"
 			if [[ -d $Backup_folder2 ]]; then
 				Print "是否恢復多媒體數據 音量上恢復，音量下不恢復"
@@ -1518,12 +1527,9 @@ Restore2)
 		fi
 	fi
 	if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
-		#停止應用
-		[[ $name2 != $Open_apps2 ]] && pm suspend "$name2" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: true/暫停狀態:凍結/g"
 		find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
 			Release_data "$REPLY"
 		done
-        pm unsuspend "$name2" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: false/暫停狀態:解凍/g"
 	else
 		echoRgb "$name1沒有安裝無法恢復數據" "0"
 	fi
@@ -1673,7 +1679,7 @@ backup_media)
 		[[ ! -f $Backup/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/轉換資料夾名稱.sh"
 		[[ ! -f $Backup/壓縮檔完整性檢查.sh ]] && cp -r "$script_path/check_file" "$Backup/壓縮檔完整性檢查.sh"
 		[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
-		[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
+		[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#使用者\nuser=\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n\n#恢復模式(1僅恢復未安裝應用0全恢復)\nrecovery_mode=0\n\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 		app_details="$Backup_folder/app_details"
 		filesize="$(du -ks "$Backup_folder" | awk '{print $1}')"
 		[[ -f $app_details ]] && . "$app_details" &>/dev/null || touch "$app_details"
