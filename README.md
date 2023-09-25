@@ -1,5 +1,4 @@
 # Backup_script 數據備份腳本
-![主圖](https://github.com/Petit-Abba/backup_script_zh-CN/blob/main/File/mmexport1631297795059.png)
 [![Stars](https://img.shields.io/github/stars/YAWAsau/backup_script?label=stars)](https://github.com/YAWAsau)
 [![Download](https://img.shields.io/github/downloads/YAWAsau/backup_script/total)](https://github.com/YAWAsau/backup_script/releases)
 [![Release](https://img.shields.io/github/v/release/YAWAsau/backup_script?label=release)](https://github.com/YAWAsau/backup_script/releases/latest)
