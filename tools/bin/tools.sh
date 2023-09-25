@@ -67,7 +67,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.7.1"
+backup_version="V15.7.2"
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
 filepath="/data/backup_tools"
 busybox="$filepath/busybox"
@@ -406,6 +406,20 @@ backup|Restore|Restore2|Getlist)
 			[[ $REPLY = 0 ]] && echoRgb "主用戶:$REPLY" "2" || echoRgb "分身用戶:$REPLY" "2"
 		done
 	fi
+	if [[ $operate = Restore2 ]]; then
+	    while true ;do
+		    if [[ $option != "" ]]; then
+		        user="$option"
+		        path="/data/media/$user/Android"
+                path2="/data/user/$user"
+                [[ ! -d $path2 ]] && echoRgb "草你媽傻逼玩兒$user分區不存，你是智障還是看不懂國字？" "0" && exit 2
+			    break
+		    else
+		    	echoRgb "請輸入需要恢復分區" "1"
+			    read option
+	    	fi
+    	done
+    fi
 	[[ ! -d $path2 ]] && echoRgb "$user分區不存在，請將上方提示的用戶id按照需求填入\n -$MODDIR_NAME/backup_settings.conf配置項user=,一次只能填寫一個" "0" && exit 2
 	echoRgb "當前操作為用戶$user"
 	if [[ $operate != Getlist && $operate != Restore2 ]]; then
