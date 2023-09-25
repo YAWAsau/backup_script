@@ -12,7 +12,7 @@
 支援設備必須符合以下條件：`Android 8+`+`arm64`。
 
 由於本人是台灣人所以發布的版本為繁體版，如果需要**简体版**，可前往這裡下載：
-> 简体中文版：[backup_script_zh-CN](https://github.com/Petit-Abba/backup_script_zh-CN) 。
+> 简体中文版：[backup_script_zh-CN](https://github.com/lingcraft/speed-backup/releases) 。
 
 PS. 簡體版本使用 Github Action 自動構建，30分鐘執行一次，所以在原倉庫發布新 release 後，不會立馬更新简体版。
 
