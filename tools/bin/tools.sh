@@ -892,8 +892,8 @@ Release_data() {
 			    if [[ -f /config/sdcardfs/$name2/appid ]]; then
 					G="$(cat "/config/sdcardfs/$name2/appid")"
 				else
-					#G="$(dumpsys package "$name2" 2>/dev/null | grep -w 'userId' | head -1)"
-					[[ $G = "" ]] && G="$(pm list packages -U --user "$user"  | egrep -w "$name2" | cut -f3 -d ':')"
+					G="$(dumpsys package "$name2" 2>/dev/null | grep -w 'userId' | head -1)"
+					[[ $G = "" ]] && G="$(pm list packages -U --user "$user"  | egrep -w "$name2" | cut -f3 -d ':' | awk '{print $1}')"
 				fi
                 G="$(echo "$G" | egrep -o '[0-9]+')"
 				if [[ $G != "" ]]; then
