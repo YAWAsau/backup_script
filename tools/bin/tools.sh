@@ -60,7 +60,7 @@ id=
 if [[ $id != "" && -d /data/user/0/com.tencent.mobileqq/files/aladdin_configs/$id ]]; then
 	exit 2
 fi
-PATH="/sbin/.magisk/busybox:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/Han.GJZS/files/usr/busybox:/data/data/Han.GJZS/files/usr/bin:/data/data/com.omarea.vtools/files/toolkit:/data/user/0/Han.GJK/files/usr/busybox:/data/user/0/com.termux/files/usr/bin"
+PATH="/sbin/.magisk/busybox:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/com.omarea.vtools/files/toolkit:/data/user/0/com.termux/files/usr/bin:/data/data/Han.GJK/files/usr/busybox"
 if [[ -d $(magisk --path 2>/dev/null) ]]; then
 	PATH="$(magisk --path 2>/dev/null)/.magisk/busybox:$PATH"
 else
@@ -141,6 +141,10 @@ alias down="exec app_process /system/bin --nice-name=down han.core.order.down.Do
 alias zstd="zstd -T0 -1 -q --priority=rt"
 alias LS="toybox ls -Zd"
 alias lz4="zstd -T0 -1 -q --priority=rt --format=lz4"
+#appinfo --help
+#appinfo -o pn -u | while read; do
+#    cmd package install-existing "$REPLY"
+#done
 Set_back() {
 	return 1
 }
@@ -848,8 +852,8 @@ Release_data() {
 		    fi;;
 		data) FILE_PATH="$path/data" Size="$dataSize" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)";;
 		obb) FILE_PATH="$path/obb" Size="$obbSize" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)";;
-		thanox)	FILE_PATH="/data/system" Size="$(cat "$app_details" | awk "/${FILE_NAME2}Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" && find "/data/system" -name "thanos*" -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
-		storage-isolation)	FILE_PATH="/data/adb" Size="$(cat "$app_details" | awk "/${FILE_NAME2}Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" ;;
+		thanox) FILE_PATH="/data/system" Size="$(cat "$app_details" | awk "/${FILE_NAME2}Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" && find "/data/system" -name "thanos*" -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
+		storage-isolation) FILE_PATH="/data/adb" Size="$(cat "$app_details" | awk "/${FILE_NAME2}Size/"'{print $1}' | cut -f2 -d '=' | tail -n1 | sed 's/\"//g')" ;;
 		*)
 			if [[ $A != "" ]]; then
 				if [[ ${MODDIR_NAME##*/} = Media ]]; then
@@ -888,7 +892,8 @@ Release_data() {
 			    if [[ -f /config/sdcardfs/$name2/appid ]]; then
 					G="$(cat "/config/sdcardfs/$name2/appid")"
 				else
-					G="$(dumpsys package "$name2" 2>/dev/null | grep -w 'userId' | head -1)"
+					#G="$(dumpsys package "$name2" 2>/dev/null | grep -w 'userId' | head -1)"
+					[[ $G = "" ]] && G="$(pm list packages -U --user "$user"  | egrep -w "$name2" | cut -f3 -d ':')"
 				fi
                 G="$(echo "$G" | egrep -o '[0-9]+')"
 				if [[ $G != "" ]]; then
@@ -1137,7 +1142,7 @@ backup)
 	backup_path
 	echoRgb "配置詳細:\n -壓縮方式:$Compression_method\n -音量鍵確認:$Lo\n -Toast:$toast_info\n -更新:$update\n -已卸載應用檢查:$delete_folder\n -卸載應用默認操作(true刪除false移動):$default_behavior\n -默認使用usb:$USBdefault\n -備份外部數據:$Backup_obb_data\n -備份user數據:$Backup_user_data\n -自定義目錄備份:$backup_media"
 	D="1"
-	C="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
+	C="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n '$=')"
 	if [[ $delete_folder = true ]]; then
 		if [[ -d $Backup ]]; then
 			if [[ $1 = "" ]]; then
@@ -1177,8 +1182,8 @@ backup)
 	if [[ $1 = "" ]]; then
 		echoRgb "檢查備份列表中是否存在已經卸載應用" "3"
 		while [[ $D -le $C ]]; do
-			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $1}')"
-			name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
+			name1="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $1}')"
+			name2="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
 			if [[ $name2 != "" && $(pm path --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
 				echoRgb "$name1不存在系統，從列表中刪除" "0"
 				echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$txt")" >"$txt"
@@ -1187,7 +1192,7 @@ backup)
 		done
 		echo "$(sed -e '/^$/d' "$txt")" >"$txt"
 	fi
-	r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
+	r="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n '$=')"
 	[[ $1 != "" ]] && r=1
 	[[ $r = "" ]] && echoRgb "$MODDIR_NAME/appList.txt是空的或是包名被注釋備份個鬼\n -檢查是否注釋亦或者執行$MODDIR_NAME/生成應用列表.sh" "0" && exit 1
 	[[ $Backup_user_data = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -Backup_user_data=0將不備份user數據" "0"
@@ -1221,7 +1226,7 @@ backup)
 	var="$(settings get secure enabled_accessibility_services 2>/dev/null)"
 	#獲取預設鍵盤
 	keyboard="$(settings get secure default_input_method 2>/dev/null)"
-	[[ $(cat "$txt" | grep -v "#" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${keyboard%/*}$") != ${keyboard%/*} ]] && unset keyboard
+	[[ $(grep -v "#" "$txt" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${keyboard%/*}$") != ${keyboard%/*} ]] && unset keyboard
 	{
 	while [[ $i -le $r ]]; do
 		[[ $en -ge 229 ]] && en=118
@@ -1230,8 +1235,8 @@ backup)
 			name1="$(appinfo -sort-i -d " " -o ands -pn "$1")"
 			name2="$1"
 		else
-			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-			name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+			name1="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+			name2="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
 		fi
 		[[ $name2 = "" ]] && echoRgb "警告! appList.txt應用包名獲取失敗，可能修改有問題" "0" && exit 1
 		apk_path="$(pm path --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':')"
@@ -1365,8 +1370,8 @@ backup)
 	am_start="$(echo "$am_start" | head -n 4 | xargs | sed 's/ /\|/g')"
 	while [[ $i -le $r ]]; do
 		unset pkg name1
-		pkg="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
-		name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+		pkg="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+		name1="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
 		if [[ $(echo "$pkg" | egrep -wo "^$am_start$") = $pkg ]]; then
 			am start -n "$(appinfo -sort-i -d "/" -o pn,sa -pn "$pkg" 2>/dev/null)" &>/dev/null
 			echo_log "啟動$name1"
@@ -1396,7 +1401,7 @@ Restore)
 	txt="$MODDIR/appList.txt"
 	[[ ! -f $txt ]] && echoRgb "請執行\"重新生成應用列表.sh\"獲取應用列表再來恢復" "0" && exit 2
 	sort -u "$txt" -o "$txt" 2>/dev/null
-	r="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
+	r="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n '$=')"
 	[[ $r = "" ]] && echoRgb "appList.txt包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取應用列表再來恢復" "0" && exit 1
 	Backup_folder2="$MODDIR/Media"
 	Backup_folder3="$MODDIR/modules"
@@ -1432,8 +1437,8 @@ Restore)
 		echoRgb "獲取未安裝應用中"
 		TXT="$MODDIR/TEMP.txt"
 		while [[ $i -le $r ]]; do
-			name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-			name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+			name1="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+			name2="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
 			if [[ $(pm list packages --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
 				echo "$name1 $name2">>"$TXT"
 			fi
@@ -1460,8 +1465,8 @@ Restore)
 	while [[ $i -le $r ]]; do
 		[[ $en -ge 229 ]] && en=118
 		echoRgb "恢複第$i/$r個應用 剩下$((r - i))個" "3"
-		name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-		name2="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+		name1="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+		name2="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
 		unset No_backupdata apk_version
 		if [[ $name1 = *! || $name1 = *！ ]]; then
 			name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
@@ -1512,7 +1517,7 @@ Restore)
 	            B="$(cat "$txt" 2>/dev/null | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
                 [[ $B = "" ]] && echoRgb "mediaList.txt壓縮包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取列表再來恢復" "0" && B=0
 				while [[ $A -le $B ]]; do
-		            name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${A}p" | awk '{print $1}')"
+		            name1="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${A}p" | awk '{print $1}')"
 		            starttime2="$(date -u "+%s")"
 		            echoRgb "恢復第$A/$B個壓縮包 剩下$((B - A))個" "3"
 		            Release_data "$Backup_folder2/$name1"
@@ -1554,10 +1559,11 @@ Restore2)
 	starttime1="$(date -u "+%s")"
 	echo "$script">"$TMPDIR/scriptTMP"
 	Backup_folder="$MODDIR"
-	if [[ ! -f $Backup_folder/app_details ]]; then
-		echoRgb "$Backup_folder/app_details遺失，無法獲取包名" "0" && exit 1
+	app_details="$Backup_folder/app_details"
+	if [[ ! -f $app_details ]]; then
+		echoRgb "$app_details遺失，無法獲取包名" "0" && exit 1
 	else
-		. "$Backup_folder/app_details" &>/dev/null
+		. "$app_details" &>/dev/null
 	fi
 	name1="$ChineseName"
 	[[ $name1 = "" ]] && name1="${Backup_folder##*/}"
@@ -1616,12 +1622,12 @@ Restore3)
 	}
 	starttime1="$(date -u "+%s")"
 	A=1
-	B="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
+	B="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n '$=')"
 	[[ $B = "" ]] && echoRgb "mediaList.txt壓縮包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取列表再來恢復" "0" && exit 1
 	echo "$script">"$TMPDIR/scriptTMP"
 	{
 	while [[ $A -le $B ]]; do
-		name1="$(cat "$txt" | grep -v "#" | sed -e '/^$/d' | sed -n "${A}p" | awk '{print $1}')"
+		name1="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${A}p" | awk '{print $1}')"
 		starttime2="$(date -u "+%s")"
 		echoRgb "恢復第$A/$B個壓縮包 剩下$((B - A))個" "3"
 		Release_data "$mediaDir/$name1"
@@ -1648,7 +1654,7 @@ Getlist)
 	starttime1="$(date -u "+%s")"
 	echoRgb "提示!因為系統自帶app(位於data分區或是可卸載預裝應用)備份恢復可能存在問題\n -所以不會輸出..但是檢測為Xposed類型包名將輸出\n -如果提示不是Xposed但他就是Xposed可能為此應用元數據不符合規範導致" "0"
 	xposed_name="$(appinfo -o pn -xm)"
-	[[ $user = 0 ]] && Apk_info="$(appinfo -sort-i -d " " -o ands,pn -pn $system -3 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)" || Apk_info="$(appinfo -sort-i -d " " -o ands,pn -pn $system $(pm list packages -3 --user "$user" | cut -f2 -d ':') 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+	[[ $user = 0 ]] && Apk_info="$(appinfo -sort-i -d " " -o ands,pn -pn $system -3 | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)" || Apk_info="$(appinfo -sort-i -d " " -o ands,pn -pn $system $(pm list packages -3 --user "$user" | cut -f2 -d ':') | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	[[ $Apk_info = "" ]] && echoRgb "appinfo輸出失敗" "0" && exit 2
 	Apk_Quantity="$(echo "$Apk_info" | wc -l)"
 	LR="1"
