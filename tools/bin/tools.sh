@@ -213,9 +213,9 @@ process_name() {
 }
 kill_Serve() {
 	{
-	process_name Tar
-	process_name pv
-	process_name Zstd
+	#process_name Tar
+	#process_name pv
+	#process_name Zstd
 	if [[ -e $TMPDIR/scriptTMP ]]; then
 		scriptname="$(cat "$TMPDIR/scriptTMP")"
 		echoRgb "腳本殘留進程，將殺死後退出腳本，請重新執行一次\n -殺死$scriptname" "0"
@@ -895,12 +895,8 @@ Release_data() {
    		if [[ $FILE_PATH != "" ]]; then
             [[ ${MODDIR_NAME##*/} != Media ]] && rm -rf "$FILE_PATH/$name2"
 		    case ${FILE_NAME##*.} in
-			lz4 | zst)
-			    tar --checkpoint-action="ttyout=%T\r" -I zstd -xmpf "$tar_path" -C "$FILE_PATH"
-		        ;;
-			tar)
-			    [[ ${MODDIR_NAME##*/} = Media ]] && tar --checkpoint-action="ttyout=%T\r" -axf "$tar_path" -C "$FILE_PATH" || tar --checkpoint-action="ttyout=%T\r" -amxf "$tar_path" -C "$FILE_PATH"
-			    ;;
+			lz4 | zst) tar --checkpoint-action="ttyout=%T\r" -I zstd -xmpf "$tar_path" -C "$FILE_PATH" ;;
+			tar) [[ ${MODDIR_NAME##*/} = Media ]] && tar --checkpoint-action="ttyout=%T\r" -axf "$tar_path" -C "$FILE_PATH" || tar --checkpoint-action="ttyout=%T\r" -amxf "$tar_path" -C "$FILE_PATH" ;;
 			esac
 		else
 			Set_back
@@ -950,7 +946,7 @@ Release_data() {
 				        echoRgb "路徑$X不存在" "0"
 					fi
 				else
-                    echoRgb ">失敗" "0"
+                    echoRgb "uid獲取失敗" "0"
 				fi
 				;;
 			thanox)
@@ -1677,6 +1673,7 @@ Getlist)
 	txtpath="$MODDIR"
 	[[ $debug_list = true ]] && txtpath="${txtpath/'/storage/emulated/'/'/data/media/'}"
 	nametxt="$txtpath/appList.txt"
+	Tmplist="$txtpath/o"
 	[[ ! -e $nametxt ]] && echo '#不需要備份的應用請在開頭注釋# 比如#酷安 xxxxxxxx\n#不需要備份數據比如!酷安 xxxxxxxx應用名前方方加一個驚嘆號即可 注意是應用名不是包名' >"$nametxt"
 	echoRgb "請勿關閉腳本，等待提示結束"
 	rgb_a=118
@@ -1684,8 +1681,8 @@ Getlist)
 	starttime1="$(date -u "+%s")"
 	echoRgb "提示!因為系統自帶app(位於data分區或是可卸載預裝應用)備份恢復可能存在問題\n -所以不會輸出..但是檢測為Xposed類型包名將輸出\n -如果提示不是Xposed但他就是Xposed可能為此應用元數據不符合規範導致" "0"
 	xposed_name="$(appinfo -o pn -xm)"
-	[[ $user = 0 ]] && Apk_info="$(appinfo -sort-i -d " " -o addXpTag:'Xposed ',ands,pn -pn $system -3 | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)" || Apk_info="$(appinfo -sort-i -d " " -o ands,pn -pn $system $(pm list packages -3 --user "$user" | cut -f2 -d ':') | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
-	[[ $Apk_info = "" ]] && echoRgb "appinfo輸出失敗" "0" && exit 2 || Apk_info="$(echo "$Apk_info" | sed 's/Xposed //g')"
+	[[ $user = 0 ]] && Apk_info="$(appinfo -sort-i -d " " -o addXpTag:'Xposed ',ands,pn -pn $system -3 | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)" || Apk_info="$(appinfo -sort-i -d " " -o addXpTag:'Xposed 'ands,pn -pn $system $(pm list packages -3 --user "$user" | cut -f2 -d ':') | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+	[[ $Apk_info = "" ]] && echoRgb "appinfo輸出失敗" "0" && exit 2 || Apk_info="$(echo "$Apk_info" | sed 's/Xposed //g')" && Apk_info2="$(echo "$Apk_info" | awk '{print $2}')"
 	Apk_Quantity="$(echo "$Apk_info" | wc -l)"
 	LR="1"
 	echoRgb "列出第三方應用......." "2"
@@ -1739,20 +1736,22 @@ Getlist)
 		let rgb_a++ LR++
 	done
 	if [[ -f $nametxt ]]; then
+	    rm -rf "$Tmplist"
 		D="1"
 		C="$(grep -v "#" "$nametxt" | sed -e '/^$/d' | sed -n '$=')"
 		while [[ $D -le $C ]]; do
 			name1="$(grep -v "#" "$nametxt" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $1}')"
 			name2="$(grep -v "#" "$nametxt" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
 			{
-			if [[ $name2 != "" && $(pm path --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
+			if [[ $(echo "$Apk_info2" | egrep -w "^$name2$") = "" ]]; then
 				echoRgb "$name1 $name2不存在系統，從列表中刪除" "0"
-				echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$nametxt")" >"$nametxt"
+				echo "$(sed -e "s/$name1 $name2//g" "$nametxt")" >"$Tmplist"
 			fi
 			} &
 			let D++
 		done
-		echo "$(sort "$nametxt" | sed -e '/^$/d')" >"$nametxt"
+		[[ -f $Tmplist ]] && sed -e '/^$/d' "$Tmplist" | sort>"$nametxt" && rm -rf "$Tmplist"
+		echo "$(sed -e '/^$/d' "$nametxt" | sort)" >"$nametxt"
 	fi
 	wait
 	endtime 1
