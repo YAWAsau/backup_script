@@ -136,10 +136,13 @@ fi
 
 #下列為自定義函數
 alias appinfo="exec app_process /system/bin --nice-name=appinfo han.core.order.appinfo.AppInfo $@"
-alias down="exec app_process /system/bin --nice-name=down han.core.order.down.Down $@"
+alias down="exec app_process /system/bin --nice-name=down han.core.order.Down $@"
 alias zstd="zstd -T0 -1 -q --priority=rt"
 alias LS="toybox ls -Zd"
 alias lz4="zstd -T0 -1 -q --priority=rt --format=lz4"
+#curl -V
+#export CLASSPATH="$bin_path/ActivityController.dex"
+#app_process / Activity.Controller.Ctrl -s -n com.facebook.katana
 #appinfo -o pn -u | while read; do
 #    cmd package install-existing "$REPLY"
 #done
@@ -182,6 +185,7 @@ get_version() {
 			continue
 			;;
 		esac
+		sleep 0.5
 		break
 	done
 }
@@ -382,18 +386,7 @@ update_script() {
 	unset NAME
 }
 update_script
-[[ $user = "" ]] && user=0
-path="/data/media/$user/Android"
-path2="/data/user/$user"
-zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | egrep -wo "^backup_settings.conf$") != "" ]] && update_script
-if [[ $(getprop ro.build.version.sdk) -lt 30 ]]; then
-	alias INSTALL="pm install --user $user -r -t &>/dev/null"
-	alias create="pm install-create --user $user -t 2>/dev/null"
-else
-	alias INSTALL="pm install -i com.android.vending --user $user -r -t &>/dev/null"
-	alias create="pm install-create -i com.android.vending --user $user -t 2>/dev/null"
-fi
 case $operate in
 backup|Restore|Restore2|Getlist)
 	user_id="$(ls -1 "/data/user" 2>/dev/null)"
@@ -402,49 +395,58 @@ backup|Restore|Restore2|Getlist)
 			[[ $REPLY = 0 ]] && echoRgb "主用戶:$REPLY" "2" || echoRgb "分身用戶:$REPLY" "2"
 		done
 	fi
-	if [[ $operate = Restore2 ]]; then
+	if [[ $user = "" ]]; then
 	    if [[ $(echo "$user_id" | wc -l) != 1 ]]; then
 	        echoRgb "設備存在多用戶,選擇操作目標用戶"
 	        while true ;do
 		        if [[ $option != "" ]]; then
 		            user="$option"
-		            path="/data/media/$user/Android"
-                    path2="/data/user/$user"
-                    [[ ! -d $path2 ]] && echoRgb "草你媽傻逼玩兒$user分區不存，你是智障還是看不懂國字？" "0" && exit 2
 			        break
 		        else
-		    	    echoRgb "請輸入需要恢復分區" "1"
+		    	    echoRgb "請輸入需要操作目標分區" "1"
 			        read option
 	    	    fi
     	    done
     	fi
     fi
-	[[ ! -d $path2 ]] && echoRgb "$user分區不存在，請將上方提示的用戶id按照需求填入\n -$MODDIR_NAME/backup_settings.conf配置項user=,一次只能填寫一個" "0" && exit 2
 	echoRgb "當前操作為用戶$user"
-	if [[ $operate != Getlist && $operate != Restore2 ]]; then
-		isBoolean "$Lo" "Lo" && Lo="$nsx"
-		if [[ $Lo = false ]]; then
-			isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
-		else
-			echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
-			get_version "提示" "靜默備份" && toast_info="$branch"
-		fi
-		if [[ $toast_info = true ]]; then
-			pm enable "ice.message" &>/dev/null
-			if [[ $(pm path --user "$user" ice.message 2>/dev/null) = "" ]]; then
-				echoRgb "未安裝toast 開始安裝" "0"
-				if [[ -d $tools_path/apk ]] ; then
-					cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && INSTALL "$TMPDIR"/*.apk && rm -rf "$TMPDIR"/*
-					[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
-				else
-					echo "$tools_path/apk目錄遺失"
-				fi
-			fi
-		else
-			pm disable "ice.message" &>/dev/null
-		fi
-	fi
+	path="/data/media/$user/Android"
+    path2="/data/user/$user"
+	[[ ! -d $path2 ]] && echoRgb "$user分區不存在，請將上方提示的用戶id按照需求填入\n -$MODDIR_NAME/backup_settings.conf配置項user=,一次只能填寫一個" "0" && exit 2
 	;;
+esac
+if [[ $(getprop ro.build.version.sdk) -lt 30 ]]; then
+	alias INSTALL="pm install --user $user -r -t &>/dev/null"
+	alias create="pm install-create --user $user -t 2>/dev/null"
+else
+	alias INSTALL="pm install -i com.android.vending --user $user -r -t &>/dev/null"
+    alias create="pm install-create -i com.android.vending --user $user -t 2>/dev/null"
+fi
+case $operate in
+Getlist|Restore2|Restore3|dumpname|check_file) ;;
+*)
+	isBoolean "$Lo" "Lo" && Lo="$nsx"
+	if [[ $Lo = false ]]; then
+		isBoolean "$toast_info" "toast_info" && toast_info="$nsx"
+	else
+		echoRgb "備份完成或是遭遇異常發送toast與狀態欄通知？\n -音量上提示，音量下靜默備份" "2"
+		get_version "提示" "靜默備份" && toast_info="$branch"
+	fi
+	if [[ $toast_info = true ]]; then
+		pm enable "ice.message" &>/dev/null
+		if [[ $(pm path --user "$user" ice.message 2>/dev/null) = "" ]]; then
+			echoRgb "未安裝toast 開始安裝" "0"
+			if [[ -d $tools_path/apk ]] ; then
+				cp -r "${bin_path%/*}/apk"/*.apk "$TMPDIR" && INSTALL "$TMPDIR"/*.apk && rm -rf "$TMPDIR"/*
+				[[ $? = 0 ]] && echoRgb "安裝toast成功" "1" || echoRgb "安裝toast失敗" "0"
+			else
+				echo "$tools_path/apk目錄遺失"
+			fi
+		fi
+	else
+		pm disable "ice.message" &>/dev/null
+	fi
+    ;;
 esac
 cdn=2
 #settings get system system_locales
@@ -474,7 +476,6 @@ Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
 isBoolean "$Lo" "Lo" && Lo="$nsx"
 if [[ $Lo = false ]]; then
 	isBoolean "$update" "update" && update="$nsx"
-	isBoolean "$update_behavior" "update_behavior" && update_behavior="$nsx"
 else
 	echoRgb "自動更新腳本?\n -音量上更新，下不更新"
 	get_version "更新" "不更新" && update="$branch"
@@ -526,32 +527,13 @@ if [[ $json != "" ]]; then
 					echoRgb "是否更新腳本？\n -音量上更新，音量下不更新" "2"
 					get_version "更新" "不更新" && choose="$branch"
 					if [[ $choose = true ]]; then
-						if [[ $Lo = true ]]; then
-							echoRgb "更新方式\n -音量上跳轉瀏覽器，下複製"
-							get_version "跳轉" "複製" && update_behavior="$branch"
-						fi
-						if [[ $update_behavior = true ]]; then
-							am start -a android.intent.action.VIEW -d "$zip_url" 2>/dev/null
-							echo_log "跳轉瀏覽器"
-							if [[ $result = 0 ]]; then
-								echoRgb "等待下載中.....請儘速點擊下載 否則腳本將等待15秒後自動退出"
-								zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
-								seconds=1
-								while [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | egrep -wo "^backup_settings.conf$") = "" ]]; do
-									zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
-									echoRgb "$seconds秒"
-									[[ $seconds = 15 ]] && exit 2
-									sleep 1 && let seconds++
-								done
-								update_script
-							fi
-						else
-							echoRgb "更新腳本步驟如下\n -1.將剪貼簿內的連結用瀏覽器下載\n -2.將zip壓縮包完整不解壓縮放在$MODDIR\n -3.在$MODDIR目錄隨便執行一個腳本\n -4.假設沒有提示錯誤重新進入腳本如版本號發生變化則更新成功" "2"
-							starttime1="$(date -u "+%s")"
-							xtext "$zip_url" 
-							echo_log "複製連結到剪裁版"
-							endtime 1
-						fi
+					    echoRgb "下載中.....耐心等待 如果下載失敗請掛飛機"
+						starttime1="$(date -u "+%s")"
+						down -s -L -o "$MODDIR/update.zip" "$zip_url" &
+						wait
+					    endtime 1
+					    [[ -f $MODDIR/update.zip ]] && zipFile="$MODDIR/update.zip" || echoRgb "下載失敗" && exit 2
+					    update_script
 						exit 0
 					fi
 				else
@@ -608,19 +590,26 @@ backup_path() {
 }
 Calculate_size() {
 	#計算出備份大小跟差異性
-	filesizee="$(du -ks "$1" | awk '{print $1}')"
-	dsize="$(($((filesizee - filesize)) / 1024))"
+	filesizee="$(du -s "$1" | awk '{print $1}')"
+	if [[ $(expr "$filesize" \> "$filesizee") -eq 0 ]]; then
+	    NJK="+"
+        dsize="$(($((filesizee -filesize)) / 1024))"
+    else
+        NJK="-"
+        dsize="$(($((filesize-filesizee)) / 1024))"
+    fi
 	echoRgb "備份資料夾路徑↓↓↓\n -$1"
 	echoRgb "備份資料夾總體大小$(du -ksh "$1" | awk '{print $1}')"
 	if [[ $dsize -gt 0 ]]; then
-		if [[ $((dsize / 1024)) -gt 0 ]]; then
-			echoRgb "本次備份: $((dsize / 1024))gb"
+		if [[ $((dsize / 1000)) -gt 0 ]]; then
+			NJL="本次備份: $NJK$((dsize / 1000))gb"
 		else
-			echoRgb "本次備份: ${dsize}mb"
+			NJL="本次備份: $NJK${dsize}mb"
 		fi
 	else
-		echoRgb "本次備份: $(($((filesizee - filesize)) * 1000 / 1024))kb"
+		NJL="本次備份: $NJK$(($((filesizee - filesize)) * 1000 / 1024))kb"
 	fi
+	echoRgb "$NJL"
 }
 size () {
     varr="$(echo "$1" | bc 2>/dev/null)"
@@ -778,7 +767,7 @@ Backup_data() {
 	esac
 	if [[ -d $data_path ]]; then
 	    unset Filesize m_size k_size
-        Filesize="$(du -ks "$data_path" | awk '{print $1}')"
+        Filesize="$(du -s "$data_path" | awk '{print $1}')"
         k_size="$(awk 'BEGIN{printf "%.2f\n", "'$Filesize'"'*1024'/'1024'}')"
 	    m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
         if [[ $(expr "$m_size" \> 1) -eq 0 ]]; then
@@ -1198,7 +1187,7 @@ backup)
 								[[ ! -f $Backup/被卸載的應用/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/被卸載的應用/轉換資料夾名稱.sh"
 								[[ ! -f $Backup/被卸載的應用/壓縮檔完整性檢查.sh ]] && cp -r "$script_path/check_file" "$Backup/被卸載的應用/壓縮檔完整性檢查.sh"
 								[[ ! -f $Backup/被卸載的應用/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/被卸載的應用/終止腳本.sh"
-								[[ ! -f $Backup/被卸載的應用/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf"
+								[[ ! -f $Backup/被卸載的應用/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf"
 								txt2="$Backup/被卸載的應用/appList.txt"
 								[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
 								echo "${REPLY##*/} $PackageName">>"$txt2"
@@ -1241,11 +1230,11 @@ backup)
 	[[ ! -f $Backup/壓縮檔完整性檢查.sh ]] && cp -r "$script_path/check_file" "$Backup/壓縮檔完整性檢查.sh"
 	[[ ! -d $Backup/modules ]] && mkdir -p "$Backup/modules" && echoRgb "$Backup/modules已創建成功\n -請按需要自行放置需要恢復時刷入的模塊在內將自動批量刷入" "1"
 	[[ -d $Backup/Media ]] && cp -r "$script_path/restore3" "$Backup/恢復自定義資料夾.sh"
-	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#使用者\nuser=\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
+	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#使用者\nuser=\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 	filesha256="$(sha256sum "$bin_path/tools.sh" | cut -d" " -f1)"
 	filesha256_1="$(sha256sum "$Backup/tools/bin/tools.sh" | cut -d" " -f1)"
 	[[ $filesha256 != $filesha256_1 ]] && cp -r "$bin_path/tools.sh" "$Backup/tools/bin/tools.sh"
-	filesize="$(du -ks "$Backup" | awk '{print $1}')"
+	filesize="$(du -s "$Backup" | awk '{print $1}')"
 	Quantity=0
 	#開始循環$txt內的資料進行備份
 	#記錄開始時間
@@ -1774,9 +1763,9 @@ backup_media)
 		[[ ! -f $Backup/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/轉換資料夾名稱.sh"
 		[[ ! -f $Backup/壓縮檔完整性檢查.sh ]] && cp -r "$script_path/check_file" "$Backup/壓縮檔完整性檢查.sh"
 		[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup" && rm -rf "$Backup/tools/bin/zip" "$Backup/tools/script"
-		[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#使用者\nuser=\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#檢測到更新後的行為(1跳轉瀏覽器 0不跳轉瀏覽器，但是複製連結到剪裁版)\nupdate_behavior=$update_behavior\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
+		[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#使用者\nuser=\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
 		app_details="$Backup_folder/app_details"
-		filesize="$(du -ks "$Backup_folder" | awk '{print $1}')"
+		filesize="$(du -s "$Backup_folder" | awk '{print $1}')"
 		[[ -f $app_details ]] && . "$app_details" &>/dev/null || touch "$app_details"
 		mediatxt="$Backup/mediaList.txt"
 		[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$mediatxt"
@@ -1791,10 +1780,11 @@ backup_media)
 			endtime 2 "${REPLY##*/}備份" "1"
 			echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "2" && echoRgb "____________________________________" && let A++
 		done
+		} &
+		wait
 		Calculate_size "$Backup_folder"
 		endtime 1 "自定義備份"
 		rm -rf "$TMPDIR/scriptTMP"
-		} &
 	else
 		echoRgb "自定義路徑為空 無法備份" "0"
 	fi
