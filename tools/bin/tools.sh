@@ -66,7 +66,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.7.3"
+backup_version="V15.7.4"
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
 filepath="/data/backup_tools"
 busybox="$filepath/busybox"
@@ -386,6 +386,7 @@ update_script() {
 	unset NAME
 }
 update_script
+zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
 [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | egrep -wo "^backup_settings.conf$") != "" ]] && update_script
 case $operate in
 backup|Restore|Restore2|Getlist)
@@ -407,6 +408,8 @@ backup|Restore|Restore2|Getlist)
 			        read option
 	    	    fi
     	    done
+    	else
+    	    user="0"
     	fi
     fi
 	echoRgb "當前操作為用戶$user"
@@ -417,10 +420,10 @@ backup|Restore|Restore2|Getlist)
 esac
 if [[ $(getprop ro.build.version.sdk) -lt 30 ]]; then
 	alias INSTALL="pm install --user $user -r -t &>/dev/null"
-	alias create="pm install-create --user $user -t 2>/dev/null"
+	alias create="pm install-create --user $user -t &>/dev/null"
 else
-	alias INSTALL="pm install -i com.android.vending --user $user -r -t &>/dev/null"
-    alias create="pm install-create -i com.android.vending --user $user -t 2>/dev/null"
+	alias INSTALL="pm install --user $user -r -t &>/dev/null"
+    alias create="pm install-create --user $user -t &>/dev/null"
 fi
 case $operate in
 Getlist|Restore2|Restore3|dumpname|check_file) ;;
@@ -634,19 +637,12 @@ partition_info() {
 }
 kill_app() {
     if [[ $name2 != $Open_apps2 ]]; then
-	    if [[ $name2 = com.tencent.mobileqq || $name2 = com.tencent.mm ]]; then
-	        if [[ $(getprop ro.miui.ui.version.code) != "" ]]; then
-	            Serve="$(appops get --user "$user" "$name2" 10008 | egrep -o 'ignore|allow')"
-	            appops set --user "$user" "$name2" 10008 ignore
-	        fi
-		    am force-stop --user "$user" "$name2"
-		fi
+        pm suspend --user "$user" "$name2" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: true/暫停狀態:凍結/g"
+	    am force-stop --user "$user" "$name2"
 	fi
 }
 Set_service() {
-    if [[ $name2 = com.tencent.mobileqq || $name2 = com.tencent.mm ]]; then
-	    [[ $(getprop ro.miui.ui.version.code) != "" ]] && appops set --user "$user" "$name2" 10008 "$Serve"
-	fi
+    pm unsuspend "$name2" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: false/暫停狀態:解凍/g"
 }
 Backup_apk() {
 	#檢測apk狀態進行備份
@@ -661,8 +657,6 @@ Backup_apk() {
 		result=0
 		echoRgb "Apk版本無更新 跳過備份" "2"
 	else
-	    #停止應用
-		kill_app
 		case $name2 in
 		com.google.android.youtube)
 			[[ -d /data/adb/Vanced ]] && nobackup="true"
@@ -740,7 +734,6 @@ Backup_apk() {
 			let osj++
 			echoRgb "$name1不支持備份 需要使用vanced安裝" "0" && rm -rf "$Backup_folder"
 		fi
-		Set_service
 	fi
 	[[ $name2 = bin.mt.plus && ! -f $Backup/$name1.apk ]] && cp -r "$apk_path" "$Backup/$name1.apk"
 }
@@ -1154,7 +1147,7 @@ backup)
 	i=1
 	#數據目錄
 	txt="$MODDIR/appList.txt"
-	txt="${txt/'/storage/emulated/'/'/data/media/'}"
+	#txt="${txt/'/storage/emulated/'/'/data/media/'}"
 	[[ ! -f $txt ]] && echoRgb "請執行\"生成應用列表.sh\"獲取應用列表再來備份" "0" && exit 1
 	sort -u "$txt" -o "$txt" 2>/dev/null
 	data="$MODDIR"
@@ -1164,55 +1157,55 @@ backup)
 	echoRgb "配置詳細:\n -壓縮方式:$Compression_method\n -音量鍵確認:$Lo\n -Toast:$toast_info\n -更新:$update\n -已卸載應用檢查:$delete_folder\n -卸載應用默認操作(true刪除false移動):$default_behavior\n -默認使用usb:$USBdefault\n -備份外部數據:$Backup_obb_data\n -備份user數據:$Backup_user_data\n -自定義目錄備份:$backup_media"
 	D="1"
 	C="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n '$=')"
-	if [[ $delete_folder = true ]]; then
-		if [[ -d $Backup ]]; then
-			if [[ $1 = "" ]]; then
-				find "$Backup" -maxdepth 1 -type d 2>/dev/null | sort | while read; do
-					if [[ -f $REPLY/app_details ]]; then
-						unset PackageName
-						. "$REPLY/app_details" &>/dev/null
-						if [[ $PackageName != "" && $(pm path --user "$user" "$PackageName" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
-							if [[ $default_behavior = true ]]; then
-								rm -rf "$REPLY"
-								echoRgb "${REPLY##*/}不存在系統 刪除資料夾" "0"
+	[[ $user = 0 ]] && Apk_info="$(appinfo -sort-i -o pn -pn $system -3 | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)" || Apk_info="$(appinfo -sort-i -o pn -pn $system $(pm list packages -3 --user "$user" | cut -f2 -d ':') | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+	[[ $Apk_info = "" ]] && echoRgb "appinfo輸出失敗" "0" && exit 2
+	Tmplist="$MODDIR/o"
+	rm -rf "$Tmplist"
+	if [[ -d $Backup ]]; then
+	    if [[ $delete_folder = true ]]; then
+		    find "$Backup" -maxdepth 1 -type d 2>/dev/null | sort | while read; do
+			    if [[ -f $REPLY/app_details ]]; then
+				    unset PackageName
+					. "$REPLY/app_details" &>/dev/null
+					if [[ $PackageName != "" && $(echo "$Apk_info" | egrep -w "^$PackageName$") = "" ]]; then
+						if [[ $default_behavior = true ]]; then
+							rm -rf "$REPLY"
+							echoRgb "${REPLY##*/}不存在系統 刪除資料夾" "0"
+						else
+							if [[ ! -d $Backup/被卸載的應用 ]]; then
+								mkdir -p "$Backup/被卸載的應用" && mv "$REPLY" "$Backup/被卸載的應用/"
 							else
-								if [[ ! -d $Backup/被卸載的應用 ]]; then
-									mkdir -p "$Backup/被卸載的應用" && mv "$REPLY" "$Backup/被卸載的應用/"
-								else
-									mv "$REPLY" "$Backup/被卸載的應用/"
-								fi
-								[[ ! -d $Backup/被卸載的應用/tools ]] && cp -r "$tools_path" "$Backup/被卸載的應用" && rm -rf "$Backup/被卸載的應用/tools/bin/zip" "$Backup/被卸載的應用/tools/script"
-								[[ ! -f $Backup/被卸載的應用/恢復備份.sh ]] && cp -r "$script_path/restore" "$Backup/被卸載的應用/恢復備份.sh"
-								[[ ! -f $Backup/被卸載的應用/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/被卸載的應用/重新生成應用列表.sh"
-								[[ ! -f $Backup/被卸載的應用/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/被卸載的應用/轉換資料夾名稱.sh"
-								[[ ! -f $Backup/被卸載的應用/壓縮檔完整性檢查.sh ]] && cp -r "$script_path/check_file" "$Backup/被卸載的應用/壓縮檔完整性檢查.sh"
-								[[ ! -f $Backup/被卸載的應用/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/被卸載的應用/終止腳本.sh"
-								[[ ! -f $Backup/被卸載的應用/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf"
-								txt2="$Backup/被卸載的應用/appList.txt"
-								[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
-								echo "${REPLY##*/} $PackageName">>"$txt2"
-								echo "$(sed -e "s/${REPLY##*/} $PackageName//g ; /^$/d" "$Backup/appList.txt")" >"$Backup/appList.txt"
-								echoRgb "${REPLY##*/}不存在系統 已移動到$Backup/被卸載的應用" "0"
+								mv "$REPLY" "$Backup/被卸載的應用/"
 							fi
+							[[ ! -d $Backup/被卸載的應用/tools ]] && cp -r "$tools_path" "$Backup/被卸載的應用" && rm -rf "$Backup/被卸載的應用/tools/bin/zip" "$Backup/被卸載的應用/tools/script"
+							[[ ! -f $Backup/被卸載的應用/恢復備份.sh ]] && cp -r "$script_path/restore" "$Backup/被卸載的應用/恢復備份.sh"
+							[[ ! -f $Backup/被卸載的應用/重新生成應用列表.sh ]] && cp -r "$script_path/Get_DirName" "$Backup/被卸載的應用/重新生成應用列表.sh"
+							[[ ! -f $Backup/被卸載的應用/轉換資料夾名稱.sh ]] && cp -r "$script_path/convert" "$Backup/被卸載的應用/轉換資料夾名稱.sh"
+							[[ ! -f $Backup/被卸載的應用/壓縮檔完整性檢查.sh ]] && cp -r "$script_path/check_file" "$Backup/被卸載的應用/壓縮檔完整性檢查.sh"
+							[[ ! -f $Backup/被卸載的應用/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/被卸載的應用/終止腳本.sh"
+							[[ ! -f $Backup/被卸載的應用/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#備份與恢復遭遇異常或是結束後發送通知(toast與狀態欄提示)\ntoast_info=$toast_info\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/被卸載的應用/backup_settings.conf"
+							txt2="$Backup/被卸載的應用/appList.txt"
+							[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
+							echo "${REPLY##*/} $PackageName">>"$txt2"
+							echo "$(sed -e "s/${REPLY##*/} $PackageName//g ; /^$/d" "$Backup/appList.txt")" >"$Backup/appList.txt"
+							echoRgb "${REPLY##*/}不存在系統 已移動到$Backup/被卸載的應用" "0"
 						fi
 					fi
-				done
-			fi
+				fi
+			done
 		fi
 	fi
-	if [[ $1 = "" ]]; then
-		echoRgb "檢查備份列表中是否存在已經卸載應用" "3"
-		while [[ $D -le $C ]]; do
-			name1="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $1}')"
-			name2="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
-			if [[ $name2 != "" && $(pm path --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
-				echoRgb "$name1不存在系統，從列表中刪除" "0"
-				echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$txt")" >"$txt"
-			fi
-			let D++
-		done
-		echo "$(sed -e '/^$/d' "$txt")" >"$txt"
-	fi
+	echoRgb "檢查備份列表中是否存在已經卸載應用" "3"	
+	while [[ $D -le $C ]]; do
+		name1="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $1}')"
+		name2="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
+		if [[ $(echo "$Apk_info" | egrep -w "^$name2$") = "" ]]; then
+			echoRgb "$name1不存在系統，從列表中刪除" "0"
+			echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$txt")" >"$Tmplist"
+		fi
+		let D++
+	done
+	[[ -f $Tmplist ]] && mv "$Tmplist" "$txt"
 	r="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n '$=')"
 	[[ $1 != "" ]] && r=1
 	[[ $r = "" ]] && echoRgb "$MODDIR_NAME/appList.txt是空的或是包名被注釋備份個鬼\n -檢查是否注釋亦或者執行$MODDIR_NAME/生成應用列表.sh" "0" && exit 1
@@ -1670,8 +1663,8 @@ Getlist)
 	starttime1="$(date -u "+%s")"
 	echoRgb "提示!因為系統自帶app(位於data分區或是可卸載預裝應用)備份恢復可能存在問題\n -所以不會輸出..但是檢測為Xposed類型包名將輸出\n -如果提示不是Xposed但他就是Xposed可能為此應用元數據不符合規範導致" "0"
 	xposed_name="$(appinfo -o pn -xm)"
-	[[ $user = 0 ]] && Apk_info="$(appinfo -sort-i -d " " -o addXpTag:'Xposed ',ands,pn -pn $system -3 | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)" || Apk_info="$(appinfo -sort-i -d " " -o addXpTag:'Xposed 'ands,pn -pn $system $(pm list packages -3 --user "$user" | cut -f2 -d ':') | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
-	[[ $Apk_info = "" ]] && echoRgb "appinfo輸出失敗" "0" && exit 2 || Apk_info="$(echo "$Apk_info" | sed 's/Xposed //g')" && Apk_info2="$(echo "$Apk_info" | awk '{print $2}')"
+	[[ $user = 0 ]] && Apk_info="$(appinfo -sort-i -d " " -o addXpTag:'Xposed: ',ands,pn -pn $system -3 | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)" || Apk_info="$(appinfo -sort-i -d " " -o addXpTag:'Xposed 'ands,pn -pn $system $(pm list packages -3 --user "$user" | cut -f2 -d ':') | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+	[[ $Apk_info = "" ]] && echoRgb "appinfo輸出失敗" "0" && exit 2 || Apk_info="$(echo "$Apk_info" | sed 's/Xposed: //g')" && Apk_info2="$(echo "$Apk_info" | awk '{print $2}')"
 	Apk_Quantity="$(echo "$Apk_info" | wc -l)"
 	LR="1"
 	echoRgb "列出第三方應用......." "2"
@@ -1731,16 +1724,13 @@ Getlist)
 		while [[ $D -le $C ]]; do
 			name1="$(grep -v "#" "$nametxt" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $1}')"
 			name2="$(grep -v "#" "$nametxt" | sed -e '/^$/d' | sed -n "${D}p" | awk '{print $2}')"
-			{
 			if [[ $(echo "$Apk_info2" | egrep -w "^$name2$") = "" ]]; then
 				echoRgb "$name1 $name2不存在系統，從列表中刪除" "0"
 				echo "$(sed -e "s/$name1 $name2//g" "$nametxt")" >"$Tmplist"
 			fi
-			} &
 			let D++
 		done
 		[[ -f $Tmplist ]] && sed -e '/^$/d' "$Tmplist" | sort>"$nametxt" && rm -rf "$Tmplist"
-		echo "$(sed -e '/^$/d' "$nametxt" | sort)" >"$nametxt"
 	fi
 	wait
 	endtime 1
