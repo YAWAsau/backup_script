@@ -384,8 +384,6 @@ update_script() {
 	unset NAME
 }
 update_script
-zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
-[[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | egrep -wo "^backup_settings.conf$") != "" ]] && update_script
 case $operate in
 backup|Restore|Restore2|Getlist|backup_media)
 	user_id="$(appinfo -listUsers)"
@@ -543,9 +541,7 @@ if [[ $json != "" ]]; then
 						down -s -L -o "$MODDIR/update.zip" "$zip_url" &
 						wait
 					    endtime 1
-					    [[ -f $MODDIR/update.zip ]] && zipFile="$MODDIR/update.zip" || echoRgb "下載失敗" && exit 2
-					    update_script
-						exit 0
+					    [[ ! -f $MODDIR/update.zip ]] && echoRgb "下載失敗" && exit 2
 					fi
 				else
 					echoRgb "$MODDIR_NAME/backup_settings.conf內update選項為0忽略更新僅提示更新" "0"
@@ -554,6 +550,9 @@ if [[ $json != "" ]]; then
 		fi
 	fi
 fi
+update_script
+zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
+[[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | egrep -wo "^backup_settings.conf$") != "" ]] && update_script
 Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
 backup_path() {
 	if [[ $Output_path != "" ]]; then
