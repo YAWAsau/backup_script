@@ -68,7 +68,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.7.5"
+backup_version="V15.7.7"
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
 filepath="/data/backup_tools"
 busybox="$filepath/busybox"
@@ -729,6 +729,8 @@ Backup_apk() {
 #檢測數據位置進行備份
 Backup_data() {
 	data_path="$path/$1/$name2"
+	MODDIR_NAME="${data_path%/*}"
+	MODDIR_NAME="${MODDIR_NAME##*/}"
 	case $1 in
 	user) Size="$userSize" && data_path="$path2/$name2" ;;
 	data) Size="$dataSize" ;;
@@ -739,7 +741,7 @@ Backup_data() {
 		    mediapath="$(get_variables "$1mediapath" "$app_details")"
 		fi
 		data_path="$2"
-		if [[ $1 != storage-isolation && $1 != thanox && $1 != adb && $1 != Pictures && $1 != DCIM ]]; then
+		if [[ $1 != storage-isolation && $1 != thanox && $1 != adb ]]; then
 			Compression_method1="$Compression_method"
 			Compression_method=tar
 		fi
@@ -784,6 +786,7 @@ Backup_data() {
 			if [[ $result = 0 ]]; then
 			    Validation_file "$Backup_folder/$1.tar"*
 				if [[ $result = 0 ]]; then
+				    [[ ${Backup_folder##*/} = Media ]] && [[ $(sed -e '/^$/d' "$mediatxt" | grep -w "${REPLY##*/}.tar$" | head -1) = "" ]] && echo "$FILE_NAME" >> "$mediatxt"
 					if [[ $zsize != "" ]]; then
 						if [[ $Size != "" ]]; then
 							echo "$(sed "s/$Size/$Filesize/g" "$app_details")">"$app_details"
@@ -1334,7 +1337,6 @@ backup)
 						echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
 						starttime2="$(date -u "+%s")"
 						Backup_data "${REPLY##*/}" "$REPLY"
-						[[ $result = 0 ]] && [[ $(sed -e '/^$/d' "$mediatxt" | grep -w "${REPLY##*/}.tar$" | head -1) = "" ]] && echo "${REPLY##*/}.tar" >> "$mediatxt"
 						endtime 2 "${REPLY##*/}備份" "1"
 						echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "2"
 						rgb_d="$rgb_a"
@@ -1753,7 +1755,6 @@ backup_media)
 			starttime2="$(date -u "+%s")" 
 			[[ ${REPLY: -1} = / ]] && REPLY="${REPLY%?}"
 			Backup_data "${REPLY##*/}" "$REPLY"
-			[[ $result = 0 ]] && [[ $(sed -e '/^$/d' "$mediatxt" | grep -w "${REPLY##*/}.tar$" | head -1) = "" ]] && echo "${REPLY##*/}.tar" >> "$mediatxt"
 			endtime 2 "${REPLY##*/}備份" "1"
 			echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "2" && echoRgb "____________________________________" && let A++
 		done
