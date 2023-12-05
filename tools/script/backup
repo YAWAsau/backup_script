@@ -1,0 +1,11 @@
+if [ -f "${0%/*/*/*}/tools/bin/tools.sh" ]; then
+	MODDIR="${0%/*/*/*}"
+	operate="backup"
+	conf_path="${0%/*/*/*}/backup_settings.conf"
+	[[ ! -f $conf_path ]] && echo "$conf_path遺失"
+	backup_mode=1
+	. "${0%/*}/app_details" &>/dev/null
+	. "${0%/*/*/*}/tools/bin/tools.sh" | tee "$MODDIR/log.txt"
+else
+	echo "${0%/*/*}/tools/bin/tools.sh遺失"
+fi
