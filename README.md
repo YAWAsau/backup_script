@@ -32,11 +32,11 @@
 
 1. 首先將下載到的`數據備份脚本.zip`解壓到任意目錄後，可以看到以下幾個文件與一個 目錄：`生成應用列表.sh` `backup_settings.conf` `備份應用.sh` `tools` `備份自定義資料夾.sh` `終止腳本.sh` `警告! 不論備份或是恢復都必須保證tools的存在與完整性 否則腳本失效或是二進制調用失敗`。
 
-2. 然後執行`生成應用列表.sh`腳本，並等待腳本輸出結束[[示意圖]](https://raw.githubusercontent.com/YAWAsau/backup_script/0a08a49865fd9ec36d4fedd3e76ec68f841ff1d7/DCIM/Screenshot_20211230-185717_MT%E7%AE%A1%E7%90%86%E5%99%A8-01.jpeg)，再等待提示結束 [[示意圖]](https://raw.githubusercontent.com/YAWAsau/backup_script/master/DCIM/Screenshot_20211230-190000_MT%E7%AE%A1%E7%90%86%E5%99%A8-01.jpeg) [[示意圖]](https://raw.githubusercontent.com/YAWAsau/backup_script/master/DCIM/Screenshot_20211230-185941_MT%E7%AE%A1%E7%90%86%E5%99%A8-01.jpeg)，此時會在當前目錄生成一個`appList.txt`，這就是你當前安裝的所有第三方應用。
+2. 然後執行`生成應用列表.sh`腳本，並等待腳本輸出結束，再等待提示結束，此時會在當前目錄生成一個`appList.txt`，這就是你當前安裝的所有第三方應用。
 
-3. 現在打開生成的`appList.txt`，根據裏面的提示操作後保存[[示意圖]](https://github.com/Petit-Abba/backup_script_zh-CN//raw/main/File/Picture/3.png)，這樣你就設置好了需要備份的軟件。
+3. 現在打開生成的`appList.txt`，根據裏面的提示操作後保存，這樣你就設置好了需要備份的軟件。
 
-4. 最後找到`backup_settings.conf`打開[[示意圖]](https://raw.githubusercontent.com/YAWAsau/backup_script/master/DCIM/Screenshot_20211230-191248_MT%E7%AE%A1%E7%90%86%E5%99%A8-01.jpeg)，再打開`備份應用.sh`，等候備份結束。完成後會在當前目錄生成一個以`Backup_壓縮算法名`命名的資料夾，裡面就是你的軟件備份。把這個資料夾整個保持到其他位置，刷完機后複製回手機，直接在資料夾裡找到`恢復備份.sh`即可恢復備份的所有數據，同樣道理，裡面也有個`appList.txt`，使用方法跟第3步驟一樣，不需要還原的刪除即可。
+4. 最後找到`backup_settings.conf`打開後根據提示設置保存，再打開`備份應用.sh`，等候備份結束完成後會在當前目錄生成一個以`Backup_壓縮算法名`命名的資料夾，裡面就是你的軟件備份。把這個資料夾整個保持到其他位置，刷完機后複製回手機，直接在資料夾裡找到`恢復備份.sh`即可恢復備份的所有數據，同樣道理，裡面也有個`appList.txt`，使用方法跟第3步驟一樣，不需要還原的刪除即可，另外進去備份好的資料夾找到單獨應用資料夾有個 Backup腳本 and restore腳本可以單獨備份與恢復腳本。
 
  ##### 附加說明：如何恢復 以下是關於恢復資料夾內的文件說明?
 ```
@@ -53,6 +53,7 @@
 - 1.手動將下載的備份腳本zip不解壓縮直接放到腳本任意目錄(不包括tools目錄內)的任意地方執行任何腳本即可更新，腳本將提示
 - 2.此備份的任何腳本在執行時均會聯網檢測腳本版本，當更新時會自己提示與下載，根據腳本提示操作的即可
 - 3.將下載的壓縮包不解壓縮直接放在/storage/emulated/0/Download腳本自動檢測更新，並按照提示操作即可
+- 4.在QQ群內下載的腳本不解壓縮腳本會自己檢測更新
 
 ## 關於反饋
 - 如果使用過程中出現問題，請攜帶截圖並詳細說明問題，建立 [issues](https://github.com/YAWAsau/backup_script/issues)。
