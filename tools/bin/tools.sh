@@ -79,7 +79,8 @@ busybox2="$bin_path/busybox"
 #排除自身
 exclude="
 update
-busybox_path"
+busybox_path
+Device_List"
 if [[ ! -d $filepath ]]; then
 	mkdir -p "$filepath"
 	[[ $? = 0 ]] && echoRgb "設置busybox環境中"
@@ -258,8 +259,9 @@ else
 fi
 Open_apps="$(appinfo -d "(" -ed ")" -o anwb,pn -ta c 2>/dev/null)"
 Open_apps2="$(echo "$Open_apps" | cut -f2 -d '(' | sed 's/)//g')"
+Device_name="$(cat "$bin_path/Device_List" | egrep -w "$(getprop ro.product.model 2>/dev/null)" | awk -F'"' '{print $4}')"
 echoRgb "---------------------SpeedBackup---------------------"
-echoRgb "腳本路徑:$MODDIR\n -已開機:$(Show_boottime)\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(magisk -c 2>/dev/null)\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
+echoRgb "腳本路徑:$MODDIR\n -已開機:$(Show_boottime)\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -Magisk版本:$(magisk -c 2>/dev/null)\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -設備代號:$(getprop ro.product.device 2>/dev/null)\n -型號:$(getprop ro.product.model 2>/dev/null)($Device_name)\n -閃存類型:$ROM_TYPE\n -閃存顆粒:$UFS_MODEL\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
 Rename_script () {
     Replace_file_name () {
         find "$1" -maxdepth 1 -name "*.sh" -type f | while read ; do
@@ -415,7 +417,7 @@ else
     alias create="pm install-create -i com.android.vending --user $user -t 2>/dev/null"
 fi
 case $operate in
-Getlist|Restore2|Restore3|dumpname|check_file|backup_media|convert) ;;
+Getlist|Restore2|Restore3|dumpname|check_file|backup_media|convert|Device_List) ;;
 *)
 	isBoolean "$Lo" "Lo" && Lo="$nsx"
 	if [[ $Lo = false ]]; then
@@ -425,7 +427,7 @@ Getlist|Restore2|Restore3|dumpname|check_file|backup_media|convert) ;;
 		get_version "提示" "靜默備份" && toast_info="$branch"
 	fi
 	if [[ $toast_info = true ]]; then
-		pm enable "ice.message" &>/dev/null
+		pm enable --user "$user" "ice.message" &>/dev/null
 		if [[ $(pm path --user "$user" ice.message 2>/dev/null) = "" ]]; then
 			echoRgb "未安裝toast 開始安裝" "0"
 			if [[ -d $tools_path/apk ]] ; then
@@ -436,7 +438,7 @@ Getlist|Restore2|Restore3|dumpname|check_file|backup_media|convert) ;;
 			fi
 		fi
 	else
-		pm disable "ice.message" &>/dev/null
+		pm disable --user "$user" "ice.message" &>/dev/null
 	fi
     ;;
 esac
@@ -630,11 +632,11 @@ kill_app() {
     [[ $Pause_Freeze = "" ]] && Pause_Freeze="0"
     if [[ $name2 != $Open_apps2 ]]; then
         if [[ $Pause_Freeze = 0 ]]; then
-            while pgrep -f "$name2" &>/dev/null; do
+            until [[ $(dumpsys activity processes | grep "packageList" | cut -d '{' -f2 | cut -d '}' -f1 | egrep -w "^$name2$" | sed -n '1p') != $name2 ]]; do
                 killall -9 "$name2" &>/dev/null
                 am force-stop --user "$user" "$name2" &>/dev/null
-                am kill "$neme2" &>/dev/null
-                echoRgb "刺殺$name1"
+                am kill "$name2" &>/dev/null
+                echoRgb "殺死$name1進程"
             done
             pm suspend --user "$user" "$name2" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: true/暫停狀態:凍結/g"
 	    fi
@@ -793,9 +795,9 @@ Backup_data() {
 				;;
 			*)
 				case $Compression_method in
-				tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude=.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
-				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude=.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd>"$Backup_folder/$1.tar.zst" ;;
-				lz4 | Lz4 | LZ4) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude=.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | lz4>"$Backup_folder/$1.tar.lz4" 2>/dev/null ;;
+				tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
+				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd>"$Backup_folder/$1.tar.zst" ;;
+				lz4 | Lz4 | LZ4) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | lz4>"$Backup_folder/$1.tar.lz4" 2>/dev/null ;;
 				esac
 				;;
 			esac
@@ -1416,66 +1418,85 @@ convert)
 check_file)
 	Check_archive "$MODDIR"
 	;;
-Restore)
+Restore|Restore2)
 	kill_Serve
 	self_test
-	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊$MODDIR_NAME/終止腳本.sh\n -否則腳本將繼續執行直到結束" "0"
-	echoRgb "如果大量提示找不到資料夾請執行$MODDIR_NAME/轉換資料夾名稱.sh"
 	disable_verify
 	[[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
-	i=1
-	txt="$MODDIR/appList.txt"
-	[[ ! -f $txt ]] && echoRgb "請執行\"重新生成應用列表.sh\"獲取應用列表再來恢復" "0" && exit 2
-	sort -u "$txt" -o "$txt" 2>/dev/null
-	r="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n '$=')"
-	[[ $r = "" ]] && echoRgb "appList.txt包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取應用列表再來恢復" "0" && exit 1
-	Backup_folder2="$MODDIR/Media"
-	Backup_folder3="$MODDIR/modules"
-	#效驗選填是否正確
-	isBoolean "$Lo" "Lo" && Lo="$nsx"
-	echoRgb "選擇應用恢復模式\n -音量上僅恢復未安裝，下全恢復"
-	get_version "恢復未安裝" "全恢復" && recovery_mode="$branch"
-	Get_user="$(echo "$MODDIR" | rev | cut -d '/' -f1 | cut -d '_' -f1 | rev | egrep -o '[0-9]+')"
-	if [[ $Get_user != $user ]]; then
-	    echoRgb "檢測當前用戶$user與恢復資料夾用戶:$Get_user不同\n -音量上繼續恢復，下不恢復並離開腳本"
-		get_version "恢復安裝" "不恢復安裝" && recovery_mode2="$branch"
-	fi
-	if [[ -d $Backup_folder2 ]]; then
-		Print "是否恢復多媒體數據 音量上恢復，音量下不恢復"
-		echoRgb "是否恢復多媒體數據\n -音量上恢復，音量下不恢復" "2"
-		get_version "恢復媒體數據" "跳過恢復媒體數據"
-		media_recovery="$branch"
-		A=1
-		B="$(find "$Backup_folder2" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | wc -l)"
-	fi
-	if [[ -d $Backup_folder3 && $(find "$Backup_folder3" -maxdepth 1 -name "*.zip*" -type f 2>/dev/null | wc -l) != 0 ]]; then
-	    Print "是否刷入Magisk模塊 音量上刷入，音量下不刷入"
-		echoRgb "是否刷入Magisk模塊\n -音量上刷入，音量下不刷入" "2"
-		get_version "刷入模塊" "跳過刷入模塊"
-		modules_recovery="$branch"
-	fi
-	[[ $recovery_mode2 = false ]] && exit 2
-	if [[ $recovery_mode = true ]]; then
-		echoRgb "獲取未安裝應用中"
-		TXT="$MODDIR/TEMP.txt"
-		while [[ $i -le $r ]]; do
-			name1="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-			name2="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
-			if [[ $(pm list packages --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
-				echo "$name1 $name2">>"$TXT"
-			fi
-			let i++
-		done
-		i=1
-		sort -u "$TXT" -o "$TXT" 2>/dev/null
-		r="$(grep -v "#" "$TXT" 2>/dev/null | sed -e '/^$/d' | sed -n '$=')"
-		if [[ $r != "" ]]; then
-			echoRgb "獲取完成 預計安裝$r個應用"
-			txt="$TXT"
-		else
-			echoRgb "獲取完成 但備份內應用都已安裝....正在退出腳本" "0" && exit 0
-		fi
-	fi
+	if [[ $operate = Restore ]]; then
+    	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊$MODDIR_NAME/終止腳本.sh\n -否則腳本將繼續執行直到結束" "0"
+    	echoRgb "如果大量提示找不到資料夾請執行$MODDIR_NAME/轉換資料夾名稱.sh"
+    	txt="$MODDIR/appList.txt"
+    	[[ ! -f $txt ]] && echoRgb "請執行\"重新生成應用列表.sh\"獲取應用列表再來恢復" "0" && exit 2
+	    sort -u "$txt" -o "$txt" 2>/dev/null
+	    i=1
+	    r="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n '$=')"
+	    [[ $r = "" ]] && echoRgb "appList.txt包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取應用列表再來恢復" "0" && exit 1
+    	Backup_folder2="$MODDIR/Media"
+    	Backup_folder3="$MODDIR/modules"
+    	#效驗選填是否正確
+    	isBoolean "$Lo" "Lo" && Lo="$nsx"
+    	echoRgb "選擇應用恢復模式\n -音量上僅恢復未安裝，下全恢復"
+    	get_version "恢復未安裝" "全恢復" && recovery_mode="$branch"
+    	Get_user="$(echo "$MODDIR" | rev | cut -d '/' -f1 | cut -d '_' -f1 | rev | egrep -o '[0-9]+')"
+    	if [[ $Get_user != $user ]]; then
+    	    echoRgb "檢測當前用戶$user與恢復資料夾用戶:$Get_user不同\n -音量上繼續恢復，下不恢復並離開腳本"
+    		get_version "恢復安裝" "不恢復安裝" && recovery_mode2="$branch"
+    	fi
+    	if [[ -d $Backup_folder2 ]]; then
+    		Print "是否恢復多媒體數據 音量上恢復，音量下不恢復"
+    		echoRgb "是否恢復多媒體數據\n -音量上恢復，音量下不恢復" "2"
+    		get_version "恢復媒體數據" "跳過恢復媒體數據"
+    		media_recovery="$branch"
+    		A=1
+    		B="$(find "$Backup_folder2" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | wc -l)"
+    	fi
+    	if [[ -d $Backup_folder3 && $(find "$Backup_folder3" -maxdepth 1 -name "*.zip*" -type f 2>/dev/null | wc -l) != 0 ]]; then
+    	    Print "是否刷入Magisk模塊 音量上刷入，音量下不刷入"
+    		echoRgb "是否刷入Magisk模塊\n -音量上刷入，音量下不刷入" "2"
+    		get_version "刷入模塊" "跳過刷入模塊"
+    		modules_recovery="$branch"
+    	fi
+    	[[ $recovery_mode2 = false ]] && exit 2
+    	if [[ $recovery_mode = true ]]; then
+    		echoRgb "獲取未安裝應用中"
+    		TXT="$MODDIR/TEMP.txt"
+    		while [[ $i -le $r ]]; do
+    			name1="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+    			name2="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+    			if [[ $(pm list packages --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
+    				echo "$name1 $name2">>"$TXT"
+    			fi
+    			let i++
+    		done
+    		i=1
+    		sort -u "$TXT" -o "$TXT" 2>/dev/null
+    		r="$(grep -v "#" "$TXT" 2>/dev/null | sed -e '/^$/d' | sed -n '$=')"
+    		if [[ $r != "" ]]; then
+    			echoRgb "獲取完成 預計安裝$r個應用"
+    			txt="$TXT"
+    		else
+    			echoRgb "獲取完成 但備份內應用都已安裝....正在退出腳本" "0" && exit 0
+    		fi
+    	fi
+    	DX="批量恢復"
+    else
+        i=1
+        r=1
+        Backup_folder="$MODDIR"
+	    app_details="$Backup_folder/app_details"
+	    if [[ ! -f $app_details ]]; then
+		    echoRgb "$app_details遺失，無法獲取包名" "0" && exit 1
+	    else
+		    . "$app_details" &>/dev/null
+	    fi
+	    name1="$ChineseName"
+	    [[ $name1 = "" ]] && name1="${Backup_folder##*/}"
+	    [[ $name1 = "" ]] && echoRgb "應用名獲取失敗" "0" && exit 2
+	    name2="$PackageName"
+	    [[ $name2 = "" ]] && echoRgb "包名獲取失敗" "0" && exit 2
+	    DX="單獨恢復"
+    fi
 	#開始循環$txt內的資料進行恢復
 	#記錄開始時間
 	starttime1="$(date -u "+%s")"
@@ -1485,18 +1506,20 @@ Restore)
 	{
 	while [[ $i -le $r ]]; do
 		[[ $en -ge 229 ]] && en=118
-		echoRgb "恢復第$i/$r個應用 剩下$((r - i))個" "3"
-		name1="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-		name2="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
-		unset No_backupdata apk_version
-		if [[ $name1 = *! || $name1 = *！ ]]; then
-			name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
-			echoRgb "跳過恢復$name1 所有數據" "0"
-			No_backupdata=1
+		if [[ $operate = Restore ]]; then
+		    echoRgb "恢復第$i/$r個應用 剩下$((r - i))個" "3"
+		    name1="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+		    name2="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+		    unset No_backupdata apk_version
+		    if [[ $name1 = *! || $name1 = *！ ]]; then
+			    name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
+    			echoRgb "跳過恢復$name1 所有數據" "0"
+    			No_backupdata=1
+    		fi
+    		Backup_folder="$MODDIR/$name1"
+    		[[ -f "$Backup_folder/app_details" ]] && app_details="$Backup_folder/app_details" . "$Backup_folder/app_details" &>/dev/null
+    		[[ $name2 = "" ]] && echoRgb "應用包名獲取失敗" "0" && exit 1
 		fi
-		Backup_folder="$MODDIR/$name1"
-		[[ -f "$Backup_folder/app_details" ]] && app_details="$Backup_folder/app_details" . "$Backup_folder/app_details" &>/dev/null
-		[[ $name2 = "" ]] && echoRgb "應用包名獲取失敗" "0" && exit 1
 		if [[ -d $Backup_folder ]]; then
 			echoRgb "恢復$name1 ($name2)" "2"
 			starttime2="$(date -u "+%s")"
@@ -1533,7 +1556,7 @@ Restore)
 		else
 			echoRgb "$Backup_folder資料夾遺失，無法恢復" "0"
 		fi
-		if [[ $i = $r ]]; then
+		if [[ $i = $r && $operate != Restore2 ]]; then
 		    endtime 1 "應用恢復" "2"
 			if [[ $media_recovery = true ]]; then
 			    starttime1="$(date -u "+%s")"
@@ -1571,64 +1594,10 @@ Restore)
 	restore_freeze
 	rm -rf "$TMPDIR/scriptTMP" "$TXT"
 	starttime1="$TIME"
-	echoRgb "批量恢復完成" && endtime 1 "批量恢復開始到結束" && echoRgb "如發現應用閃退請重新開機"
-	longToast "批量恢復完成"
-	Print "批量恢復完成 執行過程請查看$Status_log" && rm -rf "$TMPDIR"/*
+	echoRgb "$DX完成" && endtime 1 "$DX開始到結束" && echoRgb "如發現應用閃退請重新開機"
+	longToast "$DX完成"
+	Print "$DX完成 執行過程請查看$Status_log" && rm -rf "$TMPDIR"/*
 	} &
-	wait && exit
-	;;
-Restore2)
-	kill_Serve
-	self_test
-	disable_verify
-	[[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
-	#記錄開始時間
-	starttime1="$(date -u "+%s")"
-	echo "$script">"$TMPDIR/scriptTMP"
-	Backup_folder="$MODDIR"
-	app_details="$Backup_folder/app_details"
-	if [[ ! -f $app_details ]]; then
-		echoRgb "$app_details遺失，無法獲取包名" "0" && exit 1
-	else
-		. "$app_details" &>/dev/null
-	fi
-	name1="$ChineseName"
-	[[ $name1 = "" ]] && name1="${Backup_folder##*/}"
-	[[ $name1 = "" ]] && echoRgb "應用名獲取失敗" "0" && exit 2
-	name2="$PackageName"
-	if [[ $name2 = "" ]]; then
-		Script_path="$(find "$MODDIR" -maxdepth 1 -name "*.sh*" -type f 2>/dev/null)"
-		name2="$(echo "${Script_path##*/}" | sed 's/.sh//g')"
-	fi
-	[[ $name2 = "" ]] && echoRgb "包名獲取失敗" "0" && exit 2
-	echoRgb "恢復$name1 ($name2)" "2"
-	starttime2="$(date -u "+%s")"
-	if [[ $(pm path --user "$user" "$name2" 2>/dev/null) = "" ]]; then
-	    installapk
-	else
-	    if [[ $apk_version -gt $(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
-			installapk
-			[[ $? = 0 ]] && echoRgb "版本提升$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
-		elif [[ $apk_version -lt $(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]]; then
-			pm uninstall --user "$user" -k "$name2" &>/dev/null
-		    if [[ $? = 0 ]]; then
-			    installapk
-    		    echoRgb "版本降低$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
-			fi
-		fi
-    fi
-	if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
-		kill_app
-		find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
-			Release_data "$REPLY"
-		done
-		Set_service
-	else
-		echoRgb "$name1沒有安裝無法恢復數據" "0"
-	fi
-	restore_freeze
-	endtime 1 "恢復開始到結束" && echoRgb "如發現應用閃退請重新開機" && rm -rf "$TMPDIR"/*
-	rm -rf "$TMPDIR/scriptTMP"
 	wait && exit
 	;;
 Restore3)
@@ -1827,4 +1796,36 @@ backup_media)
 		echoRgb "自定義路徑為空 無法備份" "0"
 	fi
 	;;
+Device_List)
+    URL="https://khwang9883.github.io/MobileModels/brands"
+    rm -rf "$bin_path/Device_List"
+    for i in $(echo "xiaomi\nsamsung\nasus\nBlack_Shark\ngoogle\nLenovo\nMEIZU\nMotorola\nNokia\nnothing\nnubia\nOnePlus\nSony"); do
+        echoRgb "獲取品牌$i"
+        case $i in
+        xiaomi) Brand_URL="$URL/xiaomi.html" ;;
+        samsung) Brand_URL="$URL/samsung_cn.html" ;;
+        asus) Brand_URL="$URL/asus.html" ;;
+        Black_Shark) Brand_URL="$URL/blackshark.html" ;;
+        google) Brand_URL="$URL/google.html" ;;
+        Lenovo) Brand_URL="$URL/lenovo.html" ;;
+        MEIZU) Brand_URL="$URL/meizu.html" ;;
+        Motorola) Brand_URL="$URL/motorola.html" ;;
+        Nokia) Brand_URL="$URL/nokia.html" ;;
+        nothing) Brand_URL="$URL/nothing.html" ;;
+        nubia) Brand_URL="$URL/nubia.html" ;;
+        OnePlus) Brand_URL="$URL/oneplus.html" ;;
+        Sony) Brand_URL="$URL/sony_cn.html" ;;
+        esac
+        down -s -L "$Brand_URL" | sed -n 's/.*<code class="language-plaintext highlighter-rouge">\([^<]*\)<\/code>: \(.*\)<\/p>.*/\1\n\2/p' | sed 's/\(.*\)/"\1"/' | sed 'N;s/\n/ /'>>"$bin_path/Device_List"
+    done
+    if [[ -e $bin_path/Device_List ]]; then
+        if [[ $(ls -l "$bin_path/Device_List" | awk '{print $5}') -gt 1 ]]; then
+    		[[ $shell_language = zh-TW ]] && ts -f "$bin_path/Device_List" -o "$bin_path/Device_List"
+            echoRgb "已下載機型列表在$bin_path/Device_List"
+        else
+            echoRgb "下載機型失敗"
+        fi
+    else
+        echoRgb "下載機型失敗"
+    f i;;
 esac
