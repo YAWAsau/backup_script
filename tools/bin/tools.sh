@@ -293,6 +293,7 @@ update_script() {
 					*Backup_*)
 						if [[ -f $MODDIR/app_details ]]; then
                             echoRgb "請在${MODDIR%/*}更新腳本" "0"
+                            rm -rf "$MODDIR/tools.sh"
                             exit 2
                         fi ;;
 					esac
