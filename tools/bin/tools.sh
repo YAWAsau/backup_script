@@ -70,7 +70,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.7.7"
+backup_version="V15.7.8"
 #bin_path="${bin_path/'/storage/emulated/'/'/data/media/'}"
 filepath="/data/backup_tools"
 busybox="$filepath/busybox"
@@ -1121,6 +1121,20 @@ touch_shell () {
     fi
     echo "if [ -f \"$MODDIR_Path/tools/bin/tools.sh\" ]; then\n    MODDIR=\"\${0%/*}\"\n    operate=\"$1\"\n    conf_path=\"$conf_path\"\n    . \"$MODDIR_Path/tools/bin/tools.sh\" | tee \"\$MODDIR/log.txt\"\nelse\n    echo \"$MODDIR_Path/tools/bin/tools.sh遺失\"\nfi" >"$2"
 }
+Set_screen_pause_seconds () {
+    if [[ $1 = on ]]; then
+        #獲取系統設置的無操作息屏秒數
+	    Get_dark_screen_seconds="$(settings get system screen_off_timeout)"
+	    #設置30分鐘後息屏
+        settings put system screen_off_timeout 1800000
+        echo_log "設置無操作息屏時間30分鐘"
+    elif [[ $1 = off ]]; then
+        if [[ $Get_dark_screen_seconds != "" ]]; then
+            settings put system screen_off_timeout "$Get_dark_screen_seconds"
+            echo_log "設置無操作息屏時間為$Get_dark_screen_seconds"
+        fi
+    fi
+}
 case $operate in
 backup)
 	kill_Serve
@@ -1257,10 +1271,7 @@ backup)
 	var="$(settings get secure enabled_accessibility_services 2>/dev/null)"
 	#獲取預設鍵盤
 	keyboard="$(settings get secure default_input_method 2>/dev/null)"
-	#獲取系統設置的無操作息屏秒數
-	Get_dark_screen_seconds="$(settings get system screen_off_timeout)"
-	#設置30分鐘後息屏
-    settings put system screen_off_timeout 1800000
+    Set_screen_pause_seconds on
     #假裝息屏
     #Operation_screen off 
 	[[ $(grep -v "#" "$txt" | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${keyboard%/*}$") != ${keyboard%/*} ]] && unset keyboard
@@ -1409,7 +1420,7 @@ backup)
 		fi
 		let i++
 	done
-	[[ $Get_dark_screen_seconds != "" ]] && settings put system screen_off_timeout "$Get_dark_screen_seconds" || settings put system screen_off_timeout 30000
+	Set_screen_pause_seconds off
 	#Operation_screen on
 	restore_freeze
 	rm -rf "$TMPDIR/scriptTMP"
@@ -1514,6 +1525,7 @@ Restore|Restore2)
 	#記錄開始時間
 	starttime1="$(date -u "+%s")"
 	TIME="$starttime1"
+	Set_screen_pause_seconds on
 	en=118
 	echo "$script">"$TMPDIR/scriptTMP"
 	{
@@ -1606,6 +1618,7 @@ Restore|Restore2)
 	done
 	restore_freeze
 	rm -rf "$TMPDIR/scriptTMP" "$TXT"
+	Set_screen_pause_seconds off
 	starttime1="$TIME"
 	echoRgb "$DX完成" && endtime 1 "$DX開始到結束" && echoRgb "如發現應用閃退請重新開機"
 	longToast "$DX完成"
@@ -1638,6 +1651,7 @@ Restore3)
 	starttime1="$(date -u "+%s")"
 	A=1
 	B="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n '$=')"
+	Set_screen_pause_seconds off
 	[[ $B = "" ]] && echoRgb "mediaList.txt壓縮包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取列表再來恢復" "0" && exit 1
 	echo "$script">"$TMPDIR/scriptTMP"
 	{
@@ -1648,6 +1662,7 @@ Restore3)
 		Release_data "$mediaDir/$name1"
 		endtime 2 "$FILE_NAME2恢復" "2" && echoRgb "完成$((A * 100 / B))%" "3" && echoRgb "____________________________________" && let A++
 	done
+	Set_screen_pause_seconds off
 	endtime 1 "恢復結束"
 	rm -rf "$TMPDIR/scriptTMP"
 	} &
@@ -1787,6 +1802,7 @@ backup_media)
 		mediatxt="$Backup/mediaList.txt"
 		[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$mediatxt"
 		echo "$script">"$TMPDIR/scriptTMP"
+		Set_screen_pause_seconds on
 		{
 		echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | while read; do
 			echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
@@ -1799,6 +1815,7 @@ backup_media)
 		} &
 		wait
 		Calculate_size "$Backup_folder"
+		Set_screen_pause_seconds off
 		endtime 1 "自定義備份"
 		rm -rf "$TMPDIR/scriptTMP"
 	else
