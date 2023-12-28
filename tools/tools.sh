@@ -244,39 +244,65 @@ else
 		UFS_MODEL="unknown"
 	fi
 fi
-Open_apps="$(appinfo -d "(" -ed ")" -o anwb,pn -ta c 2>/dev/null)"
-Open_apps2="$(echo "$Open_apps" | cut -f2 -d '(' | sed 's/)//g')"
 [[ $(cat "$tools_path/Device_List" 2>/dev/null | egrep -w "$(getprop ro.product.model 2>/dev/null)" | awk -F'"' '{print $4}') != "" ]] && Device_name="$(cat "$tools_path/Device_List" | egrep -w "$(getprop ro.product.model 2>/dev/null)" | awk -F'"' '{print $4}')" || Device_name="$(getprop ro.product.model 2>/dev/null)"
 Manager_version="$(su -v || echo 'null')"
 echoRgb "---------------------SpeedBackup---------------------"
-echoRgb "腳本路徑:$MODDIR\n -已開機:$(Show_boottime)\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -管理器:$Manager_version\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -型號:$Device_name($(getprop ro.product.device 2>/dev/null))\n -閃存顆粒:$UFS_MODEL($ROM_TYPE)\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -終端:$Open_apps\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
+echoRgb "腳本路徑:$MODDIR\n -已開機:$(Show_boottime)\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -管理器:$Manager_version\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -型號:$Device_name($(getprop ro.product.device 2>/dev/null))\n -閃存顆粒:$UFS_MODEL($ROM_TYPE)\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
+case $MODDIR in
+*Backup_*)
+    if [[ -f $MODDIR/app_details ]]; then
+	    path_hierarchy="${MODDIR%/*/*}"
+	else
+	    [[ -d ${MODDIR%/*}/tools ]] && path_hierarchy="${MODDIR%/*}"
+	fi ;;
+*) [[ -d $MODDIR/tools ]] && path_hierarchy="$MODDIR" ;;
+esac
+case $LANG in
+*-TW | *-tw | *-HK)
+    echoRgb "系統語系:繁體中文"
+	Script_target_language="zh-TW" ;;
+*-CN | *-cn)
+    echoRgb "系統語系:簡體中文"
+	Script_target_language="zh-CN" ;;
+esac
+find_tools_path="$(find "$path_hierarchy"/* -maxdepth 1 -name "tools" -type d ! -path "$path_hierarchy/tools")"
 Rename_script () {
-    Replace_file_name () {
-        find "$1" -maxdepth 1 -name "*.sh" -type f | while read ; do
-	        MODDIR_NAME="${REPLY%/*}"
-            FILE_NAME="${REPLY##*/}"
-            echo "$MODDIR_NAME/$FILE_NAME"
-	        mv "$REPLY" "$MODDIR_NAME/$(ts "$FILE_NAME")"
-	    done
-	}
-	find "$1" -maxdepth 1 -name "*.sh" -type f -not -name "終止腳本.sh" -not -name "tools.sh" | while read ; do
+    [[ $HT = "" ]] && HT=0 
+	find "$path_hierarchy" -maxdepth 3 -name "*.sh" -type f -not -name "tools.sh" | sort | while read ; do
         Script_type="$(grep -o 'operate="[^"]*"' "$REPLY" 2>/dev/null | awk -F'=' '{print $2}' | tr -d '"' | head -1)"
+        MODDIR_NAME="${REPLY%/*}"
+        FILE_NAME="${REPLY##*/}"
         case $Script_type in
-        backup|Getlist|backup_media|Restore|dumpname|check_file|convert|Restore3)
-            Script_type2="$(grep -o 'backup_mode="[^"]*"' "$REPLY" 2>/dev/null | awk -F'=' '{print $2}' | tr -d '"' | head -1)"
-            if [[ $Script_type = backup && Script_type2 = 1 ]]; then
-                touch_shell "$Script_type" "$REPLY" "backup_mode"
+        backup|Getlist|backup_media|Restore|dumpname|check_file|convert|Restore3|Restore2)
+            if [[ -f ${REPLY%/*}/app_details ]]; then
+	            if [[ $FILE_NAME = backup.sh ]]; then
+                    touch_shell "$Script_type" "$REPLY" "backup_mode" "backup_mode=\"1\""
+                else
+                    touch_shell "$Script_type" "$REPLY"
+                fi
             else
-                touch_shell "$Script_type" "$REPLY"
+                if [[ -d ${REPLY%/*}/tools ]]; then
+                    touch_shell "$Script_type" "$REPLY"
+	                if [[ $Script_target_language != $shell_language ]]; then
+	                    [[ $HT = 0 && $K = "" ]] && echoRgb "腳本語系為$shell_language....轉換為$Script_target_language中,請稍後等待轉換...."
+	                    ts -f "$REPLY" -o "$REPLY"
+	                    echo_log "$REPLY翻譯"
+	                    mv "$REPLY" "$MODDIR_NAME/$(ts "$FILE_NAME")"
+	                fi
+	            fi
+	            let HT++
             fi ;;
+        kill_script)
+            if [[ $Script_target_language != $shell_language ]]; then
+                [[ $HT = 0 && $K = "" ]] && echoRgb "腳本語系為$shell_language....轉換為$Script_target_language中,請稍後等待轉換...."
+	            ts -f "$REPLY" -o "$REPLY"
+	            echo_log "$REPLY翻譯"
+	            mv "$REPLY" "$MODDIR_NAME/$(ts "$FILE_NAME")"
+	            let HT++
+	        fi ;;
         esac
 	done
-    case $LANG in
-	*-CN | *-cn)
-	    [[ $shell_language = zh-TW ]] && Replace_file_name "$1" ;;
-	*)
-	    [[ $shell_language != zh-TW ]] && Replace_file_name "$1" ;;
-	esac
+	unset HT
 }
 touch_shell () {
     unset conf_path MODDIR_Path
@@ -292,7 +318,7 @@ touch_shell () {
             conf_path='${0%/*/*/*}/backup_settings.conf'
         fi ;;
     esac
-    echo "if [ -f \"$MODDIR_Path/tools/tools.sh\" ]; then\n    MODDIR=\"\${0%/*}\"\n    operate=\"$1\"\n    conf_path=\"$conf_path\"\n    . \"$MODDIR_Path/tools/tools.sh\" | tee \"\$MODDIR/log.txt\"\nelse\n    echo \"$MODDIR_Path/tools/tools.sh遺失\"\nfi" >"$2"
+    [[ $4 != "" ]] && echo "if [ -f \"$MODDIR_Path/tools/tools.sh\" ]; then\n    MODDIR=\"\${0%/*}\"\n    operate=\"$1\"\n    $4\n    conf_path=\"$conf_path\"\n    . \"$MODDIR_Path/tools/tools.sh\" | tee \"\$MODDIR/log.txt\"\nelse\n    echo \"$MODDIR_Path/tools/tools.sh遺失\"\nfi" >"$2" || echo "if [ -f \"$MODDIR_Path/tools/tools.sh\" ]; then\n    MODDIR=\"\${0%/*}\"\n    operate=\"$1\"\n    conf_path=\"$conf_path\"\n    . \"$MODDIR_Path/tools/tools.sh\" | tee \"\$MODDIR/log.txt\"\nelse\n    echo \"$MODDIR_Path/tools/tools.sh遺失\"\nfi" >"$2"
 }
 update_script() {
 	[[ $zipFile = "" ]] && zipFile="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f 2>/dev/null)"
@@ -313,74 +339,42 @@ update_script() {
                             fi ;;
 					    esac
 					    echoRgb "從$zipFile更新"
-					    cp -r "$tools_path" "$TMPDIR" && rm -rf "$tools_path"
-					    unzip -o "$zipFile" tools/* -d "$MODDIR" | sed 's/inflating/釋放/g ; s/creating/創建/g ; s/Archive/解壓縮/g'
-					    echo_log "解壓縮${zipFile##*/}"
-					    if [[ $result = 0 ]]; then
-					        ts -f "$MODDIR/backup_settings.conf" -o "$MODDIR/backup_settings.conf"
-					        case $LANG in
-					        *-CN | *-cn)
-					            if [[ $shell_language = zh-TW ]]; then
-					                ts -f "$MODDIR/tools/Device_List" -o "$MODDIR/tools/Device_List"
-					                ts -f "$MODDIR/tools/tools.sh" -o "$MODDIR/tools/tools.sh" && sed -i 's/shell_language=\"zh-TW\"/shell_language=\"zh-CN\"/g' "$MODDIR/tools/tools.sh"
-                                    [[ $? = 0 ]] && echoRgb "轉換簡體中文腳本完成"
-                                fi ;;
-                            *)
-                                if [[ $shell_language != zh-TW ]]; then
-                                    ts -f "$MODDIR/tools/Device_List" -o "$MODDIR/tools/Device_List"
-					                ts -f "$MODDIR/tools/tools.sh" -o "$MODDIR/tools/tools.sh" && sed -i 's/shell_language=\"zh-CN\"/shell_language=\"zh-TW\"/g' "$MODDIR/tools/tools.sh"
-                                    [[ $? = 0 ]] && echoRgb "轉換繁體中文腳本完成"
-                                fi ;;
-                            esac
-						    case $MODDIR in
-						    *Backup_*)
-							    if [[ ! -f $MODDIR/app_details ]]; then
-								    echoRgb "更新當前${MODDIR##*/}/tools"
-								    Rename_script "$MODDIR"
-								    if [[ -d ${MODDIR%/*}/tools ]]; then
-									    echoRgb "更新${MODDIR%/*}/tools"
-									    rm -rf "${MODDIR%/*}/tools"
-									    cp -r "$tools_path" "${MODDIR%/*}"
-									    Rename_script "${MODDIR%/*}"
-									    ts -f "${MODDIR%/*}/backup_settings.conf" -o "${MODDIR%/*}/backup_settings.conf"
-								    fi
-								    find "$MODDIR" -maxdepth 1 -name "app_details" -type f 2>/dev/null | sort | while read; do
-	                                    MODDIR_NAME="${REPLY%/*}"
-                                        [[ -f $MODDIR_NAME/recover.sh ]] && touch_shell "Restore2" "$MODDIR_NAME/recover.sh"
-                                        [[ $MODDIR_NAME/backup.sh ]] && echo 'if [ -f "${0%/*/*/*}/tools/tools.sh" ]; then\n   MODDIR="${0%/*/*/*}"\n   operate="backup"\n   conf_path="${0%/*/*/*}/backup_settings.conf"\n   [[ ! -f $conf_path ]] && echo "$conf_path遺失"\n   backup_mode=1\n   . "${0%/*}/app_details" &>/dev/null\n   . "${0%/*/*/*}/tools/tools.sh" | tee "$MODDIR/log.txt"\nelse\n   echo "${0%/*/*}/tools/tools.sh遺失"\nfi' >"$MODDIR_NAME/backup.sh"
-	                                done
-							    fi ;;
-						    *)
-						        Rename_script "$MODDIR"
-							    if [[ $(find "$MODDIR" -maxdepth 1 -name "Backup_*" -type d) != "" ]]; then
-								    find "$MODDIR" -maxdepth 1 -name "Backup_*" -type d | while read backup_path; do
-									    if [[ -d $backup_path && $backup_path != $MODDIR ]]; then
-										    echoRgb "更新當前tools目錄+${backup_path##*/}/tools"
-										    rm -rf "$backup_path/tools"
-										    cp -r "$tools_path" "$backup_path"
-										    cp -r "$MODDIR/終止腳本.sh" "$backup_path"
-										    Rename_script "$backup_path"
-										    ts -f "$backup_path/backup_settings.conf" -o "$backup_path/backup_settings.conf"
-										    find "$backup_path" -maxdepth 2 -name "app_details" -type f 2>/dev/null | sort | while read; do
-	                                            MODDIR_NAME="${REPLY%/*}"
-                                                [[ -f $MODDIR_NAME/recover.sh ]] && touch_shell "Restore2" "$MODDIR_NAME/recover.sh"
-                                                [[ $MODDIR_NAME/backup.sh ]] && echo 'if [ -f "${0%/*/*/*}/tools/tools.sh" ]; then\n   MODDIR="${0%/*/*/*}"\n   operate="backup"\n   conf_path="${0%/*/*/*}/backup_settings.conf"\n   [[ ! -f $conf_path ]] && echo "$conf_path遺失"\n   backup_mode=1\n   . "${0%/*}/app_details" &>/dev/null\n   . "${0%/*/*/*}/tools/tools.sh" | tee "$MODDIR/log.txt"\nelse\n   echo "${0%/*/*}/tools/tools.sh遺失"\nfi' >"$MODDIR_NAME/backup.sh"
-	                                        done
-									    fi
-								    done
-							    else
-								    echoRgb "更新當前${MODDIR##*/}/tools"
-							    fi ;;
-						    esac
-					    else
-						    cp -r "$TMPDIR/tools" "$MODDIR"
+					    if [[ -d $path_hierarchy/tools ]]; then
+					        cp -r "$path_hierarchy/tools" "$TMPDIR"
+					        mv "$zipFile" "$path_hierarchy"
+					        zipFile="$path_hierarchy/${zipFile##*/}"
+					        rm -rf "$path_hierarchy/tools"
+					        unzip -o "$zipFile" tools/* -d "$path_hierarchy" | sed 's/inflating/釋放/g ; s/creating/創建/g ; s/Archive/解壓縮/g'
+					        echo_log "解壓縮${zipFile##*/}"
+					        if [[ $result = 0 ]]; then
+                                if [[ $shell_language != $Script_target_language ]]; then
+                                    echoRgb "腳本語系為$shell_language....轉換為$Script_target_language中,請稍後等待轉換...."
+                                    ts -f "$path_hierarchy/backup_settings.conf" -o "$path_hierarchy/backup_settings.conf"
+                                    echo_log "$path_hierarchy/backup_settings.conf翻譯"
+                                    ts -f "$path_hierarchy/tools/Device_List" -o "$path_hierarchy/tools/Device_List"
+                                    echo_log "$path_hierarchy/tools/Device_List翻譯"
+					                ts -f "$path_hierarchy/tools/tools.sh" -o "$path_hierarchy/tools/tools.sh" && sed -i 's/shell_language=\"zh-CN\"/shell_language=\"zh-TW\"/g' "$path_hierarchy/tools/tools.sh"
+                                    echo_log "$path_hierarchy/tools/tools.sh翻譯"
+                                    HT=1
+                                fi
+                                if [[ $find_tools_path != $path_hierarchy/tools ]]; then
+                                    rm -rf "$find_tools_path"
+                                    cp -r "$path_hierarchy/tools" "${find_tools_path%/*}"
+						            cp -r "$path_hierarchy/終止腳本.sh" "${find_tools_path%/*}"
+								    ts -f "${find_tools_path%/*}/backup_settings.conf" -o "${find_tools_path%/*}/backup_settings.conf"
+								    echo_log "${find_tools_path%/*}/backup_settings.conf翻譯"
+							    fi
+							    Rename_script
+					        else
+						        cp -r "$TMPDIR/tools" "$MODDIR"
+					        fi
+					        rm -rf "$TMPDIR"/* "$zipFile" "$MODDIR/tools.sh"
+					        echoRgb "更新完成 請重新執行腳本" "2"
+					        exit
 					    fi
-					    rm -rf "$TMPDIR"/* "$zipFile" "$MODDIR/tools.sh"
-					    echoRgb "更新完成 請重新執行腳本" "2"
-					    exit
 				    else
 					    echoRgb "${zipFile##*/}版本低於當前版本,自動刪除" "0"
-					    rm -rf "$zipFile" "$MODDIR/tools.sh"
+					    rm -rf "$zipFile" "$path_hierarchy/tools.sh"
 				    fi
 				else
 				    rm -rf "$zipFile"
@@ -464,82 +458,40 @@ esac
 cdn=2
 #settings get system system_locales
 Language="https://api.github.com/repos/YAWAsau/backup_script/releases/latest"
-if [[ $LANG != "" ]]; then
-    Set_script_language() {
-        if [[ $shell_language != "" ]]; then
-            echoRgb "腳本語系為$shell_language....轉換為$LANG中...."
-            case $MODDIR in
-	        *Backup_*)
-                if [[ -f $MODDIR/app_details ]]; then
-		            Rename_script "${MODDIR%/*}"
-				    ts -f "${MODDIR%/*}/backup_settings.conf" -o "${MODDIR%/*}/backup_settings.conf"
-			        [[ -d ${MODDIR%/*/*}/tools ]] && ts -f "${MODDIR%/*/*}/backup_settings.conf" -o "${MODDIR%/*/*}/backup_settings.conf" && Rename_script "${MODDIR%/*/*}" 
-			    else
-				    Rename_script "$MODDIR"
-				    ts -f "$MODDIR/backup_settings.conf" -o "$MODDIR/backup_settings.conf"
-				    [[ -d ${MODDIR%/*}/tools ]] && ts -f "${MODDIR%/*}/backup_settings.conf" -o "${MODDIR%/*}/backup_settings.conf" && Rename_script "${MODDIR%/*}"
-			    fi  ;;
-		    *)
-	            Rename_script "$MODDIR"
-			    ts -f "$MODDIR/backup_settings.conf" -o "$MODDIR/backup_settings.conf"
-			    if [[ $(find "$MODDIR" -maxdepth 1 -name "Backup_*" -type d) != "" ]]; then
-		            find "$MODDIR" -maxdepth 1 -name "Backup_*" -type d | while read backup_path; do
-			            [[ -d $backup_path && $backup_path != $MODDIR ]] && ts -f "$backup_path/backup_settings.conf" -o "$backup_path/backup_settings.conf" && Rename_script "$backup_path"
-			        done
-		        else
-				    Rename_script "${MODDIR%/*}"
-				    ts -f "${MODDIR%/*}/backup_settings.conf" -o "${MODDIR%/*}/backup_settings.conf"
-			    fi  ;;
-		    esac
-            [[ $? = 0 ]] && echoRgb "轉換腳本完成，退出腳本重新執行即可使用$1" && exit 0
-        fi
-    }
-	case $LANG in
-	*-TW | *-tw | *-HK)
-		echoRgb "系統語系:繁體中文"
-		ts -f "$tools_path/Device_List" -o "$tools_path/Device_List" 
-		case $MODDIR in
-	    *Backup_*)
-	        if [[ -f $MODDIR/app_details ]]; then
-	            find "${0%/*/*/*}" -maxdepth 3 -name "tools.sh" -type f | while read ; do
-	                ts -f "$REPLY" -o "$REPLY" && sed -i 's/shell_language=\"zh-CN\"/shell_language=\"zh-TW\"/g' "$REPLY"
-		        done
-		    else
-	            find "${0%/*/*}" -maxdepth 3 -name "tools.sh" -type f | while read ; do
-		            ts -f "$REPLY" -o "$REPLY" && sed -i 's/shell_language=\"zh-CN\"/shell_language=\"zh-TW\"/g' "$REPLY"
-		        done
-		    fi ;;
-		*)
-		    find "${0%/*}" -maxdepth 3 -name "tools.sh" -type f | while read ; do
-		        ts -f "$REPLY" -o "$REPLY" && sed -i 's/shell_language=\"zh-CN\"/shell_language=\"zh-TW\"/g' "$REPLY"
-		    done ;;
-		esac
-		[[ $shell_language != zh-TW ]] && Set_script_language "繁體中文"
-		;;
-	*-CN | *-cn)
-		echoRgb "系統語系:簡體中文"
-		ts -f "$tools_path/Device_List" -o "$tools_path/Device_List" 
-		case $MODDIR in
-	    *Backup_*)
-	        if [[ -f $MODDIR/app_details ]]; then
-	            find "${0%/*/*/*}" -maxdepth 3 -name "tools.sh" -type f | while read ; do
-	                ts -f "$REPLY" -o "$REPLY" && sed -i 's/shell_language=\"zh-TW\"/shell_language=\"zh-CN\"/g' "$REPLY"
-		        done
-		    else
-	            find "${0%/*/*}" -maxdepth 3 -name "tools.sh" -type f | while read ; do
-		            ts -f "$REPLY" -o "$REPLY" && sed -i 's/shell_language=\"zh-TW\"/shell_language=\"zh-CN\"/g' "$REPLY"
-		        done
-		    fi ;;
-		*)
-		    find "${0%/*}" -maxdepth 3 -name "tools.sh" -type f | while read ; do
-		        ts -f "$REPLY" -o "$REPLY" && sed -i 's/shell_language=\"zh-TW\"/shell_language=\"zh-CN\"/g' "$REPLY"
-		    done ;;
-		esac
-		[[ $shell_language = zh-TW ]] && Set_script_language "簡體中文"
-		;;
-	esac
-else
-	echoRgb "獲取系統語系失敗" "0"
+if [[ $path_hierarchy != "" && $Script_target_language != ""  ]]; then
+	K=1
+	J="$(find "$path_hierarchy" -maxdepth 3 -name "tools.sh" -type f | wc -l)"
+	for REPLY in $(find "$path_hierarchy" -maxdepth 3 -name "tools.sh" -type f); do
+	    if [[ $Script_target_language != $(grep -o 'shell_language="[^"]*"' "$REPLY" 2>/dev/null | awk -F'=' '{print $2}' | tr -d '"' | head -1) ]]; then
+	        [[ $K = 1 ]] && echoRgb "腳本語系為$shell_language....轉換為$Script_target_language中,請稍後等待轉換...."
+	        ts -f "$REPLY" -o "$REPLY"
+	        if [[ $? = 0 ]]; then
+	            CBW="1"
+	            echo_log "$REPLY翻譯"
+	            case $Script_target_language in
+	            zh-TW) sed -i "s/shell_language=\"zh-CN\"/shell_language=\"zh-TW\"/g" "$REPLY" ;;
+	            zh-CN) sed -i "s/shell_language=\"zh-TW\"/shell_language=\"zh-CN\"/g" "$REPLY" ;;
+	            esac
+	            ts -f "${REPLY%/*}/Device_List" -o "${REPLY%/*}/Device_List"
+	            echo_log "${REPLY%/*}/Device_List翻譯"
+	            if [[ $shell_language != "" && $K = 1 ]]; then
+                    Rename_script
+                    if [[ -d $path_hierarchy/tools ]]; then
+                        if [[ $find_tools_path != $path_hierarchy/tools ]]; then
+                            ts -f "${find_tools_path%/*}/backup_settings.conf" -o "${find_tools_path%/*}/backup_settings.conf"
+                            echo_log "${find_tools_path%/*}/backup_settings.conf翻譯"
+                        fi
+                        ts -f "$path_hierarchy/backup_settings.conf" -o "$path_hierarchy/backup_settings.conf"
+                        echo_log "$path_hierarchy/backup_settings.conf翻譯"
+	                fi
+                fi
+	        else
+	            echoRgb "ts進程出現錯誤" "0"
+	        fi
+	        let K++
+	    fi
+	done
+    [[ $CBW = 1 ]] && echoRgb "轉換腳本完成，退出腳本重新執行即可使用" && exit 2
 fi
 #效驗選填是否正確
 Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
@@ -682,8 +634,8 @@ partition_info() {
 	[[ $lxj -ge 97 ]] && echoRgb "$hx空間不足,達到$lxj%" "0" && exit 2
 }
 kill_app() {
-    [[ $Pause_Freeze = "" ]] && Pause_Freeze="0"
-    if [[ $name2 != bin.mt.plus && $name2 != com.termux ]]; then
+    if [[ $name2 != bin.mt.plus && $name2 != com.termux && $name2 != bin.mt.plus.canary ]]; then
+        [[ $Pause_Freeze = "" ]] && Pause_Freeze="0"
         if [[ $Pause_Freeze = 0 ]]; then
             if [[ $(dumpsys activity processes | grep "packageList" | cut -d '{' -f2 | cut -d '}' -f1 | egrep -w "^$name2$" | sed -n '1p') = $name2 ]]; then
                 killall -9 "$name2" &>/dev/null
@@ -754,7 +706,7 @@ Backup_apk() {
 				case $Compression_method in
 				tar | TAR | Tar) tar --checkpoint-action="ttyout=%T\r" -cf "$Backup_folder/apk.tar" *.apk ;;
 				lz4 | LZ4 | Lz4) tar --checkpoint-action="ttyout=%T\r" -cf - *.apk | lz4 >"$Backup_folder/apk.tar.lz4" ;;
-				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --ultra -"$Compression_rate" -T0 -q --priority=rt -cf - *.apk | zstd>"$Backup_folder/apk.tar.zst" ;;
+				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" -cf - *.apk | zstd --ultra -"$Compression_rate" -T0 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
 				esac
 			)
 			echo_log "備份$apk_number個Apk"
@@ -842,14 +794,14 @@ Backup_data() {
 			user)
 				case $Compression_method in
 				tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null ;;
-				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" --warning=no-file-changed --ultra -"$Compression_rate" -T0 -q --priority=rt -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd>"$Backup_folder/$1.tar.zst" 2>/dev/null ;;
+				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -"$Compression_rate" -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" 2>/dev/null ;;
 				lz4 | Lz4 | LZ4) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | lz4 >"$Backup_folder/$1.tar.lz4" 2>/dev/null ;;
 				esac
 				;;
 			*)
 				case $Compression_method in
 				tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
-				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed --ultra -"$Compression_rate" -T0 -q --priority=rt -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd>"$Backup_folder/$1.tar.zst" ;;
+				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -"$Compression_rate" -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
 				lz4 | Lz4 | LZ4) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | lz4 >"$Backup_folder/$1.tar.lz4" 2>/dev/null ;;
 				esac
 				;;
@@ -1091,7 +1043,7 @@ get_name(){
 			Apkname)
 			    [[ -f $Folder/${PackageName}.sh ]] && rm -rf "$Folder/${PackageName}.sh"
 		        [[ ! -f $Folder/recover.sh ]] && touch_shell "Restore2" "$Folder/recover.sh"
-			    [[ ! -f $Folder/backup.sh ]] && echo 'if [ -f "${0%/*/*/*}/tools/tools.sh" ]; then\n   MODDIR="${0%/*/*/*}"\n   operate="backup"\n   conf_path="${0%/*/*/*}/backup_settings.conf"\n   [[ ! -f $conf_path ]] && echo "$conf_path遺失"\n   backup_mode=1\n   . "${0%/*}/app_details" &>/dev/null\n   . "${0%/*/*/*}/tools/tools.sh" | tee "$MODDIR/log.txt"\nelse\n   echo "${0%/*/*}/tools/tools.sh遺失"\nfi' >"$Folder/backup.sh"
+			    [[ ! -f $Folder/backup.sh ]] && touch_shell "backup" "$Folder/backup.sh" "backup_mode" "backup_mode=\"1\""
 				echoRgb "$ChineseName $PackageName" && echo "$ChineseName $PackageName" >>"$txt" ;; 
 			convert)
 				if [[ ${Folder##*/} = $PackageName ]]; then
@@ -1284,9 +1236,11 @@ backup)
 	[[ ! -d $Backup/modules ]] && mkdir -p "$Backup/modules" && echoRgb "$Backup/modules已創建成功\n -請按需要自行放置需要恢復時刷入的模塊在內將自動批量刷入" "1"
 	[[ -d $Backup/Media ]] && touch_shell "Restore3" "$Backup/恢復自定義資料夾.sh"
 	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#使用者\nuser=\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
-	filesha256="$(sha256sum "$tools_path/tools.sh" | cut -d" " -f1)"
-	filesha256_1="$(sha256sum "$Backup/tools/tools.sh" | cut -d" " -f1)"
-	[[ $filesha256 != $filesha256_1 ]] && cp -r "$tools_path/tools.sh" "$Backup/tools/tools.sh"
+	if [[ -f $Backup/tools/tools.sh ]]; then
+	    filesha256="$(sha256sum "$tools_path/tools.sh" | cut -d" " -f1)"
+	    filesha256_1="$(sha256sum "$Backup/tools/tools.sh" | cut -d" " -f1)"
+	    [[ $filesha256 != $filesha256_1 ]] && cp -r "$tools_path/tools.sh" "$Backup/tools/tools.sh"
+	fi
 	filesize="$(du -s "$Backup" | awk '{print $1}')"
 	Quantity=0
 	restore_freeze
@@ -1369,7 +1323,7 @@ backup)
 			fi
 			[[ -f $Backup_folder/${name2}.sh ]] && rm -rf "$Backup_folder/${name2}.sh"
 		    [[ ! -f $Backup_folder/recover.sh ]] && touch_shell "Restore2" "$Backup_folder/recover.sh"
-			[[ ! -f $Backup_folder/backup.sh ]] && echo 'if [ -f "${0%/*/*/*}/tools/tools.sh" ]; then\n   MODDIR="${0%/*/*/*}"\n   operate="backup"\n   conf_path="${0%/*/*/*}/backup_settings.conf"\n   [[ ! -f $conf_path ]] && echo "$conf_path遺失"\n   backup_mode=1\n   . "${0%/*}/app_details" &>/dev/null\n   . "${0%/*/*/*}/tools/tools.sh" | tee "$MODDIR/log.txt"\nelse\n   echo "${0%/*/*}/tools/tools.sh遺失"\nfi' >"$Backup_folder/backup.sh"
+			[[ ! -f $Backup_folder/backup.sh ]] && touch_shell "backup" "$Backup_folder/backup.sh" "backup_mode" "backup_mode=\"1\""
 			endtime 2 "$name1 備份" "3"
 			Occupation_status="$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
 			lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
@@ -1439,12 +1393,12 @@ backup)
 	done
 	#打開應用
 	i=1
-	am_start="$(echo "$am_start" | head -n 4 | xargs | sed 's/ /\|/g')"
+	am_start="$(echo "$am_start" | xargs | sed 's/ /\n/g')"
 	while [[ $i -le $r ]]; do
 		unset pkg name1
 		pkg="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
 		name1="$(grep -v "#" "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-		if [[ $(echo "$pkg" | egrep -wo "^$am_start$") = $pkg ]]; then
+		if [[ $(echo "$am_start" | egrep -wo "$pkg") = $pkg ]]; then
 			am start -n "$(appinfo -o sa -pn "$pkg" 2>/dev/null)" &>/dev/null
 			echo_log "啟動$name1"
 		fi
