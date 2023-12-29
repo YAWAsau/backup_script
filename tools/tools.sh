@@ -65,7 +65,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.8.1"
+backup_version="V15.8.2"
 #tools_path="${tools_path/'/storage/emulated/'/'/data/media/'}"
 filepath="/data/backup_tools"
 busybox="$filepath/busybox"
