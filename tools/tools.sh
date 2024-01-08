@@ -65,7 +65,7 @@ else
 	echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.8.4"
+backup_version="V15.8.5"
 #tools_path="${tools_path/'/storage/emulated/'/'/data/media/'}"
 filepath="/data/backup_tools"
 busybox="$filepath/busybox"
@@ -73,6 +73,7 @@ busybox2="$tools_path/busybox"
 #排除自身
 exclude="
 update
+soc.json
 busybox_path
 Device_List"
 if [[ ! -d $filepath ]]; then
@@ -122,7 +123,7 @@ fi
 export PATH="$filepath:$PATH"
 export TZ=Asia/Taipei
 export CLASSPATH="$tools_path/classes.dex:$tools_path/Control.dex"
-zstd_sha256sum="6fb924c51e0d00ada3a65e44ae9dccff908911b6181bd3262ce669e599f2a025"
+zstd_sha256sum="55cc57a3d079dd90e74d972c705c4f9389dd00a7175de148e21000eab01f7ed9"
 tar_sha256sum="3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814"
 classesdex_sha256sum="c4f5e6155c6b927d5f002dbb21a975a716655bc5011ae7cf450563fb1ae0ca4f"
 [[ $(sha256sum "$tools_path/zstd" | cut -d" " -f1) != $zstd_sha256sum ]] && echoRgb "zstd效驗失敗" "0" && exit 2
@@ -151,14 +152,12 @@ case $LANG in
     alias ts="app_process /system/bin --nice-name=appinfo han.core.order.ChineseConverter -t $@" ;;
 esac
 alias LS="toybox ls -Zd"
-alias lz4="zstd --ultra -$Compression_rate -T0 -q --priority=rt --format=lz4"
 #[[ $1 = --help ]] && appinfo --help
 #appinfo -o pn -u | while read; do
 #    case $REPLY in
 #    *camera*) cmd package install-existing "$REPLY" ;;
 #    esac
 #done
-
 Set_back() {
 	return 1
 }
@@ -249,8 +248,23 @@ else
 fi
 [[ $(cat "$tools_path/Device_List" 2>/dev/null | egrep -w "$(getprop ro.product.model 2>/dev/null)" | awk -F'"' '{print $4}') != "" ]] && Device_name="$(cat "$tools_path/Device_List" | egrep -w "$(getprop ro.product.model 2>/dev/null)" | awk -F'"' '{print $4}')" || Device_name="$(getprop ro.product.model 2>/dev/null)"
 Manager_version="$(su -v || echo 'null')"
+DEVICE_NAME="$(getprop ro.soc.model)"
+if [[ $DEVICE_NAME != "" ]]; then
+    if [[ -f $tools_path/soc.json ]]; then
+        cat "$tools_path/soc.json" | jq -r --arg device "$DEVICE_NAME" '.[$device] | "處理器:\(.VENDOR) \(.NAME) [\(.FAB)]"' &>/dev/null
+        if [[ $? = 0 ]]; then
+          DEVICE_NAME="$(cat "$tools_path/soc.json" | jq -r --arg device "$DEVICE_NAME" '.[$device] | "處理器:\(.VENDOR) \(.NAME) [\(.FAB)]"' 2>/dev/null)"
+        else
+            DEVICE_NAME="處理器:null"
+        fi
+    else
+        DEVICE_NAME="處理器:null"
+    fi
+else
+    DEVICE_NAME="處理器:null"
+fi
 echoRgb "---------------------SpeedBackup---------------------"
-echoRgb "腳本路徑:$MODDIR\n -已開機:$(Show_boottime)\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -管理器:$Manager_version\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -型號:$Device_name($(getprop ro.product.device 2>/dev/null))\n -閃存顆粒:$UFS_MODEL($ROM_TYPE)\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
+echoRgb "腳本路徑:$MODDIR\n -已開機:$(Show_boottime)\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -管理器:$Manager_version\n -設備架構:$abi\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -型號:$Device_name($(getprop ro.product.device 2>/dev/null))\n -閃存顆粒:$UFS_MODEL($ROM_TYPE)\n -$DEVICE_NAME\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
 case $MODDIR in
 *Backup_*)
     if [[ -f $MODDIR/app_details ]]; then
@@ -366,7 +380,6 @@ update_script() {
                                 if [[ $find_tools_path != $path_hierarchy/tools ]]; then
                                     rm -rf "$find_tools_path"
                                     cp -r "$path_hierarchy/tools" "${find_tools_path%/*}"
-						            cp -r "$path_hierarchy/終止腳本.sh" "${find_tools_path%/*}"
 								    ts -f "${find_tools_path%/*}/backup_settings.conf" -o "${find_tools_path%/*}/backup_settings.conf"
 								    echo_log "${find_tools_path%/*}/backup_settings.conf翻譯"
 							    fi
@@ -527,7 +540,7 @@ if [[ $json != "" ]]; then
 			if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(echo "$download" | tr -d "a-zA-Z")") -eq 0 ]]; then
 				echoRgb "發現新版本:$tag"
 				if [[ $update = true ]]; then
-					echo "$json" | sed 's/\"body\": \"/body=\"/g'>"$TMPDIR/updateinfo" && . "$TMPDIR/updateinfo" &>/dev/null ; [[ $body != "" ]] && echoRgb "更新日誌:\n$body" && rm -rf "$TMPDIR/updateinfo"
+				    echoRgb "更新日誌:\n$(down -s -L "$Language" | jq -r '.body' 2>/dev/null)"
 					echoRgb "是否更新腳本？\n -音量上更新，音量下不更新" "2"
 					get_version "更新" "不更新" && choose="$branch"
 					if [[ $choose = true ]]; then
@@ -720,7 +733,6 @@ Backup_apk() {
 				cd "$apk_path2"
 				case $Compression_method in
 				tar | TAR | Tar) tar --checkpoint-action="ttyout=%T\r" -cf "$Backup_folder/apk.tar" *.apk ;;
-				lz4 | LZ4 | Lz4) tar --checkpoint-action="ttyout=%T\r" -cf - *.apk | lz4 >"$Backup_folder/apk.tar.lz4" ;;
 				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" -cf - *.apk | zstd --ultra -"$Compression_rate" -T0 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
 				esac
 			)
@@ -810,14 +822,12 @@ Backup_data() {
 				case $Compression_method in
 				tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null ;;
 				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -"$Compression_rate" -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" 2>/dev/null ;;
-				lz4 | Lz4 | LZ4) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | lz4 >"$Backup_folder/$1.tar.lz4" 2>/dev/null ;;
 				esac
 				;;
 			*)
 				case $Compression_method in
 				tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
 				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -"$Compression_rate" -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
-				lz4 | Lz4 | LZ4) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | lz4 >"$Backup_folder/$1.tar.lz4" 2>/dev/null ;;
 				esac
 				;;
 			esac
@@ -866,7 +876,7 @@ Release_data() {
 	FILE_NAME="${tar_path##*/}"
 	FILE_NAME2="${FILE_NAME%%.*}"
 	case ${FILE_NAME##*.} in
-	lz4 | zst | tar)
+	zst | tar)
 		unset FILE_PATH Size Selinux_state
 		case $FILE_NAME2 in
 		user) 
@@ -900,7 +910,7 @@ Release_data() {
    		if [[ $FILE_PATH != "" ]]; then
             [[ ${MODDIR_NAME##*/} != Media ]] && rm -rf "$FILE_PATH/$name2"
 		    case ${FILE_NAME##*.} in
-			lz4 | zst) tar --checkpoint-action="ttyout=%T\r" -I zstd -xmpf "$tar_path" -C "$FILE_PATH" ;;
+			zst) tar --checkpoint-action="ttyout=%T\r" -I zstd -xmpf "$tar_path" -C "$FILE_PATH" ;;
 			tar) [[ ${MODDIR_NAME##*/} = Media ]] && tar --checkpoint-action="ttyout=%T\r" -axf "$tar_path" -C "$FILE_PATH" || tar --checkpoint-action="ttyout=%T\r" -amxf "$tar_path" -C "$FILE_PATH" ;;
 			esac
 		else
@@ -960,7 +970,7 @@ installapk() {
 	if [[ $apkfile != "" ]]; then
 		rm -rf "$TMPDIR"/*
 		case ${apkfile##*.} in
-		lz4 | zst) tar --checkpoint-action="ttyout=%T\r" -I zstd -xmpf "$apkfile" -C "$TMPDIR" ;;
+		zst) tar --checkpoint-action="ttyout=%T\r" -I zstd -xmpf "$apkfile" -C "$TMPDIR" ;;
 		tar) tar --checkpoint-action="ttyout=%T\r" -xmpf "$apkfile" -C "$TMPDIR" ;;
 		*)
 			echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
@@ -1031,7 +1041,7 @@ get_name(){
 			echoRgb "${Folder##*/}包名獲取失敗，解壓縮獲取包名中..." "0"
 			rm -rf "$TMPDIR"/*
 			case ${REPLY##*.} in
-			lz4 | zst) tar -I zstd -xmpf "$REPLY" -C "$TMPDIR" --wildcards --no-anchored 'base.apk' ;;
+			zst) tar -I zstd -xmpf "$REPLY" -C "$TMPDIR" --wildcards --no-anchored 'base.apk' ;;
 			tar) tar -xmpf "$REPLY" -C "$TMPDIR" --wildcards --no-anchored 'base.apk' ;;
 			*)
 			    echoRgb "${REPLY##*/} 壓縮包不支持解壓縮" "0"
@@ -1091,7 +1101,7 @@ Validation_file() {
 	FILE_NAME="${1##*/}"
 	echoRgb "效驗$FILE_NAME"
 	case ${FILE_NAME##*.} in
-	lz4 | zst) zstd -t "$1" 2>/dev/null ;;
+	zst) zstd -t "$1" 2>/dev/null ;;
 	tar) tar -tf "$1" &>/dev/null ;;
 	esac
 	echo_log "效驗"
@@ -1140,7 +1150,7 @@ backup)
 	/storage/emulated/0/Android/* | /data/media/0/Android/* | /sdcard/Android/*) echoRgb "請勿在$MODDIR內備份" "0" && exit 2 ;;
 	esac
 	case $Compression_method in
-	zstd | Zstd | ZSTD | tar | Tar | TAR | lz4 | Lz4 | LZ4) ;;
+	zstd | Zstd | ZSTD | tar | Tar | TAR) ;;
 	*) echoRgb "$Compression_method為不支持的壓縮算法" "0" && exit 2 ;;
 	esac
 	#效驗選填是否正確
@@ -1175,9 +1185,10 @@ backup)
 	#數據目錄
 	if [[ $list_location != "" ]]; then
 	    if [[ ${list_location:0:1} = / ]]; then
-	        [[ -f $list_location ]] && txt="$list_location"
+	        txt="$list_location"
 	    else
 	        txt="$MODDIR/$list_location"
+	        echoRgb "$txt"
 	    fi
 	else
 	    txt="$MODDIR/appList.txt"
@@ -1244,7 +1255,9 @@ backup)
 			else
                 case $name1 in
                 *不需要*) ;;
-                *) echoRgb "$name1 $name2不存在系統，從列表中刪除" "0" ;;
+                *) 
+                    echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$txt")" >"$txt"
+                    echoRgb "$name1 $name2不存在系統，從列表中刪除" "0" ;;
                 esac
 			fi
 	        let D++
