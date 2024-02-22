@@ -5,6 +5,7 @@ MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 Compression_rate=3
 script="${0##*/}"
+backup_version="V15.8.6"
 update_backup_settings_conf() {
     echo "#1開啟0關閉
 #是否在每次執行備份腳本使用音量鍵詢問如下備份需求
@@ -30,8 +31,11 @@ update="${update:-1}"
 #假設如果存在usb隨身碟是否默認使用隨身碟？(1不詢問默認使用 0每次都進行詢問)
 USBdefault="${USBdefault:-0}"
 
+#自定義外部掛載點,多個分區請使用|區隔
+mount_point=\""${mount_point:-rannki|0000-1}"\"
+
 #使用者(為空預設0)
-user="$user"
+user="${user:-0}"
 
 #是否備份使用者數據 (1備份0不備份)
 Backup_user_data="${Backup_user_data:-1}"
@@ -185,7 +189,6 @@ else
 	[[ $(ksud -V 2>/dev/null) = "" ]] && echo "Magisk busybox Path does not exist"
 fi
 export PATH="$PATH"
-backup_version="V15.8.6"
 #tools_path="${tools_path/'/storage/emulated/'/'/data/media/'}"
 filepath="/data/backup_tools"
 busybox="$filepath/busybox"
@@ -242,7 +245,7 @@ fi
 [[ ! -f $filepath/zstd ]] && echoRgb "$filepath缺少zstd" && exit 2
 export PATH="$filepath:$PATH"
 export TZ=Asia/Taipei
-export CLASSPATH="$tools_path/classes.dex:$tools_path/Control.dex"
+export CLASSPATH="$tools_path/classes.dex:$tools_path/classes2.dex"
 zstd_sha256sum="55cc57a3d079dd90e74d972c705c4f9389dd00a7175de148e21000eab01f7ed9"
 tar_sha256sum="3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814"
 classesdex_sha256sum="09d0058763157b97d6ea2bf74bd7ec53089a9ddb496f089a159ea0027007bb94"
@@ -261,6 +264,7 @@ if [[ $(which toybox | egrep -o "system") != system ]]; then
 fi
 LANG="$(getprop "persist.sys.locale")"
 #下列為自定義函數
+alias getssaid="app_process /system/bin com.xayah.dex.SsaidUtil $@"
 alias appinfo="app_process /system/bin --nice-name=appinfo han.core.order.AppInfo $@"
 alias down="app_process /system/bin --nice-name=down han.core.order.Down $@"
 alias PayloadDumper="app_process /system/bin --nice-name=payload-dumper han.core.order.payload.PayloadDumper $@"
@@ -563,8 +567,10 @@ update_script() {
                                 if [[ -d $find_tools_path && $find_tools_path != $path_hierarchy/tools ]]; then
                                     rm -rf "$find_tools_path"
                                     cp -r "$path_hierarchy/tools" "${find_tools_path%/*}"
-								    ts -f "${find_tools_path%/*}/backup_settings.conf" -o "${find_tools_path%/*}/backup_settings.conf"
-								    echo_log "${find_tools_path%/*}/backup_settings.conf翻譯"
+                                    if [[ $shell_language != $Script_target_language ]]; then
+								        ts -f "${find_tools_path%/*}/backup_settings.conf" -o "${find_tools_path%/*}/backup_settings.conf"
+								        echo_log "${find_tools_path%/*}/backup_settings.conf翻譯"
+								    fi
 							    fi
 							    Rename_script
 							    if [[ $Output_path != "" ]]; then
@@ -639,7 +645,7 @@ if [[ $path_hierarchy != "" && $Script_target_language != ""  ]]; then
 	J="$(find "$path_hierarchy" -maxdepth 3 -name "tools.sh" -type f | wc -l)"
 	find "$path_hierarchy" -maxdepth 3 -name "tools.sh" -type f | while read ; do
 	    unset shell_language
-	    shell_language="$(grep -o 'shell_language="[^"]*"' "$REPLY" | awk -F'=' '{print $2}' | tr -d '"' | head -1)"
+	    shell_language="$(grep -o 'shell_language="[^"]*"' "$REPLY" 2>/dev/null | awk -F'=' '{print $2}' | tr -d '"' | head -1)"
 	    case $shell_language in
 	    zh-CN|zh-TW)
 	        if [[ $Script_target_language != $shell_language ]]; then
@@ -739,7 +745,7 @@ backup_path() {
 		    [[ -d $Backup ]] && outshow="使用上層路徑作為備份目錄" || echoRgb "$Backup目錄不存在" "0"
 		fi
 	fi
-    PU="$(mount | egrep -v "rannki|0000-1" | grep -w "/mnt/media_rw" | awk '{print $3,$5}')"
+	PU=$(mount | awk '$3 ~ "/mnt/media_rw/[^/]+$" {print $3, $5}' | egrep -v "$mount_point")
 	OTGPATH="$(echo "$PU" | awk '{print $1}')"
 	OTGFormat="$(echo "$PU" | awk '{print $2}')"
 	if [[ -d $OTGPATH ]]; then
@@ -796,7 +802,7 @@ Calculate_size() {
 size () {
     varr="$(echo "$1" | bc 2>/dev/null)"
     if [[ $varr != $1 ]]; then
-        b_size="$(ls -l "$1" | awk '{print $5}')"
+        b_size="$(ls -l "$1" 2>/dev/null | awk '{print $5}')"
     else
         b_size="$1"
     fi
@@ -954,7 +960,7 @@ Backup_data() {
 		;;
 	esac
 	if [[ -d $data_path ]]; then
-	    unset Filesize m_size k_size get_size
+	    unset Filesize m_size k_size get_size ssaid
         Filesize="$(du -s "$data_path" | awk '{print $1}')"
         k_size="$(awk 'BEGIN{printf "%.2f\n", "'$Filesize'"'*1024'/'1024'}')"
 	    m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
@@ -963,6 +969,18 @@ Backup_data() {
         else
             [[ $(echo "$m_size" | cut -d '.' -f1) -lt 1000 ]] && get_size="${m_size}MB" || get_size="$(awk 'BEGIN{printf "%.2f\n", "'$m_size'"/'1024'}')GB"
         fi
+        case $1 in
+		user)
+		    ssaid="$(getssaid get "$user" "$name2")"
+			if [[ $ssaid != null && $ssaid != $Ssaid ]]; then
+			    if [[ $Ssaid != "" ]]; then
+				    echo "$(sed "s/$Ssaid/$ssaid/g" "$app_details")">"$app_details"
+				else
+					echo "Ssaid=\"$ssaid\"" >>"$app_details"
+				fi
+				echo_log "備份ssaid"
+			fi ;;
+		esac
 		if [[ $Size != $Filesize ]]; then
 		    #停止應用
 			case $1 in
@@ -1057,6 +1075,8 @@ Release_data() {
 						[[ ! -d $FILE_PATH ]] && mkdir -p "$FILE_PATH"
 					fi
 				fi
+		    else
+			    echoRgb "$tar_path名稱似乎有誤" "0"
 			fi ;;
 		esac
         echoRgb "恢復$FILE_NAME2數據 釋放$(size "$(awk 'BEGIN{printf "%.2f\n", "'$Size'"*'1024'}')")" "3"
@@ -1434,10 +1454,16 @@ backup)
 	[[ ! -d $Backup/modules ]] && mkdir -p "$Backup/modules" && echoRgb "$Backup/modules已創建成功\n -請按需要自行放置需要恢復時刷入的模塊在內將自動批量刷入" "1"
 	[[ -d $Backup/Media ]] && touch_shell "Restore3" "$Backup/恢復自定義資料夾.sh"
 	[[ ! -f $Backup/backup_settings.conf ]] && echo "#1開啟0關閉\n\n#是否在每次執行恢復腳本時使用音量鍵詢問如下需求\n#如果是那下面兩項項設置就被忽略，改為音量鍵選擇\nLo=$Lo\n\n#使用者\nuser=\n\n#腳本檢測更新後進行更新?\nupdate=$update\n\n#主色\nrgb_a=$rgb_a\n#輔色\nrgb_b=$rgb_b\nrgb_c=$rgb_c">"$Backup/backup_settings.conf" && echo "$(sed 's/true/1/g ; s/false/0/g' "$Backup/backup_settings.conf")">"$Backup/backup_settings.conf"
-	if [[ -f $Backup/tools/tools.sh ]]; then
-	    filesha256="$(sha256sum "$tools_path/tools.sh" | cut -d" " -f1)"
-	    filesha256_1="$(sha256sum "$Backup/tools/tools.sh" | cut -d" " -f1)"
-	    [[ $filesha256 != $filesha256_1 ]] && cp -r "$tools_path/tools.sh" "$Backup/tools/tools.sh"
+	if [[ -d $Backup/tools ]]; then
+	    find "$Backup/tools" -maxdepth 1 -type f | while read; do
+	        Tools_FILE_NAME="${REPLY##*/}"
+	        filesha256="$(sha256sum "$tools_path/$Tools_FILE_NAME" | cut -d" " -f1)"
+	        filesha256_1="$(sha256sum "$REPLY" | cut -d" " -f1)"
+	        if [[ $filesha256 != $filesha256_1 ]]; then
+	            cp -r "$tools_path/$Tools_FILE_NAME" "$REPLY"
+	            echoRgb "更新$REPLY"
+	        fi
+	    done
 	fi
 	filesize="$(du -s "$Backup" | awk '{print $1}')"
 	Quantity=0
@@ -1475,7 +1501,7 @@ backup)
 		if [[ -d $apk_path2 ]]; then
 			echoRgb "備份第$i/$r個應用 剩下$((r - i))個" "3"
 			echoRgb "備份 $name1 \"$name2\"" "2"
-			unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 zsize zmediapath Size data_path userSize dataSize obbSize
+			unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 zsize zmediapath Size data_path userSize dataSize obbSize Ssaid
 			if [[ $name1 = !* || $name1 = ！* ]]; then
 				name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
 				echoRgb "跳過備份所有數據" "0"
@@ -1490,7 +1516,7 @@ backup)
 			if [[ -f $app_details ]]; then
 				. "$app_details" &>/dev/null
 				if [[ $PackageName != $name2 ]]; then
-					unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 zsize  zmediapath Size data_path userSize dataSize obbSize
+					unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 zsize  zmediapath Size data_path userSize dataSize obbSize Ssaid
 					Backup_folder="$Backup/${name1}[${name2}]"
 					app_details="$Backup_folder/app_details"
 					[[ -f $app_details ]] && . "$app_details" &>/dev/null
@@ -1555,7 +1581,6 @@ backup)
 			[[ $add_app2 = "" ]] && add_app2="暫無更新"
 			echoRgb "\n -已更新的apk=\"$osn\"\n -已新增的備份=\"$osk\"\n -apk版本號無變化=\"$osj\"\n -下列為版本號已變更的應用\n$update_apk2\n -新增的備份....\n$add_app2" "3"
 			echo "$(sort "$txt2" | sed -e '/^$/d')" >"$txt2"
-			
 			if [[ $backup_media = true && $backup_mode = "" ]]; then
 				A=1
 				B="$(echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
@@ -1746,6 +1771,21 @@ Restore|Restore2)
 					find "$Backup_folder" -maxdepth 1 ! -name "apk.*" -name "*.tar*" -type f 2>/dev/null | sort | while read; do
 						Release_data "$REPLY"
 					done
+					if [[ $Ssaid != "" ]]; then
+					    if [[ $(getssaid get "$user" "$name2") != $Ssaid ]]; then
+					        getssaid set "$user" "$name2" "$Ssaid"
+					        if [[ $(getssaid get "$user" "$name2") = $Ssaid ]]; then
+					            echoRgb "SSAID恢復成功" "1"
+					            SSAID_Package="$(echo "$name1 \"$name2\"")"
+				                SSAID_Package2="$(echo "$SSAID_Package\n$SSAID_Package2")"
+					        else
+					            echoRgb "SSAID恢復失敗" "0"
+					            SSAID_Package1="$(echo "$name1 \"$name2\"")"
+				                SSAID_Package3="$(echo "$SSAID_Package1\n$SSAID_Package3")"
+					        fi
+					    fi
+					    unset Ssaid
+					fi
 					Set_service
 				fi
 			else
@@ -1761,6 +1801,7 @@ Restore|Restore2)
 		fi
 		if [[ $i = $r && $operate != Restore2 ]]; then
 		    endtime 1 "應用恢復" "2"
+		    echoRgb "\n -下列為已設置SSAID應用\n$SSAID_Package2\n -下列為設置SSAID失敗應用....\n$SSAID_Package3" "3"
 			if [[ $media_recovery = true ]]; then
 			    starttime1="$(date -u "+%s")"
 			    app_details="$Backup_folder2/app_details"
@@ -1798,7 +1839,7 @@ Restore|Restore2)
 	rm -rf "$TMPDIR/scriptTMP" "$TXT"
 	Set_screen_pause_seconds off
 	starttime1="$TIME"
-	echoRgb "$DX完成" && endtime 1 "$DX開始到結束" && echoRgb "如發現應用閃退請重新開機"
+	echoRgb "$DX完成" && endtime 1 "$DX開始到結束" && [[ $SSAID_Package2 != "" ]] && echoRgb "SSAID恢復後必須重啟套用,如發現應用閃退請重新開機"
 	rm -rf "$TMPDIR"/*
 	} &
 	wait && exit
