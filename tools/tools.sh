@@ -5,7 +5,7 @@ MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 Compression_rate=3
 script="${0##*/}"
-backup_version="V15.8.6"
+backup_version="V15.8.7"
 update_backup_settings_conf() {
     echo "#1開啟0關閉
 #是否在每次執行備份腳本使用音量鍵詢問如下備份需求
@@ -31,11 +31,11 @@ update="${update:-1}"
 #假設如果存在usb隨身碟是否默認使用隨身碟？(1不詢問默認使用 0每次都進行詢問)
 USBdefault="${USBdefault:-0}"
 
-#自定義外部掛載點,多個分區請使用|區隔
+#自定義屏蔽外部掛載點,多個分區請使用|區隔
 mount_point=\""${mount_point:-rannki|0000-1}"\"
 
 #使用者(為空預設0)
-user="${user:-0}"
+user="$user"
 
 #是否備份使用者數據 (1備份0不備份)
 Backup_user_data="${Backup_user_data:-1}"
@@ -129,14 +129,12 @@ fi
 [[ ! -f $tools_path/zstd ]] && echo "$tools_path/zstd遺失"
 [[ ! -f $tools_path/tar ]] && echo "$tools_path/tar遺失"
 [[ ! -f $tools_path/classes.dex ]] && echo "$tools_path/classes.dex遺失"
+[[ ! -f $tools_path/classes2.dex ]] && echo "$tools_path/classes2.dex遺失"
 [[ $conf_path != "" ]] && conf_path="$conf_path" || conf_path="$MODDIR/backup_settings.conf"
-if [[ ! -f $conf_path ]]; then
-    if [[ $conf_path != *Backup_* ]]; then
-        update_backup_settings_conf>"$conf_path"
-        echo "因腳本找不到$conf_path故重新生成默認列表\n請重新配置後重新執行腳本" && exit 0
-    else
-        echo "$conf_path配置遺失" && exit 1
-    fi
+if [[ $conf_path != *Backup_* ]]; then
+    update_backup_settings_conf>"$conf_path"
+else
+    echo "$conf_path配置遺失" && exit 1
 fi
 echo "$(sed 's/true/1/g ; s/false/0/g' "$conf_path")">"$conf_path"
 . "$conf_path" &>/dev/null
@@ -249,9 +247,11 @@ export CLASSPATH="$tools_path/classes.dex:$tools_path/classes2.dex"
 zstd_sha256sum="55cc57a3d079dd90e74d972c705c4f9389dd00a7175de148e21000eab01f7ed9"
 tar_sha256sum="3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814"
 classesdex_sha256sum="09d0058763157b97d6ea2bf74bd7ec53089a9ddb496f089a159ea0027007bb94"
+classesdex2_sha256sum="1f74841cf94369a74d9f304cc396608efc758454350414379ca2ee4b6ffce61c"
 [[ $(sha256sum "$tools_path/zstd" | cut -d" " -f1) != $zstd_sha256sum ]] && echoRgb "zstd效驗失敗" "0" && exit 2
 [[ $(sha256sum "$tools_path/tar" | cut -d" " -f1) != $tar_sha256sum ]] && echoRgb "tar效驗失敗" "0" && exit 2
 [[ $(sha256sum "$tools_path/classes.dex" | cut -d" " -f1) != $classesdex_sha256sum ]] && echoRgb "classes.dex效驗失敗" "0" && exit 2
+[[ $(sha256sum "$tools_path/classes2.dex" | cut -d" " -f1) != $classesdex2_sha256sum ]] && echoRgb "classes2.dex效驗失敗" "0" && exit 2
 TMPDIR="/data/local/tmp"
 [[ ! -d $TMPDIR ]] && mkdir "$TMPDIR"
 if [[ $(which busybox) = "" ]]; then
@@ -268,7 +268,6 @@ alias getssaid="app_process /system/bin com.xayah.dex.SsaidUtil $@"
 alias appinfo="app_process /system/bin --nice-name=appinfo han.core.order.AppInfo $@"
 alias down="app_process /system/bin --nice-name=down han.core.order.Down $@"
 alias PayloadDumper="app_process /system/bin --nice-name=payload-dumper han.core.order.payload.PayloadDumper $@"
-alias Operation_screen="app_process /system/bin screenoff.only.Control $@"
 case $LANG in
 *CN* | *cn*)
     alias ts="app_process /system/bin --nice-name=appinfo han.core.order.ChineseConverter -s $@" ;;
@@ -1839,7 +1838,7 @@ Restore|Restore2)
 	rm -rf "$TMPDIR/scriptTMP" "$TXT"
 	Set_screen_pause_seconds off
 	starttime1="$TIME"
-	echoRgb "$DX完成" && endtime 1 "$DX開始到結束" && [[ $SSAID_Package2 != "" ]] && echoRgb "SSAID恢復後必須重啟套用,如發現應用閃退請重新開機"
+	echoRgb "$DX完成" && endtime 1 "$DX開始到結束" && [[ $SSAID_Package2 != "" ]] && echoRgb "SSAID恢復後必須重啟套用,如發現應用閃退請重新開機" "0"
 	rm -rf "$TMPDIR"/*
 	} &
 	wait && exit
