@@ -1,57 +1,60 @@
 #!/system/bin/sh
-set -x 2> debug_output.log
+set -x 2> /cache/debug_output.log
 shell_language="zh-TW"
 MODDIR="$MODDIR"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 Compression_rate=3
 script="${0##*/}"
-backup_version="V15.8.7"
-[[ $SHELL = *mt* ]] && echo "請勿使用mt拓展包環境執行,請更換系統環境" && exit 2
+backup_version="V15.9.0"
+[[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
-    echo "#1開啟0關閉
-#是否在每次執行備份腳本使用音量鍵詢問如下備份需求
-#如果是那下面三項設置就被忽略，改為音量鍵選擇
+    echo "#音量鍵選擇總開關 是否在每次執行備份腳本時使用音量鍵詢問備份需求
+#1開啟音量鍵選擇 (如選項已設置，則跳過該選項提示)
+#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
 Lo="${Lo:-0}"
 
-#備份時檢查資料夾是否存在已經卸載應用
-delete_folder="${delete_folder:-1}"
+#腳本語言設置 留空則自動識別系統語言環境並翻譯
+#1簡體中文 0繁體中文
+Shell_LANG="$Shell_LANG"
 
-#存在已卸載應用操作(1刪除0移動)
-default_behavior="${default_behavior:-0}"
-
-#自定義位置支持相對位置
-#自定義備份目錄輸出位置 (忽略為空將默認腳本路徑中)
+#自定義備份文件輸出位置 支持相對路徑(留空則默認當前路徑)
 Output_path=\""$Output_path"\"
 
-#自定義applist.txt位置
+#自定義applist.txt位置 支持相對路徑(留空則默認當前路徑)
 list_location=\""$list_location"\"
 
-#自動更新腳本
+#自動更新腳本(留空強制音量鍵選擇)
+#1開啟 0關閉
 update="${update:-1}"
 
-#假設如果存在usb隨身碟是否默認使用隨身碟？(1不詢問默認使用 0每次都進行詢問)
-USBdefault="${USBdefault:-0}"
-
-#自定義屏蔽外部掛載點,多個分區請使用|區隔
+#自定義屏蔽外部掛載點 例：OTG 虛擬SD等 多個掛載點請使用 | 區隔
+#屏蔽後不會提示音量鍵選擇，不影響Output_path指定外置存儲位置
 mount_point=\""${mount_point:-rannki|0000-1}"\"
 
-#使用者(為空預設0)
+#使用者(如0 999等用戶，如存在多個用戶留空強制音量鍵選擇，無多個用戶則默認用戶0不詢問)
 user="$user"
 
-#是否備份使用者數據 (1備份0不備份)
+#備份模式
+#1包含數據+安裝包，0僅包安裝包
+#此選項設置1時Backup_obb_data，Backup_user_data，blacklist_mode將可設置 0時Backup_user_data，Backup_obb_data，blacklist_mode選項不生效
+#此外設置0時將同時忽略appList.txt的!與任何黑名單設置（包括黑名單列表）
+Backup_Mode=1
+
+#是否備份使用者數據 (1備份 0不備份 留空強制音量鍵選擇)
 Backup_user_data="${Backup_user_data:-1}"
 
-#是否備份外部數據 即比如原神的數據包(1備份0不備份)
+#是否備份外部數據 例：原神的數據包(1備份 0不備份 留空強制音量鍵選擇)
 Backup_obb_data="${Backup_obb_data:-1}"
 
-#是否在應用數據備份好後備份自定義目錄
+#是否在應用數據備份完成後備份自定義目錄
+#1開啟 0關閉
 backup_media="${backup_media:-0}"
 
 #假設你遇到列表輸出異常問題請將此設為1
 debug_list="${debug_list:-0}"
 
-#添加自定義備份路徑 請勿刪除" "
+#添加自定義備份路徑 例：Download DCIM等文件夾 請使用絕對路徑，請勿刪除\"\"
 Custom_path=\""${Custom_path:-
 /storage/emulated/0/Pictures/
 /storage/emulated/0/Download/
@@ -60,15 +63,15 @@ Custom_path=\""${Custom_path:-
 /data/adb
 }"\"
 
-#黑名單模式(1直接忽略備份0僅備份安裝檔)
+#黑名單模式(1完全忽略，不備份  0僅備份安裝包，注意！此選項Backup_Mode=1時黑名單模式才能使用)
 blacklist_mode="${blacklist_mode:-0}"
 
-#備份黑名單 備份apk不備份任何數據
+#備份黑名單（備份策略由「黑名單模式」控制，此處只作為黑名單應用列表）
 blacklist=\""${blacklist:-
 #com.esunbank
 #com.chailease.tw.app.android.ccfappcust}"\"
 
-#位於data的預裝應用白名單
+#位於data的預裝應用白名單 例：相冊 錄音機 天氣 計算器等(默認屏蔽備份預裝應用，如需備份請添加預裝應用白名單)
 whitelist=\""${whitelist:-
 com.xiaomi.xmsf
 com.xiaomi.xiaoailite
@@ -87,7 +90,7 @@ com.xiaomi.router
 com.xiaomi.mico
 dev.miuiicons.pedroz}"\"
 
-#可被備份的系統應用白名單
+#可被備份的系統應用白名單(默認屏蔽備份系統應用，如需備份請添加系統應用白名單)
 system=\""${system:-
 com.google.android.calendar
 com.google.android.gm
@@ -102,13 +105,13 @@ sh.siava.AOSPMods
 com.facebook.katana
 com.android.chrome}"\"
 
-#備份完成後啟動應用
+#需要在備份完成後啟動應用
 am_start=\""${am_start:-
 com.digibites.accubattery
 com.dede.nativetools
 }"\"
 
-#壓縮算法(可用zstd tar tar為僅打包 有什麼好用的壓縮算法請聯繫我
+#壓縮算法(可用zstd tar，tar為僅打包 有什麼好用的壓縮算法請聯系我
 #zstd擁有良好的壓縮率與速度
 Compression_method=${Compression_method:-zstd}
 
@@ -127,15 +130,19 @@ rgb_c="${rgb_c:-177}"
     s/false/0/g'
 }
 update_Restore_settings_conf() {
-    echo "#1開啟0關閉
-#是否在每次執行備份腳本使用音量鍵詢問如下備份需求
-#如果是那下面兩項設置就被忽略，改為音量鍵選擇
+    echo "#音量鍵選擇總開關 是否在每次執行恢復腳本時使用音量鍵詢問恢復需求
+#1開啟音量鍵選擇（如選項已設置，則跳過該選項提示）
+#0關閉音量鍵選擇（如選項未設置，則強制使用音量鍵選擇）
 Lo="${Lo:-0}"
 
-#自動更新腳本
+#腳本語言設置 為空自動針對當前系統語言環境自動翻譯
+#1簡體中文 0繁體中文
+Shell_LANG="$Shell_LANG"
+
+#自動更新腳本(留空強制音量鍵選擇)
 update="${update:-1}"
 
-#使用者(為空預設0)
+#使用者(如0 999等用戶，留空如存在多個用戶強制音量鍵選擇，無多用戶則默認0不詢問)
 user=
 
 #主色
@@ -166,11 +173,24 @@ if [[ ! -f $conf_path ]]; then
                 echo "$conf_path配置遺失" && exit 1
             fi
         fi ;;
-    *)  conf_path="$MODDIR/backup_settings.conf" ;;
+    *)
+        if [[ -f $MODDIR/backup_settings.conf ]]; then
+            conf_path="$MODDIR/backup_settings.conf"
+        else
+            [[ -f $MODDIR/restore_settings.conf ]] && conf_path="$MODDIR/restore_settings.conf"
+        fi
     esac
 fi
 [[ ! -f $conf_path ]] && echo "$conf_path遺失" && exit 2
 . "$conf_path" &>/dev/null
+if [[ $Shell_LANG != "" ]]; then
+    case $Shell_LANG in
+    1) LANG="CN" ;;
+    0) LANG="TW" ;;
+    *) echo "$conf_path Shell_LANG=$Shell_LANG 設置錯誤 正確1or0" && exit 2 ;;
+    esac
+fi
+[[ $LANG = "" ]] && LANG="$(getprop "persist.sys.locale")"
 echoRgb() {
 	#轉換echo顏色提高可讀性
 	if [[ $2 = 0 ]]; then
@@ -280,7 +300,7 @@ export CLASSPATH="$tools_path/classes.dex:$tools_path/classes2.dex"
 zstd_sha256sum="55cc57a3d079dd90e74d972c705c4f9389dd00a7175de148e21000eab01f7ed9"
 tar_sha256sum="3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814"
 classesdex_sha256sum="09d0058763157b97d6ea2bf74bd7ec53089a9ddb496f089a159ea0027007bb94"
-classesdex2_sha256sum="010c1e247a104ebe39cc218af9b4c9581a9ee0946851dea249d3f40050c15d79"
+classesdex2_sha256sum="e78b33af047464c225b171da0da3e46fb2932b798ff4cd26de75a1649b5e30d5"
 [[ $(sha256sum "$tools_path/zstd" | cut -d" " -f1) != $zstd_sha256sum ]] && echoRgb "zstd效驗失敗" "0" && exit 2
 [[ $(sha256sum "$tools_path/tar" | cut -d" " -f1) != $tar_sha256sum ]] && echoRgb "tar效驗失敗" "0" && exit 2
 [[ $(sha256sum "$tools_path/classes.dex" | cut -d" " -f1) != $classesdex_sha256sum ]] && echoRgb "classes.dex效驗失敗" "0" && exit 2
@@ -295,7 +315,6 @@ if [[ $(which toybox | egrep -o "system") != system ]]; then
 	echoRgb "系統變量中沒有找到toybox" "0"
 	exit 1
 fi
-LANG="$(getprop "persist.sys.locale")"
 #下列為自定義函數
 alias appinfo="app_process /system/bin --nice-name=appinfo han.core.order.AppInfo $@"
 alias down="app_process /system/bin --nice-name=down han.core.order.Down $@"
@@ -411,6 +430,7 @@ if [[ $(su -v 2>/dev/null) != "" ]]; then
     Manager_version="$(su -v 2>/dev/null)"
 else
     if [[ -d /data/adb/ksu ]]; then
+        ksu="ksu"
         echo "KernelSU"
     else
         echo "null"
@@ -461,10 +481,10 @@ case $MODDIR in
 esac
 case $LANG in
 *TW* | *tw* | *HK*)
-    echoRgb "系統語系:繁體中文"
+    echoRgb "系統語言環境:繁體中文"
 	Script_target_language="zh-TW" ;;
 *CN* | *cn*)
-    echoRgb "系統語系:簡體中文"
+    echoRgb "系統語言環境:簡體中文"
 	Script_target_language="zh-CN" ;;
 esac
 case $operate in
@@ -498,6 +518,15 @@ backup|Restore|Restore2|Getlist|backup_media)
             else
         	    user="0"
             fi
+        else
+            user_id="$(appinfo -listUsers)"
+    	    if [[ $user_id != "" && $(appinfo -listUsers | wc -l) -gt 1 ]]; then
+    		    echo "$user_id" | while read ; do
+    			    [[ $REPLY = 0 ]] && echoRgb "主用戶:$REPLY" "2" || echoRgb "分身用戶:$REPLY" "2"
+    		    done
+    		else
+    		    echoRgb "主用戶:$user_id" "2" 
+    	    fi
     	fi
     else
         user="$(echo "${0%}" | sed 's/.*\/Backup_zstd_\([0-9]*\).*/\1/')"
@@ -534,7 +563,7 @@ Rename_script () {
                 if [[ -d ${REPLY%/*}/tools ]]; then
                     touch_shell "$Script_type" "$REPLY"
 	                if [[ $Script_target_language != $shell_language ]]; then
-	                    [[ $HT = 0 && $K = "" ]] && echoRgb "腳本語系為$shell_language....轉換為$Script_target_language中,請稍後等待轉換...."
+	                    [[ $HT = 0 && $K = "" ]] && echoRgb "腳本語言為$shell_language....轉換為$Script_target_language中,請稍後等待轉換...."
 	                    ts -f "$REPLY" -o "$REPLY"
 	                    echo_log "$REPLY翻譯"
 	                    mv "$REPLY" "$MODDIR_NAME/$(ts "$FILE_NAME")"
@@ -544,7 +573,7 @@ Rename_script () {
             fi ;;
         kill_script)
             if [[ $Script_target_language != $shell_language ]]; then
-                [[ $HT = 0 && $K = "" ]] && echoRgb "腳本語系為$shell_language....轉換為$Script_target_language中,請稍後等待轉換...."
+                [[ $HT = 0 && $K = "" ]] && echoRgb "腳本語言為$shell_language....轉換為$Script_target_language中,請稍後等待轉換...."
 	            ts -f "$REPLY" -o "$REPLY"
 	            echo_log "$REPLY翻譯"
 	            mv "$REPLY" "$MODDIR_NAME/$(ts "$FILE_NAME")"
@@ -605,16 +634,22 @@ update_script() {
 					        echo_log "解壓縮${zipFile##*/}"
 					        if [[ $result = 0 ]]; then
                                 if [[ $shell_language != $Script_target_language ]]; then
-                                    echoRgb "腳本語系為$shell_language....轉換為$Script_target_language中,請稍後等待轉換...."
+                                    echoRgb "腳本語言為$shell_language....轉換為$Script_target_language中,請稍後等待轉換...."
                                     ts -f "$path_hierarchy/tools/Device_List" -o "$path_hierarchy/tools/Device_List"
                                     echo_log "$path_hierarchy/tools/Device_List翻譯"
 					                ts -f "$path_hierarchy/tools/tools.sh" -o "$path_hierarchy/tools/tools.sh" && sed -i "s/shell_language=\"$shell_language\"/shell_language=\"$Script_target_language\"/g" "$path_hierarchy/tools/tools.sh"
                                     echo_log "$path_hierarchy/tools/tools.sh翻譯"
                                     HT=1
                                 fi
+                                update_backup_settings_conf>"$path_hierarchy/backup_settings.conf"
+                                ts -f "$path_hierarchy/backup_settings.conf" -o "$path_hierarchy/backup_settings.conf"
+                                echo_log "$path_hierarchy/backup_settings.conf"
                                 if [[ -d $find_tools_path && $find_tools_path != $path_hierarchy/tools ]]; then
                                     rm -rf "$find_tools_path"
                                     cp -r "$path_hierarchy/tools" "${find_tools_path%/*}"
+                                    update_Restore_settings_conf>"${find_tools_path%/*}/restore_settings.conf"
+                                    ts -f "${find_tools_path%/*}/restore_settings.conf" -o "${find_tools_path%/*}/restore_settings.conf"
+                                    echo_log "${find_tools_path%/*}/restore_settings.conf翻譯"
 							    fi
 							    Rename_script
 							    if [[ $Output_path != "" ]]; then
@@ -693,11 +728,23 @@ if [[ $path_hierarchy != "" && $Script_target_language != ""  ]]; then
 	    case $shell_language in
 	    zh-CN|zh-TW)
 	        if [[ $Script_target_language != $shell_language ]]; then
-	            [[ $K = 1 ]] && echoRgb "腳本語系為$shell_language....轉換為$Script_target_language中,請稍後等待轉換...."
+	            [[ $K = 1 ]] && echoRgb "腳本語言為$shell_language....轉換為$Script_target_language中,請稍後等待轉換...."
 	            ts -f "$REPLY" -o "$REPLY"
 	            if [[ $? = 0 ]]; then
 	                touch "$TMPDIR/0"
 	                echo_log "$REPLY翻譯"
+	                MODDIR="${0%/*}"
+                    if [[ $REPLY != *Backup_* ]]; then
+                        update_backup_settings_conf>"${REPLY%/*/*}/backup_settings.conf"
+                        ts -f "${REPLY%/*/*}/backup_settings.conf" -o "${REPLY%/*/*}/backup_settings.conf"
+                        echo_log "${REPLY%/*/*}/backup_settings.conf翻譯"
+                    else
+                        if [[ $REPLY = *Backup_* ]]; then
+                            update_Restore_settings_conf>"${REPLY%/*/*}/restore_settings.conf"
+                            ts -f "${REPLY%/*/*}/restore_settings.conf" -o "${REPLY%/*/*}/restore_settings.conf"
+                            echo_log "${REPLY%/*/*}/restore_settings.conf翻譯"
+                        fi
+                    fi
 	                sed -i "s/shell_language=\"$shell_language\"/shell_language=\"$Script_target_language\"/g" "$REPLY"
 	                ts -f "${REPLY%/*}/Device_List" -o "${REPLY%/*}/Device_List"
 	                echo_log "${REPLY%/*}/Device_List翻譯"
@@ -715,10 +762,15 @@ fi
 Lo="$(echo "$Lo" | sed 's/true/1/g ; s/false/0/g')"
 isBoolean "$Lo" "Lo" && Lo="$nsx"
 if [[ $Lo = false ]]; then
-	isBoolean "$update" "update" && update="$nsx"
-else
+	[[ $update != "" ]] && isBoolean "$update" "update" && update="$nsx" || {
 	echoRgb "自動更新腳本?\n -音量上更新，下不更新"
+    get_version "更新" "不更新" && update="$branch"
+    }
+else
+    [[ $update = "" ]] && {
+    echoRgb "自動更新腳本?\n -音量上更新，下不更新"
 	get_version "更新" "不更新" && update="$branch"
+	} || isBoolean "$update" "update" && update="$nsx"
 fi
 [[ $update = true ]] && json="$(down -s -L "$Language" 2>/dev/null)" || echoRgb "自動更新被關閉" "0"
 if [[ $json != "" ]]; then
@@ -783,7 +835,7 @@ backup_path() {
 	OTGPATH="$(echo "$PU" | awk '{print $1}')"
 	OTGFormat="$(echo "$PU" | awk '{print $2}')"
 	if [[ -d $OTGPATH ]]; then
-		if [[ $(echo "$MODDIR" | egrep -o "^${OTGPATH}") != "" || $USBdefault = true ]]; then
+		if [[ $(echo "$MODDIR" | egrep -o "^${OTGPATH}") != "" ]]; then
 			hx="true"
 			Backup="$MODDIR/Backup_${Compression_method}_$user"
 		else
@@ -897,14 +949,6 @@ Backup_apk() {
 		result=0
 		echoRgb "Apk版本無更新 跳過備份" "2"
 	else
-		case $name2 in
-		com.google.android.youtube)
-			[[ -d /data/adb/Vanced ]] && nobackup="true"
-			;;
-		com.google.android.apps.youtube.music)
-			[[ -d /data/adb/Music ]] && nobackup="true"
-			;;
-		esac
 		if [[ $nobackup != true ]]; then
 			if [[ $apk_version != "" ]]; then
 				let osn++
@@ -919,7 +963,7 @@ Backup_apk() {
 			fi
 			unset Filesize
 			Filesize="$(du -s "$apk_path2" | awk '{print $1}')"
-			partition_info "$Backup" "$name2 apk"
+			partition_info "$Backup" "$name1 apk"
 			#備份apk
 			echoRgb "$1"
 			echo "$apk_path" | sed -e '/^$/d' | while read; do
@@ -968,7 +1012,7 @@ Backup_apk() {
 			fi
 		else
 			let osj++
-			echoRgb "$name1不支持備份 需要使用vanced安裝" "0" && rm -rf "$Backup_folder"
+			rm -rf "$Backup_folder"
 		fi
 	fi
 	[[ $name2 = bin.mt.plus && ! -f $Backup/$name1.apk ]] && cp -r "$apk_path" "$Backup/$name1.apk"
@@ -1020,12 +1064,14 @@ Backup_data() {
 				echo_log "備份ssaid"
 			fi
 			Get_Permissions="$(get_Permissions "$name2")"
-			if [[ $Permissions = "" ]]; then
-			    echo "Permissions=\"$Get_Permissions\"">"$app_Permissions"
-			    echo_log "備份權限"
-			else
-			   [[ $Permissions != $Get_Permissions ]] && echo "Permissions=\"$Get_Permissions\"">"$app_Permissions" && echo_log "備份權限"
-			fi ;;
+			if [[ $Get_Permissions != "" ]]; then
+    			if [[ $Permissions = "" ]]; then
+    			    echo "Permissions=\"$Get_Permissions\"">"$app_Permissions"
+    			    echo_log "備份權限"
+    			else
+    			   [[ $Permissions != $Get_Permissions ]] && echo "Permissions=\"$Get_Permissions\"">"$app_Permissions" && echo_log "備份權限"
+    			fi
+    	    fi ;;
 		esac
 		if [[ $Size != $Filesize ]]; then
 		    #停止應用
@@ -1265,7 +1311,7 @@ get_name(){
 		[[ $rgb_a -ge 229 ]] && rgb_a=118
 		unset PackageName NAME DUMPAPK ChineseName
 		[[ -f $Folder/app_details ]] && . "$Folder/app_details" &>/dev/null
-		[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安" >"$txt"
+		[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market" >"$txt"
 		if [[ $PackageName = "" || $ChineseName = "" ]]; then
 			echoRgb "${Folder##*/}包名獲取失敗，解壓縮獲取包名中..." "0"
 			rm -rf "$TMPDIR"/*
@@ -1311,7 +1357,7 @@ get_name(){
 	done
 	if [[ -d $MODDIR/Media ]]; then
 		echoRgb "存在媒體資料夾" "2"
-		[[ ! -f $txt2 ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$txt2"
+		[[ ! -f $txt2 ]] && echo "#不需要恢復的資料夾請在開頭使用#注釋 比如：#Download" > "$txt2"
 		find "$MODDIR/Media" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | while read; do
 			echoRgb "${REPLY##*/}" && echo "${REPLY##*/}" >> "$txt2"
 		done
@@ -1391,30 +1437,62 @@ backup)
 	#效驗選填是否正確
 	isBoolean "$Lo" "Lo" && Lo="$nsx"
 	if [[ $Lo = false ]]; then
-		isBoolean "$default_behavior" "default_behavior" && default_behavior="$nsx"
-		isBoolean "$delete_folder" "delete_folder" && delete_folder="$nsx"
-		isBoolean "$USBdefault" "USBdefault" && USBdefault="$nsx"
-		isBoolean "$Backup_obb_data" "Backup_obb_data" && Backup_obb_data="$nsx"
-		isBoolean "$Backup_user_data" "Backup_user_data" && Backup_user_data="$nsx"
-		isBoolean "$blacklist_mode" "blacklist_mode" && blacklist_mode="$nsx"
-		isBoolean "$backup_media" "backup_media" && backup_media="$nsx"
-	else
-		echoRgb "檢查目錄是否存在已卸載應用?\n -音量上檢查，下不檢查"
-		get_version "檢查" "不檢查" && delete_folder="$branch"
-		echoRgb "檢查到已卸載應用\n -音量上刪除資料夾，下移動到其他處"
-		get_version "刪除" "移動到其他處" && default_behavior="$branch"
-		echoRgb "存在usb隨身碟是否默認使用隨身碟?\n -音量上默認，下進行詢問"
-		get_version "默認" "詢問" && USBdefault="$branch"
-		if [[ $(echo "$blacklist" | grep -v "#" | wc -l) -gt 0 ]]; then
-		    echoRgb "選擇黑名單模式\n -音量上不備份，音量下僅備份安裝檔" "2"
-		    get_version "不備份" "備份安裝檔" && blacklist_mode="$branch"
-		fi
-		echoRgb "是否備份外部數據 即比如原神的數據包\n -音量上備份，音量下不備份" "2"
-		get_version "備份" "不備份" && Backup_obb_data="$branch"
-		echoRgb "是否備份使用者數據\n -音量上備份，音量下不備份" "2"
-		get_version "備份" "不備份" && Backup_user_data="$branch"
+		[[ $Backup_Mode != "" ]] && isBoolean "$Backup_Mode" "Backup_Mode" && Backup_Mode="$nsx" || {
+		echoRgb "選擇備份模式\n -音量上備份應用+數據，音量下僅應用不包含數據" "2"
+		get_version "應用+數據" "僅應用" && Backup_Mode="$branch"
+		}
+		if [[ $Backup_Mode = true ]]; then
+		    if [[ $(echo "$blacklist" | grep -v "#" | wc -l) -gt 0 ]]; then
+		        if [[ $blacklist_mode != "" ]]; then
+		            isBoolean "$blacklist_mode" "blacklist_mode" && blacklist_mode="$nsx"
+		        else
+        		    echoRgb "選擇黑名單模式\n -音量上不備份，音量下僅備份安裝檔\n -警告! " "2"
+        		    get_version "不備份" "備份安裝檔" && blacklist_mode="$branch"
+        		fi
+            fi
+        fi
+		if [[ $Backup_Mode = true ]]; then
+		    [[ $Backup_obb_data != "" ]] && isBoolean "$Backup_obb_data" "Backup_obb_data" && Backup_obb_data="$nsx" || {
+		    echoRgb "是否備份外部數據 即比如原神的數據包\n -音量上備份，音量下不備份" "2"
+		    get_version "備份" "不備份" && Backup_obb_data="$branch"
+    		}
+    		[[ $Backup_user_data != "" ]] && isBoolean "$Backup_user_data" "Backup_user_data" && Backup_user_data="$nsx" || {
+    		echoRgb "是否備份使用者數據\n -音量上備份，音量下不備份" "2"
+    		get_version "備份" "不備份" && Backup_user_data="$branch"
+    		}
+        else
+            Backup_user_data="false"
+            Backup_obb_data="false"
+        fi
+		[[ $backup_media != "" ]] && isBoolean "$backup_media" "backup_media" && backup_media="$nsx" || {
 		echoRgb "全部應用備份結束後是否備份自定義目錄\n -音量上備份，音量下不備份" "2"
 		get_version "備份" "不備份" && backup_media="$branch"
+		}
+	else
+		[[ $Backup_Mode = "" ]] && {
+		echoRgb "選擇備份模式\n -音量上備份應用+數據，音量下僅應用不包含數據" "2"
+		get_version "應用+數據" "僅應用" && Backup_Mode="$branch"
+		} || isBoolean "$Backup_Mode" "Backup_Mode" && Backup_Mode="$nsx"
+		if [[ $Backup_Mode = true ]]; then
+		    if [[ $(echo "$blacklist" | grep -v "#" | wc -l) -gt 0 ]]; then
+    		    [[ $blacklist_mode = "" ]] && {
+    		    echoRgb "選擇黑名單模式\n -音量上不備份，音量下僅備份安裝檔" "2"
+    		    get_version "不備份" "備份安裝檔" && blacklist_mode="$branch"
+		        } || isBoolean "$blacklist_mode" "blacklist_mode" && blacklist_mode="$nsx"
+    		fi
+    		[[ $Backup_obb_data = "" ]] && {
+    		echoRgb "是否備份外部數據 即比如原神的數據包\n -音量上備份，音量下不備份" "2"
+    		get_version "備份" "不備份" && Backup_obb_data="$branch"
+    		} || isBoolean "$Backup_obb_data" "Backup_obb_data" && Backup_obb_data="$nsx"
+    		[[ $Backup_user_data = "" ]] && {
+    		echoRgb "是否備份使用者數據\n -音量上備份，音量下不備份" "2"
+    		get_version "備份" "不備份" && Backup_user_data="$branch"
+    		} || isBoolean "$Backup_user_data" "Backup_user_data" && Backup_user_data="$nsx"
+        fi
+		[[ $backup_media = "" ]] && {
+		echoRgb "全部應用備份結束後是否備份自定義目錄\n -音量上備份，音量下不備份" "2"
+		get_version "備份" "不備份" && backup_media="$branch"
+		} || isBoolean "$backup_media" "backup_media" && backup_media="$nsx"
 	fi
 	i=1
 	#數據目錄
@@ -1438,47 +1516,13 @@ backup)
 	sort -u "$txt" -o "$txt" &>/dev/null
 	data="$MODDIR"
 	hx="本地"
-	echoRgb "腳本受到內核機制影響 息屏後io性能嚴重影響\n -請勿關閉終端或是息屏備份 如需終止腳本\n -請執行終止腳本.sh即可停止" "3"
+	echoRgb "腳本受到內核機制影響 息屏後IO性能嚴重影響\n -請勿關閉終端或是息屏備份 如需終止腳本\n -請執行終止腳本.sh即可停止" "3"
 	backup_path
-	echoRgb "配置詳細:\n -壓縮方式:$Compression_method\n -音量鍵確認:$Lo\n -更新:$update\n -已卸載應用檢查:$delete_folder\n -卸載應用默認操作(true刪除false移動):$default_behavior\n -默認使用usb:$USBdefault\n -備份外部數據:$Backup_obb_data\n -備份user數據:$Backup_user_data\n -自定義目錄備份:$backup_media\n -黑名單模式:$blacklist_mode"
+	echoRgb "配置詳細:\n -壓縮方式:$Compression_method\n -音量鍵確認:$Lo\n -更新:$update\n -備份模式:$Backup_Mode\n -備份外部數據:$Backup_obb_data\n -備份user數據:$Backup_user_data\n -自定義目錄備份:$backup_media\n"
 	D="1"
 	C="$(sed -e '/^$/d' "$txt" 2>/dev/null | sed -n '$=')"
 	[[ $user = 0 ]] && Apk_info="$(appinfo -sort-i -o pn -pn $system -3 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)" || Apk_info="$(appinfo -sort-i -o pn -pn $system $(pm list packages -3 --user "$user" | cut -f2 -d ':') 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	[[ $Apk_info = "" ]] && echoRgb "appinfo輸出失敗" "0" && exit 2
-	if [[ -d $Backup && $backup_mode = "" ]]; then
-	    if [[ $delete_folder = true ]]; then
-		    find "$Backup" -maxdepth 1 -type d 2>/dev/null | sort | while read; do
-			    if [[ -f $REPLY/app_details ]]; then
-				    unset PackageName
-					. "$REPLY/app_details" &>/dev/null
-					if [[ $PackageName != "" && $(echo "$Apk_info" | egrep -w "^$PackageName$") = "" ]]; then
-						if [[ $default_behavior = true ]]; then
-							rm -rf "$REPLY"
-							echoRgb "${REPLY##*/}不存在系統 刪除資料夾" "0"
-						else
-							if [[ ! -d $Backup/被卸載的應用 ]]; then
-								mkdir -p "$Backup/被卸載的應用" && mv "$REPLY" "$Backup/被卸載的應用/"
-							else
-								mv "$REPLY" "$Backup/被卸載的應用/"
-							fi
-							[[ ! -d $Backup/被卸載的應用/tools ]] && cp -r "$tools_path" "$Backup/被卸載的應用"
-							[[ ! -f $Backup/被卸載的應用/恢復備份.sh ]] && touch_shell "Restore" "$Backup/被卸載的應用/恢復備份.sh"
-							[[ ! -f $Backup/被卸載的應用/重新生成應用列表.sh ]] && touch_shell "dumpname" "$Backup/被卸載的應用/重新生成應用列表.sh"
-							[[ ! -f $Backup/被卸載的應用/轉換資料夾名稱.sh ]] && touch_shell  "convert" "$Backup/被卸載的應用/轉換資料夾名稱.sh"
-							[[ ! -f $Backup/被卸載的應用/壓縮檔完整性檢查.sh ]] && touch_shell "check_file" "$Backup/被卸載的應用/壓縮檔完整性檢查.sh"
-							[[ ! -f $Backup/被卸載的應用/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/被卸載的應用/終止腳本.sh"
-							[[ ! -f $Backup/被卸載的應用/restore_settings.conf ]] && update_Restore_settings_conf>"$Backup/被卸載的應用/restore_settings.conf"
-							txt2="$Backup/被卸載的應用/appList.txt"
-							[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
-							echo "${REPLY##*/} $PackageName">>"$txt2"
-							echo "$(sed -e "s/${REPLY##*/} $PackageName//g ; /^$/d" "$Backup/appList.txt")" >"$Backup/appList.txt"
-							echoRgb "${REPLY##*/}不存在系統 已移動到$Backup/被卸載的應用" "0"
-						fi
-					fi
-				fi
-			done
-		fi
-	fi
 	[[ $backup_mode = "" ]] && {
 	echoRgb "檢查備份列表中是否存在已經卸載應用" "3"
 	while [[ $D -le $C ]]; do
@@ -1486,7 +1530,7 @@ backup)
 		name2="$(sed -e '/^$/d' "$txt" 2>/dev/null | sed -n "${D}p" | awk '{print $2}')"
 		if [[ $name1 != "" && $name2 != "" ]]; then
 	        if [[ $(echo "$Apk_info" | egrep -w "^$name2$") != "" ]]; then
-			    [[ $Tmplist = "" ]] && Tmplist='#不需要備份的應用請在開頭注釋# 比如#酷安 xxxxxxxx\n#不需要備份數據比如!酷安 xxxxxxxx應用名前方方加一個驚嘆號即可 注意是應用名不是包名'
+			    [[ $Tmplist = "" ]] && Tmplist='#不需要備份的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market（忽略安裝包和數據）\n#不需要備份數據的應用請在開頭使用!注釋 比如：!酷安 com.coolapk.market（僅忽略數據）'
 			    Tmplist="$Tmplist\n$name1 $name2"
 			else
                 case $name1 in
@@ -1504,11 +1548,13 @@ backup)
 	r="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n '$=')"
 	[[ $backup_mode != "" ]] && r=1
 	[[ $r = "" && $backup_mode = "" ]] && echoRgb "$MODDIR_NAME/appList.txt是空的或是包名被注釋備份個鬼\n -檢查是否注釋亦或者執行$MODDIR_NAME/生成應用列表.sh" "0" && exit 1
-	[[ $Backup_user_data = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -Backup_user_data=0將不備份user數據" "0"
-	[[ $Backup_obb_data = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -Backup_obb_data=0將不備份外部數據" "0"
+	if [[ $Backup_Mode = true ]]; then
+    	[[ $Backup_user_data = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -Backup_user_data=0將不備份user數據" "0"
+    	[[ $Backup_obb_data = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -Backup_obb_data=0將不備份外部數據" "0"
+    fi
 	[[ $backup_media = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -backup_media=0將不備份自定義資料夾" "0"
 	txt2="$Backup/appList.txt"
-	[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭注釋# 比如#xxxxxxxx 酷安">"$txt2"
+	[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market">"$txt2"
 	[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup"
 	[[ ! -f $Backup/恢復備份.sh ]] && touch_shell "Restore" "$Backup/恢復備份.sh"
 	[[ ! -f $Backup/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/終止腳本.sh"
@@ -1564,15 +1610,22 @@ backup)
 			echoRgb "備份第$i/$r個應用 剩下$((r - i))個" "3"
 			echoRgb "備份 $name1 \"$name2\"" "2"
 			unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 zsize zmediapath Size data_path userSize dataSize obbSize Ssaid Permissions
-			if [[ $name1 = !* || $name1 = ！* ]]; then
-				name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
-				echoRgb "跳過備份所有數據" "0"
-				No_backupdata=1
-			fi
-			if [[ $(echo "$blacklist" | grep -w "$name2") = $name2 ]]; then
-				echoRgb "黑名單應用跳過備份所有數據" "0"
-				No_backupdata=1
-			fi
+			if [[ $Backup_Mode = true ]]; then
+			    if [[ $name1 = !* || $name1 = ！* ]]; then
+    				name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
+    				echoRgb "跳過備份所有數據" "0"
+    				No_backupdata=1
+    			fi
+    			if [[ $(echo "$blacklist" | grep -w "$name2") = $name2 ]]; then
+    			    if [[ $blacklist_mode = true ]]; then
+    			        echoRgb "黑名單應用跳過備份" "0"
+    			        nobackup="true"
+    			    else
+    				    echoRgb "黑名單應用跳過備份所有數據" "0"
+    				fi
+    				No_backupdata=1
+    			fi
+    	    fi
 			Backup_folder="$Backup/$name1"
 			app_details="$Backup_folder/app_details"
 			app_Permissions="$Backup_folder/Permissions"
@@ -1593,27 +1646,31 @@ backup)
 			[[ $name2 = com.tencent.mobileqq ]] && echoRgb "QQ可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
 			[[ $name2 = com.tencent.mm ]] && echoRgb "WX可能恢復備份失敗或是丟失聊天記錄，請自行用你信賴的應用備份" "0"
 			apk_number="$(echo "$apk_path" | wc -l)"
-			if [[ $apk_number = 1 ]]; then
-				Backup_apk "非Split Apk" "3"
-			else
-				Backup_apk "Split Apk支持備份" "3"
-			fi
-			if [[ $result = 0 && $No_backupdata = "" && $nobackup != true ]]; then
-				if [[ $Backup_obb_data = true ]]; then
-					#備份data數據
-					Backup_data "data"
-					#備份obb數據
-					Backup_data "obb"
-				fi
-				#備份user數據
-				[[ $Backup_user_data = true ]] && Backup_data "user"
-				[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)"
-				[[ $name2 = moe.shizuku.redirectstorage ]] && Backup_data "storage-isolation" "/data/adb/storage-isolation"
-				Set_service
-			fi
-			[[ -f $Backup_folder/${name2}.sh ]] && rm -rf "$Backup_folder/${name2}.sh"
-		    [[ ! -f $Backup_folder/recover.sh ]] && touch_shell "Restore2" "$Backup_folder/recover.sh"
-			[[ ! -f $Backup_folder/backup.sh ]] && touch_shell "backup" "$Backup_folder/backup.sh" "backup_mode" "backup_mode=\"1\""
+			if [[ $nobackup != true ]]; then
+    			if [[ $apk_number = 1 ]]; then
+    				Backup_apk "非Split Apk" "3"
+    			else
+    				Backup_apk "Split Apk支持備份" "3"
+    			fi
+    			if [[ $result = 0 && $No_backupdata = "" ]]; then
+    				if [[ $Backup_Mode = true ]]; then
+        				if [[ $Backup_obb_data = true ]]; then
+        					#備份data數據
+        					Backup_data "data"
+        					#備份obb數據
+        					Backup_data "obb"
+        				fi
+        				#備份user數據
+        				[[ $Backup_user_data = true ]] && Backup_data "user"
+        				[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)"
+        				[[ $name2 = moe.shizuku.redirectstorage ]] && Backup_data "storage-isolation" "/data/adb/storage-isolation"
+        				Set_service
+        		    fi
+    			fi
+    			[[ -f $Backup_folder/${name2}.sh ]] && rm -rf "$Backup_folder/${name2}.sh"
+    		    [[ ! -f $Backup_folder/recover.sh ]] && touch_shell "Restore2" "$Backup_folder/recover.sh"
+    			[[ ! -f $Backup_folder/backup.sh ]] && touch_shell "backup" "$Backup_folder/backup.sh" "backup_mode" "backup_mode=\"1\""
+    		fi
 			endtime 2 "$name1 備份" "3"
 			lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
 			echoRgb "完成$((i * 100 / r))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "3"
@@ -1658,11 +1715,20 @@ backup)
 					app_details="$Backup_folder/app_details"
 					[[ -f $app_details ]] && . "$app_details" &>/dev/null || touch "$app_details"
 					mediatxt="$Backup/mediaList.txt"
-					[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$mediatxt"
+					[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭使用#注釋 比如：#Download" > "$mediatxt"
 					echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | sed 's/\/$//' | while read; do
 						echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
 						starttime2="$(date -u "+%s")"
-						Backup_data "${REPLY##*/}" "$REPLY"
+						if [[ ${REPLY##*/} = adb ]]; then
+						    if [[ $ksu != ksu ]]; then
+						        Backup_data "${REPLY##*/}" "$REPLY"
+						    else
+						        echoRgb "KSU不支持備份adb模塊資料夾" "0"
+						        Set_back_1
+						    fi
+						else
+						    Backup_data "${REPLY##*/}" "$REPLY"
+						fi
 						endtime 2 "${REPLY##*/}備份" "1"
 						echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "2"
 						rgb_d="$rgb_a"
@@ -1962,21 +2028,26 @@ Getlist)
 	isBoolean "$debug_list" "debug_list" && debug_list="$nsx"
 	isBoolean "$Lo" "Lo" && Lo="$nsx"
 	if [[ $Lo = false ]]; then
-		isBoolean "$blacklist_mode" "blacklist_mode" && blacklist_mode="$nsx"
+		[[ $blacklist_mode != "" ]] && isBoolean "$blacklist_mode" "blacklist_mode" && blacklist_mode="$nsx" || {
+		echoRgb "選擇黑名單模式\n -音量上不備份，音量下僅備份安裝檔" "2"
+		get_version "不備份" "備份安裝檔" && blacklist_mode="$branch"
+		}
 	else
 		if [[ $(echo "$blacklist" | grep -v "#" | wc -l) -gt 0 ]]; then
+		    [[ $blacklist_mode = "" ]] && {
 		    echoRgb "選擇黑名單模式\n -音量上不備份，音量下僅備份安裝檔" "2"
 		    get_version "不備份" "備份安裝檔" && blacklist_mode="$branch"
+		    } || isBoolean "$blacklist_mode" "blacklist_mode" && blacklist_mode="$nsx"
 		fi
 	fi
 	txtpath="$MODDIR"
 	[[ $debug_list = true ]] && txtpath="${txtpath/'/storage/emulated/'/'/data/media/'}"
 	nametxt="$txtpath/appList.txt"
-	[[ ! -f $nametxt ]] && echo '#不需要備份的應用請在開頭注釋# 比如#酷安 xxxxxxxx\n#不需要備份數據比如!酷安 xxxxxxxx應用名前方方加一個驚嘆號即可 注意是應用名不是包名' >"$nametxt"
+	[[ ! -f $nametxt ]] && echo '#不需要備份的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market（忽略安裝包和數據）\n#不需要備份數據的應用請在開頭使用!注釋 比如：!酷安 com.coolapk.market（僅忽略數據）' >"$nametxt"
 	echoRgb "請勿關閉腳本，等待提示結束"
 	rgb_a=118
 	starttime1="$(date -u "+%s")"
-	echoRgb "提示! 腳本會屏蔽預裝應用" "0"
+	echoRgb "提示! 腳本默認會屏蔽預裝應用 如需備份請添加預裝應用白名單" "0"
 	xposed_name="$(appinfo -o pn -xm)"
 	Apk_info="$(appinfo -sort-i -d " " -o addXpTag:'Xposed: ',anwb,pn -pn $system -3 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	[[ $Apk_info = "" ]] && {
@@ -1990,6 +2061,7 @@ Getlist)
 	rc="0"
 	rd="0"
 	Q="0"
+	rb="0"
 	Output_list() {
 	    if [[ $(cat "$nametxt" | cut -f2 -d ' ' | egrep -w "^${app_1[1]}$") != ${app_1[1]} ]]; then
 	        case ${app_1[1]} in
@@ -2012,7 +2084,7 @@ Getlist)
 						    echoRgb "$REPLY($rgb_a)"
 						    let i++
 					    else
-						    echoRgb "${app_1[2]}非Xposed模塊 忽略輸出" "0"
+						    echoRgb "${app_1[2]} 預裝應用 忽略輸出" "0"
 						    let rc++
 					    fi
 				    fi
@@ -2039,14 +2111,16 @@ Getlist)
 	echo "$Apk_info" | sed 's/\///g ; s/\://g ; s/(//g ; s/)//g ; s/\[//g ; s/\]//g ; s/\-//g ; s/!//g' | while read; do
 		[[ $rgb_a -ge 229 ]] && rgb_a=118
 		app_1=($REPLY $REPLY)
-		if [[ $blacklist_mode = true ]]; then
-		    if [[ $(echo "$blacklist" | egrep -w "^${app_1[1]}$") != ${app_1[1]} ]]; then
+		if [[ $(echo "$blacklist" | egrep -w "^${app_1[1]}$") != ${app_1[1]} ]]; then
+		    Output_list
+		else
+		    if [[ $blacklist_mode = false ]]; then
 		        Output_list
+		        let rb++
 		    else
 		        echoRgb "${app_1[2]}黑名單應用 不輸出" "0"
+		        let rb++
 		    fi
-		else
-		    Output_list
 		fi
 		if [[ $LR = $Apk_Quantity ]]; then
 		    echo "$REPLY2">>"$nametxt"
@@ -2055,7 +2129,7 @@ Getlist)
 				echoRgb "\n -輸出異常 請將$conf_path中的debug_list=\"0\"改為1或是重新執行本腳本" "0"
 				exit
 			fi
-			[[ $tmp != "" ]] && echoRgb "\n -第三方apk數量=\"$Apk_Quantity\"\n -已過濾=\"$rc\"\n -xposed=\"$rd\"\n -存在列表中=\"$Q\"\n -輸出=\"$i\""
+			[[ $tmp != "" ]] && echoRgb "\n -第三方apk數量=\"$Apk_Quantity\"\n -已過濾=\"$rc\"\n -xposed=\"$rd\"\n -黑名單應用=\"$rb\"\n -存在列表中=\"$Q\"\n -輸出=\"$i\""
 		fi
 		let rgb_a++ LR++
 	done
@@ -2067,7 +2141,7 @@ Getlist)
 			name2="$(sed -e '/^$/d' "$nametxt" | sed -n "${D}p" | awk '{print $2}')"
 			if [[ $name1 != "" && $name2 != "" ]]; then
 			    if [[ $(echo "$Apk_info2" | egrep -w "^$name2$") != "" ]]; then
-			        [[ $Tmplist = "" ]] && Tmplist='#不需要備份的應用請在開頭注釋# 比如#酷安 xxxxxxxx\n#不需要備份數據比如!酷安 xxxxxxxx應用名前方方加一個驚嘆號即可 注意是應用名不是包名'
+			        [[ $Tmplist = "" ]] && Tmplist='#不需要備份的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market（忽略安裝包和數據）\n#不需要備份數據的應用請在開頭使用!注釋 比如：!酷安 com.coolapk.market（僅忽略數據）'
 			        Tmplist="$Tmplist\n$name1 $name2"
 			    else
                     case $name1 in
@@ -2105,14 +2179,23 @@ backup_media)
 		filesize="$(du -s "$Backup_folder" | awk '{print $1}')"
 		[[ -f $app_details ]] && . "$app_details" &>/dev/null || touch "$app_details"
 		mediatxt="$Backup/mediaList.txt"
-		[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭注釋# 比如#媒體" > "$mediatxt"
+		[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭使用#注釋 比如：#Download" > "$mediatxt"
 		echo "$script">"$TMPDIR/scriptTMP"
 		Set_screen_pause_seconds on
 		{
 		echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | sed 's/\/$//' | while read; do
 			echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
 			starttime2="$(date -u "+%s")" 
-			Backup_data "${REPLY##*/}" "$REPLY"
+			if [[ ${REPLY##*/} = adb ]]; then
+			    if [[ $ksu != ksu ]]; then
+				    Backup_data "${REPLY##*/}" "$REPLY"
+				else
+	                echoRgb "KSU不支持備份adb模塊資料夾" "0"
+				    Set_back_1
+				fi
+			else
+			    Backup_data "${REPLY##*/}" "$REPLY"
+			fi
 			endtime 2 "${REPLY##*/}備份" "1"
 			echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "2" && echoRgb "____________________________________" && let A++
 		done
