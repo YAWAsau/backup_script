@@ -326,12 +326,6 @@ case $LANG in
     alias ts="app_process /system/bin --nice-name=appinfo han.core.order.ChineseConverter -t $@" ;;
 esac
 alias LS="toybox ls -Zd"
-#[[ $1 = --help ]] && appinfo --help
-#appinfo -o pn -u | while read; do
-#    case $REPLY in
-#    *camera*) cmd package install-existing "$REPLY" ;;
-#    esac
-#done
 Set_back_0() {
 	return 0
 }
@@ -714,7 +708,7 @@ else
 fi
 case $operate in
 Getlist|Restore2|Restore3|dumpname|check_file|backup_media|convert|Device_List) ;;
-*)isBoolean "$Lo" "Lo" && Lo="$nsx" ;;
+*) isBoolean "$Lo" "Lo" && Lo="$nsx" ;;
 esac
 cdn=2
 #settings get system system_locales
@@ -1406,10 +1400,12 @@ Check_archive() {
 Set_screen_pause_seconds () {
     if [[ $1 = on ]]; then
         #獲取系統設置的無操作息屏秒數
-	    Get_dark_screen_seconds="$(settings get system screen_off_timeout)"
-	    #設置30分鐘後息屏
-        settings put system screen_off_timeout 1800000
-        echo_log "設置無操作息屏時間30分鐘"
+        if [[ $Get_dark_screen_seconds = "" ]]; then
+	        Get_dark_screen_seconds="$(settings get system screen_off_timeout)"
+	        #設置30分鐘後息屏
+            settings put system screen_off_timeout 1800000
+            echo_log "設置無操作息屏時間30分鐘"
+        fi
     elif [[ $1 = off ]]; then
         if [[ $Get_dark_screen_seconds != "" ]]; then
             settings put system screen_off_timeout "$Get_dark_screen_seconds"
