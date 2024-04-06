@@ -1,5 +1,5 @@
 #!/system/bin/sh
-set -x 2> /cache/debug_output.log
+[[ -d /data/cache ]] && set -x 2> /data/cache/debug_output.log
 shell_language="zh-TW"
 MODDIR="$MODDIR"
 MODDIR_NAME="${MODDIR##*/}"
