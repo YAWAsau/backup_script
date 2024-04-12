@@ -422,12 +422,12 @@ fi
 [[ $(egrep -w "$(getprop ro.product.model 2>/dev/null)" "$tools_path/Device_List" | awk -F'"' '{print $4}') != "" ]] && Device_name="$(egrep -w "$(getprop ro.product.model 2>/dev/null)" "$tools_path/Device_List" | awk -F'"' '{print $4}' | head -1)" || Device_name="$(getprop ro.product.model 2>/dev/null)"
 if [[ $(su -v 2>/dev/null) != "" ]]; then
     Manager_version="$(su -v 2>/dev/null)"
+    [[ $Manager_version = *KernelSU* ]] && ksu="ksu"
+    [[ $ksu = "" ]] && [[ -d /data/adb/ksu ]] && ksu="ksu"
 else
     if [[ -d /data/adb/ksu ]]; then
+        Manager_version=KernelSU
         ksu="ksu"
-        echo "KernelSU"
-    else
-        echo "null"
     fi
 fi
 Socname="$(getprop ro.soc.model)"
@@ -1717,11 +1717,12 @@ backup)
 						starttime2="$(date -u "+%s")"
 						if [[ ${REPLY##*/} = adb ]]; then
 						    if [[ $ksu != ksu ]]; then
-						        Backup_data "${REPLY##*/}" "$REPLY"
-						    else
-						        echoRgb "KSU不支持備份adb模塊資料夾" "0"
-						        Set_back_1
-						    fi
+			                    echoRgb "Magisk adb"
+				                Backup_data "${REPLY##*/}" "$REPLY"
+				            else
+				                echoRgb "KernelSU adb不支持備份" "0"
+	                            Set_back_0
+				            fi
 						else
 						    Backup_data "${REPLY##*/}" "$REPLY"
 						fi
@@ -2184,10 +2185,11 @@ backup_media)
 			starttime2="$(date -u "+%s")" 
 			if [[ ${REPLY##*/} = adb ]]; then
 			    if [[ $ksu != ksu ]]; then
+			        echoRgb "Magisk adb"
 				    Backup_data "${REPLY##*/}" "$REPLY"
 				else
-	                echoRgb "KSU不支持備份adb模塊資料夾" "0"
-				    Set_back_1
+				    echoRgb "KernelSU adb不支持備份" "0"
+	                Set_back_0
 				fi
 			else
 			    Backup_data "${REPLY##*/}" "$REPLY"
