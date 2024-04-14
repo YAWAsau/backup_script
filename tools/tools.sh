@@ -932,7 +932,7 @@ Backup_apk() {
 	#創建APP備份文件夾
 	[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
 	[[ ! -f $app_details ]] && echo "{\n}">"$app_details"
-	apk_version="$(jq -r '.[] | select(.apk_version != null) | .apk_version' "$app_details")"
+	apk_version="$(jq -r '.[] | select(.apk_version != null).apk_version' "$app_details")"
 	apk_version2="$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)"
 	apk_version3="$(dumpsys package "$name2" 2>/dev/null | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)"
 	if [[ $apk_version = $apk_version2 ]]; then
@@ -1011,7 +1011,7 @@ Backup_data() {
 	data_path="$path/$1/$name2"
 	MODDIR_NAME="${data_path%/*}"
 	MODDIR_NAME="${MODDIR_NAME##*/}"
-	[[ -f $app_details ]] && Size="$(jq --arg entry "$1" '.[$entry].Size | tostring | gsub("\""; "") | tonumber' "$app_details" 2>/dev/null)"
+	[[ -f $app_details ]] && Size="$(jq -r --arg entry "$1" '.[$entry] | select(.Size != null).Size' "$app_details" 2>/dev/null)"
 	case $1 in
 	user) data_path="$path2/$name2" ;;
 	data) ;;
@@ -1027,7 +1027,7 @@ Backup_data() {
 		;;
 	esac
 	if [[ -d $data_path ]]; then
-	    unset Filesize m_size k_size get_size ssaid Get_Permissions
+	    unset Filesize m_size k_size get_size ssaid Get_Permissions result
         Filesize="$(du -s "$data_path" | awk '{print $1}')"
         k_size="$(awk 'BEGIN{printf "%.2f\n", "'$Filesize'"'*1024'/'1024'}')"
 	    m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
@@ -1038,13 +1038,16 @@ Backup_data() {
         fi
         case $1 in
 		user)
-		    Ssaid="$(jq -r '.[] | select(.Ssaid != null) | .Ssaid' "$app_details")"
+		    Ssaid="$(jq -r '.[] | select(.Ssaid != null).Ssaid' "$app_details")"
 		    ssaid="$(get_ssaid "$name2")"
+		    echoRgb "SSAID:$(get_ssaid "$name2")"
 			if [[ $ssaid != null && $ssaid != $Ssaid ]]; then
 				SSAID_apk="$(echo "$name1 \"$name2\"")"
 				SSAID_apk2="$(echo "$SSAID_apk\n$SSAID_apk2")"
+				jq -c --arg entry "$name1" --arg new_value "$ssaid" '.[$entry].Ssaid |= $new_value' "$app_details" > temp.json && mv temp.json "$app_details"
 				echo_log "備份ssaid"
 			fi
+			[[ $ssaid = null ]] && ssaid=
 			Get_Permissions="$(get_Permissions "$name2")"
 			if [[ $Get_Permissions != "" ]]; then
     			if [[ $Permissions = "" ]]; then
@@ -1126,7 +1129,7 @@ Release_data() {
 	case ${FILE_NAME##*.} in
 	zst | tar)
 		unset FILE_PATH Size Selinux_state
-		[[ -f $app_details ]] && Size="$(jq --arg entry "$FILE_NAME2" '.[$entry].Size | tostring | gsub("\""; "") | tonumber' "$app_details" 2>/dev/null)"
+		[[ -f $app_details ]] && Size="$(jq -r --arg entry "$FILE_NAME2" '.[$entry] | select(.Size != null).Size' "$app_details" 2>/dev/null)"
 		case $FILE_NAME2 in
 		user) 
 		    if [[ -d $X ]]; then
@@ -1142,7 +1145,7 @@ Release_data() {
 		*)
 			if [[ $A != "" ]]; then
 				if [[ ${MODDIR_NAME##*/} = Media ]]; then
-				    FILE_PATH="$(jq -r --arg entry "${FILE_NAME2}" 'select(.[$entry].path != null) | .[$entry].path' "$app_details")"
+				    FILE_PATH="$(jq -r --arg entry "${FILE_NAME2}" 'select(.[$entry].path != null).path | .[$entry].path' "$app_details")"
 					if [[ $FILE_PATH = "" ]]; then
 						echoRgb "路徑獲取失敗" "0"
 					else
@@ -1296,8 +1299,8 @@ get_name(){
 		[[ $rgb_a -ge 229 ]] && rgb_a=118
 		unset PackageName NAME DUMPAPK ChineseName versionName apk_version Ssaid dataSize obbSize userSize
 		if [[ -f $Folder/app_details.json ]]; then
-		    ChineseName="$(jq -r 'to_entries[] | select(.key != null) | .key' "$Folder/app_details.json" | head -n 1)"
-		    PackageName="$(jq -r '.[] | select(.PackageName != null) | .PackageName' "$Folder/app_details.json")"
+		    ChineseName="$(jq -r 'to_entries[] | select(.key != null).key' "$Folder/app_details.json" | head -n 1)"
+		    PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "$Folder/app_details.json")"
 		else
 		    if [[ -f $Folder/app_details ]]; then
 		        . "$Folder/app_details" &>/dev/null
@@ -1612,8 +1615,8 @@ backup)
     		name1="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
     		name2="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
         else
-            ChineseName="$(jq -r 'to_entries[] | select(.key != null) | .key' "${0%/*}/app_details.json" | head -n 1)"
-		    PackageName="$(jq -r '.[] | select(.PackageName != null) | .PackageName' "${0%/*}/app_details.json")"
+            ChineseName="$(jq -r 'to_entries[] | select(.key != null).key' "${0%/*}/app_details.json" | head -n 1)"
+		    PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "${0%/*}/app_details.json")"
             name1="$ChineseName"
             name2="$PackageName"
         fi
@@ -1646,7 +1649,7 @@ backup)
 			app_Permissions="$Backup_folder/Permissions"
 			if [[ -f $app_details ]]; then
 				[[ -f $app_Permissions ]] && . "$app_Permissions"
-				PackageName="$(jq -r '.[] | select(.PackageName != null) | .PackageName' "$app_details")"
+				PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "$app_details")"
 				if [[ $PackageName != $name2 ]]; then
 				    unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 zsize zmediapath Size data_path Ssaid ssaid Permissions
 					Backup_folder="$Backup/${name1}[${name2}]"
@@ -1868,8 +1871,8 @@ Restore|Restore2)
 	    if [[ ! -f $app_details ]]; then
 		    echoRgb "$app_details遺失，無法獲取包名" "0" && exit 1
 	    else
-		    ChineseName="$(jq -r 'to_entries[] | select(.key != null) | .key' "$app_details" | head -n 1)"
-		    PackageName="$(jq -r '.[] | select(.PackageName != null) | .PackageName' "$app_details")"
+		    ChineseName="$(jq -r 'to_entries[] | select(.key != null).key' "$app_details" | head -n 1)"
+		    PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "$app_details")"
 		    [[ -f $app_Permissions ]] && . "$app_Permissions" &>/dev/null
 	    fi
 	    name1="$ChineseName"
@@ -1927,7 +1930,7 @@ Restore|Restore2)
 					unset G
 					Set_service
 					restore_permissions
-					Ssaid="$(jq -r '.[] | select(.Ssaid != null) | .Ssaid' "$app_details")"
+					Ssaid="$(jq -r '.[] | select(.Ssaid != null).Ssaid' "$app_details")"
 					if [[ $Ssaid != "" ]]; then
 					    if [[ $(get_ssaid "$name2") != $Ssaid ]]; then
 					        set_ssaid "$name2" "$Ssaid"
