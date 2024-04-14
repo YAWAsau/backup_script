@@ -433,12 +433,12 @@ fi
 Socname="$(getprop ro.soc.model)"
 if [[ $Socname != "" ]]; then
     if [[ -f $tools_path/soc.json ]]; then
-        cat "$tools_path/soc.json" | jq -r --arg device "$Socname" '.[$device] | "處理器:\(.VENDOR) \(.NAME)"' &>/dev/null
+        jq -r --arg device "$Socname" '.[$device] | "處理器:\(.VENDOR) \(.NAME)"' $tools_path/soc.json &>/dev/null
         if [[ $? = 0 ]]; then
-          DEVICE_NAME="$(cat "$tools_path/soc.json" | jq -r --arg device "$Socname" '.[$device] | "處理器:\(.VENDOR) \(.NAME)"' 2>/dev/null)"
-          cat "$tools_path/soc.json" | jq -r --arg device "$Socname" '.[$device] | "RAM:\(.MEMORY) \(.CHANNELS)"' &>/dev/null
+          DEVICE_NAME="$(jq -r --arg device "$Socname" '.[$device] | "處理器:\(.VENDOR) \(.NAME)"' $tools_path/soc.json 2>/dev/null)"
+          jq -r --arg device "$Socname" '.[$device] | "RAM:\(.MEMORY) \(.CHANNELS)"' $tools_path/soc.json &>/dev/null
           if [[ $? = 0 ]]; then
-            RAMINFO="$(cat "$tools_path/soc.json" | jq -r --arg device "$Socname" '.[$device] | "RAM:\(.MEMORY) \(.CHANNELS)"' 2>/dev/null)"
+            RAMINFO="$(jq -r --arg device "$Socname" '.[$device] | "RAM:\(.MEMORY) \(.CHANNELS)"' $tools_path/soc.json 2>/dev/null)"
           else
             RAMINFO="RAM:null"
           fi
@@ -458,7 +458,7 @@ echoRgb "---------------------SpeedBackup---------------------"
 echoRgb "腳本路徑:$MODDIR\n -已開機:$(Show_boottime)\n -執行時間:$(date +"%Y-%m-%d %H:%M:%S")\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -管理器:$Manager_version\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -型號:$Device_name($(getprop ro.product.device 2>/dev/null))\n -閃存顆粒:$UFS_MODEL($ROM_TYPE)\n -$DEVICE_NAME\n -$RAMINFO\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
 case $MODDIR in
 *Backup_*)
-    if [[ -f $MODDIR/app_details ]]; then
+    if [[ -f $MODDIR/app_details.json ]]; then
         if [[ -d ${MODDIR%/*/*}/tools ]]; then
 	        path_hierarchy="${MODDIR%/*/*}"
 	    else
@@ -547,7 +547,7 @@ Rename_script () {
         FILE_NAME="${REPLY##*/}"
         case $Script_type in
         backup|Getlist|backup_media|Restore|dumpname|check_file|convert|Restore3|Restore2)
-            if [[ -f ${REPLY%/*}/app_details ]]; then
+            if [[ -f ${REPLY%/*}/app_details.json || -f ${REPLY%/*}/app_details ]]; then
 	            if [[ $FILE_NAME = backup.sh ]]; then
                     touch_shell "$Script_type" "$REPLY" "backup_mode" "backup_mode=\"1\""
                 else
@@ -595,7 +595,7 @@ touch_shell () {
     Restore|convert|dumpname|Restore3|check_file) conf_path='${0%/*}/restore_settings.conf' ;;
     esac
     if [[ $4 != "" ]]; then
-        [[ $Output_path = "" ]] && echo "if [ -f \"$MODDIR_Path/tools/tools.sh\" ]; then\n    MODDIR=\"$MODDIR_Path\"\n    . \"\${0%/*}/app_details\" &>/dev/null\n    operate=\"$1\"\n    $4\n    conf_path=\"$conf_path\"\n    . \"$MODDIR_Path/tools/tools.sh\" | tee \"\${0%/*}/log.txt\"\nelse\n    echo \"$MODDIR_Path/tools/tools.sh遺失\"\nfi" >"$2"
+        [[ $Output_path = "" ]] && echo "if [ -f \"$MODDIR_Path/tools/tools.sh\" ]; then\n    MODDIR=\"$MODDIR_Path\"\n    operate=\"$1\"\n    $4\n    conf_path=\"$conf_path\"\n    . \"$MODDIR_Path/tools/tools.sh\" | tee \"\${0%/*}/log.txt\"\nelse\n    echo \"$MODDIR_Path/tools/tools.sh遺失\"\nfi" >"$2"
     else
         echo "[ \"\$(echo \"\${0%/*}\" | grep -o 'bin.mt.plus/temp')\" != \"\" ] && echo \"你媽沒告訴你腳本要解壓縮嗎？傻逼玩兒\" && exit 2\nif [ -f \"$MODDIR_Path/tools/tools.sh\" ]; then\n    MODDIR=\"\${0%/*}\"\n    operate=\"$1\"\n    conf_path=\"$conf_path\"\n    . \"$MODDIR_Path/tools/tools.sh\" | tee \"\$MODDIR/log.txt\"\nelse\n    echo \"$MODDIR_Path/tools/tools.sh遺失\"\nfi" >"$2"
     fi
@@ -612,7 +612,7 @@ update_script() {
 				        shell_language="$(grep -o 'shell_language="[^"]*"' "$MODDIR/tools.sh" 2>/dev/null | awk -F'=' '{print $2}' | tr -d '"' | head -1)"
 					    case $MODDIR in
 					    *Backup_*)
-						    if [[ -f $MODDIR/app_details ]]; then
+						    if [[ -f $MODDIR/app_details.json ]]; then
                                 echoRgb "請在${MODDIR%/*}更新腳本" "0"
                                 rm -rf "$MODDIR/tools.sh"
                                 exit 2
@@ -879,7 +879,7 @@ Calculate_size() {
 	fi
 	echoRgb "$NJL"
 }
-size () {
+size() {
     varr="$(echo "$1" | bc 2>/dev/null)"
     if [[ $varr != $1 ]]; then
         b_size="$(ls -l "$1" 2>/dev/null | awk '{print $5}')"
@@ -927,13 +927,12 @@ restore_freeze() {
         pm unsuspend --user "$user" "$REPLY" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: false/暫停狀態:解凍/g"
     done
 }
-get_variables() {
-    awk "/$1/"'{print $1}' "$2" | cut -f2 -d '=' | tail -n1 | sed 's/\"//g'
-}
 Backup_apk() {
 	#檢測apk狀態進行備份
 	#創建APP備份文件夾
 	[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
+	[[ ! -f $app_details ]] && echo "{\n}">"$app_details"
+	apk_version="$(jq -r '.[] | select(.apk_version != null) | .apk_version' "$app_details")"
 	apk_version2="$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)"
 	apk_version3="$(dumpsys package "$name2" 2>/dev/null | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)"
 	if [[ $apk_version = $apk_version2 ]]; then
@@ -975,18 +974,14 @@ Backup_apk() {
 			    Validation_file "$Backup_folder/apk.tar"*
 				if [[ $result = 0 ]]; then
 					[[ $(sed -e '/^$/d' "$txt2" 2>/dev/null | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
-					if [[ $apk_version = "" ]]; then
-						echo "apk_version=\"$apk_version2\"" >>"$app_details"
-					else
-						echo "$(sed "s/${apk_version}/${apk_version2}/g" "$app_details")">"$app_details"
-					fi
-					if [[ $versionName = "" ]]; then
-						echo "versionName=\"$apk_version3\"" >>"$app_details"
-					else
-						echo "$(sed "s/${versionName}/${apk_version3}/g" "$app_details")">"$app_details"
-					fi
-					[[ $PackageName = "" ]] && echo "PackageName=\"$name2\"" >>"$app_details"
-					[[ $ChineseName = "" ]] && echo "ChineseName=\"$name1\"" >>"$app_details"
+					extra_content="{
+                      \"$name1\": {
+                        \"PackageName\": \"$name2\",
+                        \"apk_version\": \"$apk_version2\",
+                        \"versionName\": \"$apk_version3\"
+                      }
+                    }"
+                    jq -c --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && mv temp.json "$app_details"
 				else
 					rm -rf "$Backup_folder"
 				fi
@@ -1016,15 +1011,12 @@ Backup_data() {
 	data_path="$path/$1/$name2"
 	MODDIR_NAME="${data_path%/*}"
 	MODDIR_NAME="${MODDIR_NAME##*/}"
+	[[ -f $app_details ]] && Size="$(jq --arg entry "$1" '.[$entry].Size | tostring | gsub("\""; "") | tonumber' "$app_details" 2>/dev/null)"
 	case $1 in
-	user) Size="$userSize" && data_path="$path2/$name2" ;;
-	data) Size="$dataSize" ;;
-	obb) Size="$obbSize" ;;
+	user) data_path="$path2/$name2" ;;
+	data) ;;
+	obb) ;;
 	*)
-		if [[ -f $app_details ]]; then
-		    Size="$(get_variables "$1Size" "$app_details")"
-		    mediapath="$(get_variables "$1mediapath" "$app_details")"
-		fi
 		data_path="$2"
 		if [[ $1 != storage-isolation && $1 != thanox ]]; then
 			Compression_method1="$Compression_method"
@@ -1046,13 +1038,9 @@ Backup_data() {
         fi
         case $1 in
 		user)
+		    Ssaid="$(jq -r '.[] | select(.Ssaid != null) | .Ssaid' "$app_details")"
 		    ssaid="$(get_ssaid "$name2")"
 			if [[ $ssaid != null && $ssaid != $Ssaid ]]; then
-			    if [[ $Ssaid != "" ]]; then
-				    echo "$(sed "s/$Ssaid/$ssaid/g" "$app_details")">"$app_details"
-				else
-					echo "Ssaid=\"$ssaid\"" >>"$app_details"
-				fi
 				SSAID_apk="$(echo "$name1 \"$name2\"")"
 				SSAID_apk2="$(echo "$SSAID_apk\n$SSAID_apk2")"
 				echo_log "備份ssaid"
@@ -1094,22 +1082,26 @@ Backup_data() {
 				if [[ $result = 0 ]]; then
 				    [[ ${Backup_folder##*/} = Media ]] && [[ $(sed -e '/^$/d' "$mediatxt" | grep -w "${REPLY##*/}.tar$" | head -1) = "" ]] && echo "$FILE_NAME" >> "$mediatxt"
 					if [[ $zsize != "" ]]; then
-						if [[ $Size != "" ]]; then
-							echo "$(sed "s/$Size/$Filesize/g" "$app_details")">"$app_details"
-						else
-							echo "#$1Size=\"$Filesize\"" >>"$app_details"
-						fi
+					    extra_content="{
+                          \"$1\": {
+                            \"path\": \"$2\",
+                            \"Size\": \"$Filesize\"
+                          }
+                        }"
+                        jq -c --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && mv temp.json "$app_details"
 					else
-						if [[ $Size != "" ]]; then
-							echo "$(sed "s/$Size/$Filesize/g" "$app_details")">"$app_details"
-						else
-							echo "$1Size=\"$Filesize\"" >>"$app_details"
-						fi
-					fi
-				    if [[ $zmediapath != "" ]]; then
-						if [[ $mediapath = "" ]]; then
-							echo "#$1mediapath=\"$2\"" >>"$app_details"
-						fi
+					    extra_content="{
+                          \"$name1\": {
+                            \"PackageName\": \"$name2\",
+                            \"apk_version\": \"$apk_version2\",
+                            \"versionName\": \"$apk_version3\",
+                            \"Ssaid\": \"$ssaid\"
+                          },
+                          \"$1\": {
+                            \"Size\": \"$Filesize\"
+                          }
+                        }"
+                        jq -c --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && mv temp.json "$app_details"
 					fi
 				else
 					rm -rf "$Backup_folder/$1".tar.*
@@ -1134,29 +1126,28 @@ Release_data() {
 	case ${FILE_NAME##*.} in
 	zst | tar)
 		unset FILE_PATH Size Selinux_state
+		[[ -f $app_details ]] && Size="$(jq --arg entry "$FILE_NAME2" '.[$entry].Size | tostring | gsub("\""; "") | tonumber' "$app_details" 2>/dev/null)"
 		case $FILE_NAME2 in
 		user) 
 		    if [[ -d $X ]]; then
 		        FILE_PATH="$path2"
-		        Size="$userSize"
 		        Selinux_state="$(LS "$X" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)"
 		    else
 		        echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0"
 		    fi;;
-		data) FILE_PATH="$path/data" Size="$dataSize" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)";;
-		obb) FILE_PATH="$path/obb" Size="$obbSize" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)";;
-		thanox) FILE_PATH="/data/system" Size="$(get_variables "${FILE_NAME2}Size" "$app_details")" && find "/data/system" -name "thanos*" -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
-		storage-isolation) FILE_PATH="/data/adb" Size="$(get_variables "${FILE_NAME2}Size" "$app_details")" ;;
+		data) FILE_PATH="$path/data" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)";;
+		obb) FILE_PATH="$path/obb" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)";;
+		thanox) FILE_PATH="/data/system" && find "/data/system" -name "thanos*" -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
+		storage-isolation) FILE_PATH="/data/adb" ;;
 		*)
 			if [[ $A != "" ]]; then
 				if [[ ${MODDIR_NAME##*/} = Media ]]; then
-				    FILE_PATH="$(get_variables "${FILE_NAME2}mediapath" "$app_details")"
+				    FILE_PATH="$(jq -r --arg entry "${FILE_NAME2}" 'select(.[$entry].path != null) | .[$entry].path' "$app_details")"
 					if [[ $FILE_PATH = "" ]]; then
 						echoRgb "路徑獲取失敗" "0"
 					else
 						echoRgb "解壓路徑↓\n -$FILE_PATH" "2"
 						FILE_PATH="${FILE_PATH%/*}"
-						Size="$(get_variables "${FILE_NAME2}Size" "$app_details")"
 						[[ ! -d $FILE_PATH ]] && mkdir -p "$FILE_PATH"
 					fi
 				fi
@@ -1303,8 +1294,34 @@ get_name(){
 	find "$MODDIR" -maxdepth 2 -name "apk.*" -type f 2>/dev/null | sort | while read; do
 		Folder="${REPLY%/*}"
 		[[ $rgb_a -ge 229 ]] && rgb_a=118
-		unset PackageName NAME DUMPAPK ChineseName
-		[[ -f $Folder/app_details ]] && . "$Folder/app_details" &>/dev/null
+		unset PackageName NAME DUMPAPK ChineseName versionName apk_version Ssaid dataSize obbSize userSize
+		if [[ -f $Folder/app_details.json ]]; then
+		    ChineseName="$(jq -r 'to_entries[] | select(.key != null) | .key' "$Folder/app_details.json" | head -n 1)"
+		    PackageName="$(jq -r '.[] | select(.PackageName != null) | .PackageName' "$Folder/app_details.json")"
+		else
+		    if [[ -f $Folder/app_details ]]; then
+		        . "$Folder/app_details" &>/dev/null
+		        extra_content="{
+                  \"$ChineseName\": {
+                    \"PackageName\": \"$PackageName\",
+                    \"apk_version\": \"$apk_version\",
+                    \"versionName\": \"$versionName\",
+                    \"Ssaid\": \"$Ssaid\"
+                  },
+                  \"data\": {
+                    \"Size\": \"$dataSize\"
+                  },
+                  \"obb\": {
+                    \"Size\": \"$obbSize\"
+                  },
+                  \"user\": {
+                    \"Size\": \"$userSize\"
+                  }
+                }"
+                echo "{\n}">"$Folder/app_details.json"
+                jq -c --argjson new_content "$extra_content" '. += $new_content' "$Folder/app_details.json" > temp.json && rm -rf "$Folder/app_details" && mv temp.json "$Folder/app_details.json"
+            fi
+		fi
 		[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market" >"$txt"
 		if [[ $PackageName = "" || $ChineseName = "" ]]; then
 			echoRgb "${Folder##*/}包名獲取失敗，解壓縮獲取包名中..." "0"
@@ -1381,8 +1398,8 @@ Check_archive() {
 	rm -rf "$error_log"
 	FIND_PATH="$(find "$1" -maxdepth 3 -name "*.tar*" -type f 2>/dev/null | sort)"
 	i=1
-	r="$(find "$MODDIR" -maxdepth 2 -name "app_details" -type f 2>/dev/null | wc -l)"
-	find "$MODDIR" -maxdepth 2 -name "app_details" -type f 2>/dev/null | sort | while read; do
+	r="$(find "$MODDIR" -maxdepth 2 -name "app_details.json" -type f 2>/dev/null | wc -l)"
+	find "$MODDIR" -maxdepth 2 -name "app_details.json" -type f 2>/dev/null | sort | while read; do
 		REPLY="${REPLY%/*}"
 		echoRgb "效驗第$i/$r個資料夾 剩下$((r - i))個" "3"
 		echoRgb "效驗:${REPLY##*/}"
@@ -1595,6 +1612,8 @@ backup)
     		name1="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
     		name2="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
         else
+            ChineseName="$(jq -r 'to_entries[] | select(.key != null) | .key' "${0%/*}/app_details.json" | head -n 1)"
+		    PackageName="$(jq -r '.[] | select(.PackageName != null) | .PackageName' "${0%/*}/app_details.json")"
             name1="$ChineseName"
             name2="$PackageName"
         fi
@@ -1605,7 +1624,7 @@ backup)
 		if [[ -d $apk_path2 ]]; then
 			echoRgb "備份第$i/$r個應用 剩下$((r - i))個" "3"
 			echoRgb "備份 $name1 \"$name2\"" "2"
-			unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 zsize zmediapath Size data_path userSize dataSize obbSize Ssaid Permissions
+			unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 zsize zmediapath Size data_path Ssaid ssaid Permissions
 			if [[ $Backup_Mode = true ]]; then
 			    if [[ $name1 = !* || $name1 = ！* ]]; then
     				name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
@@ -1623,18 +1642,16 @@ backup)
     			fi
     	    fi
 			Backup_folder="$Backup/$name1"
-			app_details="$Backup_folder/app_details"
+			app_details="$Backup_folder/app_details.json"
 			app_Permissions="$Backup_folder/Permissions"
 			if [[ -f $app_details ]]; then
-				. "$app_details" &>/dev/null
 				[[ -f $app_Permissions ]] && . "$app_Permissions"
+				PackageName="$(jq -r '.[] | select(.PackageName != null) | .PackageName' "$app_details")"
 				if [[ $PackageName != $name2 ]]; then
-					unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 zsize  zmediapath Size data_path userSize dataSize obbSize Ssaid Permissions
+				    unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 zsize zmediapath Size data_path Ssaid ssaid Permissions
 					Backup_folder="$Backup/${name1}[${name2}]"
-					app_details="$Backup_folder/app_details"
+					app_details="$Backup_folder/app_details.json"
 					app_Permissions="$Backup_folder/Permissions"
-					[[ -f $app_details ]] && . "$app_details" &>/dev/null
-					[[ -f $app_Permissions ]] && . "$app_Permissions"
 				fi
 			fi
 			[[ $hx = USB && $PT = "" ]] && echoRgb "隨身碟意外斷開 請檢查穩定性" "0" && exit 1
@@ -1708,8 +1725,8 @@ backup)
 					Backup_folder="$Backup/Media"
 					[[ ! -f $Backup/恢復自定義資料夾.sh ]] && touch_shell "Restore3" "$Backup/恢復自定義資料夾.sh"
 					[[ ! -d $Backup_folder ]] && mkdir -p "$Backup_folder"
-					app_details="$Backup_folder/app_details"
-					[[ -f $app_details ]] && . "$app_details" &>/dev/null || touch "$app_details"
+					app_details="$Backup_folder/app_details.json"
+					[[ ! -f $app_details ]] && echo "{\n}">"$app_details"
 					mediatxt="$Backup/mediaList.txt"
 					[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭使用#注釋 比如：#Download" > "$mediatxt"
 					echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | sed 's/\/$//' | while read; do
@@ -1846,12 +1863,13 @@ Restore|Restore2)
         i=1
         r=1
         Backup_folder="$MODDIR"
-	    app_details="$Backup_folder/app_details"
+	    app_details="$Backup_folder/app_details.json"
 	    app_Permissions="$Backup_folder/Permissions"
 	    if [[ ! -f $app_details ]]; then
 		    echoRgb "$app_details遺失，無法獲取包名" "0" && exit 1
 	    else
-		    . "$app_details" &>/dev/null
+		    ChineseName="$(jq -r 'to_entries[] | select(.key != null) | .key' "$app_details" | head -n 1)"
+		    PackageName="$(jq -r '.[] | select(.PackageName != null) | .PackageName' "$app_details")"
 		    [[ -f $app_Permissions ]] && . "$app_Permissions" &>/dev/null
 	    fi
 	    name1="$ChineseName"
@@ -1882,7 +1900,12 @@ Restore|Restore2)
     			No_backupdata=1
     		fi
     		Backup_folder="$MODDIR/$name1"
-    		[[ -f "$Backup_folder/app_details" ]] && app_details="$Backup_folder/app_details" . "$Backup_folder/app_details" &>/dev/null
+    		if [[ -f "$Backup_folder/app_details.json" ]]; then
+    		    app_details="$Backup_folder/app_details.json"
+    		else
+    		    echoRgb "$Backup_folder/app_details.json不存在" "0"
+    		    exit2
+    		fi
     		app_Permissions="$Backup_folder/Permissions"
     		[[ -f $app_Permissions ]] && . "$app_Permissions" &>/dev/null
     		[[ $name2 = "" ]] && echoRgb "應用包名獲取失敗" "0" && exit 1
@@ -1904,6 +1927,7 @@ Restore|Restore2)
 					unset G
 					Set_service
 					restore_permissions
+					Ssaid="$(jq -r '.[] | select(.Ssaid != null) | .Ssaid' "$app_details")"
 					if [[ $Ssaid != "" ]]; then
 					    if [[ $(get_ssaid "$name2") != $Ssaid ]]; then
 					        set_ssaid "$name2" "$Ssaid"
@@ -1936,7 +1960,7 @@ Restore|Restore2)
 		    echoRgb "\n -下列為已設置SSAID應用\n$SSAID_Package2\n -下列為設置SSAID失敗應用....\n$SSAID_Package3" "3"
 			if [[ $media_recovery = true ]]; then
 			    starttime1="$(date -u "+%s")"
-			    app_details="$Backup_folder2/app_details"
+			    app_details="$Backup_folder2/app_details.json"
 			    txt="$MODDIR/mediaList.txt"
 			    sort -u "$txt" -o "$txt" 2>/dev/null
 			    A=1
@@ -1983,7 +2007,7 @@ Restore3)
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
 	get_version "恢復自定義資料夾" "離開腳本" && [[ "$branch" = false ]] && exit 0
 	mediaDir="$MODDIR/Media"
-	[[ -f "$mediaDir/app_details" ]] && app_details="$mediaDir/app_details" &>/dev/null
+	[[ -f "$mediaDir/app_details.json" ]] && app_details="$mediaDir/app_details.json"
 	Backup_folder2="$mediaDir"
 	[[ ! -d $mediaDir ]] && echoRgb "媒體資料夾不存在" "0" && exit 2
 	txt="$MODDIR/mediaList.txt"
@@ -2172,9 +2196,9 @@ backup_media)
 		[[ ! -f $Backup/壓縮檔完整性檢查.sh ]] && touch_shell "check_file" "$Backup/壓縮檔完整性檢查.sh"
 		[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup"
 		[[ ! -f $Backup/restore_settings.conf ]] && update_Restore_settings_conf>"$Backup/restore_settings.conf"
-		app_details="$Backup_folder/app_details"
+		app_details="$Backup_folder/app_details.json"
+		[[ ! -f $app_details ]] && echo "{\n}">"$app_details"
 		filesize="$(du -s "$Backup_folder" | awk '{print $1}')"
-		[[ -f $app_details ]] && . "$app_details" &>/dev/null || touch "$app_details"
 		mediatxt="$Backup/mediaList.txt"
 		[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭使用#注釋 比如：#Download" > "$mediatxt"
 		echo "$script">"$TMPDIR/scriptTMP"
