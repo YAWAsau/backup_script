@@ -3,15 +3,21 @@ if [ -f "${0%/*}/tools/tools.sh" ]; then
     MODDIR="${0%/*}"
     operate="backup"
     conf_path="${0%/*}/backup_settings.conf"
-    if [ "$(grep -o 'background_execution=.*' "$conf_path" | awk -F '=' '{print $2}')" = 1 ]; then
+    case $(grep -o 'background_execution=.*' "$conf_path" | awk -F '=' '{print $2}') in
+    0)
+        notification=false
+        . "${0%/*}/tools/tools.sh" | tee "${0%/*}/log.txt" ;;    
+    1)
         {
         notification=true
         . "${0%/*}/tools/tools.sh" | tee "${0%/*}/log.txt"
-        } &
-    else
+        } & ;;
+    2)
+        {
         notification=false
         . "${0%/*}/tools/tools.sh" | tee "${0%/*}/log.txt"
-    fi
+        } & ;;
+    esac
 else
     echo "${0%/*}/tools/tools.sh遺失"
 fi

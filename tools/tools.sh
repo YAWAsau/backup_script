@@ -6,7 +6,7 @@ MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 Compression_rate=3
 script="${0##*/}"
-backup_version="V15.9.0"
+backup_version="V15.9.1"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#音量鍵選擇總開關 是否在每次執行備份腳本時使用音量鍵詢問備份需求
@@ -14,8 +14,8 @@ update_backup_settings_conf() {
 #0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
 Lo="${Lo:-0}"
 
-#後台執行腳本(將無法看到當前壓縮速率，可完全關閉MT使用)
-background_execution=0
+#後台執行腳本(設置0不能關閉當前終端，有壓縮速率，設置1可完全關閉MT使用有狀態欄通知 沒有壓縮速率顯示，設置2也可離開腳本，備份完成後狀態欄通知 無壓縮速率顯示)
+background_execution="${background_execution:-0}"
 
 #腳本語言設置 留空則自動識別系統語言環境並翻譯
 #1簡體中文 0繁體中文
@@ -138,8 +138,8 @@ update_Restore_settings_conf() {
 #0關閉音量鍵選擇（如選項未設置，則強制使用音量鍵選擇）
 Lo="${Lo:-0}"
 
-#後台執行腳本(將無法看到當前壓縮速率，可完全關閉MT使用)
-background_execution=0
+#後台執行腳本(設置0不能關閉當前終端，有壓縮速率，設置1可完全關閉MT使用有狀態欄通知 沒有壓縮速率顯示，設置2也可離開腳本，備份完成後狀態欄通知 無壓縮速率顯示)
+background_execution="${background_execution:-0}"
 
 #腳本語言設置 為空自動針對當前系統語言環境自動翻譯
 #1簡體中文 0繁體中文
@@ -325,7 +325,7 @@ fi
 alias appinfo="app_process /system/bin --nice-name=appinfo han.core.order.AppInfo $@"
 alias down="app_process /system/bin --nice-name=down han.core.order.Down $@"
 alias PayloadDumper="app_process /system/bin --nice-name=payload-dumper han.core.order.payload.PayloadDumper $@"
-echo $notification
+echoRgb "-通知:$notification"
 if [[ $notification = true ]]; then
     alias notification="app_process /system/bin io.github.qqlittleice233.magic.Notification -send  --importance=3 $@"
 else
@@ -468,7 +468,7 @@ else
     RAMINFO="RAM:null"
 fi
 echoRgb "---------------------SpeedBackup---------------------"
-echoRgb "腳本路徑:$MODDIR\n -已開機:$(Show_boottime)\n -執行時間:$(date +"%Y-%m-%d %H:%M:%S")\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -管理器:$Manager_version\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -型號:$Device_name($(getprop ro.product.device 2>/dev/null))\n -閃存顆粒:$UFS_MODEL($ROM_TYPE)\n -$DEVICE_NAME\n -$RAMINFO\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -內核:$(uname -r)\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
+echoRgb "腳本路徑:$MODDIR\n -已開機:$(Show_boottime)\n -執行時間:$(date +"%Y-%m-%d %H:%M:%S")\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -管理器:$Manager_version\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -型號:$Device_name($(getprop ro.product.device 2>/dev/null))\n -閃存顆粒:$UFS_MODEL($ROM_TYPE)\n -$DEVICE_NAME\n -$RAMINFO\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -內核:$(uname -r)\n -Selinux狀態:$([[ $(getenforce) = Permissive ]] && echo "寬容" || echo "嚴格")\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
 case $MODDIR in
 *Backup_*)
     if [[ -f $MODDIR/app_details.json ]]; then
@@ -613,15 +613,21 @@ touch_shell () {
     operate=\"$1\"
     $4
     conf_path=\"$conf_path\"
-    if [ \"\$(grep -o 'background_execution=.*' \"\$conf_path\" | awk -F '=' '{print \$2}')\" = 1 ]; then
+    case \$(grep -o 'background_execution=.*' \"\$conf_path\" | awk -F '=' '{print \$2}') in
+    0)
+        notification=false
+        . \"$MODDIR_Path/tools/tools.sh\" | tee \"\${0%/*}/log.txt\" ;;
+    1)
         {
         notification=true
         . \"$MODDIR_Path/tools/tools.sh\" | tee \"\${0%/*}/log.txt\"
-        } &
-    else
+        } & ;;
+    2)
+        {
         notification=false
         . \"$MODDIR_Path/tools/tools.sh\" | tee \"\${0%/*}/log.txt\"
-    fi
+        } & ;;
+    esac
 else
     echo \"$MODDIR_Path/tools/tools.sh遺失\"
 fi" >"$2"
@@ -631,15 +637,21 @@ if [ -f \"$MODDIR_Path/tools/tools.sh\" ]; then
     MODDIR=\"\${0%/*}\"
     operate=\"$1\"
     conf_path=\"$conf_path\"
-    if [ \"\$(grep -o 'background_execution=.*' \"\$conf_path\" | awk -F '=' '{print \$2}')\" = 1 ]; then
+    case \$(grep -o 'background_execution=.*' \"\$conf_path\" | awk -F '=' '{print \$2}') in
+    0)
+        notification=false
+        . \"$MODDIR_Path/tools/tools.sh\" | tee \"\${0%/*}/log.txt\" ;;    
+    1)
         {
         notification=true
         . \"$MODDIR_Path/tools/tools.sh\" | tee \"\${0%/*}/log.txt\"
-        } &
-    else
+        } & ;;
+    2)
+        {
         notification=false
         . \"$MODDIR_Path/tools/tools.sh\" | tee \"\${0%/*}/log.txt\"
-    fi
+        } & ;;
+    esac
 else
     echo \"$MODDIR_Path/tools/tools.sh遺失\"
 fi" >"$2"
@@ -823,7 +835,6 @@ if [[ $json != "" ]]; then
 			3) zip_url="https://gh.api.99988866.xyz/$download" ;;
 			4) zip_url="https://github.lx164.workers.dev/$download" ;;
 			5) zip_url="https://shrill-pond-3e81.hunsh.workers.dev/$download" ;;
-			6) zip_url="https://github.moeyy.xyz/$download" ;;
 			esac
 			if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(echo "$download" | tr -d "a-zA-Z")") -eq 0 ]]; then
 				echoRgb "發現新版本:$tag"
@@ -1019,7 +1030,12 @@ Backup_apk() {
 			    Validation_file "$Backup_folder/apk.tar"*
 				if [[ $result = 0 ]]; then
 					[[ $(sed -e '/^$/d' "$txt2" 2>/dev/null | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
-					extra_content="{
+                    [[ $apk_version != "" ]] && {
+                    echoRgb "覆蓋app_details"
+                    jq -c --arg apk_version "$apk_version2" --arg version_name "$apk_version3" --arg software "$name1" '.[$software].apk_version = $apk_version | .[$software].versionName = $version_name' "$app_details" > temp.json && mv temp.json "$app_details"
+                    } || {
+                    echoRgb "新增app_details"
+                    extra_content="{
                       \"$name1\": {
                         \"PackageName\": \"$name2\",
                         \"apk_version\": \"$apk_version2\",
@@ -1027,6 +1043,7 @@ Backup_apk() {
                       }
                     }"
                     jq -c --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && mv temp.json "$app_details"
+                    }
 				else
 					rm -rf "$Backup_folder"
 				fi
@@ -1342,6 +1359,9 @@ get_name(){
 	rgb_a=118
 	user="$(echo "${0%}" | sed 's/.*\/Backup_zstd_\([0-9]*\).*/\1/')"
 	[[ ! -f $txt3 ]] && {
+	[[ $user = 0 ]] && Apk_info="$(appinfo -sort-i -o pn -3 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)" || Apk_info="$(appinfo -sort-i -o pn $(pm list packages -3 --user "$user" | cut -f2 -d ':') 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+	[[ $Apk_info = "" ]] && echoRgb "appinfo輸出失敗" "0" && exit 2
+	starttime1="$(date -u "+%s")"
 	find "$MODDIR" -maxdepth 2 -name "apk.*" -type f 2>/dev/null | sort | while read; do
 		Folder="${REPLY%/*}"
 		[[ $rgb_a -ge 229 ]] && rgb_a=118
@@ -1401,7 +1421,8 @@ get_name(){
 			fi
 		fi
 		if [[ $PackageName != "" && $ChineseName != "" ]]; then
-		    if [[ $(pm list packages --user "$user" "$PackageName" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
+		    if [[ $(echo "$Apk_info" | egrep -w "^$PackageName$") = "" ]]; then
+		        echoRgb "$ChineseName已經不存在$user使用者中"
     	        echo "$ChineseName $PackageName">>"$txt3"
     		fi
 			case $1 in
@@ -1453,6 +1474,7 @@ get_name(){
     	    rm -rf "$txt3"
     	fi
     fi
+    endtime 1
 	exit 0
 }
 self_test() {
@@ -1869,6 +1891,7 @@ backup)
 	rm -rf "$TMPDIR/scriptTMP"
 	Calculate_size "$Backup"
 	echoRgb "批量備份完成"
+	[[ $background_execution = 2 ]] && app_process /system/bin io.github.qqlittleice233.magic.Notification -send  --importance=3 --tag="105" --title="備份" --text="備份完成 $(endtime 1 "批量備份開始到結束")"
 	echoRgb "備份結束時間$(date +"%Y-%m-%d %H:%M:%S")"
 	starttime1="$TIME"
 	endtime 1 "批量備份開始到結束"
@@ -1929,10 +1952,12 @@ Restore|Restore2)
     	if [[ $recovery_mode = true ]]; then
     		echoRgb "獲取未安裝應用中"
     		TXT="$MODDIR/TEMP.txt"
+    		[[ $user = 0 ]] && Apk_info="$(appinfo -sort-i -o pn -3 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)" || Apk_info="$(appinfo -sort-i -o pn $(pm list packages -3 --user "$user" | cut -f2 -d ':') 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+        	[[ $Apk_info = "" ]] && echoRgb "appinfo輸出失敗" "0" && exit 2
     		while [[ $i -le $r ]]; do
     			name1="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
     			name2="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
-    			if [[ $(pm list packages --user "$user" "$name2" 2>/dev/null | cut -f2 -d ':') = "" ]]; then
+    			if [[ $(echo "$Apk_info" | egrep -w "^$name2$") = "" ]]; then
     				echo "$name1 $name2">>"$TXT"
     			fi
     			let i++
@@ -1995,7 +2020,7 @@ Restore|Restore2)
     		    app_details="$Backup_folder/app_details.json"
     		else
     		    echoRgb "$Backup_folder/app_details.json不存在" "0"
-    		    exit2
+    		    exit 2
     		fi
     		app_Permissions="$Backup_folder/Permissions"
     		[[ -f $app_Permissions ]] && . "$app_Permissions" &>/dev/null
@@ -2094,6 +2119,7 @@ Restore|Restore2)
 	rm -rf "$TMPDIR/scriptTMP" "$TXT"
 	Set_screen_pause_seconds off
 	starttime1="$TIME"
+	[[ $background_execution = 2 ]] && app_process /system/bin io.github.qqlittleice233.magic.Notification -send  --importance=3 --tag="105" --title="恢復" --text="恢復完成 $(endtime 1 "$DX開始到結束")"
 	echoRgb "$DX完成" && endtime 1 "$DX開始到結束" && [[ $SSAID_Package2 != "" ]] && echoRgb "SSAID恢復後必須重啟套用,如發現應用閃退請重新開機" "0"
 	rm -rf "$TMPDIR"/*
 	} &
@@ -2139,6 +2165,7 @@ Restore3)
 	done
 	Set_screen_pause_seconds off
 	endtime 1 "恢復結束"
+	[[ $background_execution = 2 ]] && app_process /system/bin io.github.qqlittleice233.magic.Notification -send  --importance=3 --tag="105" --title="Media恢復" --text="Media恢復完成 $(endtime 1 "恢復結束")"
 	notification --tag="108" --title="Media恢復" --text="Media恢復完成 $(endtime 1 "Media恢復")"
 	rm -rf "$TMPDIR/scriptTMP"
 	} &
@@ -2231,19 +2258,24 @@ Getlist)
 	        let Q++
         fi
     }
+    [[ $(echo "$blacklist" | grep -v "#") != "" ]] && NZK=1
 	echo "$Apk_info" | sed 's/\///g ; s/\://g ; s/(//g ; s/)//g ; s/\[//g ; s/\]//g ; s/\-//g ; s/!//g' | while read; do
 		[[ $rgb_a -ge 229 ]] && rgb_a=118
 		app_1=($REPLY $REPLY)
-		if [[ $(echo "$blacklist" | egrep -w "^${app_1[1]}$") != ${app_1[1]} ]]; then
-		    Output_list
-		else
-		    if [[ $blacklist_mode = false ]]; then
+		if [[ $NZK = 1 ]]; then
+    		if [[ $(echo "$blacklist" | egrep -w "^${app_1[1]}$") != ${app_1[1]} ]]; then
 		        Output_list
-		        let rb++
 		    else
-		        echoRgb "${app_1[2]}黑名單應用 不輸出" "0"
-		        let rb++
+		        if [[ $blacklist_mode = false ]]; then
+		            Output_list
+		            let rb++
+		        else
+		            echoRgb "${app_1[2]}黑名單應用 不輸出" "0"
+		            let rb++
+		        fi
 		    fi
+		else
+		    Output_list
 		fi
 		if [[ $LR = $Apk_Quantity ]]; then
 		    echo "$REPLY2">>"$nametxt"
@@ -2330,6 +2362,7 @@ backup_media)
 		Calculate_size "$Backup_folder"
 		Set_screen_pause_seconds off
 		endtime 1 "自定義備份"
+		[[ $background_execution = 2 ]] && app_process /system/bin io.github.qqlittleice233.magic.Notification -send  --importance=3 --tag="105" --title="Media備份" --text="Media備份完成 $(endtime 1 "自定義備份")"
 		notification --tag="109" --title="Media備份" --text="Media備份完成 $(endtime 1 "自定義備份")"
 		rm -rf "$TMPDIR/scriptTMP"
 	else
