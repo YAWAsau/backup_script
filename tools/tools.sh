@@ -446,12 +446,12 @@ fi
 Socname="$(getprop ro.soc.model)"
 if [[ $Socname != "" ]]; then
     if [[ -f $tools_path/soc.json ]]; then
-        jq -r --arg device "$Socname" '.[$device] | "處理器:\(.VENDOR) \(.NAME)"' $tools_path/soc.json &>/dev/null
+        jq -r --arg device "$Socname" '.[$device] | "處理器:\(.VENDOR) \(.NAME)"' "$tools_path/soc.json" &>/dev/null
         if [[ $? = 0 ]]; then
-          DEVICE_NAME="$(jq -r --arg device "$Socname" '.[$device] | "處理器:\(.VENDOR) \(.NAME)"' $tools_path/soc.json 2>/dev/null)"
-          jq -r --arg device "$Socname" '.[$device] | "RAM:\(.MEMORY) \(.CHANNELS)"' $tools_path/soc.json &>/dev/null
+          DEVICE_NAME="$(jq -r --arg device "$Socname" '.[$device] | "處理器:\(.VENDOR) \(.NAME)"' "$tools_path/soc.json" 2>/dev/null)"
+          jq -r --arg device "$Socname" '.[$device] | "RAM:\(.MEMORY) \(.CHANNELS)"' "$tools_path/soc.json" &>/dev/null
           if [[ $? = 0 ]]; then
-            RAMINFO="$(jq -r --arg device "$Socname" '.[$device] | "RAM:\(.MEMORY) \(.CHANNELS)"' $tools_path/soc.json 2>/dev/null)"
+            RAMINFO="$(jq -r --arg device "$Socname" '.[$device] | "RAM:\(.MEMORY) \(.CHANNELS)"' "$tools_path/soc.json" 2>/dev/null)"
           else
             RAMINFO="RAM:null"
           fi
@@ -990,7 +990,6 @@ Backup_apk() {
 	[[ ! -f $app_details ]] && echo "{\n}">"$app_details"
 	apk_version="$(jq -r '.[] | select(.apk_version != null).apk_version' "$app_details")"
 	apk_version2="$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)"
-	apk_version3="$(dumpsys package "$name2" 2>/dev/null | awk '/versionName=/{print $1}' | cut -f2 -d '=' | head -1)"
 	if [[ $apk_version = $apk_version2 ]]; then
 		[[ $(sed -e '/^$/d' "$txt2" | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
 		unset xb
@@ -1032,17 +1031,16 @@ Backup_apk() {
 					[[ $(sed -e '/^$/d' "$txt2" 2>/dev/null | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
                     [[ $apk_version != "" ]] && {
                     echoRgb "覆蓋app_details"
-                    jq -c --arg apk_version "$apk_version2" --arg version_name "$apk_version3" --arg software "$name1" '.[$software].apk_version = $apk_version | .[$software].versionName = $version_name' "$app_details" > temp.json && mv temp.json "$app_details"
+                    jq --arg apk_version "$apk_version2" --arg software "$name1" '.[$software].apk_version = $apk_version' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
                     } || {
                     echoRgb "新增app_details"
                     extra_content="{
                       \"$name1\": {
                         \"PackageName\": \"$name2\",
-                        \"apk_version\": \"$apk_version2\",
-                        \"versionName\": \"$apk_version3\"
+                        \"apk_version\": \"$apk_version2\"
                       }
                     }"
-                    jq -c --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && mv temp.json "$app_details"
+                    jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
                     }
 				else
 					rm -rf "$Backup_folder"
@@ -1068,6 +1066,32 @@ Backup_apk() {
 	fi
 	[[ $name2 = bin.mt.plus && ! -f $Backup/$name1.apk ]] && cp -r "$apk_path" "$Backup/$name1.apk"
 }
+Backup_ssaid() {
+    Ssaid="$(jq -r '.[] | select(.Ssaid != null).Ssaid' "$app_details")"
+    ssaid="$(get_ssaid "$name2")"
+    echoRgb "SSAID:$(get_ssaid "$name2")"
+    if [[ $ssaid != null && $ssaid != $Ssaid ]]; then
+        echoRgb "$Ssaid>$ssaid"
+    	SSAID_apk="$(echo "$name1 \"$name2\"")"
+        SSAID_apk2="$(echo "$SSAID_apk\n$SSAID_apk2")"
+    	jq --arg entry "$name1" --arg new_value "$ssaid" '.[$entry].Ssaid |= $new_value' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+    	echo_log "備份ssaid" "備份" "$name1"
+    fi
+    [[ $ssaid = null ]] && ssaid=
+}
+Backup_Permissions() {
+    get_Permissions="$(jq -r '.[] | select(.permissions != null).permissions' "$app_details")"
+    Get_Permissions="$(get_Permissions "$name2" | jq -nR '[inputs | select(length>0) | split(" ") | {(.[0]): .[-1]}] | add')"
+    if [[ $Get_Permissions != "" ]]; then
+        if [[ $get_Permissions = "" ]]; then
+            jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName].permissions |= $permissions' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+            #jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName] |= . + {permissions: $permissions}' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+        	echo_log "備份權限" "備份" "$name1"
+        else
+        	[[ $get_Permissions != $Get_Permissions ]] && jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName] |= . + {permissions: $permissions}' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json && echo_log "備份權限" "備份" "$name1"
+        fi
+    fi
+}
 #檢測數據位置進行備份
 Backup_data() {
 	data_path="$path/$1/$name2"
@@ -1089,7 +1113,7 @@ Backup_data() {
 		;;
 	esac
 	if [[ -d $data_path ]]; then
-	    unset Filesize m_size k_size get_size ssaid Get_Permissions result
+	    unset Filesize m_size k_size get_size ssaid Get_Permissions result Permissions
         Filesize="$(du -s "$data_path" | awk '{print $1}')"
 		if [[ $Size != $Filesize ]]; then
     		k_size="$(awk 'BEGIN{printf "%.2f\n", "'$Filesize'"'*1024'/'1024'}')"
@@ -1099,28 +1123,11 @@ Backup_data() {
             else
                 [[ $(echo "$m_size" | cut -d '.' -f1) -lt 1000 ]] && get_size="${m_size}MB" || get_size="$(awk 'BEGIN{printf "%.2f\n", "'$m_size'"/'1024'}')GB"
             fi
-            if [[ $1 = user ]]; then
-    		    Ssaid="$(jq -r '.[] | select(.Ssaid != null).Ssaid' "$app_details")"
-    		    ssaid="$(get_ssaid "$name2")"
-    		    echoRgb "SSAID:$(get_ssaid "$name2")"
-    			if [[ $ssaid != null && $ssaid != $Ssaid ]]; then
-    			    echoRgb "$Ssaid>$ssaid"
-    				SSAID_apk="$(echo "$name1 \"$name2\"")"
-    				SSAID_apk2="$(echo "$SSAID_apk\n$SSAID_apk2")"
-    				jq -c --arg entry "$name1" --arg new_value "$ssaid" '.[$entry].Ssaid |= $new_value' "$app_details" > temp.json && mv temp.json "$app_details"
-    				echo_log "備份ssaid" "備份" "$name1"
-    			fi
-    			[[ $ssaid = null ]] && ssaid=
-    			Get_Permissions="$(get_Permissions "$name2")"
-    			if [[ $Get_Permissions != "" ]]; then
-        			if [[ $Permissions = "" ]]; then
-        			    echo "Permissions=\"$Get_Permissions\"">"$app_Permissions"
-        			    echo_log "備份權限" "備份" "$name1"
-        			else
-        			   [[ $Permissions != $Get_Permissions ]] && echo "Permissions=\"$Get_Permissions\"">"$app_Permissions" && echo_log "備份權限" "備份" "$name1"
-        			fi
-        	    fi
-    		fi
+            case $1 in
+            user)
+    		    Backup_ssaid
+    			Backup_Permissions ;;
+    	    esac
 		    #停止應用
 			case $1 in
 			user|data|obb) kill_app ;;
@@ -1153,20 +1160,14 @@ Backup_data() {
                             \"Size\": \"$Filesize\"
                           }
                         }"
-                        jq -c --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && mv temp.json "$app_details"
+                        jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
 					else
 					    extra_content="{
-                          \"$name1\": {
-                            \"PackageName\": \"$name2\",
-                            \"apk_version\": \"$apk_version2\",
-                            \"versionName\": \"$apk_version3\",
-                            \"Ssaid\": \"$(jq -r '.[] | select(.Ssaid != null).Ssaid' "$app_details")\"
-                          },
                           \"$1\": {
                             \"Size\": \"$Filesize\"
                           }
                         }"
-                        jq -c --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && mv temp.json "$app_details"
+                        jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
 					fi
 				else
 					rm -rf "$Backup_folder/$1".tar.*
@@ -1365,10 +1366,15 @@ get_name(){
 	find "$MODDIR" -maxdepth 2 -name "apk.*" -type f 2>/dev/null | sort | while read; do
 		Folder="${REPLY%/*}"
 		[[ $rgb_a -ge 229 ]] && rgb_a=118
-		unset PackageName NAME DUMPAPK ChineseName versionName apk_version Ssaid dataSize obbSize userSize
+		unset PackageName NAME DUMPAPK ChineseName apk_version Ssaid dataSize obbSize userSize
 		if [[ -f $Folder/app_details.json ]]; then
 		    ChineseName="$(jq -r 'to_entries[] | select(.key != null).key' "$Folder/app_details.json" | head -n 1)"
 		    PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "$Folder/app_details.json")"
+		    if [[ -f $Folder/Permissions ]]; then
+		        unset Permissions
+		        . "$Folder/Permissions"
+		        jq --arg packageName "$ChineseName" --argjson permissions "$(echo "$Permissions" | jq -nR '[inputs | select(length>0) | split(" ") | {(.[0]): .[-1]}] | add')" '.[$packageName] |= . + {permissions: $permissions}' "$Folder/app_details.json" > temp.json && cp temp.json "$Folder/app_details.json" && rm -rf "$Folder/Permissions" temp.json && echoRgb "更新$Folder/app_details.json"
+		    fi
 		else
 		    if [[ -f $Folder/app_details ]]; then
 		        . "$Folder/app_details" &>/dev/null
@@ -1376,7 +1382,6 @@ get_name(){
                   \"$ChineseName\": {
                     \"PackageName\": \"$PackageName\",
                     \"apk_version\": \"$apk_version\",
-                    \"versionName\": \"$versionName\",
                     \"Ssaid\": \"$Ssaid\"
                   },
                   \"data\": {
@@ -1390,7 +1395,7 @@ get_name(){
                   }
                 }"
                 echo "{\n}">"$Folder/app_details.json"
-                jq -c --argjson new_content "$extra_content" '. += $new_content' "$Folder/app_details.json" > temp.json && rm -rf "$Folder/app_details" && mv temp.json "$Folder/app_details.json"
+                jq --argjson new_content "$extra_content" '. += $new_content' "$Folder/app_details.json" > temp.json && cp temp.json "$Folder/app_details.json" && rm -rf temp.json
             fi
 		fi
 		[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market" >"$txt"
@@ -1534,8 +1539,10 @@ Set_screen_pause_seconds () {
 restore_permissions () {
     echoRgb "恢復權限"
     appops reset --user "$user" "$name2" &>/dev/null
-	[[ $(echo "$Permissions" | grep "true$") != "" ]] && Set_true_Permissions "$name2" "$(echo "$Permissions" | grep "true$" | sed 's/ true$//' | xargs)" &>/dev/null
-    [[ $(echo "$Permissions" | grep "false$") != "" ]] && Set_false_Permissions "$name2" "$(echo "$Permissions" | grep "false$" | sed 's/ false$//' | xargs)" &>/dev/null
+    true_permissions="$(jq -r '.[] | select(.permissions != null).permissions | with_entries(select(.value == "true")) | keys[]' "$app_details")"
+    false_permissions="$(jq -r '.[] | select(.permissions != null).permissions | with_entries(select(.value == "false")) | keys[]' "$app_details")"
+	[[ $true_permissions != "" ]] && Set_true_Permissions "$name2" "$(echo "$true_permissions" | xargs)" &>/dev/null
+    [[ $false_permissions != "" ]] && Set_false_Permissions "$name2" "$(echo "$false_permissions" | xargs)" &>/dev/null
 }
 case $operate in
 backup)
@@ -1727,7 +1734,7 @@ backup)
 			echoRgb "備份第$i/$r個應用 剩下$((r - i))個" "3"
 			notification --tag="101"  --title="App備份" --text="備份 $name1 \"$name2\""
 			echoRgb "備份 $name1 \"$name2\"" "2"
-			unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 zsize zmediapath Size data_path Ssaid ssaid Permissions
+			unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version apk_version2  zsize zmediapath Size data_path Ssaid ssaid Permissions
 			if [[ $Backup_Mode = true ]]; then
 			    if [[ $name1 = !* || $name1 = ！* ]]; then
     				name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
@@ -1750,7 +1757,7 @@ backup)
 			if [[ -f $app_details ]]; then
 				PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "$app_details")"
 				if [[ $PackageName != $name2 ]]; then
-				    unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version versionName apk_version2 apk_version3 zsize zmediapath Size data_path Ssaid ssaid Permissions
+				    unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version apk_version2  zsize zmediapath Size data_path Ssaid ssaid Permissions
 					Backup_folder="$Backup/${name1}[${name2}]"
 					app_details="$Backup_folder/app_details.json"
 					app_Permissions="$Backup_folder/Permissions"
