@@ -2054,8 +2054,15 @@ Restore|Restore2)
 		[[ $en -ge 229 ]] && en=118
 		if [[ $operate = Restore ]]; then
 		    echoRgb "恢復第$i/$r個應用 剩下$((r - i))個" "3"
-		    name1="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-		    name2="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+		    if [[ ! -f $txt ]]; then
+		        [[ $(echo "$txt") != "" ]] && {
+		        name1="$(echo "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+		        name2="$(echo "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+		        }
+		    else
+		        name1="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
+		        name2="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
+		    fi
 		    notification --tag="105"  --title="App恢復" --text="恢復 $name1 \"$name2\""
 		    unset No_backupdata apk_version Permissions
 		    if [[ $name1 = *! || $name1 = *！ ]]; then
