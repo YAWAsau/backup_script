@@ -3,6 +3,7 @@ if [ -f "${0%/*}/tools/tools.sh" ]; then
     MODDIR="${0%/*}"
     operate="Getlist"
     conf_path="${0%/*}/backup_settings.conf"
+    [ ! -f "${0%/*}/backup_settings.conf" ] && . "${0%/*}/tools/tools.sh"
     case $(grep -o 'background_execution=.*' "$conf_path" | awk -F '=' '{print $2}') in
     0)
         notification=false

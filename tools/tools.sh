@@ -6,7 +6,7 @@ MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 Compression_rate=3
 script="${0##*/}"
-backup_version="V15.9.1"
+backup_version="V15.9.2"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#音量鍵選擇總開關 是否在每次執行備份腳本時使用音量鍵詢問備份需求
@@ -53,6 +53,9 @@ Backup_obb_data="${Backup_obb_data:-1}"
 #是否在應用數據備份完成後備份自定義目錄
 #1開啟 0關閉
 backup_media="${backup_media:-0}"
+
+#存在前後台的應用忽略備份(1備份0忽略)
+Background_apps_ignore="${Background_apps_ignore:-0}"
 
 #假設你遇到列表輸出異常問題請將此設為1
 debug_list="${debug_list:-0}"
@@ -147,6 +150,9 @@ Shell_LANG="$Shell_LANG"
 
 #自動更新腳本(留空強制音量鍵選擇)
 update="${update:-1}"
+
+#存在前後台的應用忽略恢復(1恢復0忽略)
+Background_apps_ignore="${Background_apps_ignore:-0}"
 
 #使用者(如0 999等用戶，留空如存在多個用戶強制音量鍵選擇，無多用戶則默認0不詢問)
 user=
@@ -468,7 +474,7 @@ else
     RAMINFO="RAM:null"
 fi
 echoRgb "---------------------SpeedBackup---------------------"
-echoRgb "腳本路徑:$MODDIR\n -已開機:$(Show_boottime)\n -執行時間:$(date +"%Y-%m-%d %H:%M:%S")\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -管理器:$Manager_version\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -型號:$Device_name($(getprop ro.product.device 2>/dev/null))\n -閃存顆粒:$UFS_MODEL($ROM_TYPE)\n -$DEVICE_NAME\n -$RAMINFO\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -內核:$(uname -r)\n -Selinux狀態:$([[ $(getenforce) = Permissive ]] && echo "寬容" || echo "嚴格")\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
+echoRgb "腳本路徑:$MODDIR\n -已開機:$(Show_boottime)\n -執行時間:$(date +"%Y-%m-%d %H:%M:%S")\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -appinfo版本:$(appinfo --version)\n -腳本版本:$backup_version\n -管理器:$Manager_version\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -型號:$Device_name($(getprop ro.product.device 2>/dev/null))\n -閃存顆粒:$UFS_MODEL($ROM_TYPE)\n -$DEVICE_NAME\n -$RAMINFO\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -內核:$(uname -r)\n -Selinux狀態:$([[ $(getenforce) = Permissive ]] && echo "寬容" || echo "嚴格")\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3\n -$(down -s -L https://v1.hitokoto.cn/?encode=text)"
 case $MODDIR in
 *Backup_*)
     if [[ -f $MODDIR/app_details.json ]]; then
@@ -572,7 +578,7 @@ Rename_script () {
 	                if [[ $Script_target_language != $shell_language ]]; then
 	                    [[ $HT = 0 && $K = "" ]] && echoRgb "腳本語言為$shell_language....轉換為$Script_target_language中,請稍後等待轉換...."
 	                    ts -f "$REPLY" -o "$REPLY"
-	                    echo_log "$REPLY翻譯" "SpeedBackup"
+	                    echo_log "$(echo "$REPLY" | sed "s|^$path_hierarchy/||")翻譯" "SpeedBackup"
 	                    mv "$REPLY" "$MODDIR_NAME/$(ts "$FILE_NAME")"
 	                fi
 	            fi
@@ -582,7 +588,7 @@ Rename_script () {
             if [[ $Script_target_language != $shell_language ]]; then
                 [[ $HT = 0 && $K = "" ]] && echoRgb "腳本語言為$shell_language....轉換為$Script_target_language中,請稍後等待轉換...."
 	            ts -f "$REPLY" -o "$REPLY"
-	            echo_log "$REPLY翻譯" "SpeedBackup"
+	            echo_log "$(echo "$REPLY" | sed "s|^$path_hierarchy/||")翻譯" "SpeedBackup"
 	            mv "$REPLY" "$MODDIR_NAME/$(ts "$FILE_NAME")"
 	            let HT++
 	        fi ;;
@@ -637,6 +643,7 @@ if [ -f \"$MODDIR_Path/tools/tools.sh\" ]; then
     MODDIR=\"\${0%/*}\"
     operate=\"$1\"
     conf_path=\"$conf_path\"
+    [ ! -f \"$conf_path\" ] && . \"\${0%/*}/tools/tools.sh\"
     case \$(grep -o 'background_execution=.*' \"\$conf_path\" | awk -F '=' '{print \$2}') in
     0)
         notification=false
@@ -783,7 +790,7 @@ if [[ $path_hierarchy != "" && $Script_target_language != ""  ]]; then
 	            ts -f "$REPLY" -o "$REPLY"
 	            if [[ $? = 0 ]]; then
 	                touch "$TMPDIR/0"
-	                echo_log "$REPLY翻譯" "SpeedBackup"
+	                echo_log "$(echo "$REPLY" | sed "s|^$path_hierarchy/||")翻譯" "SpeedBackup"
 	                MODDIR="${0%/*}"
                     if [[ $REPLY != *Backup_* ]]; then
                         update_backup_settings_conf>"${REPLY%/*/*}/backup_settings.conf"
@@ -962,6 +969,7 @@ kill_app() {
         [[ $Pause_Freeze = "" ]] && Pause_Freeze="0"
         if [[ $Pause_Freeze = 0 ]]; then
             if [[ $(dumpsys activity processes | grep "packageList" | cut -d '{' -f2 | cut -d '}' -f1 | egrep -w "^$name2$" | sed -n '1p') = $name2 ]]; then
+                pkill -9 -f "$name2$|$name2[:/_]"
                 killall -9 "$name2" &>/dev/null
                 am force-stop --user "$user" "$name2" &>/dev/null
                 am kill "$name2" &>/dev/null
@@ -997,7 +1005,7 @@ Backup_apk() {
 		result=0
 		echoRgb "Apk版本無更新 跳過備份" "2"
 	else
-		if [[ $nobackup != true ]]; then
+		if [[ $nobackup = false ]]; then
 			if [[ $apk_version != "" ]]; then
 				let osn++
 				update_apk="$(echo "$name1 \"$name2\"")"
@@ -1468,6 +1476,7 @@ get_name(){
     		        name2="$(grep -v "#" "$txt3" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
     		        Backup_folder="$MODDIR/$name1"
     		        [[ -d $Backup_folder ]] && rm -rf "$Backup_folder"
+    		        echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$txt" 2>/dev/null)" >"$txt"
     		        let i++
     		    done
     		    rm -rf "$txt3"
@@ -1544,6 +1553,31 @@ restore_permissions () {
 	[[ $true_permissions != "" ]] && Set_true_Permissions "$name2" "$(echo "$true_permissions" | xargs)" &>/dev/null
     [[ $false_permissions != "" ]] && Set_false_Permissions "$name2" "$(echo "$false_permissions" | xargs)" &>/dev/null
 }
+Background_application_list() {
+    if [[ $Background_apps_ignore = false ]]; then
+        unset Backstage apk_path3
+	    #獲取後台
+	    if [[ $(dumpsys activity activities | awk -F 'packageName=' '/packageName=/{split($2, a, " "); print a[1]}' | sort | uniq) != "" ]]; then
+		    apk_path3="$(echo "$(pm path --user "$user" "$(dumpsys activity activities | awk -F 'packageName=' '/packageName=/{split($2, a, " "); print a[1]}' | sort | uniq | head -1)" 2>/dev/null | cut -f2 -d ':')" | head -1)"
+            if [[ -d ${apk_path3%/*} ]]; then
+                Backstage="$(dumpsys activity activities | awk -F 'packageName=' '/packageName=/{split($2, a, " "); print a[1]}' | sort | uniq)"
+            else
+                if [[ $(am stack list | awk '/taskId/&&!/unknown/{split($2, a, "/"); print a[1]}') != "" ]]; then
+		            apk_path3="$(echo "$(pm path --user "$user" "$(am stack list | awk '/taskId/&&!/unknown/{split($2, a, "/"); print a[1]}' | head -1)" 2>/dev/null | cut -f2 -d ':')" | head -1)"
+                    [[ -d ${apk_path3%/*} ]] && Backstage="$(am stack list | awk '/taskId/&&!/unknown/{split($2, a, "/"); print a[1]}')"
+                fi
+            fi
+        else
+            if [[ $(am stack list | awk '/taskId/&&!/unknown/{split($2, a, "/"); print a[1]}') != "" ]]; then
+		        apk_path3="$(echo "$(pm path --user "$user" "$(am stack list | awk '/taskId/&&!/unknown/{split($2, a, "/"); print a[1]}' | head -1)" 2>/dev/null | cut -f2 -d ':')" | head -1)"
+                [[ -d ${apk_path3%/*} ]] && Backstage="$(am stack list | awk '/taskId/&&!/unknown/{split($2, a, "/"); print a[1]}')"
+            fi
+        fi
+        [[ ! -d ${apk_path3%/*} ]] && {
+        echoRgb "獲取當前後台應用失敗" "0" && unset Backstage
+        }
+    fi
+}
 case $operate in
 backup)
 	kill_Serve
@@ -1589,6 +1623,10 @@ backup)
 		echoRgb "全部應用備份結束後是否備份自定義目錄\n -音量上備份，音量下不備份" "2"
 		get_version "備份" "不備份" && backup_media="$branch"
 		}
+		[[ $Background_apps_ignore != "" ]] && isBoolean "$Background_apps_ignore" "Background_apps_ignore" && Background_apps_ignore="$nsx" || {
+		echoRgb "存在前台或是後台的應用忽略備份\n -音量上備份，音量下忽略" "2"
+		get_version "備份" "忽略" && Background_apps_ignore="$branch"
+		}
 	else
 		[[ $Backup_Mode = "" ]] && {
 		echoRgb "選擇備份模式\n -音量上備份應用+數據，音量下僅應用不包含數據" "2"
@@ -1614,6 +1652,10 @@ backup)
 		echoRgb "全部應用備份結束後是否備份自定義目錄\n -音量上備份，音量下不備份" "2"
 		get_version "備份" "不備份" && backup_media="$branch"
 		} || isBoolean "$backup_media" "backup_media" && backup_media="$nsx"
+		[[ $Background_apps_ignore = "" ]] && {
+		echoRgb "存在前台或是後台的應用忽略備份\n -音量上備份，音量下忽略" "2"
+		get_version "備份" "忽略" && Background_apps_ignore="$branch"
+		}
 	fi
 	i=1
 	#數據目錄
@@ -1641,29 +1683,23 @@ backup)
 	backup_path
 	echoRgb "配置詳細:\n -壓縮方式:$Compression_method\n -音量鍵確認:$Lo\n -更新:$update\n -備份模式:$Backup_Mode\n -備份外部數據:$Backup_obb_data\n -備份user數據:$Backup_user_data\n -自定義目錄備份:$backup_media\n"
 	D="1"
-	C="$(sed -e '/^$/d' "$txt" 2>/dev/null | sed -n '$=')"
-	[[ $user = 0 ]] && Apk_info="$(appinfo -sort-i -o pn -pn $system -3 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)" || Apk_info="$(appinfo -sort-i -o pn -pn $system $(pm list packages -3 --user "$user" | cut -f2 -d ':') 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+	Apk_info="$(echo "$system\n$(pm list packages -3 --user "$user" | cut -f2 -d ':')" | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	[[ $Apk_info = "" ]] && echoRgb "appinfo輸出失敗" "0" && exit 2
 	[[ $backup_mode = "" ]] && {
 	echoRgb "檢查備份列表中是否存在已經卸載應用" "3"
-	while [[ $D -le $C ]]; do
-        name1="$(sed -e '/^$/d' "$txt" 2>/dev/null | sed -n "${D}p" | awk '{print $1}')"
-		name2="$(sed -e '/^$/d' "$txt" 2>/dev/null | sed -n "${D}p" | awk '{print $2}')"
-		if [[ $name1 != "" && $name2 != "" ]]; then
-	        if [[ $(echo "$Apk_info" | egrep -w "^$name2$") != "" ]]; then
-			    [[ $Tmplist = "" ]] && Tmplist='#不需要備份的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market（忽略安裝包和數據）\n#不需要備份數據的應用請在開頭使用!注釋 比如：!酷安 com.coolapk.market（僅忽略數據）'
-			    Tmplist="$Tmplist\n$name1 $name2"
-			else
-                case $name1 in
-                *不需要*) ;;
-                *) 
-                    echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$txt" 2>/dev/null)" >"$txt"
-                    echoRgb "$name1 $name2不存在系統，從列表中刪除" "0" ;;
-                esac
+	while read -r ; do
+        if [[ $(echo "$REPLY" | sed 's/^[ \t]*//') != \#* ]]; then
+            app=($REPLY $REPLY)
+    		if [[ ${app[1]} != "" && ${app[2]} != "" ]]; then
+	            if [[ $(echo "$Apk_info" | egrep -w "^${app[1]}$") != "" ]]; then
+			        [[ $Tmplist = "" ]] && Tmplist='#不需要備份的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market（忽略安裝包和數據）\n#不需要備份數據的應用請在開頭使用!注釋 比如：!酷安 com.coolapk.market（僅忽略數據）'
+    			    Tmplist="$Tmplist\n$REPLY"
+    			else
+                    echoRgb "$REPLY不存在系統，從列表中刪除" "0"
+                fi
 			fi
-	        let D++
 		fi
-	done
+	done < "$txt"
 	}
 	[[ $Tmplist != ""  ]] && echo "$Tmplist" | sed -e '/^$/d' | sort>"$txt"
 	r="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n '$=')"
@@ -1735,6 +1771,9 @@ backup)
 			notification --tag="101"  --title="App備份" --text="備份 $name1 \"$name2\""
 			echoRgb "備份 $name1 \"$name2\"" "2"
 			unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version apk_version2  zsize zmediapath Size data_path Ssaid ssaid Permissions
+			nobackup="false"
+			Background_application_list
+			[[ $Backstage != "" && $(echo "$Backstage" | egrep -w "^$name2$") != "" ]] && echoRgb "$name1存在後台 忽略備份" "0" && nobackup="true"
 			if [[ $Backup_Mode = true ]]; then
 			    if [[ $name1 = !* || $name1 = ！* ]]; then
     				name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
@@ -1753,14 +1792,12 @@ backup)
     	    fi
 			Backup_folder="$Backup/$name1"
 			app_details="$Backup_folder/app_details.json"
-			app_Permissions="$Backup_folder/Permissions"
 			if [[ -f $app_details ]]; then
 				PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "$app_details")"
 				if [[ $PackageName != $name2 ]]; then
 				    unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version apk_version2  zsize zmediapath Size data_path Ssaid ssaid Permissions
 					Backup_folder="$Backup/${name1}[${name2}]"
 					app_details="$Backup_folder/app_details.json"
-					app_Permissions="$Backup_folder/Permissions"
 				fi
 			fi
 			[[ $hx = USB && $PT = "" ]] && echoRgb "隨身碟意外斷開 請檢查穩定性" "0" && exit 1
@@ -1944,37 +1981,39 @@ Restore|Restore2)
     	if [[ -d $Backup_folder2 ]]; then
     		echoRgb "是否恢復多媒體數據\n -音量上恢復，音量下不恢復" "2"
     		notification --tag="105"  --title="App恢復" --text="是否恢復多媒體數據，音量上恢復，音量下不恢復"
-    		get_version "恢復媒體數據" "跳過恢復媒體數據"
-    		media_recovery="$branch"
+    		get_version "恢復媒體數據" "跳過恢復媒體數據" && media_recovery="$branch"
     		A=1
     		B="$(find "$Backup_folder2" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | wc -l)"
     	fi
     	if [[ -d $Backup_folder3 && $(find "$Backup_folder3" -maxdepth 1 -name "*.zip*" -type f 2>/dev/null | wc -l) != 0 ]]; then
     		echoRgb "是否刷入Magisk模塊\n -音量上刷入，音量下不刷入" "2"
     		notification --tag="105"  --title="App恢復" --text="是否刷入Magisk模塊，音量上刷入，音量下不刷入"
-    		get_version "刷入模塊" "跳過刷入模塊"
-    		modules_recovery="$branch"
+    		get_version "刷入模塊" "跳過刷入模塊" && modules_recovery="$branch"
     	fi
+    	[[ $Background_apps_ignore != "" ]] && isBoolean "$Background_apps_ignore" "Background_apps_ignore" && Background_apps_ignore="$nsx" || {
+		echoRgb "存在前台或是後台的應用忽略恢復\n -音量上恢復，音量下忽略" "2"
+		get_version "恢復" "忽略" && Background_apps_ignore="$branch"
+		}
     	[[ $recovery_mode2 = false ]] && exit 2
     	if [[ $recovery_mode = true ]]; then
     		echoRgb "獲取未安裝應用中"
-    		TXT="$MODDIR/TEMP.txt"
     		[[ $user = 0 ]] && Apk_info="$(appinfo -sort-i -o pn -3 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)" || Apk_info="$(appinfo -sort-i -o pn $(pm list packages -3 --user "$user" | cut -f2 -d ':') 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
         	[[ $Apk_info = "" ]] && echoRgb "appinfo輸出失敗" "0" && exit 2
-    		while [[ $i -le $r ]]; do
-    			name1="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
-    			name2="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
-    			if [[ $(echo "$Apk_info" | egrep -w "^$name2$") = "" ]]; then
-    				echo "$name1 $name2">>"$TXT"
-    			fi
-    			let i++
-    		done
-    		i=1
-    		sort -u "$TXT" -o "$TXT" 2>/dev/null
-    		r="$(grep -v "#" "$TXT" 2>/dev/null | sed -e '/^$/d' | sed -n '$=')"
+    		while read -r ; do
+                if [[ $(echo "$REPLY" | sed 's/^[ \t]*//') != \#* ]]; then
+                    app=($REPLY $REPLY)
+            		[[ ${app[1]} != "" && ${app[2]} != "" ]] && {
+        	        [[ $(echo "$Apk_info" | egrep -w "^${app[1]}$") = "" ]] && Tmplist="$Tmplist\n$REPLY"
+                    }
+        		fi
+        	done < "$txt"
+    		r="$(echo "$Tmplist" | sed -e '/^$/d' | sed -n '$=')"
     		if [[ $r != "" ]]; then
     			echoRgb "獲取完成 預計安裝$r個應用"
-    			txt="$TXT"
+    			txt="$Tmplist"
+    			echoRgb "未安裝應用列表\n$txt\n確認無誤使用音量上繼續恢復，音量下退出腳本" "1"
+    			get_version "恢復安裝" "退出腳本"
+    			[[ $branch = false ]] && exit
     		else
     			echoRgb "獲取完成 但備份內應用都已安裝....正在退出腳本" "0" && exit 0
     		fi
@@ -1985,13 +2024,11 @@ Restore|Restore2)
         r=1
         Backup_folder="$MODDIR"
 	    app_details="$Backup_folder/app_details.json"
-	    app_Permissions="$Backup_folder/Permissions"
 	    if [[ ! -f $app_details ]]; then
 		    echoRgb "$app_details遺失，無法獲取包名" "0" && exit 1
 	    else
 		    ChineseName="$(jq -r 'to_entries[] | select(.key != null).key' "$app_details" | head -n 1)"
 		    PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "$app_details")"
-		    [[ -f $app_Permissions ]] && . "$app_Permissions" &>/dev/null
 	    fi
 	    name1="$ChineseName"
 	    [[ $name1 = "" ]] && name1="${Backup_folder##*/}"
@@ -1999,6 +2036,10 @@ Restore|Restore2)
 	    name2="$PackageName"
 	    [[ $name2 = "" ]] && echoRgb "包名獲取失敗" "0" && exit 2
 	    DX="單獨恢復"
+	    [[ $Background_apps_ignore != "" ]] && isBoolean "$Background_apps_ignore" "Background_apps_ignore" && Background_apps_ignore="$nsx" || {
+		echoRgb "存在前台或是後台的應用忽略恢復\n -音量上恢復，音量下忽略" "2"
+		get_version "恢復" "忽略" && Background_apps_ignore="$branch"
+		}
     fi
 	#開始循環$txt內的資料進行恢復
 	#記錄開始時間
@@ -2029,12 +2070,14 @@ Restore|Restore2)
     		    echoRgb "$Backup_folder/app_details.json不存在" "0"
     		    exit 2
     		fi
-    		app_Permissions="$Backup_folder/Permissions"
-    		[[ -f $app_Permissions ]] && . "$app_Permissions" &>/dev/null
     		[[ $name2 = "" ]] && echoRgb "應用包名獲取失敗" "0" && exit 1
 		fi
 		if [[ -d $Backup_folder ]]; then
 			echoRgb "恢復$name1 ($name2)" "2"
+			Background_application_list
+			restore="true"
+		    [[ $Backstage != "" && $(echo "$Backstage" | egrep -w "^$name2$") != "" ]] && echoRgb "$name1存在後台 忽略恢復" "0" && restore="false"
+			[[ $restore = true ]] && {
 			starttime2="$(date -u "+%s")"
 			if [[ $(pm path --user "$user" "$name2" 2>/dev/null) = "" ]]; then
 				installapk
@@ -2076,6 +2119,7 @@ Restore|Restore2)
 			rgb_a=188
 			echoRgb "_________________$(endtime 1 "已經")___________________"
 			rgb_a="$rgb_d"
+			}
 		else
 			echoRgb "$Backup_folder資料夾遺失，無法恢復" "0"
 		fi
@@ -2123,7 +2167,6 @@ Restore|Restore2)
 		let i++ en++ nskg++
 	done
 	restore_freeze
-	rm -rf "$TMPDIR/scriptTMP" "$TXT"
 	Set_screen_pause_seconds off
 	starttime1="$TIME"
 	[[ $background_execution = 2 ]] && app_process /system/bin io.github.qqlittleice233.magic.Notification -send  --importance=3 --tag="105" --title="恢復" --text="恢復完成 $(endtime 1 "$DX開始到結束")"
@@ -2296,24 +2339,19 @@ Getlist)
 		let rgb_a++ LR++
 	done
 	if [[ -f $nametxt ]]; then
-		D="1"
-		C="$(sed -e '/^$/d' "$nametxt" | sed -n '$=')"
-		while [[ $D -le $C ]]; do
-			name1="$(sed -e '/^$/d' "$nametxt" | sed -n "${D}p" | awk '{print $1}')"
-			name2="$(sed -e '/^$/d' "$nametxt" | sed -n "${D}p" | awk '{print $2}')"
-			if [[ $name1 != "" && $name2 != "" ]]; then
-			    if [[ $(echo "$Apk_info2" | egrep -w "^$name2$") != "" ]]; then
-			        [[ $Tmplist = "" ]] && Tmplist='#不需要備份的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market（忽略安裝包和數據）\n#不需要備份數據的應用請在開頭使用!注釋 比如：!酷安 com.coolapk.market（僅忽略數據）'
-			        Tmplist="$Tmplist\n$name1 $name2"
-			    else
-                    case $name1 in
-                    *不需要*) ;;
-                    *) echoRgb "$name1 $name2不存在系統，從列表中刪除" "0" ;;
-                    esac
+	    while read -r ; do
+            if [[ $(echo "$REPLY" | sed 's/^[ \t]*//') != \#* ]]; then
+                app=($REPLY $REPLY)
+    		    if [[ ${app[1]} != "" && ${app[2]} != "" ]]; then
+	                if [[ $(echo "$Apk_info2" | egrep -w "^${app[1]}$") != "" ]]; then
+			            [[ $Tmplist = "" ]] && Tmplist='#不需要備份的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market（忽略安裝包和數據）\n#不需要備份數據的應用請在開頭使用!注釋 比如：!酷安 com.coolapk.market（僅忽略數據）'
+    			        Tmplist="$Tmplist\n$REPLY"
+    			    else
+                        echoRgb "$REPLY不存在系統，從列表中刪除" "0"
+                    fi
 			    fi
-			    let D++
-			fi
-		done
+		    fi
+    	done < "$nametxt"
 		[[ $Tmplist != "" ]] && echo "$Tmplist" | sed -e '/^$/d' | sort>"$nametxt"
 	fi
 	wait
