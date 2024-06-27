@@ -6,7 +6,7 @@ MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 Compression_rate=3
 script="${0##*/}"
-backup_version="V15.9.2"
+backup_version="V15.9.3"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#音量鍵選擇總開關 是否在每次執行備份腳本時使用音量鍵詢問備份需求
@@ -673,7 +673,7 @@ update_script() {
 				unzip -o "$zipFile" -j "tools/tools.sh" -d "$MODDIR" &>/dev/null
 				if [[ -f $MODDIR/tools.sh ]]; then
 				    if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(awk '/backup_version/{print $1}' "$MODDIR/tools.sh" | cut -f2 -d '=' | head -1 | sed 's/\"//g' | tr -d "a-zA-Z")") -eq 0 ]]; then
-				        shell_language="$(grep -o 'shell_language="[^"]*"' "$MODDIR/tools.sh" 2>/dev/null | awk -F'=' '{print $2}' | tr -d '"' | head -1)"
+					    shell_language="$(awk -F= '/^shell_language=/ {gsub(/"/, "", $2); print $2}' "$MODDIR/tools.sh")"
 					    case $MODDIR in
 					    *Backup_*)
 						    if [[ -f $MODDIR/app_details.json ]]; then
@@ -695,7 +695,7 @@ update_script() {
                                     echoRgb "腳本語言為$shell_language....轉換為$Script_target_language中,請稍後等待轉換...."
                                     ts -f "$path_hierarchy/tools/Device_List" -o "$path_hierarchy/tools/Device_List"
                                     echo_log "$path_hierarchy/tools/Device_List翻譯" "SpeedBackup"
-					                ts -f "$path_hierarchy/tools/tools.sh" -o "$path_hierarchy/tools/tools.sh" && sed -i "s/shell_language=\"$shell_language\"/shell_language=\"$Script_target_language\"/g" "$path_hierarchy/tools/tools.sh"
+					                ts -f "$path_hierarchy/tools/tools.sh" -o "$path_hierarchy/tools/tools.sh" && sed "s/shell_language=\"$shell_language\"/shell_language=\"$Script_target_language\"/g" "$path_hierarchy/tools/tools.sh" > temp && cp temp "$path_hierarchy/tools/tools.sh" && rm temp
                                     echo_log "$path_hierarchy/tools/tools.sh翻譯" "SpeedBackup"
                                     HT=1
                                 fi
@@ -782,7 +782,7 @@ if [[ $path_hierarchy != "" && $Script_target_language != ""  ]]; then
 	J="$(find "$path_hierarchy" -maxdepth 3 -name "tools.sh" -type f | wc -l)"
 	find "$path_hierarchy" -maxdepth 3 -name "tools.sh" -type f | while read ; do
 	    unset shell_language
-	    shell_language="$(grep -o 'shell_language="[^"]*"' "$REPLY" 2>/dev/null | awk -F'=' '{print $2}' | tr -d '"' | head -1)"
+	    shell_language="$(awk -F= '/^shell_language=/ {gsub(/"/, "", $2); print $2}' "$REPLY")"
 	    case $shell_language in
 	    zh-CN|zh-TW)
 	        if [[ $Script_target_language != $shell_language ]]; then
@@ -803,7 +803,8 @@ if [[ $path_hierarchy != "" && $Script_target_language != ""  ]]; then
                             echo_log "${REPLY%/*/*}/restore_settings.conf翻譯" "SpeedBackup"
                         fi
                     fi
-	                sed -i "s/shell_language=\"$shell_language\"/shell_language=\"$Script_target_language\"/g" "$REPLY"
+	                sed "s/shell_language=\"$shell_language\"/shell_language=\"$Script_target_language\"/g" "$REPLY" > temp && cp temp "$REPLY" && rm temp
+	                [[ $shell_language != $(awk -F= '/^shell_language=/ {gsub(/"/, "", $2); print $2}' "$REPLY") ]] && echoRgb "$(echo "$REPLY" | sed "s|^$path_hierarchy/||")變量修改成功" || echoRgb "$(echo "$REPLY" | sed "s|^$path_hierarchy/||")變量修改失敗" "0"
 	                ts -f "${REPLY%/*}/Device_List" -o "${REPLY%/*}/Device_List"
 	                echo_log "${REPLY%/*}/Device_List翻譯" "SpeedBackup"
 	                [[ $K = 1 ]] && Rename_script
@@ -1464,13 +1465,13 @@ get_name(){
 	fi
 	}
 	if [[ -f $txt3 ]]; then
-	    if [[ $(grep -v "#" "$txt3" 2>/dev/null | sed -e '/^$/d' | sed -n '$=') != "" ]]; then
+	    if [[ $(grep -v "#" "$txt3" 2>/dev/null | awk 'NF != 0 { count++ } END { print count }') != "" ]]; then
 	        echoRgb "列出需要刪除的應用中....\n -$(cat "$txt3")"
 	        echoRgb "確認列表無誤後音量上刪除，音量下退出腳本編輯列表" "2"
 		    get_version "刪除" "退出腳本" && Delete_App="$branch"
 		    if [[ $Delete_App = true ]]; then
 		        i=1
-		        r="$(grep -v "#" "$txt3" 2>/dev/null | sed -e '/^$/d' | sed -n '$=')"
+		        r="$(grep -v "#" "$txt3" 2>/dev/null | awk 'NF != 0 { count++ } END { print count }')"
 		        while [[ $i -le $r ]]; do
 		            name1="$(grep -v "#" "$txt3" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
     		        name2="$(grep -v "#" "$txt3" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $2}')"
@@ -1688,7 +1689,7 @@ backup)
 	[[ $backup_mode = "" ]] && {
 	echoRgb "檢查備份列表中是否存在已經卸載應用" "3"
 	while read -r ; do
-        if [[ $(echo "$REPLY" | sed 's/^[ \t]*//') != \#* ]]; then
+	    if [[ $(echo "$REPLY" | sed -E 's/^[ \t]*//; /^[ \t]*[#!]/d') != "" ]]; then
             app=($REPLY $REPLY)
     		if [[ ${app[1]} != "" && ${app[2]} != "" ]]; then
 	            if [[ $(echo "$Apk_info" | egrep -w "^${app[1]}$") != "" ]]; then
@@ -1698,11 +1699,13 @@ backup)
                     echoRgb "$REPLY不存在系統，從列表中刪除" "0"
                 fi
 			fi
+		else
+		    Tmplist="$Tmplist\n$REPLY"
 		fi
 	done < "$txt"
 	}
 	[[ $Tmplist != ""  ]] && echo "$Tmplist" | sed -e '/^$/d' | sort>"$txt"
-	r="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n '$=')"
+	r="$(grep -v "#" "$txt" 2>/dev/null | awk 'NF != 0 { count++ } END { print count }')"
 	[[ $backup_mode != "" ]] && r=1
 	[[ $r = "" && $backup_mode = "" ]] && echoRgb "$MODDIR_NAME/appList.txt是空的或是包名被注釋備份個鬼\n -檢查是否注釋亦或者執行$MODDIR_NAME/生成應用列表.sh" "0" && exit 1
 	if [[ $Backup_Mode = true ]]; then
@@ -1866,7 +1869,7 @@ backup)
 			notification --tag="101" --title="App備份" --text="app備份完成 $(endtime 1 "應用備份" "3")"
 			if [[ $backup_media = true && $backup_mode = "" ]]; then
 				A=1
-				B="$(echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
+				B="$(echo "$Custom_path" | grep -v "#" | awk 'NF != 0 { count++ } END { print count }')"
 				if [[ $B != "" ]]; then
 					echoRgb "備份結束，備份多媒體" "1"
 					notification --tag="102" --title="Media備份" --text="Media備份開始"
@@ -1878,7 +1881,7 @@ backup)
 					[[ ! -f $app_details ]] && echo "{\n}">"$app_details"
 					mediatxt="$Backup/mediaList.txt"
 					[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭使用#注釋 比如：#Download" > "$mediatxt"
-					echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | sed 's/\/$//' | while read; do
+					echo "$Custom_path" | sed -e '/^#/d; /^$/d; s/\/$//' | while read; do
 						echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
 						starttime2="$(date -u "+%s")"
 						if [[ ${REPLY##*/} = adb ]]; then
@@ -1963,7 +1966,7 @@ Restore|Restore2)
     	[[ ! -f $txt ]] && echoRgb "請執行\"重新生成應用列表.sh\"獲取應用列表再來恢復" "0" && exit 2
 	    sort -u "$txt" -o "$txt" 2>/dev/null
 	    i=1
-	    r="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n '$=')"
+	    r="$(grep -v "#" "$txt" 2>/dev/null | awk 'NF != 0 { count++ } END { print count }')"
 	    [[ $r = "" ]] && echoRgb "appList.txt包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取應用列表再來恢復" "0" && exit 1
     	Backup_folder2="$MODDIR/Media"
     	Backup_folder3="$MODDIR/modules"
@@ -2007,7 +2010,7 @@ Restore|Restore2)
                     }
         		fi
         	done < "$txt"
-    		r="$(echo "$Tmplist" | sed -e '/^$/d' | sed -n '$=')"
+    		r="$(echo "$Tmplist" | awk 'NF != 0 { count++ } END { print count }')"
     		if [[ $r != "" ]]; then
     			echoRgb "獲取完成 預計安裝$r個應用"
     			txt="$Tmplist"
@@ -2141,7 +2144,7 @@ Restore|Restore2)
 			    txt="$MODDIR/mediaList.txt"
 			    sort -u "$txt" -o "$txt" 2>/dev/null
 			    A=1
-	            B="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n '$=')"
+	            B="$(grep -v "#" "$txt" 2>/dev/null | awk 'NF != 0 { count++ } END { print count }')"
                 [[ $B = "" ]] && echoRgb "mediaList.txt壓縮包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取列表再來恢復" "0" && B=0
 				while [[ $A -le $B ]]; do
 		            name1="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${A}p" | awk '{print $1}')"
@@ -2206,7 +2209,7 @@ Restore3)
 	}
 	starttime1="$(date -u "+%s")"
 	A=1
-	B="$(grep -v "#" "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n '$=')"
+	B="$(grep -v "#" "$txt" 2>/dev/null | awk 'NF != 0 { count++ } END { print count }')"
 	Set_screen_pause_seconds off
 	[[ $B = "" ]] && echoRgb "mediaList.txt壓縮包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取列表再來恢復" "0" && exit 1
 	echo "$script">"$TMPDIR/scriptTMP"
@@ -2347,20 +2350,23 @@ Getlist)
 	done
 	if [[ -f $nametxt ]]; then
 	    while read -r ; do
-            if [[ $(echo "$REPLY" | sed 's/^[ \t]*//') != \#* ]]; then
+    	    if [[ $(echo "$REPLY" | sed -E 's/^[ \t]*//; /^[ \t]*[#!]/d') != "" ]]; then
                 app=($REPLY $REPLY)
     		    if [[ ${app[1]} != "" && ${app[2]} != "" ]]; then
 	                if [[ $(echo "$Apk_info2" | egrep -w "^${app[1]}$") != "" ]]; then
-			            [[ $Tmplist = "" ]] && Tmplist='#不需要備份的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market（忽略安裝包和數據）\n#不需要備份數據的應用請在開頭使用!注釋 比如：!酷安 com.coolapk.market（僅忽略數據）'
+			            [[ $Tmplist = "" ]] && Tmplist='#不需要備份的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market（忽略安裝包和數據\n#不需要備份數據的應用請在開頭使用!注釋 比如：!酷安 com.coolapk.market（僅忽略數據）'
     			        Tmplist="$Tmplist\n$REPLY"
     			    else
                         echoRgb "$REPLY不存在系統，從列表中刪除" "0"
                     fi
-			    fi
-		    fi
+                fi
+            else
+                Tmplist="$Tmplist\n$REPLY"
+			fi
     	done < "$nametxt"
-		[[ $Tmplist != "" ]] && echo "$Tmplist" | sed -e '/^$/d' | sort>"$nametxt"
-	fi
+    	#echo "$Tmplist"
+    	[[ $Tmplist != "" ]] && echo "$Tmplist" | sed -e '/^$/d' | sort>"$nametxt"
+    fi
 	wait
 	endtime 1
 	echoRgb "輸出包名結束 請查看$nametxt"
@@ -2371,7 +2377,7 @@ backup_media)
 	backup_path
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊終止腳本.sh,否則腳本將繼續執行直到結束" "0"
 	A=1
-	B="$(echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | sed -n '$=')"
+	B="$(echo "$Custom_path" | grep -v "#" | awk 'NF != 0 { count++ } END { print count }')"
 	if [[ $B != "" ]]; then
 		starttime1="$(date -u "+%s")"
 		Backup_folder="$Backup/Media"
@@ -2391,7 +2397,7 @@ backup_media)
 		Set_screen_pause_seconds on
 		notification --tag="109" --title="Media備份" --text="Media備份開始"
 		{
-		echo "$Custom_path" | grep -v "#" | sed -e '/^$/d' | sed 's/\/$//' | while read; do
+		echo "$Custom_path" | sed -e '/^#/d; /^$/d; s/\/$//' | while read; do
 			echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
 			starttime2="$(date -u "+%s")" 
 			if [[ ${REPLY##*/} = adb ]]; then
