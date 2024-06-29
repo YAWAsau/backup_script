@@ -6,7 +6,7 @@ MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 Compression_rate=3
 script="${0##*/}"
-backup_version="V15.9.3"
+backup_version="V15.9.4"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#音量鍵選擇總開關 是否在每次執行備份腳本時使用音量鍵詢問備份需求
@@ -54,7 +54,7 @@ Backup_obb_data="${Backup_obb_data:-1}"
 #1開啟 0關閉
 backup_media="${backup_media:-0}"
 
-#存在前後台的應用忽略備份(1備份0忽略)
+#存在進程忽略備份(1忽略0備份)
 Background_apps_ignore="${Background_apps_ignore:-0}"
 
 #假設你遇到列表輸出異常問題請將此設為1
@@ -151,7 +151,7 @@ Shell_LANG="$Shell_LANG"
 #自動更新腳本(留空強制音量鍵選擇)
 update="${update:-1}"
 
-#存在前後台的應用忽略恢復(1恢復0忽略)
+#存在進程忽略恢復(1忽略0恢復)
 Background_apps_ignore="${Background_apps_ignore:-0}"
 
 #使用者(如0 999等用戶，留空如存在多個用戶強制音量鍵選擇，無多用戶則默認0不詢問)
@@ -989,9 +989,10 @@ Set_service() {
 }
 restore_freeze() {
     appinfo -o pn -p | while read ; do
-        pm unsuspend --user "$user" "$REPLY" 2>/dev/null | sed "s/Package $name2/ -應用:$name1/g ; s/new suspended state: false/暫停狀態:解凍/g"
+        pm unsuspend --user "$user" "$REPLY" 2>/dev/null
     done
 }
+[[ $(restore_freeze) ]] && echoRgb "已解凍被凍結應用" && exit
 Backup_apk() {
 	#檢測apk狀態進行備份
 	#創建APP備份文件夾
@@ -1555,7 +1556,7 @@ restore_permissions () {
     [[ $false_permissions != "" ]] && Set_false_Permissions "$name2" "$(echo "$false_permissions" | xargs)" &>/dev/null
 }
 Background_application_list() {
-    if [[ $Background_apps_ignore = false ]]; then
+    if [[ $Background_apps_ignore = true ]]; then
         unset Backstage apk_path3
 	    #獲取後台
 	    if [[ $(dumpsys activity activities | awk -F 'packageName=' '/packageName=/{split($2, a, " "); print a[1]}' | sort | uniq) != "" ]]; then
@@ -1625,8 +1626,8 @@ backup)
 		get_version "備份" "不備份" && backup_media="$branch"
 		}
 		[[ $Background_apps_ignore != "" ]] && isBoolean "$Background_apps_ignore" "Background_apps_ignore" && Background_apps_ignore="$nsx" || {
-		echoRgb "存在前台或是後台的應用忽略備份\n -音量上備份，音量下忽略" "2"
-		get_version "備份" "忽略" && Background_apps_ignore="$branch"
+		echoRgb "存在進程忽略備份\n -音量上忽略，音量下備份" "2"
+		get_version "忽略" "備份" && Background_apps_ignore="$branch"
 		}
 	else
 		[[ $Backup_Mode = "" ]] && {
@@ -1654,8 +1655,8 @@ backup)
 		get_version "備份" "不備份" && backup_media="$branch"
 		} || isBoolean "$backup_media" "backup_media" && backup_media="$nsx"
 		[[ $Background_apps_ignore = "" ]] && {
-		echoRgb "存在前台或是後台的應用忽略備份\n -音量上備份，音量下忽略" "2"
-		get_version "備份" "忽略" && Background_apps_ignore="$branch"
+		echoRgb "存在進程忽略備份\n -音量上忽略，音量下備份" "2"
+		get_version "忽略" "備份" && Background_apps_ignore="$branch"
 		}
 	fi
 	i=1
@@ -1682,7 +1683,7 @@ backup)
 	hx="本地"
 	echoRgb "腳本受到內核機制影響 息屏後IO性能嚴重影響\n -請勿關閉終端或是息屏備份 如需終止腳本\n -請執行終止腳本.sh即可停止" "3"
 	backup_path
-	echoRgb "配置詳細:\n -壓縮方式:$Compression_method\n -音量鍵確認:$Lo\n -更新:$update\n -備份模式:$Backup_Mode\n -備份外部數據:$Backup_obb_data\n -備份user數據:$Backup_user_data\n -自定義目錄備份:$backup_media\n"
+	echoRgb "配置詳細:\n -壓縮方式:$Compression_method\n -音量鍵確認:$Lo\n -更新:$update\n -備份模式:$Backup_Mode\n -備份外部數據:$Backup_obb_data\n -備份user數據:$Backup_user_data\n -自定義目錄備份:$backup_media\n -存在進程忽略備份:$Background_apps_ignore"
 	D="1"
 	Apk_info="$(echo "$system\n$(pm list packages -3 --user "$user" | cut -f2 -d ':')" | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	[[ $Apk_info = "" ]] && echoRgb "appinfo輸出失敗" "0" && exit 2
@@ -1994,8 +1995,8 @@ Restore|Restore2)
     		get_version "刷入模塊" "跳過刷入模塊" && modules_recovery="$branch"
     	fi
     	[[ $Background_apps_ignore != "" ]] && isBoolean "$Background_apps_ignore" "Background_apps_ignore" && Background_apps_ignore="$nsx" || {
-		echoRgb "存在前台或是後台的應用忽略恢復\n -音量上恢復，音量下忽略" "2"
-		get_version "恢復" "忽略" && Background_apps_ignore="$branch"
+		echoRgb "存在進程忽略恢復\n -音量上忽略，音量下恢復" "2"
+		get_version "忽略" "恢復" && Background_apps_ignore="$branch"
 		}
     	[[ $recovery_mode2 = false ]] && exit 2
     	if [[ $recovery_mode = true ]]; then
@@ -2040,8 +2041,8 @@ Restore|Restore2)
 	    [[ $name2 = "" ]] && echoRgb "包名獲取失敗" "0" && exit 2
 	    DX="單獨恢復"
 	    [[ $Background_apps_ignore != "" ]] && isBoolean "$Background_apps_ignore" "Background_apps_ignore" && Background_apps_ignore="$nsx" || {
-		echoRgb "存在前台或是後台的應用忽略恢復\n -音量上恢復，音量下忽略" "2"
-		get_version "恢復" "忽略" && Background_apps_ignore="$branch"
+		echoRgb "存在進程忽略恢復\n -音量上忽略，音量下恢復" "2"
+		get_version "忽略" "恢復" && Background_apps_ignore="$branch"
 		}
     fi
 	#開始循環$txt內的資料進行恢復
