@@ -204,18 +204,19 @@ if [[ $Shell_LANG != "" ]]; then
 fi
 [[ $LANG = "" ]] && LANG="$(getprop "persist.sys.locale")"
 echoRgb() {
-	#轉換echo顏色提高可讀性
-	if [[ $2 = 0 ]]; then
-		echo -e "\e[38;5;197m -$1\e[0m"
-	elif [[ $2 = 1 ]]; then
-		echo -e "\e[38;5;121m -$1\e[0m"
-	elif [[ $2 = 2 ]]; then
-		echo -e "\e[38;5;${rgb_c}m -$1\e[0m"
-	elif [[ $2 = 3 ]]; then
-		echo -e "\e[38;5;${rgb_b}m -$1\e[0m"
-	else
-		echo -e "\e[38;5;${rgb_a}m -$1\e[0m"
-	fi
+    # 判斷是否支援彩色
+    if [ -t 1 ] && [ "$TERM" ]; then
+    	#轉換echo顏色提高可讀性
+    	case $2 in
+    	    0)echo -e "\e[38;5;197m -$1\e[0m";;
+        	1)echo -e "\e[38;5;121m -$1\e[0m";;
+        	2)echo -e "\e[38;5;${rgb_c}m -$1\e[0m";;
+        	3)echo -e "\e[38;5;${rgb_b}m -$1\e[0m";;
+        	*)echo -e "\e[38;5;${rgb_a}m -$1\e[0m";;
+    	esac
+    else
+        echo "$1"
+    fi
 }
 [ "$rgb_a" = "" ] && rgb_a=214
 if [ "$(whoami)" != root ]; then
