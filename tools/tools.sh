@@ -8,9 +8,9 @@ shell_language="zh-TW"
 MODDIR="$MODDIR"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
-Compression_rate=3
+Compression_rate=9
 script="${0##*/}"
-backup_version="V15.9.4"
+backup_version="V15.9.5"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
@@ -528,9 +528,8 @@ Enter_options() {
 add_entry() {
     app_name="$1"
     package_name="$2"
-    output="$3"
     # 檢查是否已經存在同樣的應用名稱
-    if [[ $(echo "$3" | grep -o "$app_name") != "" ]]; then
+    if [[ $(echo "$3" | awk '{print $1}' | grep -w "^$app_name$") != "" ]]; then
         # 如果應用名稱存在但包名不同，則需要添加數字後綴
         count=1
         new_app_name="${app_name}_${count}"
@@ -986,47 +985,44 @@ backup_path() {
 }
 Calculate_size() {
 	#計算出備份大小跟差異性
-	filesizee="$(du -s "$1" | awk '{print $1}')"
-	if [[ $(expr "$filesize" \> "$filesizee") -eq 0 ]]; then
-	    NJK="增加"
-        dsize="$(($((filesizee -filesize)) / 1024))"
+	filesizee="$(find "$1" -type f -exec stat -c%s {} + | awk '{s+=$1} END {print s}')"
+    if [[ $(echo "$filesizee > $filesize" | bc) -eq 1 ]]; then
+        NJL="本次備份增加 $(size "$(echo "scale=2; $filesizee - $filesize" | bc)")"
+    elif [[ $(echo "$filesizee < $filesize" | bc) -eq 1 ]]; then
+        NJL="本次備份減少 $(size "$(echo "scale=2; $filesize - $filesizee" | bc)")"
     else
-        NJK="減少"
-        dsize="$(($((filesize-filesizee)) / 1024))"
+        NJL="文件大小未改變"
     fi
 	echoRgb "備份資料夾路徑↓↓↓\n -$1"
-	echoRgb "備份資料夾總體大小$(du -ksh "$1" | awk '{print $1}')"
-	if [[ $dsize -gt 0 ]]; then
-		if [[ $((dsize / 1000)) -gt 0 ]]; then
-			NJL="本次備份$NJK: $((dsize / 1000))gb"
-		else
-			NJL="本次備份$NJK: ${dsize}mb"
-		fi
-	else
-		NJL="本次備份$NJK: $(($((filesizee - filesize)) * 1000 / 1024))kb"
-	fi
+	echoRgb "備份資料夾總體大小$(size "$filesizee")"
 	echoRgb "$NJL"
 }
 size() {
+    unset get_size
     varr="$(echo "$1" | bc 2>/dev/null)"
     if [[ $varr != $1 ]]; then
         b_size="$(ls -l "$1" 2>/dev/null | awk '{print $5}')"
     else
         b_size="$1"
     fi
-	k_size="$(awk 'BEGIN{printf "%.2f\n", "'$b_size'"/'1024'}')"
-	m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
-    if [[ $(expr "$m_size" \> 1) -eq 0 ]]; then
-        echo "${k_size}KB"
+    if [[ $b_size -eq 0 ]]; then
+	    get_size="0 bytes"
+    elif [[ $(echo "$b_size < 1024" | bc) -eq 1 ]]; then
+        get_size="${b_size} bytes"
+    elif [[ $(echo "$b_size < 1048576" | bc) -eq 1 ]]; then
+        get_size="$(echo "scale=2; $b_size / 1024" | bc) KB"
+    elif [[ $(echo "$b_size < 1073741824" | bc) -eq 1 ]]; then
+        get_size="$(echo "scale=2; $b_size / 1048576" | bc) MB"
     else
-        [[ $(echo "$m_size" | cut -d '.' -f1) -lt 1024 ]] && echo "${m_size}MB" || echo "$(awk 'BEGIN{printf "%.2f\n", "'$m_size'"/'1024'}')GB"
+        get_size="$(echo "scale=2; $b_size / 1073741824" | bc) GB"
     fi
+	echo "$get_size"
 }
 #分區佔用信息
 partition_info() {
-	Occupation_status="$(df "${1%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1)}')"
+	Occupation_status="$(df -B1 "${1%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1)}')"
 	echo " -$2字節:$Filesize 剩餘字節:$Occupation_status"
-	[[ $Filesize -gt $Occupation_status ]] && echoRgb "$2備份大小將超出rom可用大小" "0" && exit 2
+	[[ $Filesize != "" ]] && [[ $(echo "$Filesize > $Occupation_status" | bc) -eq 1 ]] && echoRgb "$2備份大小將超出rom可用大小" "0" && exit 2
 	Occupation_status="$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
 }
 kill_app() {
@@ -1071,7 +1067,8 @@ Backup_apk() {
 				echoRgb "版本:$apk_version2"
 			fi
 			unset Filesize
-			Filesize="$(du -s "$apk_path2" | awk '{print $1}')"
+			Filesize="$(find "$apk_path2" -type f -exec stat -c%s {} + | awk '{s+=$1} END {print s}')"
+			#Filesize="$(du -s "$apk_path2" | awk '{print $1}')"
 			partition_info "$Backup" "$name1 apk"
 			#備份apk
 			echoRgb "$1"
@@ -1082,7 +1079,7 @@ Backup_apk() {
 				cd "$apk_path2"
 				case $Compression_method in
 				tar | TAR | Tar) tar --checkpoint-action="ttyout=%T\r" -cf "$Backup_folder/apk.tar" *.apk ;;
-				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" -cf - *.apk | zstd --ultra -"$Compression_rate" -T0 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
+				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" -cf - *.apk | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
 				esac
 			)
 			echo_log "備份$apk_number個Apk" "SpeedBackup" "$name1"
@@ -1162,7 +1159,6 @@ Backup_data() {
 	case $1 in
 	user) data_path="$path2/$name2" ;;
 	data) ;;
-	obb) ;;
 	*)
 		data_path="$2"
 		if [[ $1 != storage-isolation && $1 != thanox ]]; then
@@ -1175,15 +1171,8 @@ Backup_data() {
 	esac
 	if [[ -d $data_path ]]; then
 	    unset Filesize m_size k_size get_size ssaid Get_Permissions result Permissions
-        Filesize="$(du -s "$data_path" | awk '{print $1}')"
+        Filesize="$(find "$data_path" -type f -exec stat -c%s {} + | awk '{s+=$1} END {print s}')"
 		if [[ $Size != $Filesize ]]; then
-    		k_size="$(awk 'BEGIN{printf "%.2f\n", "'$Filesize'"'*1024'/'1024'}')"
-    	    m_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')"
-            if [[ $(expr "$m_size" \> 1) -eq 0 ]]; then
-                get_size="$(awk 'BEGIN{printf "%.2f\n", "'$k_size'"/'1024'}')KB"
-            else
-                [[ $(echo "$m_size" | cut -d '.' -f1) -lt 1000 ]] && get_size="${m_size}MB" || get_size="$(awk 'BEGIN{printf "%.2f\n", "'$m_size'"/'1024'}')GB"
-            fi
             case $1 in
             user)
     		    Backup_ssaid
@@ -1191,21 +1180,21 @@ Backup_data() {
     	    esac
 		    #停止應用
 			case $1 in
-			user|data|obb) kill_app ;;
+			user|data) kill_app ;;
 			esac
 			partition_info "$Backup" "$1"
-			echoRgb "備份$1數據($get_size)"
+			echoRgb "備份$1數據$(size "$Filesize")"
 			case $1 in
 			user)
 				case $Compression_method in
 				tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null ;;
-				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -"$Compression_rate" -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" 2>/dev/null ;;
+				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" 2>/dev/null ;;
 				esac
 				;;
 			*)
 				case $Compression_method in
 				tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
-				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -"$Compression_rate" -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
 				esac
 				;;
 			esac
@@ -1213,6 +1202,11 @@ Backup_data() {
 			if [[ $result = 0 ]]; then
 			    Validation_file "$Backup_folder/$1.tar"*
 				if [[ $result = 0 ]]; then
+				    if [[ ! $Filesize -eq 0 ]]; then
+                        size2="$(stat -c %s "$Backup_folder/$1.tar"*)"
+                        rate="$(echo "scale=2; (1 - ($size2 / $Filesize)) * 100" | bc)"
+                        echoRgb "壓縮率${rate}% 大小$(size "$size2")"
+                    fi
 				    [[ ${Backup_folder##*/} = Media ]] && [[ $(sed -e '/^$/d' "$mediatxt" | grep -w "${REPLY##*/}.tar$" | head -1) = "" ]] && echo "$FILE_NAME" >> "$mediatxt"
 					if [[ $zsize != "" ]]; then
 					    extra_content="{
@@ -1237,7 +1231,7 @@ Backup_data() {
 			[[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1"
 			unset Compression_method1
 		else
-			echoRgb "$1數據無發生變化 跳過備份" "2"
+			[[ $Size != "" ]] && echoRgb "$1數據無發生變化 跳過備份" "2"
 		fi
 	else
 		[[ -f $data_path ]] && echoRgb "$1是一個文件 不支持備份" "0" || echoRgb "$1數據不存在跳過備份" "2"
@@ -1263,7 +1257,6 @@ Release_data() {
 		        echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0"
 		    fi;;
 		data) FILE_PATH="$path/data" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)";;
-		obb) FILE_PATH="$path/obb" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)";;
 		thanox) FILE_PATH="/data/system" && find "/data/system" -name "thanos*" -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
 		storage-isolation) FILE_PATH="/data/adb" ;;
 		*)
@@ -1282,7 +1275,7 @@ Release_data() {
 			    echoRgb "$tar_path名稱似乎有誤" "0"
 			fi ;;
 		esac
-        echoRgb "恢復$FILE_NAME2數據 釋放$(size "$(awk 'BEGIN{printf "%.2f\n", "'$Size'"*'1024'}')")" "3"
+        echoRgb "恢復$FILE_NAME2數據 釋放$(size "$Size")" "3"
    		if [[ $FILE_PATH != "" ]]; then
             [[ ${MODDIR_NAME##*/} != Media ]] && rm -rf "$FILE_PATH/$name2"
 		    case ${FILE_NAME##*.} in
@@ -1295,7 +1288,7 @@ Release_data() {
 		echo_log "解壓縮${FILE_NAME##*.}" "恢復" "$name1"
 		if [[ $result = 0 ]]; then
 			case $FILE_NAME2 in
-			user|data|obb)
+			user|data)
 			    if [[ $G = "" ]]; then
 		            if [[ $(get_uid "$name2" 2>/dev/null) != "" ]]; then
 				        G="$(get_uid "$name2" 2>/dev/null)"
@@ -1323,9 +1316,6 @@ Release_data() {
 						    echo_log "設置用戶組:$(ls -ld "$X" | awk '{print $3,$4}'),shell in :$uid" "恢復" "$name1"
 						    chcon -hR "$Selinux_state" "$X/" 2>/dev/null
 						    echo_log "selinux上下文設置" "恢復" "$name1"
-					    elif [[ $FILE_NAME2 = data || $FILE_NAME2 = obb ]]; then
-                            chown -hR "$uid" "$FILE_PATH/$name2/"
-                            chcon -hR "$Selinux_state" "$FILE_PATH/$name2/" 2>/dev/null
 					    fi
 				    else
 				        echoRgb "路徑$X不存在" "0"
@@ -1432,7 +1422,7 @@ get_name(){
 	find "$MODDIR" -maxdepth 2 -name "apk.*" -type f 2>/dev/null | sort | while read; do
 		Folder="${REPLY%/*}"
 		[[ $rgb_a -ge 229 ]] && rgb_a=118
-		unset PackageName NAME DUMPAPK ChineseName apk_version Ssaid dataSize obbSize userSize
+		unset PackageName NAME DUMPAPK ChineseName apk_version Ssaid dataSize userSize
 		if [[ -f $Folder/app_details.json ]]; then
 		    ChineseName="$(jq -r 'to_entries[] | select(.key != null).key' "$Folder/app_details.json" | head -n 1)"
 		    PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "$Folder/app_details.json")"
@@ -1452,9 +1442,6 @@ get_name(){
                   },
                   \"data\": {
                     \"Size\": \"$dataSize\"
-                  },
-                  \"obb\": {
-                    \"Size\": \"$obbSize\"
                   },
                   \"user\": {
                     \"Size\": \"$userSize\"
@@ -1803,6 +1790,7 @@ backup)
 	[[ $Apk_info = "" ]] && echoRgb "Apk_info變量為空" "0" && exit
 	[[ $backup_mode = "" ]] && {
 	echoRgb "檢查備份列表中是否存在已經卸載應用" "3"
+	echoRgb "檢查備份列表中已經更新應用" "3"
 	while read -r ; do
 	    if [[ $(echo "$REPLY" | sed -E 's/^[ \t]*//; /^[ \t]*[#＃!]/d') != "" ]]; then
             app=($REPLY $REPLY)
@@ -1810,6 +1798,17 @@ backup)
 	            if [[ $(echo "$Apk_info" | egrep -o "${app[1]}") != "" ]]; then
 			        [[ $Tmplist = "" ]] && Tmplist='#不需要備份的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market（忽略安裝包和數據）\n#不需要備份數據的應用請在開頭使用!注釋 比如：!酷安 com.coolapk.market（僅忽略數據）'
     			    Tmplist="$Tmplist\n$REPLY"
+    			    if [[ $Update_backup != "" ]]; then
+    			        Backup_folder="$Backup/${app[2]}"
+    			        app_details="$Backup_folder/app_details.json"
+    			        if [[ -d $Backup_folder ]]; then
+    			            apk_version="$(jq -r '.[] | select(.apk_version != null).apk_version' "$app_details")"
+	                        apk_version2="$(pm list packages --show-versioncode --user "$user" "${app[1]}" 2>/dev/null | cut -f3 -d ':' | head -n 1)"
+    			            [[ $apk_version != $apk_version2 ]] && {
+    			            [[ $Tmplist2 = "" ]] && Tmplist2="$REPLY" || Tmplist2="$Tmplist2\n$REPLY"
+    			            }
+    			        fi
+    			    fi
     			else
                     echoRgb "$REPLY不存在系統，從列表中刪除" "0"
                 fi
@@ -1820,6 +1819,14 @@ backup)
 	done < "$txt"
 	} 
 	[[ $Tmplist != ""  ]] && echo "$Tmplist" | sed -e '/^$/d' | sort>"$txt"
+	if [[ $Tmplist2 != "" ]]; then
+	    if [[ $Update_backup != "" ]]; then
+    	    cat "$txt">"${txt%/*}/txt2"
+    	    echo "$Tmplist2" | sed -e '/^$/d' | sort>"$txt"
+    	fi
+    else
+        [[ $Update_backup != "" ]] && echoRgb "應用目前無更新" "0" && exit 0
+    fi
 	r="$(egrep -v '#|＃' "$txt" 2>/dev/null | awk 'NF != 0 { count++ } END { print count }')"
 	[[ $backup_mode != "" ]] && r=1
 	[[ $r = "" && $backup_mode = "" ]] && echoRgb "$MODDIR_NAME/appList.txt是空的或是包名被注釋備份個鬼\n -檢查是否注釋亦或者執行$MODDIR_NAME/生成應用列表.sh" "0" && exit 1
@@ -1850,7 +1857,7 @@ backup)
 	        fi
 	    done
 	fi
-	filesize="$(du -s "$Backup" | awk '{print $1}')"
+	filesize="$(find "$Backup" -type f -exec stat -c%s {} + | awk '{s+=$1} END {print s}')"
 	Quantity=0
 	#開始循環$txt內的資料進行備份
 	#記錄開始時間
@@ -1934,8 +1941,6 @@ backup)
         				    if [[ $name2 != *mt* ]]; then
         					    #備份data數據
         					    Backup_data "data"
-        					    #備份obb數據
-        					    Backup_data "obb"
         					else
         					    echoRgb "$name1無法備份" "0"
         					fi
@@ -1984,6 +1989,7 @@ backup)
 			echoRgb "\n -已更新的apk=\"$osn\"\n -已新增的備份=\"$osk\"\n -apk版本號無變化=\"$osj\"\n -下列為版本號已變更的應用\n$update_apk2\n -新增的備份....\n$add_app2\n -包含SSAID的應用\n$SSAID_apk2" "3"
 			echo "$(sort "$txt2" | sed -e '/^$/d')" >"$txt2"
 			notification --tag="101" --title="App備份" --text="app備份完成 $(endtime 1 "應用備份" "3")"
+			[[ -e ${txt%/*}/txt2 ]] && cat "${txt%/*}/txt2">"$txt" && rm -rf "${txt%/*}/txt2"
 			if [[ $backup_media = true && $backup_mode = "" ]]; then
 				A=1
 				B="$(echo "$Custom_path" | egrep -v '#|＃' | awk 'NF != 0 { count++ } END { print count }')"
@@ -2212,6 +2218,7 @@ Restore|Restore2)
 	    else
 		    ChineseName="$(jq -r 'to_entries[] | select(.key != null).key' "$app_details" | head -n 1)"
 		    PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "$app_details")"
+		    apk_version="$(jq -r '.[] | select(.apk_version != null).apk_version' "$app_details")"
 	    fi
 	    name1="$ChineseName"
 	    [[ $name1 = "" ]] && name1="${Backup_folder##*/}"
@@ -2256,6 +2263,7 @@ Restore|Restore2)
     		Backup_folder="$MODDIR/$name1"
     		if [[ -f "$Backup_folder/app_details.json" ]]; then
     		    app_details="$Backup_folder/app_details.json"
+    		    apk_version="$(jq -r '.[] | select(.apk_version != null).apk_version' "$app_details")"
     		else
     		    echoRgb "$Backup_folder/app_details.json不存在" "0"
     		fi
@@ -2587,7 +2595,7 @@ backup_media)
 		[[ ! -f $Backup/restore_settings.conf ]] && update_Restore_settings_conf>"$Backup/restore_settings.conf"
 		app_details="$Backup_folder/app_details.json"
 		[[ ! -f $app_details ]] && echo "{\n}">"$app_details"
-		filesize="$(du -s "$Backup_folder" | awk '{print $1}')"
+		filesize="$(find "$Backup_folder" -type f -exec stat -c%s {} + | awk '{s+=$1} END {print s}')"
 		mediatxt="$Backup/mediaList.txt"
 		[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭使用#注釋 比如：#Download" > "$mediatxt"
 		echo "$script">"$TMPDIR/scriptTMP"
