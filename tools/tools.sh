@@ -998,7 +998,7 @@ Calculate_size() {
 	echoRgb "$NJL"
 }
 size() {
-    unset get_size
+    local b_size get_size
     varr="$(echo "$1" | bc 2>/dev/null)"
     if [[ $varr != $1 ]]; then
         b_size="$(ls -l "$1" 2>/dev/null | awk '{print $5}')"
@@ -1016,7 +1016,7 @@ size() {
     else
         get_size="$(echo "scale=2; $b_size / 1073741824" | bc) GB"
     fi
-	echo "$get_size"
+    echo "$get_size"
 }
 #分區佔用信息
 partition_info() {
@@ -1068,7 +1068,6 @@ Backup_apk() {
 			fi
 			unset Filesize
 			Filesize="$(find "$apk_path2" -type f -exec stat -c%s {} + | awk '{s+=$1} END {print s}')"
-			#Filesize="$(du -s "$apk_path2" | awk '{print $1}')"
 			partition_info "$Backup" "$name1 apk"
 			#備份apk
 			echoRgb "$1"
@@ -1143,7 +1142,6 @@ Backup_Permissions() {
     if [[ $Get_Permissions != "" ]]; then
         if [[ $get_Permissions = "" ]]; then
             jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName].permissions |= $permissions' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
-            #jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName] |= . + {permissions: $permissions}' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
         	echo_log "備份權限" "備份" "$name1"
         else
         	[[ $get_Permissions != $Get_Permissions ]] && jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName] |= . + {permissions: $permissions}' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json && echo_log "備份權限" "備份" "$name1"
@@ -1158,7 +1156,7 @@ Backup_data() {
 	[[ -f $app_details ]] && Size="$(jq -r --arg entry "$1" '.[$entry] | select(.Size != null).Size' "$app_details" 2>/dev/null)"
 	case $1 in
 	user) data_path="$path2/$name2" ;;
-	data) ;;
+	data|obb) ;;
 	*)
 		data_path="$2"
 		if [[ $1 != storage-isolation && $1 != thanox ]]; then
@@ -1170,8 +1168,10 @@ Backup_data() {
 		;;
 	esac
 	if [[ -d $data_path ]]; then
-	    unset Filesize m_size k_size get_size ssaid Get_Permissions result Permissions
+	    unset Filesize ssaid Get_Permissions result Permissions
         Filesize="$(find "$data_path" -type f -exec stat -c%s {} + | awk '{s+=$1} END {print s}')"
+        Filesize2="$(size "$Filesize")"
+        [[ $Filesize != "" ]] && {
 		if [[ $Size != $Filesize ]]; then
             case $1 in
             user)
@@ -1180,10 +1180,10 @@ Backup_data() {
     	    esac
 		    #停止應用
 			case $1 in
-			user|data) kill_app ;;
+			user|data|obb) kill_app ;;
 			esac
 			partition_info "$Backup" "$1"
-			echoRgb "備份$1數據$(size "$Filesize")"
+			echoRgb "備份$1數據$Filesize2"
 			case $1 in
 			user)
 				case $Compression_method in
@@ -1192,10 +1192,28 @@ Backup_data() {
 				esac
 				;;
 			*)
-				case $Compression_method in
-				tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
-				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
-				esac
+                # 判斷是否超過指定大小
+                if [[ $Filesize2 != *"bytes"* ]]; then
+                    if [[ $Filesize2 = *"KB"* ]]; then
+                        if [[ $(echo "${Filesize2% KB}" | bc) > 50 ]]; then
+                            Start_backup="true"
+                        else
+                            Start_backup="false"
+                        fi
+                    else
+                        Start_backup="true"
+                    fi
+                else
+                    Start_backup="false"
+                fi
+                if [[ $Start_backup = true ]]; then
+    				case $Compression_method in
+    				tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
+    				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+    				esac
+    		    else
+    		        echoRgb "$1數據$Filesize2太小" "0" && Set_back_1
+    		    fi
 				;;
 			esac
 			echo_log "備份$1數據" "備份" "$name1"
@@ -1233,8 +1251,9 @@ Backup_data() {
 		else
 			[[ $Size != "" ]] && echoRgb "$1數據無發生變化 跳過備份" "2"
 		fi
+		} || echoRgb "$1資料夾是空的" "0"
 	else
-		[[ -f $data_path ]] && echoRgb "$1是一個文件 不支持備份" "0" || echoRgb "$1數據不存在跳過備份" "2"
+		[[ -f $data_path ]] && echoRgb "$1是一個文件 不支持備份" "0" || echoRgb "$1數據不存在跳過備份" "0"
 	fi
 }
 Release_data() {
@@ -1256,7 +1275,8 @@ Release_data() {
 		    else
 		        echoRgb "$X不存在 無法恢復$FILE_NAME2數據" "0"
 		    fi;;
-		data) FILE_PATH="$path/data" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)";;
+		data) FILE_PATH="$path/data" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)" ;;
+		obb) FILE_PATH="$path/obb" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)";;
 		thanox) FILE_PATH="/data/system" && find "/data/system" -name "thanos*" -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
 		storage-isolation) FILE_PATH="/data/adb" ;;
 		*)
@@ -1288,7 +1308,7 @@ Release_data() {
 		echo_log "解壓縮${FILE_NAME##*.}" "恢復" "$name1"
 		if [[ $result = 0 ]]; then
 			case $FILE_NAME2 in
-			user|data)
+			user|data|obb)
 			    if [[ $G = "" ]]; then
 		            if [[ $(get_uid "$name2" 2>/dev/null) != "" ]]; then
 				        G="$(get_uid "$name2" 2>/dev/null)"
@@ -1316,6 +1336,9 @@ Release_data() {
 						    echo_log "設置用戶組:$(ls -ld "$X" | awk '{print $3,$4}'),shell in :$uid" "恢復" "$name1"
 						    chcon -hR "$Selinux_state" "$X/" 2>/dev/null
 						    echo_log "selinux上下文設置" "恢復" "$name1"
+						elif [[ $FILE_NAME2 = data || $FILE_NAME2 = obb ]]; then
+                            chown -hR "$uid" "$FILE_PATH/$name2/"
+                            chcon -hR "$Selinux_state" "$FILE_PATH/$name2/" 2>/dev/null
 					    fi
 				    else
 				        echoRgb "路徑$X不存在" "0"
@@ -1422,7 +1445,7 @@ get_name(){
 	find "$MODDIR" -maxdepth 2 -name "apk.*" -type f 2>/dev/null | sort | while read; do
 		Folder="${REPLY%/*}"
 		[[ $rgb_a -ge 229 ]] && rgb_a=118
-		unset PackageName NAME DUMPAPK ChineseName apk_version Ssaid dataSize userSize
+		unset PackageName NAME DUMPAPK ChineseName apk_version Ssaid dataSize userSize obbSize
 		if [[ -f $Folder/app_details.json ]]; then
 		    ChineseName="$(jq -r 'to_entries[] | select(.key != null).key' "$Folder/app_details.json" | head -n 1)"
 		    PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "$Folder/app_details.json")"
@@ -1442,6 +1465,9 @@ get_name(){
                   },
                   \"data\": {
                     \"Size\": \"$dataSize\"
+                  },
+                  \"obb\": {
+                    \"Size\": \"$obbSize\"
                   },
                   \"user\": {
                     \"Size\": \"$userSize\"
@@ -1941,6 +1967,8 @@ backup)
         				    if [[ $name2 != *mt* ]]; then
         					    #備份data數據
         					    Backup_data "data"
+        					    #備份obb數據
+        					    Backup_data "obb"
         					else
         					    echoRgb "$name1無法備份" "0"
         					fi
