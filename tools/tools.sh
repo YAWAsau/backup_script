@@ -10,7 +10,7 @@ MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 Compression_rate=9
 script="${0##*/}"
-backup_version="V15.9.6"
+backup_version="V16"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
@@ -348,7 +348,7 @@ done <<< "$(cat <<EOF
 zstd 55cc57a3d079dd90e74d972c705c4f9389dd00a7175de148e21000eab01f7ed9
 tar 3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814
 classes.dex 09d0058763157b97d6ea2bf74bd7ec53089a9ddb496f089a159ea0027007bb94
-classes2.dex e78b33af047464c225b171da0da3e46fb2932b798ff4cd26de75a1649b5e30d5
+classes2.dex d8fe0cf3defa7a4140bc22675dd617217095ffff739428cd2b172ebb068b5ab4
 bc b15d730591f6fb52af59284b87d939c5bea204f944405a3518224d8df788dc15
 busybox c629fce4b0dd3ba9775f851d0941e74582115f423258d3a79800f2bd11d30f5c
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
@@ -642,6 +642,7 @@ alias get_uid="app_process /system/bin com.xayah.dex.HiddenApiUtil getPackageUid
 alias get_Permissions="app_process /system/bin com.xayah.dex.HiddenApiUtil getRuntimePermissions $USER_ID $@"
 alias Set_true_Permissions="app_process /system/bin com.xayah.dex.HiddenApiUtil grantRuntimePermission $USER_ID $@"
 alias Set_false_Permissions="app_process /system/bin com.xayah.dex.HiddenApiUtil revokeRuntimePermission $USER_ID $@"
+alias Set_Ops="app_process /system/bin com.xayah.dex.HiddenApiUtil setOpsMode $user $@"
 find_tools_path="$(find "$path_hierarchy"/* -maxdepth 1 -name "tools" -type d ! -path "$path_hierarchy/tools")"
 Rename_script () {
     [[ $HT = "" ]] && HT=0 
@@ -1167,7 +1168,7 @@ Backup_ssaid() {
 }
 Backup_Permissions() {
     get_Permissions="$(jq -r '.[] | select(.permissions != null).permissions' "$app_details")"
-    Get_Permissions="$(get_Permissions "$name2" | jq -nR '[inputs | select(length>0) | split(" ") | {(.[0]): .[-1]}] | add')"
+    Get_Permissions="$(get_Permissions "$name2" | jq -nR '[inputs | select(length>0) | split(" ") | {(.[0]): (.[1:] | join(" "))}] | add')"
     if [[ $Get_Permissions != "" ]]; then
         if [[ $get_Permissions = "" ]]; then
             jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName].permissions |= $permissions' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
@@ -1244,7 +1245,7 @@ Backup_data() {
 				;;
 			esac
 			} || {
-			echoRgb "$1數據$Filesize2太小" "0" && Set_back_1
+			echoRgb "$1數據 $Filesize2太小" "0" && Set_back_1
 			}
 			echo_log "備份$1數據" "備份" "$name1"
 			if [[ $result = 0 ]]; then
@@ -1682,10 +1683,11 @@ Set_screen_pause_seconds () {
 restore_permissions () {
     echoRgb "恢復權限"
     appops reset --user "$user" "$name2" &>/dev/null
-    true_permissions="$(jq -r '.[] | select(.permissions != null).permissions | with_entries(select(.value == "true")) | keys[]' "$app_details")"
-    false_permissions="$(jq -r '.[] | select(.permissions != null).permissions | with_entries(select(.value == "false")) | keys[]' "$app_details")"
+    true_permissions="$(jq -r 'to_entries[] | select(.value.permissions != null) | .value.permissions | to_entries | map(select(.value | startswith("true"))) | .[].key' "$app_details")"
+    false_permissions="$(jq -r 'to_entries[] | select(.value.permissions != null) | .value.permissions | to_entries | map(select(.value | startswith("false"))) | .[].key' "$app_details")"
 	[[ $true_permissions != "" ]] && Set_true_Permissions "$name2" "$(echo "$true_permissions" | xargs)" &>/dev/null
     [[ $false_permissions != "" ]] && Set_false_Permissions "$name2" "$(echo "$false_permissions" | xargs)" &>/dev/null
+    Set_Ops "$name2" "$(jq -r '.[] | select(.permissions != null).permissions | to_entries | map(.value | split(" ")) | map(select(.[1] != "-1")) | map(.[1:]) | flatten | join(" ")' "$app_details")"
 }
 Background_application_list() {
     if [[ $Background_apps_ignore = true ]]; then
