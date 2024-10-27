@@ -49,7 +49,11 @@ user="$user"
 #1包含數據+安裝包，0僅包安裝包
 #此選項設置1時Backup_obb_data，Backup_user_data，blacklist_mode將可設置 0時Backup_user_data，Backup_obb_data，blacklist_mode選項不生效
 #此外設置0時將同時忽略appList.txt的!與任何黑名單設置（包括黑名單列表）
-Backup_Mode=1
+Backup_Mode="${Backup_Mode:-1}"
+
+#執行生成應用列表.sh時輸出用於recovery救援的卡刷包？
+#1輸出 0不輸出
+recovery_flash="${recovery_flash:-0}"
 
 #是否備份使用者數據 (1備份 0不備份 留空強制選擇)
 Backup_user_data="${Backup_user_data:-1}"
@@ -186,10 +190,6 @@ if [[ ! -d $tools_path ]]; then
 	tools_path="${MODDIR%/*}/tools"
 	[[ ! -d $tools_path ]] && echo "$tools_path二進制目錄遺失" && EXIT="true"
 fi
-[[ ! -f $tools_path/zstd ]] && echo "$tools_path/zstd遺失"
-[[ ! -f $tools_path/tar ]] && echo "$tools_path/tar遺失"
-[[ ! -f $tools_path/classes.dex ]] && echo "$tools_path/classes.dex遺失"
-[[ ! -f $tools_path/classes2.dex ]] && echo "$tools_path/classes2.dex遺失"
 if [[ ! -f $conf_path ]]; then
     case $operate in
     backup_media|backup|Getlist|Restore|Restore2|check_file|convert|Restore3|dumpname)
@@ -208,6 +208,18 @@ if [[ ! -f $conf_path ]]; then
 fi
 [[ ! -f $conf_path ]] && echo "$conf_path遺失" && exit 2
 . "$conf_path" &>/dev/null
+case $operate in
+backup_media|backup|Getlist|Restore|Restore2|check_file|convert|Restore3|dumpname)
+    if [[ $conf_path != *Backup_* ]]; then
+        update_backup_settings_conf>"$conf_path"
+    else
+        if [[ $conf_path = *Backup_* ]]; then
+            update_Restore_settings_conf>"$conf_path"
+        else
+            echo "$conf_path配置遺失" && exit 1
+        fi
+    fi ;;
+esac
 if [[ $Shell_LANG != "" ]]; then
     case $Shell_LANG in
     1) LANG="CN" ;;
@@ -269,16 +281,14 @@ busybox2="$tools_path/busybox"
 exclude="
 update
 soc.json
-busybox_path
+update-binary
+classes2.dex
+classes.dex
+notification.dex
 Device_List"
 if [[ ! -d $filepath ]]; then
 	mkdir -p "$filepath"
 	[[ $? = 0 ]] && echoRgb "設置busybox環境中"
-fi
-[[ ! -f $tools_path/busybox_path ]] && touch "$tools_path/busybox_path"
-if [[ $filepath != $(cat "$tools_path/busybox_path") ]]; then
-	[[ -d $(cat "$tools_path/busybox_path") ]] && rm -rf "$(cat "$tools_path/busybox_path")"
-	echoRgb "$filepath" >"$tools_path/busybox_path"
 fi
 #刪除無效軟連結
 find -L "$filepath" -maxdepth 1 -type l -exec rm -rf {} \;
@@ -309,7 +319,7 @@ find "$tools_path" -maxdepth 1 ! -path "$tools_path/tools.sh" -type f | egrep -v
 done
 if [[ -f $busybox ]]; then
 	"$busybox" --list | while read; do
-		if [[ $REPLY != tar && ! -f $filepath/$REPLY ]]; then
+		if [[ $REPLY != tar && $REPLY != bc && ! -f $filepath/$REPLY ]]; then
 			ln -fs "$busybox" "$filepath/$REPLY"
 		fi
 	done
@@ -318,15 +328,40 @@ fi
 export PATH="$filepath:$PATH"
 export TZ=Asia/Taipei
 export CLASSPATH="$tools_path/classes.dex:$tools_path/classes2.dex:$tools_path/notification.dex"
-zstd_sha256sum="55cc57a3d079dd90e74d972c705c4f9389dd00a7175de148e21000eab01f7ed9"
-tar_sha256sum="3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814"
-classesdex_sha256sum="09d0058763157b97d6ea2bf74bd7ec53089a9ddb496f089a159ea0027007bb94"
-classesdex2_sha256sum="e78b33af047464c225b171da0da3e46fb2932b798ff4cd26de75a1649b5e30d5"
-[[ $(sha256sum "$tools_path/zstd" | cut -d" " -f1) != $zstd_sha256sum ]] && echoRgb "zstd效驗失敗" "0" && exit 2
-#[[ $(sha256sum "$tools_path/tar" | cut -d" " -f1) != $tar_sha256sum ]] && echoRgb "tar效驗失敗" "0" && exit 2
-[[ $(sha256sum "$tools_path/classes.dex" | cut -d" " -f1) != $classesdex_sha256sum ]] && echoRgb "classes.dex效驗失敗" "0" && exit 2
-[[ $(sha256sum "$tools_path/classes2.dex" | cut -d" " -f1) != $classesdex2_sha256sum ]] && echoRgb "classes2.dex效驗失敗" "0" && exit 2
+quit=0
+while read -r file expected_hash; do
+  if [[ -f $tools_path/$file ]]; then
+    computed_hash="$(sha256sum "$tools_path/$file" | awk '{print $1}')"
+    if [[ $computed_hash = $expected_hash ]]; then
+      echoRgb "✅ $file: 驗證通過"
+    else
+      echoRgb "❌ $tools_path/$file: SHA-256 不一致"
+      quit=2
+      break
+    fi
+  else
+    echoRgb "⚠️ 檔案 $tools_path/$file 不存在"
+    quit=1
+    break
+  fi
+done <<< "$(cat <<EOF
+zstd 55cc57a3d079dd90e74d972c705c4f9389dd00a7175de148e21000eab01f7ed9
+tar 3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814
+classes.dex 09d0058763157b97d6ea2bf74bd7ec53089a9ddb496f089a159ea0027007bb94
+classes2.dex e78b33af047464c225b171da0da3e46fb2932b798ff4cd26de75a1649b5e30d5
+bc b15d730591f6fb52af59284b87d939c5bea204f944405a3518224d8df788dc15
+busybox c629fce4b0dd3ba9775f851d0941e74582115f423258d3a79800f2bd11d30f5c
+find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
+jq 4dd2d8a0661df0b22f1bb9a1f9830f06b6f3b8f7d91211a1ef5d7c4f06a8b4a5
+keycheck 50645ee0e0d2a7d64fb4a1286446df7a4445f3d11aefd49eeeb88515b314c363
+zip d9015b3c5d3376a4f9f2d204afd2aeaa4a86fd0174da1be090e41622e73be0ec
+EOF)"
+if [[ $quit -ne 0 ]]; then
+  exit "$quit"
+fi
+sleep 1 && clear
 TMPDIR="/data/local/tmp"
+rm -rf "$TMPDIR"
 [[ ! -d $TMPDIR ]] && mkdir "$TMPDIR"
 if [[ $(which busybox) = "" ]]; then
 	echoRgb "環境變量中沒有找到busybox 請在tools內添加一個\narm64可用的busybox\n或是安裝搞機助手 scene或是Magisk busybox模塊...." "0"
@@ -339,7 +374,6 @@ fi
 #下列為自定義函數
 alias appinfo="app_process /system/bin --nice-name=appinfo han.core.order.AppInfo $@"
 alias down="app_process /system/bin --nice-name=down han.core.order.Down $@"
-alias PayloadDumper="app_process /system/bin --nice-name=payload-dumper han.core.order.payload.PayloadDumper $@"
 echoRgb "-通知:$notification"
 if [[ $notification = true ]]; then
     alias notification="app_process /system/bin io.github.qqlittleice233.magic.Notification -send  --importance=3 $@"
@@ -797,14 +831,6 @@ update_script() {
 }
 update_script
 zipFile="$(ls -t /storage/emulated/0/Download/*.zip 2>/dev/null | head -1)"
-zipFile2="$(ls -t "$MODDIR"/*.zip 2>/dev/null | head -1)"
-if [[ $zipFile2 != "" ]]; then
-    starttime1="$(date -u "+%s")"
-    PayloadDumper -a -o "$MODDIR/ROM" "$zipFile2"
-    endtime 1
-    exit
-fi
-        
 if [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | egrep -wo "^backup_settings.conf$") != "" ]]; then
     update_script
 else
@@ -1173,7 +1199,7 @@ Backup_data() {
 	esac
 	if [[ -d $data_path ]]; then
 	    unset Filesize ssaid Get_Permissions result Permissions
-        Filesize="$(find "$data_path" -type f -printf "%s\n" | awk '{s+=$1} END {print s}')"
+        Filesize="$(find "$data_path" -type f -printf "%s\n" 2>/dev/null | awk '{s+=$1} END {print s}')"
         [[ $Filesize != "" ]] && {
 		if [[ $Size != $Filesize ]]; then
             case $1 in
@@ -1212,8 +1238,8 @@ Backup_data() {
 				;;
 			*)
     		    case $Compression_method in
-    		    tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
-    			zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+    		    tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQS" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
+    			zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQS" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
     			esac
 				;;
 			esac
@@ -1494,7 +1520,7 @@ get_name(){
                   }
                 }"
                 echo "{\n}">"$Folder/app_details.json"
-                jq --argjson new_content "$extra_content" '. += $new_content' "$Folder/app_details.json" > temp.json && cp temp.json "$Folder/app_details.json" && rm -rf temp.json
+                jq --argjson new_content "$extra_content" '. += $new_content' "$Folder/app_details.json" > temp.json && cp temp.json "$Folder/app_details.json" && rm -rf temp.json "$Folder/app_details"
             fi
 		fi
 		[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market" >"$txt"
@@ -1887,7 +1913,7 @@ backup)
 	[[ ! -f $Backup/恢復備份.sh ]] && touch_shell "Restore" "$Backup/恢復備份.sh"
 	[[ ! -f $Backup/終止腳本.sh ]] && cp -r "$MODDIR/終止腳本.sh" "$Backup/終止腳本.sh"
 	[[ ! -f $Backup/重新生成應用列表.sh ]] && touch_shell "dumpname" "$Backup/重新生成應用列表.sh"
-	[[ ! -f $Backup/轉換資料夾名稱.sh ]] && touch_shell  "convert" "$Backup/轉換資料夾名稱.sh"
+	[[ ! -f $Backup/轉換資料夾名稱.sh ]] && touch_shell "convert" "$Backup/轉換資料夾名稱.sh"
 	[[ ! -f $Backup/壓縮檔完整性檢查.sh ]] && touch_shell "check_file" "$Backup/壓縮檔完整性檢查.sh"
 	[[ ! -d $Backup/modules ]] && mkdir -p "$Backup/modules" && echoRgb "$Backup/modules已創建成功\n -請按需要自行放置需要恢復時刷入的模塊在內將自動批量刷入" "1"
 	[[ -d $Backup/Media ]] && touch_shell "Restore3" "$Backup/恢復自定義資料夾.sh"
@@ -2486,6 +2512,10 @@ Getlist)
 		[[ $blacklist_mode != "" ]] && isBoolean "$blacklist_mode" "blacklist_mode" && blacklist_mode="$nsx" || {
 		echoRgb "選擇黑名單模式\n -音量上不輸出，音量下輸出應用列表" "2"
 		get_version "不輸出" "輸出應用列表" && blacklist_mode="$branch"
+		}
+		[[ $recovery_flash != "" ]] && isBoolean "$recovery_flash" "recovery_flash" && recovery_flash="$nsx" || {
+		echoRgb "輸出用於recovery救援的卡刷包？\n -音量上輸出，音量下不輸出" "2"
+		get_version "輸出" "不輸出" && recovery_flash="$branch"
 		} ;;
 	1)
 		if [[ $(echo "$blacklist" | egrep -v '#|＃' | wc -l) -gt 0 ]]; then
@@ -2493,12 +2523,21 @@ Getlist)
 		    echoRgb "選擇黑名單模式\n -音量上不輸出，音量下輸出應用列表" "2"
 		    get_version "不輸出" "輸出應用列表" && blacklist_mode="$branch"
 		    } || isBoolean "$blacklist_mode" "blacklist_mode" && blacklist_mode="$nsx"
-		fi ;;
+		fi
+	    [[ $recovery_flash = "" ]] && {
+	    echoRgb "輸出用於recovery救援的卡刷包？\n -音量上輸出，音量下不輸出" "2"
+	    get_version "輸出" "不輸出" && recovery_flash="$branch"
+	    } || isBoolean "$recovery_flash" "recovery_flash" && recovery_flash="$nsx" ;;
 	2)
 	    [[ $blacklist_mode = "" ]] && {
 	    Enter_options "選擇黑名單模式輸入1不輸出，輸入0輸出應用列表" "不輸出" "輸出應用列表" && isBoolean "$parameter" "blacklist_mode" && blacklist_mode="$nsx"
 	    } || {
 	    isBoolean "$blacklist_mode" "blacklist_mode" && blacklist_mode="$nsx"
+	    }
+	    [[ $recovery_flash = "" ]] && {
+	    Enter_options "填寫1輸出用於recovery救援的卡刷包，填寫0不輸出" "輸出" "不輸出" && isBoolean "$parameter" "recovery_flash" && recovery_flash="$nsx"
+	    } || {
+	    isBoolean "$recovery_flash" "recovery_flash" && recovery_flash="$nsx"
 	    } ;;
 	*)  echoRgb "$conf_path Lo=$Lo填寫錯誤，正確值0 1 2" "0" && exit 2 ;;
 	esac
@@ -2608,6 +2647,7 @@ Getlist)
 		let rgb_a++ LR++
 	done
 	if [[ -f $nametxt ]]; then
+	    rm -rf "$TMPDIR"/*
 	    while read -r ; do
     	    if [[ $(echo "$REPLY" | sed -E 's/^[ \t]*//; /^[ \t]*[#＃!]/d') != "" ]]; then
                 app=($REPLY $REPLY)
@@ -2615,6 +2655,12 @@ Getlist)
 	                if [[ $(echo "$Apk_info2" | egrep -o "${app[1]}") != "" ]]; then
 			            [[ $Tmplist = "" ]] && Tmplist='#不需要備份的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market（忽略安裝包和數據\n#不需要備份數據的應用請在開頭使用!注釋 比如：!酷安 com.coolapk.market（僅忽略數據）'
     			        Tmplist="$Tmplist\n$REPLY"
+    			        [[ $recovery_flash = true ]] && {
+    			        apk_path="$(pm path --user "$user" "${app[1]}" 2>/dev/null | cut -f2 -d ':')"
+                		apk_path2="$(echo "$apk_path" | head -1)"
+                		apk_path2="${apk_path2%/*}"
+    			        echo "${app[2]} ${app[1]} $apk_path2" >>"$TMPDIR/appList.txt"
+    			        }
     			    else
                         echoRgb "$REPLY不存在系統，從列表中刪除" "0"
                     fi
@@ -2624,6 +2670,26 @@ Getlist)
 			fi
     	done < "$nametxt"
     	[[ $Tmplist != "" ]] && echo "$Tmplist" | sed -e '/^$/d' | sort>"$nametxt"
+        if [[ $recovery_flash = true ]]; then
+        	if [[ -f $tools_path/update-binary && -f $TMPDIR/appList.txt ]]; then
+        		echoRgb "輸出用於recovery的備份卡刷包" ; rm -rf "$MODDIR/recovery卡刷備份.zip"
+        	    touch_shell "Restore" "$TMPDIR/恢復備份.sh"
+                cp -r "$MODDIR/終止腳本.sh" "$TMPDIR/終止腳本.sh"
+                touch_shell "dumpname" "$TMPDIR/重新生成應用列表.sh"
+                touch_shell "convert" "$TMPDIR/轉換資料夾名稱.sh"
+                touch_shell "check_file" "$TMPDIR/壓縮檔完整性檢查.sh"
+                touch_shell "Restore2" "$TMPDIR/recover.sh"
+                touch_shell "Restore3" "$TMPDIR/恢復自定義資料夾.sh"
+                update_Restore_settings_conf>"$TMPDIR/restore_settings.conf"
+                mkdir -p "$TMPDIR/META-INF/com/google/android" && cp "$tools_path/update-binary" "$TMPDIR/META-INF/com/google/android"
+        		tar -cpf - -C "${tools_path%/*}" "${tools_path##*/}" | tar --delete "tools/zip" | tar --recursive-unlink -xmpf - -C "$TMPDIR/"
+        		(cd "$TMPDIR" && zip -r "recovery卡刷備份.zip" * -x 'scriptTMP')
+        		echo_log "打包卡刷包"
+        		[[ $result = 0 ]] && (mv "$TMPDIR/recovery卡刷備份.zip" "$MODDIR" && rm -rf "$TMPDIR"/* ; echoRgb "輸出:$MODDIR/recovery卡刷備份.zip" "2")
+        	else
+        		[[ ! -f $tools_path/update-binaryechoRgb ]] && echoRgb "update-binary卡刷腳本遺失" "0" || [[ ! -f $TMPDIR/appList.txt ]] && echoRgb "$TMPDIR/appList.txt 不存在" "0"
+        	fi
+        fi
     fi
 	wait
 	endtime 1
@@ -2648,7 +2714,7 @@ backup_media)
 		[[ ! -f $Backup/restore_settings.conf ]] && update_Restore_settings_conf>"$Backup/restore_settings.conf"
 		app_details="$Backup_folder/app_details.json"
 		[[ ! -f $app_details ]] && echo "{\n}">"$app_details"
-		filesize="$(find "$Backup_folder" -type f -printf "%s\n" | awk '{s+=$1} END {print s}')"
+		filesize="$(find "$Backup_folder" -type f -printf "%s\n" 2>/dev/null | awk '{s+=$1} END {print s}')"
 		mediatxt="$Backup/mediaList.txt"
 		[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭使用#注釋 比如：#Download" > "$mediatxt"
 		echo "$script">"$TMPDIR/scriptTMP"
