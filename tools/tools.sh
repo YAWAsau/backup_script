@@ -348,7 +348,7 @@ done <<< "$(cat <<EOF
 zstd 55cc57a3d079dd90e74d972c705c4f9389dd00a7175de148e21000eab01f7ed9
 tar 3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814
 classes.dex 09d0058763157b97d6ea2bf74bd7ec53089a9ddb496f089a159ea0027007bb94
-classes2.dex d8fe0cf3defa7a4140bc22675dd617217095ffff739428cd2b172ebb068b5ab4
+classes2.dex cb65eefeb1e26a266eeeee92530b5173d4651e93429e048417dbee35ae7c231f
 bc b15d730591f6fb52af59284b87d939c5bea204f944405a3518224d8df788dc15
 busybox c629fce4b0dd3ba9775f851d0941e74582115f423258d3a79800f2bd11d30f5c
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
@@ -361,8 +361,10 @@ if [[ $quit -ne 0 ]]; then
 fi
 sleep 1 && clear
 TMPDIR="/data/local/tmp"
-rm -rf "$TMPDIR"
+rm -rf "$TMPDIR"/*
 [[ ! -d $TMPDIR ]] && mkdir "$TMPDIR"
+chmod 771 "$TMPDIR"
+chown '2000:2000' "$TMPDIR"
 if [[ $(which busybox) = "" ]]; then
 	echoRgb "環境變量中沒有找到busybox 請在tools內添加一個\narm64可用的busybox\n或是安裝搞機助手 scene或是Magisk busybox模塊...." "0"
 	exit 1
@@ -683,7 +685,7 @@ Rename_script () {
 	unset HT
 }
 touch_shell () {
-    unset conf_path MODDIR_Path
+    unset conf_path MODDIR_Path Update_backup
     MODDIR_Path='${0%/*}'
     MODDIR_NAME2="${2%/*}"
 	MODDIR_NAME2="${MODDIR_NAME2##*/}"
@@ -696,6 +698,8 @@ touch_shell () {
         if [[ $3 = backup_mode ]]; then
             MODDIR_Path='${0%/*/*/*}'
             conf_path='${0%/*/*/*}/backup_settings.conf'
+        else
+            [[ $(basename "$2" | awk '{print length($0)}') -gt 15 ]] && Update_backup=1
         fi ;;
     Restore|convert|dumpname|Restore3|check_file) conf_path='${0%/*}/restore_settings.conf' ;;
     esac
@@ -729,6 +733,7 @@ if [ -f \"$MODDIR_Path/tools/tools.sh\" ]; then
     MODDIR=\"\${0%/*}\"
     operate=\"$1\"
     conf_path=\"$conf_path\"
+    Update_backup=\"$Update_backup\"
     [ ! -f \"$conf_path\" ] && . \"\${0%/*}/tools/tools.sh\"
     case \$(grep -o 'background_execution=.*' \"\$conf_path\" | awk -F '=' '{print \$2}') in
     0)
@@ -1156,7 +1161,7 @@ Backup_apk() {
 Backup_ssaid() {
     Ssaid="$(jq -r '.[] | select(.Ssaid != null).Ssaid' "$app_details")"
     ssaid="$(get_ssaid "$name2")"
-    echoRgb "SSAID:$(get_ssaid "$name2")"
+    echoRgb "SSAID:$ssaid"
     if [[ $ssaid != null && $ssaid != $Ssaid ]]; then
         echoRgb "$Ssaid>$ssaid"
     	SSAID_apk="$(echo "$name1 \"$name2\"")"
@@ -1244,10 +1249,10 @@ Backup_data() {
     			esac
 				;;
 			esac
-			} || {
-			echoRgb "$1數據 $Filesize2太小" "0" && Set_back_1
-			}
 			echo_log "備份$1數據" "備份" "$name1"
+			} || {
+			echoRgb "$1數據 $Filesize2太小" "0" && result=1
+			}
 			if [[ $result = 0 ]]; then
 			    Validation_file "$Backup_folder/$1.tar"*
 				if [[ $result = 0 ]]; then
@@ -1683,11 +1688,21 @@ Set_screen_pause_seconds () {
 restore_permissions () {
     echoRgb "恢復權限"
     appops reset --user "$user" "$name2" &>/dev/null
-    true_permissions="$(jq -r 'to_entries[] | select(.value.permissions != null) | .value.permissions | to_entries | map(select(.value | startswith("true"))) | .[].key' "$app_details")"
-    false_permissions="$(jq -r 'to_entries[] | select(.value.permissions != null) | .value.permissions | to_entries | map(select(.value | startswith("false"))) | .[].key' "$app_details")"
-	[[ $true_permissions != "" ]] && Set_true_Permissions "$name2" "$(echo "$true_permissions" | xargs)" &>/dev/null
-    [[ $false_permissions != "" ]] && Set_false_Permissions "$name2" "$(echo "$false_permissions" | xargs)" &>/dev/null
-    Set_Ops "$name2" "$(jq -r '.[] | select(.permissions != null).permissions | to_entries | map(.value | split(" ")) | map(select(.[1] != "-1")) | map(.[1:]) | flatten | join(" ")' "$app_details")"
+    true_permissions="$(jq -r 'to_entries[] | select(.value.permissions != null) | .value.permissions | to_entries | map(select(.value | startswith("true")) | .key) | join(" ")' "$app_details")"
+    false_permissions="$(jq -r 'to_entries[] | select(.value.permissions != null) | .value.permissions | to_entries | map(select(.value | startswith("false")) | .key) | join(" ")' "$app_details")"
+	Set_Ops_permissions="$(jq -r '.[] | select(.permissions != null).permissions | to_entries | map(.value | split(" ")) | map(select(.[1] != "-1")) | map(.[1:]) | flatten | join(" ")' "$app_details")"
+	[[ $true_permissions != "" ]] && {
+	Set_true_Permissions "$name2" "$true_permissions" &>/dev/null
+	[[ $? != 0 ]] && echo_log "設置允許權限" "恢復"
+	}
+    [[ $false_permissions != "" ]] && {
+    Set_false_Permissions "$name2" "$false_permissions" &>/dev/null
+    [[ $? != 0 ]] && echo_log "設置拒絕權限" "恢復"
+    }
+    [[ $Set_Ops_permissions != "" ]] && {
+    Set_Ops "$name2" "$Set_Ops_permissions"
+    [[ $? != 0 ]] && echo_log "設置ops權限" "恢復"
+    }
 }
 Background_application_list() {
     if [[ $Background_apps_ignore = true ]]; then
@@ -1891,7 +1906,7 @@ backup)
 		    Tmplist="$Tmplist\n$REPLY"
 		fi
 	done < "$txt"
-	} 
+	}
 	[[ $Tmplist != ""  ]] && echo "$Tmplist" | sed -e '/^$/d' | sort>"$txt"
 	if [[ $Tmplist2 != "" ]]; then
 	    if [[ $Update_backup != "" ]]; then
