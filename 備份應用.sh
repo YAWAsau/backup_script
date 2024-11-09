@@ -3,19 +3,13 @@ if [ -f "${0%/*}/tools/tools.sh" ]; then
     MODDIR="${0%/*}"
     operate="backup"
     conf_path="${0%/*}/backup_settings.conf"
+    Update_backup=""
     [ ! -f "${0%/*}/backup_settings.conf" ] && . "${0%/*}/tools/tools.sh"
     case $(grep -o 'background_execution=.*' "$conf_path" | awk -F '=' '{print $2}') in
     0)
-        notification=false
         . "${0%/*}/tools/tools.sh" | tee "${0%/*}/log.txt" ;;    
     1)
         {
-        notification=true
-        . "${0%/*}/tools/tools.sh" | tee "${0%/*}/log.txt"
-        } & ;;
-    2)
-        {
-        notification=false
         . "${0%/*}/tools/tools.sh" | tee "${0%/*}/log.txt"
         } & ;;
     esac
