@@ -337,7 +337,7 @@ while read -r file expected_hash; do
 done <<< "$(cat <<EOF
 zstd 55cc57a3d079dd90e74d972c705c4f9389dd00a7175de148e21000eab01f7ed9
 tar 3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814
-classes.dex 3ffa99026c49cb613bb75a66500fe444a56bb841f07b794dbdc5b3e38d299a27
+classes.dex 9e7fa38737f14baed0fb3b0c378472a696869edfca08b3e9b19fd1f56c240b2b
 bc b15d730591f6fb52af59284b87d939c5bea204f944405a3518224d8df788dc15
 busybox c629fce4b0dd3ba9775f851d0941e74582115f423258d3a79800f2bd11d30f5c
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
@@ -628,7 +628,7 @@ alias get_uid="app_process /system/bin com.xayah.dex.HiddenApiUtil getPackageUid
 alias get_Permissions="app_process /system/bin com.xayah.dex.HiddenApiUtil getRuntimePermissions $USER_ID $@"
 alias Set_true_Permissions="app_process /system/bin com.xayah.dex.HiddenApiUtil grantRuntimePermission $USER_ID $@"
 alias Set_false_Permissions="app_process /system/bin com.xayah.dex.HiddenApiUtil revokeRuntimePermission $USER_ID $@"
-alias Set_Ops="app_process /system/bin com.xayah.dex.HiddenApiUtil setOpsMode $USER_IDr $@"
+alias Set_Ops="app_process /system/bin com.xayah.dex.HiddenApiUtil setOpsMode $USER_ID $@"
 find_tools_path="$(find "$path_hierarchy"/* -maxdepth 1 -name "tools" -type d ! -path "$path_hierarchy/tools")"
 Rename_script () {
     [[ $HT = "" ]] && HT=0 
@@ -1908,8 +1908,8 @@ backup)
 	if [[ -d $Backup/tools ]]; then
 	    find "$Backup/tools" -maxdepth 1 -type f | while read; do
 	        Tools_FILE_NAME="${REPLY##*/}"
-	        filesha256="$(sha256sum "$tools_path/$Tools_FILE_NAME" | cut -d" " -f1)"
-	        filesha256_1="$(sha256sum "$REPLY" | cut -d" " -f1)"
+	        filesha256="$(sha256sum "$tools_path/$Tools_FILE_NAME" 2>/dev/null | cut -d" " -f1)"
+	        filesha256_1="$(sha256sum "$REPLY" 2>/dev/null | cut -d" " -f1)"
 	        if [[ $filesha256 != $filesha256_1 ]]; then
 	            cp -r "$tools_path/$Tools_FILE_NAME" "$REPLY"
 	            echoRgb "更新$REPLY"
