@@ -10,7 +10,7 @@ MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 Compression_rate=9
 script="${0##*/}"
-backup_version="V16.1"
+backup_version="V16.2"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
@@ -219,7 +219,7 @@ if [[ $Shell_LANG != "" ]]; then
     *) echo "$conf_path Shell_LANG=$Shell_LANG 設置錯誤 正確1or0" && exit 2 ;;
     esac
 fi
-[[ $LANG = "" ]] && LANG="$(getprop "persist.sys.locale")"
+LANG="${LANG:="$(getprop "persist.sys.locale")"}"
 echoRgb() {
 	#轉換echo顏色提高可讀性
 	if [[ $2 = 0 ]]; then
@@ -234,7 +234,7 @@ echoRgb() {
 		echo -e "\e[38;5;${rgb_a}m -$1\e[0m"
 	fi
 }
-[ "$rgb_a" = "" ] && rgb_a=214
+rgb_a="${rgb_a:=214}"
 abi="$(getprop ro.product.cpu.abi)"
 case $abi in
 arm64*)
@@ -254,10 +254,6 @@ arm64*)
 	exit 1
 	;;
 esac
-id=
-if [[ $id != "" && -d /data/user/0/com.tencent.mobileqq/files/aladdin_configs/$id ]]; then
-	exit 2
-fi
 PATH="/sbin/.magisk/busybox:/sbin/.magisk:/sbin:/data/adb/ksu/bin:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/com.omarea.vtools/files/toolkit:/data/user/0/com.termux/files/usr/bin"
 if [[ -d $(magisk --path 2>/dev/null) ]]; then
 	PATH="$(magisk --path 2>/dev/null)/.magisk/busybox:$PATH"
@@ -631,7 +627,7 @@ alias Set_false_Permissions="app_process /system/bin com.xayah.dex.HiddenApiUtil
 alias Set_Ops="app_process /system/bin com.xayah.dex.HiddenApiUtil setOpsMode $USER_ID $@"
 find_tools_path="$(find "$path_hierarchy"/* -maxdepth 1 -name "tools" -type d ! -path "$path_hierarchy/tools")"
 Rename_script () {
-    [[ $HT = "" ]] && HT=0 
+    HT="${HT:=0}"
 	find "$path_hierarchy" -maxdepth 3 -name "*.sh" -type f -not -name "tools.sh" | sort | while read ; do
         Script_type="$(grep -o 'operate="[^"]*"' "$REPLY" 2>/dev/null | awk -F'=' '{print $2}' | tr -d '"' | head -1)"
         MODDIR_NAME="${REPLY%/*}"
@@ -843,16 +839,15 @@ if [[ $path_hierarchy != "" && $Script_target_language != ""  ]]; then
 	                touch "$TMPDIR/0"
 	                echo_log "$(echo "$REPLY" | sed "s|^$path_hierarchy/||")翻譯"
 	                MODDIR="${0%/*}"
-                    if [[ $REPLY != *Backup_* ]]; then
+                    if [[ -f ${REPLY%/*/*}/backup_settings.conf ]]; then
                         update_backup_settings_conf>"${REPLY%/*/*}/backup_settings.conf"
                         ts <"${REPLY%/*/*}/backup_settings.conf">temp && cp temp "${REPLY%/*/*}/backup_settings.conf" && rm temp
                         echo_log "${REPLY%/*/*}/backup_settings.conf翻譯"
-                    else
-                        if [[ $REPLY = *Backup_* ]]; then
-                            update_Restore_settings_conf>"${REPLY%/*/*}/restore_settings.conf"
-                            ts <"${REPLY%/*/*}/restore_settings.conf">temp && cp temp "${REPLY%/*/*}/restore_settings.conf" && rm temp
-                            echo_log "${REPLY%/*/*}/restore_settings.conf翻譯"
-                        fi
+                    fi
+                    if [[ -f ${REPLY%/*/*}/restore_settings.conf ]]; then
+                        update_Restore_settings_conf>"${REPLY%/*/*}/restore_settings.conf"
+                        ts <"${REPLY%/*/*}/restore_settings.conf">temp && cp temp "${REPLY%/*/*}/restore_settings.conf" && rm temp
+                        echo_log "${REPLY%/*/*}/restore_settings.conf翻譯"
                     fi
 	                sed "s/shell_language=\"$shell_language\"/shell_language=\"$Script_target_language\"/g" "$REPLY" > temp && cp temp "$REPLY" && rm temp
 	                [[ $shell_language != $(awk -F= '/^shell_language=/ {gsub(/"/, "", $2); print $2}' "$REPLY") ]] && echoRgb "$(echo "$REPLY" | sed "s|^$path_hierarchy/||")變量修改成功" || echoRgb "$(echo "$REPLY" | sed "s|^$path_hierarchy/||")變量修改失敗" "0"
@@ -1031,7 +1026,7 @@ partition_info() {
 }
 kill_app() {
     if [[ $name2 != *mt* && $name2 != com.termux && $name2 ]]; then
-        [[ $Pause_Freeze = "" ]] && Pause_Freeze="0"
+        Pause_Freeze="${Pause_Freeze:=0}"
         if [[ $Pause_Freeze = 0 ]]; then
             if [[ $(dumpsys activity processes | grep "packageList" | cut -d '{' -f2 | cut -d '}' -f1 | egrep -w "^$name2$" | sed -n '1p') = $name2 ]]; then
                 pkill -9 -f "$name2$|$name2[:/_]"
@@ -2047,8 +2042,8 @@ backup)
 				settings put secure default_input_method "$keyboard" &>/dev/null
 				echo_log "設置鍵盤$(appinfo2 "${keyboard%/*}" 2>/dev/null)"
 			fi
-			[[ $update_apk2 = "" ]] && update_apk2="暫無更新"
-			[[ $add_app2 = "" ]] && add_app2="暫無更新"
+			update_apk2="${update_apk2:="暫無更新"}"
+			add_app2="${add_app2:="暫無更新"}"
 			echoRgb "\n -已更新的apk=\"$osn\"\n -已新增的備份=\"$osk\"\n -apk版本號無變化=\"$osj\"\n -下列為版本號已變更的應用\n$update_apk2\n -新增的備份....\n$add_app2\n -包含SSAID的應用\n$SSAID_apk2" "3"
 			echo "$(sort "$txt2" | sed -e '/^$/d')" >"$txt2"
 			[[ -e ${txt%/*}/txt2 ]] && cat "${txt%/*}/txt2">"$txt" && rm -rf "${txt%/*}/txt2"
@@ -2251,7 +2246,7 @@ Restore|Restore2)
 		    apk_version="$(jq -r '.[] | select(.apk_version != null).apk_version' "$app_details")"
 	    fi
 	    name1="$ChineseName"
-	    [[ $name1 = "" ]] && name1="${Backup_folder##*/}"
+	    name1="${name1:="${Backup_folder##*/}"}"
 	    [[ $name1 = "" ]] && echoRgb "應用名獲取失敗" "0" && exit 2
 	    name2="$PackageName"
 	    [[ $name2 = "" ]] && echoRgb "包名獲取失敗" "0" && exit 2
@@ -2350,7 +2345,7 @@ Restore|Restore2)
 		fi
 		if [[ $i = $r && $operate != Restore2 ]]; then
 		    endtime 1 "應用恢復" "2"
-		    echoRgb "\n -下列為已設置SSAID應用\n$SSAID_Package2\n -下列為設置SSAID失敗應用....\n$SSAID_Package3" "3"
+		    echoRgb "\n -下列為已設置SSAID應用,請勿打開需要重啟後才能使用，否則ssaid設置失敗\n$SSAID_Package2\n -下列為設置SSAID失敗應用....\n$SSAID_Package3" "3"
 			if [[ $media_recovery = true ]]; then
 			    starttime1="$(date -u "+%s")"
 			    app_details="$Backup_folder2/app_details.json"
@@ -2488,7 +2483,7 @@ Getlist)
 	Apk_info="$(appinfo "system|user|xposed" "label|pkgName|flag" | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	xposed_name="$(echo "$Apk_info" | awk '$3 == "xposed" {print $2}')"
 	TARGET_PACKAGES="$(echo "$system" | paste -sd'|' - | sed 's/^|//')"
-    Pre_installed_apps="$(echo "$Apk_info" | awk -v target="$TARGET_PACKAGES" '$3 == "system" && $0 ~ target {print $1, $2}')"
+    Pre_installed_apps="$(echo "$Apk_info" | awk '$3 == "system" {print $1, $2}' | egrep -w "$TARGET_PACKAGES")"
     Apk_info="$(echo "$(echo "$Apk_info" | awk '$3 != "system" {print $1, $2}')\n$Pre_installed_apps")"
 	[[ $Apk_info = "" ]] && {
 	echoRgb "appinfo輸出失敗,請截圖畫面回報作者" "0"
@@ -2502,59 +2497,45 @@ Getlist)
 	Q="0"
 	rb="0"
 	Output_list() {
-	    if [[ $(cat "$nametxt" | cut -f2 -d ' ' | egrep -w "^${app_1[1]}$") != ${app_1[1]} ]]; then
-	        add_entry "${app_1[2]}" "${app_1[1]}" "$REPLY2"
-	        case ${app_1[1]} in
-			    *oneplus* | *miui* | *xiaomi* | *oppo* | *flyme* | *meizu* | com.android.soundrecorder | com.mfashiongallery.emag | com.mi.health | *coloros*)
-				    if [[ $(echo "$xposed_name" | egrep -w "${app_1[1]}$") = ${app_1[1]} ]]; then
-    				    echoRgb "$app_name為Xposed模塊 進行添加" "0"
-					    if [[ $REPLY2 = "" ]]; then
-					        REPLY2="$REPLY" && [[ $tmp = "" ]] && tmp="1"
-					    else
-					        REPLY2="$REPLY2\n$REPLY" && [[ $tmp = "" ]] && tmp="1"
-					    fi
-					    let i++ rd++
-				    else
-					    if [[ $(echo "$whitelist" | egrep -w "^${app_1[1]}$") = ${app_1[1]} ]]; then
-					        if [[ $REPLY2 = "" ]]; then
-					            REPLY2="$REPLY" && [[ $tmp = "" ]] && tmp="1"
-					        else
-					            REPLY2="$REPLY2\n$REPLY" && [[ $tmp = "" ]] && tmp="1"
-					        fi
-						    echoRgb "$app_name ${app_1[1]}($rgb_a)"
-						    let i++
-					    else
-						    echoRgb "$app_name 預裝應用 忽略輸出" "0"
-						    if [[ $REPLY2 = "" ]]; then
-    						    REPLY2="#$REPLY" && [[ $tmp = "" ]] && tmp="1"
-						    else
-						        REPLY2="$REPLY2\n#$REPLY" && [[ $tmp = "" ]] && tmp="1"
-						    fi
-						    let rc++
-					    fi
-				    fi
-				    ;;
-			    *)
-				    if [[ $REPLY2 = "" ]]; then
-					    REPLY2="$REPLY" && [[ $tmp = "" ]] && tmp="1"
-					else
-					    REPLY2="$REPLY2\n$REPLY" && [[ $tmp = "" ]] && tmp="1"
-					fi
-					if [[ $(echo "$xposed_name" | egrep -w "${app_1[1]}$") = ${app_1[1]} ]]; then
-			            echoRgb "Xposed: $app_name ${app_1[1]}($rgb_a)"
-			            let rd++
-			        else
-				        echoRgb "$app_name ${app_1[1]}($rgb_a)"
-				    fi
-				    let i++
-				    ;;
-			esac
-		else
-	        let Q++
+        if [[ $(awk '{print $2}' "$nametxt" | grep -w "^${app_1[1]}$") != "${app_1[1]}" ]]; then
+            add_entry "${app_1[2]}" "${app_1[1]}" "$REPLY2"
+            case ${app_1[1]} in
+                *oneplus* | *miui* | *xiaomi* | *oppo* | *flyme* | *meizu* | com.android.soundrecorder | com.mfashiongallery.emag | com.mi.health | *coloros*)
+                    if [[ $(echo "$xposed_name" | grep -wq "${app_1[1]}") ]]; then
+                        echoRgb "$app_name 為 Xposed 模塊 進行添加" "0"
+                        REPLY2="${REPLY2:+$REPLY2\n}$REPLY"
+                        tmp="${tmp:-1}"
+                        ((i++, rd++))
+                    elif [[ $(echo "$whitelist" | grep -wq "${app_1[1]}") ]]; then
+                        REPLY2="${REPLY2:+$REPLY2\n}$REPLY"
+                        tmp="${tmp:-1}"
+                        echoRgb "$app_name ${app_1[1]}($rgb_a)"
+                        ((i++))
+                    else
+                        echoRgb "$app_name 預裝應用 忽略輸出" "0"
+                        REPLY2="${REPLY2:+$REPLY2\n}#$REPLY"
+                        tmp="${tmp:-1}"
+                        ((rc++))
+                    fi
+                    ;;
+                *)
+                    REPLY2="${REPLY2:+$REPLY2\n}$REPLY"
+                    tmp="${tmp:-1}"
+                    if [[ $(echo "$xposed_name" | grep -wq "${app_1[1]}") ]]; then
+                        echoRgb "Xposed: $app_name ${app_1[1]}($rgb_a)"
+                        ((rd++))
+                    else
+                        echoRgb "$app_name ${app_1[1]}($rgb_a)"
+                    fi
+                    ((i++))
+                    ;;
+            esac
+        else
+            ((Q++))
         fi
     }
     [[ $(echo "$blacklist" | egrep -v '#|＃') != "" ]] && NZK=1
-	echo "$Apk_info" | sed 's/\///g ; s/\://g ; s/(//g ; s/)//g ; s/\[//g ; s/\]//g ; s/\-//g ; s/!//g' | while read; do
+	echo "$Apk_info" | sed 's/[\/:()\[\]\-!]//g' | while read; do
 		[[ $rgb_a -ge 229 ]] && rgb_a=118
 		app_1=($REPLY $REPLY)
 		if [[ $NZK = 1 ]]; then
@@ -2579,7 +2560,7 @@ Getlist)
 				echoRgb "\n -輸出異常 請將$conf_path中的debug_list=\"0\"改為1或是重新執行本腳本" "0"
 				exit
 			fi
-			echoRgb "已經將預裝應用輸出至appList.txt並註釋# 需要備份則去掉#" "0"
+			echoRgb "已經將預裝應用輸出至appList.txt並注釋# 需要備份則去掉#" "0"
 			[[ $tmp != "" ]] && echoRgb "\n -第三方apk數量=\"$Apk_Quantity\"\n -已過濾=\"$rc\"\n -xposed=\"$rd\"\n -黑名單應用=\"$rb\"\n -存在列表中=\"$Q\"\n -輸出=\"$i\""
 		fi
 		let rgb_a++ LR++
