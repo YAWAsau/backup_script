@@ -10,7 +10,7 @@ MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 Compression_rate=9
 script="${0##*/}"
-backup_version="V16.2"
+backup_version="202411241736"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
@@ -511,6 +511,7 @@ case $MODDIR in
 	fi ;;
 *) [[ -d $MODDIR/tools ]] && path_hierarchy="$MODDIR" ;;
 esac
+[[ $LANG = "" ]] && echoRgb "系統無參數語言獲取失敗\n -如果需要更改腳本語言請於$conf_path\n -Shell_LANG=填入對應數字" "0"
 case $LANG in
 *TW* | *tw* | *HK*)
     echoRgb "系統語言環境:繁體中文"
@@ -542,15 +543,17 @@ add_entry() {
     app_name="$1"
     package_name="$2"
     # 檢查是否已經存在同樣的應用名稱
-    if [[ $(echo "$3" | awk '{print $1}' | grep -w "^$app_name$") != "" ]]; then
-        # 如果應用名稱存在但包名不同，則需要添加數字後綴
-        count=1
-        new_app_name="${app_name}_${count}"
-        while echo "$3" | grep -q "$new_app_name"; do
-            count=$((count + 1))
+    if [[ $(echo "$3" | awk '{print $1}' | grep -w "^$app_name$") = $app_name ]]; then
+        if [[ $(echo "$3" | awk '{print $2}' | grep -w "^$package_name$") != $package_name ]]; then
+            # 如果應用名稱存在但包名不同，則需要添加數字後綴
+            count=1
             new_app_name="${app_name}_${count}"
-        done
-        app_name="$new_app_name"
+            while echo "$3" | grep -q "$new_app_name"; do
+                count=$((count + 1))
+                new_app_name="${app_name}_${count}"
+            done
+            app_name="$new_app_name"
+        fi
     fi
     REPLY="$app_name $package_name"
 }
@@ -605,7 +608,10 @@ backup|Restore|Restore2|Getlist|backup_media)
     	    fi
     	fi
     else
-        user="$(echo "${0%}" | sed 's/.*\/Backup_zstd_\([0-9]*\).*/\1/')"
+        case $Compression_method in
+		tar | TAR | Tar) user="$(echo "${0%}" | sed 's/.*\/Backup_tar_\([0-9]*\).*/\1/')" ;;
+		zstd | Zstd | ZSTD) user="$(echo "${0%}" | sed 's/.*\/Backup_zstd_\([0-9]*\).*/\1/')" ;;
+		esac
     fi
 	path="/data/media/$user/Android"
     path2="/data/user/$user"
@@ -1451,7 +1457,7 @@ get_name(){
 	rgb_a=118
 	user="$(echo "${0%}" | sed 's/.*\/Backup_zstd_\([0-9]*\).*/\1/')"
 	[[ ! -f $txt3 ]] && {
-	Apk_info="$(pm list packages -e --user "$user" | cut -f2 -d ':' | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+	Apk_info="$(pm list packages -u --user "$user" | cut -f2 -d ':' | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	if [[ $Apk_info != "" ]]; then
 	    [[ $Apk_info = *"Failure calling service package"* ]] && Apk_info="$(appinfo "user|system" "pkgName" 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	else
@@ -1835,7 +1841,7 @@ backup)
 	backup_path
 	echoRgb "配置詳細:\n -壓縮方式:$Compression_method\n -音量鍵確認:$Lo\n -更新:$update\n -備份模式:$Backup_Mode\n -備份外部數據:$Backup_obb_data\n -備份user數據:$Backup_user_data\n -自定義目錄備份:$backup_media\n -存在進程忽略備份:$Background_apps_ignore"
 	D="1"
-	Apk_info="$(pm list packages -e --user "$user" | cut -f2 -d ':' | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+	Apk_info="$(pm list packages -u --user "$user" | cut -f2 -d ':' | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	if [[ $Apk_info != "" ]]; then
 	    [[ $Apk_info = *"Failure calling service package"* ]] && Apk_info="$(appinfo "user|system" "pkgName" 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	else
@@ -1956,7 +1962,7 @@ backup)
     				echoRgb "跳過備份所有數據" "0"
     				No_backupdata=1
     			fi
-    			if [[ $(echo "$blacklist" | grep -w "$name2") = $name2 ]]; then
+    			if [[ $(echo "$blacklist" | grep -w "^$name2$") = $name2 ]]; then
     			    if [[ $blacklist_mode = true ]]; then
     			        echoRgb "黑名單應用跳過備份" "0"
     			        nobackup="true"
@@ -2201,7 +2207,7 @@ Restore|Restore2)
     	[[ $recovery_mode2 = false ]] && exit 2
     	if [[ $recovery_mode = true ]]; then
     		echoRgb "獲取未安裝應用中"
-    		Apk_info="$(pm list packages -e --user "$user" | cut -f2 -d ':' | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+    		Apk_info="$(pm list packages -u --user "$user" | cut -f2 -d ':' | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
         	if [[ $Apk_info != "" ]]; then
         	    [[ $Apk_info = *"Failure calling service package"* ]] && Apk_info="$(appinfo "user|system" "pkgName" 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
         	else
@@ -2497,41 +2503,55 @@ Getlist)
 	Q="0"
 	rb="0"
 	Output_list() {
-        if [[ $(awk '{print $2}' "$nametxt" | grep -w "^${app_1[1]}$") != "${app_1[1]}" ]]; then
-            add_entry "${app_1[2]}" "${app_1[1]}" "$REPLY2"
-            case ${app_1[1]} in
-                *oneplus* | *miui* | *xiaomi* | *oppo* | *flyme* | *meizu* | com.android.soundrecorder | com.mfashiongallery.emag | com.mi.health | *coloros*)
-                    if [[ $(echo "$xposed_name" | grep -wq "${app_1[1]}") ]]; then
-                        echoRgb "$app_name 為 Xposed 模塊 進行添加" "0"
-                        REPLY2="${REPLY2:+$REPLY2\n}$REPLY"
-                        tmp="${tmp:-1}"
-                        ((i++, rd++))
-                    elif [[ $(echo "$whitelist" | grep -wq "${app_1[1]}") ]]; then
-                        REPLY2="${REPLY2:+$REPLY2\n}$REPLY"
-                        tmp="${tmp:-1}"
-                        echoRgb "$app_name ${app_1[1]}($rgb_a)"
-                        ((i++))
-                    else
-                        echoRgb "$app_name 預裝應用 忽略輸出" "0"
-                        REPLY2="${REPLY2:+$REPLY2\n}#$REPLY"
-                        tmp="${tmp:-1}"
-                        ((rc++))
-                    fi
-                    ;;
-                *)
-                    REPLY2="${REPLY2:+$REPLY2\n}$REPLY"
-                    tmp="${tmp:-1}"
-                    if [[ $(echo "$xposed_name" | grep -wq "${app_1[1]}") ]]; then
-                        echoRgb "Xposed: $app_name ${app_1[1]}($rgb_a)"
-                        ((rd++))
-                    else
-                        echoRgb "$app_name ${app_1[1]}($rgb_a)"
-                    fi
-                    ((i++))
-                    ;;
-            esac
-        else
-            ((Q++))
+	    if [[ $(cat "$nametxt" | cut -f2 -d ' ' | egrep -w "^${app_1[1]}$") != ${app_1[1]} ]]; then
+	        [[ $REPLY2 = "" ]] && add_entry "${app_1[2]}" "${app_1[1]}" "$(cat "$nametxt" | grep -w "${app_1[2]}")" || add_entry "${app_1[2]}" "${app_1[1]}" "$REPLY2"
+	        case ${app_1[1]} in
+			    *oneplus* | *miui* | *xiaomi* | *oppo* | *flyme* | *meizu* | com.android.soundrecorder | com.mfashiongallery.emag | com.mi.health | *coloros*)
+				    if [[ $(echo "$xposed_name" | egrep -w "${app_1[1]}$") = ${app_1[1]} ]]; then
+    				    echoRgb "$app_name為Xposed模塊 進行添加" "0"
+					    if [[ $REPLY2 = "" ]]; then
+					        REPLY2="$REPLY" && [[ $tmp = "" ]] && tmp="1"
+					    else
+					        REPLY2="$REPLY2\n$REPLY" && [[ $tmp = "" ]] && tmp="1"
+					    fi
+					    let i++ rd++
+				    else
+					    if [[ $(echo "$whitelist" | egrep -w "^${app_1[1]}$") = ${app_1[1]} ]]; then
+					        if [[ $REPLY2 = "" ]]; then
+					            REPLY2="$REPLY" && [[ $tmp = "" ]] && tmp="1"
+					        else
+					            REPLY2="$REPLY2\n$REPLY" && [[ $tmp = "" ]] && tmp="1"
+					        fi
+						    echoRgb "$app_name ${app_1[1]}($rgb_a)"
+						    let i++
+					    else
+						    echoRgb "$app_name 預裝應用 忽略輸出" "0"
+						    if [[ $REPLY2 = "" ]]; then
+    						    REPLY2="#$REPLY" && [[ $tmp = "" ]] && tmp="1"
+						    else
+						        REPLY2="$REPLY2\n#$REPLY" && [[ $tmp = "" ]] && tmp="1"
+						    fi
+						    let rc++
+					    fi
+				    fi
+				    ;;
+			    *)
+				    if [[ $REPLY2 = "" ]]; then
+					    REPLY2="$REPLY" && [[ $tmp = "" ]] && tmp="1"
+					else
+					    REPLY2="$REPLY2\n$REPLY" && [[ $tmp = "" ]] && tmp="1"
+					fi
+					if [[ $(echo "$xposed_name" | egrep -w "${app_1[1]}$") = ${app_1[1]} ]]; then
+			            echoRgb "Xposed: $app_name ${app_1[1]}($rgb_a)"
+			            let rd++
+			        else
+				        echoRgb "$app_name ${app_1[1]}($rgb_a)"
+				    fi
+				    let i++
+				    ;;
+			esac
+		else
+	        let Q++
         fi
     }
     [[ $(echo "$blacklist" | egrep -v '#|＃') != "" ]] && NZK=1
@@ -2667,26 +2687,29 @@ backup_media)
 	fi
 	;;
 Device_List)
-    URL="https://khwang9883.github.io/MobileModels/brands"
+    URL="https://raw.githubusercontent.com/KHwang9883/MobileModels/refs/heads/master/brands"
     rm -rf "$tools_path/Device_List"
-    for i in $(echo "xiaomi\nsamsung\nasus\nBlack_Shark\ngoogle\nLenovo\nMEIZU\nMotorola\nNokia\nnothing\nnubia\nOnePlus\nSony"); do
+    for i in $(echo "xiaomi\nsamsung\nasus\nBlack_Shark\ngoogle\nLenovo\nMEIZU\nMotorola\nNokia\nnothing\nnubia\nOnePlus\nSony\nrealme\nvivo\noppo"); do
         echoRgb "獲取品牌$i"
         case $i in
-        xiaomi) Brand_URL="$URL/xiaomi.html" ;;
-        samsung) Brand_URL="$URL/samsung_cn.html" ;;
-        asus) Brand_URL="$URL/asus.html" ;;
-        Black_Shark) Brand_URL="$URL/blackshark.html" ;;
-        google) Brand_URL="$URL/google.html" ;;
-        Lenovo) Brand_URL="$URL/lenovo.html" ;;
-        MEIZU) Brand_URL="$URL/meizu.html" ;;
-        Motorola) Brand_URL="$URL/motorola.html" ;;
-        Nokia) Brand_URL="$URL/nokia.html" ;;
-        nothing) Brand_URL="$URL/nothing.html" ;;
-        nubia) Brand_URL="$URL/nubia.html" ;;
-        OnePlus) Brand_URL="$URL/oneplus.html" ;;
-        Sony) Brand_URL="$URL/sony_cn.html" ;;
+        xiaomi) Brand_URL="$URL/xiaomi.md" ;;
+        samsung) Brand_URL="$URL/samsung_cn.md" ;;
+        asus) Brand_URL="$URL/asus.md" ;;
+        Black_Shark) Brand_URL="$URL/blackshark.md" ;;
+        google) Brand_URL="$URL/google.md" ;;
+        Lenovo) Brand_URL="$URL/lenovo.md" ;;
+        MEIZU) Brand_URL="$URL/meizu.md" ;;
+        Motorola) Brand_URL="$URL/motorola.md" ;;
+        Nokia) Brand_URL="$URL/nokia.md" ;;
+        nothing) Brand_URL="$URL/nothing.md" ;;
+        nubia) Brand_URL="$URL/nubia.md" ;;
+        OnePlus) Brand_URL="$URL/oneplus.md" ;;
+        Sony) Brand_URL="$URL/sony_cn.md" ;;
+        realme) Brand_URL="$URL/realme_cn.md" ;;
+        vivo) Brand_URL="$URL/vivo_cn.md" ;;
+        oppo) Brand_URL="$URL/oppo_cn.md" ;;
         esac
-        down "$Brand_URL" | sed -n 's/.*<code class="language-plaintext highlighter-rouge">\([^<]*\)<\/code>: \(.*\)<\/p>.*/\1\n\2/p' | sed 's/\(.*\)/"\1"/' | sed 'N;s/\n/ /'>>"$tools_path/Device_List"
+        down "$Brand_URL" | grep -oE '`[^`]+`:[^`]*' | sed -E 's/`([^`]+)`:\s*(.*)/"\1" "\2"/'>>"$tools_path/Device_List"
     done
     if [[ -e $tools_path/Device_List ]]; then
         if [[ $(ls -l "$tools_path/Device_List" | awk '{print $5}') -gt 1 ]]; then
