@@ -2689,11 +2689,12 @@ backup_media)
 Device_List)
     URL="https://raw.githubusercontent.com/KHwang9883/MobileModels/refs/heads/master/brands"
     rm -rf "$tools_path/Device_List"
-    for i in $(echo "xiaomi\nsamsung\nasus\nBlack_Shark\ngoogle\nLenovo\nMEIZU\nMotorola\nNokia\nnothing\nnubia\nOnePlus\nSony\nrealme\nvivo\noppo"); do
+    for i in $(echo "xiaomi\nsamsung\nsamsung_global\nasus\nBlack_Shark\ngoogle\nLenovo\nMEIZU\nMotorola\nNokia\nnothing\nnubia\nOnePlus\nSony\nrealme\nvivo\noppo"); do
         echoRgb "獲取品牌$i"
         case $i in
         xiaomi) Brand_URL="$URL/xiaomi.md" ;;
         samsung) Brand_URL="$URL/samsung_cn.md" ;;
+        samsung_global) Brand_URL="$URL/samsung_global_en.md" ;;
         asus) Brand_URL="$URL/asus.md" ;;
         Black_Shark) Brand_URL="$URL/blackshark.md" ;;
         google) Brand_URL="$URL/google.md" ;;
@@ -2709,7 +2710,15 @@ Device_List)
         vivo) Brand_URL="$URL/vivo_cn.md" ;;
         oppo) Brand_URL="$URL/oppo_cn.md" ;;
         esac
-        down "$Brand_URL" | grep -oE '`[^`]+`:[^`]*' | sed -E 's/`([^`]+)`:\s*(.*)/"\1" "\2"/'>>"$tools_path/Device_List"
+        if [[ ! -e $tools_path/Device_List ]]; then
+            down "$Brand_URL" | grep -oE '`[^`]+`:[^`]*' | sed -E 's/: /:/g' | sed -E 's/`([^`]+)`:(.*)/"\1" "\2"/'>"$tools_path/Device_List"
+        else
+            down "$Brand_URL" | grep -oE '`[^`]+`:[^`]*' | sed -E 's/: /:/g' | sed -E 's/`([^`]+)`:(.*)/"\1" "\2"/' | while read ; do
+                unset model
+                model="$(echo "$REPLY" | awk -F'"' '{print $2}')"
+                [[ $(egrep -w "$model" "$tools_path/Device_List" | awk -F'"' '{print $2}') != $model ]] && echo "$REPLY">>"$tools_path/Device_List"
+            done
+        fi
     done
     if [[ -e $tools_path/Device_List ]]; then
         if [[ $(ls -l "$tools_path/Device_List" | awk '{print $5}') -gt 1 ]]; then
