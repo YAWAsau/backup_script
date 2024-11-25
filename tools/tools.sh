@@ -10,7 +10,7 @@ MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 Compression_rate=9
 script="${0##*/}"
-backup_version="202411241736"
+backup_version="202411251952"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
@@ -905,7 +905,7 @@ if [[ $json != "" ]]; then
 			if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(echo "$download" | tr -d "a-zA-Z")") -eq 0 ]]; then
 				echoRgb "發現新版本:$tag"
 				if [[ $update = true ]]; then
-				    echoRgb "更新日誌:\n$(down "$Language" | jq -r '.body' 2>/dev/null)"
+				    echoRgb "$(ts "更新日誌:\n$(down "$Language" | jq -r '.body' 2>/dev/null)")"
 					case $Lo in
 					0|1) 
 					    echoRgb "是否更新腳本？\n -音量上更新，音量下不更新" "2"
@@ -1031,8 +1031,7 @@ partition_info() {
 	Occupation_status="$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
 }
 kill_app() {
-    if [[ $name2 != *mt* && $name2 != com.termux && $name2 ]]; then
-        Pause_Freeze="${Pause_Freeze:=0}"
+    if [[ $name2 != bin.mt.plus && $name2 != com.termux && $name2 != bin.mt.plus.canary ]]; then
         if [[ $Pause_Freeze = 0 ]]; then
             if [[ $(dumpsys activity processes | grep "packageList" | cut -d '{' -f2 | cut -d '}' -f1 | egrep -w "^$name2$" | sed -n '1p') = $name2 ]]; then
                 pkill -9 -f "$name2$|$name2[:/_]"
@@ -1042,7 +1041,6 @@ kill_app() {
                 echoRgb "殺死$name1進程"
             fi
 	    fi
-	    Pause_Freeze="1"
 	fi
 }
 Backup_apk() {
@@ -2689,26 +2687,33 @@ backup_media)
 Device_List)
     URL="https://raw.githubusercontent.com/KHwang9883/MobileModels/refs/heads/master/brands"
     rm -rf "$tools_path/Device_List"
-    for i in $(echo "xiaomi\nsamsung\nsamsung_global\nasus\nBlack_Shark\ngoogle\nLenovo\nMEIZU\nMotorola\nNokia\nnothing\nnubia\nOnePlus\nSony\nrealme\nvivo\noppo"); do
+    for i in $(echo "xiaomi\nxiaomi_en\nsamsung\nsamsung_global\nasus\nBlack_Shark\nBlack_Shark_en\ngoogle\nLenovo\nMEIZU\nMEIZU_en\nMotorola\nNokia\nnothing\nnubia\nOnePlus\nOnePlus_en\nSony\nrealme\nrealme_en\nvivo\nvivo_en\noppo\noppo_en"); do
         echoRgb "獲取品牌$i"
         case $i in
         xiaomi) Brand_URL="$URL/xiaomi.md" ;;
+        xiaomi_en) Brand_URL="$URL/xiaomi_en.md" ;;
         samsung) Brand_URL="$URL/samsung_cn.md" ;;
         samsung_global) Brand_URL="$URL/samsung_global_en.md" ;;
         asus) Brand_URL="$URL/asus.md" ;;
         Black_Shark) Brand_URL="$URL/blackshark.md" ;;
+        Black_Shark_en) Brand_URL="$URL/blackshark_en.md" ;;
         google) Brand_URL="$URL/google.md" ;;
         Lenovo) Brand_URL="$URL/lenovo.md" ;;
         MEIZU) Brand_URL="$URL/meizu.md" ;;
+        MEIZU_en) Brand_URL="$URL/meizu_en.md" ;;
         Motorola) Brand_URL="$URL/motorola.md" ;;
         Nokia) Brand_URL="$URL/nokia.md" ;;
         nothing) Brand_URL="$URL/nothing.md" ;;
         nubia) Brand_URL="$URL/nubia.md" ;;
         OnePlus) Brand_URL="$URL/oneplus.md" ;;
+        OnePlus_en) Brand_URL="$URL/oneplus_en.md" ;;
         Sony) Brand_URL="$URL/sony_cn.md" ;;
         realme) Brand_URL="$URL/realme_cn.md" ;;
+        realme_en) Brand_URL="$URL/realme_global_en.md" ;;
         vivo) Brand_URL="$URL/vivo_cn.md" ;;
+        vivo_en) Brand_URL="$URL/vivo_global_en.md" ;;
         oppo) Brand_URL="$URL/oppo_cn.md" ;;
+        oppo_en) Brand_URL="$URL/oppo_global_en.md" ;;
         esac
         if [[ ! -e $tools_path/Device_List ]]; then
             down "$Brand_URL" | grep -oE '`[^`]+`:[^`]*' | sed -E 's/: /:/g' | sed -E 's/`([^`]+)`:(.*)/"\1" "\2"/'>"$tools_path/Device_List"
@@ -2716,6 +2721,7 @@ Device_List)
             down "$Brand_URL" | grep -oE '`[^`]+`:[^`]*' | sed -E 's/: /:/g' | sed -E 's/`([^`]+)`:(.*)/"\1" "\2"/' | while read ; do
                 unset model
                 model="$(echo "$REPLY" | awk -F'"' '{print $2}')"
+                echo "$(egrep -w "$model" "$tools_path/Device_List" | awk -F'"' '{print $2}') != $model"
                 [[ $(egrep -w "$model" "$tools_path/Device_List" | awk -F'"' '{print $2}') != $model ]] && echo "$REPLY">>"$tools_path/Device_List"
             done
         fi
