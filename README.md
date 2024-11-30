@@ -98,4 +98,5 @@ A5;腳本備份時會比對上次備份時的備份SIZE大小 如果有差異就
 - 屑老方([雄氏老方](http://www.coolapk.com/u/665894))：提供自動更新腳本方案
 - 胖子老陳(雨季騷年)
 - XayahSuSuSu([XayahSuSuSu](https://github.com/XayahSuSuSu))：提供App支持,dex支持
+
 `文檔編輯：Petit-Abba, YuKongA`
