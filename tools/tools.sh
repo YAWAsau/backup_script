@@ -10,7 +10,7 @@ MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 Compression_rate=9
 script="${0##*/}"
-backup_version="202411251952"
+backup_version="202412011445"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
@@ -26,6 +26,10 @@ background_execution="${background_execution:-0}"
 #腳本語言設置 留空則自動識別系統語言環境並翻譯
 #1簡體中文 0繁體中文
 Shell_LANG="$Shell_LANG"
+
+#備份開始後偽裝亮屏
+#1開啟 0關閉
+setDisplayPowerMode="${setDisplayPowerMode:-0}"
 
 #自定義備份文件輸出位置 支持相對路徑(留空則默認當前路徑)
 Output_path=\""$Output_path"\"
@@ -149,6 +153,10 @@ Lo="${Lo:-0}"
 0不能關閉當前終端，有壓縮速率
 1終端有可能完全無顯示，但是log會持續刷新，可直接完全關閉終端
 background_execution="${background_execution:-0}"
+
+#恢復開始後偽裝亮屏
+#1開啟 0關閉
+setDisplayPowerMode="${setDisplayPowerMode:-0}"
 
 #腳本語言設置 為空自動針對當前系統語言環境自動翻譯
 #1簡體中文 0繁體中文
@@ -331,11 +339,11 @@ while read -r file expected_hash; do
     break
   fi
 done <<< "$(cat <<EOF
-zstd 55cc57a3d079dd90e74d972c705c4f9389dd00a7175de148e21000eab01f7ed9
+zstd 2388211eb3960070c6b4528f68f7129a9ef5d165a0fef0113ac59e723006f4ca
 tar 3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814
-classes.dex 9e7fa38737f14baed0fb3b0c378472a696869edfca08b3e9b19fd1f56c240b2b
+classes.dex 38c0747425bfdd7c1846ad1767f7c8ebf96996df1db1cb00dbd08c8ed8028601
 bc b15d730591f6fb52af59284b87d939c5bea204f944405a3518224d8df788dc15
-busybox c629fce4b0dd3ba9775f851d0941e74582115f423258d3a79800f2bd11d30f5c
+busybox 4d60ab3f5a59ebb2ca863f2f514e6924401b581e9b64f602665c008177626651
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
 jq 4dd2d8a0661df0b22f1bb9a1f9830f06b6f3b8f7d91211a1ef5d7c4f06a8b4a5
 keycheck 50645ee0e0d2a7d64fb4a1286446df7a4445f3d11aefd49eeeb88515b314c363
@@ -620,6 +628,7 @@ backup|Restore|Restore2|Getlist|backup_media)
 	echoRgb "當前操作為用戶$user"
 	export USER_ID="$user" ;;
 esac
+unset LD_LIBRARY_PATH
 #因接收USER_ID環境變量問題故將函數放在此處
 alias appinfo="app_process /system/bin com.xayah.dex.HiddenApiUtil getInstalledPackagesAsUser $USER_ID $@"
 alias appinfo2="app_process /system/bin com.xayah.dex.HiddenApiUtil getPackageLabel $USER_ID $@"
@@ -631,6 +640,7 @@ alias get_Permissions="app_process /system/bin com.xayah.dex.HiddenApiUtil getRu
 alias Set_true_Permissions="app_process /system/bin com.xayah.dex.HiddenApiUtil grantRuntimePermission $USER_ID $@"
 alias Set_false_Permissions="app_process /system/bin com.xayah.dex.HiddenApiUtil revokeRuntimePermission $USER_ID $@"
 alias Set_Ops="app_process /system/bin com.xayah.dex.HiddenApiUtil setOpsMode $USER_ID $@"
+alias setDisplay="app_process /system/bin com.xayah.dex.HiddenApiUtil setDisplayPowerMode $@"
 find_tools_path="$(find "$path_hierarchy"/* -maxdepth 1 -name "tools" -type d ! -path "$path_hierarchy/tools")"
 Rename_script () {
     HT="${HT:=0}"
@@ -1032,15 +1042,13 @@ partition_info() {
 }
 kill_app() {
     if [[ $name2 != bin.mt.plus && $name2 != com.termux && $name2 != bin.mt.plus.canary ]]; then
-        if [[ $Pause_Freeze = 0 ]]; then
-            if [[ $(dumpsys activity processes | grep "packageList" | cut -d '{' -f2 | cut -d '}' -f1 | egrep -w "^$name2$" | sed -n '1p') = $name2 ]]; then
-                pkill -9 -f "$name2$|$name2[:/_]"
-                killall -9 "$name2" &>/dev/null
-                am force-stop --user "$user" "$name2" &>/dev/null
-                am kill "$name2" &>/dev/null
-                echoRgb "殺死$name1進程"
-            fi
-	    fi
+        if [[ $(dumpsys activity processes | grep "packageList" | cut -d '{' -f2 | cut -d '}' -f1 | egrep -w "^$name2$" | sed -n '1p') = $name2 ]]; then
+            pkill -9 -f "$name2$|$name2[:/_]"
+            killall -9 "$name2" &>/dev/null
+            am force-stop --user "$user" "$name2" &>/dev/null
+            am kill "$name2" &>/dev/null
+            echoRgb "殺死$name1進程"
+        fi
 	fi
 }
 Backup_apk() {
@@ -1130,7 +1138,7 @@ Backup_apk() {
 Backup_ssaid() {
     Ssaid="$(jq -r '.[] | select(.Ssaid != null).Ssaid' "$app_details")"
     ssaid="$(get_ssaid "$name2")"
-    echoRgb "SSAID:$ssaid"
+    [[ $ssaid != null ]] && echoRgb "SSAID:$ssaid"
     if [[ $ssaid != null && $ssaid != $Ssaid ]]; then
         echoRgb "$Ssaid>$ssaid"
     	SSAID_apk="$(echo "$name1 \"$name2\"")"
@@ -1164,7 +1172,7 @@ Backup_data() {
 	data|obb) ;;
 	*)
 		data_path="$2"
-		if [[ $1 != storage-isolation && $1 != thanox ]]; then
+		if [[ $1 != storage-isolation && $1 != thanox && $1 != NoActive ]]; then
 			Compression_method1="$Compression_method"
 			Compression_method=tar
 		fi
@@ -1213,8 +1221,8 @@ Backup_data() {
 				;;
 			*)
     		    case $Compression_method in
-    		    tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQS" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
-    			zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQS" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+    		    tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
+    			zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
     			esac
 				;;
 			esac
@@ -1290,7 +1298,8 @@ Release_data() {
 		    fi ;;
 		data) FILE_PATH="$path/data" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)" ;;
 		obb) FILE_PATH="$path/obb" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)";;
-		thanox) FILE_PATH="/data/system" && find "/data/system" -name "thanos*" -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
+		thanox) FILE_PATH="/data/system" && find "/data/system" -name "thanos"* -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
+		NoActive) FILE_PATH="/data/system" && find "/data/system" -name "NoActive_"* -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
 		storage-isolation) FILE_PATH="/data/adb" ;;
 		*)
 			if [[ $A != "" ]]; then
@@ -1369,8 +1378,12 @@ Release_data() {
 				fi
 				;;
 			thanox)
-				restorecon -RF "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)/" 2>/dev/null
+				restorecon -RF "$(find "/data/system" -name "thanos"* -maxdepth 1 -type d 2>/dev/null)/" 2>/dev/null
 				echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
+				;;
+		    NoActive)
+				restorecon -RF "$(find "/data/system" -name "NoActive_"* -maxdepth 1 -type d 2>/dev/null)/" 2>/dev/null
+				echo_log "selinux上下文設置"
 				;;
 			storage-isolation)
 				restorecon -RF "/data/adb/storage-isolation/" 2>/dev/null
@@ -1647,11 +1660,19 @@ Set_screen_pause_seconds () {
             settings put system screen_off_timeout 1800000
             echo_log "設置無操作息屏時間30分鐘"
         fi
+        [[ $setDisplayPowerMode = true ]] && {
+        setDisplay 0
+        echo_log "設置螢幕狀態false"
+        }
     elif [[ $1 = off ]]; then
         if [[ $Get_dark_screen_seconds != "" ]]; then
             settings put system screen_off_timeout "$Get_dark_screen_seconds"
             echo_log "設置無操作息屏時間為$Get_dark_screen_seconds"
         fi
+        [[ $setDisplayPowerMode = true ]] && {
+        setDisplay 2
+        echo_log "設置螢幕狀態true"
+        }
     fi
 }
 restore_permissions () {
@@ -1743,6 +1764,10 @@ backup)
 		echoRgb "全部應用備份結束後是否備份自定義目錄\n -音量上備份，音量下不備份" "2"
 		get_version "備份" "不備份" && backup_media="$branch"
 		}
+		[[ $setDisplayPowerMode != "" ]] && isBoolean "$setDisplayPowerMode" "setDisplayPowerMode" && setDisplayPowerMode="$nsx" || {
+		echoRgb "應用備份開始後關閉螢幕\n -音量上關閉，音量下不關閉" "2"
+		get_version "關閉" "不關閉" && setDisplayPowerMode="$branch"
+		}
 		[[ $Background_apps_ignore != "" ]] && isBoolean "$Background_apps_ignore" "Background_apps_ignore" && Background_apps_ignore="$nsx" || {
 		echoRgb "存在進程忽略備份\n -音量上忽略，音量下備份" "2"
 		get_version "忽略" "備份" && Background_apps_ignore="$branch"
@@ -1772,6 +1797,10 @@ backup)
 		echoRgb "全部應用備份結束後是否備份自定義目錄\n -音量上備份，音量下不備份" "2"
 		get_version "備份" "不備份" && backup_media="$branch"
 		} || isBoolean "$backup_media" "backup_media" && backup_media="$nsx"
+		[[ $setDisplayPowerMode = "" ]] && {
+		echoRgb "應用備份開始後關閉螢幕\n -音量上關閉，音量下不關閉" "2"
+		get_version "關閉" "不關閉" && setDisplayPowerMode="$branch"
+		}
 		[[ $Background_apps_ignore = "" ]] && {
 		echoRgb "存在進程忽略備份\n -音量上忽略，音量下備份" "2"
 		get_version "忽略" "備份" && Background_apps_ignore="$branch"
@@ -1803,6 +1832,11 @@ backup)
         fi
         [[ $backup_media = "" ]] && {
         Enter_options "全部應用備份結束後是否備份自定義目錄\n -輸入1備份，0不備份" "備份" "不備份" && isBoolean "$parameter" "backup_media" && backup_media="$nsx"
+        } || {
+        isBoolean "$backup_media" "backup_media" && backup_media="$nsx"
+        }
+        [[ $setDisplayPowerMode = "" ]] && {
+        Enter_options "應用備份開始後關閉螢幕\n -輸入1關閉，0不關閉" "關閉" "不關閉" && isBoolean "$parameter" "setDisplayPowerMode" && setDisplayPowerMode="$nsx"
         } || {
         isBoolean "$backup_media" "backup_media" && backup_media="$nsx"
         }
@@ -2010,7 +2044,8 @@ backup)
         				    Backup_data "user_de"
         				    }
         				}
-        				[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos*" -maxdepth 1 -type d 2>/dev/null)"
+        				[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos"* -maxdepth 1 -type d 2>/dev/null)"
+        				[[ $name2 = cn.myflv.noactive ]] && Backup_data "NoActive" "$(find "/data/system" -name "NoActive_"* -maxdepth 1 -type d 2>/dev/null)"
         				[[ $name2 = moe.shizuku.redirectstorage ]] && Backup_data "storage-isolation" "/data/adb/storage-isolation"
         		    fi
     			fi
@@ -2136,6 +2171,10 @@ Restore|Restore2)
         	echoRgb "選擇應用恢復模式\n -音量上僅恢復未安裝，下全恢復"
         	get_version "恢復未安裝" "全恢復" && recovery_mode="$branch"
         	}
+        	[[ $setDisplayPowerMode != "" ]] && isBoolean "$setDisplayPowerMode" "setDisplayPowerMode" && setDisplayPowerMode="$nsx" || {
+        	echoRgb "應用恢復時關閉螢幕\n -音量上關閉，下不關閉"
+        	get_version "關閉" "不關閉" && setDisplayPowerMode="$branch"
+        	}
         	Get_user="$(echo "$MODDIR" | rev | cut -d '/' -f1 | cut -d '_' -f1 | rev | egrep -o '[0-9]+')"
         	if [[ $Get_user != $user ]]; then
         	    echoRgb "檢測當前用戶$user與恢復資料夾用戶:$Get_user不同，音量上繼續恢復，下不恢復並離開腳本"
@@ -2160,6 +2199,8 @@ Restore|Restore2)
 		1)
     		echoRgb "選擇應用恢復模式\n -音量上僅恢復未安裝，下全恢復"
     	    get_version "恢復未安裝" "全恢復" && recovery_mode="$branch"
+    	    echoRgb "應用恢復時關閉螢幕\n -音量上關閉，下不關閉"
+        	get_version "關閉" "不關閉" && setDisplayPowerMode="$branch"
     	    Get_user="$(echo "$MODDIR" | rev | cut -d '/' -f1 | cut -d '_' -f1 | rev | egrep -o '[0-9]+')"
     	    if [[ $Get_user != $user ]]; then
     	        echoRgb "檢測當前用戶$user與恢復資料夾用戶:$Get_user不同，音量上繼續恢復，下不恢復並離開腳本"
@@ -2174,6 +2215,11 @@ Restore|Restore2)
 		2)
 		    [[ $recovery_mode = "" ]] && {
 		    Enter_options "選擇應用恢復模式\n -輸入1僅恢復未安裝，0全恢復" "僅恢復未安裝" "全恢復" && isBoolean "$parameter" "recovery_mode" && recovery_mode="$nsx"
+		    } || {
+		    isBoolean "$recovery_mode" "recovery_mode" && recovery_mode="$nsx"
+		    }
+		    [[ $setDisplayPowerMode = "" ]] && {
+		    Enter_options "應用恢復時關閉螢幕\n -輸入1關閉，0不關閉" "關閉" "不關閉" && isBoolean "$parameter" "setDisplayPowerMode" && setDisplayPowerMode="$nsx"
 		    } || {
 		    isBoolean "$recovery_mode" "recovery_mode" && recovery_mode="$nsx"
 		    }
@@ -2420,7 +2466,7 @@ Restore3)
 	starttime1="$(date -u "+%s")"
 	A=1
 	B="$(egrep -v '#|＃' "$txt" 2>/dev/null | awk 'NF != 0 { count++ } END { print count }')"
-	Set_screen_pause_seconds off
+	Set_screen_pause_seconds on
 	[[ $B = "" ]] && echoRgb "mediaList.txt壓縮包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取列表再來恢復" "0" && exit 1
 	echo "$script">"$TMPDIR/scriptTMP"
 	{
@@ -2491,7 +2537,7 @@ Getlist)
     Apk_info="$(echo "$(echo "$Apk_info" | awk '$3 != "system" {print $1, $2}')\n$Pre_installed_apps")"
 	[[ $Apk_info = "" ]] && {
 	echoRgb "appinfo輸出失敗,請截圖畫面回報作者" "0"
-	exit 2 ; } || Apk_info="$(echo "$Apk_info" | sed 's/Xposed: //g')" && Apk_info2="$(echo "$Apk_info" | awk '{print $2}')"
+	exit 2 ; } || Apk_info2="$(echo "$Apk_info" | awk '{print $2}')"
 	Apk_Quantity="$(echo "$Apk_info" | wc -l)"
 	LR="1"
 	echoRgb "列出第三方應用......." "2"
