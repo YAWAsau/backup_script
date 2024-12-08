@@ -8,7 +8,6 @@ shell_language="zh-TW"
 MODDIR="$MODDIR"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
-Compression_rate=9
 script="${0##*/}"
 backup_version="202412011445"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
@@ -1455,6 +1454,27 @@ disable_verify() {
 		settings put global upload_apk_enable 0 2>/dev/null
 		echoRgb "PLAY安全驗證為開啟狀態已被腳本關閉防止apk安裝失敗" "3"
 	fi
+	# 設定檔案路徑
+    FILE="/data/data/com.android.vending/shared_prefs/finsky.xml"
+    if [[ -f $FILE ]]; then
+        # 提取當前的 auto_update_enabled 值
+        CURRENT_VALUE="$(sed -n '/<boolean name="auto_update_enabled" /s/.*value="\([^"]*\)".*/\1/p' "$FILE")"
+        if [[ $CURRENT_VALUE = true ]]; then
+            sed -i '/<boolean name="auto_update_enabled" /s/value="true"/value="false"/' "$FILE"
+            [[ $(sed -n '/<boolean name="auto_update_enabled" /s/.*value="\([^"]*\)".*/\1/p' "$FILE") = false ]] && echoRgb "play自動更新已關閉" "3"
+            echoRgb "殺死 Google Play 商店..."
+            am force-stop com.android.vending
+        else
+            if [[ $CURRENT_VALUE = "" ]]; then
+                sed -i '/<\/map>/i \    <boolean name="auto_update_enabled" value="false" />' "$FILE"
+                [[ $(sed -n '/<boolean name="auto_update_enabled" /s/.*value="\([^"]*\)".*/\1/p' "$FILE") = false ]] && echoRgb "auto_update_enabled已插入false,play自動更新已關閉" "3"
+                echoRgb "殺死 Google Play 商店..."
+                am force-stop com.android.vending
+            else
+                [[ $CURRENT_VALUE != false ]] && echoRgb "無法識別play auto_update_enabled當前$CURRENT_VALUE值" "0"
+            fi
+        fi
+    fi
 }
 get_name(){
 	txt="$MODDIR/appList.txt"
@@ -2008,11 +2028,7 @@ backup)
 			app_details="$Backup_folder/app_details.json"
 			if [[ -f $app_details ]]; then
 				PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "$app_details")"
-				if [[ $PackageName != $name2 ]]; then
-				    unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version apk_version2  zsize zmediapath Size data_path Ssaid ssaid Permissions
-					Backup_folder="$Backup/${name1}[${name2}]"
-					app_details="$Backup_folder/app_details.json"
-				fi
+				[[ $PackageName != $name2 ]] && jq --arg name2 "$name2" 'walk(if type == "object" and .PackageName then .PackageName = $name2 else . end)' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
 			fi
 			[[ $hx = USB && $PT = "" ]] && echoRgb "隨身碟意外斷開 請檢查穩定性" "0" && exit 1
 			starttime2="$(date -u "+%s")"
@@ -2767,8 +2783,11 @@ Device_List)
             down "$Brand_URL" | grep -oE '`[^`]+`:[^`]*' | sed -E 's/: /:/g' | sed -E 's/`([^`]+)`:(.*)/"\1" "\2"/' | while read ; do
                 unset model
                 model="$(echo "$REPLY" | awk -F'"' '{print $2}')"
-                echo "$(egrep -w "$model" "$tools_path/Device_List" | awk -F'"' '{print $2}') != $model"
-                [[ $(egrep -w "$model" "$tools_path/Device_List" | awk -F'"' '{print $2}') != $model ]] && echo "$REPLY">>"$tools_path/Device_List"
+                if [[ $(egrep -w "$model" "$tools_path/Device_List" | awk -F'"' '{print $2}') != $model ]]; then
+                    echo "$REPLY">>"$tools_path/Device_List"
+                else
+                    echo "$(egrep -w "$model" "$tools_path/Device_List" | awk -F'"' '{print $2}') = $model"
+                fi
             done
         fi
     done
