@@ -9,7 +9,7 @@ MODDIR="$MODDIR"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202412011445"
+backup_version="202412282251"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
@@ -756,10 +756,7 @@ update_script() {
 					    esac
 					    echoRgb "從$zipFile更新"
 					    if [[ -d $path_hierarchy/tools ]]; then
-					        cp -r "$path_hierarchy/tools" "$TMPDIR"
-					        mv "$zipFile" "$path_hierarchy"
-					        zipFile="$path_hierarchy/${zipFile##*/}"
-					        rm -rf "$path_hierarchy/tools"
+					        mv "$path_hierarchy/tools" "$TMPDIR"
 					        unzip -o "$zipFile" tools/* -d "$path_hierarchy" | sed 's/inflating/釋放/g ; s/creating/創建/g ; s/Archive/解壓縮/g'
 					        echo_log "解壓縮${zipFile##*/}"
 					        if [[ $result = 0 ]]; then
@@ -794,7 +791,7 @@ update_script() {
 		                            echoRgb "$update_path/tools已經更新完成"
 		                        fi
 					        else
-						        cp -r "$TMPDIR/tools" "$MODDIR"
+						        mv "$TMPDIR/tools" "$MODDIR"
 					        fi
 					        rm -rf "$TMPDIR"/* "$zipFile" "$MODDIR/tools.sh"
 					        echoRgb "更新完成 請重新執行腳本" "2"
@@ -1033,10 +1030,11 @@ size() {
 }
 #分區佔用信息
 partition_info() {
+    unset Skip
 	Occupation_status="$(df -B1 "${1%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1)}')"
 	Filesize2="$(size "$Filesize")"
 	echo " -$2大小:$Filesize2 剩餘大小:$(size "$Occupation_status")"
-	[[ $Filesize != "" ]] && [[ $(echo "$Filesize > $Occupation_status" | bc) -eq 1 ]] && echoRgb "$2備份大小將超出rom可用大小" "0" && exit 2
+	[[ $Filesize != "" ]] && [[ $(echo "$Filesize > $Occupation_status" | bc) -eq 1 ]] && echoRgb "$2備份大小將超出rom可用大小" "0" && Skip=1
 	Occupation_status="$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
 }
 kill_app() {
@@ -1080,53 +1078,55 @@ Backup_apk() {
 			Filesize="$(find "$apk_path2" -type f -printf "%s\n" | awk '{s+=$1} END {print s}')"
 			rm -rf "$Backup_folder/apk.tar"*
 			partition_info "$Backup" "$name1 apk"
-			#備份apk
-			echoRgb "$1"
-			echo "$apk_path" | sed -e '/^$/d' | while read; do
-				echoRgb "${REPLY##*/} $(size "$REPLY")"
-			done
-			(
-				cd "$apk_path2"
-				case $Compression_method in
-				tar | TAR | Tar) tar --checkpoint-action="ttyout=%T\r" -cf "$Backup_folder/apk.tar" *.apk ;;
-				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" -cf - *.apk | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
-				esac
-			)
-			echo_log "備份$apk_number個Apk"
-			if [[ $result = 0 ]]; then
-			    Validation_file "$Backup_folder/apk.tar"*
-				if [[ $result = 0 ]]; then
-					[[ $(sed -e '/^$/d' "$txt2" 2>/dev/null | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
-                    [[ $apk_version != "" ]] && {
-                    echoRgb "覆蓋app_details"
-                    jq --arg apk_version "$apk_version2" --arg software "$name1" '.[$software].apk_version = $apk_version' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
-                    } || {
-                    echoRgb "新增app_details"
-                    extra_content="{
-                      \"$name1\": {
-                        \"PackageName\": \"$name2\",
-                        \"apk_version\": \"$apk_version2\"
-                      }
-                    }"
-                    jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
-                    }
-				else
-					rm -rf "$Backup_folder"
-				fi
-				if [[ $name2 = com.android.chrome ]]; then
-					#刪除所有舊apk ,保留一個最新apk進行備份
-					ReservedNum=1
-					FileNum="$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)"
-					while [[ $FileNum -gt $ReservedNum ]]; do
-						OldFile="$(ls -rt /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | head -1)"
-						rm -rf "${OldFile%/*/*}" && echoRgb "刪除文件:${OldFile%/*/*}"
-						let "FileNum--"
-					done
-					[[ -f $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null) && $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l) = 1 ]] && cp -r "$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null)" "$Backup_folder/nmsl.apk"
-				fi
-			else
-				rm -rf "$Backup_folder"
-			fi
+			if [[ $Skip != 1 ]]; then
+    			#備份apk
+    			echoRgb "$1"
+    			echo "$apk_path" | sed -e '/^$/d' | while read; do
+    				echoRgb "${REPLY##*/} $(size "$REPLY")"
+    			done
+    			(
+    				cd "$apk_path2"
+    				case $Compression_method in
+    				tar | TAR | Tar) tar --checkpoint-action="ttyout=%T\r" -cf "$Backup_folder/apk.tar" *.apk ;;
+    				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" -cf - *.apk | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/apk.tar.zst" ;;
+    				esac
+    			)
+    			echo_log "備份$apk_number個Apk"
+    			if [[ $result = 0 ]]; then
+    			    Validation_file "$Backup_folder/apk.tar"*
+    				if [[ $result = 0 ]]; then
+    					[[ $(sed -e '/^$/d' "$txt2" 2>/dev/null | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
+                        [[ $apk_version != "" ]] && {
+                        echoRgb "覆蓋app_details"
+                        jq --arg apk_version "$apk_version2" --arg software "$name1" '.[$software].apk_version = $apk_version' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+                        } || {
+                        echoRgb "新增app_details"
+                        extra_content="{
+                          \"$name1\": {
+                            \"PackageName\": \"$name2\",
+                            \"apk_version\": \"$apk_version2\"
+                          }
+                        }"
+                        jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+                        }
+    				else
+    					rm -rf "$Backup_folder"
+    				fi
+    				if [[ $name2 = com.android.chrome ]]; then
+    					#刪除所有舊apk ,保留一個最新apk進行備份
+    					ReservedNum=1
+    					FileNum="$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)"
+    					while [[ $FileNum -gt $ReservedNum ]]; do
+    						OldFile="$(ls -rt /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | head -1)"
+    						rm -rf "${OldFile%/*/*}" && echoRgb "刪除文件:${OldFile%/*/*}"
+    						let "FileNum--"
+    					done
+    					[[ -f $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null) && $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l) = 1 ]] && cp -r "$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null)" "$Backup_folder/nmsl.apk"
+    				fi
+    			else
+    				rm -rf "$Backup_folder"
+    			fi
+    	    fi
 		else
 			let osj++
 			rm -rf "$Backup_folder"
@@ -1195,71 +1195,73 @@ Backup_data() {
 			esac
 			rm -rf "$Backup_folder/$1.tar"*
 			partition_info "$Backup" "$1"
-			echoRgb "備份$1數據"
-			# 判斷是否超過指定大小
-            if [[ $Filesize2 != *"bytes"* ]]; then
-                if [[ $Filesize2 = *"KB"* ]]; then
-                    if [[ $(echo "${Filesize2% KB}" | bc) > 1 ]]; then
-                        Start_backup="true"
+			if [[ $Skip != 1 ]]; then
+    			echoRgb "備份$1數據"
+    			# 判斷是否超過指定大小
+                if [[ $Filesize2 != *"bytes"* ]]; then
+                    if [[ $Filesize2 = *"KB"* ]]; then
+                        if [[ $(echo "${Filesize2% KB}" | bc) > 1 ]]; then
+                            Start_backup="true"
+                        else
+                            Start_backup="false"
+                        fi
                     else
-                        Start_backup="false"
+                        Start_backup="true"
                     fi
                 else
-                    Start_backup="true"
+                    Start_backup="false"
                 fi
-            else
-                Start_backup="false"
-            fi
-            [[ $Start_backup = true ]] && {
-			case $1 in
-			user|user_de)
-				case $Compression_method in
-				tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null ;;
-				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" 2>/dev/null ;;
-				esac
-				;;
-			*)
-    		    case $Compression_method in
-    		    tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
-    			zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+                [[ $Start_backup = true ]] && {
+    			case $1 in
+    			user|user_de)
+    				case $Compression_method in
+    				tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" 2>/dev/null ;;
+    				zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="${data_path##*/}/.ota" --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/lib" --exclude="${data_path##*/}/code_cache" --exclude="${data_path##*/}/no_backup" --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" 2>/dev/null ;;
+    				esac
+    				;;
+    			*)
+        		    case $Compression_method in
+        		    tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
+        			zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+        			esac
+    				;;
     			esac
-				;;
-			esac
-			echo_log "備份$1數據"
-			} || {
-			echoRgb "$1數據 $Filesize2太小" "0" && result=1
-			}
-			if [[ $result = 0 ]]; then
-			    Validation_file "$Backup_folder/$1.tar"*
-				if [[ $result = 0 ]]; then
-				    if [[ ! $Filesize -eq 0 ]]; then
-                        size2="$(stat -c %s "$Backup_folder/$1.tar"*)"
-                        rate="$(echo "scale=2; (1 - ($size2 / $Filesize)) * 100" | bc)"
-                        echoRgb "壓縮率${rate}% 大小$(size "$size2")"
-                    fi
-				    [[ ${Backup_folder##*/} = Media ]] && [[ $(sed -e '/^$/d' "$mediatxt" | grep -w "${REPLY##*/}.tar$" | head -1) = "" ]] && echo "$FILE_NAME" >> "$mediatxt"
-					if [[ $zsize != "" ]]; then
-					    extra_content="{
-                          \"$1\": {
-                            \"path\": \"$2\",
-                            \"Size\": \"$Filesize\"
-                          }
-                        }"
-                        jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
-					else
-					    extra_content="{
-                          \"$1\": {
-                            \"Size\": \"$Filesize\"
-                          }
-                        }"
-                        jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
-					fi
-				else
-					rm -rf "$Backup_folder/$1".tar.*
-				fi
-			fi
-			[[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1"
-			unset Compression_method1
+    			echo_log "備份$1數據"
+    			} || {
+    			echoRgb "$1數據 $Filesize2太小" "0" && result=1
+    			}
+    			if [[ $result = 0 ]]; then
+    			    Validation_file "$Backup_folder/$1.tar"*
+    				if [[ $result = 0 ]]; then
+    				    if [[ ! $Filesize -eq 0 ]]; then
+                            size2="$(stat -c %s "$Backup_folder/$1.tar"*)"
+                            rate="$(echo "scale=2; (1 - ($size2 / $Filesize)) * 100" | bc)"
+                            echoRgb "壓縮率${rate}% 大小$(size "$size2")"
+                        fi
+    				    [[ ${Backup_folder##*/} = Media ]] && [[ $(sed -e '/^$/d' "$mediatxt" | grep -w "${REPLY##*/}.tar$" | head -1) = "" ]] && echo "$FILE_NAME" >> "$mediatxt"
+    					if [[ $zsize != "" ]]; then
+    					    extra_content="{
+                              \"$1\": {
+                                \"path\": \"$2\",
+                                \"Size\": \"$Filesize\"
+                              }
+                            }"
+                            jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+    					else
+    					    extra_content="{
+                              \"$1\": {
+                                \"Size\": \"$Filesize\"
+                              }
+                            }"
+                            jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+    					fi
+    				else
+    					rm -rf "$Backup_folder/$1".tar.*
+    				fi
+    			fi
+    			[[ $Compression_method1 != "" ]] && Compression_method="$Compression_method1"
+    			unset Compression_method1
+    		fi
 		else
 			[[ $Size != "" ]] && echoRgb "$1數據無發生變化 跳過備份" "2"
 		fi
@@ -1820,11 +1822,12 @@ backup)
 		[[ $setDisplayPowerMode = "" ]] && {
 		echoRgb "應用備份開始後關閉螢幕\n -音量上關閉，音量下不關閉" "2"
 		get_version "關閉" "不關閉" && setDisplayPowerMode="$branch"
-		}
+		} || isBoolean "$setDisplayPowerMode" "setDisplayPowerMode" && setDisplayPowerMode="$nsx"
 		[[ $Background_apps_ignore = "" ]] && {
 		echoRgb "存在進程忽略備份\n -音量上忽略，音量下備份" "2"
 		get_version "忽略" "備份" && Background_apps_ignore="$branch"
-		} ;;
+		} || isBoolean "$Background_apps_ignore" "Background_apps_ignore" && Background_apps_ignore="$nsx"
+		;;
 	2)
         [[ $Backup_Mode = "" ]] && {
         Enter_options "輸入1備份應用+數據，輸入0僅應用不包含數據" "應用+數據" "僅應用" && isBoolean "$parameter" "Backup_Mode" && Backup_Mode="$nsx"
@@ -1858,7 +1861,7 @@ backup)
         [[ $setDisplayPowerMode = "" ]] && {
         Enter_options "應用備份開始後關閉螢幕\n -輸入1關閉，0不關閉" "關閉" "不關閉" && isBoolean "$parameter" "setDisplayPowerMode" && setDisplayPowerMode="$nsx"
         } || {
-        isBoolean "$backup_media" "backup_media" && backup_media="$nsx"
+        isBoolean "$setDisplayPowerMode" "setDisplayPowerMode" && setDisplayPowerMode="$nsx"
         }
         [[ $Background_apps_ignore = "" ]] && {
         Enter_options "存在進程忽略備份\n -輸入1不備份，0備份" "忽略" "備份" && isBoolean "$parameter" "Background_apps_ignore" && Background_apps_ignore="$nsx"
@@ -1891,7 +1894,7 @@ backup)
 	hx="本地"
 	echoRgb "腳本受到內核機制影響 息屏後IO性能嚴重影響\n -請勿關閉終端或是息屏備份 如需終止腳本\n -請執行終止腳本.sh即可停止" "3"
 	backup_path
-	echoRgb "配置詳細:\n -壓縮方式:$Compression_method\n -音量鍵確認:$Lo\n -更新:$update\n -備份模式:$Backup_Mode\n -備份外部數據:$Backup_obb_data\n -備份user數據:$Backup_user_data\n -自定義目錄備份:$backup_media\n -存在進程忽略備份:$Background_apps_ignore"
+	echoRgb "配置詳細:\n -壓縮方式:$Compression_method\n -音量鍵確認:$Lo\n -更新:$update\n -備份模式:$Backup_Mode\n -備份外部數據:$Backup_obb_data\n -備份user數據:$Backup_user_data\n -自定義目錄備份:$backup_media\n -存在進程忽略備份:$Background_apps_ignore\n -關閉螢幕:$setDisplayPowerMode"
 	D="1"
 	Apk_info="$(pm list packages -u --user "$user" | cut -f2 -d ':' | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	if [[ $Apk_info != "" ]]; then
@@ -2381,18 +2384,8 @@ Restore|Restore2)
 					restore_permissions
 					Ssaid="$(jq -r '.[] | select(.Ssaid != null).Ssaid' "$app_details")"
 					if [[ $Ssaid != "" ]]; then
-					    if [[ $(get_ssaid "$name2") != $Ssaid ]]; then
-					        set_ssaid "$name2" "$Ssaid"
-					        if [[ $(get_ssaid "$name2") = $Ssaid ]]; then
-					            echoRgb "SSAID恢復成功" "1"
-					            SSAID_Package="$(echo "$name1 \"$name2\"")"
-				                SSAID_Package2="$(echo "$SSAID_Package\n$SSAID_Package2")"
-					        else
-					            echoRgb "SSAID恢復失敗" "0"
-					            SSAID_Package1="$(echo "$name1 \"$name2\"")"
-				                SSAID_Package3="$(echo "$SSAID_Package1\n$SSAID_Package3")"
-					        fi
-					    fi
+					    SSAID_Package="$(echo "$name1 $name2 $Ssaid")"
+				        SSAID_Package2="$(echo "$SSAID_Package\n$SSAID_Package2")"
 					    unset Ssaid
 					fi
 					}
@@ -2411,7 +2404,26 @@ Restore|Restore2)
 		fi
 		if [[ $i = $r && $operate != Restore2 ]]; then
 		    endtime 1 "應用恢復" "2"
-		    echoRgb "\n -下列為已設置SSAID應用,請勿打開需要重啟後才能使用，否則ssaid設置失敗\n$SSAID_Package2\n -下列為設置SSAID失敗應用....\n$SSAID_Package3" "3"
+		    [[ $SSAID_Package2 != "" ]] && {
+		    echoRgb "開始恢復saaid" "0"
+		    echo "$SSAID_Package2" | while read; do
+		        Ssaid="$(echo "$REPLY" | awk '{print $3}')"
+		        name1="$(echo "$REPLY" | awk '{print $1}')"
+		        name2="$(echo "$REPLY" | awk '{print $2}')"
+			        set_ssaid "$name2" "$Ssaid"
+			        if [[ $(get_ssaid "$name2") = $Ssaid ]]; then
+			            echoRgb "$name1 SSAID恢復成功" "1"
+			            SSAID_Package0="$(echo "$name1 \"$name2\"")"
+		                SSAID_Package1="$(echo "$SSAID_Package0\n$SSAID_Package1")"
+			        else
+			            echoRgb "$name1 SSAID恢復失敗" "0"
+			            SSAID_Package3="$(echo "$name1 \"$name2\"")"
+		                SSAID_Package4="$(echo "$SSAID_Package3\n$SSAID_Package4")"
+			        fi
+			    unset Ssaid
+			done
+			echoRgb "SSAID恢復後必須重新開機套用,否則應用閃退,如果沒有應用恢復ssaid則無須重啟" "0"
+			}
 			if [[ $media_recovery = true ]]; then
 			    starttime1="$(date -u "+%s")"
 			    app_details="$Backup_folder2/app_details.json"
@@ -2447,7 +2459,7 @@ Restore|Restore2)
 	done
 	Set_screen_pause_seconds off
 	starttime1="$TIME"
-	echoRgb "$DX完成" && endtime 1 "$DX開始到結束" && [[ $SSAID_Package2 != "" ]] && echoRgb "SSAID恢復後必須重啟套用,如發現應用閃退請重新開機" "0"
+	echoRgb "$DX完成" && endtime 1 "$DX開始到結束"
 	rm -rf "$TMPDIR"/*
 	} &
 	wait && exit
