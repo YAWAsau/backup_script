@@ -9,7 +9,7 @@ MODDIR="$MODDIR"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202412282251"
+backup_version="20241228225"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
@@ -340,7 +340,7 @@ while read -r file expected_hash; do
 done <<< "$(cat <<EOF
 zstd 2388211eb3960070c6b4528f68f7129a9ef5d165a0fef0113ac59e723006f4ca
 tar 3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814
-classes.dex 38c0747425bfdd7c1846ad1767f7c8ebf96996df1db1cb00dbd08c8ed8028601
+classes.dex d117c122547837d725886a7820df6a1cc998f19ad9a2f0a7831479aaa60bb102
 bc b15d730591f6fb52af59284b87d939c5bea204f944405a3518224d8df788dc15
 busybox 4d60ab3f5a59ebb2ca863f2f514e6924401b581e9b64f602665c008177626651
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
@@ -620,6 +620,7 @@ backup|Restore|Restore2|Getlist|backup_media)
 		zstd | Zstd | ZSTD) user="$(echo "${0%}" | sed 's/.*\/Backup_zstd_\([0-9]*\).*/\1/')" ;;
 		esac
     fi
+    [[ $user != 0 ]] && am start-user "$user"
 	path="/data/media/$user/Android"
     path2="/data/user/$user"
     path3="/data/user_de/$user"
@@ -1186,6 +1187,12 @@ Backup_data() {
 		if [[ $Size != $Filesize ]]; then
             case $1 in
             user)
+                if [[ $(su "$(get_uid "$name2" 2>/dev/null)" -c keystore_cli_v2 list | wc -l) -ge 2 ]]; then
+                    echoRgb "$name1包含keystore 恢復可能閃退" "0"
+                    jq --arg entry "$name1" '.[$entry].keystore |= "true"' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+                else
+                    jq --arg entry "$name1" '.[$entry].keystore |= "false"' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+                fi
     		    Backup_ssaid
     			Backup_Permissions ;;
     	    esac
@@ -1244,6 +1251,9 @@ Backup_data() {
                               \"$1\": {
                                 \"path\": \"$2\",
                                 \"Size\": \"$Filesize\"
+                              },
+                              \"Backup time\": {
+                                \"date\": \"$(date "+%Y.%m.%d %H:%M:%S")\"
                               }
                             }"
                             jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
@@ -1251,6 +1261,9 @@ Backup_data() {
     					    extra_content="{
                               \"$1\": {
                                 \"Size\": \"$Filesize\"
+                              },
+                              \"Backup time\": {
+                                \"date\": \"$(date "+%Y.%m.%d %H:%M:%S")\"
                               }
                             }"
                             jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
@@ -1284,6 +1297,7 @@ Release_data() {
 		case $FILE_NAME2 in
 		user)
 		    if [[ -d $X ]]; then
+		        [[ $(jq -r '.[] | select(.Ssaid != null).keystore' "$app_details") = true ]] && echoRgb "$name1存在keystore 恢復可能閃退" "0"
 		        FILE_PATH="$path2"
 		        Selinux_state="$(LS "$X" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)"
 		    else
@@ -1332,13 +1346,10 @@ Release_data() {
 		if [[ $result = 0 ]]; then
 			case $FILE_NAME2 in
 			user|data|obb|user_de)
-			    if [[ $G = "" ]]; then
-		            if [[ $(get_uid "$name2" 2>/dev/null) != "" ]]; then
-				        G="$(get_uid "$name2" 2>/dev/null)"
-				    else
-					    G="$(dumpsys package "$name2" 2>/dev/null | awk -F'uid=' '{print $2}' | egrep -o '[0-9]+' | head -n 1)"
-					    [[ $(echo "$G" | egrep -o '[0-9]+') = "" ]] && G="$(pm list packages -U --user "$user" | egrep -w "$name2" | awk -F'uid:' '{print $2}' | awk '{print $1}' | head -n 1)"
-				    fi
+			    G="$(get_uid "$name2" 2>/dev/null)"
+			    if [[ $G != "" ]]; then
+				    G="$(dumpsys package "$name2" 2>/dev/null | awk -F'uid=' '{print $2}' | egrep -o '[0-9]+' | head -n 1)"
+				    [[ $(echo "$G" | egrep -o '[0-9]+') = "" ]] && G="$(pm list packages -U --user "$user" | egrep -w "$name2" | awk -F'uid:' '{print $2}' | awk '{print $1}' | head -n 1)"
 				fi
                 G="$(echo "$G" | egrep -o '[0-9]+')"
 				if [[ $G != "" ]]; then
@@ -1361,7 +1372,7 @@ Release_data() {
                             esac
                             if [[ $Validation_settings = true ]]; then
 						        chown -hR "$uid" "$X/"
-						        echo_log "設置用戶組"
+						        echo_log "設置用戶組$uid"
 						        chcon -hR "$Selinux_state" "$X/" 2>/dev/null
 						        echo_log "selinux上下文設置"
 						    else
@@ -1690,6 +1701,7 @@ Set_screen_pause_seconds () {
         if [[ $Get_dark_screen_seconds != "" ]]; then
             settings put system screen_off_timeout "$Get_dark_screen_seconds"
             echo_log "設置無操作息屏時間為$Get_dark_screen_seconds"
+            input keyevent 224
         fi
         [[ $setDisplayPowerMode = true ]] && {
         setDisplay 2
@@ -2149,6 +2161,7 @@ backup)
 		let i++ en++ nskg++
 	done
 	Set_screen_pause_seconds off
+	[[ $user != 0 ]] && am stop-user "$user"
 	rm -rf "$TMPDIR/scriptTMP"
 	Calculate_size "$Backup"
 	echoRgb "批量備份完成"
@@ -2458,6 +2471,7 @@ Restore|Restore2)
 		let i++ en++ nskg++
 	done
 	Set_screen_pause_seconds off
+	[[ $user != 0 ]] && am stop-user "$user"
 	starttime1="$TIME"
 	echoRgb "$DX完成" && endtime 1 "$DX開始到結束"
 	rm -rf "$TMPDIR"/*
