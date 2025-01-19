@@ -9,7 +9,7 @@ MODDIR="$MODDIR"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="20241228225"
+backup_version="202412282251"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
@@ -340,7 +340,7 @@ while read -r file expected_hash; do
 done <<< "$(cat <<EOF
 zstd 2388211eb3960070c6b4528f68f7129a9ef5d165a0fef0113ac59e723006f4ca
 tar 3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814
-classes.dex d117c122547837d725886a7820df6a1cc998f19ad9a2f0a7831479aaa60bb102
+classes.dex 0057136d4da6c0a3d1bb3e67c9cd845acaed183217a9dfee423a05a3d30121ab
 bc b15d730591f6fb52af59284b87d939c5bea204f944405a3518224d8df788dc15
 busybox 4d60ab3f5a59ebb2ca863f2f514e6924401b581e9b64f602665c008177626651
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
@@ -348,6 +348,11 @@ jq 4dd2d8a0661df0b22f1bb9a1f9830f06b6f3b8f7d91211a1ef5d7c4f06a8b4a5
 keycheck 50645ee0e0d2a7d64fb4a1286446df7a4445f3d11aefd49eeeb88515b314c363
 zip d9015b3c5d3376a4f9f2d204afd2aeaa4a86fd0174da1be090e41622e73be0ec
 EOF)"
+if [[ $background_execution = 1 || $setDisplayPowerMode = 1 ]]; then
+    alias notification="app_process /system/bin com.xayah.dex.NotificationUtil notify -t 'SpeedBackup' "$@""
+else
+    alias notification="&>/dev/null"
+fi
 if [[ $quit -ne 0 ]]; then
   exit "$quit"
 fi
@@ -430,6 +435,7 @@ echo_log() {
 		Set_back_0
 	else
 		echoRgb "$1失敗，過世了" "0"
+		notification "$RANDOM" "$name1: $1失敗，過世"
 		result=1
 		Set_back_1
 	fi
@@ -2000,6 +2006,7 @@ backup)
 	{
 	starttime1="$(date -u "+%s")"
 	TIME="$starttime1"
+	notification "101" "開始備份"
 	while [[ $i -le $r ]]; do
 		[[ $en -ge 229 ]] && en=118
 		unset name1 name2 apk_path apk_path2
@@ -2019,6 +2026,8 @@ backup)
 		if [[ -d $apk_path2 ]]; then
 			echoRgb "備份第$i/$r個應用 剩下$((r - i))個" "3"
 			echoRgb "備份 $name1 \"$name2\"" "2"
+			notification "101" "備份第$i/$r個應用 剩下$((r - i))個
+備份 $name1 \"$name2\""
 			unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version apk_version2  zsize zmediapath Size data_path Ssaid ssaid Permissions
 			nobackup="false"
 			Background_application_list
@@ -2115,6 +2124,7 @@ backup)
 			update_apk2="${update_apk2:="暫無更新"}"
 			add_app2="${add_app2:="暫無更新"}"
 			echoRgb "\n -已更新的apk=\"$osn\"\n -已新增的備份=\"$osk\"\n -apk版本號無變化=\"$osj\"\n -下列為版本號已變更的應用\n$update_apk2\n -新增的備份....\n$add_app2\n -包含SSAID的應用\n$SSAID_apk2" "3"
+			notification "101" "app備份完成 $(endtime 1 "應用備份" "3")"
 			echo "$(sort "$txt2" | sed -e '/^$/d')" >"$txt2"
 			[[ -e ${txt%/*}/txt2 ]] && cat "${txt%/*}/txt2">"$txt" && rm -rf "${txt%/*}/txt2"
 			if [[ $backup_media = true && $backup_mode = "" ]]; then
@@ -2122,6 +2132,7 @@ backup)
 				B="$(echo "$Custom_path" | egrep -v '#|＃' | awk 'NF != 0 { count++ } END { print count }')"
 				if [[ $B != "" ]]; then
 					echoRgb "備份結束，備份多媒體" "1"
+					notification "102" "Media備份開始"
 					starttime1="$(date -u "+%s")"
 					Backup_folder="$Backup/Media"
 					[[ ! -f $Backup/恢復自定義資料夾.sh ]] && touch_shell "Restore3" "$Backup/恢復自定義資料夾.sh"
@@ -2132,6 +2143,7 @@ backup)
 					[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭使用#注釋 比如：#Download" > "$mediatxt"
 					echo "$Custom_path" | sed -e '/^#/d; /^$/d; s/\/$//' | while read; do
 						echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
+						notification "102" "備份第$A/$B個資料夾 剩下$((B - A))個"
 						starttime2="$(date -u "+%s")"
 						if [[ ${REPLY##*/} = adb ]]; then
 						    if [[ $ksu != ksu ]]; then
@@ -2152,6 +2164,7 @@ backup)
 						rgb_a="$rgb_d" && let A++
 					done
 					echoRgb "目錄↓↓↓\n -$Backup_folder"
+					notification "102" "Media備份完成 $(endtime 1 "自定義備份")"
 					endtime 1 "自定義備份"
 				else
 					echoRgb "自定義路徑為空 無法備份" "0"
@@ -2168,6 +2181,7 @@ backup)
 	echoRgb "備份結束時間$(date +"%Y-%m-%d %H:%M:%S")"
 	starttime1="$TIME"
 	endtime 1 "批量備份開始到結束"
+	notification "105" "備份完成 $(endtime 1 "批量備份開始到結束")"
 	} &
 	wait && exit
 	;;
@@ -2345,11 +2359,14 @@ Restore|Restore2)
 	Set_screen_pause_seconds on
 	en=118
 	echo "$script">"$TMPDIR/scriptTMP"
+	notification "105" "開始恢復app"
 	{
 	while [[ $i -le $r ]]; do
 		[[ $en -ge 229 ]] && en=118
 		if [[ $operate = Restore ]]; then
 		    echoRgb "恢復第$i/$r個應用 剩下$((r - i))個" "3"
+		    notification "105" "恢復第$i/$r個應用 剩下$((r - i))個
+恢復 $name1 \"$name2\""
 		    if [[ ! -f $txt ]]; then
 		        [[ $(echo "$txt") != "" ]] && {
 		        name1="$(echo "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
@@ -2436,7 +2453,9 @@ Restore|Restore2)
 			    unset Ssaid
 			done
 			echoRgb "SSAID恢復後必須重新開機套用,否則應用閃退,如果沒有應用恢復ssaid則無須重啟" "0"
+			notification "107" "SSAID恢復後必須重新開機套用,否則應用閃退,如果沒有應用恢復ssaid則無須重啟"
 			}
+			notification "105" "app恢復完成 $(endtime 1 "應用恢復" "2")"
 			if [[ $media_recovery = true ]]; then
 			    starttime1="$(date -u "+%s")"
 			    app_details="$Backup_folder2/app_details.json"
@@ -2445,6 +2464,7 @@ Restore|Restore2)
 			    A=1
 	            B="$(egrep -v '#|＃' "$txt" 2>/dev/null | awk 'NF != 0 { count++ } END { print count }')"
                 [[ $B = "" ]] && echoRgb "mediaList.txt壓縮包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取列表再來恢復" "0" && B=0
+                notification "106" "Media恢復開始"
 				while [[ $A -le $B ]]; do
 		            name1="$(egrep -v '#|＃' "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${A}p" | awk '{print $1}')"
 		            starttime2="$(date -u "+%s")"
@@ -2453,11 +2473,13 @@ Restore|Restore2)
 		            endtime 2 "$FILE_NAME2恢復" "2" && echoRgb "完成$((A * 100 / B))%" "3" && echoRgb "____________________________________" && let A++
                 done
 				endtime 1 "自定義恢復" "2"
+				notification "106" "Media恢復完成 $(endtime 1 "Media恢復" "2")"
 			fi
 			if [[ $modules_recovery = true ]]; then
 			    A=1
 		        B="$(find "$Backup_folder3" -maxdepth 1 -name "*.zip*" -type f 2>/dev/null | wc -l)"
 		        starttime1="$(date -u "+%s")"
+		        notification "108" "Module恢復開始"
 		        find "$Backup_folder3" -maxdepth 1 -name "*.zip*" -type f 2>/dev/null | while read; do
 					starttime2="$(date -u "+%s")"
 					echoRgb "刷入第$A/$B個模塊 剩下$((B - A))個" "3"
@@ -2466,6 +2488,8 @@ Restore|Restore2)
 					endtime 2 "${REPLY##*/}刷入" "2" && echoRgb "完成$((A * 100 / B))%" "3" && echoRgb "____________________________________" && let A++
 				done
 				endtime 1 "刷入模塊" "2"
+				notification "108" "Module恢復完成 $(endtime 1 "Module恢復" "2")"
+				
 			fi
 		fi
 		let i++ en++ nskg++
@@ -2474,6 +2498,7 @@ Restore|Restore2)
 	[[ $user != 0 ]] && am stop-user "$user"
 	starttime1="$TIME"
 	echoRgb "$DX完成" && endtime 1 "$DX開始到結束"
+	notification "109" "恢復完成 $(endtime 1 "$DX開始到結束")"
 	rm -rf "$TMPDIR"/*
 	} &
 	wait && exit
@@ -2511,6 +2536,7 @@ Restore3)
 	Set_screen_pause_seconds on
 	[[ $B = "" ]] && echoRgb "mediaList.txt壓縮包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取列表再來恢復" "0" && exit 1
 	echo "$script">"$TMPDIR/scriptTMP"
+	notification "108" "Media恢復開始"
 	{
 	while [[ $A -le $B ]]; do
 		name1="$(egrep -v '#|＃' "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${A}p" | awk '{print $1}')"
@@ -2521,6 +2547,7 @@ Restore3)
 	done
 	Set_screen_pause_seconds off
 	endtime 1 "恢復結束"
+	notification "108" "Media恢復完成 $(endtime 1 "Media恢復")"
 	rm -rf "$TMPDIR/scriptTMP"
 	} &
 	;;
@@ -2744,6 +2771,7 @@ backup_media)
 		[[ ! -f $mediatxt ]] && echo "#不需要恢復的資料夾請在開頭使用#注釋 比如：#Download" > "$mediatxt"
 		echo "$script">"$TMPDIR/scriptTMP"
 		Set_screen_pause_seconds on
+		notification "109" "Media備份開始"
 		{
 		echo "$Custom_path" | sed -e '/^#/d; /^$/d; s/\/$//' | while read; do
 			echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
@@ -2767,6 +2795,7 @@ backup_media)
 		Calculate_size "$Backup_folder"
 		Set_screen_pause_seconds off
 		endtime 1 "自定義備份"
+		notification "109" "Media備份完成 $(endtime 1 "自定義備份")"
 		rm -rf "$TMPDIR/scriptTMP"
 	else
 		echoRgb "自定義路徑為空 無法備份" "0"
