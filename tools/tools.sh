@@ -9,7 +9,7 @@ MODDIR="$MODDIR"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202412282251"
+backup_version="202502272204"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
@@ -261,7 +261,7 @@ arm64*)
 	exit 1
 	;;
 esac
-PATH="/sbin/.magisk/busybox:/sbin/.magisk:/sbin:/data/adb/ksu/bin:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/com.omarea.vtools/files/toolkit:/data/user/0/com.termux/files/usr/bin"
+PATH="/data/adb/ksu/bin:/sbin/.magisk/busybox:/sbin/.magisk:/sbin:/data/adb/ksu/bin:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/com.omarea.vtools/files/toolkit:/data/user/0/com.termux/files/usr/bin"
 if [[ -d $(magisk --path 2>/dev/null) ]]; then
 	PATH="$(magisk --path 2>/dev/null)/.magisk/busybox:$PATH"
 else
@@ -340,7 +340,7 @@ while read -r file expected_hash; do
 done <<< "$(cat <<EOF
 zstd 2388211eb3960070c6b4528f68f7129a9ef5d165a0fef0113ac59e723006f4ca
 tar 3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814
-classes.dex 0057136d4da6c0a3d1bb3e67c9cd845acaed183217a9dfee423a05a3d30121ab
+classes.dex ee8f70babbf30162a1ddae86930cc69d443eda0ecea177e36a9e1ae4681a4811
 bc b15d730591f6fb52af59284b87d939c5bea204f944405a3518224d8df788dc15
 busybox 4d60ab3f5a59ebb2ca863f2f514e6924401b581e9b64f602665c008177626651
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
@@ -358,7 +358,9 @@ if [[ $quit -ne 0 ]]; then
 fi
 sleep 1 && clear
 TMPDIR="/data/local/tmp"
-rm -rf "$TMPDIR"/*
+if [[ ! -e $TMPDIR/scriptTMP ]]; then
+    rm -rf "$TMPDIR"/*
+fi
 [[ ! -d $TMPDIR ]] && mkdir "$TMPDIR"
 chmod 771 "$TMPDIR"
 chown '2000:2000' "$TMPDIR"
@@ -446,15 +448,13 @@ process_name() {
 	done
 }
 kill_Serve() {
-	{
-	if [[ -e $TMPDIR/scriptTMP ]]; then
+	if [[ -f $TMPDIR/scriptTMP ]]; then
 		scriptname="$(cat "$TMPDIR/scriptTMP")"
 		echoRgb "腳本殘留進程，將殺死後退出腳本，請重新執行一次\n -殺死$scriptname" "0"
 		rm -rf "$TMPDIR/scriptTMP"
 		process_name "$scriptname"
 		exit
 	fi
-	} &
 	wait
 }
 Show_boottime() {
@@ -910,7 +910,7 @@ if [[ $json != "" ]]; then
 			download="$(jq -r '.assets[].browser_download_url'<<< "$json")"
 			case $cdn in
 			1) zip_url="http://huge.cf/download/?huge-url=$download" ;;
-			2) zip_url="https://github.moeyy.xyz/$download" ;;
+			2) zip_url="https://mirror.ghproxy.com/$download" ;;
 			3) zip_url="https://gh.api.99988866.xyz/$download" ;;
 			4) zip_url="https://github.lx164.workers.dev/$download" ;;
 			5) zip_url="https://shrill-pond-3e81.hunsh.workers.dev/$download" ;;
@@ -1157,13 +1157,17 @@ Backup_ssaid() {
 Backup_Permissions() {
     get_Permissions="$(jq -r '.[] | select(.permissions != null).permissions' "$app_details")"
     Get_Permissions="$(get_Permissions "$name2" | jq -nR '[inputs | select(length>0) | split(" ") | {(.[0]): (.[1:] | join(" "))}] | add')"
-    if [[ $Get_Permissions != "" ]]; then
+    if [[ $Get_Permissions != "" && ($Get_Permissions = *true* || $Get_Permissions = *false*) ]]; then
         if [[ $get_Permissions = "" ]]; then
             jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName].permissions |= $permissions' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
         	echo_log "備份權限"
         else
-        	[[ $get_Permissions != $Get_Permissions ]] && jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName] |= . + {permissions: $permissions}' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json && echo_log "備份權限" "備份"
+            if [[ $get_Permissions != "" && ($get_Permissions == *true* || $get_Permissions == *false*) ]]; then
+        	    [[ $get_Permissions != $Get_Permissions ]] && jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName] |= . + {permissions: $permissions}' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json && echo_log "備份權限" "備份"
+        	fi
         fi
+    else
+        echoRgb "備份權限失敗$(get_Permissions "$name2")" "0"
     fi
 }
 #檢測數據位置進行備份
@@ -1233,10 +1237,17 @@ Backup_data() {
     				esac
     				;;
     			*)
-        		    case $Compression_method in
-        		    tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
-        			zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
-        			esac
+    			    if [[ $ksu = "" ]]; then
+            		    case $Compression_method in
+            		    tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
+            			zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+            			esac
+            	    else
+            	        case $Compression_method in
+            		    tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}/modules" --exclude="${data_path##*/}/modules_update" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
+            			zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}/modules" --exclude="${data_path##*/}/modules_update" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+            			esac
+            	    fi
     				;;
     			esac
     			echo_log "備份$1數據"
@@ -1348,12 +1359,12 @@ Release_data() {
 		else
 			Set_back_1
 		fi
-		echo_log "解壓縮${FILE_NAME##*.}"
+		echo_log "解壓縮$FILE_NAME"
 		if [[ $result = 0 ]]; then
 			case $FILE_NAME2 in
 			user|data|obb|user_de)
 			    G="$(get_uid "$name2" 2>/dev/null)"
-			    if [[ $G != "" ]]; then
+			    if [[ $G = "" ]]; then
 				    G="$(dumpsys package "$name2" 2>/dev/null | awk -F'uid=' '{print $2}' | egrep -o '[0-9]+' | head -n 1)"
 				    [[ $(echo "$G" | egrep -o '[0-9]+') = "" ]] && G="$(pm list packages -U --user "$user" | egrep -w "$name2" | awk -F'uid:' '{print $2}' | awk '{print $1}' | head -n 1)"
 				fi
@@ -1722,11 +1733,11 @@ restore_permissions () {
     false_permissions="$(jq -r 'to_entries[] | select(.value.permissions != null) | .value.permissions | to_entries | map(select(.value | startswith("false")) | .key) | join(" ")' "$app_details")"
 	Set_Ops_permissions="$(jq -r '.[] | select(.permissions != null).permissions | to_entries | map(.value | split(" ")) | map(select(.[1] != "-1")) | map(.[1:]) | flatten | join(" ")' "$app_details")"
 	[[ $true_permissions != "" ]] && {
-	Set_true_Permissions "$name2" "$true_permissions" &>/dev/null
+	Set_true_Permissions "$name2" "$true_permissions"
 	[[ $? != 0 ]] && echo_log "設置允許權限"
 	}
     [[ $false_permissions != "" ]] && {
-    Set_false_Permissions "$name2" "$false_permissions" &>/dev/null
+    Set_false_Permissions "$name2" "$false_permissions"
     [[ $? != 0 ]] && echo_log "設置拒絕權限"
     }
     [[ $Set_Ops_permissions != "" ]] && {
@@ -1995,7 +2006,7 @@ backup)
 	#開始循環$txt內的資料進行備份
 	#記錄開始時間
 	en=118
-	echo "$script">"$TMPDIR/scriptTMP" && echo "$script">"$TMPDIR/scriptTMP"
+	echo "$script">"$TMPDIR/scriptTMP"
 	osn=0; osj=0; osk=0
 	#獲取已經開啟的無障礙
 	var="$(settings get secure enabled_accessibility_services 2>/dev/null)"
@@ -2025,9 +2036,9 @@ backup)
 		apk_path2="${apk_path2%/*}"
 		if [[ -d $apk_path2 ]]; then
 			echoRgb "備份第$i/$r個應用 剩下$((r - i))個" "3"
-			echoRgb "備份 $name1 \"$name2\"" "2"
+			echoRgb "備份 $name1" "2"
 			notification "101" "備份第$i/$r個應用 剩下$((r - i))個
-備份 $name1 \"$name2\""
+備份 $name1"
 			unset Backup_folder ChineseName PackageName nobackup No_backupdata result apk_version apk_version2  zsize zmediapath Size data_path Ssaid ssaid Permissions
 			nobackup="false"
 			Background_application_list
@@ -2053,6 +2064,7 @@ backup)
 			if [[ -f $app_details ]]; then
 				PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "$app_details")"
 				[[ $PackageName != $name2 ]] && jq --arg name2 "$name2" 'walk(if type == "object" and .PackageName then .PackageName = $name2 else . end)' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+				echoRgb "上次備份時間$(jq -r --arg entry "Backup time" '.[$entry] | select(.date != null).date' "$app_details" 2>/dev/null)"
 			fi
 			[[ $hx = USB && $PT = "" ]] && echoRgb "隨身碟意外斷開 請檢查穩定性" "0" && exit 1
 			starttime2="$(date -u "+%s")"
@@ -2149,9 +2161,6 @@ backup)
 						    if [[ $ksu != ksu ]]; then
 			                    echoRgb "Magisk adb"
 				                Backup_data "${REPLY##*/}" "$REPLY"
-				            else
-				                echoRgb "KernelSU adb不支持備份" "0"
-	                            Set_back_0
 				            fi
 						else
 						    Backup_data "${REPLY##*/}" "$REPLY"
@@ -2366,7 +2375,7 @@ Restore|Restore2)
 		if [[ $operate = Restore ]]; then
 		    echoRgb "恢復第$i/$r個應用 剩下$((r - i))個" "3"
 		    notification "105" "恢復第$i/$r個應用 剩下$((r - i))個
-恢復 $name1 \"$name2\""
+恢復 $name1"
 		    if [[ ! -f $txt ]]; then
 		        [[ $(echo "$txt") != "" ]] && {
 		        name1="$(echo "$txt" | sed -e '/^$/d' | sed -n "${i}p" | awk '{print $1}')"
@@ -2392,7 +2401,7 @@ Restore|Restore2)
     		[[ $name2 = "" ]] && echoRgb "應用包名獲取失敗" "0" && exit 1
 		fi
 		if [[ -d $Backup_folder ]]; then
-			echoRgb "恢復$name1 ($name2)" "2"
+			echoRgb "恢復$name1" "2"
 			Background_application_list
 			restore="true"
 		    [[ $Backstage != "" && $(echo "$Backstage" | egrep -w "^$name2$") != "" ]] && echoRgb "$name1存在後台 忽略恢復" "0" && restore="false"
@@ -2432,7 +2441,7 @@ Restore|Restore2)
 		else
 			echoRgb "$Backup_folder資料夾遺失，無法恢復" "0"
 		fi
-		if [[ $i = $r && $operate != Restore2 ]]; then
+		if [[ $i = $r ]]; then
 		    endtime 1 "應用恢復" "2"
 		    [[ $SSAID_Package2 != "" ]] && {
 		    echoRgb "開始恢復saaid" "0"
@@ -2456,6 +2465,7 @@ Restore|Restore2)
 			notification "107" "SSAID恢復後必須重新開機套用,否則應用閃退,如果沒有應用恢復ssaid則無須重啟"
 			}
 			notification "105" "app恢復完成 $(endtime 1 "應用恢復" "2")"
+			[[ $operate != Restore2 ]] && {
 			if [[ $media_recovery = true ]]; then
 			    starttime1="$(date -u "+%s")"
 			    app_details="$Backup_folder2/app_details.json"
@@ -2484,13 +2494,13 @@ Restore|Restore2)
 					starttime2="$(date -u "+%s")"
 					echoRgb "刷入第$A/$B個模塊 剩下$((B - A))個" "3"
 					echoRgb "刷入${REPLY##*/}" "2"
-					magisk --install-module "$REPLY"
+					[[ $ksu != ksu ]] && magisk --install-module "$REPLY" || ksud module install "$REPLY"
 					endtime 2 "${REPLY##*/}刷入" "2" && echoRgb "完成$((A * 100 / B))%" "3" && echoRgb "____________________________________" && let A++
 				done
 				endtime 1 "刷入模塊" "2"
 				notification "108" "Module恢復完成 $(endtime 1 "Module恢復" "2")"
-				
 			fi
+			}
 		fi
 		let i++ en++ nskg++
 	done
@@ -2619,7 +2629,7 @@ Getlist)
 	    if [[ $(cat "$nametxt" | cut -f2 -d ' ' | egrep -w "^${app_1[1]}$") != ${app_1[1]} ]]; then
 	        [[ $REPLY2 = "" ]] && add_entry "${app_1[2]}" "${app_1[1]}" "$(cat "$nametxt" | grep -w "${app_1[2]}")" || add_entry "${app_1[2]}" "${app_1[1]}" "$REPLY2"
 	        case ${app_1[1]} in
-			    *oneplus* | *miui* | *xiaomi* | *oppo* | *flyme* | *meizu* | com.android.soundrecorder | com.mfashiongallery.emag | com.mi.health | *coloros*)
+			    *oneplus*|*miui*|*xiaomi*|*oppo*|*flyme*|*meizu*|com.android.soundrecorder|com.mfashiongallery.emag|com.mi.health|*coloros*|com.android.soundrecorder|com.duokan.phone.remotecontroller|com.android.calendar|com.android.deskclock|com.android.calendar|com.android.deskclock)
 				    if [[ $(echo "$xposed_name" | egrep -w "${app_1[1]}$") = ${app_1[1]} ]]; then
     				    echoRgb "$app_name為Xposed模塊 進行添加" "0"
 					    if [[ $REPLY2 = "" ]]; then
@@ -2780,9 +2790,6 @@ backup_media)
 			    if [[ $ksu != ksu ]]; then
 			        echoRgb "Magisk adb"
 				    Backup_data "${REPLY##*/}" "$REPLY"
-				else
-				    echoRgb "KernelSU adb不支持備份" "0"
-	                Set_back_0
 				fi
 			else
 			    Backup_data "${REPLY##*/}" "$REPLY"
