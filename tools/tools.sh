@@ -9,7 +9,7 @@ MODDIR="$MODDIR"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202502272204"
+backup_version="202504241535"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
@@ -192,11 +192,11 @@ fi
 if [[ ! -f $conf_path ]]; then
     case $operate in
     backup_media|backup|Getlist|Restore|Restore2|check_file|convert|Restore3|dumpname)
-        if [[ $conf_path != *Backup_* ]]; then
+        if [[ $conf_path != *restore_settings.conf && $conf_path = *backup_settings.conf ]]; then
             update_backup_settings_conf>"$conf_path"
             echo "因腳本找不到\n$conf_path\n故重新生成默認列表\n請重新配置後重新執行腳本" && exit 0
         else
-            if [[ $conf_path = *Backup_* ]]; then
+            if [[ $conf_path = *restore_settings.conf && $conf_path != *backup_settings.conf ]]; then
                 update_Restore_settings_conf>"$conf_path"
                 echo "因腳本找不到\n$conf_path\n故重新生成默認列表\n請重新配置後重新執行腳本" && exit 0
             else
@@ -209,23 +209,16 @@ fi
 . "$conf_path" &>/dev/null
 case $operate in
 backup_media|backup|Getlist|Restore|Restore2|check_file|convert|Restore3|dumpname)
-    if [[ $conf_path != *Backup_* ]]; then
+    if [[ $conf_path != *restore_settings.conf && $conf_path = *backup_settings.conf ]]; then
         update_backup_settings_conf>"$conf_path"
     else
-        if [[ $conf_path = *Backup_* ]]; then
+        if [[ $conf_path = *restore_settings.conf && $conf_path != *backup_settings.conf ]]; then
             update_Restore_settings_conf>"$conf_path"
         else
             echo "$conf_path配置遺失" && exit 1
         fi
     fi ;;
 esac
-if [[ $Shell_LANG != "" ]]; then
-    case $Shell_LANG in
-    1) LANG="CN" ;;
-    0) LANG="TW" ;;
-    *) echo "$conf_path Shell_LANG=$Shell_LANG 設置錯誤 正確1or0" && exit 2 ;;
-    esac
-fi
 LANG="${LANG:="$(getprop "persist.sys.locale")"}"
 echoRgb() {
 	#轉換echo顏色提高可讀性
@@ -882,7 +875,7 @@ if [[ $path_hierarchy != "" && $Script_target_language != ""  ]]; then
 	done
     [[ -e $TMPDIR/0 ]] && rm -rf "$TMPDIR/0" && echoRgb "轉換腳本完成，退出腳本重新執行即可使用" && exit 2
 fi
-#效驗選填是否正確
+#校驗選填是否正確
 case $Lo in
 0)
 	[[ $update != "" ]] && isBoolean "$update" "update" && update="$nsx" || {
@@ -902,9 +895,13 @@ case $Lo in
     } ;;
 *)  echoRgb "$conf_path Lo=$Lo填寫錯誤，正確值0 1 2" "0" && exit 2 ;;
 esac
-[[ $update = true ]] && json="$(down "$Language" 2>/dev/null)" || echoRgb "自動更新被關閉" "0"
+if [[ $update = true ]]; then
+    json="$(down "$Language" 2>/dev/null)"
+else
+    echoRgb "自動更新被關閉" "0"
+fi
 if [[ $json != "" ]]; then
-	tag="$(jq -r '.tag_name'<<< "$json")"
+	tag="$(jq -r '.tag_name'<<< "$json" 2>/dev/null)"
 	if [[ $tag != "" && $backup_version != $tag ]]; then
 		if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(echo "$tag" | tr -d "a-zA-Z")") -eq 0 ]]; then
 			download="$(jq -r '.assets[].browser_download_url'<<< "$json")"
@@ -1242,11 +1239,6 @@ Backup_data() {
             		    tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
             			zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
             			esac
-            	    else
-            	        case $Compression_method in
-            		    tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}/modules" --exclude="${data_path##*/}/modules_update" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
-            			zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}/modules" --exclude="${data_path##*/}/modules_update" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
-            			esac
             	    fi
     				;;
     			esac
@@ -1478,7 +1470,7 @@ disable_verify() {
 	settings put global package_verifier_enable 0 2>/dev/null
 	#未知來源
 	settings put secure install_non_market_apps 1 2>/dev/null
-	#關閉play安全效驗
+	#關閉play安全校驗
 	if [[ $(settings get global package_verifier_user_consent 2>/dev/null) != -1 ]]; then
 		settings put global package_verifier_user_consent -1 2>/dev/null
 		settings put global upload_apk_enable 0 2>/dev/null
@@ -1672,12 +1664,12 @@ Validation_file() {
 	MODDIR_NAME="${1%/*}"
 	MODDIR_NAME="${MODDIR_NAME##*/}"
 	FILE_NAME="${1##*/}"
-	echoRgb "效驗$FILE_NAME"
+	echoRgb "校驗$FILE_NAME"
 	case ${FILE_NAME##*.} in
 	zst) zstd -t "$1" 2>/dev/null ;;
 	tar) tar -tf "$1" &>/dev/null ;;
 	esac
-	echo_log "效驗"
+	echo_log "${FILE_NAME##*.}校驗"
 }
 Check_archive() {
 	starttime1="$(date -u "+%s")"
@@ -1688,8 +1680,8 @@ Check_archive() {
 	r="$(find "$MODDIR" -maxdepth 2 -name "app_details.json" -type f 2>/dev/null | wc -l)"
 	find "$MODDIR" -maxdepth 2 -name "app_details.json" -type f 2>/dev/null | sort | while read; do
 		REPLY="${REPLY%/*}"
-		echoRgb "效驗第$i/$r個資料夾 剩下$((r - i))個" "3"
-		echoRgb "效驗:${REPLY##*/}"
+		echoRgb "校驗第$i/$r個資料夾 剩下$((r - i))個" "3"
+		echoRgb "校驗:${REPLY##*/}"
 		find "$REPLY" -maxdepth 1 -name "*.tar*" -type f 2>/dev/null | sort | while read; do
 			Validation_file "$REPLY"
 			[[ $result != 0 ]] && echo "$REPLY">>"$error_log"
@@ -1698,7 +1690,7 @@ Check_archive() {
 		let i++ nskg++
 	done
 	endtime 1
-	[[ -f $error_log ]] && echoRgb "以下為失敗的檔案\n $(cat "$error_log")" || echoRgb "恭喜~~全數效驗通過" 
+	[[ -f $error_log ]] && echoRgb "以下為失敗的檔案\n $(cat "$error_log")" || echoRgb "恭喜~~全數校驗通過" 
 	rm -rf "$error_log"
 }
 Set_screen_pause_seconds () {
@@ -1781,7 +1773,7 @@ backup)
 	zstd | Zstd | ZSTD | tar | Tar | TAR) ;;
 	*) echoRgb "$Compression_method為不支持的壓縮算法" "0" && exit 2 ;;
 	esac
-	#效驗選填是否正確
+	#校驗選填是否正確
 	case $Lo in
 	0)
 		[[ $Backup_Mode != "" ]] && isBoolean "$Backup_Mode" "Backup_Mode" && Backup_Mode="$nsx" || {
@@ -2161,6 +2153,9 @@ backup)
 						    if [[ $ksu != ksu ]]; then
 			                    echoRgb "Magisk adb"
 				                Backup_data "${REPLY##*/}" "$REPLY"
+				            else
+				                echoRgb "KernelSU adb不支持備份" "0"
+ 	                            Set_back_0
 				            fi
 						else
 						    Backup_data "${REPLY##*/}" "$REPLY"
@@ -2219,7 +2214,7 @@ Restore|Restore2)
 	    [[ $r = "" ]] && echoRgb "appList.txt包名為空或是被注釋了\n -請執行\"重新生成應用列表.sh\"獲取應用列表再來恢復" "0" && exit 1
     	Backup_folder2="$MODDIR/Media"
     	Backup_folder3="$MODDIR/modules"
-    	#效驗選填是否正確
+    	#校驗選填是否正確
     	case $Lo in
     	0)
         	[[ $recovery_mode != "" ]] && isBoolean "$recovery_mode" "recovery_mode" && recovery_mode="$nsx" || {
@@ -2565,7 +2560,7 @@ Getlist)
 	case $MODDIR in
 	/storage/emulated/0/Android/* | /data/media/0/Android/* | /sdcard/Android/*) echoRgb "請勿在$MODDIR內生成列表" "0" && exit 2 ;;
 	esac
-	#效驗選填是否正確
+	#校驗選填是否正確
 	isBoolean "$debug_list" "debug_list" && debug_list="$nsx"
 	case $Lo in
 	0)
