@@ -9,7 +9,7 @@ MODDIR="$MODDIR"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202504241535"
+backup_version="202504260051"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
@@ -254,6 +254,7 @@ arm64*)
 	exit 1
 	;;
 esac
+get_mv="$(which mv)"
 PATH="/data/adb/ksu/bin:/sbin/.magisk/busybox:/sbin/.magisk:/sbin:/data/adb/ksu/bin:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/com.omarea.vtools/files/toolkit:/data/user/0/com.termux/files/usr/bin"
 if [[ -d $(magisk --path 2>/dev/null) ]]; then
 	PATH="$(magisk --path 2>/dev/null)/.magisk/busybox:$PATH"
@@ -374,6 +375,7 @@ case $LANG in
     alias ts="app_process /system/bin com.xayah.dex.CCUtil s2t $@" ;;
 esac
 alias LS="toybox ls -Zd"
+alias mv="$get_mv"
 Set_back_0() {
 	return 0
 }
@@ -757,6 +759,7 @@ update_script() {
 					    echoRgb "從$zipFile更新"
 					    if [[ -d $path_hierarchy/tools ]]; then
 					        mv "$path_hierarchy/tools" "$TMPDIR"
+					        					        [[ -d $TMPDIR/tools ]] && {
 					        unzip -o "$zipFile" tools/* -d "$path_hierarchy" | sed 's/inflating/釋放/g ; s/creating/創建/g ; s/Archive/解壓縮/g'
 					        echo_log "解壓縮${zipFile##*/}"
 					        if [[ $result = 0 ]]; then
@@ -796,6 +799,7 @@ update_script() {
 					        rm -rf "$TMPDIR"/* "$zipFile" "$MODDIR/tools.sh"
 					        echoRgb "更新完成 請重新執行腳本" "2"
 					        exit
+					        } || echoRgb "tools移動到TMPDIR失敗" "0"
 					    fi
 				    else
 					    echoRgb "${zipFile##*/}版本低於當前版本,自動刪除" "0"
@@ -907,7 +911,7 @@ if [[ $json != "" ]]; then
 			download="$(jq -r '.assets[].browser_download_url'<<< "$json")"
 			case $cdn in
 			1) zip_url="http://huge.cf/download/?huge-url=$download" ;;
-			2) zip_url="https://mirror.ghproxy.com/$download" ;;
+			2) zip_url="https://github.moeyy.xyz/$download" ;;
 			3) zip_url="https://gh.api.99988866.xyz/$download" ;;
 			4) zip_url="https://github.lx164.workers.dev/$download" ;;
 			5) zip_url="https://shrill-pond-3e81.hunsh.workers.dev/$download" ;;
@@ -1234,12 +1238,10 @@ Backup_data() {
     				esac
     				;;
     			*)
-    			    if [[ $ksu = "" ]]; then
-            		    case $Compression_method in
-            		    tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
-            			zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
-            			esac
-            	    fi
+        		    case $Compression_method in
+        		    tar | Tar | TAR) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf "$Backup_folder/$1.tar" -C "${data_path%/*}" "${data_path##*/}" ;;
+        			zstd | Zstd | ZSTD) tar --checkpoint-action="ttyout=%T\r" --exclude="Backup_"* --exclude="${data_path##*/}/cache" --exclude="${data_path##*/}/QQ" --exclude="${data_path##*/}/Telegram" --exclude="${data_path##*/}"/.* --warning=no-file-changed -cpf - -C "${data_path%/*}" "${data_path##*/}" | zstd --ultra -3 -T0 -q --priority=rt >"$Backup_folder/$1.tar.zst" ;;
+        			esac
     				;;
     			esac
     			echo_log "備份$1數據"
@@ -2624,7 +2626,7 @@ Getlist)
 	    if [[ $(cat "$nametxt" | cut -f2 -d ' ' | egrep -w "^${app_1[1]}$") != ${app_1[1]} ]]; then
 	        [[ $REPLY2 = "" ]] && add_entry "${app_1[2]}" "${app_1[1]}" "$(cat "$nametxt" | grep -w "${app_1[2]}")" || add_entry "${app_1[2]}" "${app_1[1]}" "$REPLY2"
 	        case ${app_1[1]} in
-			    *oneplus*|*miui*|*xiaomi*|*oppo*|*flyme*|*meizu*|com.android.soundrecorder|com.mfashiongallery.emag|com.mi.health|*coloros*|com.android.soundrecorder|com.duokan.phone.remotecontroller|com.android.calendar|com.android.deskclock|com.android.calendar|com.android.deskclock)
+			    *oneplus*|*miui*|*xiaomi*|*oppo*|*flyme*|*meizu*|com.android.soundrecorder|com.mfashiongallery.emag|com.mi.health|*coloros*|com.android.soundrecorder|com.duokan.phone.remotecontroller|com.android.calendar|com.android.deskclock|com.android.calendar|com.android.deskclock|com.google.android.safetycore|com.google.android.contactkeys)
 				    if [[ $(echo "$xposed_name" | egrep -w "${app_1[1]}$") = ${app_1[1]} ]]; then
     				    echoRgb "$app_name為Xposed模塊 進行添加" "0"
 					    if [[ $REPLY2 = "" ]]; then
