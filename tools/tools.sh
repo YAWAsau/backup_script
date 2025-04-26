@@ -9,7 +9,7 @@ MODDIR="$MODDIR"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202504260051"
+backup_version="202504261629"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
@@ -39,6 +39,12 @@ list_location=\""$list_location"\"
 #自動更新腳本(留空強制選擇)
 #1開啟 0關閉
 update="${update:-1}"
+
+#自動更新的cdn節點，針對國內用戶使用，無牆或是使用VPN請設置0
+#0 直鏈下載
+#1 https://ghfast.top
+#2 https://shrill-pond-3e81.hunsh.workers.dev
+cdn=${cdn:-1}
 
 #自定義屏蔽外部掛載點 例：OTG 虛擬SD等 多個掛載點請使用 | 區隔
 #屏蔽後不會提示音量鍵選擇，不影響Output_path指定外置存儲位置
@@ -163,6 +169,12 @@ Shell_LANG="$Shell_LANG"
 
 #自動更新腳本(留空強制選擇)
 update="${update:-1}"
+
+#自動更新的cdn節點，針對國內用戶使用，無牆或是使用VPN請設置0
+#0 直鏈下載
+#1 https://ghfast.top
+#2 https://shrill-pond-3e81.hunsh.workers.dev
+cdn=${cdn:-1}
 
 #恢復模式(1恢復未安裝應用 0全恢復)
 recovery_mode="${recovery_mode:-0}"
@@ -759,7 +771,7 @@ update_script() {
 					    echoRgb "從$zipFile更新"
 					    if [[ -d $path_hierarchy/tools ]]; then
 					        mv "$path_hierarchy/tools" "$TMPDIR"
-					        					        [[ -d $TMPDIR/tools ]] && {
+					        [[ -d $TMPDIR/tools ]] && {
 					        unzip -o "$zipFile" tools/* -d "$path_hierarchy" | sed 's/inflating/釋放/g ; s/creating/創建/g ; s/Archive/解壓縮/g'
 					        echo_log "解壓縮${zipFile##*/}"
 					        if [[ $result = 0 ]]; then
@@ -837,7 +849,6 @@ else
         alias create="pm install-create -i com.android.vending --user $user -t 2>/dev/null"
     fi
 fi
-cdn=2
 #settings get system system_locales
 Language="https://api.github.com/repos/YAWAsau/backup_script/releases/latest"
 if [[ $path_hierarchy != "" && $Script_target_language != ""  ]]; then
@@ -910,11 +921,10 @@ if [[ $json != "" ]]; then
 		if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(echo "$tag" | tr -d "a-zA-Z")") -eq 0 ]]; then
 			download="$(jq -r '.assets[].browser_download_url'<<< "$json")"
 			case $cdn in
-			1) zip_url="http://huge.cf/download/?huge-url=$download" ;;
-			2) zip_url="https://github.moeyy.xyz/$download" ;;
-			3) zip_url="https://gh.api.99988866.xyz/$download" ;;
-			4) zip_url="https://github.lx164.workers.dev/$download" ;;
-			5) zip_url="https://shrill-pond-3e81.hunsh.workers.dev/$download" ;;
+			0) zip_url="$download" ;;
+			1) zip_url="https://ghfast.top/$download" ;;
+			2) zip_url="https://shrill-pond-3e81.hunsh.workers.dev/$download" ;;
+			*) echoRgb "$conf_path cdn=設置錯誤 範圍只能是0-2" && exit 2 ;;
 			esac
 			if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(echo "$download" | tr -d "a-zA-Z")") -eq 0 ]]; then
 				echoRgb "發現新版本:$tag"
