@@ -512,6 +512,23 @@ else
     DEVICE_NAME="處理器:null"
     RAMINFO="RAM:null"
 fi
+security_patch="$(getprop ro.build.version.security_patch 2>/dev/null)"
+if [[ $security_patch != "" ]]; then
+    patch_date="$(date -d "$security_patch" +%s 2>/dev/null)"
+    if [[ -n $patch_date ]]; then
+        current_sec="$(date +%s)"
+        patch_age="$(( (current_sec - patch_date) / 86400 ))"
+        if (( patch_age > 90 )); then
+            echo "[!] 安全补丁日期: $security_patch (已过期${patch_age}天)"
+        else
+            echo "[√] 安全补丁日期: $security_patch (${patch_age}天前)"
+        fi
+    else
+        echo "[!] 无法解析安全补丁日期: $security_patch"
+    fi
+else
+    echo "[!] 无法获取安全补丁日期"
+fi
 echoRgb "---------------------SpeedBackup---------------------"
 echoRgb "腳本路徑:$MODDIR\n -已開機:$(Show_boottime)\n -執行時間:$(date +"%Y-%m-%d %H:%M:%S")\n -busybox路徑:$(which busybox)\n -busybox版本:$(busybox | head -1 | awk '{print $2}')\n -腳本版本:$backup_version\n -管理器:$Manager_version\n -品牌:$(getprop ro.product.brand 2>/dev/null)\n -型號:$Device_name($(getprop ro.product.device 2>/dev/null))\n -閃存顆粒:$UFS_MODEL($ROM_TYPE)\n -$DEVICE_NAME\n -$RAMINFO\n -Android版本:$(getprop ro.build.version.release 2>/dev/null) SDK:$(getprop ro.build.version.sdk 2>/dev/null)\n -內核:$(uname -r)\n -Selinux狀態:$([[ $(getenforce) = Permissive ]] && echo "寬容" || echo "嚴格")\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
 case $MODDIR in
