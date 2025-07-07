@@ -9,7 +9,7 @@ MODDIR="$MODDIR"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202504261629"
+backup_version="202507061817"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
@@ -258,7 +258,7 @@ arm64*)
 	;;
 esac
 get_mv="$(which mv)"
-PATH="/data/adb/ksu/bin:/sbin/.magisk/busybox:/sbin/.magisk:/sbin:/data/adb/ksu/bin:/system_ext/bin:/system/bin:/system/xbin:/vendor/bin:/vendor/xbin:/data/data/com.omarea.vtools/files/toolkit:/data/user/0/com.termux/files/usr/bin"
+PATH="/system/bin:/system/xbin:/data/adb/ksu/bin:/sbin/.magisk/busybox:/sbin/.magisk:/sbin:/system_ext/bin:/vendor/bin:/vendor/xbin:/data/data/com.omarea.vtools/files/toolkit:/data/user/0/com.termux/files/usr/bin"
 if [[ -d $(magisk --path 2>/dev/null) ]]; then
 	PATH="$(magisk --path 2>/dev/null)/.magisk/busybox:$PATH"
 else
@@ -336,7 +336,7 @@ while read -r file expected_hash; do
 done <<< "$(cat <<EOF
 zstd ab32aecb389c3ba5c1f7ab05d5eb6a861bad80261fd14ef9a8f4c283ac48c22c
 tar 3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814
-classes.dex 3d9372ac4a922808974bed039ca152d5741215976bedb20653e6e65e4bdcb37f
+classes.dex 99ed4bb2ea2ea4a57aa015d65811a81b44b60bf5b890879238d7308beab1d4b3
 bc b15d730591f6fb52af59284b87d939c5bea204f944405a3518224d8df788dc15
 busybox 4d60ab3f5a59ebb2ca863f2f514e6924401b581e9b64f602665c008177626651
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
@@ -656,7 +656,10 @@ Rename_script () {
                 touch_shell "3" "$REPLY"
             fi
         else
-            [[ -d ${REPLY%/*}/tools ]] && touch_shell "0" "$REPLY"
+            [[ -d ${REPLY%/*}/tools ]] && {
+            [[ -f ${REPLY%/*}/backup_settings.conf ]] && touch_shell "0" "$REPLY"
+            [[ -f ${REPLY%/*}/restore_settings.conf ]] && touch_shell "2" "$REPLY"
+            }
             let HT++
         fi
 	done
@@ -1058,7 +1061,7 @@ Backup_apk() {
     					[[ $(sed -e '/^$/d' "$txt2" 2>/dev/null | awk '{print $2}' | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
                         [[ $apk_version != "" ]] && {
                         echoRgb "覆蓋app_details"
-                        jq --arg apk_version "$apk_version2" --arg software "$name1" '.[$software].apk_version = $apk_version' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+                        jq --arg apk_version "$apk_version2" --arg software "$name1" '.[$software].apk_version = $apk_version' "$app_details" > "$TMPDIR/temp.json" && cat "$TMPDIR/temp.json" > "$app_details" && rm "$TMPDIR/temp.json"
                         } || {
                         echoRgb "新增app_details"
                         extra_content="{
@@ -1067,7 +1070,7 @@ Backup_apk() {
                             \"apk_version\": \"$apk_version2\"
                           }
                         }"
-                        jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+                        jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > "$TMPDIR/temp.json" && cat "$TMPDIR/temp.json" > "$app_details" && rm "$TMPDIR/temp.json"
                         }
     				else
     					rm -rf "$Backup_folder"
@@ -1102,7 +1105,7 @@ Backup_ssaid() {
         echoRgb "$Ssaid>$ssaid"
     	SSAID_apk="$(echo "$name1 \"$name2\"")"
         SSAID_apk2="$(echo "$SSAID_apk\n$SSAID_apk2")"
-    	jq --arg entry "$name1" --arg new_value "$ssaid" '.[$entry].Ssaid |= $new_value' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+    	jq --arg entry "$name1" --arg new_value "$ssaid" '.[$entry].Ssaid |= $new_value' "$app_details" > "$TMPDIR/temp.json" && cat "$TMPDIR/temp.json" > "$app_details" && rm "$TMPDIR/temp.json"
     	echo_log "備份ssaid"
     fi
     [[ $ssaid = null ]] && ssaid=
@@ -1112,15 +1115,15 @@ Backup_Permissions() {
     Get_Permissions="$(get_Permissions "$name2" | jq -nR '[inputs | select(length>0) | split(" ") | {(.[0]): (.[1:] | join(" "))}] | add')"
     if [[ $Get_Permissions != "" && ($Get_Permissions = *true* || $Get_Permissions = *false*) ]]; then
         if [[ $get_Permissions = "" ]]; then
-            jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName].permissions |= $permissions' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+            jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName].permissions |= $permissions' "$app_details" > "$TMPDIR/temp.json" && cat "$TMPDIR/temp.json" > "$app_details" && rm "$TMPDIR/temp.json"
         	echo_log "備份權限"
         else
             if [[ $get_Permissions != "" && ($get_Permissions == *true* || $get_Permissions == *false*) ]]; then
-        	    [[ $get_Permissions != $Get_Permissions ]] && jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName] |= . + {permissions: $permissions}' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json && echo_log "備份權限" "備份"
+        	    [[ $get_Permissions != $Get_Permissions ]] && jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName] |= . + {permissions: $permissions}' "$app_details" > "$TMPDIR/temp.json" && cat "$TMPDIR/temp.json" > "$app_details" && rm "$TMPDIR/temp.json" && echo_log "備份權限" "備份"
         	fi
         fi
     else
-        echoRgb "備份權限失敗$(get_Permissions "$name2")" "0"
+        [[ $Get_Permissions != "" ]] && echoRgb "備份權限失敗$(get_Permissions "$name2")" "0"
     fi
 }
 #檢測數據位置進行備份
@@ -1152,9 +1155,9 @@ Backup_data() {
             user)
                 if [[ $(su "$(get_uid "$name2" 2>/dev/null)" -c keystore_cli_v2 list | wc -l) -ge 2 ]]; then
                     echoRgb "$name1包含keystore 恢復可能閃退" "0"
-                    jq --arg entry "$name1" '.[$entry].keystore |= "true"' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+                    jq --arg entry "$name1" '.[$entry].keystore |= "true"' "$app_details" > "$TMPDIR/temp.json" && cat "$TMPDIR/temp.json" > "$app_details" && rm "$TMPDIR/temp.json"
                 else
-                    jq --arg entry "$name1" '.[$entry].keystore |= "false"' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+                    jq --arg entry "$name1" '.[$entry].keystore |= "false"' "$app_details" > "$TMPDIR/temp.json" && cat "$TMPDIR/temp.json" > "$app_details" && rm "$TMPDIR/temp.json"
                 fi
     		    Backup_ssaid
     			Backup_Permissions ;;
@@ -1219,7 +1222,7 @@ Backup_data() {
                                 \"date\": \"$(date "+%Y.%m.%d %H:%M:%S")\"
                               }
                             }"
-                            jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+                            jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > "$TMPDIR/temp.json" && cat "$TMPDIR/temp.json" > "$app_details" && rm "$TMPDIR/temp.json"
     					else
     					    extra_content="{
                               \"$1\": {
@@ -1229,7 +1232,7 @@ Backup_data() {
                                 \"date\": \"$(date "+%Y.%m.%d %H:%M:%S")\"
                               }
                             }"
-                            jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+                            jq --argjson new_content "$extra_content" '. += $new_content' "$app_details" > "$TMPDIR/temp.json" && cat "$TMPDIR/temp.json" > "$app_details" && rm "$TMPDIR/temp.json"
     					fi
     				else
     					rm -rf "$Backup_folder/$1".tar.*
@@ -1484,7 +1487,7 @@ get_name(){
 		    if [[ -f $Folder/Permissions ]]; then
 		        unset Permissions
 		        . "$Folder/Permissions"
-		        jq --arg packageName "$ChineseName" --argjson permissions "$(echo "$Permissions" | jq -nR '[inputs | select(length>0) | split(" ") | {(.[0]): .[-1]}] | add')" '.[$packageName] |= . + {permissions: $permissions}' "$Folder/app_details.json" > temp.json && cp temp.json "$Folder/app_details.json" && rm -rf "$Folder/Permissions" temp.json && echoRgb "更新$Folder/app_details.json"
+		        jq --arg packageName "$ChineseName" --argjson permissions "$(echo "$Permissions" | jq -nR '[inputs | select(length>0) | split(" ") | {(.[0]): .[-1]}] | add')" '.[$packageName] |= . + {permissions: $permissions}' "$Folder/app_details.json" > "$TMPDIR/temp.json" && cp "$TMPDIR/temp.json" "$Folder/app_details.json" && rm -rf "$Folder/Permissions" "$TMPDIR/temp.json" && echoRgb "更新$Folder/app_details.json"
 		    fi
 		else
 		    if [[ -f $Folder/app_details ]]; then
@@ -1506,7 +1509,7 @@ get_name(){
                   }
                 }"
                 echo "{\n}">"$Folder/app_details.json"
-                jq --argjson new_content "$extra_content" '. += $new_content' "$Folder/app_details.json" > temp.json && cp temp.json "$Folder/app_details.json" && rm -rf temp.json "$Folder/app_details"
+                jq --argjson new_content "$extra_content" '. += $new_content' "$Folder/app_details.json" > "$TMPDIR/temp.json" && cp "$TMPDIR/temp.json" "$Folder/app_details.json" && rm -rf "$TMPDIR/temp.json" "$Folder/app_details"
             fi
 		fi
 		[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market" >"$txt"
@@ -1881,8 +1884,6 @@ backup() {
 	[[ $Apk_info = "" ]] && echoRgb "Apk_info變量為空" "0" && exit
 	[[ ! -f ${0%/*}/app_details.json ]] && {
 	echoRgb "檢查備份列表中是否存在已經卸載應用" "3"
-	i1=1
-	r1="$(cat "$txt" 2>/dev/null | awk 'NF != 0 { count++ } END { print count }')"
 	while read -r ; do
 	    if [[ $(echo "$REPLY" | sed -E 's/^[ \t]*//; /^[ \t]*[#＃!]/d') != "" ]]; then
             app=($REPLY $REPLY)
@@ -1899,7 +1900,7 @@ backup() {
 		fi
 	done < "$txt"
 	}
-	apks=($(cat "$txt" | grep -Ev '^[#＃!]' | awk '{print $1 ":" $2}'))
+	apks=($(grep -Ev '^[#＃!]' "$txt" | awk '{print $1 ":" $2}'))
     [[ $Update_backup = true ]] && {
     echoRgb "檢查備份列表中已經更新應用" "3"
     for apk in "${apks[@]}"; do
@@ -1962,7 +1963,6 @@ backup() {
 	keyboard="$(settings get secure default_input_method 2>/dev/null)"
     Set_screen_pause_seconds on
 	[[ $(egrep -v '#|＃' "$txt" 2>/dev/null | sed -e '/^$/d' | awk '{print $2}' | grep -w "^${keyboard%/*}$") != ${keyboard%/*} ]] && unset keyboard
-	{
 	starttime1="$(date -u "+%s")"
 	TIME="$starttime1"
 	notification "101" "開始備份"
@@ -2011,7 +2011,7 @@ backup() {
 			app_details="$Backup_folder/app_details.json"
 			if [[ -f $app_details ]]; then
 				PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "$app_details")"
-				[[ $PackageName != $name2 ]] && jq --arg name2 "$name2" 'walk(if type == "object" and .PackageName then .PackageName = $name2 else . end)' "$app_details" > temp.json && cp temp.json "$app_details" && rm -rf temp.json
+				[[ $PackageName != $name2 ]] && jq --arg name2 "$name2" 'walk(if type == "object" and .PackageName then .PackageName = $name2 else . end)' "$app_details" > "$TMPDIR/temp.json" && cat "$TMPDIR/temp.json" > "$app_details" && rm "$TMPDIR/temp.json"
 				echoRgb "上次備份時間$(jq -r --arg entry "Backup time" '.[$entry] | select(.date != null).date' "$app_details" 2>/dev/null)"
 			fi
 			[[ $hx = USB && $PT = "" ]] && echoRgb "隨身碟意外斷開 請檢查穩定性" "0" && exit 1
@@ -2144,8 +2144,7 @@ backup() {
 	notification "105" "備份完成 $(endtime 1 "批量備份開始到結束")"
 	chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt"
 	chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt2"
-	} &
-	wait && exit
+	exit
 }
 backup_update_apk() {
     Update_backup='true'
@@ -2582,7 +2581,7 @@ Getlist() {
 	rb="0"
 	Output_list() {
 	    if [[ $(cat "$txt" | cut -f2 -d ' ' | egrep -w "^${app_1[1]}$") != ${app_1[1]} ]]; then
-	        [[ $REPLY2 = "" ]] && add_entry "${app_1[2]}" "${app_1[1]}" "$(cat "$txt" | grep -w "${app_1[2]}")" || add_entry "${app_1[2]}" "${app_1[1]}" "$REPLY2"
+	        [[ $REPLY2 = "" ]] && add_entry "${app_1[2]}" "${app_1[1]}" "$(grep -w "${app_1[2]}" "$txt")" || add_entry "${app_1[2]}" "${app_1[1]}" "$REPLY2"
 	        case ${app_1[1]} in
 			    *oneplus*|*miui*|*xiaomi*|*oppo*|*flyme*|*meizu*|com.android.soundrecorder|com.mfashiongallery.emag|com.mi.health|*coloros*|com.android.soundrecorder|com.duokan.phone.remotecontroller|com.android.calendar|com.android.deskclock|com.android.calendar|com.android.deskclock|com.google.android.safetycore|com.google.android.contactkeys|com.google.android.apps.messaging|com.google.android.calendar)
 				    if [[ $(echo "$xposed_name" | egrep -w "${app_1[1]}$") = ${app_1[1]} ]]; then
