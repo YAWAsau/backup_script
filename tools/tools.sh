@@ -1078,7 +1078,7 @@ Backup_apk() {
     					FileNum="$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l)"
     					while [[ $FileNum -gt $ReservedNum ]]; do
     						OldFile="$(ls -rt /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | head -1)"
-    						rm -rf "${OldFile%/*/*}" && echoRgb "刪除文件:${OldFile%/*/*}"
+    						rm -rf "${OldFile%/*/*}" && echo "刪除文件:${OldFile%/*/*}"
     						let "FileNum--"
     					done
     					[[ -f $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null) && $(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null | wc -l) = 1 ]] && cp -r "$(ls /data/app/*/com.google.android.trichromelibrary_*/base.apk 2>/dev/null)" "$Backup_folder/nmsl.apk"
@@ -1945,12 +1945,14 @@ backup() {
 	if [[ -d $Backup/tools ]]; then
 	    find "$Backup/tools" -maxdepth 1 -type f | while read; do
 	        Tools_FILE_NAME="${REPLY##*/}"
-	        filesha256="$(sha256sum "$tools_path/$Tools_FILE_NAME" 2>/dev/null | cut -d" " -f1)"
-	        filesha256_1="$(sha256sum "$REPLY" 2>/dev/null | cut -d" " -f1)"
-	        if [[ $filesha256 != $filesha256_1 ]]; then
-	            cp -r "$tools_path/$Tools_FILE_NAME" "$REPLY"
-	            echoRgb "更新$REPLY"
-	        fi
+	        if [[ -f $tools_path/$Tools_FILE_NAME ]]; then
+	            filesha256="$(sha256sum "$tools_path/$Tools_FILE_NAME" 2>/dev/null | cut -d" " -f1)"
+    	        filesha256_1="$(sha256sum "$REPLY" 2>/dev/null | cut -d" " -f1)"
+    	        if [[ $filesha256 != $filesha256_1 ]]; then
+    	            cp -r "$tools_path/$Tools_FILE_NAME" "$REPLY"
+    	            echoRgb "更新$REPLY"
+    	        fi
+    	    fi
 	    done
 	fi
 	filesize="$(find "$Backup" -type f -printf "%s\n" | awk '{s+=$1} END {print s}')"
@@ -2033,6 +2035,7 @@ backup() {
         				if [[ $Backup_obb_data = true ]]; then
         				    if [[ $name2 != bin.mt.plus ]]; then
         					    #備份data數據
+        					    [[ $name1 = Nekogram ]] && rm -rf /data/media/0/Android/data/tw.nekomimi.nekogram/files/Telegram/Telegram\ {Video,Stories,Documents,Images}/{*,.*} 2>/dev/null
         					    Backup_data "data"
         					    #備份obb數據
         					    Backup_data "obb"
@@ -2328,7 +2331,6 @@ Restore() {
 	en=118
 	echo "$script">"$TMPDIR/scriptTMP"
 	notification "105" "開始恢復app"
-	{
 	while [[ $i -le $r ]]; do
 		[[ $en -ge 229 ]] && en=118
 		if [[ ! -f ${0%/*}/app_details.json ]]; then
@@ -2469,8 +2471,6 @@ Restore() {
 	echoRgb "$DX完成" && endtime 1 "$DX開始到結束"
 	notification "109" "恢復完成 $(endtime 1 "$DX開始到結束")"
 	rm -rf "$TMPDIR"/*
-	} &
-	wait && exit
 }
 Restore3() {
 	kill_Serve
@@ -2506,7 +2506,6 @@ Restore3() {
 	[[ $B = "" ]] && echoRgb "mediaList.txt壓縮包名為空或是被注釋了\n -請執行start.sh獲取列表再來恢復" "0" && exit 1
 	echo "$script">"$TMPDIR/scriptTMP"
 	notification "108" "Media恢復開始"
-	{
 	while [[ $A -le $B ]]; do
 		name1="$(egrep -v '#|＃' "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${A}p" | awk '{print $1}')"
 		starttime2="$(date -u "+%s")"
@@ -2518,7 +2517,6 @@ Restore3() {
 	endtime 1 "恢復結束"
 	notification "108" "Media恢復完成 $(endtime 1 "Media恢復")"
 	rm -rf "$TMPDIR/scriptTMP"
-	} &
 }
 Getlist() {
 	case $MODDIR in
@@ -2553,11 +2551,11 @@ Getlist() {
 	rgb_a=118
 	starttime1="$(date -u "+%s")"
 	echoRgb "提示! 腳本默認會屏蔽預裝應用 如需備份請添加預裝應用白名單" "0"
-	Apk_info="$(appinfo "system|user|xposed" "label|pkgName|flag" | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+	Apk_info="$(appinfo "system|user|xposed" "label|pkgName|flag" | egrep -v 'ice.message|com.topjohnwu.magisk')"
 	xposed_name="$(echo "$Apk_info" | awk '$3 == "xposed" {print $2}')"
 	TARGET_PACKAGES="$(echo "$system" | paste -sd'|' - | sed 's/^|//')"
     Pre_installed_apps="$(echo "$Apk_info" | awk '$3 == "system" {print $1, $2}' | egrep -w "$TARGET_PACKAGES")"
-    Apk_info="$(echo "$(echo "$Apk_info" | awk '$3 != "system" {print $1, $2}')\n$Pre_installed_apps")"
+    Apk_info="$(echo "$(echo "$Apk_info" | awk '$3 != "system" {print $1, $2}')\n$Pre_installed_apps" | sort -u)"
 	[[ $Apk_info = "" ]] && {
 	echoRgb "appinfo輸出失敗,請截圖畫面回報作者" "0"
 	exit 2 ; } || Apk_info2="$(echo "$Apk_info" | awk '{print $2}')"
@@ -2698,7 +2696,6 @@ backup_media() {
 		echo "$script">"$TMPDIR/scriptTMP"
 		Set_screen_pause_seconds on
 		notification "109" "Media備份開始"
-		{
 		echo "$Custom_path" | sed -e '/^#/d; /^$/d; s/\/$//' | while read; do
 			echoRgb "備份第$A/$B個資料夾 剩下$((B - A))個" "3"
 			starttime2="$(date -u "+%s")" 
@@ -2713,8 +2710,6 @@ backup_media() {
 			endtime 2 "${REPLY##*/}備份" "1"
 			echoRgb "完成$((A * 100 / B))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "2" && echoRgb "____________________________________" && let A++
 		done
-		} &
-		wait
 		Calculate_size "$Backup_folder"
 		Set_screen_pause_seconds off
 		endtime 1 "自定義備份"
