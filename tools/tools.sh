@@ -850,7 +850,7 @@ if [[ $path_hierarchy != "" && $Script_target_language != ""  ]]; then
 	        fi ;;
 	    esac
 	done
-    [[ -e $TMPDIR/0 ]] && rm -rf "$TMPDIR/0" && echoRgb "轉換腳本完成，退出腳本重新執行即可使用" && exit 2
+    [[ -e $TMPDIR/0 ]] && rm "$TMPDIR/0" && echoRgb "轉換腳本完成，退出腳本重新執行即可使用" && exit 2
 fi
 #校驗選填是否正確
 case $Lo in
@@ -1025,10 +1025,10 @@ kill_app() {
     if [[ $name2 != bin.mt.plus && $name2 != com.termux && $name2 != bin.mt.plus.canary ]]; then
         if [[ $process_Information != "" ]]; then
             echo "$process_Information" | xargs -r kill -9
-            #pkill -9 -f "$name2$|$name2[:/_]"
-            #killall -9 "$name2" &>/dev/null
-            #am force-stop --user "$user" "$name2" &>/dev/null
-            #am kill "$name2" &>/dev/null
+            pkill -9 -f "$name2$|$name2[:/_]"
+            killall -9 "$name2" &>/dev/null
+            am force-stop --user "$user" "$name2" &>/dev/null
+            am kill "$name2" &>/dev/null
             echoRgb "殺死$name1進程"
         fi
 	fi
@@ -1041,7 +1041,7 @@ Backup_apk() {
 	apk_version="$(jq -r '.[] | select(.apk_version != null).apk_version' "$app_details")"
 	apk_version2="$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)"
 	if [[ $apk_version = $apk_version2 ]]; then
-		[[ $(sed -e '/^$/d' "$txt2" | cut -d' ' -f2 | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
+		[[ $(sed -e '/^$/d' "$txt2" | cut -d' ' -f2 | awk -v pkg="$name2" '$1 == pkg {print $1}') = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
 		unset xb
 		let osj++
 		result=0
@@ -1146,7 +1146,8 @@ Backup_Permissions() {
         	    if [[ $get_Permissions != $Get_Permissions ]]; then
         	        echoRgb "權限變更"
         	        jq -n --argjson old "$get_Permissions" --argjson new "$Get_Permissions" '$new | to_entries | map(select(.key as $k | $old[$k] != null and $old[$k] != .value)) | .[].key' | sed 's/^/ /'
-            	    jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName] |= . + {permissions: $permissions}' "$app_details" > "$TMPDIR/temp.json" && cat "$TMPDIR/temp.json" > "$app_details" && rm "$TMPDIR/temp.json" && echo_log "備份權限" "備份"
+            	    jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName] |= . + {permissions: $permissions}' "$app_details" > "$TMPDIR/temp.json" && cat "$TMPDIR/temp.json" > "$app_details" && rm "$TMPDIR/temp.json"
+            	    echo_log "備份權限"
             	fi
         	fi
         fi
@@ -1479,14 +1480,12 @@ get_name(){
 	txt="$MODDIR/appList.txt"
 	txt="${txt/'/storage/emulated/'/'/data/media/'}"
 	txt2="$MODDIR/mediaList.txt"
-	txt3="$TMPDIR/temp.txt"
 	if [[ $1 = Apkname ]]; then
 		rm -rf "$txt" "$txt2"
 		echoRgb "列出全部資料夾內應用名與自定義目錄壓縮包名稱" "3"
 	fi
 	rgb_a=118
 	user="$(echo "${0%}" | sed 's/.*\/Backup_zstd_\([0-9]*\).*/\1/')"
-	[[ ! -f $txt3 ]] && {
 	Apk_info="$(pm list packages --user "$user" | cut -f2 -d ':' | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	if [[ $Apk_info != "" ]]; then
 	    [[ $Apk_info = *"Failure calling service package"* ]] && Apk_info="$(appinfo "user|system" "pkgName" 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
@@ -1506,7 +1505,7 @@ get_name(){
 		    if [[ -f $Folder/Permissions ]]; then
 		        unset Permissions
 		        . "$Folder/Permissions"
-		        jq --arg packageName "$ChineseName" --argjson permissions "$(echo "$Permissions" | jq -nR '[inputs | select(length>0) | split(" ") | {(.[0]): .[-1]}] | add')" '.[$packageName] |= . + {permissions: $permissions}' "$Folder/app_details.json" > "$TMPDIR/temp.json" && cp "$TMPDIR/temp.json" "$Folder/app_details.json" && rm -rf "$Folder/Permissions" "$TMPDIR/temp.json" && echoRgb "更新$Folder/app_details.json"
+		        jq --arg packageName "$ChineseName" --argjson permissions "$(echo "$Permissions" | jq -nR '[inputs | select(length>0) | split(" ") | {(.[0]): .[-1]}] | add')" '.[$packageName] |= . + {permissions: $permissions}' "$Folder/app_details.json" > "$TMPDIR/temp.json" && cp "$TMPDIR/temp.json" "$Folder/app_details.json" && rm "$Folder/Permissions" "$TMPDIR/temp.json" && echoRgb "更新$Folder/app_details.json"
 		    fi
 		else
 		    if [[ -f $Folder/app_details ]]; then
@@ -1528,7 +1527,7 @@ get_name(){
                   }
                 }"
                 echo "{\n}">"$Folder/app_details.json"
-                jq --argjson new_content "$extra_content" '. += $new_content' "$Folder/app_details.json" > "$TMPDIR/temp.json" && cp "$TMPDIR/temp.json" "$Folder/app_details.json" && rm -rf "$TMPDIR/temp.json" "$Folder/app_details"
+                jq --argjson new_content "$extra_content" '. += $new_content' "$Folder/app_details.json" > "$TMPDIR/temp.json" && cp "$TMPDIR/temp.json" "$Folder/app_details.json" && rm "$TMPDIR/temp.json" "$Folder/app_details"
             fi
 		fi
 		if [[ $PackageName = "" || $ChineseName = "" ]]; then
@@ -1609,7 +1608,6 @@ get_name(){
 		done
 		echoRgb "$txt2重新生成" "1"
 	fi
-	}
 	if [[ $delete_app != "" ]]; then
 	    if [[ $(echo "$delete_app" | awk 'NF != 0 { count++ } END { print count }') != "" ]]; then
 	        echoRgb "列出需要刪除的應用中....\n -$delete_app"
@@ -1737,15 +1735,15 @@ Background_application_list() {
     fi
     }
 }
-pkgs="bin.mt.plus com.termux bin.mt.plus.canary"
 Background_application_list debug
-case $(echo "$Backstage" | awk -v pkgs="$pkgs" 'BEGIN{split(pkgs,a)}{for(i in a)if($1==a[i]){print;next}}') in
-bin.mt.plus|com.termux|bin.mt.plus.canary)
+pkgs="$(pm list packages --user "$user" | cut -f2 -d ':' | awk -v pkg="$(echo "$Backstage" | head -1)" '$1 == pkg {print $1}')"
+if [[ $pkgs != "" ]]; then
     echoRgb "後台應用獲取成功" "1"
-    [[ $(Process_Information "$(echo "$Backstage" | awk -v pkgs="$pkgs" 'BEGIN{split(pkgs,a)}{for(i in a)if($1==a[i]){print;next}}')") = "" ]] && echoRgb "應用pid獲取失敗" "0" || echoRgb "應用pid獲取成功" "1" ;;
-*)
-    echoRgb "後台應用獲取失敗" "0" activity=false ;;
-esac
+    [[ $(Process_Information "$pkgs") = "" ]] && echoRgb "應用pid獲取失敗" "0" || echoRgb "應用pid獲取成功" "1"
+else
+    echoRgb "後台應用獲取失敗" "0" activity=false
+fi
+unset Backstage
 backup() {
 	self_test
 	case $MODDIR in
@@ -1885,6 +1883,7 @@ backup() {
 	    txt="$MODDIR/appList.txt"
 	fi
 	txt="${txt/'/storage/emulated/'/'/data/media/'}"
+	txt_path="$txt"
 	[[ ! -f $txt ]] && echoRgb "請執行start.sh獲取應用列表再來備份" "0" && exit 1
 	TXT_NAME="${txt##*/}"
 	case ${TXT_NAME##*.} in
@@ -1959,6 +1958,8 @@ backup() {
 	txt2="$Backup/appList.txt"
 	txt2="${txt2/'/storage/emulated/'/'/data/media/'}"
 	[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market">"$txt2"
+	cat "$txt2">"$TMPDIR/txt2"
+	txt2="$TMPDIR/txt2"
 	[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup"
 	[[ ! -f $Backup/start.sh ]] && touch_shell "2" "$Backup/start.sh"
 	[[ ! -f $Backup/restore_settings.conf ]] && update_Restore_settings_conf>"$Backup/restore_settings.conf"
@@ -2109,8 +2110,10 @@ backup() {
 			add_app2="${add_app2:="暫無更新"}"
 			echoRgb "\n -已更新的apk=\"$osn\"\n -已新增的備份=\"$osk\"\n -apk版本號無變化=\"$osj\"\n -下列為版本號已變更的應用\n$update_apk2\n -新增的備份....\n$add_app2\n -包含SSAID的應用\n$SSAID_apk2" "3"
 			notification "101" "app備份完成 $(endtime 1 "應用備份" "3")"
+			[[ -e $txt2 ]] && {
 			sort "$txt2" | sed '/^$/d' >"${txt2}.tmp" && mv "${txt2}.tmp" "$txt2"
-			[[ -e ${txt%/*}/txt2 ]] && cat "${txt%/*}/txt2">"$txt" && rm -rf "${txt%/*}/txt2"
+			cat "$txt2">"$Backup/appList.txt" && rm -rf "$txt2"
+			}
 			if [[ $backup_media = true && ! -f ${0%/*}/app_details.json ]]; then
 				A=1
 				B="$(echo "$Custom_path" | egrep -v '#|＃' | awk 'NF != 0 { count++ } END { print count }')"
@@ -2166,8 +2169,8 @@ backup() {
 	starttime1="$TIME"
 	endtime 1 "批量備份開始到結束"
 	notification "105" "備份完成 $(endtime 1 "批量備份開始到結束")"
-	[[ -f $txt ]] && chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt"
-	chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt2"
+	[[ -f $txt_path ]] && chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt_path"
+	chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$Backup/appList.txt"
 	exit
 }
 backup_update_apk() {
@@ -2664,7 +2667,7 @@ Getlist() {
     fi
 	wait
 	endtime 1
-	cat "$txt">"$MODDIR/appList.txt" && rm -rf "$txt"
+	cat "$txt">"$MODDIR/appList.txt" && rm "$txt"
 	chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$MODDIR/appList.txt"
 	echoRgb "輸出包名結束 請查看$MODDIR/appList.txtt"
 }
