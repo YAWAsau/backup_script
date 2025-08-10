@@ -332,7 +332,7 @@ while read -r file expected_hash; do
 done <<< "$(cat <<EOF
 zstd ab32aecb389c3ba5c1f7ab05d5eb6a861bad80261fd14ef9a8f4c283ac48c22c
 tar 3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814
-classes.dex 3d0630ed5698ab5d68b2544463fef132665eef40a4c392ce1507a2c350f12a81
+classes.dex 55b19c1a06ec4a1e025817951f87293c17a846602fcda81b0ab70e8249809ddb
 bc b15d730591f6fb52af59284b87d939c5bea204f944405a3518224d8df788dc15
 busybox 4d60ab3f5a59ebb2ca863f2f514e6924401b581e9b64f602665c008177626651
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
@@ -423,7 +423,7 @@ isBoolean() {
 }
 echo_log() {
 	if [[ $? = 0 ]]; then
-		echoRgb "$1成功" "1"
+		[[ $2 = "" ]] && echoRgb "$1成功" "1"
 		result=0
 		Set_back_0
 	else
@@ -639,6 +639,24 @@ alias Set_false_Permissions="app_process /system/bin com.xayah.dex.HiddenApiUtil
 alias Set_Ops="app_process /system/bin com.xayah.dex.HiddenApiUtil setOpsMode $USER_ID $@"
 alias setDisplay="app_process /system/bin com.xayah.dex.HiddenApiUtil setDisplayPowerMode $@"
 find_tools_path="$(find "$path_hierarchy"/* -maxdepth 1 -name "tools" -type d ! -path "$path_hierarchy/tools")"
+backup_wifi() {
+    [[ ! -d $1 ]] && mkdir -p "$1"
+    if [[ -d $1 ]]; then
+        echoRgb "備份wifi密碼"
+        rm -rf "$1"/*
+        app_process /system/bin com.xayah.dex.NetworkUtil saveNetworks "$1"
+        echo_log "wifi備份"
+    fi
+}
+recover_wifi() {
+    if [[ -d $1 ]]; then
+        echoRgb "恢復wifi密碼"
+        app_process /system/bin com.xayah.dex.NetworkUtil restoreNetworks "$1"
+        echo_log "wifi恢復"
+    else
+        echoRgb "$1不存在 wifi無法恢復" "0"
+    fi
+}
 Rename_script () {
     HT="${HT:=0}"
 	find "$path_hierarchy" -maxdepth 3 -name "*.sh" -type f -not -name "tools.sh" | sort | while read ; do
@@ -647,14 +665,16 @@ Rename_script () {
         if [[ -f ${REPLY%/*}/app_details.json || -f ${REPLY%/*}/app_details ]]; then
             if [[ $FILE_NAME = backup.sh ]]; then
                 touch_shell "1" "$REPLY"
-            else
+            elif [[ $FILE_NAME = recover.sh ]]; then
                 touch_shell "3" "$REPLY"
             fi
         else
-            [[ -d ${REPLY%/*}/tools ]] && {
-            [[ -f ${REPLY%/*}/backup_settings.conf ]] && touch_shell "0" "$REPLY"
-            [[ -f ${REPLY%/*}/restore_settings.conf ]] && touch_shell "2" "$REPLY"
-            }
+            if [[ -d ${REPLY%/*}/tools ]]; then
+                if [[ $FILE_NAME = start.sh ]]; then
+                    [[ -f ${REPLY%/*}/backup_settings.conf ]] && touch_shell "0" "$REPLY"
+                    [[ -f ${REPLY%/*}/restore_settings.conf ]] && touch_shell "2" "$REPLY"
+                fi
+            fi
             let HT++
         fi
 	done
@@ -726,13 +746,15 @@ update_script() {
                                 update_backup_settings_conf>"$path_hierarchy/backup_settings.conf"
                                 ts <"$path_hierarchy/backup_settings.conf">temp && cp temp "$path_hierarchy/backup_settings.conf" && rm temp
                                 echo_log "$path_hierarchy/backup_settings.conf翻譯"
-                                if [[ -d $find_tools_path && $find_tools_path != $path_hierarchy/tools ]]; then
-                                    rm -rf "$find_tools_path"
-                                    cp -r "$path_hierarchy/tools" "${find_tools_path%/*}"
-                                    update_Restore_settings_conf>"${find_tools_path%/*}/restore_settings.conf"
-                                    ts <"${find_tools_path%/*}/restore_settings.conf">temp && cp temp "${find_tools_path%/*}/restore_settings.conf" && rm temp
-                                    echo_log "${find_tools_path%/*}/restore_settings.conf翻譯"
-							    fi
+                                echo "$find_tools_path" | while read; do
+                                    if [[ $REPLY != $path_hierarchy/tools ]]; then
+                                        rm -rf "$REPLY"
+                                        cp -r "$path_hierarchy/tools" "${REPLY%/*}"
+                                        update_Restore_settings_conf>"${REPLY%/*}/restore_settings.conf"
+                                        ts <"${REPLY%/*}/restore_settings.conf">temp && cp temp "${REPLY%/*}/restore_settings.conf" && rm temp
+                                        echo_log "${REPLY%/*}/restore_settings.conf翻譯"
+    							    fi
+    							done
 							    Rename_script
 							    if [[ $Output_path != "" ]]; then
 		                            [[ ${Output_path: -1} = / ]] && Output_path="${Output_path%?}"
@@ -995,13 +1017,18 @@ partition_info() {
 	[[ $Filesize != "" ]] && [[ $(echo "$Filesize > $Occupation_status" | bc) -eq 1 ]] && echoRgb "$2備份大小將超出rom可用大小" "0" && Skip=1
 	Occupation_status="$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
 }
+Process_Information() {
+    dumpsys activity processes | awk -v key="$1" -v user="$user" 'function getUserFromUid(uid){return int(uid/100000)} /^ *user #[0-9]+ uid=/ {if($0 ~ /ISOLATED uid=[0-9]+/){uid="";pid="";pkg="";next} if(pkg!="" && uid!="" && pid!=""){if((key=="" || pkg==key) && (user=="" || getUserFromUid(uid)==user)){print pid}} uid="";pid="";pkg=""; if($0 ~ /uid=/ && uid==""){tmp=$0; sub(/^.*uid=/,"",tmp); sub(/ .*/,"",tmp); uid=tmp}} /packageList=\{/ {tmp=$0; sub(/^.*packageList=\{/,"",tmp); sub(/\}.*/,"",tmp); pkg=tmp} /pid=/ {tmp=$0; sub(/^.*pid=/,"",tmp); sub(/ .*/,"",tmp); pid=tmp} END {if(pkg!="" && uid!="" && pid!=""){if((key=="" || pkg==key) && (user=="" || getUserFromUid(uid)==user)){print pid}}}'
+}
 kill_app() {
+    process_Information="$(Process_Information "$name2")"
     if [[ $name2 != bin.mt.plus && $name2 != com.termux && $name2 != bin.mt.plus.canary ]]; then
-        if [[ $(dumpsys activity processes | grep "packageList" | cut -d '{' -f2 | cut -d '}' -f1 | egrep -w "^$name2$" | sed -n '1p') = $name2 ]]; then
-            pkill -9 -f "$name2$|$name2[:/_]"
-            killall -9 "$name2" &>/dev/null
-            am force-stop --user "$user" "$name2" &>/dev/null
-            am kill "$name2" &>/dev/null
+        if [[ $process_Information != "" ]]; then
+            echo "$process_Information" | xargs -r kill -9
+            #pkill -9 -f "$name2$|$name2[:/_]"
+            #killall -9 "$name2" &>/dev/null
+            #am force-stop --user "$user" "$name2" &>/dev/null
+            #am kill "$name2" &>/dev/null
             echoRgb "殺死$name1進程"
         fi
 	fi
@@ -1095,7 +1122,7 @@ Backup_apk() {
 Backup_ssaid() {
     Ssaid="$(jq -r '.[] | select(.Ssaid != null).Ssaid' "$app_details")"
     ssaid="$(awk -v pkg="$name2" '$1 == pkg {print $2}'<<<"$ssaid_info")"
-    [[ $ssaid != null ]] && echoRgb "SSAID:$ssaid"
+    [[ $ssaid != null && $ssaid != "" ]] && echoRgb "SSAID:$ssaid"
     if [[ $ssaid != null && $ssaid != $Ssaid ]]; then
         echoRgb "備份ssaid"
         echoRgb "$Ssaid>$ssaid"
@@ -1115,7 +1142,7 @@ Backup_Permissions() {
             jq --arg packageName "$name1" --argjson permissions "$Get_Permissions" '.[$packageName].permissions |= $permissions' "$app_details" > "$TMPDIR/temp.json" && cat "$TMPDIR/temp.json" > "$app_details" && rm "$TMPDIR/temp.json"
         	echo_log "備份權限"
         else
-            if [[ $get_Permissions != "" && ($get_Permissions == *true* || $get_Permissions == *false*) ]]; then
+            if [[ $get_Permissions != "" && ($get_Permissions = *true* || $get_Permissions = *false*) ]]; then
         	    if [[ $get_Permissions != $Get_Permissions ]]; then
         	        echoRgb "權限變更"
         	        jq -n --argjson old "$get_Permissions" --argjson new "$Get_Permissions" '$new | to_entries | map(select(.key as $k | $old[$k] != null and $old[$k] != .value)) | .[].key' | sed 's/^/ /'
@@ -1139,7 +1166,7 @@ Backup_data() {
 	data|obb) ;;
 	*)
 		data_path="$2"
-		if [[ $1 != storage-isolation && $1 != thanox && $1 != NoActive ]]; then
+		if [[ $1 != thanox ]]; then
 			Compression_method1="$Compression_method"
 			Compression_method=tar
 		fi
@@ -1154,7 +1181,7 @@ Backup_data() {
 		if [[ $Size != $Filesize ]]; then
             case $1 in
             user)
-                if [[ $(su "$(get_uid "$name2" 2>/dev/null)" -c keystore_cli_v2 list | wc -l) -ge 2 ]]; then
+                if [[ $(su "$(pm list packages -U --user "$user" </dev/null | awk -v pkg="$name2" -F'[ :]' '$2 == pkg {print $4}')" -c keystore_cli_v2 list | wc -l) -ge 2 ]]; then
                     echoRgb "$name1包含keystore 恢復可能閃退" "0"
                     jq --arg entry "$name1" '.[$entry].keystore |= "true"' "$app_details" > "$TMPDIR/temp.json" && cat "$TMPDIR/temp.json" > "$app_details" && rm "$TMPDIR/temp.json"
                 else
@@ -1281,8 +1308,6 @@ Release_data() {
 		data) FILE_PATH="$path/data" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)" ;;
 		obb) FILE_PATH="$path/obb" Selinux_state="$(LS "$FILE_PATH" | awk 'NF>1{print $1}' | sed -e "s/system_data_file/app_data_file/g" 2>/dev/null)";;
 		thanox) FILE_PATH="/data/system" && find "/data/system" -name "thanos"* -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
-		NoActive) FILE_PATH="/data/system" && find "/data/system" -name "NoActive_"* -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null ;;
-		storage-isolation) FILE_PATH="/data/adb" ;;
 		*)
 			if [[ $A != "" ]]; then
 				if [[ ${MODDIR_NAME##*/} = Media ]]; then
@@ -1313,10 +1338,10 @@ Release_data() {
 		if [[ $result = 0 ]]; then
 			case $FILE_NAME2 in
 			user|data|obb|user_de)
-			    G="$(get_uid "$name2" 2>/dev/null)"
+			    G="$(pm list packages -U --user "$user" </dev/null | awk -v pkg="$name2" -F'[ :]' '$2 == pkg {print $4}')"
 			    if [[ $G = "" ]]; then
-				    G="$(dumpsys package "$name2" 2>/dev/null | awk -F'uid=' '{print $2}' | egrep -o '[0-9]+' | head -n 1)"
-				    [[ $(echo "$G" | egrep -o '[0-9]+') = "" ]] && G="$(pm list packages -U --user "$user" | egrep -w "$name2" | awk -F'uid:' '{print $2}' | awk '{print $1}' | head -n 1)"
+			        G="$(dumpsys package "$name2" 2>/dev/null | awk -F'uid=' '{print $2}' | egrep -o '[0-9]+' | head -n 1)"
+				    [[ $(echo "$G" | egrep -o '[0-9]+') = "" ]] && G="$(get_uid "$name2" 2>/dev/null)"
 				fi
                 G="$(echo "$G" | egrep -o '[0-9]+')"
 				if [[ $G != "" ]]; then
@@ -1341,13 +1366,15 @@ Release_data() {
 						        chown -hR "$uid" "$X/"
 						        echo_log "設置用戶組$uid"
 						        chcon -hR "$Selinux_state" "$X/" 2>/dev/null
-						        echo_log "selinux上下文設置"
+						        echo_log "selinux上下文設置" "E"
 						    else
 						        echoRgb "路徑:$X出現錯誤"
 						    fi ;;
 						data|obb)
                             chown -hR "$uid" "$FILE_PATH/$name2/"
-                            chcon -hR "$Selinux_state" "$FILE_PATH/$name2/" 2>/dev/null ;;
+                            echo_log "設置用戶組$uid" "E"
+                            chcon -hR "$Selinux_state" "$FILE_PATH/$name2/" 2>/dev/null
+                            echo_log "selinux上下文設置" "E" ;;
 					    esac
 				    else
 				        echoRgb "$FILE_NAME2路徑$X不存在" "0"
@@ -1359,14 +1386,6 @@ Release_data() {
 			thanox)
 				restorecon -RF "$(find "/data/system" -name "thanos"* -maxdepth 1 -type d 2>/dev/null)/" 2>/dev/null
 				echo_log "selinux上下文設置" && echoRgb "警告 thanox配置恢復後務必重啟\n -否則不生效" "0"
-				;;
-		    NoActive)
-				restorecon -RF "$(find "/data/system" -name "NoActive_"* -maxdepth 1 -type d 2>/dev/null)/" 2>/dev/null
-				echo_log "selinux上下文設置"
-				;;
-			storage-isolation)
-				restorecon -RF "/data/adb/storage-isolation/" 2>/dev/null
-				echo_log "selinux上下文設置"
 				;;
 			esac
 		fi
@@ -1411,9 +1430,8 @@ installapk() {
 				INSTALL "$TMPDIR/nmsl.apk"
 				echo_log "nmsl.apk安裝"
 			fi
-			apks=($(find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f | grep -v 'nmsl.apk'))
-            for apk in "${apks[@]}"; do
-                pm install-write "$b" "${apk##*/}" "$apk" &>/dev/null
+			find "$TMPDIR" -maxdepth 1 -name "*.apk" -type f | grep -v 'nmsl.apk' | while read apk; do
+                pm install-write "$b" "${apk##*/}" "$apk" </dev/null >/dev/null
                 echo_log "${apk##*/}安裝"
             done
 			pm install-commit "$b" &>/dev/null
@@ -1461,7 +1479,7 @@ get_name(){
 	txt="$MODDIR/appList.txt"
 	txt="${txt/'/storage/emulated/'/'/data/media/'}"
 	txt2="$MODDIR/mediaList.txt"
-	txt3="$MODDIR/temp.txt"
+	txt3="$TMPDIR/temp.txt"
 	if [[ $1 = Apkname ]]; then
 		rm -rf "$txt" "$txt2"
 		echoRgb "列出全部資料夾內應用名與自定義目錄壓縮包名稱" "3"
@@ -1469,7 +1487,7 @@ get_name(){
 	rgb_a=118
 	user="$(echo "${0%}" | sed 's/.*\/Backup_zstd_\([0-9]*\).*/\1/')"
 	[[ ! -f $txt3 ]] && {
-	Apk_info="$(pm list packages -u --user "$user" | cut -f2 -d ':' | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+	Apk_info="$(pm list packages --user "$user" | cut -f2 -d ':' | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	if [[ $Apk_info != "" ]]; then
 	    [[ $Apk_info = *"Failure calling service package"* ]] && Apk_info="$(appinfo "user|system" "pkgName" 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	else
@@ -1478,7 +1496,7 @@ get_name(){
 	[[ $Apk_info = "" ]] && echoRgb "Apk_info變量為空" "0" && exit
 	starttime1="$(date -u "+%s")"
 	i=1
-	find "$MODDIR" -maxdepth 2 -name "apk.*" -type f 2>/dev/null | sort | while read; do
+	while read; do
 		Folder="${REPLY%/*}"
 		[[ $rgb_a -ge 229 ]] && rgb_a=118
 		unset PackageName NAME DUMPAPK ChineseName apk_version Ssaid dataSize userSize obbSize
@@ -1513,7 +1531,6 @@ get_name(){
                 jq --argjson new_content "$extra_content" '. += $new_content' "$Folder/app_details.json" > "$TMPDIR/temp.json" && cp "$TMPDIR/temp.json" "$Folder/app_details.json" && rm -rf "$TMPDIR/temp.json" "$Folder/app_details"
             fi
 		fi
-		[[ ! -f $txt ]] && echo "#不需要恢復還原的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market" >"$txt"
 		if [[ $PackageName = "" || $ChineseName = "" ]]; then
 			echoRgb "${Folder##*/}包名獲取失敗，解壓縮獲取包名中..." "0"
 			rm -rf "$TMPDIR"/*
@@ -1541,16 +1558,25 @@ get_name(){
 			fi
 		fi
 		if [[ $PackageName != "" && $ChineseName != "" ]]; then
-		    if [[ $(echo "$Apk_info" | egrep -o "$PackageName") = "" ]]; then
+		    if [[ $(echo "$Apk_info" | awk -v pkg="$PackageName" '$1 == pkg {print $1}') = "" ]]; then
 		        echoRgb "$ChineseName已經不存在$user使用者中"
-    	        echo "$ChineseName $PackageName">>"$txt3"
+		        if [[ $delete_app = "" ]]; then
+            		delete_app="$ChineseName $PackageName"
+                else
+                    delete_app="$delete_app\n$ChineseName $PackageName"
+                fi      
     		fi
 			case $1 in
 			Apkname)
 			    [[ -f $Folder/${PackageName}.sh ]] && rm -rf "$Folder/${PackageName}.sh"
 		        [[ ! -f $Folder/recover.sh ]] && touch_shell "3" "$Folder/recover.sh"
 			    [[ ! -f $Folder/backup.sh ]] && touch_shell "1" "$Folder/backup.sh"
-				echoRgb "$i:$ChineseName $PackageName" && echo "$ChineseName $PackageName" >>"$txt"
+				echoRgb "$i:$ChineseName $PackageName"
+				if [[ $TMPTXT = "" ]]; then
+        	        TMPTXT="#不需要恢復還原的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market\n$ChineseName $PackageName"
+        	    else
+        	        TMPTXT="$TMPTXT\n$ChineseName $PackageName"
+        	    fi
 				let i++ ;;
 			convert)
 				if [[ ${Folder##*/} = $PackageName ]]; then
@@ -1573,7 +1599,8 @@ get_name(){
 			esac
 		fi
 		let rgb_a++
-	done
+	done<<<"$(find "$MODDIR" -maxdepth 2 -name "apk.*" -type f 2>/dev/null | sort)"
+	[[ $TMPTXT != "" ]] && echo "$TMPTXT">"$txt"
 	if [[ -d $MODDIR/Media ]]; then
 		echoRgb "存在媒體資料夾" "2"
 		[[ ! -f $txt2 ]] && echo "#不需要恢復的資料夾請在開頭使用#注釋 比如：#Download" > "$txt2"
@@ -1583,9 +1610,9 @@ get_name(){
 		echoRgb "$txt2重新生成" "1"
 	fi
 	}
-	if [[ -f $txt3 ]]; then
-	    if [[ $(egrep -v '#|＃' "$txt3" 2>/dev/null | awk 'NF != 0 { count++ } END { print count }') != "" ]]; then
-	        echoRgb "列出需要刪除的應用中....\n -$(cat "$txt3")"
+	if [[ $delete_app != "" ]]; then
+	    if [[ $(echo "$delete_app" | awk 'NF != 0 { count++ } END { print count }') != "" ]]; then
+	        echoRgb "列出需要刪除的應用中....\n -$delete_app"
 	        case $Lo in
 	        0|1)
 	            echoRgb "確認列表無誤後音量上刪除，音量下退出腳本編輯列表" "2"
@@ -1595,24 +1622,21 @@ get_name(){
 		    esac
 		    if [[ $Delete_App = true ]]; then
 		        i=1
-		        r="$(egrep -v '#|＃' "$txt3" 2>/dev/null | awk 'NF != 0 { count++ } END { print count }')"
+		        r="$(echo "$delete_app" | awk 'NF != 0 { count++ } END { print count }')"
 		        while [[ $i -le $r ]]; do
-		            name1="$(egrep -v '#|＃' "$txt3" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | cut -d' ' -f1)"
-    		        name2="$(egrep -v '#|＃' "$txt3" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | cut -d' ' -f2)"
+		            name1="$(echo "$delete_app" | sed -e '/^$/d' | sed -n "${i}p" | cut -d' ' -f1)"
+    		        name2="$(echo "$delete_app" | sed -e '/^$/d' | sed -n "${i}p" | cut -d' ' -f2)"
     		        Backup_folder="$MODDIR/$name1"
     		        [[ -d $Backup_folder ]] && rm -rf "$Backup_folder"
     		        echo "$(sed -e "s/$name1 $name2//g ; /^$/d" "$txt" 2>/dev/null)" >"$txt"
     		        let i++
     		    done
-    		    rm -rf "$txt3"
     		else
-    		    rm -rf "$txt3"
     		    exit 0
     	    fi
-    	else
-    	    rm -rf "$txt3"
     	fi
     fi
+    chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt"
     endtime 1
 	exit 0
 }
@@ -1699,30 +1723,29 @@ restore_permissions () {
     }
 }
 Background_application_list() {
-    if [[ $Background_apps_ignore = true ]]; then
-        unset Backstage apk_path3
+    [[ $activity != false ]] && {
+    if [[ $Background_apps_ignore = true || $1 = debug ]]; then
+        unset Backstage
 	    #獲取後台
-	    if [[ $(dumpsys activity activities | awk -F 'packageName=' '/packageName=/{split($2, a, " "); print a[1]}' | sort | uniq) != "" ]]; then
-		    apk_path3="$(echo "$(pm path --user "$user" "$(dumpsys activity activities | awk -F 'packageName=' '/packageName=/{split($2, a, " "); print a[1]}' | sort | uniq | head -1)" 2>/dev/null | cut -f2 -d ':')" | head -1)"
-            if [[ -d ${apk_path3%/*} ]]; then
-                Backstage="$(dumpsys activity activities | awk -F 'packageName=' '/packageName=/{split($2, a, " "); print a[1]}' | sort | uniq)"
-            else
-                if [[ $(am stack list | awk '/taskId/&&!/unknown/{split($2, a, "/"); print a[1]}') != "" ]]; then
-		            apk_path3="$(echo "$(pm path --user "$user" "$(am stack list | awk '/taskId/&&!/unknown/{split($2, a, "/"); print a[1]}' | head -1)" 2>/dev/null | cut -f2 -d ':')" | head -1)"
-                    [[ -d ${apk_path3%/*} ]] && Backstage="$(am stack list | awk '/taskId/&&!/unknown/{split($2, a, "/"); print a[1]}')"
-                fi
-            fi
-        else
-            if [[ $(am stack list | awk '/taskId/&&!/unknown/{split($2, a, "/"); print a[1]}') != "" ]]; then
-		        apk_path3="$(echo "$(pm path --user "$user" "$(am stack list | awk '/taskId/&&!/unknown/{split($2, a, "/"); print a[1]}' | head -1)" 2>/dev/null | cut -f2 -d ':')" | head -1)"
-                [[ -d ${apk_path3%/*} ]] && Backstage="$(am stack list | awk '/taskId/&&!/unknown/{split($2, a, "/"); print a[1]}')"
-            fi
+	    Backstage="$(dumpsys activity activities | awk -v uid="$user" '/ActivityRecord\{/{split($4,a,"/"); user=$3; pkg=a[1]; if(user~/^u[0-9]+$/ && pkg!~/\//){sub(/^u/,"",user); if(uid=="" || user==uid) if(!seen[user","pkg]++) print pkg}}')"
+	    if [[ $Backstage = "" ]]; then
+            Backstage="$(am stack list | awk -v uid="$user" '/taskId/&&!/unknown/{split($2,a,"/"); pkg=a[1]; user="unknown"; for(i=1;i<=NF;i++) if($i~/^userId=/){split($i,b,"="); user=b[2]; break} if(uid==""||user==uid) if(!seen[pkg]++) print pkg}')"
+            [[ $Backstage = "" ]] && {
+            echoRgb "獲取當前後台應用失敗" "0" && unset Backstage
+            }
         fi
-        [[ ! -d ${apk_path3%/*} ]] && {
-        echoRgb "獲取當前後台應用失敗" "0" && unset Backstage
-        }
     fi
+    }
 }
+pkgs="bin.mt.plus com.termux bin.mt.plus.canary"
+Background_application_list debug
+case $(echo "$Backstage" | awk -v pkgs="$pkgs" 'BEGIN{split(pkgs,a)}{for(i in a)if($1==a[i]){print;next}}') in
+bin.mt.plus|com.termux|bin.mt.plus.canary)
+    echoRgb "後台應用獲取成功" "1"
+    [[ $(Process_Information "$(echo "$Backstage" | awk -v pkgs="$pkgs" 'BEGIN{split(pkgs,a)}{for(i in a)if($1==a[i]){print;next}}')") = "" ]] && echoRgb "應用pid獲取失敗" "0" || echoRgb "應用pid獲取成功" "1" ;;
+*)
+    echoRgb "後台應用獲取失敗" "0" activity=false ;;
+esac
 backup() {
 	self_test
 	case $MODDIR in
@@ -1875,7 +1898,7 @@ backup() {
 	backup_path
 	echoRgb "配置詳細:\n -壓縮方式:$Compression_method\n -音量鍵確認:$Lo\n -更新:$update\n -備份模式:$Backup_Mode\n -備份外部數據:$Backup_obb_data\n -備份user數據:$Backup_user_data\n -自定義目錄備份:$backup_media\n -存在進程忽略備份:$Background_apps_ignore\n -關閉螢幕:$setDisplayPowerMode"
 	D="1"
-	Apk_info="$(pm list packages -u --user "$user" | cut -f2 -d ':' | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+	Apk_info="$(pm list packages --user "$user" | cut -f2 -d ':' | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	if [[ $Apk_info != "" ]]; then
 	    [[ $Apk_info = *"Failure calling service package"* ]] && Apk_info="$(appinfo "user|system" "pkgName" 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
 	else
@@ -1900,31 +1923,32 @@ backup() {
 		fi
 	done < "$txt"
 	}
-	apks=($(grep -Ev '^[#＃!]' "$txt" | awk '{print $1 ":" $2}'))
     [[ $Update_backup = true ]] && {
     echoRgb "檢查備份列表中已經更新應用" "3"
-    for apk in "${apks[@]}"; do
+    while read apk; do
         Backup_folder="$Backup/$(echo "$apk" | cut -d':' -f1)"
         app_details="$Backup_folder/app_details.json"
         if [[ -d $Backup_folder ]]; then
             apk_version="$(jq -r '.[] | select(.apk_version != null).apk_version' "$app_details")"
-            apk_version2="$(pm list packages --show-versioncode --user "$user" "$(echo "$apk" | cut -d':' -f2)" 2>/dev/null | cut -f3 -d ':' | head -n 1)"
+            apk_version2="$(pm list packages --show-versioncode --user "$user" "$(echo "$apk" | cut -d':' -f2)" </dev/null | cut -f3 -d ':' | head -n 1)"
             [[ $apk_version != $apk_version2 ]] && {
             [[ $Tmplist2 = "" ]] && Tmplist2="${apk/:/ }" || Tmplist2="$Tmplist2\n${apk/:/ }"
             }
         fi
-    done
+    done<<<"$(grep -Ev '^[#＃!]' "$txt" | awk '{print $1 ":" $2}')"
     }
     [[ $Tmplist != ""  ]] && echo "$Tmplist" | sed -e '/^$/d' | sort>"$txt"
 	if [[ $Tmplist2 != "" ]]; then
-	    if [[ $Update_backup != "" ]]; then
-    	    cat "$txt">"${txt%/*}/txt2"
-    	    echo "$Tmplist2" | sed -e '/^$/d' | sort>"$txt"
-    	fi
+        txt="$(echo "$Tmplist2" | sort)"
     else
         [[ $Update_backup != "" ]] && echoRgb "應用目前無更新" "0" && exit 0
     fi
-	r="$(egrep -v '#|＃' "$txt" 2>/dev/null | awk 'NF != 0 { count++ } END { print count }')"
+    if [[ ! -f $txt ]]; then
+        [[ $(echo "$txt") != "" ]] && txt="$(echo "$txt" | sed -e '/^$/d')"
+    else
+        txt="$(egrep -v '#|＃' "$txt" | sed -e '/^$/d')"
+    fi
+    r="$(echo "$txt" | awk 'NF != 0 { count++ } END { print count }')"
 	[[ -f ${0%/*}/app_details.json ]] && r=1
 	[[ $r = "" && ! -f ${0%/*}/app_details.json ]] && echoRgb "$MODDIR_NAME/appList.txt是空的或是包名被注釋備份個鬼\n -檢查是否注釋亦或者執行$MODDIR_NAME/start.sh" "0" && exit 1
 	if [[ $Backup_Mode = true ]]; then
@@ -1962,8 +1986,8 @@ backup() {
 	#獲取預設鍵盤
 	keyboard="$(settings get secure default_input_method 2>/dev/null)"
     Set_screen_pause_seconds on
-	[[ $(egrep -v '#|＃' "$txt" 2>/dev/null | sed -e '/^$/d' | cut -d' ' -f2 | grep -w "^${keyboard%/*}$") != ${keyboard%/*} ]] && unset keyboard
-	ssaid_info="$(get_ssaid "$(egrep -v '#|＃' "$txt" | awk '{printf "%s ", $2}')")"
+    [[ $txt != "" ]] && [[ $(echo "$txt" | cut -d' ' -f2 | grep -w "^${keyboard%/*}$") != ${keyboard%/*} ]] && unset keyboard
+	ssaid_info="$(get_ssaid "$(echo "$txt" | awk '{printf "%s ", $2}')")"
 	starttime1="$(date -u "+%s")"
 	TIME="$starttime1"
 	notification "101" "開始備份"
@@ -1971,8 +1995,8 @@ backup() {
 		[[ $en -ge 229 ]] && en=118
 		unset name1 name2 apk_path apk_path2
 		if [[ ! -f ${0%/*}/app_details.json ]]; then
-    		name1="$(egrep -v '#|＃' "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | cut -d' ' -f1)"
-    		name2="$(egrep -v '#|＃' "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | cut -d' ' -f2)"
+		    name1="$(echo "$txt" | sed -n "${i}p" | cut -d' ' -f1)"
+        	name2="$(echo "$txt" | sed -n "${i}p" | cut -d' ' -f2)"
         else
             ChineseName="$(jq -r 'to_entries[] | select(.key != null).key' "${0%/*}/app_details.json" | head -n 1)"
 		    PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "${0%/*}/app_details.json")"
@@ -2047,8 +2071,6 @@ backup() {
         				    }
         				}
         				[[ $name2 = github.tornaco.android.thanos ]] && Backup_data "thanox" "$(find "/data/system" -name "thanos"* -maxdepth 1 -type d 2>/dev/null)"
-        				[[ $name2 = cn.myflv.noactive ]] && Backup_data "NoActive" "$(find "/data/system" -name "NoActive_"* -maxdepth 1 -type d 2>/dev/null)"
-        				[[ $name2 = moe.shizuku.redirectstorage ]] && Backup_data "storage-isolation" "/data/adb/storage-isolation"
         		    fi
     			fi
     			[[ -f $Backup_folder/${name2}.sh ]] && rm -rf "$Backup_folder/${name2}.sh"
@@ -2135,6 +2157,7 @@ backup() {
 		fi
 		let i++ en++ nskg++
 	done
+	backup_wifi "$Backup/wifi"
 	Set_screen_pause_seconds off
 	[[ $user != 0 ]] && am stop-user "$user"
 	Calculate_size "$Backup"
@@ -2143,7 +2166,7 @@ backup() {
 	starttime1="$TIME"
 	endtime 1 "批量備份開始到結束"
 	notification "105" "備份完成 $(endtime 1 "批量備份開始到結束")"
-	chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt"
+	[[ -f $txt ]] && chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt"
 	chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt2"
 	exit
 }
@@ -2246,9 +2269,9 @@ Restore() {
 		*)  echoRgb "$conf_path Lo=$Lo填寫錯誤，正確值0 1 2" "0" && exit 2 ;;
 		esac
     	[[ $recovery_mode2 = false ]] && exit 2
-    	if [[ $recovery_mode = true ]]; then
+    	if [[ $recovery_mode = true && $ssaid_mode != true ]]; then
     		echoRgb "獲取未安裝應用中"
-    		Apk_info="$(pm list packages -u --user "$user" | cut -f2 -d ':' | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
+    		Apk_info="$(pm list packages --user "$user" | cut -f2 -d ':' | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
         	if [[ $Apk_info != "" ]]; then
         	    [[ $Apk_info = *"Failure calling service package"* ]] && Apk_info="$(appinfo "user|system" "pkgName" 2>/dev/null | egrep -v 'ice.message|com.topjohnwu.magisk' | sort -u)"
         	else
@@ -2263,9 +2286,8 @@ Restore() {
                     fi
         		fi
         	done < "$txt"
-    		r="$(echo "$Tmplist" | awk 'NF != 0 { count++ } END { print count }')"
-    		if [[ $r != "" ]]; then
-    			echoRgb "獲取完成 預計安裝$r個應用"
+    		if [[ $(echo "$Tmplist" | awk 'NF != 0 { count++ } END { print count }') != "" ]]; then
+    			echoRgb "獲取完成 預計安裝$(echo "$Tmplist" | awk 'NF != 0 { count++ } END { print count }')個應用"
     			txt="$Tmplist"
     			case $Lo in
     			0|1)
@@ -2279,6 +2301,26 @@ Restore() {
     			echoRgb "獲取完成 但備份內應用都已安裝....正在退出腳本" "0" && exit 0
     		fi
     	fi
+    	if [[ $ssaid_mode = true ]]; then
+    	     while read; do
+    	        if [[ $(jq -r '.[] | select(.Ssaid != null).Ssaid' "$REPLY") != "" ]]; then
+            	    ChineseName="$(jq -r 'to_entries[] | select(.key != null).key' "$REPLY" | head -n 1)"
+        		    PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "$REPLY")"
+        		    if [[ $ssaid_name = "" ]]; then
+        		        ssaid_name="$ChineseName $PackageName"
+        		    else
+        		        ssaid_name="$ssaid_name\n$ChineseName $PackageName"
+        		    fi
+        		fi
+            done<<<"$(find "$MODDIR" -maxdepth 2 -name "app_details.json" -type f 2>/dev/null | sort)"
+            [[ $ssaid_name != "" ]] && txt="$ssaid_name"
+        fi
+        if [[ ! -f $txt ]]; then
+	        [[ $(echo "$txt") != "" ]] && txt="$(echo "$txt" | sed -e '/^$/d')"
+	    else
+	        txt="$(egrep -v '#|＃' "$txt" | sed -e '/^$/d')"
+	    fi
+	    r="$(echo "$txt" | awk 'NF != 0 { count++ } END { print count }')"
     	DX="批量恢復"
     else
         i=1
@@ -2316,15 +2358,8 @@ Restore() {
 		    echoRgb "恢復第$i/$r個應用 剩下$((r - i))個" "3"
 		    notification "105" "恢復第$i/$r個應用 剩下$((r - i))個
 恢復 $name1"
-		    if [[ ! -f $txt ]]; then
-		        [[ $(echo "$txt") != "" ]] && {
-		        name1="$(echo "$txt" | sed -e '/^$/d' | sed -n "${i}p" | cut -d' ' -f1)"
-		        name2="$(echo "$txt" | sed -e '/^$/d' | sed -n "${i}p" | cut -d' ' -f2)"
-		        }
-		    else
-		        name1="$(egrep -v '#|＃' "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | cut -d' ' -f1)"
-		        name2="$(egrep -v '#|＃' "$txt" 2>/dev/null | sed -e '/^$/d' | sed -n "${i}p" | cut -d' ' -f2)"
-		    fi
+	        name1="$(echo "$txt" | sed -n "${i}p" | cut -d' ' -f1)"
+	        name2="$(echo "$txt" | sed -n "${i}p" | cut -d' ' -f2)"
 		    unset No_backupdata apk_version Permissions
 		    if [[ $name1 = *! || $name1 = *！ ]]; then
 			    name1="$(echo "$name1" | sed 's/!//g ; s/！//g')"
@@ -2347,12 +2382,12 @@ Restore() {
 		    [[ $Backstage != "" && $(echo "$Backstage" | egrep -w "^$name2$") != "" ]] && echoRgb "$name1存在後台 忽略恢復" "0" && restore="false"
 			[[ $restore = true ]] && {
 			starttime2="$(date -u "+%s")"
-			if [[ $(pm path --user "$user" "$name2" 2>/dev/null) = "" ]]; then
+			if [[ $(pm list packages --user "$user" | awk -v pkg="$name2" -F':' '$2 == pkg {print $2}') = "" ]]; then
 				installapk
 			else
 		        [[ $apk_version -gt $(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1) ]] && installapk && [[ $? = 0 ]] && echoRgb "版本提升$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)>$apk_version" "1"
 			fi
-			if [[ $(pm path --user "$user" "$name2" 2>/dev/null) != "" ]]; then
+			if [[ $(pm list packages --user "$user" | awk -v pkg="$name2" -F':' '$2 == pkg {print $2}') != "" ]]; then
 				if [[ $No_backupdata = "" ]]; then
 				    [[ $name2 != *mt* ]] && {
 					kill_app
@@ -2422,6 +2457,7 @@ Restore() {
 				endtime 1 "自定義恢復" "2"
 				notification "106" "Media恢復完成 $(endtime 1 "Media恢復" "2")"
 			fi
+			recover_wifi "$MODDIR/wifi"
 			}
 		fi
 		let i++ en++ nskg++
@@ -2730,6 +2766,13 @@ Device_List() {
         echoRgb "下載機型失敗"
     fi
 }
+wifi() {
+    backup_path
+    [[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup"
+	[[ ! -f $Backup/start.sh ]] && touch_shell "2" "$Backup/start.sh"
+	[[ ! -f $Backup/restore_settings.conf ]] && update_Restore_settings_conf>"$Backup/restore_settings.conf"
+    backup_wifi "$Backup/wifi"
+}
 if [[ $0 = *backup.sh ]]; then
     start=backup
 else
@@ -2751,6 +2794,7 @@ else
             "備份應用"
             "備份已更新應用"
             "備份自定義資料夾"
+            "備份WiFi"
             "殺死運行中腳本"
         )
         commands=(
@@ -2758,12 +2802,15 @@ else
             "backup"
             "backup_update_apk"
             "backup_media"
+            "wifi"
             "echoRgb '等待腳本停止中，請稍後.....' && echoRgb '腳本終止'; exit"
         )
     elif [[ -f $MODDIR/restore_settings.conf ]]; then
         steps=(
             "恢復備份"
+            "僅恢復包含ssaid應用"
             "恢復自定義資料夾"
+            "恢復wifi"
             "重新生成應用列表"
             "壓縮檔完整性檢查"
             "轉換文件夾名稱"
@@ -2771,43 +2818,41 @@ else
         )
         commands=(
             "Restore"
+            "ssaid_mode=true && Restore"
             "Restore3"
+            "recover_wifi \"$MODDIR/wifi\""
             "dumpname"
             "check_file"
             "convert"
             "echoRgb '等待腳本停止中，請稍後.....' && echoRgb '腳本終止'; exit"
         )
     fi
-    while true; do
-        echoRgb "請選擇要執行的操作："
-        for i in "${!steps[@]}"; do
-            printf "%d) %s\n" "$((i+1))" "${steps[$i]}"
-        done
-        echo "x) 離開腳本"
-        echo -n "請輸入選項編號: "
-        read choice
-        case $choice in
-        x|X)
-            echoRgb "已退出腳本" "0"
-            exit 0 ;;
-        [1-9])
-            if (( choice >= 1 && choice <= ${#steps[@]} )); then
-                index=$((choice - 1))
-                echo "執行：${steps[$index]}"
-                background=$(grep -o 'background_execution=.*' "$conf_path" | awk -F '=' '{print $2}')
-                if [[ "$background" == "1" ]]; then
-                    eval "${commands[$index]}" &
-                else
-                    eval "${commands[$index]}"
-                fi
-                break
-            else
-                echoRgb "超出功能選項範圍（1-${#steps[@]}）" "0"
-                continue
-            fi
-            break ;;
-        *)
-            echoRgb "輸入錯誤，請重新輸入有效的數字或輸入 x 離開。" "0" ;;
-        esac
+    echoRgb "請選擇要執行的操作："
+    for i in "${!steps[@]}"; do
+        printf "%d) %s\n" "$((i+1))" "${steps[$i]}"
     done
+    echo "x) 離開腳本"
+    echo -n "請輸入選項編號: "
+    read choice
+    case $choice in
+    x|X)
+        echoRgb "已退出腳本" "0"
+        exit 0 ;;
+    [1-9])
+        if (( choice >= 1 && choice <= ${#steps[@]} )); then
+            index=$((choice - 1))
+            echo "執行：${steps[$index]}"
+            background=$(grep -o 'background_execution=.*' "$conf_path" | awk -F '=' '{print $2}')
+            if [[ "$background" = "1" ]]; then
+                eval "${commands[$index]}" &
+            else
+                eval "${commands[$index]}"
+            fi
+        else
+            echoRgb "超出功能選項範圍（1-${#steps[@]}）" "0"
+        fi
+        ;;
+    *)
+        echoRgb "輸入錯誤，請重新輸入有效的數字或輸入 x 離開。" "0" ;;
+    esac
 fi

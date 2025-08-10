@@ -51,10 +51,9 @@ backup_script.zip
 │       ├── soc.json
 │       ├── tar
 │       ├── tools.sh
-│       ├── update-binary
 │       ├── zip
 │       └── zstd
-├── backup_settings.conf         <--- 腳本默認行為設置      customize.sh 由 update-binary 执行(sourced)
+├── backup_settings.conf         <--- 腳本默認行為設置
 └── start.sh          <--- 執行腳本
 ```
 
