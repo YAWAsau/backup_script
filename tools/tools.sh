@@ -332,7 +332,7 @@ while read -r file expected_hash; do
 done <<< "$(cat <<EOF
 zstd ab32aecb389c3ba5c1f7ab05d5eb6a861bad80261fd14ef9a8f4c283ac48c22c
 tar 3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814
-classes.dex 55b19c1a06ec4a1e025817951f87293c17a846602fcda81b0ab70e8249809ddb
+classes.dex 63934f7d15de40f4b188672e36fe22a01b55abb235becee2c2738f29aaf8299b
 bc b15d730591f6fb52af59284b87d939c5bea204f944405a3518224d8df788dc15
 busybox 4d60ab3f5a59ebb2ca863f2f514e6924401b581e9b64f602665c008177626651
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
@@ -644,15 +644,19 @@ backup_wifi() {
     if [[ -d $1 ]]; then
         echoRgb "備份wifi密碼"
         rm -rf "$1"/*
-        app_process /system/bin com.xayah.dex.NetworkUtil saveNetworks "$1"
+        app_process /system/bin com.xayah.dex.NetworkUtil saveNetworks>"$1/wifi.json"
         echo_log "wifi備份"
     fi
 }
 recover_wifi() {
     if [[ -d $1 ]]; then
-        echoRgb "恢復wifi密碼"
-        app_process /system/bin com.xayah.dex.NetworkUtil restoreNetworks "$1"
-        echo_log "wifi恢復"
+        if [[ -f $1/wifi.json ]]; then
+            echoRgb "恢復wifi密碼"
+            app_process /system/bin com.xayah.dex.NetworkUtil restoreNetworks "$1/wifi.json"
+            echo_log "wifi恢復"
+        else
+            echoRgb "wifi.json遺失"
+        fi
     else
         echoRgb "$1不存在 wifi無法恢復" "0"
     fi
@@ -1041,7 +1045,7 @@ Backup_apk() {
 	apk_version="$(jq -r '.[] | select(.apk_version != null).apk_version' "$app_details")"
 	apk_version2="$(pm list packages --show-versioncode --user "$user" "$name2" 2>/dev/null | cut -f3 -d ':' | head -n 1)"
 	if [[ $apk_version = $apk_version2 ]]; then
-		[[ $(sed -e '/^$/d' "$txt2" | cut -d' ' -f2 | awk -v pkg="$name2" '$1 == pkg {print $1}') = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
+		[[ $(echo "$txt2" | sed -e '/^$/d' | cut -d' ' -f2 | awk -v pkg="$name2" '$1 == pkg {print $1}') = "" ]] && txt2="$txt2\n${Backup_folder##*/} $name2"
 		unset xb
 		let osj++
 		result=0
@@ -1080,7 +1084,7 @@ Backup_apk() {
     			if [[ $result = 0 ]]; then
     			    Validation_file "$Backup_folder/apk.tar"*
     				if [[ $result = 0 ]]; then
-    					[[ $(sed -e '/^$/d' "$txt2" 2>/dev/null | cut -d' ' -f2 | grep -w "^${name2}$" | head -1) = "" ]] && echo "${Backup_folder##*/} $name2" >>"$txt2"
+    				    [[ $(echo "$txt2" | sed -e '/^$/d' | cut -d' ' -f2 | awk -v pkg="$name2" '$1 == pkg {print $1}') = "" ]] && txt2="$txt2\n${Backup_folder##*/} $name2"
                         [[ $apk_version != "" ]] && {
                         echoRgb "覆蓋app_details"
                         jq --arg apk_version "$apk_version2" --arg software "$name1" '.[$software].apk_version = $apk_version' "$app_details" > "$TMPDIR/temp.json" && cat "$TMPDIR/temp.json" > "$app_details" && rm "$TMPDIR/temp.json"
@@ -1738,8 +1742,8 @@ Background_application_list() {
 Background_application_list debug
 pkgs="$(pm list packages --user "$user" | cut -f2 -d ':' | awk -v pkg="$(echo "$Backstage" | head -1)" '$1 == pkg {print $1}')"
 if [[ $pkgs != "" ]]; then
-    echoRgb "後台應用獲取成功" "1"
-    [[ $(Process_Information "$pkgs") = "" ]] && echoRgb "應用pid獲取失敗" "0" || echoRgb "應用pid獲取成功" "1"
+    echoRgb "後台應用獲取成功($pkgs)" "1"
+    [[ $(Process_Information "$pkgs") = "" ]] && echoRgb "應用pid獲取失敗" "0" || echoRgb "應用pid獲取成功$(Process_Information "$pkgs")" "1"
 else
     echoRgb "後台應用獲取失敗" "0" activity=false
 fi
@@ -1910,7 +1914,7 @@ backup() {
 	    if [[ $(echo "$REPLY" | sed -E 's/^[ \t]*//; /^[ \t]*[#＃!]/d') != "" ]]; then
             app=($REPLY $REPLY)
     		if [[ ${app[1]} != "" && ${app[2]} != "" ]]; then
-	            if [[ $(echo "$Apk_info" | egrep -o "${app[1]}") != "" ]]; then
+	            if [[ $(echo "$Apk_info" | awk -v pkg="${app[1]}" '$1 == pkg {print $1}') != "" ]]; then
 			        [[ $Tmplist = "" ]] && Tmplist='#不需要備份的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market（忽略安裝包和數據）\n#不需要備份數據的應用請在開頭使用!注釋 比如：!酷安 com.coolapk.market（僅忽略數據）'
     			    Tmplist="$Tmplist\n$REPLY"
     			else
@@ -1957,9 +1961,9 @@ backup() {
 	[[ $backup_media = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -backup_media=0將不備份自定義資料夾" "0"
 	txt2="$Backup/appList.txt"
 	txt2="${txt2/'/storage/emulated/'/'/data/media/'}"
+	txt_path2="$txt2"
 	[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market">"$txt2"
-	cat "$txt2">"$TMPDIR/txt2"
-	txt2="$TMPDIR/txt2"
+	txt2="$(cat "$txt2")"
 	[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup"
 	[[ ! -f $Backup/start.sh ]] && touch_shell "2" "$Backup/start.sh"
 	[[ ! -f $Backup/restore_settings.conf ]] && update_Restore_settings_conf>"$Backup/restore_settings.conf"
@@ -2110,9 +2114,8 @@ backup() {
 			add_app2="${add_app2:="暫無更新"}"
 			echoRgb "\n -已更新的apk=\"$osn\"\n -已新增的備份=\"$osk\"\n -apk版本號無變化=\"$osj\"\n -下列為版本號已變更的應用\n$update_apk2\n -新增的備份....\n$add_app2\n -包含SSAID的應用\n$SSAID_apk2" "3"
 			notification "101" "app備份完成 $(endtime 1 "應用備份" "3")"
-			[[ -e $txt2 ]] && {
-			sort "$txt2" | sed '/^$/d' >"${txt2}.tmp" && mv "${txt2}.tmp" "$txt2"
-			cat "$txt2">"$Backup/appList.txt" && rm -rf "$txt2"
+			[[ $txt2 != "" ]] && {
+			echo "$txt2" | sort | sed '/^$/d'>"$txt_path2"
 			}
 			if [[ $backup_media = true && ! -f ${0%/*}/app_details.json ]]; then
 				A=1
@@ -2170,7 +2173,7 @@ backup() {
 	endtime 1 "批量備份開始到結束"
 	notification "105" "備份完成 $(endtime 1 "批量備份開始到結束")"
 	[[ -f $txt_path ]] && chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt_path"
-	chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$Backup/appList.txt"
+	[[ -f $txt_path2 ]] && chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt_path2"
 	exit
 }
 backup_update_apk() {
@@ -2285,7 +2288,7 @@ Restore() {
                 if [[ $(echo "$REPLY" | sed 's/^[ \t]*//') != \#* ]]; then
                     app=($REPLY $REPLY)
             		if [[ ${app[1]} != "" && ${app[2]} != "" ]]; then
-        	            [[ $(echo "$Apk_info" | grep -Fx "${app[1]}") = "" ]] && Tmplist="$Tmplist\n$REPLY"
+        	            [[ $(echo "$Apk_info" | awk -v pkg="${app[1]}" '$1 == pkg {print $1}') = "" ]] && Tmplist="$Tmplist\n$REPLY"
                     fi
         		fi
         	done < "$txt"
@@ -2652,7 +2655,7 @@ Getlist() {
     	    if [[ $(echo "$REPLY" | sed -E 's/^[ \t]*//; /^[ \t]*[#＃!]/d') != "" ]]; then
                 app=($REPLY $REPLY)
     		    if [[ ${app[1]} != "" && ${app[2]} != "" ]]; then
-	                if [[ $(echo "$Apk_info2" | egrep -o "${app[1]}") != "" ]]; then
+	                if [[ $(echo "$Apk_info2" | awk -v pkg="${app[1]}" '$1 == pkg {print $1}') != "" ]]; then
 			            [[ $Tmplist = "" ]] && Tmplist='#不需要備份的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market（忽略安裝包和數據\n#不需要備份數據的應用請在開頭使用!注釋 比如：!酷安 com.coolapk.market（僅忽略數據）'
     			        Tmplist="$Tmplist\n$REPLY"
     			    else
