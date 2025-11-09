@@ -9,7 +9,7 @@ MODDIR="$MODDIR"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202507071944"
+backup_version="202508162209"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 update_backup_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
@@ -312,7 +312,8 @@ fi
 [[ ! -f $filepath/zstd ]] && echoRgb "$filepath缺少zstd" && exit 2
 export PATH="$filepath:$PATH"
 export TZ=Asia/Taipei
-export CLASSPATH="$tools_path/classes.dex"
+ln -fs "$tools_path/classes.dex" "$filepath/classes.dex"
+export CLASSPATH="$filepath/classes.dex"
 quit=0
 while read -r file expected_hash; do
   if [[ -f $tools_path/$file ]]; then
@@ -804,15 +805,15 @@ else
     [[ $(unzip -l "$zipFile" 2>/dev/null | awk '{print $4}' | egrep -wo "^backup_settings.conf$") != "" ]] && update_script
 fi
 if [[ $(getprop ro.build.version.sdk) -lt 30 ]]; then
-	alias INSTALL="pm install --user $user -r -t &>/dev/null"
-	alias create="pm install-create --user $user -t 2>/dev/null"
+	alias INSTALL="pm install --user $user -r -t >/dev/null"
+	alias create="pm install-create --user $user -tl"
 else
     if [[ $(getprop ro.build.version.sdk) -gt 33 ]]; then
-	    alias INSTALL="pm install -r --bypass-low-target-sdk-block -i com.android.vending --user $user -t &>/dev/null"
-        alias create="pm install-create -i com.android.vending --bypass-low-target-sdk-block --user $user -t 2>/dev/null"
+	    alias INSTALL="pm install -r --bypass-low-target-sdk-block -i com.android.vending --user $user -t >/dev/null"
+        alias create="pm install-create -i com.android.vending --bypass-low-target-sdk-block --user $user -t"
     else
-        alias INSTALL="pm install -r -i com.android.vending --user $user -t &>/dev/null"
-        alias create="pm install-create -i com.android.vending --user $user -t 2>/dev/null"
+        alias INSTALL="pm install -r -i com.android.vending --user $user -t >/dev/null"
+        alias create="pm install-create -i com.android.vending --user $user -t"
     fi
 fi
 #settings get system system_locales
@@ -1430,7 +1431,7 @@ installapk() {
 			;;
 		*)
 			echoRgb "恢復split apk" "2"
-			b="$(create 2>/dev/null | egrep -o '[0-9]+')"
+			b="$(create | egrep -o '[0-9]+')"
 			if [[ -f $TMPDIR/nmsl.apk ]]; then
 				INSTALL "$TMPDIR/nmsl.apk"
 				echo_log "nmsl.apk安裝"
@@ -1439,7 +1440,7 @@ installapk() {
                 pm install-write "$b" "${apk##*/}" "$apk" </dev/null >/dev/null
                 echo_log "${apk##*/}安裝"
             done
-			pm install-commit "$b" &>/dev/null
+			pm install-commit "$b" >/dev/null
 			echo_log "split Apk安裝"
 			;;
 		esac
