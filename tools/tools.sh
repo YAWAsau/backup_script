@@ -878,7 +878,7 @@ case $Lo in
 *)  echoRgb "$conf_path Lo=$Lo填寫錯誤，正確值0 1 2" "0" && exit 2 ;;
 esac
 if [[ $update = true ]]; then
-    json="$(down "$Language" 2>/dev/null)"
+    json="$(down "$Language")"
 else
     echoRgb "自動更新被關閉" "0"
 fi
@@ -896,7 +896,7 @@ if [[ $json != "" ]]; then
 			if [[ $(expr "$(echo "$backup_version" | tr -d "a-zA-Z")" \> "$(echo "$download" | tr -d "a-zA-Z")") -eq 0 ]]; then
 				echoRgb "發現新版本:$tag"
 				if [[ $update = true ]]; then
-				    echoRgb "$(ts "更新日誌:\n$(down "$Language" | jq -r '.body' 2>/dev/null)")"
+				    echoRgb "$(ts "更新日誌:\n$(down "$Language" | jq -r '.body')")"
 					case $Lo in
 					0|1) 
 					    echoRgb "是否更新腳本？\n -音量上更新，音量下不更新" "2"
@@ -1624,6 +1624,7 @@ get_name(){
 		        Enter_options "確認列表無誤後輸入1刪除，輸入0退出腳本編輯列表" "刪除" "退出腳本" && isBoolean "$parameter" "Delete_App" && Delete_App="$nsx" ;;
 		    esac
 		    if [[ $Delete_App = true ]]; then
+		        echoRgb "警告 即將刪除未安裝應用資料夾，請再三確認後在執行" "0"
 		        i=1
 		        r="$(echo "$delete_app" | awk 'NF != 0 { count++ } END { print count }')"
 		        while [[ $i -le $r ]]; do
