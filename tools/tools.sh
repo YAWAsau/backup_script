@@ -223,7 +223,7 @@ esac
 echoRgb() {
 	#轉換echo顏色提高可讀性
 	if [[ $2 = 0 ]]; then
-		echo -e "\e[38;5;197m -$1\e[0m"
+		echo -e "\e[38;5;197m -!$1\e[0m"
 	elif [[ $2 = 1 ]]; then
 		echo -e "\e[38;5;121m -$1\e[0m"
 	elif [[ $2 = 2 ]]; then
@@ -713,7 +713,7 @@ if [ -f \"$MODDIR_Path/tools/tools.sh\" ]; then
 else
     echo \"$MODDIR_Path/tools/tools.sh遺失\"
 fi
-. \"$MODDIR_Path/tools/tools.sh\" | tee \"\${0%/*}/log.txt\""> "$2"
+. \"$MODDIR_Path/tools/tools.sh\" | tee \"\${0%/*}/log_\$(date +%Y-%m-%d_%H-%M).txt\""> "$2"
 }
 update_script() {
 	[[ $zipFile = "" ]] && zipFile="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f 2>/dev/null)"
@@ -1029,11 +1029,11 @@ kill_app() {
     process_Information="$(Process_Information "$name2")"
     if [[ $name2 != bin.mt.plus && $name2 != com.termux && $name2 != bin.mt.plus.canary ]]; then
         if [[ $process_Information != "" ]]; then
+            am force-stop --user "$user" "$name2" &>/dev/null
             echo "$process_Information" | xargs -r kill -9
             pkill -9 -f "$name2$|$name2[:/_]"
-            killall -9 "$name2" &>/dev/null
-            am force-stop --user "$user" "$name2" &>/dev/null
-            am kill "$name2" &>/dev/null
+            #killall -9 "$name2" &>/dev/null
+            #am kill "$name2" &>/dev/null
             echoRgb "殺死$name1進程"
         fi
 	fi
