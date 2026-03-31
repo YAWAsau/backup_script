@@ -1994,7 +1994,11 @@ backup() {
 	keyboard="$(settings get secure default_input_method 2>/dev/null)"
     Set_screen_pause_seconds on
     [[ $txt != "" ]] && [[ $(echo "$txt" | cut -d' ' -f2 | grep -w "^${keyboard%/*}$") != ${keyboard%/*} ]] && unset keyboard
-	ssaid_info="$(get_ssaid "$(echo "$txt" | awk '{printf "%s ", $2}')")"
+	if [[ -f ${0%/*}/app_details.json ]]; then
+	    ssaid_info="$(get_ssaid "$(jq -r '.[] | select(.PackageName != null).PackageName' "${0%/*}/app_details.json")")"
+	else
+	    ssaid_info="$(get_ssaid "$(echo "$txt" | awk '{printf "%s ", $2}')")"
+	fi
 	starttime1="$(date -u "+%s")"
 	TIME="$starttime1"
 	notification "101" "開始備份"
@@ -2520,6 +2524,69 @@ Restore3() {
 	endtime 1 "恢復結束"
 	notification "108" "Media恢復完成 $(endtime 1 "Media恢復")"
 }
+Restore4() {
+    if [[ $ssaid_mode_1 = true ]]; then
+        while read; do
+            if [[ $(jq -r '.[] | select(.Ssaid != null).Ssaid' "$REPLY") != "" ]]; then
+                ChineseName="$(jq -r 'to_entries[] | select(.key != null).key' "$REPLY" | head -n 1)"
+        	    PackageName="$(jq -r '.[] | select(.PackageName != null).PackageName' "$REPLY")"
+        	    if [[ $ssaid_name = "" ]]; then
+        	        ssaid_name="$ChineseName $PackageName"
+        	    else
+        	        ssaid_name="$ssaid_name\n$ChineseName $PackageName"
+        	    fi
+        	fi
+        done<<<"$(find "$MODDIR" -maxdepth 2 -name "app_details.json" -type f 2>/dev/null | sort)"
+        [[ $ssaid_name != "" ]] && txt="$ssaid_name"
+        i=1
+        [[ $(echo "$txt") != "" ]] && txt="$(echo "$txt" | sed -e '/^$/d')"
+        r="$(echo "$txt" | awk 'NF != 0 { count++ } END { print count }')"
+        while [[ $i -le $r ]]; do
+            name1="$(echo "$txt" | sed -n "${i}p" | cut -d' ' -f1)"
+    	    name2="$(echo "$txt" | sed -n "${i}p" | cut -d' ' -f2)"
+    	    Backup_folder="$MODDIR/$name1"
+    		if [[ -f "$Backup_folder/app_details.json" ]]; then
+    		    app_details="$Backup_folder/app_details.json"
+    		    apk_version="$(jq -r '.[] | select(.apk_version != null).apk_version' "$app_details")"
+    		else
+    		    echoRgb "$Backup_folder/app_details.json不存在" "0"
+    		fi
+        	[[ $name2 = "" ]] && echoRgb "應用包名獲取失敗" "0" && exit 1
+            if [[ $(pm list packages --user "$user" | awk -v pkg="$name2" -F':' '$2 == pkg {print $2}') != "" ]]; then
+    		    [[ $name2 != *mt* ]] && {
+    			kill_app
+    			Ssaid="$(jq -r '.[] | select(.Ssaid != null).Ssaid' "$app_details")"
+    			if [[ $Ssaid != "" ]]; then
+    			    SSAID_Package="$(echo "$name1 $name2 $Ssaid")"
+    		        SSAID_Package2="$(echo "$SSAID_Package\n$SSAID_Package2")"
+    			    unset Ssaid
+    			fi
+    			}
+    		fi
+    		if [[ $i = $r ]]; then
+                [[ $SSAID_Package2 != "" ]] && {
+        	    echoRgb "開始恢復saaid" "0"
+        	    set_ssaid "$(echo "$SSAID_Package2" | awk '{printf "%s %s ", $2, $3}')"
+        	    ssaid_info="$(get_ssaid "$(echo "$SSAID_Package2" | awk '{printf "%s ", $2}')")"
+        	    echo "$SSAID_Package2" | while read; do
+        	        Ssaid="$(echo "$REPLY" | cut -d' ' -f3)"
+        	        name1="$(echo "$REPLY" | cut -d' ' -f1)"
+        	        name2="$(echo "$REPLY" | cut -d' ' -f2)"
+        	        if [[ $(awk -v pkg="$name2" '$1 == pkg {print $2}'<<<"$ssaid_info") = $Ssaid ]]; then
+        	            echoRgb "$name1 SSAID恢復成功" "1"
+        	        else
+        	            echoRgb "$name1 SSAID恢復失敗" "0"
+        	        fi
+        		    unset Ssaid
+        		done
+        		echoRgb "SSAID恢復後必須重新開機套用,否則應用閃退,如果沒有應用恢復ssaid則無須重啟" "0"
+        		notification "107" "SSAID恢復後必須重新開機套用,否則應用閃退,如果沒有應用恢復ssaid則無須重啟"
+        		}
+            fi
+    		let i++
+	    done
+	fi
+}
 Getlist() {
 	case $MODDIR in
 	/storage/emulated/0/Android/* | /data/media/0/Android/* | /sdcard/Android/*) echoRgb "請勿在$MODDIR內生成列表" "0" && exit 2 ;;
@@ -2553,7 +2620,7 @@ Getlist() {
 	rgb_a=118
 	starttime1="$(date -u "+%s")"
 	echoRgb "提示! 腳本默認會屏蔽預裝應用 如需備份請添加預裝應用白名單" "0"
-	Apk_info="$(appinfo "system|user|xposed" "label|pkgName|flag" | egrep -v 'ice.message|com.topjohnwu.magisk')"
+	Apk_info="$(appinfo "system|user|xposed" "label|pkgName|flag" | egrep -v 'ice.message|com.topjohnwu.magisk' | tr '/:' '_')"
 	xposed_name="$(echo "$Apk_info" | awk '$3 == "xposed" {print $2}')"
 	TARGET_PACKAGES="$(echo "$system" | paste -sd'|' - | sed 's/^|//')"
     Pre_installed_apps="$(echo "$Apk_info" | awk '$3 == "system" {print $1, $2}' | egrep -w "$TARGET_PACKAGES")"
@@ -2815,21 +2882,23 @@ else
         )
     elif [[ -f $MODDIR/restore_settings.conf ]]; then
         steps=(
+            "重新生成應用列表"
             "恢復備份"
-            "僅恢復包含ssaid應用"
+            "僅恢復包含ssaid應用(含數據)"
+            "僅恢復包含ssaid應用(不含數據)"
             "恢復自定義資料夾"
             "恢復wifi"
-            "重新生成應用列表"
             "壓縮檔完整性檢查"
             "轉換文件夾名稱"
             "殺死運行中腳本"
         )
         commands=(
+            "dumpname"        
             "Restore"
             "ssaid_mode=true && Restore"
+            "ssaid_mode_1=true && Restore4"
             "Restore3"
             "recover_wifi \"$MODDIR/wifi\""
-            "dumpname"
             "check_file"
             "convert"
             "echoRgb '等待腳本停止中，請稍後.....' && echoRgb '腳本終止'; exit"
