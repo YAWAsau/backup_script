@@ -18,8 +18,8 @@ update_backup_settings_conf() {
 Lo="${Lo:-0}"
 
 #後台執行腳本
-0不能關閉當前終端，有壓縮速率
-1終端有可能完全無顯示，但是log會持續刷新，可直接完全關閉終端
+#0不能關閉當前終端，有壓縮速率
+#1終端有可能完全無顯示，但是log會持續刷新，可直接完全關閉終端
 background_execution="${background_execution:-0}"
 
 #腳本語言設置 留空則自動識別系統語言環境並翻譯
@@ -148,8 +148,8 @@ update_Restore_settings_conf() {
 Lo="${Lo:-0}"
 
 #後台執行腳本
-0不能關閉當前終端，有壓縮速率
-1終端有可能完全無顯示，但是log會持續刷新，可直接完全關閉終端
+#0不能關閉當前終端，有壓縮速率
+#1終端有可能完全無顯示，但是log會持續刷新，可直接完全關閉終端
 background_execution="${background_execution:-0}"
 
 #恢復開始後偽裝亮屏
@@ -331,13 +331,13 @@ while read -r file expected_hash; do
     break
   fi
 done <<< "$(cat <<EOF
-zstd ab32aecb389c3ba5c1f7ab05d5eb6a861bad80261fd14ef9a8f4c283ac48c22c
-tar 3c605b1e9eb8283555225dcad4a3bf1777ae39c5f19a2c8b8943140fd7555814
+zstd 9ef4b54148699c9874cfd45aaf38e5cc950e5d168afdcf2edf58a2463f5561ed
+tar 882639ac310a7eb4052c68c21cea02633307700f9cc8c7c469c2dd18d734a112
 classes.dex 63934f7d15de40f4b188672e36fe22a01b55abb235becee2c2738f29aaf8299b
 bc b15d730591f6fb52af59284b87d939c5bea204f944405a3518224d8df788dc15
 busybox 4d60ab3f5a59ebb2ca863f2f514e6924401b581e9b64f602665c008177626651
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
-jq 4dd2d8a0661df0b22f1bb9a1f9830f06b6f3b8f7d91211a1ef5d7c4f06a8b4a5
+jq 6bc62f25981328edd3cfcfe6fe51b073f2d7e7710d7ef7fcdac28d4e384fc3d4
 keycheck 50645ee0e0d2a7d64fb4a1286446df7a4445f3d11aefd49eeeb88515b314c363
 cmd 08da8ac23b6e99788fd3ce6c19c7b5a083b2ad48be35963a48d01d6ee7f3bb6d
 EOF)"
@@ -412,6 +412,7 @@ get_version() {
 	done
 }
 isBoolean() {
+    unset nsx
 	nsx="$1"
 	if [[ $1 = 1 ]]; then
 		nsx=true
@@ -1459,6 +1460,10 @@ disable_verify() {
 		settings put global upload_apk_enable 0 2>/dev/null
 		echoRgb "PLAY安全驗證為開啟狀態已被腳本關閉防止apk安裝失敗" "3"
 	fi
+	# 額外安全性攔截
+    settings put global harmful_app_warning_on 0 2>/dev/null
+    # 關閉應用的受限模式 (針對 Android 13/14 側載應用)
+    settings put secure enhanced_confirmation_states 0 2>/dev/null
 	# 設定檔案路徑
     FILE="/data/data/com.android.vending/shared_prefs/finsky.xml"
     if [[ -f $FILE ]]; then
@@ -1892,6 +1897,7 @@ backup() {
 	txt_path="$txt"
 	[[ ! -f $txt ]] && echoRgb "請執行start.sh獲取應用列表再來備份" "0" && exit 1
 	TXT_NAME="${txt##*/}"
+	echo "${TXT_NAME##*.}"
 	case ${TXT_NAME##*.} in
 	txt) ;;
 	*) echoRgb "$txt不是腳本讀取格式" "0" && exit 2 ;;
@@ -1962,7 +1968,7 @@ backup() {
     fi
 	[[ $backup_media = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -backup_media=0將不備份自定義資料夾" "0"
 	txt2="$Backup/appList.txt"
-	txt2="${txt2/'/storage/emulated/'/'/data/media/'}"
+	#txt2="${txt2/'/storage/emulated/'/'/data/media/'}"
 	txt_path2="$txt2"
 	[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market">"$txt2"
 	txt2="$(cat "$txt2")"
@@ -2258,7 +2264,7 @@ Restore() {
 		    [[ $setDisplayPowerMode = "" ]] && {
 		    Enter_options "應用恢復時關閉螢幕\n -輸入1關閉，0不關閉" "關閉" "不關閉" && isBoolean "$parameter" "setDisplayPowerMode" && setDisplayPowerMode="$nsx"
 		    } || {
-		    isBoolean "$recovery_mode" "recovery_mode" && recovery_mode="$nsx"
+		    isBoolean "$setDisplayPowerMode" "setDisplayPowerMode" && setDisplayPowerMode="$nsx"
 		    }
     	    Get_user="$(echo "$MODDIR" | rev | cut -d '/' -f1 | cut -d '_' -f1 | rev | egrep -o '[0-9]+')"
     	    [[ $Get_user != $user ]] && {
