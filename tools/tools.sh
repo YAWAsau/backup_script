@@ -436,20 +436,30 @@ echo_log() {
 	fi
 }
 kill_Serve() {
-    LOCK_FILE="/tmp/my_backup.lock"
-    if [[ -f $LOCK_FILE ]]; then
-        OLD_PID="$(cat "$LOCK_FILE")"
-        if kill -0 "$OLD_PID" 2>/dev/null; then
-            echo "發現先前的備份程序 (PID=$OLD_PID)，將其終止"
-            kill -KILL "$OLD_PID"
-            echo "結束自身，避免重複執行"
-            exit 1
+    local LOCK_DIR="/data/local/tmp/.backup_lock"
+    local MY_PID="$$"
+
+    # 使用 mkdir 作為原子鎖操作，避免 TOCTOU 競態條件
+    if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+        if [[ -f $LOCK_DIR/pid ]]; then
+            OLD_PID="$(cat "$LOCK_DIR/pid")"
+            if kill -0 "$OLD_PID" 2>/dev/null; then
+                echo "發現先前的備份程序 (PID=$OLD_PID)，將其終止"
+                kill -KILL "$OLD_PID"
+                echo "結束自身，避免重複執行"
+                exit 1
+            else
+                echo "發現 lock 但程序已不存在，視為殘留 lock"
+                rm -rf "$LOCK_DIR"
+                mkdir "$LOCK_DIR" 2>/dev/null || exit 1
+            fi
         else
-            echo "發現 lock 檔但程序已不存在，視為殘留 lock"
+            rm -rf "$LOCK_DIR"
+            mkdir "$LOCK_DIR" 2>/dev/null || exit 1
         fi
     fi
-    echo $$ > "$LOCK_FILE"
-    trap "rm -f '$LOCK_FILE'" EXIT
+    echo "$MY_PID" > "$LOCK_DIR/pid"
+    trap "rm -rf '$LOCK_DIR'" EXIT
 }
 echo $$
 kill_Serve
@@ -642,11 +652,13 @@ alias Set_Ops="app_process /system/bin com.xayah.dex.HiddenApiUtil setOpsMode $U
 alias setDisplay="app_process /system/bin com.xayah.dex.HiddenApiUtil setDisplayPowerMode $@"
 find_tools_path="$(find "$path_hierarchy"/* -maxdepth 1 -name "tools" -type d ! -path "$path_hierarchy/tools")"
 backup_wifi() {
-    [[ ! -d $1 ]] && mkdir -p "$1"
-    if [[ -d $1 ]]; then
+    local wifi_dir="$1"
+    [[ -z $wifi_dir ]] && echoRgb "backup_wifi: 目錄參數為空" "0" && return 1
+    [[ ! -d $wifi_dir ]] && mkdir -p "$wifi_dir"
+    if [[ -d $wifi_dir ]]; then
         echoRgb "備份wifi密碼"
-        rm -rf "$1"/*
-        app_process /system/bin com.xayah.dex.NetworkUtil saveNetworks>"$1/wifi.json"
+        rm -rf "${wifi_dir:?}"/*
+        app_process /system/bin com.xayah.dex.NetworkUtil saveNetworks>"$wifi_dir/wifi.json"
         echo_log "wifi備份"
     fi
 }
@@ -1897,7 +1909,6 @@ backup() {
 	txt_path="$txt"
 	[[ ! -f $txt ]] && echoRgb "請執行start.sh獲取應用列表再來備份" "0" && exit 1
 	TXT_NAME="${txt##*/}"
-	echo "${TXT_NAME##*.}"
 	case ${TXT_NAME##*.} in
 	txt) ;;
 	*) echoRgb "$txt不是腳本讀取格式" "0" && exit 2 ;;
@@ -1968,7 +1979,6 @@ backup() {
     fi
 	[[ $backup_media = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -backup_media=0將不備份自定義資料夾" "0"
 	txt2="$Backup/appList.txt"
-	#txt2="${txt2/'/storage/emulated/'/'/data/media/'}"
 	txt_path2="$txt2"
 	[[ ! -f $txt2 ]] && echo "#不需要恢復還原的應用請在開頭使用#注釋 比如：#酷安 com.coolapk.market">"$txt2"
 	txt2="$(cat "$txt2")"
