@@ -315,7 +315,17 @@ export TZ=Asia/Taipei
 ln -fs "$tools_path/classes.dex" "$filepath/classes.dex"
 export CLASSPATH="$filepath/classes.dex"
 quit=0
-while read -r file expected_hash; do
+cat <<EOF | while read -r file expected_hash; do
+zstd 9ef4b54148699c9874cfd45aaf38e5cc950e5d168afdcf2edf58a2463f5561ed
+tar 882639ac310a7eb4052c68c21cea02633307700f9cc8c7c469c2dd18d734a112
+classes.dex 63934f7d15de40f4b188672e36fe22a01b55abb235becee2c2738f29aaf8299b
+bc b15d730591f6fb52af59284b87d939c5bea204f944405a3518224d8df788dc15
+busybox 4d60ab3f5a59ebb2ca863f2f514e6924401b581e9b64f602665c008177626651
+find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
+jq 6bc62f25981328edd3cfcfe6fe51b073f2d7e7710d7ef7fcdac28d4e384fc3d4
+keycheck 50645ee0e0d2a7d64fb4a1286446df7a4445f3d11aefd49eeeb88515b314c363
+cmd 08da8ac23b6e99788fd3ce6c19c7b5a083b2ad48be35963a48d01d6ee7f3bb6d
+EOF
   if [[ -f $tools_path/$file ]]; then
     computed_hash="$(sha256sum "$tools_path/$file" | awk '{print $1}')"
     if [[ $computed_hash = $expected_hash ]]; then
@@ -330,17 +340,7 @@ while read -r file expected_hash; do
     quit=1
     break
   fi
-done <<< "$(cat <<EOF
-zstd 9ef4b54148699c9874cfd45aaf38e5cc950e5d168afdcf2edf58a2463f5561ed
-tar 882639ac310a7eb4052c68c21cea02633307700f9cc8c7c469c2dd18d734a112
-classes.dex 63934f7d15de40f4b188672e36fe22a01b55abb235becee2c2738f29aaf8299b
-bc b15d730591f6fb52af59284b87d939c5bea204f944405a3518224d8df788dc15
-busybox 4d60ab3f5a59ebb2ca863f2f514e6924401b581e9b64f602665c008177626651
-find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
-jq 6bc62f25981328edd3cfcfe6fe51b073f2d7e7710d7ef7fcdac28d4e384fc3d4
-keycheck 50645ee0e0d2a7d64fb4a1286446df7a4445f3d11aefd49eeeb88515b314c363
-cmd 08da8ac23b6e99788fd3ce6c19c7b5a083b2ad48be35963a48d01d6ee7f3bb6d
-EOF)"
+done
 if [[ $background_execution = 1 || $setDisplayPowerMode = 1 ]]; then
     alias notification="app_process /system/bin com.xayah.dex.NotificationUtil notify -t 'SpeedBackup' "$@""
 else
