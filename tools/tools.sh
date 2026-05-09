@@ -436,7 +436,7 @@ echo_log() {
 	fi
 }
 kill_Serve() {
-    local LOCK_DIR="/data/local/tmp/.backup_lock"
+    local LOCK_DIR="$MODDIR/tmp/.backup_lock"
     local MY_PID="$$"
 
     # 使用 mkdir 作為原子鎖操作，避免 TOCTOU 競態條件
