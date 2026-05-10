@@ -1,124 +1,280 @@
 # Backup_script 數據備份腳本
-[![Stars](https://img.shields.io/github/stars/YAWAsau/backup_script?label=stars)](https://github.com/YAWAsau)
-[![Download](https://img.shields.io/github/downloads/YAWAsau/backup_script/total)](https://github.com/YAWAsau/backup_script/releases)
-[![Release](https://img.shields.io/github/v/release/YAWAsau/backup_script?label=release)](https://github.com/YAWAsau/backup_script/releases/latest)
-[![License](https://img.shields.io/github/license/YAWAsau/backup_script?label=License)](https://choosealicense.com/licenses/gpl-3.0)
-[![Channel](https://img.shields.io/badge/Follow-Telegram-blue.svg?logo=telegram)](https://t.me/yawasau_script)
 
-## 概述
+<p align="center">
+  <a href="https://github.com/YAWAsau/backup_script/stargazers"><img src="https://img.shields.io/github/stars/YAWAsau/backup_script?label=stars&style=flat-square" /></a>
+  <a href="https://github.com/YAWAsau/backup_script/releases"><img src="https://img.shields.io/github/downloads/YAWAsau/backup_script/total?style=flat-square" /></a>
+  <a href="https://github.com/YAWAsau/backup_script/releases/latest"><img src="https://img.shields.io/github/v/release/YAWAsau/backup_script?label=release&style=flat-square" /></a>
+  <a href="https://choosealicense.com/licenses/gpl-3.0"><img src="https://img.shields.io/github/license/YAWAsau/backup_script?label=License&style=flat-square" /></a>
+  <a href="https://t.me/yawasau_script"><img src="https://img.shields.io/badge/Follow-Telegram-blue.svg?logo=telegram&style=flat-square" /></a>
+</p>
 
-創作該腳本是為了使用戶能夠更加完整地**備份/恢復**應用數據，
-支援設備必須符合以下條件：`Android 8+`+`arm64`。
+---
 
-由於本人是台灣人所以發布的版本為繁體版
-(CN系統將自動翻譯自身腳本為簡體中文）
+## 📖 概述
 
+一款專為 Android 設計的完整應用數據備份／恢復 Shell 腳本，支援 SSAID、運行時權限、OBB 數據包、WiFi 設定等完整備份，讓你換機換系統後能無縫還原所有應用狀態。
 
-## 優勢
+> 作者為台灣人，預設發布繁體版本。CN 系統環境下腳本將自動翻譯為簡體中文。
 
-- 數據完整：在更換系統之後，原有的數據全部保留，無需重新登陸或者下載額外數據包。
-- 支援備份SSAID 可完美備份LINE
-- 支援備份應用權限 可備份運行時權限與ops權限
-- 易操作：簡單几步即可備份應用完整數據！
-- 限制少：不限制機型，可跨安桌版本。
-- 功能強：可備份恢復`split apk`。
-- 算法多：目前支持的壓縮算法有 `tar(默認)`
-- `zstd`。
-- 速度快：即使使用`zstd`壓縮算法速率依舊快速（對比鈦備份 swift backup）。
-- 腳本自帶tools完整性效驗與壓縮包效驗
-## 如何使用
-`請認真閱讀以下說明，以減少不必要的問題`
+**系統需求：** `Android 8+` · `arm64 架構` · `Root 權限（Magisk / KernelSU）`
 
-##### 推薦工具：[`MT管理器`](https://www.coolapk.com/apk/bin.mt.plus)，若使用`Termux`，則請勿使用`tsu`。
+---
 
-#### !!!以下操作皆須ROOT!!! ####
+## ✨ 功能特色
 
-1. 首先將下載到的腳本解壓到任意目錄後，可以看到以下目錄結構 警告! 不論備份或是恢復都必須保證tools的存在與完整性 否則腳本失效或是二進制調用失敗。
+| 功能 | 說明 |
+|------|------|
+| 📦 完整數據備份 | 換機換系統後原有數據完整保留，無需重新登入或下載額外數據包 |
+| 🔑 SSAID 備份 | 支援 SSAID 備份，可完美備份 LINE 等依賴設備識別碼的應用 |
+| 🛡️ 權限備份 | 支援備份運行時權限（Runtime Permission）與 ops 權限 |
+| 📂 Split APK | 支援備份與恢復 Split APK 格式 |
+| 🎮 OBB 數據包 | 可選備份外部 OBB 數據（如原神、王者榮耀等大型遊戲） |
+| 📡 WiFi 備份 | 支援備份與恢復 WiFi 設定 |
+| 📁 自定義資料夾備份 | 可備份 DCIM、Download、Music 等任意自定義目錄 |
+| 🗜️ 多種壓縮算法 | 支援 `tar`（僅打包）與 `zstd`（高壓縮率高速度） |
+| ⚡ 高速壓縮 | zstd 壓縮速率快速，優於鈦備份、Swift Backup |
+| 🔒 完整性校驗 | 內建 tools SHA-256 校驗與壓縮包完整性驗證 |
+| 🔄 增量備份 | 比對上次備份大小，無變化則跳過，節省時間 |
+| 🖥️ 後台執行 | 支援後台執行模式，可完全關閉終端，log 持續刷新 |
+| 💡 偽裝亮屏 | 備份／恢復期間可偽裝亮屏，避免 IO 因息屏降速 |
+| 🌐 自動更新 | 聯網偵測最新版本，支援 CDN 節點（適合中國大陸用戶） |
+| 🌏 多語言 | 自動識別系統語言環境，支援繁體中文／簡體中文自動切換 |
+| 👥 多用戶支援 | 支援多用戶環境（user 0、999 等），可手動或自動選擇用戶 |
+| ⬛ 黑名單模式 | 黑名單應用可選「完全忽略」或「僅備份安裝包」 |
+| ⬜ 白名單支援 | 支援預裝應用白名單與系統應用白名單，可指定備份範圍 |
+| 📱 進程偵測 | 可設定忽略正在運行中的應用，避免備份數據不一致 |
 
-`這是腳本結構與說明`
+---
+
+## 🗂️ 主選單功能
+
+### 備份模式
+
+| 選項 | 功能 |
+|------|------|
+| 生成應用列表 | 掃描已安裝的第三方應用並生成 `appList.txt` |
+| 備份應用 | 根據列表與設定完整備份應用數據 |
+| 備份已更新應用 | 僅備份自上次備份以來有版本更新的應用 |
+| 備份自定義資料夾 | 備份 `backup_settings.conf` 內設定的自定義目錄 |
+| 備份 WiFi | 備份當前設備的 WiFi 設定 |
+| 殺死運行中腳本 | 安全終止正在執行的備份腳本 |
+
+### 恢復模式
+
+| 選項 | 功能 |
+|------|------|
+| 重新生成應用列表 | 刷新恢復資料夾內的 `appList.txt` |
+| 恢復備份 | 根據列表完整恢復應用與數據 |
+| 僅恢復包含 SSAID 應用（含數據） | 只恢復有 SSAID 的應用及其完整數據 |
+| 僅恢復包含 SSAID 應用（不含數據） | 只套用 SSAID，不覆蓋現有數據 |
+| 恢復自定義資料夾 | 恢復備份的自定義目錄 |
+| 恢復 WiFi | 恢復已備份的 WiFi 設定 |
+| 壓縮檔完整性檢查 | 驗證備份壓縮包是否完整無損 |
+| 轉換文件夾名稱 | 將備份資料夾名稱格式轉換（用於跨版本相容） |
+| 殺死運行中腳本 | 安全終止正在執行的恢復腳本 |
+
+---
+
+## 📁 目錄結構
+
 ```
 backup_script.zip
 │
-├── tools
-│       ├── Device_List
-│       ├── bc
-│       ├── busybox
-│       ├── classes.dex
-│       ├── cmd             
-│       ├── jq                
-│       ├── find              
-│       ├── keycheck         
-│       ├── soc.json
-│       ├── tar
-│       ├── tools.sh
-│       ├── zip
-│       └── zstd
-├── backup_settings.conf         <--- 腳本默認行為設置
-└── start.sh          <--- 執行腳本
+├── tools/
+│   ├── busybox          # 核心工具集
+│   ├── zstd             # zstd 壓縮工具
+│   ├── tar              # tar 打包工具
+│   ├── jq               # JSON 處理
+│   ├── bc               # 數學計算
+│   ├── find             # 文件搜索
+│   ├── keycheck         # 音量鍵監聽
+│   ├── cmd              # 系統指令橋接
+│   ├── classes.dex      # Java 功能擴展（詳見下方說明）
+│   ├── soc.json         # 處理器資料庫
+│   ├── Device_List      # 設備型號資料庫
+│   └── tools.sh         # 核心腳本
+│
+├── backup_settings.conf  # 備份行為設定檔
+└── start.sh              # 主執行腳本
 ```
 
-2. 然後執行`start.sh`腳本音量鍵選擇生成應用列表，等待腳本輸出提示結束，此時會在當前目錄生成一個`appList.txt`，這就是你當前安裝的所有第三方應用(腳本會屏蔽預裝應用，可於backup_settings.conf設置需要備份包名)。
+> ⚠️ **重要：** 無論備份或恢復，都必須確保 `tools/` 目錄完整存在，否則腳本將無法正常運作。
 
-3. 現在打開生成的`appList.txt`，根據裏面的提示操作後保存，這樣你就設置好了需要備份的軟件。
+---
 
-4. 最後找到`backup_settings.conf`打開後根據提示設置保存，再打開`start.sh`，音量鍵選擇備份應用，備份結束完成後會在當前目錄生成一個以`Backup_壓縮算法名`命名的資料夾，裡面就是你的軟件備份。把這個資料夾整個保持到其他位置，刷完機后複製回手機，直接執行`Backup_壓縮算法名/start.sh`即可恢復備份的所有數據，同樣道理，裡面也有個`appList.txt`，使用方法跟第3步驟一樣，不需要還原的刪除即可，另外進去備份好的資料夾找到單獨應用資料夾有個 backup.sh and recover.sh可以單獨備份與恢復腳本。
+## ⚙️ 設定檔說明（backup_settings.conf）
 
-5. 腳本執行過程中請留意紅色字眼提示有無任何錯誤，並且使用恢復腳本時留意恢復結束後是否提示應用存在ssaid，假設提示存在ssaid請在恢復後立刻重啟已便套用ssaid,假設恢復ssaid後立刻打開應用會導致ssaid套用失敗，因為Android會產生一個新的saaid，如此會導致應用卡白屏或是提示需要登錄，ssaid是判斷應用是否換過環境與設備的判斷之一，保持一致可以減少諸如提示異地登錄或是需要重新登入驗證的方法。
+| 設定項 | 說明 | 預設值 |
+|--------|------|--------|
+| `Lo` | 操作方式：`0` 音量鍵 / `1` 音量鍵（強制） / `2` 鍵盤輸入 | `0` |
+| `background_execution` | 後台執行：`1` 可關閉終端 / `0` 需保持終端開啟 | `0` |
+| `setDisplayPowerMode` | 備份期間偽裝亮屏防止 IO 降速 | `0` |
+| `Shell_LANG` | 語言：`0` 繁體中文 / `1` 簡體中文（留空自動偵測） | 自動 |
+| `Output_path` | 自定義備份輸出路徑，支援相對路徑（留空使用當前目錄） | 空 |
+| `list_location` | 自定義 appList.txt 位置（留空使用當前目錄） | 空 |
+| `update` | 自動更新：`1` 開啟 / `0` 關閉 | `1` |
+| `cdn` | 更新 CDN 節點：`0` 直連 / `1` ghfast.top / `2` workers.dev | `1` |
+| `mount_point` | 屏蔽外部掛載點（OTG、虛擬 SD 等），多個用 `\|` 分隔 | `rannki\|0000-1` |
+| `user` | 指定用戶 ID（留空自動選擇） | 空 |
+| `Backup_Mode` | 備份模式：`1` 應用+數據 / `0` 僅安裝包 | `1` |
+| `Backup_user_data` | 備份 user 數據：`1` 是 / `0` 否 | `1` |
+| `Backup_obb_data` | 備份 OBB 外部數據：`1` 是 / `0` 否 | `1` |
+| `backup_media` | 備份完成後一併備份自定義資料夾 | `0` |
+| `Background_apps_ignore` | 忽略正在運行中的應用：`1` 忽略 / `0` 備份 | `0` |
+| `Custom_path` | 自定義備份目錄列表（絕對路徑，每行一個） | DCIM / Download 等 |
+| `blacklist_mode` | 黑名單模式：`1` 完全忽略 / `0` 僅備份安裝包 | `0` |
+| `blacklist` | 黑名單應用包名列表 | 空 |
+| `whitelist` | 預裝應用白名單包名列表 | 小米系列預裝 |
+| `system` | 系統應用白名單包名列表 | Google 系列 |
+| `Compression_method` | 壓縮算法：`zstd` 或 `tar` | `zstd` |
+| `rgb_a` / `rgb_b` / `rgb_c` | 終端輸出主色／輔色（256 色代碼） | `226` / `123` / `177` |
 
+---
 
- ##### 附加說明：如何恢復 以下是關於恢復資料夾內的文件說明?
+## 🚀 使用方式
 
-1. 找到恢復資料夾內的appList.txt打開 編輯列表 保存退出
+> 推薦使用 [MT 管理器](https://www.coolapk.com/apk/bin.mt.plus) 執行腳本。若使用 Termux，請勿使用 `tsu`。
 
-2. 找到start.sh 給予root音量鍵選擇恢復備份後等待腳本結束即可
+### 備份流程
 
-3. start.sh的重新生成應用列表功能可用於刷新appList.txt內的列表 使用時機為當你刪除列表內的任何應用備份時,抑或者是恢復備份提示列表錯誤時
+**Step 1 — 生成應用列表**
 
-4. start.sh的終止腳本功能用於突然想要終止腳本或是意外操作時使用 同理備份也有一個，因為腳本無須後台特性不能使用常規手段終結，故此另外寫了一個終止
+解壓腳本後執行 `start.sh`，選擇「**生成應用列表**」。執行完畢後，當前目錄會生成 `appList.txt`，內含所有已安裝的第三方應用（預裝應用預設屏蔽，可於 `backup_settings.conf` 加入白名單）。
 
+**Step 2 — 編輯應用列表**
 
-# 關於如何更新腳本？
-- 目前有三種更新方法，有下列方式
-- 1.手動將下載的備份腳本zip不解壓縮直接放到腳本任意目錄(不包括tools目錄內)的任意地方執行任何腳本即可更新，腳本將提示
-- 2.此備份的任何腳本在執行時均會聯網檢測腳本版本，當更新時會自己提示與下載，根據腳本提示操作的即可(conf update=1時生效),腳本聯網僅作為檢查更新用途，無任何非法操作亦或是下發格機
-- 3.將下載的壓縮包不解壓縮直接放在/storage/emulated/0/Download腳本自動檢測更新，並按照提示操作即可
-- 4.在QQ群內下載的腳本不解壓縮腳本會自己檢測更新
+打開 `appList.txt`，根據需求調整：
+- 行首加 `#`：注釋掉該應用，不備份
+- 行首加 `!`：僅備份安裝包，不備份數據
 
-## 關於反饋
-- 如果使用過程中出現問題，請攜帶截圖並詳細說明問題，建立 [issues](https://github.com/YAWAsau/backup_script/issues)。
-- 酷安 @[落葉淒涼TEL](http://www.coolapk.com/u/2277637)
-- QQ組 976613477 很少上 盡量來TG
-- TG https://t.me/yawasau_script
+**Step 3 — 設置備份選項**
 
-## 答疑
-- 一個shell腳本內為什麼有dex?
-- dex用來實現腳本難以實現的目的，目前saaid備份恢復，備份恢復運行時權限與ops權限，下載與訪問GitHub api來檢查腳本更新，列出使用者應用名稱與包名，繁體轉簡體均為dex的功能，感謝[Android-DataBackup](https://github.com/XayahSuSuSu/Android-DataBackup) by [XayahSuSuSu](https://github.com/XayahSuSuSu)
+打開 `backup_settings.conf`，根據上方設定說明調整各選項後儲存。
 
-## 常見問題
+**Step 4 — 執行備份**
 
-Q1：批量備份大量提示失敗怎麼辦？
-A1：退出腳本，刪除/data/backup_tools，再備份一次
+執行 `start.sh`，選擇「**備份應用**」。備份完成後，當前目錄會生成 `Backup_<壓縮算法>_<用戶ID>/` 資料夾，將此資料夾完整保存至安全位置。
 
-Q2：批量恢復大量提示失敗怎麼辦？
-A2：退出腳本，按照上面同樣操作。 如果還是錯誤，請建立issues，我幫你排除錯誤
+---
 
-Q3：微信/QQ 能不能完美備份&恢復數據？
-A3：不能保證，有的人說不能有的人說能，所以備份會有提示。 建議用你信賴的備份軟件針對微信/QQ再備份一次，以防丟失重要數據
+### 恢復流程
 
-Q4：為什麼部分應用備份很久？ 例如王者榮耀、PUBG、原神、微信、QQ。
-A4：因為連同軟件數據包都給你備份了，例如原神數據包9GB+，當然久到裂開了，恢復也是同理，還要解壓縮數據包
+**Step 1 — 編輯恢復列表**
 
-Q5:腳本每次備份都是全新備份嗎？
-A5;腳本備份時會比對上次備份時的備份SIZE大小 如果有差異就備份,反之忽略備份節省時間
+進入備份資料夾，打開 `appList.txt`，刪除或注釋不需要恢復的應用行。
 
-備份腳本耗費了我大量時間與精力 如果你覺得好用，可以捐贈XD
-.(https://paypal.me/YAWAsau?country.x=TW&locale.x=zh_TW))
+**Step 2 — 執行恢復**
 
+執行備份資料夾內的 `start.sh`，選擇「**恢復備份**」，等待腳本完成。
 
-## 銘謝貢獻
-- 臭批老k([kmou424](https://github.com/kmou424))：提供部分與驗證函數思路
-- 屑老方([雄氏老方](http://www.coolapk.com/u/665894))：提供自動更新腳本方案
-- 胖子老陳(雨季騷年)
-- XayahSuSuSu([XayahSuSuSu](https://github.com/XayahSuSuSu))：提供App支持,dex支持
+**Step 3 — 注意 SSAID**
+
+若恢復結束後提示應用存在 SSAID，請**立刻重啟**後再開啟應用。若先開啟應用，Android 會生成新的 SSAID，導致應用白屏或需要重新登入。
+
+> 💡 備份資料夾內每個應用子目錄都有獨立的 `backup.sh` 與 `recover.sh`，可單獨備份或恢復單一應用。
+
+---
+
+## 🔄 腳本更新方式
+
+支援以下四種更新方式：
+
+1. **ZIP 放置更新**：將下載的 `.zip` 不解壓，直接放到腳本任意目錄（`tools/` 除外），執行任何腳本即自動更新。
+2. **聯網自動更新**：腳本執行時自動連線 GitHub API 檢查版本，發現新版本時提示下載（需設置 `update=1`）。
+3. **Download 目錄**：將 `.zip` 放置於 `/storage/emulated/0/Download/`，腳本自動偵測並更新。
+4. **QQ 群下載**：從 QQ 群下載的腳本不解壓，直接放置後執行即可自動更新。
+
+> 🔒 腳本聯網**僅用於檢查更新**，無任何資料收集或非法操作。
+
+---
+
+## ❓ 常見問題
+
+<details>
+<summary><b>Q1：批量備份／恢復大量提示失敗？</b></summary>
+
+退出腳本，刪除 `/data/backup_tools/` 目錄後重新執行。若問題持續，請建立 [Issue](https://github.com/YAWAsau/backup_script/issues) 並附上截圖與 log。
+</details>
+
+<details>
+<summary><b>Q2：微信／QQ 能完美備份恢復嗎？</b></summary>
+
+無法保證。建議同時使用其他你信賴的備份工具針對微信／QQ 額外備份，以防丟失重要數據。
+</details>
+
+<details>
+<summary><b>Q3：為什麼部分應用備份很久？</b></summary>
+
+腳本會一同備份應用的 OBB 數據包，例如原神數據包超過 9GB，備份與恢復時間自然較長。可在 `backup_settings.conf` 設置 `Backup_obb_data=0` 跳過 OBB 備份。
+</details>
+
+<details>
+<summary><b>Q4：腳本每次都是全量備份嗎？</b></summary>
+
+否。腳本會比對上次備份的檔案大小，若無差異則跳過該應用，節省時間與空間。
+</details>
+
+<details>
+<summary><b>Q5：為什麼腳本內包含 .dex 檔案？</b></summary>
+
+`classes.dex` 用於實現 Shell 腳本難以達成的功能，包含：
+
+- SSAID 備份與恢復
+- 運行時權限（Runtime Permission）與 ops 權限備份恢復
+- GitHub API 更新版本檢查與下載
+- 應用名稱與包名查詢
+- 繁體中文 ↔ 簡體中文自動翻譯
+- 後台執行模式的推送通知
+
+感謝 [XayahSuSuSu](https://github.com/XayahSuSuSu) 的 [Android-DataBackup](https://github.com/XayahSuSuSu/Android-DataBackup) 提供 App 支持。
+</details>
+
+<details>
+<summary><b>Q6：息屏後備份速度變慢？</b></summary>
+
+這是 Android 內核的 IO 節能機制導致的。建議在 `backup_settings.conf` 設置 `setDisplayPowerMode=1` 開啟偽裝亮屏，或在備份期間保持螢幕常亮。
+</details>
+
+<details>
+<summary><b>Q7：如何單獨備份或恢復單一應用？</b></summary>
+
+進入備份資料夾內對應的應用子目錄，直接執行 `backup.sh`（單獨備份）或 `recover.sh`（單獨恢復）即可。
+</details>
+
+---
+
+## 📬 問題反饋
+
+遇到問題請攜帶截圖與 log 檔，透過以下方式反饋：
+
+- 🐛 [GitHub Issues](https://github.com/YAWAsau/backup_script/issues)
+- 💬 [Telegram 頻道](https://t.me/yawasau_script)
+- 🐧 QQ 群：`976613477`
+- 🧊 酷安：[@落葉淒涼TEL](http://www.coolapk.com/u/2277637)
+
+---
+
+## ☕ 支持作者
+
+備份腳本耗費了大量時間與精力，如果你覺得好用，歡迎贊助支持！
+
+[![Donate](https://img.shields.io/badge/Donate-PayPal-blue.svg?style=flat-square&logo=paypal)](https://paypal.me/YAWAsau?country.x=TW&locale.x=zh_TW)
+
+---
+
+## 🙏 銘謝貢獻
+
+| 貢獻者 | 貢獻內容 |
+|--------|----------|
+| [kmou424](https://github.com/kmou424)（臭批老k） | 提供部分驗證函數思路 |
+| [雄氏老方](http://www.coolapk.com/u/665894)（屑老方） | 提供自動更新腳本方案 |
+| 雨季騷年（胖子老陳） | 協助測試 |
+| [XayahSuSuSu](https://github.com/XayahSuSuSu) | 提供 App 支持與 dex 功能支持 |
 
 `文檔編輯：Petit-Abba, YuKongA`
+
+---
+
+<p align="center">
+  <sub>GPL-3.0 Licensed · Made with ❤️ by <a href="https://github.com/YAWAsau">YAWAsau</a></sub>
+</p>
