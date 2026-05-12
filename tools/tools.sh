@@ -495,7 +495,7 @@ upload_remote() {
 	local list_file="$TMPDIR/.rlist"
 	local dirs_file="$TMPDIR/.rdirs"
 	[[ -z $Backup ]] && { echoRgb "Backup路徑為空" "0"; return 1; }
-	find "$Backup" -type f > "$list_file"
+	find "$Backup" -type f ! -path "*/tools/*" ! -name 'start.sh' ! -name 'appList.txt' ! -name 'restore_settings.conf' > "$list_file"
 	# 提取所有目錄並在遠程創建 (WebDAV MKCOL, SMB 跳過)
 	if [[ $proto = webdav ]]; then
 		while read -r f; do
