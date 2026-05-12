@@ -43,6 +43,7 @@
 | ⬛ 黑名單模式 | 黑名單應用可選「完全忽略」或「僅備份安裝包」 |
 | ⬜ 白名單支援 | 支援預裝應用白名單與系統應用白名單，可指定備份範圍 |
 | 📱 進程偵測 | 可設定忽略正在運行中的應用，避免備份數據不一致 |
+| ☁️ 遠程備份 | 支援 WebDAV / FTP / SMB / SCP 四種協議，備份完成後自動上傳到遠端伺服器 |
 
 ---
 
@@ -84,6 +85,8 @@ backup_script.zip
 │   ├── busybox          # 核心工具集
 │   ├── zstd             # zstd 壓縮工具
 │   ├── tar              # tar 打包工具
+│   ├── curl             # 遠程傳輸工具 (WebDAV/FTP/SMB)
+│   ├── scp / ssh        # SCP 遠程傳輸
 │   ├── jq               # JSON 處理
 │   ├── bc               # 數學計算
 │   ├── find             # 文件搜索
@@ -128,6 +131,10 @@ backup_script.zip
 | `system` | 系統應用白名單包名列表 | Google 系列 |
 | `Compression_method` | 壓縮算法：`zstd` 或 `tar` | `zstd` |
 | `rgb_a` / `rgb_b` / `rgb_c` | 終端輸出主色／輔色（256 色代碼） | `226` / `123` / `177` |
+| `remote_type` | 遠程備份協議：`webdav` / `ftp` / `smb` / `scp`（留空不啟用） | 空 |
+| `remote_url` | 遠程伺服器地址（見下方格式說明） | 空 |
+| `remote_user` | 遠程認證用戶名 | 空 |
+| `remote_pass` | 遠程認證密碼 | 空 |
 
 ---
 
@@ -172,6 +179,31 @@ backup_script.zip
 若恢復結束後提示應用存在 SSAID，請**立刻重啟**後再開啟應用。若先開啟應用，Android 會生成新的 SSAID，導致應用白屏或需要重新登入。
 
 > 💡 備份資料夾內每個應用子目錄都有獨立的 `backup.sh` 與 `recover.sh`，可單獨備份或恢復單一應用。
+
+---
+
+### 遠程備份
+
+備份完成後自動將備份檔案上傳到遠端伺服器，支援四種協議：
+
+| 協議 | `remote_url` 格式 |
+|------|-------------------|
+| WebDAV | `http://192.168.1.100:8080/dav/backup/` |
+| FTP | `ftp://192.168.1.100/backup/` |
+| SMB | `smb://192.168.1.100/share/backup/` |
+| SCP | `192.168.1.100:/home/user/backup/` |
+
+**設定方式：** 編輯 `backup_settings.conf`：
+```conf
+remote_type=webdav
+remote_url=http://192.168.1.100:8080/dav/backup/
+remote_user=用戶名
+remote_pass=密碼
+```
+
+**SCP 注意事項：** SCP 優先使用 `sshpass` 進行密碼認證，若不支援則自動嘗試 SSH 密鑰認證。需確保遠端已安裝 SSH 伺服器。
+
+**上傳範圍：** 僅上傳備份數據（應用檔案、WiFi、appList.txt），排除 `tools/`、`start.sh`、`restore_settings.conf` 等腳本文件。
 
 ---
 
