@@ -501,20 +501,38 @@ upload_webdav() {
 	local base_url="${remote_url%/}"
 	local failed=0
 	local list_file="$TMPDIR/.wdav_list"
+	local dirs_file="$TMPDIR/.wdav_dirs"
 	[[ -z $Backup ]] && { echoRgb "Backup路徑為空" "0"; return 1; }
 	find "$Backup" -type f > "$list_file"
+	# 提取所有目錄並在遠程創建
+	while read -r f; do
+		local d="${f#$Backup/}"
+		d="${d%/*}"
+		[[ -n $d && $d != "${f#$Backup/}" ]] && echo "$d"
+	done < "$list_file" | sort -u | while read -r d; do
+		local enc_d=$(echo -n "$d" | busybox sed 's/%/%25/g; s/ /%20/g; s/+/%2B/g; s/#/%23/g')
+		local cur="$base_url"
+		local IFS='/'
+		set -- $enc_d
+		for seg; do
+			cur="$cur/$seg"
+			"$CURL" -sS -X MKCOL -u "$remote_user:$remote_pass" "$cur" 2>/dev/null
+		done
+	done
+	# 上傳檔案
 	while read -r f; do
 		[[ -z $f ]] && continue
 		local rel="${f#$Backup/}"
-		echoRgb "上傳: $base_url/$rel" "2"
-		if "$CURL" -sSf -T "$f" -u "$remote_user:$remote_pass" "$base_url/$rel"; then
+		local enc_rel=$(echo -n "$rel" | busybox sed 's/%/%25/g; s/ /%20/g; s/+/%2B/g; s/#/%23/g')
+		echoRgb "上傳: $base_url/$enc_rel" "2"
+		if "$CURL" -sSf -T "$f" -u "$remote_user:$remote_pass" "$base_url/$enc_rel"; then
 			rm -f "$f"
 		else
 			failed=1
 			break
 		fi
 	done < "$list_file"
-	rm -f "$list_file"
+	rm -f "$list_file" "$dirs_file" 2>/dev/null
 	if [[ $failed -eq 0 ]]; then
 		echoRgb "WebDAV上傳完成" "1"
 	else
