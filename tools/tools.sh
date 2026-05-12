@@ -133,12 +133,14 @@ rgb_b="${rgb_b:-123}"
 rgb_c="${rgb_c:-177}"
 
 #遠程備份類型 (留空不啟用)
-#webdav 或 smb
+#webdav 、 ftp 或 smb 或 scp
 remote_type="${remote_type:-}"
 
 #遠程地址
 #WebDAV例: http://192.168.1.100:8080/dav/
-#SMB例:    //192.168.1.100/backup
+#FTP例:    ftp://192.168.1.100/backup/
+#SMB例:    smb://192.168.1.100/backup/
+#SCP例:    192.168.1.100:/home/user/backup/
 remote_url="${remote_url:-}"
 
 #遠程認證用戶名
@@ -468,7 +470,8 @@ kill_Serve() {
 kill_Serve
 # -------- 遠程備份功能 --------
 _find_curl() {
-	for p in /data/user/0/bin.mt.plus/files/term/bin/curl /system/bin/curl curl; do
+	for p in "$tools_path/curl" curl /data/user/0/bin.mt.plus/files/term/bin/curl /system/bin/curl; do
+		[[ -f $p ]] && chmod +x "$p" 2>/dev/null
 		[[ -x $p ]] && { CURL="$p"; return 0; }
 	done
 	return 1
@@ -476,16 +479,17 @@ _find_curl() {
 
 upload_remote() {
 	local proto="$1"
+	[[ $proto = scp ]] && { upload_scp; return $?; }
 	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
 	local base_url
 	case $proto in
-	smb)
-		base_url="${remote_url#//}"
-		base_url="smb://${base_url#smb://}"
-		;;
 	webdav)
 		base_url="${remote_url%/}"
 		[[ $base_url != http://* && $base_url != https://* ]] && { echoRgb "WebDAV地址格式錯誤: $remote_url" "0"; return 1; }
+		;;
+	ftp|smb)
+		base_url="$remote_url"
+		[[ $proto = ftp && $base_url != ftp://* ]] && { echoRgb "FTP地址格式錯誤，需 ftp:// 開頭" "0"; return 1; }
 		;;
 	esac
 	CURL=""
@@ -493,10 +497,9 @@ upload_remote() {
 	echoRgb "使用: $CURL" "2"
 	local failed=0
 	local list_file="$TMPDIR/.rlist"
-	local dirs_file="$TMPDIR/.rdirs"
 	[[ -z $Backup ]] && { echoRgb "Backup路徑為空" "0"; return 1; }
 	find "$Backup" -type f ! -path "*/tools/*" ! -name 'start.sh' ! -name 'restore_settings.conf' > "$list_file"
-	# 提取所有目錄並在遠程創建 (WebDAV MKCOL, SMB 跳過)
+	# WebDAV: 創建遠程目錄 (MKCOL), FTP: curl --ftp-create-dirs 自動處理
 	if [[ $proto = webdav ]]; then
 		while read -r f; do
 			local d="${f#$Backup/}"
@@ -517,20 +520,86 @@ upload_remote() {
 	while read -r f; do
 		[[ -z $f ]] && continue
 		local rel="${f#$Backup/}"
-		local enc_rel
-		[[ $proto = webdav ]] && enc_rel=$(echo -n "$rel" | busybox sed 's/%/%25/g; s/ /%20/g; s/+/%2B/g; s/#/%23/g')
-		[[ $proto = smb ]] && enc_rel="$rel"
-		local target_url="$base_url/$enc_rel"
-		[[ $proto = smb ]] && target_url="$base_url/$rel"
-		echoRgb "上傳: $target_url" "2"
-		if "$CURL" -sSf -T "$f" -u "$remote_user:$remote_pass" "$target_url"; then
-			rm -f "$f"
+		local target_url
+		if [[ $proto = webdav ]]; then
+			local enc_rel=$(echo -n "$rel" | busybox sed 's/%/%25/g; s/ /%20/g; s/+/%2B/g; s/#/%23/g')
+			target_url="$base_url/$enc_rel"
 		else
-			failed=1
-			break
+			target_url="$base_url/$rel"
 		fi
+		echoRgb "上傳($proto): $rel" "2"
+		if [[ $proto = ftp ]]; then
+			"$CURL" -sSf --ftp-create-dirs -T "$f" -u "$remote_user:$remote_pass" "$target_url"
+		else
+			"$CURL" -sSf -T "$f" -u "$remote_user:$remote_pass" "$target_url"
+		fi || { failed=1; break; }
+		rm -f "$f"
 	done < "$list_file"
-	rm -f "$list_file" "$dirs_file" 2>/dev/null
+	rm -f "$list_file" 2>/dev/null
+	if [[ $failed -eq 0 ]]; then
+		echoRgb "遠程上傳完成" "1"
+	else
+		echoRgb "遠程上傳失敗，本地檔案已保留" "0"
+		return 1
+	fi
+}
+
+upload_scp() {
+	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
+	local SCP SSH
+	local use_sshpass
+	command -v sshpass >/dev/null 2>&1 && use_sshpass=1
+	for p in "$tools_path/scp" scp /data/user/0/bin.mt.plus/files/term/bin/scp; do
+		[[ -f $p ]] && chmod +x "$p" 2>/dev/null
+		[[ -x $p ]] && { SCP="$p"; break; }
+	done
+	for p in "$tools_path/ssh" ssh /data/user/0/bin.mt.plus/files/term/bin/ssh; do
+		[[ -f $p ]] && chmod +x "$p" 2>/dev/null
+		[[ -x $p ]] && { SSH="$p"; break; }
+	done
+	[[ -z $SCP || -z $SSH ]] && { echoRgb "未找到scp/ssh，無法上傳" "0"; return 1; }
+	local host="${remote_url#//}"
+	local rpath
+	if [[ $host = *:* ]]; then
+		rpath="${host#*:}"
+		host="${host%%:*}"
+	elif [[ $host = */* ]]; then
+		rpath="/${host#*/}"
+		host="${host%%/*}"
+	else
+		rpath="/"
+	fi
+	[[ -z $host ]] && { echoRgb "SCP地址格式錯誤，例: 192.168.1.100:/path" "0"; return 1; }
+	local opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+	# 檢查連接
+	if [[ -n $use_sshpass ]]; then
+		sshpass -p "$remote_pass" "$SSH" $opts "$remote_user@$host" "echo ok" >/dev/null 2>&1 \
+			|| { echoRgb "SCP密碼或主機錯誤" "0"; return 1; }
+	elif [[ $remote_user != "" ]]; then
+		"$SSH" -o BatchMode=yes -o ConnectTimeout=5 $opts "$remote_user@$host" "echo ok" >/dev/null 2>&1 \
+			|| { echoRgb "SCP需密鑰認證或sshpass (未安裝)" "0"; return 1; }
+	else
+		echoRgb "remote_user未設置" "0"; return 1
+	fi
+	local failed=0
+	local list_file="$TMPDIR/.slist"
+	find "$Backup" -type f ! -path "*/tools/*" ! -name 'start.sh' ! -name 'restore_settings.conf' > "$list_file"
+	while read -r f; do
+		[[ -z $f ]] && continue
+		local rel="${f#$Backup/}"
+		local target="$remote_user@$host:$rpath/$rel"
+		echoRgb "上傳(SCP): $rel" "2"
+		# 創建遠程目錄
+		if [[ -n $use_sshpass ]]; then
+			sshpass -p "$remote_pass" "$SSH" $opts "$remote_user@$host" "mkdir -p '$rpath/${rel%\/*}'" 2>/dev/null
+			sshpass -p "$remote_pass" "$SCP" $opts "$f" "$target" || { failed=1; break; }
+		else
+			"$SSH" $opts "$remote_user@$host" "mkdir -p '$rpath/${rel%\/*}'" 2>/dev/null
+			"$SCP" $opts "$f" "$target" || { failed=1; break; }
+		fi
+		rm -f "$f"
+	done < "$list_file"
+	rm -f "$list_file" 2>/dev/null
 	if [[ $failed -eq 0 ]]; then
 		echoRgb "遠程上傳完成" "1"
 	else
@@ -544,7 +613,7 @@ remote_setup() {
 
 	echoRgb "遠程備份: $remote_type -> $remote_url" "3"
 	case $remote_type in
-	smb|webdav)
+	webdav|ftp|smb|scp)
 		echoRgb "備份完成後將自動上傳到遠端" "3"
 		;;
 	*) echoRgb "未知遠程類型: $remote_type" "0"; return 1 ;;
@@ -553,8 +622,10 @@ remote_setup() {
 
 remote_cleanup() {
 	case $remote_type in
-	smb) upload_remote "smb" ;;
 	webdav) upload_remote "webdav" ;;
+	ftp) upload_remote "ftp" ;;
+	smb) upload_remote "smb" ;;
+	scp) upload_remote "scp" ;;
 	*) return 0 ;;
 	esac
 }
@@ -810,7 +881,8 @@ if [ -f \"$MODDIR_Path/tools/tools.sh\" ]; then
 else
     echo \"$MODDIR_Path/tools/tools.sh遺失\"
 fi
-logfile=\"\${0%/*}/log_\$(date +%Y-%m-%d_%H-%M).txt\"
+mkdir -p \"\${0%/*}/log\" 2>/dev/null
+logfile=\"\${0%/*}/log/log_\$(date +%Y-%m-%d_%H-%M).txt\"
 . \"$MODDIR_Path/tools/tools.sh\" | tee \"\$logfile\"
 sed -i \"\$(printf 's/\033\[[0-9;]*m//g')\" \"\$logfile\"" > "$2"
 }
