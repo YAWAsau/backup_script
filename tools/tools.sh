@@ -448,9 +448,88 @@ kill_Serve() {
         fi
     fi
     echo "$MY_PID" > "$LOCK_DIR/pid"
-    trap "rm -rf '$LOCK_DIR'" EXIT
+    trap "rm -rf '$LOCK_DIR'; remote_cleanup" EXIT
 }
 kill_Serve
+# -------- 遠程備份功能 --------
+mount_smb() {
+	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
+	local mnt="$TMPDIR/smb_mount"
+	mkdir -p "$mnt"
+	if busybox mount -t cifs "$remote_url" "$mnt" -o "username=$remote_user,password=$remote_pass,iocharset=utf8,vers=2.0" 2>/dev/null; then
+		SMB_MOUNT="$mnt"
+		[[ $(mount | grep "$mnt") != "" ]] || { echoRgb "SMB掛載失敗: $remote_url" "0"; return 1; }
+		echoRgb "SMB已掛載: $remote_url -> $mnt" "1"
+		return 0
+	fi
+	echoRgb "SMB掛載失敗，回退本地備份" "0"
+	return 1
+}
+
+umount_smb() {
+	[[ -n $SMB_MOUNT ]] && {
+		busybox umount -l "$SMB_MOUNT" 2>/dev/null
+		rm -rf "$SMB_MOUNT"
+		unset SMB_MOUNT
+		echoRgb "SMB已卸載" "2"
+	}
+}
+
+upload_webdav() {
+	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
+	local base_url="${remote_url%/}"
+	local auth=$(echo -n "$remote_user:$remote_pass" | busybox base64)
+	local failed=0
+	local list_file="$TMPDIR/.wdav_list"
+	[[ -z $Backup ]] && { echoRgb "Backup路徑為空" "0"; return 1; }
+	find "$Backup" -type f > "$list_file"
+	while read -r f; do
+		[[ -z $f ]] && continue
+		local rel="${f#$Backup/}"
+		local enc_rel=$(echo -n "$rel" | busybox sed 's/%/%25/g; s/ /%20/g; s/#/%23/g; s/&/%26/g; s/+/%2B/g; s/?/%3F/g')
+		echoRgb "上傳: $rel" "2"
+		if busybox wget -q --method PUT --body-file="$f" --header "Authorization: Basic $auth" "$base_url/$enc_rel" 2>/dev/null; then
+			rm -f "$f"
+		else
+			failed=1
+			break
+		fi
+	done < "$list_file"
+	rm -f "$list_file"
+	if [[ $failed -eq 0 ]]; then
+		echoRgb "WebDAV上傳完成" "1"
+	else
+		echoRgb "WebDAV上傳失敗，本地檔案已保留" "0"
+		return 1
+	fi
+}
+
+remote_setup() {
+	[[ -z $remote_type ]] && return
+
+	case $remote_type in
+	smb)
+		mount_smb || return
+		Backup="$SMB_MOUNT/Backup_${Compression_method}_$user"
+		mkdir -p "$Backup"
+		Backup_path="${Backup%/*}"
+		Output_path=""
+		echoRgb "遠程備份目錄: $Backup" "3"
+		;;
+	webdav)
+		echoRgb "WebDAV模式: 備份完成後將自動上傳" "3"
+		;;
+	*) echoRgb "未知遠程類型: $remote_type" "0"; return 1 ;;
+	esac
+}
+
+remote_cleanup() {
+	case $remote_type in
+	smb) umount_smb ;;
+	webdav) upload_webdav ;;
+	*) return 0 ;;
+	esac
+}
 Show_boottime() {
 	awk -F '.' '{run_days=$1 / 86400;run_hour=($1 % 86400)/3600;run_minute=($1 % 3600)/60;run_second=$1 % 60;printf("%d天%d時%d分%d秒",run_days,run_hour,run_minute,run_second)}' /proc/uptime 2>/dev/null
 }
@@ -969,6 +1048,7 @@ backup_path() {
 	fi
 	echoRgb "$hx備份資料夾所使用分區統計如下↓\n -$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-3),$(NF-2),$(NF-1),$(NF)}' | awk 'END{print "總共:"$1"已用:"$2"剩餘:"$3"使用率:"$4}')檔案系統:$(df -T "$Backup_path" | sed -n 's|% /.*|%|p' | awk '{print $(NF-4)}')\n -備份目錄輸出位置↓\n -$Backup"
 	echoRgb "$outshow" "2"
+	remote_setup
 }
 Calculate_size() {
 	#計算出備份大小跟差異性
