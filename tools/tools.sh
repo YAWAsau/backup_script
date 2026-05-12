@@ -492,8 +492,12 @@ umount_smb() {
 
 upload_webdav() {
 	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
+	local CURL
+	for p in curl /data/user/0/bin.mt.plus/files/term/bin/curl /system/bin/curl; do
+		command -v "$p" >/dev/null 2>&1 && { CURL="$p"; break; }
+	done
+	[[ -z $CURL ]] && { echoRgb "未找到curl，無法上傳" "0"; return 1; }
 	local base_url="${remote_url%/}"
-	local auth=$(echo -n "$remote_user:$remote_pass" | busybox base64)
 	local failed=0
 	local list_file="$TMPDIR/.wdav_list"
 	[[ -z $Backup ]] && { echoRgb "Backup路徑為空" "0"; return 1; }
@@ -501,9 +505,8 @@ upload_webdav() {
 	while read -r f; do
 		[[ -z $f ]] && continue
 		local rel="${f#$Backup/}"
-		local enc_rel=$(echo -n "$rel" | busybox sed 's/%/%25/g; s/ /%20/g; s/#/%23/g; s/&/%26/g; s/+/%2B/g; s/?/%3F/g')
 		echoRgb "上傳: $rel" "2"
-		if busybox wget -q --method PUT --body-file="$f" --header "Authorization: Basic $auth" "$base_url/$enc_rel" 2>/dev/null; then
+		if "$CURL" -sSf -T "$f" -u "$remote_user:$remote_pass" "$base_url/$rel" 2>/dev/null; then
 			rm -f "$f"
 		else
 			failed=1
