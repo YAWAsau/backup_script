@@ -133,12 +133,13 @@ rgb_b="${rgb_b:-123}"
 rgb_c="${rgb_c:-177}"
 
 #遠程備份類型 (留空不啟用)
-#webdav 、 ftp 或 scp
+#webdav 、 ftp 或 smb 或 scp
 remote_type="${remote_type:-}"
 
 #遠程地址
 #WebDAV例: http://192.168.1.100:8080/dav/
 #FTP例:    ftp://192.168.1.100/backup/
+#SMB例:    smb://192.168.1.100/backup/
 #SCP例:    192.168.1.100:/home/user/backup/
 remote_url="${remote_url:-}"
 
@@ -485,9 +486,9 @@ upload_remote() {
 		base_url="${remote_url%/}"
 		[[ $base_url != http://* && $base_url != https://* ]] && { echoRgb "WebDAV地址格式錯誤: $remote_url" "0"; return 1; }
 		;;
-	ftp)
+	ftp|smb)
 		base_url="$remote_url"
-		[[ $base_url != ftp://* ]] && { echoRgb "FTP地址格式錯誤，需 ftp:// 開頭" "0"; return 1; }
+		[[ $proto = ftp && $base_url != ftp://* ]] && { echoRgb "FTP地址格式錯誤，需 ftp:// 開頭" "0"; return 1; }
 		;;
 	esac
 	CURL=""
@@ -609,7 +610,7 @@ remote_setup() {
 
 	echoRgb "遠程備份: $remote_type -> $remote_url" "3"
 	case $remote_type in
-	webdav|ftp|scp)
+	webdav|ftp|smb|scp)
 		echoRgb "備份完成後將自動上傳到遠端" "3"
 		;;
 	*) echoRgb "未知遠程類型: $remote_type" "0"; return 1 ;;
@@ -620,6 +621,7 @@ remote_cleanup() {
 	case $remote_type in
 	webdav) upload_remote "webdav" ;;
 	ftp) upload_remote "ftp" ;;
+	smb) upload_remote "smb" ;;
 	scp) upload_remote "scp" ;;
 	*) return 0 ;;
 	esac
