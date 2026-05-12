@@ -13,6 +13,7 @@ if [ ! -f "$conf_path" ]; then
 	exit 0
 fi
 
-logfile="${0%/*}/log_$(date +%Y-%m-%d_%H-%M).txt"
+mkdir -p "${0%/*}/log" 2>/dev/null
+logfile="${0%/*}/log/log_$(date +%Y-%m-%d_%H-%M).txt"
 . "${0%/*}/tools/tools.sh" | tee "$logfile"
 sed -i $'s/\033\[[0-9;]*m//g' "$logfile"

@@ -131,6 +131,21 @@ rgb_a="${rgb_a:-226}"
 #輔色
 rgb_b="${rgb_b:-123}"
 rgb_c="${rgb_c:-177}"
+
+#遠程備份類型 (留空不啟用)
+#webdav 或 smb
+remote_type="${remote_type:-}"
+
+#遠程地址
+#WebDAV例: http://192.168.1.100:8080/dav/
+#SMB例:    //192.168.1.100/backup
+remote_url="${remote_url:-}"
+
+#遠程認證用戶名
+remote_user="${remote_user:-}"
+
+#遠程認證密碼
+remote_pass="${remote_pass:-}"
 " | sed '
     /^Custom_path/ s/ /\n/g;
     /^blacklist/ s/ /\n/g;
@@ -452,54 +467,74 @@ kill_Serve() {
 }
 kill_Serve
 # -------- 遠程備份功能 --------
-mount_smb() {
-	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
-	local mnt="$TMPDIR/smb_mount"
-	mkdir -p "$mnt"
-	if busybox mount -t cifs "$remote_url" "$mnt" -o "username=$remote_user,password=$remote_pass,iocharset=utf8,vers=2.0" 2>/dev/null; then
-		SMB_MOUNT="$mnt"
-		[[ $(mount | grep "$mnt") != "" ]] || { echoRgb "SMB掛載失敗: $remote_url" "0"; return 1; }
-		echoRgb "SMB已掛載: $remote_url -> $mnt" "1"
-		return 0
-	fi
-	echoRgb "SMB掛載失敗，回退本地備份" "0"
+_find_curl() {
+	for p in /data/user/0/bin.mt.plus/files/term/bin/curl /system/bin/curl curl; do
+		[[ -x $p ]] && { CURL="$p"; return 0; }
+	done
 	return 1
 }
 
-umount_smb() {
-	[[ -n $SMB_MOUNT ]] && {
-		busybox umount -l "$SMB_MOUNT" 2>/dev/null
-		rm -rf "$SMB_MOUNT"
-		unset SMB_MOUNT
-		echoRgb "SMB已卸載" "2"
-	}
-}
-
-upload_webdav() {
+upload_remote() {
+	local proto="$1"
 	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
-	local base_url="${remote_url%/}"
-	local auth=$(echo -n "$remote_user:$remote_pass" | busybox base64)
+	local base_url
+	case $proto in
+	smb)
+		base_url="${remote_url#//}"
+		base_url="smb://${base_url#smb://}"
+		;;
+	webdav)
+		base_url="${remote_url%/}"
+		[[ $base_url != http://* && $base_url != https://* ]] && { echoRgb "WebDAV地址格式錯誤: $remote_url" "0"; return 1; }
+		;;
+	esac
+	CURL=""
+	_find_curl || { echoRgb "未找到curl，無法上傳" "0"; return 1; }
+	echoRgb "使用: $CURL" "2"
 	local failed=0
-	local list_file="$TMPDIR/.wdav_list"
+	local list_file="$TMPDIR/.rlist"
+	local dirs_file="$TMPDIR/.rdirs"
 	[[ -z $Backup ]] && { echoRgb "Backup路徑為空" "0"; return 1; }
-	find "$Backup" -type f > "$list_file"
+	find "$Backup" -type f ! -path "*/tools/*" ! -name 'start.sh' ! -name 'restore_settings.conf' > "$list_file"
+	# 提取所有目錄並在遠程創建 (WebDAV MKCOL, SMB 跳過)
+	if [[ $proto = webdav ]]; then
+		while read -r f; do
+			local d="${f#$Backup/}"
+			d="${d%/*}"
+			[[ -n $d && $d != "${f#$Backup/}" ]] && echo "$d"
+		done < "$list_file" | sort -u | while read -r d; do
+			local enc_d=$(echo -n "$d" | busybox sed 's/%/%25/g; s/ /%20/g; s/+/%2B/g; s/#/%23/g')
+			local cur="$base_url"
+			local IFS='/'
+			set -- $enc_d
+			for seg; do
+				cur="$cur/$seg"
+				"$CURL" -sS -X MKCOL -u "$remote_user:$remote_pass" "$cur" 2>/dev/null
+			done
+		done
+	fi
+	# 上傳檔案
 	while read -r f; do
 		[[ -z $f ]] && continue
 		local rel="${f#$Backup/}"
-		local enc_rel=$(echo -n "$rel" | busybox sed 's/%/%25/g; s/ /%20/g; s/#/%23/g; s/&/%26/g; s/+/%2B/g; s/?/%3F/g')
-		echoRgb "上傳: $rel" "2"
-		if busybox wget -q --method PUT --body-file="$f" --header "Authorization: Basic $auth" "$base_url/$enc_rel" 2>/dev/null; then
+		local enc_rel
+		[[ $proto = webdav ]] && enc_rel=$(echo -n "$rel" | busybox sed 's/%/%25/g; s/ /%20/g; s/+/%2B/g; s/#/%23/g')
+		[[ $proto = smb ]] && enc_rel="$rel"
+		local target_url="$base_url/$enc_rel"
+		[[ $proto = smb ]] && target_url="$base_url/$rel"
+		echoRgb "上傳: $target_url" "2"
+		if "$CURL" -sSf -T "$f" -u "$remote_user:$remote_pass" "$target_url"; then
 			rm -f "$f"
 		else
 			failed=1
 			break
 		fi
 	done < "$list_file"
-	rm -f "$list_file"
+	rm -f "$list_file" "$dirs_file" 2>/dev/null
 	if [[ $failed -eq 0 ]]; then
-		echoRgb "WebDAV上傳完成" "1"
+		echoRgb "遠程上傳完成" "1"
 	else
-		echoRgb "WebDAV上傳失敗，本地檔案已保留" "0"
+		echoRgb "遠程上傳失敗，本地檔案已保留" "0"
 		return 1
 	fi
 }
@@ -507,17 +542,10 @@ upload_webdav() {
 remote_setup() {
 	[[ -z $remote_type ]] && return
 
+	echoRgb "遠程備份: $remote_type -> $remote_url" "3"
 	case $remote_type in
-	smb)
-		mount_smb || return
-		Backup="$SMB_MOUNT/Backup_${Compression_method}_$user"
-		mkdir -p "$Backup"
-		Backup_path="${Backup%/*}"
-		Output_path=""
-		echoRgb "遠程備份目錄: $Backup" "3"
-		;;
-	webdav)
-		echoRgb "WebDAV模式: 備份完成後將自動上傳" "3"
+	smb|webdav)
+		echoRgb "備份完成後將自動上傳到遠端" "3"
 		;;
 	*) echoRgb "未知遠程類型: $remote_type" "0"; return 1 ;;
 	esac
@@ -525,8 +553,8 @@ remote_setup() {
 
 remote_cleanup() {
 	case $remote_type in
-	smb) umount_smb ;;
-	webdav) upload_webdav ;;
+	smb) upload_remote "smb" ;;
+	webdav) upload_remote "webdav" ;;
 	*) return 0 ;;
 	esac
 }
