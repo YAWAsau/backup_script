@@ -131,6 +131,21 @@ rgb_a="${rgb_a:-226}"
 #輔色
 rgb_b="${rgb_b:-123}"
 rgb_c="${rgb_c:-177}"
+
+#遠程備份類型 (留空不啟用)
+#webdav 或 smb
+remote_type="${remote_type:-}"
+
+#遠程地址
+#WebDAV例: http://192.168.1.100:8080/dav/
+#SMB例:    //192.168.1.100/backup
+remote_url="${remote_url:-}"
+
+#遠程認證用戶名
+remote_user="${remote_user:-}"
+
+#遠程認證密碼
+remote_pass="${remote_pass:-}"
 " | sed '
     /^Custom_path/ s/ /\n/g;
     /^blacklist/ s/ /\n/g;
