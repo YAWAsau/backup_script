@@ -133,7 +133,9 @@ rgb_b="${rgb_b:-123}"
 rgb_c="${rgb_c:-177}"
 
 #遠程備份類型 (留空不啟用)
-#webdav 、 ftp 或 smb 或 scp
+#推薦 webdav (穩定) 或 ftp(可自動建目錄)
+#smb 僅支援 SMB1/CIFS，Windows Server 需手動開啟
+#scp 需 SSH 服務器，支援密碼或密鑰認證
 remote_type="${remote_type:-}"
 
 #遠程地址
@@ -472,14 +474,94 @@ kill_Serve
 _find_curl() {
 	for p in "$tools_path/curl" curl /data/user/0/bin.mt.plus/files/term/bin/curl /system/bin/curl; do
 		[[ -f $p ]] && chmod +x "$p" 2>/dev/null
-		[[ -x $p ]] && { CURL="$p"; return 0; }
+		if [[ $p = "$tools_path"/* ]]; then
+			local tp="$TMPDIR/.curl"
+			cp "$p" "$tp" && chmod +x "$tp" && p="$tp"
+		fi
+		"$p" --version >/dev/null 2>&1 && { CURL="$p"; return 0; }
 	done
 	return 1
+}
+
+upload_smb() {
+	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
+	local SMB
+	for p in "$tools_path/smbclient" smbclient; do
+		[[ -f $p ]] && chmod +x "$p" 2>/dev/null
+		if [[ $p = "$tools_path"/* ]]; then
+			local tp="$TMPDIR/.smb"
+			cp "$p" "$tp" && chmod +x "$tp" && p="$tp"
+		fi
+		[[ -x $p ]] && { SMB="$p"; break; }
+	done
+	[[ -z $SMB ]] && { echoRgb "未找到smbclient，請放入 tools/目錄" "0"; return 1; }
+	echoRgb "使用: $SMB" "2"
+	# 解析 smb://server/share/remotepath
+	local url="${remote_url#smb://}"
+	url="${url%/}"
+	local server="${url%%/*}"
+	local after_server="${url#$server/}"
+	local share_name="${after_server%%/*}"
+	local rem_path="/${after_server#$share_name}"
+	rem_path="${rem_path%/}"
+	[[ $rem_path = / ]] && rem_path=""
+	share="//$server/$share_name"
+	echoRgb "SMB: $share (路徑: ${rem_path:-/})" "2"
+	local failed=0
+	local list_file="$TMPDIR/.slist"
+	find "$Backup" -type f ! -path "*/tools/*" ! -name 'start.sh' ! -name 'restore_settings.conf' > "$list_file"
+	# 收集並創建所有目錄
+	{
+		while read -r f; do
+			local d="${f#$Backup/}"
+			d="${d%/*}"
+			[[ -n $d && $d != "${f#$Backup/}" ]] && echo "${rem_path:+$rem_path/}$d"
+		done < "$list_file"
+	} | sort -u | {
+		local IFS='/'
+		while read -r d; do
+			local cur=""
+			set -- $d
+			for seg; do
+				[[ -z $seg ]] && continue
+				cur="$cur/$seg"
+				echo "mkdir $cur"
+			done
+		done
+		# 去重並執行
+	} | sort -u | while read -r cmd; do
+		echo "$cmd" | "$SMB" "$share" -U "$remote_user%$remote_pass" >/dev/null 2>&1
+	done
+	# 上傳檔案
+	while read -r f; do
+		[[ -z $f ]] && continue
+		local rel="${f#$Backup/}"
+		local file_dir=$(dirname "$rel")
+		local rem_dir="$rem_path"
+		[[ $file_dir != . ]] && rem_dir="${rem_dir:+$rem_dir/}$file_dir"
+		[[ -z $rem_dir ]] && rem_dir="/"
+		echoRgb "上傳(SMB): $rel" "2"
+		"$SMB" "$share" -U "$remote_user%$remote_pass" -c "cd $rem_dir; lcd $(dirname "$f"); put $(basename "$f"); exit" >/dev/null 2>&1
+		if [[ $? -eq 0 ]]; then
+			rm -f "$f"
+		else
+			failed=1
+			break
+		fi
+	done < "$list_file"
+	rm -f "$list_file" 2>/dev/null
+	if [[ $failed -eq 0 ]]; then
+		echoRgb "遠程上傳完成" "1"
+	else
+		echoRgb "遠程上傳失敗，本地檔案已保留" "0"
+		return 1
+	fi
 }
 
 upload_remote() {
 	local proto="$1"
 	[[ $proto = scp ]] && { upload_scp; return $?; }
+	[[ $proto = smb ]] && { upload_smb; return $?; }
 	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
 	local base_url
 	case $proto in
@@ -487,9 +569,9 @@ upload_remote() {
 		base_url="${remote_url%/}"
 		[[ $base_url != http://* && $base_url != https://* ]] && { echoRgb "WebDAV地址格式錯誤: $remote_url" "0"; return 1; }
 		;;
-	ftp|smb)
+	ftp)
 		base_url="$remote_url"
-		[[ $proto = ftp && $base_url != ftp://* ]] && { echoRgb "FTP地址格式錯誤，需 ftp:// 開頭" "0"; return 1; }
+		[[ $base_url != ftp://* ]] && { echoRgb "FTP地址格式錯誤，需 ftp:// 開頭" "0"; return 1; }
 		;;
 	esac
 	CURL=""
@@ -512,7 +594,7 @@ upload_remote() {
 			set -- $enc_d
 			for seg; do
 				cur="$cur/$seg"
-				"$CURL" -sS -X MKCOL -u "$remote_user:$remote_pass" "$cur" 2>/dev/null
+				"$CURL" -sS -L -X MKCOL -u "$remote_user:$remote_pass" "$cur" 2>/dev/null
 			done
 		done
 	fi
@@ -529,9 +611,11 @@ upload_remote() {
 		fi
 		echoRgb "上傳($proto): $rel" "2"
 		if [[ $proto = ftp ]]; then
-			"$CURL" -sSf --ftp-create-dirs -T "$f" -u "$remote_user:$remote_pass" "$target_url"
+			"$CURL" -sSf --retry 2 --retry-delay 3 --connect-timeout 10 --ftp-create-dirs -T "$f" -u "$remote_user:$remote_pass" "$target_url"
+		elif [[ $proto = webdav ]]; then
+			"$CURL" -sSfL --retry 2 --retry-delay 3 --connect-timeout 10 -T "$f" -u "$remote_user:$remote_pass" "$target_url"
 		else
-			"$CURL" -sSf -T "$f" -u "$remote_user:$remote_pass" "$target_url"
+			"$CURL" -sSf --retry 2 --retry-delay 3 --connect-timeout 10 -T "$f" -u "$remote_user:$remote_pass" "$target_url"
 		fi || { failed=1; break; }
 		rm -f "$f"
 	done < "$list_file"
@@ -551,10 +635,18 @@ upload_scp() {
 	command -v sshpass >/dev/null 2>&1 && use_sshpass=1
 	for p in "$tools_path/scp" scp /data/user/0/bin.mt.plus/files/term/bin/scp; do
 		[[ -f $p ]] && chmod +x "$p" 2>/dev/null
+		if [[ $p = "$tools_path"/* ]]; then
+			local tscp="$TMPDIR/.scp"
+			cp "$p" "$tscp" && chmod +x "$tscp" && p="$tscp"
+		fi
 		[[ -x $p ]] && { SCP="$p"; break; }
 	done
 	for p in "$tools_path/ssh" ssh /data/user/0/bin.mt.plus/files/term/bin/ssh; do
 		[[ -f $p ]] && chmod +x "$p" 2>/dev/null
+		if [[ $p = "$tools_path"/* ]]; then
+			local tssh="$TMPDIR/.ssh"
+			cp "$p" "$tssh" && chmod +x "$tssh" && p="$tssh"
+		fi
 		[[ -x $p ]] && { SSH="$p"; break; }
 	done
 	[[ -z $SCP || -z $SSH ]] && { echoRgb "未找到scp/ssh，無法上傳" "0"; return 1; }
