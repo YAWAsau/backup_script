@@ -469,7 +469,7 @@ kill_Serve() {
 kill_Serve
 # -------- 遠程備份功能 --------
 _find_curl() {
-	for p in /data/user/0/bin.mt.plus/files/term/bin/curl /system/bin/curl curl; do
+	for p in "$tools_path/curl" curl /data/user/0/bin.mt.plus/files/term/bin/curl /system/bin/curl; do
 		[[ -x $p ]] && { CURL="$p"; return 0; }
 	done
 	return 1
@@ -548,10 +548,10 @@ upload_scp() {
 	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
 	local SCP SSH SSHPASS
 	command -v sshpass >/dev/null 2>&1 && SSHPASS="sshpass -p '$remote_pass'"
-	for p in scp /data/user/0/bin.mt.plus/files/term/bin/scp; do
+	for p in "$tools_path/scp" scp /data/user/0/bin.mt.plus/files/term/bin/scp; do
 		[[ -x $p ]] && { SCP="$p"; break; }
 	done
-	for p in ssh /data/user/0/bin.mt.plus/files/term/bin/ssh; do
+	for p in "$tools_path/ssh" ssh /data/user/0/bin.mt.plus/files/term/bin/ssh; do
 		[[ -x $p ]] && { SSH="$p"; break; }
 	done
 	[[ -z $SCP || -z $SSH ]] && { echoRgb "未找到scp/ssh，無法上傳" "0"; return 1; }
