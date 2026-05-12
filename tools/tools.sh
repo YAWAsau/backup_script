@@ -479,17 +479,15 @@ upload_remote() {
 	local proto="$1"
 	[[ $proto = scp ]] && { upload_scp; return $?; }
 	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
-	local base_url curl_opts
+	local base_url
 	case $proto in
 	webdav)
 		base_url="${remote_url%/}"
 		[[ $base_url != http://* && $base_url != https://* ]] && { echoRgb "WebDAV地址格式錯誤: $remote_url" "0"; return 1; }
-		curl_opts=""
 		;;
 	ftp)
 		base_url="$remote_url"
 		[[ $base_url != ftp://* ]] && { echoRgb "FTP地址格式錯誤，需 ftp:// 開頭" "0"; return 1; }
-		curl_opts="--ftp-create-dirs"
 		;;
 	esac
 	CURL=""
@@ -528,8 +526,8 @@ upload_remote() {
 			target_url="$base_url/$rel"
 		fi
 		echoRgb "上傳($proto): $rel" "2"
-		if [[ -n $curl_opts ]]; then
-			"$CURL" -sSf $curl_opts -T "$f" -u "$remote_user:$remote_pass" "$target_url"
+		if [[ $proto = ftp ]]; then
+			"$CURL" -sSf --ftp-create-dirs -T "$f" -u "$remote_user:$remote_pass" "$target_url"
 		else
 			"$CURL" -sSf -T "$f" -u "$remote_user:$remote_pass" "$target_url"
 		fi || { failed=1; break; }
@@ -546,8 +544,9 @@ upload_remote() {
 
 upload_scp() {
 	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
-	local SCP SSH SSHPASS
-	command -v sshpass >/dev/null 2>&1 && SSHPASS="sshpass -p '$remote_pass'"
+	local SCP SSH
+	local use_sshpass
+	command -v sshpass >/dev/null 2>&1 && use_sshpass=1
 	for p in "$tools_path/scp" scp /data/user/0/bin.mt.plus/files/term/bin/scp; do
 		[[ -x $p ]] && { SCP="$p"; break; }
 	done
@@ -556,18 +555,27 @@ upload_scp() {
 	done
 	[[ -z $SCP || -z $SSH ]] && { echoRgb "未找到scp/ssh，無法上傳" "0"; return 1; }
 	local host="${remote_url#//}"
-	host="${host%%/*}"
+	local rpath
+	if [[ $host = *:* ]]; then
+		rpath="${host#*:}"
+		host="${host%%:*}"
+	elif [[ $host = */* ]]; then
+		rpath="/${host#*/}"
+		host="${host%%/*}"
+	else
+		rpath="/"
+	fi
 	[[ -z $host ]] && { echoRgb "SCP地址格式錯誤，例: 192.168.1.100:/path" "0"; return 1; }
-	local rpath="${remote_url#*:}"
-	[[ $rpath = "$remote_url" ]] && rpath="/"
 	local opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
-	local mkdir_cmd
-	if [[ -n $SSHPASS ]]; then
-		mkdir_cmd="$SSHPASS $SSH $opts $remote_user@$host"
+	# 檢查連接
+	if [[ -n $use_sshpass ]]; then
+		sshpass -p "$remote_pass" "$SSH" $opts "$remote_user@$host" "echo ok" >/dev/null 2>&1 \
+			|| { echoRgb "SCP密碼或主機錯誤" "0"; return 1; }
 	elif [[ $remote_user != "" ]]; then
 		"$SSH" -o BatchMode=yes -o ConnectTimeout=5 $opts "$remote_user@$host" "echo ok" >/dev/null 2>&1 \
-			&& mkdir_cmd="$SSH $opts $remote_user@$host" \
 			|| { echoRgb "SCP需密鑰認證或sshpass (未安裝)" "0"; return 1; }
+	else
+		echoRgb "remote_user未設置" "0"; return 1
 	fi
 	local failed=0
 	local list_file="$TMPDIR/.slist"
@@ -575,15 +583,16 @@ upload_scp() {
 	while read -r f; do
 		[[ -z $f ]] && continue
 		local rel="${f#$Backup/}"
-		local rdir=$(dirname "$rpath/$rel")
-		[[ -n $mkdir_cmd ]] && $mkdir_cmd "mkdir -p '$rdir'" 2>/dev/null
-		echoRgb "上傳(SCP): $rel" "2"
 		local target="$remote_user@$host:$rpath/$rel"
-		if [[ -n $SSHPASS ]]; then
-			$SSHPASS "$SCP" $opts "$f" "$target"
+		echoRgb "上傳(SCP): $rel" "2"
+		# 創建遠程目錄
+		if [[ -n $use_sshpass ]]; then
+			sshpass -p "$remote_pass" "$SSH" $opts "$remote_user@$host" "mkdir -p '$rpath/${rel%\/*}'" 2>/dev/null
+			sshpass -p "$remote_pass" "$SCP" $opts "$f" "$target" || { failed=1; break; }
 		else
-			"$SCP" $opts "$f" "$target"
-		fi || { failed=1; break; }
+			"$SSH" $opts "$remote_user@$host" "mkdir -p '$rpath/${rel%\/*}'" 2>/dev/null
+			"$SCP" $opts "$f" "$target" || { failed=1; break; }
+		fi
 		rm -f "$f"
 	done < "$list_file"
 	rm -f "$list_file" 2>/dev/null
