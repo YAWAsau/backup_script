@@ -493,10 +493,11 @@ umount_smb() {
 upload_webdav() {
 	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
 	local CURL
-	for p in curl /data/user/0/bin.mt.plus/files/term/bin/curl /system/bin/curl; do
-		command -v "$p" >/dev/null 2>&1 && { CURL="$p"; break; }
+	for p in /data/user/0/bin.mt.plus/files/term/bin/curl /system/bin/curl curl; do
+		[[ -x $p ]] && { CURL="$p"; break; }
 	done
 	[[ -z $CURL ]] && { echoRgb "未找到curl，無法上傳" "0"; return 1; }
+	echoRgb "使用: $CURL" "2"
 	local base_url="${remote_url%/}"
 	local failed=0
 	local list_file="$TMPDIR/.wdav_list"
@@ -505,8 +506,8 @@ upload_webdav() {
 	while read -r f; do
 		[[ -z $f ]] && continue
 		local rel="${f#$Backup/}"
-		echoRgb "上傳: $rel" "2"
-		if "$CURL" -sSf -T "$f" -u "$remote_user:$remote_pass" "$base_url/$rel" 2>/dev/null; then
+		echoRgb "上傳: $base_url/$rel" "2"
+		if "$CURL" -sSf -T "$f" -u "$remote_user:$remote_pass" "$base_url/$rel"; then
 			rm -f "$f"
 		else
 			failed=1
@@ -525,6 +526,7 @@ upload_webdav() {
 remote_setup() {
 	[[ -z $remote_type ]] && return
 
+	echoRgb "遠程備份: $remote_type -> $remote_url" "3"
 	case $remote_type in
 	smb)
 		mount_smb || return
