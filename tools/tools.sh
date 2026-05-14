@@ -1166,8 +1166,8 @@ remote_test() {
 	webdav)
 		local base_url="${remote_url%/}"
 		local code
-		code="$(curl -sS -L --connect-timeout 10 -u "$remote_user:$remote_pass" \
-			-X PROPFIND -H "Depth: 0" -w '%{http_code}' -o /dev/null "$base_url" 2>&1)"
+		code="$(/system/bin/curl -sS -L --connect-timeout 10 -u "$remote_user:$remote_pass" \
+			-X PROPFIND -H "Depth: 0" -w '%{http_code}' -o /dev/null "$base_url" 2>/dev/null)"
 		case $code in
 		2*|207) echoRgb "WebDAV 認證通過 (HTTP $code)" "1" ;;
 		401) echoRgb "認證失敗 (HTTP 401, 帳號或密碼錯誤)" "0"; return 1 ;;
@@ -1179,8 +1179,8 @@ remote_test() {
 		;;
 	ftp)
 		local code
-		code="$(curl -sS --connect-timeout 10 -u "$remote_user:$remote_pass" \
-			-w '%{http_code}' -o /dev/null "$remote_url" 2>&1)"
+		code="$(/system/bin/curl -sS --connect-timeout 10 -u "$remote_user:$remote_pass" \
+			-w '%{http_code}' -o /dev/null "$remote_url" 2>/dev/null)"
 		case $code in
 		2*|226|250) echoRgb "FTP 認證通過 (回應 $code)" "1" ;;
 		530) echoRgb "認證失敗 (530, 帳號或密碼錯誤)" "0"; return 1 ;;
