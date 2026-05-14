@@ -834,8 +834,16 @@ upload_remote() {
 		fi
 		local http_code curl_err
 		if [[ $proto = ftp ]]; then
-			if curl -sS --connect-timeout 15 --ftp-pasv --ftp-create-dirs \
-				-T "$f" -u "$remote_user:$remote_pass" "$target_url" 2>/dev/null; then
+			# 構建 FTP 遠程路徑: /sdcard/backup/Backup_zstd_0/鱼泡网/
+			local _ftp_path="${base_url#ftp://}"
+			local _ftp_hp="${_ftp_path%%/*}"
+			local _ftp_host="${_ftp_hp%%:*}"
+			local _ftp_port="${_ftp_hp#*:}"; [[ $_ftp_port = $_ftp_hp ]] && _ftp_port=21
+			local _ftp_rem="${_ftp_path#$_ftp_hp}"  # /sdcard/backup/Backup_zstd_0
+			local _ftp_dir="$_ftp_rem/$(dirname "$rel")"
+			[[ -z $_ftp_dir ]] && _ftp_dir="$_ftp_rem"
+			if ftpput -u "$remote_user" -p "$remote_pass" -P "$_ftp_port" "$_ftp_host" \
+				"$_ftp_dir" "$f" 2>/dev/null; then
 				echo "$f" >> "$ok_list"
 				echoRgb "[$idx/$total] ✓ $rel" "1"
 			else
