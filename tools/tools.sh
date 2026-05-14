@@ -1178,14 +1178,12 @@ remote_test() {
 		esac
 		;;
 	ftp)
-		local code
-		code="$(/system/bin/curl -sS --connect-timeout 10 -u "$remote_user:$remote_pass" \
-			-w '%{http_code}' -o /dev/null "$remote_url" 2>/dev/null)"
-		case $code in
-		2*|226|250) echoRgb "FTP 認證通過 (回應 $code)" "1" ;;
-		530) echoRgb "認證失敗 (530, 帳號或密碼錯誤)" "0"; return 1 ;;
-		*)   echoRgb "FTP 異常 (回應 $code)" "0"; return 1 ;;
-		esac
+		if /system/bin/curl -sS --connect-timeout 15 --ftp-pasv --max-time 30 \
+			-u "$remote_user:$remote_pass" --list-only "$remote_url" 2>/dev/null; then
+			echoRgb "FTP 認證通過" "1"
+		else
+			echoRgb "FTP 異常 (逾時或無法列出目錄)" "0"; return 1
+		fi
 		;;
 	scp)
 		local host="${remote_url#//}" rpath
