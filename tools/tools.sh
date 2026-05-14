@@ -834,7 +834,7 @@ upload_remote() {
 		fi
 		local http_code curl_err
 		if [[ $proto = ftp ]]; then
-			if curl -sS --connect-timeout 10 --ftp-create-dirs \
+			if curl -sS --connect-timeout 15 --ftp-pasv --ftp-create-dirs \
 				-T "$f" -u "$remote_user:$remote_pass" "$target_url" 2>/dev/null; then
 				echo "$f" >> "$ok_list"
 				echoRgb "[$idx/$total] ✓ $rel" "1"
