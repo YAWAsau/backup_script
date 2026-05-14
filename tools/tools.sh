@@ -834,16 +834,27 @@ upload_remote() {
 		fi
 		local http_code curl_err
 		if [[ $proto = ftp ]]; then
-			http_code="$(curl -sS --retry 2 --retry-delay 3 --connect-timeout 10 --ftp-create-dirs \
-				-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' -o "$TMPDIR/.curl_err" "$target_url" 2>&1)"
-		elif [[ $proto = webdav ]]; then
-			http_code="$(curl -sS -L --retry 2 --retry-delay 3 --connect-timeout 10 \
-				-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' -o "$TMPDIR/.curl_err" "$target_url" 2>&1)"
-		else
-			http_code="$(curl -sS --retry 2 --retry-delay 3 --connect-timeout 10 \
-				-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' -o "$TMPDIR/.curl_err" "$target_url" 2>&1)"
+			if curl -sS --connect-timeout 10 --ftp-create-dirs \
+				-T "$f" -u "$remote_user:$remote_pass" "$target_url" 2>/dev/null; then
+				echo "$f" >> "$ok_list"
+				echoRgb "[$idx/$total] ✓ $rel" "1"
+			else
+				echo "$rel  (FTP ERR)" >> "$fail_list"
+				echoRgb "[$idx/$total] ✗ $rel (FTP ERR)" "0"
+			fi
+			continue
 		fi
-		curl_err="$(cat "$TMPDIR/.curl_err" 2>/dev/null)"; rm -f "$TMPDIR/.curl_err"
+		if [[ $proto = webdav ]]; then
+			http_code="$(curl -sS -L --connect-timeout 10 \
+				-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' -o /dev/null "$target_url" 2>"$TMPDIR/.curl_stderr")"
+		elif [[ $proto = smb ]]; then
+			http_code="$(curl -sS -L --connect-timeout 10 \
+				-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' -o /dev/null "$target_url" 2>"$TMPDIR/.curl_stderr")"
+		else
+			http_code="$(curl -sS -L --connect-timeout 10 \
+				-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' -o /dev/null "$target_url" 2>"$TMPDIR/.curl_stderr")"
+		fi
+		curl_err="$(cat "$TMPDIR/.curl_stderr" 2>/dev/null)"; rm -f "$TMPDIR/.curl_stderr"
 		# http_code 2xx 視為成功;FTP 226/250 也是;0 表示連不上
 		case $http_code in
 		2*)
