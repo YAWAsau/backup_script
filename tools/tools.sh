@@ -1186,7 +1186,8 @@ remote_test() {
 		esac
 		;;
 	ftp)
-		if /system/bin/curl -sS --connect-timeout 15 --ftp-pasv --max-time 30 \
+		# 系統 curl 無 FTP，用 tools/curl
+		if "$filepath/curl" -sS --connect-timeout 15 --ftp-pasv --max-time 30 \
 			-u "$remote_user:$remote_pass" --list-only "$remote_url" 2>/dev/null; then
 			echoRgb "FTP 認證通過" "1"
 		else
