@@ -834,16 +834,35 @@ upload_remote() {
 		fi
 		local http_code curl_err
 		if [[ $proto = ftp ]]; then
-			http_code="$(curl -sS --retry 2 --retry-delay 3 --connect-timeout 10 --ftp-create-dirs \
-				-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' -o "$TMPDIR/.curl_err" "$target_url" 2>&1)"
-		elif [[ $proto = webdav ]]; then
-			http_code="$(curl -sS -L --retry 2 --retry-delay 3 --connect-timeout 10 \
-				-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' -o "$TMPDIR/.curl_err" "$target_url" 2>&1)"
-		else
-			http_code="$(curl -sS --retry 2 --retry-delay 3 --connect-timeout 10 \
-				-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' -o "$TMPDIR/.curl_err" "$target_url" 2>&1)"
+			# 構建 FTP 遠程路徑: /sdcard/backup/Backup_zstd_0/鱼泡网/
+			local _ftp_path="${base_url#ftp://}"
+			local _ftp_hp="${_ftp_path%%/*}"
+			local _ftp_host="${_ftp_hp%%:*}"
+			local _ftp_port="${_ftp_hp#*:}"; [[ $_ftp_port = $_ftp_hp ]] && _ftp_port=21
+			local _ftp_rem="${_ftp_path#$_ftp_hp}"  # /sdcard/backup/Backup_zstd_0
+			local _ftp_dir="$_ftp_rem/$(dirname "$rel")"
+			[[ -z $_ftp_dir ]] && _ftp_dir="$_ftp_rem"
+			if ftpput -u "$remote_user" -p "$remote_pass" -P "$_ftp_port" "$_ftp_host" \
+				"$_ftp_dir" "$f" 2>/dev/null; then
+				echo "$f" >> "$ok_list"
+				echoRgb "[$idx/$total] ✓ $rel" "1"
+			else
+				echo "$rel  (FTP ERR)" >> "$fail_list"
+				echoRgb "[$idx/$total] ✗ $rel (FTP ERR)" "0"
+			fi
+			continue
 		fi
-		curl_err="$(cat "$TMPDIR/.curl_err" 2>/dev/null)"; rm -f "$TMPDIR/.curl_err"
+		if [[ $proto = webdav ]]; then
+			http_code="$(curl -sS -L --connect-timeout 10 \
+				-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' -o /dev/null "$target_url" 2>"$TMPDIR/.curl_stderr")"
+		elif [[ $proto = smb ]]; then
+			http_code="$(curl -sS -L --connect-timeout 10 \
+				-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' -o /dev/null "$target_url" 2>"$TMPDIR/.curl_stderr")"
+		else
+			http_code="$(curl -sS -L --connect-timeout 10 \
+				-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' -o /dev/null "$target_url" 2>"$TMPDIR/.curl_stderr")"
+		fi
+		curl_err="$(cat "$TMPDIR/.curl_stderr" 2>/dev/null)"; rm -f "$TMPDIR/.curl_stderr"
 		# http_code 2xx 視為成功;FTP 226/250 也是;0 表示連不上
 		case $http_code in
 		2*)
@@ -1155,8 +1174,8 @@ remote_test() {
 	webdav)
 		local base_url="${remote_url%/}"
 		local code
-		code="$(curl -sS -L --connect-timeout 10 -u "$remote_user:$remote_pass" \
-			-X PROPFIND -H "Depth: 0" -w '%{http_code}' -o /dev/null "$base_url" 2>&1)"
+		code="$(/system/bin/curl -sS -L --connect-timeout 10 -u "$remote_user:$remote_pass" \
+			-X PROPFIND -H "Depth: 0" -w '%{http_code}' -o /dev/null "$base_url" 2>/dev/null)"
 		case $code in
 		2*|207) echoRgb "WebDAV 認證通過 (HTTP $code)" "1" ;;
 		401) echoRgb "認證失敗 (HTTP 401, 帳號或密碼錯誤)" "0"; return 1 ;;
@@ -1167,14 +1186,13 @@ remote_test() {
 		esac
 		;;
 	ftp)
-		local code
-		code="$(curl -sS --connect-timeout 10 -u "$remote_user:$remote_pass" \
-			-w '%{http_code}' -o /dev/null "$remote_url" 2>&1)"
-		case $code in
-		2*|226|250) echoRgb "FTP 認證通過 (回應 $code)" "1" ;;
-		530) echoRgb "認證失敗 (530, 帳號或密碼錯誤)" "0"; return 1 ;;
-		*)   echoRgb "FTP 異常 (回應 $code)" "0"; return 1 ;;
-		esac
+		# 系統 curl 無 FTP，用 tools/curl
+		if "$filepath/curl" -sS --connect-timeout 15 --ftp-pasv --max-time 30 \
+			-u "$remote_user:$remote_pass" --list-only "$remote_url" 2>/dev/null; then
+			echoRgb "FTP 認證通過" "1"
+		else
+			echoRgb "FTP 異常 (逾時或無法列出目錄)" "0"; return 1
+		fi
 		;;
 	scp)
 		local host="${remote_url#//}" rpath
