@@ -10,6 +10,8 @@ tools_path="$MODDIR/tools"
 script="${0##*/}"
 backup_version="202508162209"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
+# 產生 backup_settings.conf 的內容模板 (寫到 stdout)
+# 透過重定向到檔案來生成或更新備份設定檔
 update_backup_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
 #1開啟音量鍵選擇 (如選項已設置，則跳過該選項提示)
@@ -126,23 +128,23 @@ com.android.chrome}"\"
 #zstd擁有良好的壓縮率與速度
 Compression_method=${Compression_method:-zstd}
 
-#主色
-rgb_a="${rgb_a:-226}"
-#輔色
-rgb_b="${rgb_b:-123}"
-rgb_c="${rgb_c:-177}"
+#色彩設定 (256 色 ANSI 編號)
+#常用值: 39藍 51青 82綠 196紅 208橘 213粉 220黃 165紫
+#主色 (一般資訊, 預設亮黃)
+rgb_a="${rgb_a:-220}"
+#輔色1 (提示/進度, 預設亮青)
+rgb_b="${rgb_b:-51}"
+#輔色2 (強調/變數值, 預設粉紅)
+rgb_c="${rgb_c:-213}"
 
 #遠程備份類型 (留空不啟用)
-#推薦 webdav (穩定) 或 ftp(可自動建目錄)
+#推薦 webdav (穩定)
 #smb 僅支援 SMB1/CIFS，Windows Server 需手動開啟
-#scp 需 SSH 服務器，支援密碼或密鑰認證
 remote_type="${remote_type:-}"
 
 #遠程地址
 #WebDAV例: http://192.168.1.100:8080/dav/
-#FTP例:    ftp://192.168.1.100/backup/
 #SMB例:    smb://192.168.1.100/backup/
-#SCP例:    192.168.1.100:/home/user/backup/
 remote_url="${remote_url:-}"
 
 #遠程認證用戶名
@@ -163,6 +165,8 @@ remote_keep_local="${remote_keep_local:-0}"
     s/true/1/g;
     s/false/0/g'
 }
+# 產生 restore_settings.conf 的內容模板 (寫到 stdout)
+# 備份完成時呼叫此函數寫入備份目錄,讓恢復端有獨立的設定檔
 update_Restore_settings_conf() {
     echo "#0關閉音量鍵選擇 (如選項未設置，則強制使用音量鍵選擇)
 #1開啟音量鍵選擇 (如選項已設置，則跳過該選項提示)
@@ -203,16 +207,21 @@ Background_apps_ignore="${Background_apps_ignore:-0}"
 #使用者(如0 999等用戶，留空如存在多個用戶強制音量鍵選擇，無多用戶則默認0不詢問)
 user="$user"
 
-#主色
-rgb_a="${rgb_a:-226}"
-#輔色
-rgb_b="${rgb_b:-123}"
-rgb_c="${rgb_c:-177}"" | sed 's/true/1/g ; s/false/0/g'
+#色彩設定 (256 色 ANSI 編號)
+#常用值: 39藍 51青 82綠 196紅 208橘 213粉 220黃 165紫
+#主色 (一般資訊, 預設亮黃)
+rgb_a="${rgb_a:-220}"
+#輔色1 (提示/進度, 預設亮青)
+rgb_b="${rgb_b:-51}"
+#輔色2 (強調/變數值, 預設粉紅)
+rgb_c="${rgb_c:-213}"" | sed 's/true/1/g ; s/false/0/g'
 }
 if [[ ! -d $tools_path ]]; then
 	tools_path="${MODDIR%/*}/tools"
 	[[ ! -d $tools_path ]] && echo "$tools_path二進制目錄遺失" && EXIT="true"
 fi
+# 根據當前 conf_path 判斷類型,觸發對應模板重新寫入
+# 用於腳本版本升級時自動補齊新增的設定欄位
 _update_conf() {
     case $conf_path in
     *backup_settings.conf)  update_backup_settings_conf>"$conf_path" ;;
@@ -232,8 +241,15 @@ case $Shell_LANG in
 0) LANG="TW" ;;
 *) LANG="${LANG:="$(getprop "persist.sys.locale")"}" ;;
 esac
+# 帶色彩輸出, 用法: echoRgb "訊息" [色碼]
+# 色碼:
+#   0 = 紅色 (197)    - 錯誤/警告
+#   1 = 亮綠 (121)    - 成功
+#   2 = rgb_c (213)   - 強調/變數值 (粉紅, 預設)
+#   3 = rgb_b (51)    - 提示/進度 (亮青, 預設)
+#   其他/省略 = rgb_a (220) - 一般資訊 (亮黃, 預設)
+# rgb_a/b/c 可在 conf 自訂, 全部都是 256 色 ANSI 編號
 echoRgb() {
-	#轉換echo顏色提高可讀性
 	local color
 	case $2 in
 	0) color=197 ;;
@@ -244,7 +260,7 @@ echoRgb() {
 	esac
 	echo -e "\e[38;5;${color}m -$1\e[0m"
 }
-rgb_a="${rgb_a:=214}"
+rgb_a="${rgb_a:=220}"
 abi="$(getprop ro.product.cpu.abi)"
 sdk="$(getprop ro.build.version.sdk)"
 release="$(getprop ro.build.version.release)"
@@ -363,6 +379,23 @@ fi
 if [[ $quit -ne 0 ]]; then
   exit "$quit"
 fi
+# Logo
+echo -e "\e[38;5;51m"
+cat <<'LOGO'
+░██████╗██████╗░███████╗███████╗██████╗░
+██╔════╝██╔══██╗██╔════╝██╔════╝██╔══██╗
+╚█████╗░██████╔╝█████╗░░█████╗░░██║░░██║
+░╚═══██╗██╔═══╝░██╔══╝░░██╔══╝░░██║░░██║
+██████╔╝██║░░░░░███████╗███████╗██████╔╝
+╚═════╝░╚═╝░░░░░╚══════╝╚══════╝╚═════╝░
+██████╗░░█████╗░░█████╗░██╗░░██╗██╗░░░██╗██████╗░
+██╔══██╗██╔══██╗██╔══██╗██║░██╔╝██║░░░██║██╔══██╗
+██████╦╝███████║██║░░╚═╝█████═╝░██║░░░██║██████╔╝
+██╔══██╗██╔══██║██║░░██╗██╔═██╗░██║░░░██║██╔═══╝░
+██████╦╝██║░░██║╚█████╔╝██║░╚██╗╚██████╔╝██║░░░░░
+╚═════╝░╚═╝░░╚═╝░╚════╝░╚═╝░░╚═╝░╚═════╝░╚═╝░░░░░
+LOGO
+echo -e "\e[38;5;213m        » RESTORE // SYNC «\e[0m"
 sleep 1 && clear
 TMPDIR="/data/local/tmp"
 rm -rf "$TMPDIR"/*
@@ -387,14 +420,19 @@ case $LANG in
 esac
 alias LS="toybox ls -Zd"
 alias mv="$get_mv"
+# 給 trap / 流程控制用的 return 函數
+# Set_back_0 永遠回 0 (成功), Set_back_1 永遠回 1 (失敗)
 Set_back_0() {
 	return 0
 }
 Set_back_1() {
 	return 1
 }
+# 計算並輸出某段流程的耗時
+# 用法: endtime <計時編號> <名稱>
+# 計時編號: 1=讀 starttime1, 2=讀 starttime2 (需先在外面 set 變數)
+# 輸出格式: " -<名稱>用時:X天X時X分X秒"
 endtime() {
-	#計算總體切換時長耗費
 	case $1 in
 	1) starttime="$starttime1" ;;
 	2) starttime="$starttime2" ;;
@@ -404,6 +442,8 @@ endtime() {
 	[[ $duration != "" ]] && echo " -$2用時:$duration" || echo " -$2用時:0秒"
 }
 nskg=1
+# 從 GitHub Release API 取得腳本最新版本號
+# 透過 CDN (ghfast / cloudflare worker) 加速避免被牆
 get_version() {
 	while :; do
 		keycheck
@@ -425,6 +465,8 @@ get_version() {
 		break
 	done
 }
+# 規範化布林值,將 1/true/yes 等變成 true,其他變成 false
+# 用於 conf 讀進來的開關項統一格式
 isBoolean() {
     unset nsx
 	nsx="$1"
@@ -437,6 +479,9 @@ isBoolean() {
 		exit 2
 	fi
 }
+# 根據上一條命令的退出碼輸出成功/失敗訊息
+# 用法: echo_log "操作名稱" [skip_success_msg]
+# 第二個參數非空時, 成功不輸出訊息 (只設變數)
 echo_log() {
 	if [[ $? = 0 ]]; then
 		[[ $2 = "" ]] && echoRgb "$1成功" "1"
@@ -449,6 +494,8 @@ echo_log() {
 		Set_back_1
 	fi
 }
+# 殺死先前殘留的腳本進程,並設置 lock 防止重複執行
+# trap EXIT 會清 lock 並觸發 remote_cleanup (若有遠端設定)
 kill_Serve() {
     local LOCK_DIR="/data/.backup_lock"
     local MY_PID="$$"
@@ -495,8 +542,8 @@ remote_precheck() {
 # 寫入遠端上傳 log (帶時間戳)
 # 用法: remote_log "訊息"
 remote_log() {
-	[[ -z $Backup ]] && return
-	local logf="$Backup/remote_upload.log"
+	[[ -z $MODDIR ]] && return
+	local logf="$MODDIR/log/remote_upload.log"
 	mkdir -p "${logf%/*}" 2>/dev/null
 	echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$logf"
 }
@@ -510,11 +557,17 @@ upload_summary() {
 	[[ -f $fail_list ]] && fail_count="$(wc -l < "$fail_list" 2>/dev/null)"
 	ok_count=${ok_count:-0}
 	fail_count=${fail_count:-0}
+	# 計算總耗時
+	local elapsed_str=""
+	if [[ -n $UPLOAD_START_TS ]]; then
+		local elapsed=$(( $(date +%s) - UPLOAD_START_TS ))
+		elapsed_str=" 用時${elapsed}秒"
+	fi
 	echoRgb "_______________________________________" "2"
-	echoRgb "$proto 上傳完成: 成功 $ok_count / 失敗 $fail_count" "3"
-	remote_log "$proto 上傳結束: 成功 $ok_count / 失敗 $fail_count"
+	echoRgb "$proto 上傳完成: 成功 $ok_count / 失敗 $fail_count${elapsed_str}" "3"
+	remote_log "$proto 上傳結束: 成功 $ok_count / 失敗 $fail_count${elapsed_str}"
 	if [[ $fail_count -gt 0 ]]; then
-		echoRgb "失敗清單(已記錄到 remote_upload.log):" "0"
+		echoRgb "失敗清單(已記錄到 $MODDIR/log/remote_upload.log):" "0"
 		local n=0
 		while read -r line && [[ $n -lt 5 ]]; do
 			echoRgb "  $line" "0"
@@ -538,7 +591,74 @@ upload_summary() {
 		echoRgb "remote_keep_local=1 本地檔案保留" "3"
 	fi
 	rm -f "$ok_list" "$fail_list" 2>/dev/null
+	unset UPLOAD_START_TS
 	[[ $fail_count -eq 0 ]]
+}
+
+# URL 編碼 (處理 UTF-8 多 byte, 保留 / 不編碼以保持路徑結構)
+# 用法: url_encode_path <string>
+url_encode_path() {
+	local s="$1"
+	# 用 od 把每個 byte 印成 hex, awk 處理 hex 字串轉換
+	# 避免 strtonum (busybox awk 不支援)
+	printf '%s' "$s" | od -An -tx1 -v | tr -s ' \n' ' ' | awk '
+	BEGIN {
+		# 建立 hex → dec 對照表
+		for (i=0; i<10; i++) hex2int[sprintf("%d",i)] = i
+		hex2int["a"]=10; hex2int["b"]=11; hex2int["c"]=12
+		hex2int["d"]=13; hex2int["e"]=14; hex2int["f"]=15
+	}
+	{
+		n = split($0, a, " ")
+		for (i=1; i<=n; i++) {
+			h = a[i]
+			if (h == "") continue
+			# 把兩個 hex 字元轉成 dec
+			val = hex2int[substr(h,1,1)] * 16 + hex2int[substr(h,2,1)]
+			# 不編碼: A-Z a-z 0-9 - _ . ~ /
+			if ((val>=48 && val<=57) || (val>=65 && val<=90) || (val>=97 && val<=122) \
+				|| val==45 || val==95 || val==46 || val==126 || val==47) {
+				printf "%c", val
+			} else {
+				printf "%%%s", toupper(h)
+			}
+		}
+	}'
+}
+
+# URL 解碼 (處理 %XX, 含 UTF-8 多 byte)
+url_decode_path() {
+	local s="$1"
+	local converted
+	converted=$(echo "$s" | sed 's/%\([0-9a-fA-F][0-9a-fA-F]\)/\\x\1/g')
+	printf '%b' "$converted"
+}
+
+# 計算速度顯示字串
+# 用法: speed_calc <總bytes> <用時秒數>
+# 輸出: "8.5 MB/s" 或 "512 KB/s" 或 "" (時間=0時)
+speed_calc() {
+	local bytes="$1" secs="$2"
+	[[ -z $bytes || -z $secs || $secs -le 0 || $bytes -le 0 ]] && return
+	if [[ $bytes -ge 1048576 ]]; then
+		echo "$(echo "scale=2; $bytes / $secs / 1048576" | bc) MB/s"
+	elif [[ $bytes -ge 1024 ]]; then
+		echo "$(echo "scale=1; $bytes / $secs / 1024" | bc) KB/s"
+	else
+		echo "$((bytes / secs)) B/s"
+	fi
+}
+
+# 計算清單檔案總大小 (bytes)
+list_total_size() {
+	local list="$1"
+	[[ ! -f $list ]] && { echo 0; return; }
+	awk '{
+		cmd="stat -c%s \""$0"\" 2>/dev/null"
+		cmd | getline sz
+		close(cmd)
+		s+=sz+0
+	} END{print s+0}' "$list"
 }
 
 # 收集本次需要上傳的清單 (而非整個Backup)
@@ -562,38 +682,96 @@ remote_collect_targets() {
 			[[ -z $name1 ]] && continue
 			local full="$Backup/$name1"
 			[[ -d $full ]] || continue
-			find "$full" -type f ! -path "*/tools/*" ! -name 'start.sh' ! -name 'restore_settings.conf' > "$tmp_collect" 2>/dev/null
+			find "$full" -type f  > "$tmp_collect" 2>/dev/null
 			[[ -s $tmp_collect ]] && cat "$tmp_collect" >> "$list_file"
 		done
 	fi
 	if [[ $REMOTE_UPLOAD_MEDIA = 1 && -d $Backup/Media ]]; then
-		find "$Backup/Media" -type f ! -path "*/tools/*" ! -name 'start.sh' ! -name 'restore_settings.conf' > "$tmp_collect" 2>/dev/null
+		find "$Backup/Media" -type f  > "$tmp_collect" 2>/dev/null
 		[[ -s $tmp_collect ]] && cat "$tmp_collect" >> "$list_file"
 	fi
 	if [[ $REMOTE_UPLOAD_WIFI = 1 && -d $Backup/wifi ]]; then
-		find "$Backup/wifi" -type f ! -path "*/tools/*" ! -name 'start.sh' ! -name 'restore_settings.conf' > "$tmp_collect" 2>/dev/null
+		find "$Backup/wifi" -type f  > "$tmp_collect" 2>/dev/null
 		[[ -s $tmp_collect ]] && cat "$tmp_collect" >> "$list_file"
+	fi
+	# 固定附加: tools/ 資料夾、start.sh、restore_settings.conf
+	# 只要 list_file 已經有內容(代表本次有東西要上傳)就一併帶上,讓遠端目錄能獨立還原
+	if [[ -s $list_file ]]; then
+		[[ -d $Backup/tools ]] && find "$Backup/tools" -type f >> "$list_file" 2>/dev/null
+		[[ -f $Backup/start.sh ]] && echo "$Backup/start.sh" >> "$list_file"
+		[[ -f $Backup/restore_settings.conf ]] && echo "$Backup/restore_settings.conf" >> "$list_file"
 	fi
 	rm -f "$tmp_collect" 2>/dev/null
 }
-
+# 掃描區網內所有開放 SMB (445 port) 的主機
+# 50 個 IP 一批並行掃描, 然後 smbclient -L 列出每台的 share
+# 需要 nc 命令 (busybox 通常有)
+scan_smb() {
+    local my_ip
+    my_ip="$(ip route get 1 2>/dev/null | awk '{print $7; exit}')"
+    [[ -z $my_ip ]] && my_ip="$(ifconfig 2>/dev/null | grep -m1 'inet addr:192' | awk '{print $2}' | cut -d: -f2)"
+    [[ -z $my_ip ]] && { echoRgb "無法取得本機 IP" "0"; return 1; }
+    local subnet="${my_ip%.*}"
+    echoRgb "本機 IP: $my_ip" "2"
+    echoRgb "掃描 $subnet.0/24 上的 SMB 主機 (445 port)..." "3"
+    if ! command -v nc >/dev/null 2>&1; then
+        echoRgb "未找到 nc 命令,無法掃描" "0"
+        return 1
+    fi
+    local results="$TMPDIR/.smb_scan_results"
+    : > "$results"
+    local i pids=""
+    for i in $(seq 1 254); do
+        local target="$subnet.$i"
+        ( nc -z -w 1 "$target" 445 >/dev/null 2>&1 && echo "$target" >> "$results" ) &
+        pids="$pids $!"
+        if [[ $((i % 50)) -eq 0 ]]; then
+            wait $pids 2>/dev/null
+            pids=""
+            echoRgb "  ...已掃描 $i/254" "2"
+        fi
+    done
+    wait $pids 2>/dev/null
+    if [[ ! -s $results ]]; then
+        echoRgb "未發現 SMB 主機" "0"
+        rm -f "$results"
+        return 1
+    fi
+    echoRgb "------- 掃描完成 -------" "3"
+    sort -t. -k4 -n "$results" | while read -r target; do
+        echoRgb "發現 SMB: $target" "1"
+        # 查主機名 (有 nmblookup 才查)
+        if command -v nmblookup >/dev/null 2>&1; then
+            local hn
+            hn="$(nmblookup -A "$target" 2>/dev/null | awk 'NR==2{print $1}' | tr -d '<>\t ')"
+            [[ -n $hn ]] && echoRgb "  主機名: $hn" "2"
+        fi
+        # 列 share — 用 awk 不用 grep,避開 busybox grep regex 限制
+        smbclient -L "//$target" -N -t 3 -s /dev/null 2>/dev/null \
+            | awk '/Disk/ {print "  共享: "$1}' \
+            | while read -r line; do echoRgb "$line" "2"; done
+    done
+    rm -f "$results"
+}
+# SMB 上傳實作 (使用 smbclient)
+# 流程: 解析 URL → 預檢 → 收集檔案 → 按目錄分組 → 每組一次 smbclient 批次傳輸
+# 跟 upload_remote 的差別: SMB 用獨立的 smbclient 二進制, 不走 curl
 upload_smb() {
 	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
+	UPLOAD_START_TS=$(date +%s)
 	echoRgb "使用: $filepath/smbclient" "2"
 	# 解析 smb://server/share/remotepath
-	local url="${remote_url#smb://}"
-	url="${url%/}"
-	local server="${url%%/*}"
-	local after_server="${url#$server/}"
-	local share_name="${after_server%%/*}"
-	local rem_path="/${after_server#$share_name}"
-	rem_path="${rem_path%/}"
-	[[ $rem_path = / ]] && rem_path=""
-	local share="//$server/$share_name"
-	# 拆出 host 和 port (server 可能是 host 或 host:port)
-	local host="${server%%:*}"
-	local port="${server#*:}"
-	[[ $port = $server ]] && port=445
+	remote_parse_smb_url
+	local share="$SMB_SHARE"
+	local rem_path="$SMB_REM_PATH"
+	# 自動加上備份目錄前綴 (跟本地結構一致)
+	local backup_subdir="Backup_${Compression_method}_${user:-0}"
+	rem_path="${rem_path}/${backup_subdir}"
+	# 拆出 host 和 port (從 share 反推)
+	local _hp="${share#//}"; _hp="${_hp%%/*}"
+	local host="${_hp%%:*}"
+	local port="${_hp#*:}"
+	[[ $port = $_hp ]] && port=445
 	echoRgb "SMB: $share (路徑: ${rem_path:-/})" "2"
 	# 連線預檢
 	if ! remote_precheck "$host" "$port"; then
@@ -694,6 +872,8 @@ upload_smb() {
 		local is_wifi=0
 		[[ $rem_dir = */wifi || $rem_dir = wifi || $rem_dir = */wifi/* ]] && is_wifi=1
 		echoRgb "上傳目錄 $rem_dir ($file_count 檔)" "3"
+		local dir_start
+		dir_start=$(date +%s)
 		# 建立 smbclient batch script
 		local batch="$TMPDIR/.smb_batch"
 		echo "cd $rem_dir" > "$batch"
@@ -724,7 +904,14 @@ upload_smb() {
 		# 此目錄完成,印整體進度 (wifi 不算)
 		if [[ $is_wifi = 0 && $total_dirs -gt 0 ]]; then
 			let done_dirs++
-			echoRgb "完成$((done_dirs * 100 / total_dirs))%" "3"
+			local dir_speed=""
+			local dir_bytes
+			dir_bytes=$(list_total_size "$gf")
+			local dir_elapsed=$(( $(date +%s) - dir_start ))
+			local sp
+			sp=$(speed_calc "$dir_bytes" "$dir_elapsed")
+			[[ -n $sp ]] && dir_speed=" ($sp)"
+			echoRgb "完成$((done_dirs * 100 / total_dirs))%${dir_speed}" "3"
 		fi
 	done
 	rm -rf "$group_dir" 2>/dev/null
@@ -732,32 +919,32 @@ upload_smb() {
 	upload_summary "SMB" "$ok_list" "$fail_list"
 }
 
+# 遠端上傳分派器 + WebDAV 實作
+# $1=協議名 (webdav/smb), smb 會轉派給 upload_smb
+# WebDAV: 用 curl 逐檔 PUT, 預先 MKCOL 建好目錄結構
 upload_remote() {
 	local proto="$1"
-	[[ $proto = scp ]] && { upload_scp; return $?; }
 	[[ $proto = smb ]] && { upload_smb; return $?; }
 	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
+	UPLOAD_START_TS=$(date +%s)
 	local base_url
 	case $proto in
 	webdav)
 		base_url="${remote_url%/}"
 		[[ $base_url != http://* && $base_url != https://* ]] && { echoRgb "WebDAV地址格式錯誤: $remote_url" "0"; return 1; }
 		;;
-	ftp)
-		base_url="$remote_url"
-		[[ $base_url != ftp://* ]] && { echoRgb "FTP地址格式錯誤，需 ftp:// 開頭" "0"; return 1; }
-		;;
+	*) echoRgb "未支援的協議: $proto" "0"; return 1 ;;
 	esac
+	# 自動加上備份目錄前綴 (跟本地結構一致)
+	local backup_subdir="Backup_${Compression_method}_${user:-0}"
+	base_url="$base_url/$backup_subdir"
 	# 連線預檢: 從 base_url 解出 host:port
 	local _hp="${base_url#*://}"
 	_hp="${_hp%%/*}"
 	local _host="${_hp%%:*}"
 	local _port="${_hp#*:}"
 	if [[ $_port = $_hp ]]; then
-		case $proto in
-		webdav) [[ $base_url = https://* ]] && _port=443 || _port=80 ;;
-		ftp) _port=21 ;;
-		esac
+		[[ $base_url = https://* ]] && _port=443 || _port=80
 	fi
 	if ! remote_precheck "$_host" "$_port"; then
 		echoRgb "$proto伺服器無法連線: $_host:$_port (請檢查WiFi/位址/伺服器狀態)" "0"
@@ -780,25 +967,26 @@ upload_remote() {
 	total="$(wc -l < "$list_file")"
 	echoRgb "準備上傳 $total 個檔案" "3"
 	remote_log "$proto 開始: $base_url, 共 $total 檔"
-	# WebDAV: 創建遠程目錄 (MKCOL), FTP: curl --ftp-create-dirs 自動處理
-	if [[ $proto = webdav ]]; then
-		while read -r f; do
-			local d="${f#$Backup/}"
-			d="${d%/*}"
-			[[ -n $d && $d != "${f#$Backup/}" ]] && echo "$d"
-		done < "$list_file" | sort -u | while read -r d; do
-			local enc_d="$(echo -n "$d" | busybox sed 's/%/%25/g; s/ /%20/g; s/+/%2B/g; s/#/%23/g')"
-			local cur="$base_url"
-			local IFS='/'
-			set -- $enc_d
-			for seg; do
-				cur="$cur/$seg"
-				curl -sS -L -X MKCOL -u "$remote_user:$remote_pass" "$cur" 2>/dev/null
-			done
+	# WebDAV: 先建初始目錄 (Backup_zstd_X 自己)
+	curl -sS -L --http1.1 -X MKCOL -u "$remote_user:$remote_pass" "$base_url" >/dev/null 2>&1
+	# WebDAV: 創建遠程子目錄 (MKCOL)
+	while read -r f; do
+		local d="${f#$Backup/}"
+		d="${d%/*}"
+		[[ -n $d && $d != "${f#$Backup/}" ]] && echo "$d"
+	done < "$list_file" | sort -u | while read -r d; do
+		local enc_d="$(url_encode_path "$d")"
+		local cur="$base_url"
+		local IFS='/'
+		set -- $enc_d
+		for seg; do
+			cur="$cur/$seg"
+			curl -sS -L --http1.1 -X MKCOL -u "$remote_user:$remote_pass" "$cur" >/dev/null 2>&1
 		done
-	fi
+	done
 	# 預掃總目錄數 (排除 wifi, 不計入百分比)
 	local total_dirs done_dirs=0 last_dir="" cur_top_dir=""
+	local dir_start=0 dir_bytes_accum=0
 	while read -r f; do
 		local top="${f#$Backup/}"
 		top="${top%%/*}"
@@ -814,56 +1002,60 @@ upload_remote() {
 		let idx++
 		local rel="${f#$Backup/}"
 		local cur_top="${rel%%/*}"
+		# 判斷是「目錄內檔案」還是「根目錄檔案」
+		# rel 含 / → 目錄內檔案, cur_top 是目錄名
+		# rel 不含 / → 根目錄檔案, cur_top 是檔案名本身
+		local is_root_file=0
+		[[ $rel = "$cur_top" ]] && is_root_file=1
 		# 目錄切換時印上一個目錄的進度
 		if [[ -n $last_dir && $cur_top != "$last_dir" ]]; then
 			if [[ $last_dir != wifi && $total_dirs -gt 0 ]]; then
 				let done_dirs++
-				echoRgb "完成$((done_dirs * 100 / total_dirs))%" "3"
+				local dir_speed=""
+				local dir_elapsed=$(( $(date +%s) - dir_start ))
+				local sp
+				sp=$(speed_calc "$dir_bytes_accum" "$dir_elapsed")
+				[[ -n $sp ]] && dir_speed=" ($sp)"
+				echoRgb "完成$((done_dirs * 100 / total_dirs))%${dir_speed}" "3"
 			fi
-			echoRgb "上傳目錄 $cur_top" "3"
+			if [[ $is_root_file = 1 ]]; then
+				echoRgb "上傳檔案 $cur_top" "3"
+			else
+				echoRgb "上傳目錄 $cur_top" "3"
+			fi
+			dir_start=$(date +%s)
+			dir_bytes_accum=0
 		elif [[ -z $last_dir ]]; then
-			echoRgb "上傳目錄 $cur_top" "3"
+			if [[ $is_root_file = 1 ]]; then
+				echoRgb "上傳檔案 $cur_top" "3"
+			else
+				echoRgb "上傳目錄 $cur_top" "3"
+			fi
+			dir_start=$(date +%s)
+			dir_bytes_accum=0
 		fi
 		last_dir="$cur_top"
+		# 累計這個目錄已上傳的 bytes
+		local _sz
+		_sz=$(stat -c%s "$f" 2>/dev/null)
+		dir_bytes_accum=$(( dir_bytes_accum + ${_sz:-0} ))
 		local target_url
 		if [[ $proto = webdav ]]; then
-			local enc_rel="$(echo -n "$rel" | busybox sed 's/%/%25/g; s/ /%20/g; s/+/%2B/g; s/#/%23/g')"
+			local enc_rel="$(url_encode_path "$rel")"
 			target_url="$base_url/$enc_rel"
 		else
 			target_url="$base_url/$rel"
 		fi
 		local http_code curl_err
-		if [[ $proto = ftp ]]; then
-			# 構建 FTP 遠程路徑: /sdcard/backup/Backup_zstd_0/鱼泡网/
-			local _ftp_path="${base_url#ftp://}"
-			local _ftp_hp="${_ftp_path%%/*}"
-			local _ftp_host="${_ftp_hp%%:*}"
-			local _ftp_port="${_ftp_hp#*:}"; [[ $_ftp_port = $_ftp_hp ]] && _ftp_port=21
-			local _ftp_rem="${_ftp_path#$_ftp_hp}"  # /sdcard/backup/Backup_zstd_0
-			local _ftp_dir="$_ftp_rem/$(dirname "$rel")"
-			[[ -z $_ftp_dir ]] && _ftp_dir="$_ftp_rem"
-			if ftpput -u "$remote_user" -p "$remote_pass" -P "$_ftp_port" "$_ftp_host" \
-				"$_ftp_dir" "$f" 2>/dev/null; then
-				echo "$f" >> "$ok_list"
-				echoRgb "[$idx/$total] ✓ $rel" "1"
-			else
-				echo "$rel  (FTP ERR)" >> "$fail_list"
-				echoRgb "[$idx/$total] ✗ $rel (FTP ERR)" "0"
-			fi
-			continue
-		fi
-		if [[ $proto = webdav ]]; then
-			http_code="$(curl -sS -L --connect-timeout 10 \
-				-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' -o /dev/null "$target_url" 2>"$TMPDIR/.curl_stderr")"
-		elif [[ $proto = smb ]]; then
-			http_code="$(curl -sS -L --connect-timeout 10 \
-				-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' -o /dev/null "$target_url" 2>"$TMPDIR/.curl_stderr")"
-		else
-			http_code="$(curl -sS -L --connect-timeout 10 \
-				-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' -o /dev/null "$target_url" 2>"$TMPDIR/.curl_stderr")"
-		fi
-		curl_err="$(cat "$TMPDIR/.curl_stderr" 2>/dev/null)"; rm -f "$TMPDIR/.curl_stderr"
-		# http_code 2xx 視為成功;FTP 226/250 也是;0 表示連不上
+		# stderr → 檔案 (curl 自己的錯誤訊息)
+		# body → /dev/null (不需要)
+		# stdout → http_code 變數 (-w 的輸出)
+		http_code="$(curl -sS -L --http1.1 --retry 2 --retry-delay 3 --connect-timeout 10 \
+			-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' \
+			-o /dev/null "$target_url" 2>"$TMPDIR/.curl_stderr")"
+		curl_err="$(cat "$TMPDIR/.curl_stderr" 2>/dev/null)"
+		rm -f "$TMPDIR/.curl_stderr"
+		# http_code 2xx 視為成功
 		case $http_code in
 		2*)
 			echo "$f" >> "$ok_list"
@@ -880,169 +1072,17 @@ upload_remote() {
 	# 最後一個目錄(非wifi)的進度
 	if [[ -n $last_dir && $last_dir != wifi && $total_dirs -gt 0 ]]; then
 		let done_dirs++
-		echoRgb "完成$((done_dirs * 100 / total_dirs))%" "3"
+		local dir_speed=""
+		local dir_elapsed=$(( $(date +%s) - dir_start ))
+		local sp
+		sp=$(speed_calc "$dir_bytes_accum" "$dir_elapsed")
+		[[ -n $sp ]] && dir_speed=" ($sp)"
+		echoRgb "完成$((done_dirs * 100 / total_dirs))%${dir_speed}" "3"
 	fi
 	rm -f "$list_file" 2>/dev/null
 	upload_summary "$proto" "$ok_list" "$fail_list"
 }
 
-upload_scp() {
-	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
-	local use_sshpass
-	command -v sshpass >/dev/null 2>&1 && use_sshpass=1
-	local host="${remote_url#//}"
-	local rpath
-	if [[ $host = *:* ]]; then
-		rpath="${host#*:}"
-		host="${host%%:*}"
-	elif [[ $host = */* ]]; then
-		rpath="/${host#*/}"
-		host="${host%%/*}"
-	else
-		rpath="/"
-	fi
-	[[ -z $host ]] && { echoRgb "SCP地址格式錯誤，例: 192.168.1.100:/path" "0"; return 1; }
-	# 連線預檢
-	if ! remote_precheck "$host" 22; then
-		echoRgb "SCP伺服器無法連線: $host:22 (請檢查WiFi/位址/伺服器狀態)" "0"
-		echoRgb "本地檔案已保留" "0"
-		return 1
-	fi
-	local opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
-	# 檢查連接
-	if [[ -n $use_sshpass ]]; then
-		sshpass -p "$remote_pass" ssh $opts "$remote_user@$host" "echo ok" >/dev/null 2>&1 \
-			|| { echoRgb "SCP密碼或主機錯誤" "0"; return 1; }
-	elif [[ $remote_user != "" ]]; then
-		ssh -o BatchMode=yes -o ConnectTimeout=5 $opts "$remote_user@$host" "echo ok" >/dev/null 2>&1 \
-			|| { echoRgb "SCP需密鑰認證或sshpass (未安裝)" "0"; return 1; }
-	else
-		echoRgb "remote_user未設置" "0"; return 1
-	fi
-	local list_file="$TMPDIR/.slist"
-	local ok_list="$TMPDIR/.scpok"
-	local fail_list="$TMPDIR/.scpfail"
-	: > "$ok_list"; : > "$fail_list"
-	remote_collect_targets "$list_file"
-	if [[ ! -s $list_file ]]; then
-		echoRgb "無檔案需上傳" "3"
-		rm -f "$list_file" "$ok_list" "$fail_list" 2>/dev/null
-		return 0
-	fi
-	local total
-	total="$(wc -l < "$list_file")"
-	echoRgb "準備上傳 $total 個檔案" "3"
-	remote_log "SCP 開始: $remote_user@$host:$rpath, 共 $total 檔"
-	# 先一次性建立所有需要的遠端目錄
-	local dirs_file="$TMPDIR/.scp_dirs"
-	while read -r f; do
-		local rel="${f#$Backup/}"
-		local d="${rel%/*}"
-		[[ -n $d && $d != "$rel" ]] && echo "$rpath/$d"
-	done < "$list_file" | sort -u > "$dirs_file"
-	if [[ -s $dirs_file ]]; then
-		local mkdir_cmd
-		mkdir_cmd="$(awk '{printf "mkdir -p \"%s\"; ", $0}' "$dirs_file")"
-		if [[ -n $use_sshpass ]]; then
-			sshpass -p "$remote_pass" ssh $opts "$remote_user@$host" "$mkdir_cmd" 2>/dev/null
-		else
-			ssh $opts "$remote_user@$host" "$mkdir_cmd" 2>/dev/null
-		fi
-	fi
-	rm -f "$dirs_file"
-	# 嘗試用 tar pipeline 一次傳完 (比逐檔 scp 快很多)
-	# 條件: tar 存在
-	local use_tar=0
-	command -v tar >/dev/null 2>&1 && use_tar=1
-	if [[ $use_tar = 1 ]]; then
-		echoRgb "使用 tar pipeline 批次傳輸" "3"
-		# 用 -T 從清單讀檔, -C 切到 $Backup 讓相對路徑乾淨
-		# 遠端用 tar x -C $rpath 解開
-		local tar_rc=1
-		# 把 list_file 轉成相對 $Backup 的相對路徑
-		local rel_list="$TMPDIR/.scp_rel"
-		while read -r f; do
-			echo "${f#$Backup/}"
-		done < "$list_file" > "$rel_list"
-		if [[ -n $use_sshpass ]]; then
-			tar -C "$Backup" -cf - -T "$rel_list" 2>/dev/null \
-				| sshpass -p "$remote_pass" ssh $opts "$remote_user@$host" "tar -C '$rpath' -xf -" 2>&1
-			tar_rc=$?
-		else
-			tar -C "$Backup" -cf - -T "$rel_list" 2>/dev/null \
-				| ssh $opts "$remote_user@$host" "tar -C '$rpath' -xf -" 2>&1
-			tar_rc=$?
-		fi
-		rm -f "$rel_list"
-		if [[ $tar_rc -eq 0 ]]; then
-			# 全部成功
-			cat "$list_file" >> "$ok_list"
-			local n=0
-			while read -r f; do
-				let n++
-				echoRgb "[$n/$total] ✓ ${f#$Backup/}" "1"
-			done < "$list_file"
-		else
-			# tar pipeline 失敗,退回逐檔 scp
-			echoRgb "tar pipeline 失敗,退回逐檔 scp" "0"
-			use_tar=0
-		fi
-	fi
-	if [[ $use_tar = 0 ]]; then
-		# 預掃總目錄數
-		local total_dirs done_dirs=0 last_dir="" cur_top=""
-		while read -r f; do
-			local top="${f#$Backup/}"
-			top="${top%%/*}"
-			[[ $top = wifi ]] && continue
-			echo "$top"
-		done < "$list_file" | sort -u > "$TMPDIR/.scp_dirs_count"
-		total_dirs="$(wc -l < "$TMPDIR/.scp_dirs_count" 2>/dev/null)"
-		rm -f "$TMPDIR/.scp_dirs_count"
-		local idx=0
-		while read -r f; do
-			[[ -z $f ]] && continue
-			let idx++
-			local rel="${f#$Backup/}"
-			cur_top="${rel%%/*}"
-			# 目錄切換時印上一個目錄的進度
-			if [[ -n $last_dir && $cur_top != "$last_dir" ]]; then
-				if [[ $last_dir != wifi && $total_dirs -gt 0 ]]; then
-					let done_dirs++
-					echoRgb "完成$((done_dirs * 100 / total_dirs))%" "3"
-				fi
-				echoRgb "上傳目錄 $cur_top" "3"
-			elif [[ -z $last_dir ]]; then
-				echoRgb "上傳目錄 $cur_top" "3"
-			fi
-			last_dir="$cur_top"
-			local target="$remote_user@$host:$rpath/$rel"
-			local scp_rc
-			if [[ -n $use_sshpass ]]; then
-				sshpass -p "$remote_pass" scp $opts "$f" "$target" >/dev/null 2>&1
-				scp_rc=$?
-			else
-				scp $opts "$f" "$target" >/dev/null 2>&1
-				scp_rc=$?
-			fi
-			if [[ $scp_rc -eq 0 ]]; then
-				echo "$f" >> "$ok_list"
-				echoRgb "[$idx/$total] ✓ $rel" "1"
-			else
-				echo "$rel" >> "$fail_list"
-				echoRgb "[$idx/$total] ✗ $rel" "0"
-				remote_log "FAIL SCP $rel"
-			fi
-		done < "$list_file"
-		# 最後一個目錄(非wifi)的進度
-		if [[ -n $last_dir && $last_dir != wifi && $total_dirs -gt 0 ]]; then
-			let done_dirs++
-			echoRgb "完成$((done_dirs * 100 / total_dirs))%" "3"
-		fi
-	fi
-	rm -f "$list_file" 2>/dev/null
-	upload_summary "SCP" "$ok_list" "$fail_list"
-}
 
 # 從 remote_url 解析出 host 和 port (依 remote_type)
 # 結果寫到全域變數 REMOTE_HOST 和 REMOTE_PORT
@@ -1058,20 +1098,42 @@ remote_parse_endpoint() {
 		REMOTE_HOST="${u%%:*}"; REMOTE_PORT="${u#*:}"
 		if [[ $REMOTE_PORT = $u ]]; then [[ $remote_url = https://* ]] && REMOTE_PORT=443 || REMOTE_PORT=80; fi
 		;;
-	ftp)
-		local u="${remote_url#ftp://}"; u="${u%%/*}"
-		REMOTE_HOST="${u%%:*}"; REMOTE_PORT="${u#*:}"; [[ $REMOTE_PORT = $u ]] && REMOTE_PORT=21
-		;;
-	scp)
-		local u="${remote_url#//}"
-		if [[ $u = *:* ]]; then REMOTE_HOST="${u%%:*}"
-		elif [[ $u = */* ]]; then REMOTE_HOST="${u%%/*}"
-		else REMOTE_HOST="$u"; fi
-		REMOTE_PORT=22
-		;;
 	esac
 }
 
+# 解析 SMB URL 並設定 SMB_SHARE / SMB_REM_PATH 全域變數
+# SMB_SHARE     = //server/share_name (smbclient -L 用)
+# SMB_REM_PATH  = /sub/path (空字串代表 share 根目錄, 不含結尾斜線)
+# 重複的 SMB URL 解析邏輯抽出 (原本有 4 個地方各自解析)
+remote_parse_smb_url() {
+	local url="${remote_url#smb://}"; url="${url%/}"
+	local server="${url%%/*}"
+	local after_server="${url#$server/}"
+	local share_name="${after_server%%/*}"
+	local rem_path="/${after_server#$share_name}"
+	rem_path="${rem_path%/}"
+	[[ $rem_path = / ]] && rem_path=""
+	SMB_SHARE="//$server/$share_name"
+	SMB_REM_PATH="$rem_path"
+}
+
+# 過濾 smbclient 輸出的雜訊行 (Try help / dos charset / OS= 等橫幅文字)
+# 用法: smb_filter_noise <輸入字串>
+smb_filter_noise() {
+	echo "$1" | grep -Ev '^Try "help"|^dos charset|^Can.t load|^Domain=|^OS=|^$'
+}
+
+# 判斷目錄是否含任何檔案 (非空)
+# 用法: dir_has_files <目錄路徑>
+# 回傳: 0=有檔案, 1=空目錄或不存在
+dir_has_files() {
+	[[ -d $1 ]] || return 1
+	[[ -n $(find "$1" -type f -print -quit 2>/dev/null) ]]
+}
+
+# 啟動時的遠端設定初始化
+# 規範化 remote_keep_local 值, 驗證 remote_type, TCP 預檢
+# 失敗時清空 remote_type 停用上傳但保留本地備份
 remote_setup() {
 	[[ -z $remote_type ]] && return
 	# 規範化 remote_keep_local 成 true/false
@@ -1081,9 +1143,9 @@ remote_setup() {
 	esac
 	echoRgb "遠程備份: $remote_type -> $remote_url" "3"
 	case $remote_type in
-	webdav|ftp|smb|scp)
+	webdav|smb)
 		;;
-	*) echoRgb "未知遠程類型: $remote_type" "0"; remote_type=""; return 1 ;;
+	*) echoRgb "未知遠程類型: $remote_type (可選: webdav/smb)" "0"; remote_type=""; return 1 ;;
 	esac
 	[[ -z $remote_url ]] && { echoRgb "remote_url未設置，停用遠端上傳" "0"; remote_type=""; return 1; }
 	# 事前連線測試: 從各協議解出 host:port 做快速 TCP 探測
@@ -1108,6 +1170,91 @@ remote_setup() {
 # 2. TCP 預檢
 # 3. 嘗試認證 + list 遠端目錄
 # 不會實際上傳任何東西
+# 單獨上傳某個 app 的備份 (給子目錄 upload.sh 用)
+# 假設呼叫時 Backup 是備份根目錄 (Backup_zstd_X)
+# $1 = app 名 (子目錄名)
+single_upload() {
+	local app_name="$1"
+	[[ -z $app_name ]] && { echoRgb "single_upload: 缺少 app 名" "0"; return 1; }
+	[[ -z $Backup ]] && Backup="$MODDIR"
+	local target="$Backup/$app_name"
+	[[ ! -d $target ]] && { echoRgb "找不到目錄: $target" "0"; return 1; }
+	dir_has_files "$target" || { echoRgb "$app_name 目錄為空,沒有東西可上傳" "0"; return 1; }
+	# 重置範圍 flag, 只標記這一個
+	unset REMOTE_APPLIST REMOTE_UPLOAD_MEDIA REMOTE_UPLOAD_WIFI
+	case $app_name in
+	Media) REMOTE_UPLOAD_MEDIA=1 ;;
+	wifi) REMOTE_UPLOAD_WIFI=1 ;;
+	*) REMOTE_APPLIST="$app_name" ;;
+	esac
+	REMOTE_TRIGGER=1
+	# 啟動時 remote_setup 已跑過, 這裡只檢查狀態
+	[[ -z $remote_type ]] && { echoRgb "遠端未設定或預檢失敗,終止" "0"; return 1; }
+	echoRgb "—————— 單獨上傳: $app_name ——————" "3"
+	case $remote_type in
+	smb) upload_smb ;;
+	webdav) upload_remote "webdav" ;;
+	esac
+	# 已主動上傳, 清旗標避免 trap EXIT 再跑一次
+	unset REMOTE_TRIGGER
+}
+
+# 主選單觸發: 讀 appList.txt + Custom_path, 直接上傳對應目錄
+# 不互動,等同於跑完整備份後的自動上傳,但不重新備份
+upload_current_backup() {
+	backup_path
+	[[ ! -d $Backup ]] && { echoRgb "本地備份目錄不存在: $Backup" "0"; return 1; }
+	echoRgb "本地備份: $Backup" "2"
+	# 讀 appList.txt (跟備份用同一個解析邏輯)
+	local applist=""
+	if [[ -n $list_location ]]; then
+		if [[ ${list_location:0:1} = / ]]; then
+			[[ -f $list_location ]] && applist="$list_location"
+		else
+			[[ -f $MODDIR/$list_location ]] && applist="$MODDIR/$list_location"
+		fi
+	fi
+	[[ -z $applist && -f $MODDIR/appList.txt ]] && applist="$MODDIR/appList.txt"
+	# 組裝 REMOTE_APPLIST (跟 backup() 用同一個變數,讓 collect_targets 認得)
+	unset REMOTE_APPLIST REMOTE_UPLOAD_MEDIA REMOTE_UPLOAD_WIFI
+	if [[ -n $applist ]]; then
+		REMOTE_APPLIST="$(cat "$applist")"
+		local app_count
+		app_count=$(echo "$REMOTE_APPLIST" | grep -cEv '^[[:space:]]*[#＃!]|^[[:space:]]*$')
+		echoRgb "讀取 $applist (有效 $app_count 個 app)" "2"
+	else
+		echoRgb "找不到 appList.txt" "0"
+	fi
+	# 讀 Custom_path: 有設就帶上 Media
+	if [[ -n $Custom_path ]]; then
+		if dir_has_files "$Backup/Media"; then
+			REMOTE_UPLOAD_MEDIA=1
+			echoRgb "Custom_path 已設, 將上傳 Media" "2"
+		fi
+	fi
+	# wifi 目錄存在就一併上傳
+	if dir_has_files "$Backup/wifi"; then
+		REMOTE_UPLOAD_WIFI=1
+		echoRgb "wifi 目錄存在, 將上傳 wifi" "2"
+	fi
+	if [[ -z $REMOTE_APPLIST && $REMOTE_UPLOAD_MEDIA != 1 && $REMOTE_UPLOAD_WIFI != 1 ]]; then
+		echoRgb "沒有可上傳項目 (appList 為空, Custom_path 未設, 無 wifi)" "0"
+		return 1
+	fi
+	REMOTE_TRIGGER=1
+	# 啟動時 remote_setup 已跑過, 這裡只檢查狀態
+	[[ -z $remote_type ]] && { echoRgb "遠端未設定或預檢失敗,終止" "0"; return 1; }
+	case $remote_type in
+	smb) upload_smb ;;
+	webdav) upload_remote "webdav" ;;
+	esac
+	# 已主動上傳, 清旗標避免 trap EXIT 再跑一次
+	unset REMOTE_TRIGGER
+}
+
+# 測試遠端連線完整性 (主選單第 6 項)
+# 三層測試: TCP 預檢 → 認證 → 路徑訪問
+# 每層失敗都有具體錯誤訊息 (帳密錯/路徑不存在/分享不存在等)
 remote_test() {
 	echoRgb "============== 遠端連線測試 ==============" "3"
 	if [[ -z $remote_type ]]; then
@@ -1121,10 +1268,11 @@ remote_test() {
 	[[ -n $remote_pass ]] && echoRgb "密碼: ********" "2" || echoRgb "密碼: (未設)" "2"
 	echoRgb "保留本地: ${remote_keep_local:-0}" "2"
 	case $remote_type in
-	webdav|ftp|smb|scp) ;;
-	*) echoRgb "未知 remote_type: $remote_type (可選: webdav/ftp/smb/scp)" "0"; return 1 ;;
+	webdav|smb) ;;
+	*) echoRgb "未知 remote_type: $remote_type (可選: webdav/smb)" "0"; return 1 ;;
 	esac
 	[[ -z $remote_url ]] && { echoRgb "remote_url 未設置" "0"; return 1; }
+	scan_smb
 	# 第一關: TCP 預檢
 	remote_parse_endpoint
 	echoRgb "—————— TCP 連線測試 ——————" "3"
@@ -1143,17 +1291,13 @@ remote_test() {
 	echoRgb "—————— 認證與列目錄測試 ——————" "3"
 	case $remote_type in
 	smb)
-		local url="${remote_url#smb://}"; url="${url%/}"
-		local server="${url%%/*}"
-		local after_server="${url#$server/}"
-		local share_name="${after_server%%/*}"
-		local rem_path="/${after_server#$share_name}"
-		rem_path="${rem_path%/}"; [[ $rem_path = / ]] && rem_path=""
-		local share="//$server/$share_name"
+		remote_parse_smb_url
+		local share="$SMB_SHARE"
+		local rem_path="$SMB_REM_PATH"
 		local out
 		out="$(smbclient "$share" -U "$remote_user%$remote_pass" -t 10 -s /dev/null \
-			-c "cd ${rem_path:-/}; ls; exit" 2>&1 \
-			| grep -Ev '^Try "help"|^dos charset|^Can.t load|^Domain=|^OS=' | sed '/^$/d')"
+			-c "cd ${rem_path:-/}; ls; exit" 2>&1)"
+		out="$(smb_filter_noise "$out")"
 		if echo "$out" | grep -qE 'NT_STATUS_LOGON_FAILURE'; then
 			echoRgb "認證失敗 (帳號或密碼錯誤)" "0"
 			return 1
@@ -1174,8 +1318,8 @@ remote_test() {
 	webdav)
 		local base_url="${remote_url%/}"
 		local code
-		code="$(/system/bin/curl -sS -L --connect-timeout 10 -u "$remote_user:$remote_pass" \
-			-X PROPFIND -H "Depth: 0" -w '%{http_code}' -o /dev/null "$base_url" 2>/dev/null)"
+		code="$(curl -sS -L --http1.1 --connect-timeout 10 -u "$remote_user:$remote_pass" \
+			-X PROPFIND -H "Depth: 0" -w '%{http_code}' -o /dev/null "$base_url" 2>&1)"
 		case $code in
 		2*|207) echoRgb "WebDAV 認證通過 (HTTP $code)" "1" ;;
 		401) echoRgb "認證失敗 (HTTP 401, 帳號或密碼錯誤)" "0"; return 1 ;;
@@ -1185,57 +1329,454 @@ remote_test() {
 		*)   echoRgb "WebDAV 異常 (HTTP $code)" "0"; return 1 ;;
 		esac
 		;;
-	ftp)
-		# 系統 curl 無 FTP，用 tools/curl
-		if "$filepath/curl" -sS --connect-timeout 15 --ftp-pasv --max-time 30 \
-			-u "$remote_user:$remote_pass" --list-only "$remote_url" 2>/dev/null; then
-			echoRgb "FTP 認證通過" "1"
-		else
-			echoRgb "FTP 異常 (逾時或無法列出目錄)" "0"; return 1
-		fi
-		;;
-	scp)
-		local host="${remote_url#//}" rpath
-		if [[ $host = *:* ]]; then rpath="${host#*:}"; host="${host%%:*}"
-		elif [[ $host = */* ]]; then rpath="/${host#*/}"; host="${host%%/*}"
-		else rpath="/"; fi
-		local opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
-		local out rc
-		if command -v sshpass >/dev/null 2>&1; then
-			out="$(sshpass -p "$remote_pass" ssh $opts "$remote_user@$host" "ls -d '$rpath' 2>/dev/null || echo NOPATH" 2>&1)"
-			rc="$?"
-		else
-			out="$(ssh -o BatchMode=yes $opts "$remote_user@$host" "ls -d '$rpath' 2>/dev/null || echo NOPATH" 2>&1)"
-			rc="$?"
-		fi
-		if [[ $rc -ne 0 ]]; then
-			echoRgb "SSH 連線失敗" "0"
-			echo "$out" | head -3
-			[[ -z $(command -v sshpass) ]] && echoRgb "提示: 沒有 sshpass,僅支援密鑰認證" "3"
-			return 1
-		fi
-		echoRgb "SSH 認證通過" "1"
-		if echo "$out" | grep -q NOPATH; then
-			echoRgb "遠端路徑不存在: $rpath (將在首次上傳時建立)" "3"
-		else
-			echoRgb "遠端路徑 $rpath 可存取" "1"
-		fi
-		;;
 	esac
 	echoRgb "========================================" "3"
 	echoRgb "全部測試通過, 可以開始備份" "1"
 	return 0
 }
 
+# 列出遠端可用的備份目錄並產生 appList_network.txt
+# 流程: 連遠端 → 列 Backup_*_* 目錄 → 讓使用者選 → 檢查必要檔案 → 掃 app 清單 → 輸出
+remote_list_backups() {
+	[[ -z $remote_type ]] && { echoRgb "remote_type 未設定" "0"; return 1; }
+	case $remote_type in
+	smb|webdav) ;;
+	*) echoRgb "下載功能僅支援 smb / webdav (目前 remote_type=$remote_type)" "0"; return 1 ;;
+	esac
+	# 規範化 remote_keep_local
+	case $remote_keep_local in
+	1|true|True|TRUE) remote_keep_local=true ;;
+	*) remote_keep_local=false ;;
+	esac
+	# 目標目錄 = 跟本地備份一樣的命名規則
+	local target_dir="Backup_${Compression_method}_${user:-0}"
+	echoRgb "目標遠端目錄: $target_dir" "3"
+	# 連線預檢
+	remote_parse_endpoint
+	if ! remote_precheck "$REMOTE_HOST" "$REMOTE_PORT"; then
+		echoRgb "遠端連線失敗: $REMOTE_HOST:$REMOTE_PORT" "0"
+		return 1
+	fi
+	echoRgb "連線到 $remote_type://$REMOTE_HOST:$REMOTE_PORT" "1"
+	# 進入目標目錄, 列出檔案/子資料夾
+	local sub_listing="$TMPDIR/.remote_sub_listing"
+	: > "$sub_listing"
+	if [[ $remote_type = smb ]]; then
+		remote_parse_smb_url
+		local share="$SMB_SHARE"
+		local rem_path="$SMB_REM_PATH"
+		local smb_out
+		smb_out=$(smbclient "$share" -U "$remote_user%$remote_pass" -t 10 -s /dev/null \
+			-c "cd ${rem_path:-/}/$target_dir; ls; exit" 2>&1)
+		if echo "$smb_out" | grep -qE 'NT_STATUS_OBJECT_(PATH|NAME)_NOT_FOUND'; then
+			echoRgb "遠端目錄不存在: $target_dir" "0"
+			echoRgb "請確認遠端有此備份,或備份過至少一次" "3"
+			rm -f "$sub_listing"
+			return 1
+		fi
+		if echo "$smb_out" | grep -qE 'NT_STATUS|ERRSRV'; then
+			echoRgb "讀取遠端失敗:" "0"
+			echo "$smb_out" | grep -E 'NT_STATUS|ERR' | head -3
+			rm -f "$sub_listing"
+			return 1
+		fi
+		# 格式: "D dirname" 或 "N filename"
+		echo "$smb_out" | awk 'NF>=5 && $1 != "." && $1 != ".." {print $2, $1}' > "$sub_listing"
+	elif [[ $remote_type = webdav ]]; then
+		local base_url="${remote_url%/}"
+		local http_code
+		http_code=$(curl -sS -L --http1.1 --connect-timeout 10 -u "$remote_user:$remote_pass" \
+			-X PROPFIND -H "Depth: 1" -w '%{http_code}' -o "$TMPDIR/.wdav_out" \
+			"$base_url/$target_dir/" 2>/dev/null)
+		case $http_code in
+		2*) ;;
+		404) echoRgb "遠端目錄不存在: $target_dir (HTTP 404)" "0"
+			echoRgb "請確認遠端有此備份,或備份過至少一次" "3"
+			rm -f "$sub_listing" "$TMPDIR/.wdav_out"; return 1 ;;
+		*) echoRgb "讀取遠端失敗 (HTTP $http_code)" "0"
+			rm -f "$sub_listing" "$TMPDIR/.wdav_out"; return 1 ;;
+		esac
+		local propfind_out
+		propfind_out=$(cat "$TMPDIR/.wdav_out" 2>/dev/null)
+		rm -f "$TMPDIR/.wdav_out"
+		# 解析每個 response, 過濾掉「目錄自己」(href 跟 base 同名)
+		# 收集成 "D|encoded_name" 或 "N|encoded_name"
+		local raw_listing="$TMPDIR/.raw_wdav_listing"
+		echo "$propfind_out" | tr '><' '\n' | awk '
+			/^D:response$/ { in_resp=1; href=""; is_dir=0 }
+			/^\/D:response$/ {
+				if (in_resp && href != "") {
+					# 從 href 取最後一段 (URL 編碼狀態)
+					n = split(href, a, "/")
+					name = a[n]
+					if (name == "" && n > 1) name = a[n-1]
+					if (name != "" && name != "/") {
+						print (is_dir ? "D" : "N") "|" name
+					}
+				}
+				in_resp=0
+			}
+			/^D:href$/ { getline href }
+			/^D:collection/ { is_dir=1 }
+		' > "$raw_listing"
+		# 過濾掉目錄自己 (encoded 或非 encoded 都比對)
+		# target_dir 是 "Backup_zstd_0" 純 ASCII,不需要編碼
+		grep -vE "\|${target_dir}\$" "$raw_listing" > "$sub_listing"
+		rm -f "$raw_listing"
+		# URL 解碼 (支援 UTF-8 中文)
+		# 用 printf 將 %XX 轉成實際字元
+		local decoded="$TMPDIR/.decoded_listing"
+		: > "$decoded"
+		while IFS='|' read -r typ name; do
+			[[ -z $name ]] && continue
+			# printf '%b' 不認 %XX, 要先轉成 \xXX
+			local converted
+			converted=$(echo "$name" | sed 's/%\([0-9a-fA-F][0-9a-fA-F]\)/\\x\1/g')
+			# 用 printf 把 \xXX 還原成真實字元
+			local real
+			real=$(printf '%b' "$converted")
+			echo "$typ $real" >> "$decoded"
+		done < "$sub_listing"
+		mv "$decoded" "$sub_listing"
+	fi
+	if [[ ! -s $sub_listing ]]; then
+		echoRgb "遠端目錄為空或讀取失敗" "0"
+		rm -f "$sub_listing"
+		return 1
+	fi
+	# 檢查必要檔案: tools/ start.sh restore_settings.conf
+	local has_tools=0 has_start=0 has_conf=0
+	while read -r type name; do
+		case "$name" in
+		tools) [[ $type = D ]] && has_tools=1 ;;
+		start.sh) [[ $type != D ]] && has_start=1 ;;
+		restore_settings.conf) [[ $type != D ]] && has_conf=1 ;;
+		esac
+	done < "$sub_listing"
+	local missing=""
+	[[ $has_tools = 0 ]] && missing="$missing tools/"
+	[[ $has_start = 0 ]] && missing="$missing start.sh"
+	[[ $has_conf = 0 ]] && missing="$missing restore_settings.conf"
+	if [[ -n $missing ]]; then
+		echoRgb "錯誤: 遠端 $target_dir 缺少必要檔案:$missing" "0"
+		echoRgb "此備份不完整,無法用於恢復" "0"
+		rm -f "$sub_listing"
+		return 1
+	fi
+	echoRgb "必要檔案檢查通過 (tools/ start.sh restore_settings.conf)" "1"
+	# 產生 appList_network.txt
+	# 規則:
+	#   - 排除 tools, start.sh, restore_settings.conf (固定下載項)
+	#   - 是目錄: wifi/Media → 特殊項; 其他 → app
+	#   - 是檔案就忽略
+	local out="$MODDIR/appList_network.txt"
+	{
+		echo "# 遠端備份目錄: $target_dir"
+		echo "# 連線: $remote_type://$REMOTE_HOST/"
+		echo "# 用 # 註解掉不要下載的項目, 編輯完選 '從遠端下載備份' 即可"
+		echo ""
+		echo "# ---- 應用 (每行一個 app) ----"
+		local apps="$TMPDIR/.apps_list"
+		: > "$apps"
+		while read -r type name; do
+			[[ $type = D ]] || continue
+			case "$name" in
+			tools|wifi|Media) continue ;;
+			esac
+			echo "$name" >> "$apps"
+		done < "$sub_listing"
+		sort "$apps"
+		rm -f "$apps"
+		echo ""
+		echo "# ---- 特殊項目 (非 app, 有就會下載) ----"
+		while read -r type name; do
+			[[ $type = D ]] || continue
+			case "$name" in
+			wifi|Media) echo "$name" ;;
+			esac
+		done < "$sub_listing"
+	} > "$out"
+	rm -f "$sub_listing"
+	echoRgb "已輸出清單: $out" "1"
+	echoRgb "請編輯該檔案,留下你要下載的項目,然後選 '從遠端下載備份'" "3"
+}
+
+# 依 appList_network.txt 下載備份到 $MODDIR/Backup_*_$user
+remote_download_backup() {
+	[[ -z $remote_type ]] && { echoRgb "remote_type 未設定" "0"; return 1; }
+	case $remote_type in
+	smb|webdav) ;;
+	*) echoRgb "下載功能僅支援 smb / webdav (目前 remote_type=$remote_type)" "0"; return 1 ;;
+	esac
+	local list="$MODDIR/appList_network.txt"
+	if [[ ! -f $list ]]; then
+		echoRgb "找不到 $list" "0"
+		echoRgb "請先執行 '列出遠端備份' 產生清單" "3"
+		return 1
+	fi
+	local dl_start
+	dl_start=$(date +%s)
+	# 目標目錄 = 跟本地備份一樣的命名規則
+	local chosen="Backup_${Compression_method}_${user:-0}"
+	echoRgb "目標遠端目錄: $chosen" "3"
+	# 連線預檢
+	remote_parse_endpoint
+	if ! remote_precheck "$REMOTE_HOST" "$REMOTE_PORT"; then
+		echoRgb "遠端連線失敗: $REMOTE_HOST:$REMOTE_PORT" "0"
+		return 1
+	fi
+	# 解析清單 (去除註解/空行)
+	local items_file="$TMPDIR/.dl_items"
+	grep -Ev '^[[:space:]]*[#＃]|^[[:space:]]*$' "$list" > "$items_file"
+	if [[ ! -s $items_file ]]; then
+		echoRgb "清單為空,沒有東西需要下載" "0"
+		rm -f "$items_file"
+		return 1
+	fi
+	local item_count
+	item_count=$(wc -l < "$items_file")
+	echoRgb "將下載 $item_count 個項目 + 固定 3 項 (tools/ start.sh restore_settings.conf)" "3"
+	# 下載目標: $MODDIR/$chosen (例: $MODDIR/Backup_zstd_0)
+	local dest="$MODDIR/$chosen"
+	mkdir -p "$dest" 2>/dev/null
+	echoRgb "下載到: $dest" "2"
+	# 依協議分派
+	local fail=0
+	if [[ $remote_type = smb ]]; then
+		_remote_download_smb "$chosen" "$dest" "$items_file" || fail=1
+	elif [[ $remote_type = webdav ]]; then
+		_remote_download_webdav "$chosen" "$dest" "$items_file" || fail=1
+	fi
+	rm -f "$items_file"
+	local dl_elapsed=$(( $(date +%s) - dl_start ))
+	if [[ $fail -eq 0 ]]; then
+		echoRgb "_______________________________________" "2"
+		echoRgb "下載完成: $dest 用時${dl_elapsed}秒" "1"
+		echoRgb "可直接執行 $dest/start.sh 進行恢復" "3"
+		remote_log "下載完成: $dest 用時${dl_elapsed}秒"
+	else
+		echoRgb "下載過程有失敗,請檢查上方訊息 (用時${dl_elapsed}秒)" "0"
+		remote_log "下載失敗 用時${dl_elapsed}秒"
+		return 1
+	fi
+}
+
+# SMB 下載實作
+# 每個 item 一次 smbclient (用 -D 直接切目錄,避免 cd 路徑解析問題)
+# $1=遠端 Backup_zstd_X 目錄名, $2=本地目標, $3=要下載的項目清單檔
+_remote_download_smb() {
+	local chosen="$1" dest="$2" items_file="$3"
+	remote_parse_smb_url
+	local share="$SMB_SHARE"
+	local rem_path="$SMB_REM_PATH"
+	local SMB_OPTS="-t 30 -s /dev/null"
+	local base="${rem_path:+$rem_path/}$chosen"
+	local total_items
+	total_items=$(wc -l < "$items_file")
+	local idx=0 fail_total=0
+	# 下載每個項目 (用 -D 切到指定目錄, 再 mget *)
+	while read -r item; do
+		[[ -z $item ]] && continue
+		let idx++
+		echoRgb "[$idx/$total_items] 下載 $item" "3"
+		mkdir -p "$dest/$item" 2>/dev/null
+		local out
+		out=$(smbclient "$share" -U "$remote_user%$remote_pass" $SMB_OPTS \
+			-D "$base/$item" \
+			-c "lcd $dest/$item; prompt off; recurse on; mget *; exit" 2>&1)
+		out="$(smb_filter_noise "$out")"
+		if echo "$out" | grep -qE 'NT_STATUS_[A-Z_]+' \
+			|| [[ -z "$(ls -A "$dest/$item" 2>/dev/null)" ]]; then
+			echoRgb "  ✗ $item" "0"
+			echo "$out" | grep -E 'NT_STATUS' | head -3
+			let fail_total++
+		else
+			echoRgb "  ✓ $item" "1"
+		fi
+	done < "$items_file"
+	# 固定 3 項: tools/ (獨立連線)
+	echoRgb "下載固定項目: tools/ start.sh restore_settings.conf" "3"
+	mkdir -p "$dest/tools" 2>/dev/null
+	local tools_out
+	tools_out=$(smbclient "$share" -U "$remote_user%$remote_pass" $SMB_OPTS \
+		-D "$base/tools" \
+		-c "lcd $dest/tools; prompt off; recurse on; mget *; exit" 2>&1)
+	tools_out="$(smb_filter_noise "$tools_out")"
+	# 固定 3 項: start.sh / restore_settings.conf (獨立連線)
+	local fix_out
+	fix_out=$(smbclient "$share" -U "$remote_user%$remote_pass" $SMB_OPTS \
+		-D "$base" \
+		-c "lcd $dest; prompt off; get start.sh; get restore_settings.conf; exit" 2>&1)
+	fix_out="$(smb_filter_noise "$fix_out")"
+	# 驗證
+	local fix_fail=0
+	[[ -z "$(ls -A "$dest/tools" 2>/dev/null)" ]] && fix_fail=1
+	[[ ! -s $dest/start.sh ]] && fix_fail=1
+	[[ ! -s $dest/restore_settings.conf ]] && fix_fail=1
+	if [[ $fix_fail = 1 ]]; then
+		echoRgb "  固定項目下載有錯誤" "0"
+		echo "$tools_out
+$fix_out" | grep -E 'NT_STATUS' | head -5
+		[[ -z "$(ls -A "$dest/tools" 2>/dev/null)" ]] && echoRgb "  tools/ 為空" "0"
+		[[ ! -s $dest/start.sh ]] && echoRgb "  start.sh 缺失或空檔" "0"
+		[[ ! -s $dest/restore_settings.conf ]] && echoRgb "  restore_settings.conf 缺失或空檔" "0"
+		let fail_total++
+	else
+		echoRgb "  ✓ 固定 3 項" "1"
+	fi
+	[[ -f $dest/start.sh ]] && chmod +x "$dest/start.sh" 2>/dev/null
+	[[ -d $dest/tools ]] && chmod -R +x "$dest/tools" 2>/dev/null
+	[[ $fail_total -eq 0 ]]
+}
+
+# WebDAV 下載實作 (並行模式: 先遞迴掃出所有檔案 url, 再 curl -Z 並行下載)
+_remote_download_webdav() {
+	local chosen="$1" dest="$2" items_file="$3"
+	local base_url="${remote_url%/}/$chosen"
+	local total_items
+	total_items=$(wc -l < "$items_file")
+	local fail_total=0
+	# 遞迴掃描 WebDAV 路徑, 把所有檔案 (含子目錄內) 寫入清單檔
+	# 清單格式: <遠端編碼URL>\t<本地完整路徑>
+	# $1=遠端 base url (已編碼), $2=本地目錄, $3=清單檔
+	_webdav_scan_files() {
+		local r_url="$1" l_dir="$2" out_list="$3"
+		mkdir -p "$l_dir" 2>/dev/null
+		local out
+		out=$(curl -sS -L --http1.1 --connect-timeout 10 -u "$remote_user:$remote_pass" \
+			-X PROPFIND -H "Depth: 1" "$r_url/" 2>/dev/null)
+		local parsed="$TMPDIR/.wdav_scan_$$"
+		echo "$out" | tr '><' '\n' | awk '
+			/^D:response$/ { in_resp=1; href=""; is_dir=0 }
+			/^\/D:response$/ {
+				if (in_resp && href != "") {
+					print (is_dir ? "D" : "F") "\t" href
+				}
+				in_resp=0
+			}
+			/^D:href$/ { getline href }
+			/^D:collection/ { is_dir=1 }
+		' > "$parsed"
+		local r_url_basename_encoded r_url_basename
+		r_url_basename_encoded="$(echo "$r_url" | sed 's|/$||; s|.*/||')"
+		r_url_basename=$(url_decode_path "$r_url_basename_encoded")
+		local rc=0
+		while IFS=$'\t' read -r typ href; do
+			[[ -z $href ]] && continue
+			local encoded_name name
+			encoded_name="$(echo "$href" | sed 's|/$||; s|.*/||')"
+			name=$(url_decode_path "$encoded_name")
+			[[ -z $name ]] && continue
+			[[ $name = "$r_url_basename" ]] && continue
+			if [[ $typ = D ]]; then
+				_webdav_scan_files "$r_url/$encoded_name" "$l_dir/$name" "$out_list" || rc=1
+			else
+				# 寫入清單: URL\t本地路徑
+				echo -e "$r_url/$encoded_name\t$l_dir/$name" >> "$out_list"
+			fi
+		done < "$parsed"
+		rm -f "$parsed"
+		return $rc
+	}
+	# 用 curl -Z (--parallel) 批次下載清單內的所有檔案
+	# 每行 "url\tlocal_path", 並行度預設 4
+	_webdav_parallel_get() {
+		local list="$1"
+		[[ ! -s $list ]] && return 0
+		# 組裝 curl --config 格式: url + output 一對一
+		local cfg="$TMPDIR/.curl_cfg_$$"
+		: > "$cfg"
+		while IFS=$'\t' read -r url lpath; do
+			# curl config 格式: 每組 url + output
+			# 路徑要用引號避開空白
+			echo "url = \"$url\"" >> "$cfg"
+			echo "output = \"$lpath\"" >> "$cfg"
+		done < "$list"
+		curl -sS -L --http1.1 --connect-timeout 10 --retry 2 -Z --parallel-max 4 \
+			-u "$remote_user:$remote_pass" -K "$cfg" 2>/dev/null
+		local rc=$?
+		rm -f "$cfg"
+		return $rc
+	}
+	# 1. 遞迴掃描所有要下載的檔案
+	local all_files="$TMPDIR/.wdav_all_files"
+	: > "$all_files"
+	local idx=0
+	local scan_fail=0
+	# 1a. items_file 內每個項目
+	while read -r item; do
+		[[ -z $item ]] && continue
+		let idx++
+		local encoded_item
+		encoded_item=$(url_encode_path "$item")
+		[[ -z $encoded_item ]] && encoded_item="$item"
+		echoRgb "[$idx/$total_items] 掃描 $item" "3"
+		if ! _webdav_scan_files "$base_url/$encoded_item" "$dest/$item" "$all_files"; then
+			echoRgb "  ✗ 掃描失敗: $item" "0"
+			scan_fail=1
+			let fail_total++
+		fi
+	done < "$items_file"
+	# 1b. 固定項目 tools/
+	echoRgb "掃描固定項目: tools/" "3"
+	if ! _webdav_scan_files "$base_url/tools" "$dest/tools" "$all_files"; then
+		echoRgb "  ✗ 掃描失敗: tools/" "0"
+		scan_fail=1
+		let fail_total++
+	fi
+	# 1c. 固定檔案 start.sh / restore_settings.conf 直接加進清單
+	for f in start.sh restore_settings.conf; do
+		echo -e "$base_url/$f\t$dest/$f" >> "$all_files"
+	done
+	# 2. 並行下載
+	local total_files
+	total_files=$(wc -l < "$all_files")
+	echoRgb "並行下載 $total_files 個檔案 (4 路同時)" "3"
+	_webdav_parallel_get "$all_files"
+	rm -f "$all_files"
+	# 3. 事後驗證每個項目本地是否有檔案
+	while read -r item; do
+		[[ -z $item ]] && continue
+		if [[ -z "$(ls -A "$dest/$item" 2>/dev/null)" ]]; then
+			echoRgb "  ✗ $item (本地為空)" "0"
+			let fail_total++
+		else
+			echoRgb "  ✓ $item" "1"
+		fi
+	done < "$items_file"
+	# 固定項目驗證
+	local fix_fail=0
+	[[ -z "$(ls -A "$dest/tools" 2>/dev/null)" ]] && fix_fail=1
+	[[ ! -s $dest/start.sh ]] && fix_fail=1
+	[[ ! -s $dest/restore_settings.conf ]] && fix_fail=1
+	if [[ $fix_fail = 1 ]]; then
+		echoRgb "  固定項目下載有錯誤" "0"
+		[[ -z "$(ls -A "$dest/tools" 2>/dev/null)" ]] && echoRgb "  tools/ 為空" "0"
+		[[ ! -s $dest/start.sh ]] && echoRgb "  start.sh 缺失或空檔" "0"
+		[[ ! -s $dest/restore_settings.conf ]] && echoRgb "  restore_settings.conf 缺失或空檔" "0"
+		let fail_total++
+	else
+		echoRgb "  ✓ 固定 3 項" "1"
+	fi
+	[[ -f $dest/start.sh ]] && chmod +x "$dest/start.sh" 2>/dev/null
+	[[ -d $dest/tools ]] && chmod -R +x "$dest/tools" 2>/dev/null
+	[[ $fail_total -eq 0 ]]
+}
+
+# trap EXIT 觸發的遠端上傳函數
+# 只在 backup/backup_media/backup_update_apk 成功完成後才觸發上傳
+# 其他選項 (測試/列出/下載/退出) 不觸發, 由 REMOTE_TRIGGER 旗標控制
 remote_cleanup() {
+	# 只有在 backup / backup_media / backup_update_apk 跑完後才上傳
+	# 其他功能 (測試連線、生成列表、檢查壓縮等) 不觸發上傳
+	[[ $REMOTE_TRIGGER != 1 ]] && return 0
 	case $remote_type in
 	webdav) upload_remote "webdav" ;;
-	ftp) upload_remote "ftp" ;;
 	smb) upload_remote "smb" ;;
-	scp) upload_remote "scp" ;;
 	*) return 0 ;;
 	esac
 }
+# 從 /proc/uptime 算出開機時長並格式化成 X天X時X分X秒
 Show_boottime() {
 	awk -F '.' '{run_days=$1 / 86400;run_hour=($1 % 86400)/3600;run_minute=($1 % 3600)/60;run_second=$1 % 60;printf("%d天%d時%d分%d秒",run_days,run_hour,run_minute,run_second)}' /proc/uptime 2>/dev/null
 }
@@ -1300,6 +1841,8 @@ case $LANG in
 	Script_target_language="zh-CN" ;;
 esac
 echoRgb "$Script_target_language腳本"
+# 互動式輸入選項 (音量鍵或數字鍵)
+# 配合 keycheck 抓音量鍵, 沒音量鍵則退回鍵盤輸入
 Enter_options() {
     echoRgb "$1" "2"
     unset option parameter
@@ -1319,6 +1862,8 @@ Enter_options() {
         fi
     done
 }
+# 在生成 appList.txt 時, 為某個 app 補上額外資訊欄位
+# (例如版本號、apk 路徑等), 供後續使用
 add_entry() {
     app_name="$1"
     package_name="$2"
@@ -1413,6 +1958,7 @@ alias Set_false_Permissions="app_process /system/bin com.xayah.dex.HiddenApiUtil
 alias Set_Ops="app_process /system/bin com.xayah.dex.HiddenApiUtil setOpsMode $USER_ID $@"
 alias setDisplay="app_process /system/bin com.xayah.dex.HiddenApiUtil setDisplayPowerMode $@"
 find_tools_path="$(find "$path_hierarchy"/* -maxdepth 1 -name "tools" -type d ! -path "$path_hierarchy/tools")"
+# 備份 WiFi 密碼到指定目錄, 用 classes.dex 讀 system 內的 WifiConfigStore
 backup_wifi() {
     local wifi_dir="$1"
     [[ -z $wifi_dir ]] && echoRgb "backup_wifi: 目錄參數為空" "0" && return 1
@@ -1424,6 +1970,7 @@ backup_wifi() {
         echo_log "wifi備份"
     fi
 }
+# 從備份恢復 WiFi 密碼 (寫回 WifiConfigStore)
 recover_wifi() {
     if [[ -d $1 ]]; then
         if [[ -f $1/wifi.json ]]; then
@@ -1460,6 +2007,9 @@ Rename_script () {
 	done
 	unset HT
 }
+# 在指定路徑生成入口腳本 (start.sh / backup.sh / recover.sh / upload.sh)
+# $1=模式 (0/1/2/3/5), $2=目標檔案路徑
+# 模式對應的 MODDIR 路徑推算規則不同 (依腳本放置位置)
 touch_shell() {
     unset conf_path MODDIR_Path
     case $1 in
@@ -1478,7 +2028,12 @@ touch_shell() {
     3)        
         MODDIR_Path='${0%/*/*}'
         MODDIR_Path1='${0%/*}'
-        conf_path='${0%/*/*}/restore_settings.conf' ;;        
+        conf_path='${0%/*/*}/restore_settings.conf' ;;
+    5)
+        # upload.sh: 放在 Backup_zstd_X/<app>/, MODDIR 是 Backup_zstd_X 自己
+        MODDIR_Path='${0%/*/*/*}'
+        MODDIR_Path1='${0%/*/*}'
+        conf_path='${0%/*/*/*}/backup_settings.conf' ;;
     esac
     echo "#!/system/bin/sh
 if [ -f \"$MODDIR_Path/tools/tools.sh\" ]; then
@@ -1493,6 +2048,7 @@ logfile=\"\${0%/*}/log/log_\$(date +%Y-%m-%d_%H-%M).txt\"
 . \"$MODDIR_Path/tools/tools.sh\" | tee \"\$logfile\"
 sed -i \"\$(printf 's/\033\[[0-9;]*m//g')\" \"\$logfile\"" > "$2"
 }
+# 從 zip 檔自動更新腳本 (檢測 $MODDIR 內的 .zip 並提取 tools.sh)
 update_script() {
 	[[ $zipFile = "" ]] && zipFile="$(find "$MODDIR" -maxdepth 1 -name "*.zip" -type f 2>/dev/null)"
 	if [[ $zipFile != "" ]]; then
@@ -1701,6 +2257,9 @@ else
     [[ $update = true ]] && echoRgb "更新獲取失敗" "0"
 fi
 update_script
+# 計算本地備份目錄路徑
+# 格式: $Output_path/Backup_${Compression_method}_${user}
+# 並建立目錄, 設定 $Backup 全域變數供其他函數使用
 backup_path() {
 	if [[ $Output_path != "" ]]; then
 		[[ ${Output_path: -1} = / ]] && Output_path="${Output_path%?}"
@@ -1757,6 +2316,7 @@ backup_path() {
 	echoRgb "$outshow" "2"
 	remote_setup
 }
+# 計算指定目錄的總大小並輸出可讀字串 (KB/MB/GB)
 Calculate_size() {
 	#計算出備份大小跟差異性
 	filesizee="$(find "$1" -type f -printf "%s\n" | awk '{s+=$1} END {print s}')"
@@ -1771,6 +2331,8 @@ Calculate_size() {
 	echoRgb "備份資料夾總體大小$(size "$filesizee")"
 	echoRgb "$NJL"
 }
+# 把 bytes 轉成人類可讀格式 (B/KB/MB/GB)
+# 用法: size <bytes 數值> 或 size <檔案路徑> (會 stat 取大小)
 size() {
     local b_size get_size
     case $1 in
@@ -1806,9 +2368,11 @@ partition_info() {
     fi
 	Occupation_status="$(df -h "${Backup%/*}" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1),$(NF)}')"
 }
+# 取得指定 app 的後台運行 PID (用於跳過正在運行的 app)
 Process_Information() {
     dumpsys activity processes | awk -v key="$1" -v user="$user" 'function getUserFromUid(uid){return int(uid/100000)} /^ *user #[0-9]+ uid=/ {if($0 ~ /ISOLATED uid=[0-9]+/){uid="";pid="";pkg="";next} if(pkg!="" && uid!="" && pid!=""){if((key=="" || pkg==key) && (user=="" || getUserFromUid(uid)==user)){print pid}} uid="";pid="";pkg=""; if($0 ~ /uid=/ && uid==""){tmp=$0; sub(/^.*uid=/,"",tmp); sub(/ .*/,"",tmp); uid=tmp}} /packageList=\{/ {tmp=$0; sub(/^.*packageList=\{/,"",tmp); sub(/\}.*/,"",tmp); pkg=tmp} /pid=/ {tmp=$0; sub(/^.*pid=/,"",tmp); sub(/ .*/,"",tmp); pid=tmp} END {if(pkg!="" && uid!="" && pid!=""){if((key=="" || pkg==key) && (user=="" || getUserFromUid(uid)==user)){print pid}}}'
 }
+# 強制終止指定 app (am force-stop + pkill 雙保險)
 kill_app() {
     process_Information="$(Process_Information "$name2")"
     if [[ $name2 != bin.mt.plus && $name2 != com.termux && $name2 != bin.mt.plus.canary ]]; then
@@ -1822,6 +2386,7 @@ kill_app() {
         fi
 	fi
 }
+# 備份 app 的 apk 檔 (含 split apk, 用 tar/zstd 打包)
 Backup_apk() {
 	#檢測apk狀態進行備份
 	#創建APP備份文件夾
@@ -1908,6 +2473,9 @@ Backup_apk() {
 	fi
 	[[ $name2 = bin.mt.plus && ! -f $Backup/$name1.apk ]] && cp -r "$apk_path" "$Backup/$name1.apk"
 }
+# 備份 app 的 SSAID (應用識別碼)
+# 用 classes.dex 透過 app_process 讀 /data/system/users/$user/settings_ssaid.xml
+# 沒備份 SSAID 恢復後遊戲帳號會被當新裝置
 Backup_ssaid() {
     Ssaid="$(jq -r '.[] | select(.Ssaid != null).Ssaid' "$app_details")"
     ssaid="$(awk -v pkg="$name2" '$1 == pkg {print $2}'<<<"$ssaid_info")"
@@ -1922,6 +2490,8 @@ Backup_ssaid() {
     fi
     [[ $ssaid = null ]] && ssaid=
 }
+# 備份 app 的 runtime permissions (運行時權限)
+# 恢復時可一鍵還原所有授權, 不用再手動點
 Backup_Permissions() {
     get_Permissions="$(jq -r '.[] | select(.permissions != null).permissions' "$app_details")"
     Get_Permissions="$(get_Permissions "$name2" | jq -nR '[inputs | select(. != "null" and length>0) | split(" ") | {(.[0]): (.[1:] | join(" "))}] | if length > 0 then add else empty end')"
@@ -2067,6 +2637,8 @@ Backup_data() {
 		[[ -f $data_path ]] && echoRgb "$1是一個文件 不支持備份" "0"
 	fi
 }
+# 恢復 app 的 data 資料 (解壓 tar.zst 到 /data/data/<pkg>/)
+# 處理 selinux context、uid 綁定
 Release_data() {
 	tar_path="$1"
 	X="$path2/$name2"
@@ -2187,6 +2759,7 @@ Release_data() {
 	esac
 	rm -rf "$TMPDIR"/*
 }
+# 安裝 apk (含 split apk 處理), 自動繞過安裝驗證
 installapk() {
 	apkfile="$(find "$Backup_folder" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
 	if [[ $apkfile != "" ]]; then
@@ -2230,6 +2803,8 @@ installapk() {
 		esac
 	fi
 }
+# 關閉 apk 安裝驗證 (verifier_verify_adb_installs)
+# 避免 Play Protect / 系統驗證攔截批次安裝
 disable_verify() {
 	#禁用apk驗證
 	settings put global verifier_verify_adb_installs 0 2>/dev/null
@@ -2269,6 +2844,8 @@ disable_verify() {
         fi
     fi
 }
+# 從 app 安裝資訊取得 app 名稱 / apk 路徑 / 版本等資料
+# 用 classes.dex 透過 hidden API 拿到完整 PackageInfo
 get_name(){
 	txt="$MODDIR/appList.txt"
 	txt="${txt/'/storage/emulated/'/'/data/media/'}"
@@ -2432,11 +3009,14 @@ get_name(){
     endtime 1
 	exit 0
 }
+# 腳本自我檢測 (檢查工具完整性、權限、環境)
+# 啟動時呼叫, 出問題會提示並退出
 self_test() {
 	if [[ $(dumpsys deviceidle get charging) = false && $(dumpsys battery | awk '/level/{print $2}' | grep -Eo '[0-9]+') -le 15 ]]; then
 		echoRgb "電量$(dumpsys battery | awk '/level/{print $2}' | grep -Eo '[0-9]+')%太低且未充電\n -為防止備份檔案或是恢復因低電量強制關機導致檔案損毀\n -請連接充電器後備份" "0" && exit 2
 	fi
 }
+# 驗證單一檔案的 sha256 校驗碼 (對照 tools 目錄內預存的雜湊)
 Validation_file() {
 	MODDIR_NAME="${1%/*}"
 	MODDIR_NAME="${MODDIR_NAME##*/}"
@@ -2448,6 +3028,8 @@ Validation_file() {
 	esac
 	echo_log "${FILE_NAME##*.}校驗"
 }
+# 檢查壓縮檔完整性 (zstd -t / tar -t)
+# 主選單「壓縮檔完整性檢查」呼叫
 Check_archive() {
 	starttime1="$(date -u "+%s")"
 	error_log="$TMPDIR/error_log"
@@ -2514,6 +3096,8 @@ restore_permissions () {
     [[ $? != 0 ]] && echo_log "設置ops權限"
     }
 }
+# 取得當前正在後台運行的所有 app 列表
+# 配合「後台應用忽略」設定, 跳過正在運行的 app 不備份
 Background_application_list() {
     [[ $activity != false ]] && {
     if [[ $Background_apps_ignore = true || $1 = debug ]]; then
@@ -2538,6 +3122,9 @@ else
     echoRgb "後台應用獲取失敗" "0" activity=false
 fi
 unset Backstage
+# 主備份函數 - 對 appList.txt 內所有 app 執行完整備份
+# 流程: 讀清單 → 逐個 app → 備份 apk + data + user_de + obb → 備份 SSAID/權限
+# 結尾備份 wifi、生成 start.sh、設置 REMOTE_TRIGGER=1 觸發遠端上傳
 backup() {
 	self_test
 	case $MODDIR in
@@ -2877,6 +3464,7 @@ backup() {
     			[[ -f $Backup_folder/${name2}.sh ]] && rm -rf "$Backup_folder/${name2}.sh"
     		    [[ ! -f $Backup_folder/recover.sh ]] && touch_shell "3" "$Backup_folder/recover.sh"
     			[[ ! -f $Backup_folder/backup.sh ]] && touch_shell "1" "$Backup_folder/backup.sh"
+    			[[ ! -f $Backup_folder/upload.sh ]] && touch_shell "5" "$Backup_folder/upload.sh"
     		fi
 			endtime 2 "$name1 備份" "3"
 			lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
@@ -2972,21 +3560,29 @@ backup() {
 	notification "105" "備份完成 $(endtime 1 "批量備份開始到結束")"
 	[[ -f $txt_path ]] && chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt_path"
 	[[ -f $txt_path2 ]] && chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt_path2"
+	REMOTE_TRIGGER=1
 	exit
 }
+# 增量備份: 只備份版本號有更新的 app
+# 對照 app_details.json 內舊版本, 沒變動的跳過
 backup_update_apk() {
     Update_backup='true'
     backup
 }
+# 重新生成應用列表的 app 名稱欄位 (恢復模式選單用)
 dumpname() {
 	get_name "Apkname"
 }
+# 轉換 app 資料夾名稱 (舊格式 → 新格式)
 convert() {
 	get_name "convert"
 }
+# 對整個備份目錄做壓縮檔完整性檢查 (Check_archive 的批次入口)
 check_file() {
 	Check_archive "$MODDIR"
 }
+# 主恢復函數 - 安裝 apk + 恢復 data + 還原 SSAID/權限
+# ssaid_mode=true 時只恢復含 SSAID 的 app
 Restore() {
 	self_test
 	disable_verify
@@ -3273,6 +3869,7 @@ Restore() {
 	notification "109" "恢復完成 $(endtime 1 "$DX開始到結束")"
 	rm -rf "$TMPDIR"/*
 }
+# 恢復自定義資料夾 (Media 等)
 Restore3() {
 	self_test
 	case $Lo in
@@ -3316,6 +3913,8 @@ Restore3() {
 	endtime 1 "恢復結束"
 	notification "108" "Media恢復完成 $(endtime 1 "Media恢復")"
 }
+# 僅恢復包含 SSAID 應用 (不含數據,只裝 apk + 還原 SSAID)
+# 用於只想保留遊戲帳號識別、不要舊存檔的場景
 Restore4() {
     if [[ $ssaid_mode_1 = true ]]; then
         while read -r; do
@@ -3379,6 +3978,8 @@ Restore4() {
 	    done
 	fi
 }
+# 生成應用列表 (掃描所有已安裝 user app, 輸出到 appList.txt)
+# 配合 blacklist/whitelist 過濾系統 app
 Getlist() {
 	case $MODDIR in
 	/storage/emulated/0/Android/* | /data/media/0/Android/* | /sdcard/Android/*) echoRgb "請勿在$MODDIR內生成列表" "0" && exit 2 ;;
@@ -3535,6 +4136,9 @@ Getlist() {
 	chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$MODDIR/appList.txt"
 	echoRgb "輸出包名結束 請查看$MODDIR/appList.txt"
 }
+# 備份自定義資料夾 (來自 Custom_path 設定)
+# 例: Pictures / Download / DCIM / /data/adb 等
+# 結尾設 REMOTE_UPLOAD_MEDIA=1 + REMOTE_TRIGGER=1
 backup_media() {
 	self_test
 	backup_path
@@ -3577,7 +4181,9 @@ backup_media() {
 	else
 		echoRgb "自定義路徑為空 無法備份" "0"
 	fi
+	REMOTE_TRIGGER=1
 }
+# 從 tools/Device_List 對照表查詢設備識別資訊 (處理器型號、RAM 規格等)
 Device_List() {
     URL="https://raw.githubusercontent.com/KHwang9883/MobileModels/refs/heads/master/brands"
     rm -rf "$tools_path/Device_List"
@@ -3634,6 +4240,8 @@ Device_List() {
         echoRgb "下載機型失敗"
     fi
 }
+# 主選單「備份WiFi」入口
+# 建立備份目錄結構 + 複製 tools/ + 生成 start.sh + 備份 wifi.json
 wifi() {
     backup_path
     [[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup"
@@ -3644,6 +4252,13 @@ wifi() {
 }
 if [[ $0 = *backup.sh ]]; then
     start=backup
+elif [[ $0 = *upload.sh ]]; then
+    # upload.sh 位於 Backup_zstd_X/<app>/upload.sh
+    # MODDIR 已被入口腳本設成 Backup_zstd_X
+    # 取得 app 名 = upload.sh 所在的資料夾名
+    _upload_app="${0%/*}"
+    _upload_app="${_upload_app##*/}"
+    start="single_upload \"$_upload_app\""
 else
     [[ $0 = *recover.sh ]] && start=Restore
 fi
@@ -3665,6 +4280,9 @@ else
             "備份自定義資料夾"
             "備份WiFi"
             "測試遠端連線"
+            "單獨上傳當前備份"
+            "列出遠端備份(產生 appList_network.txt)"
+            "從遠端下載備份"
             "殺死運行中腳本"
         )
         commands=(
@@ -3674,6 +4292,9 @@ else
             "backup_media"
             "wifi"
             "remote_test"
+            "upload_current_backup"
+            "remote_list_backups"
+            "remote_download_backup"
             "echoRgb '等待腳本停止中，請稍後.....' && echoRgb '腳本終止'; exit"
         )
     elif [[ -f $MODDIR/restore_settings.conf ]]; then
@@ -3711,7 +4332,7 @@ else
     x|X)
         echoRgb "已退出腳本" "0"
         exit 0 ;;
-    [1-9])
+    [0-9]*)
         if (( choice >= 1 && choice <= ${#steps[@]} )); then
             index="$((choice - 1))"
             echo "執行：${steps[$index]}"
