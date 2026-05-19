@@ -157,6 +157,12 @@ remote_pass="${remote_pass:-}"
 #1保留本地檔案(上傳後不刪除) 0上傳成功後刪除本地檔案
 remote_keep_local="${remote_keep_local:-0}"
 
+#邊備份邊上傳 (每備份完一個應用立即上傳，然後刪除本機檔案再備份下一個，以節省本機空間)
+#1 開啟 0 關閉
+#開啟後：每個應用備份完成 → 立即上傳遠端 → 上傳成功後刪除本機檔案 → 繼續備份下一個
+#關閉後：先備份所有應用 → 全部備份完再統一上傳
+remote_upload_per_app="${remote_upload_per_app:-0}"
+
 #log 目錄大小上限 (單位 MB), 達到上限會在啟動時自動清空 log/
 #留空或設 0 = 關閉自動清理
 log_max_size_mb="${log_max_size_mb:-}"
@@ -1011,7 +1017,8 @@ remote_collect_targets() {
 	fi
 	# 固定附加: tools/ 資料夾、start.sh、restore_settings.conf
 	# 只要 list_file 已經有內容(代表本次有東西要上傳)就一併帶上,讓遠端目錄能獨立還原
-	if [[ -s $list_file ]]; then
+	# REMOTE_SKIP_FIXED=1 時跳過 (逐應用上傳模式，避免重複上傳)
+	if [[ -s $list_file && $REMOTE_SKIP_FIXED != 1 ]]; then
 		[[ -d $Backup/tools ]] && find "$Backup/tools" -type f >> "$list_file" 2>/dev/null
 		[[ -f $Backup/start.sh ]] && echo "$Backup/start.sh" >> "$list_file"
 		[[ -f $Backup/restore_settings.conf ]] && echo "$Backup/restore_settings.conf" >> "$list_file"
@@ -1552,6 +1559,31 @@ single_upload() {
 	esac
 	# 已主動上傳, 清旗標避免 trap EXIT 再跑一次
 	unset REMOTE_TRIGGER
+}
+
+# 邊備份邊上傳：每備份完一個應用後立即上傳並刪除本機檔案
+# $1 = 應用名 (目錄名)
+# 依賴 global: remote_type, remote_keep_local, Backup
+per_app_upload_and_cleanup() {
+	local app_name="$1"
+	[[ -z $app_name ]] && return 1
+	[[ -z $Backup ]] && return 1
+	local target="$Backup/$app_name"
+	[[ ! -d $target ]] && return 0
+	dir_has_files "$target" || return 0
+	[[ -z $remote_type ]] && return 1
+	# 設定上傳範圍：只上傳這一個 app, 跳過 tools/ 等固定項避免重複上傳
+	unset REMOTE_APPLIST REMOTE_UPLOAD_MEDIA REMOTE_UPLOAD_WIFI
+	REMOTE_APPLIST="$app_name"
+	REMOTE_SKIP_FIXED=1
+	REMOTE_TRIGGER=1
+	echoRgb "—————— 逐應用上傳: $app_name ——————" "3"
+	case $remote_type in
+	smb) upload_smb ;;
+	webdav) upload_remote "webdav" ;;
+	esac
+	# 清除標記
+	unset REMOTE_TRIGGER REMOTE_SKIP_FIXED REMOTE_APPLIST
 }
 
 # 主選單觸發: 讀 appList.txt + Custom_path, 直接上傳對應目錄
@@ -4181,6 +4213,10 @@ backup() {
     			[[ ! -f $Backup_folder/upload.sh ]] && touch_shell "5" "$Backup_folder/upload.sh"
     		fi
 			endtime 2 "$name1 備份" "3"
+			# 邊備份邊上傳：每個應用備份完立即上傳遠端，然後刪除本機檔案節省空間
+			if [[ $remote_upload_per_app = 1 && -n $remote_type ]]; then
+				per_app_upload_and_cleanup "$name1"
+			fi
 			lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
 			echoRgb "完成$((i * 100 / r))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "3"
 			rgb_d="$rgb_a"
