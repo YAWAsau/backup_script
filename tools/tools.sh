@@ -8,7 +8,7 @@ shell_language="zh-TW"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202605161105"
+backup_version="202605182003"
 [[ $SHELL = *mt* ]] && echo "請勿使用MT管理器拓展包環境執行,請更換系統環境" && exit 2
 # 產生 backup_settings.conf 的內容模板 (寫到 stdout)
 # 透過重定向到檔案來生成或更新備份設定檔
@@ -155,11 +155,11 @@ remote_pass="${remote_pass:-}"
 
 #遠程備份完成後是否保留本地檔案
 #1保留本地檔案(上傳後不刪除) 0上傳成功後刪除本地檔案
-remote_keep_local=\"${remote_keep_local:-0}\"
+remote_keep_local="${remote_keep_local:-0}"
 
 #log 目錄大小上限 (單位 MB), 達到上限會在啟動時自動清空 log/
 #留空或設 0 = 關閉自動清理
-log_max_size_mb=\"${log_max_size_mb:-}\"
+log_max_size_mb="${log_max_size_mb:-}"
 " | sed '
     /^Custom_path/ s/ /\n/g;
     /^blacklist/ s/ /\n/g;
@@ -210,6 +210,10 @@ Background_apps_ignore="${Background_apps_ignore:-0}"
 
 #使用者(如0 999等用戶，留空如存在多個用戶強制音量鍵選擇，無多用戶則默認0不詢問)
 user="$user"
+
+#log 目錄大小上限 (單位 MB), 達到上限會在啟動時自動清空 log/
+#留空或設 0 = 關閉自動清理
+log_max_size_mb="${log_max_size_mb:-}"
 
 #色彩設定 (256 色 ANSI 編號)
 #常用值: 39藍 51青 82綠 196紅 208橘 213粉 220黃 165紫
@@ -878,9 +882,17 @@ upload_summary() {
 		;;
 	*)
 		if [[ $fail_count -eq 0 && $ok_count -gt 0 ]]; then
-			echoRgb "全部上傳成功,清除本地已上傳檔案" "1"
+			echoRgb "全部上傳成功,清除本地已上傳檔案 (保留 tools/ 跟入口腳本)" "1"
 			while read -r f; do
-				[[ -n $f ]] && rm -f "$f"
+				[[ -z $f ]] && continue
+				# 保留: tools/ 目錄下檔案 / start.sh / backup.sh / recover.sh / upload.sh
+				case $f in
+				*/tools/*) continue ;;
+				esac
+				case ${f##*/} in
+				start.sh|backup.sh|recover.sh|upload.sh) continue ;;
+				esac
+				rm -f "$f"
 			done < "$ok_list"
 		elif [[ $fail_count -gt 0 ]]; then
 			echoRgb "部分上傳失敗,本地檔案全部保留 (含已上傳的)" "0"
@@ -3633,6 +3645,14 @@ get_name(){
 		    esac
 		    if [[ $Delete_App = true ]]; then
 		        echoRgb "警告 即將刪除未安裝應用資料夾，請再三確認後在執行" "0"
+		        echoRgb "以下資料夾將被刪除:" "0"
+		        echo "$delete_app" | sed '/^$/d' | awk '{print "  - "$1}'
+		        echo -n "確定要刪除以上資料夾嗎? 輸入 YES 確認, 其他任意鍵取消: "
+		        read _confirm
+		        if [[ $_confirm != YES ]]; then
+		            echoRgb "已取消刪除" "1"
+		            exit 0
+		        fi
 		        i=1
 		        r="$(echo "$delete_app" | awk 'NF != 0 { count++ } END { print count }')"
 		        while [[ $i -le $r ]]; do
@@ -5135,7 +5155,11 @@ else
     done
     echo "x) 離開腳本"
     echo -n "請輸入選項編號: "
-    read choice
+    # read 失敗 (stdin 關閉/EOF, 例如後台執行無 tty) 立刻退出,避免無限循環
+    if ! read choice; then
+        echoRgb "無互動 stdin, 退出" "0"
+        exit 0
+    fi
     case $choice in
     x|X)
         echoRgb "已退出腳本" "0"
@@ -5148,6 +5172,13 @@ else
             if [[ "$background" = "1" ]]; then
                 # 後台執行: 用 subshell 防 exit 殺主 shell
                 (eval "${commands[$index]}") &
+                bg_pid=$!
+                # 不論動作類型都 wait, 確保主選單不會被子進程輸出蓋掉
+                wait "$bg_pid"
+                # 備份/恢復類動作 (commands 含 exit) 跑完整個腳本退出
+                case ${commands[$index]} in
+                *exit*) exit 0 ;;
+                esac
             else
                 # 前台: 不包 subshell, command 內的 exit 會真的退出整個腳本
                 # (備份類 commands 結尾有 exit, 達成「跑完就退出」)
