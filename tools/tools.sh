@@ -996,14 +996,19 @@ remote_collect_targets() {
 	local list_file="$1"
 	local tmp_collect="$TMPDIR/.rcollect"
 	: > "$list_file"
-	if [[ -n $REMOTE_APPLIST ]]; then
+	# 如果設置了 REMOTE_SKIP_APPDATA，跳過應用數據上傳
+	if [[ $REMOTE_SKIP_APPDATA != 1 && -n $REMOTE_APPLIST ]]; then
 		echoRgb "讀取本次備份名單" "2"
 		echo "$REMOTE_APPLIST" | grep -Ev '^[[:space:]]*[#＃!]|^[[:space:]]*$' | while read -r line; do
 			local name1="${line%% *}"
 			[[ -z $name1 ]] && continue
 			local full="$Backup/$name1"
 			[[ -d $full ]] || continue
-			find "$full" -type f  > "$tmp_collect" 2>/dev/null
+			if [[ $REMOTE_APPDETAILS_SKIP = 1 ]]; then
+				find "$full" -type f ! -name "app_details.json" > "$tmp_collect" 2>/dev/null
+			else
+				find "$full" -type f  > "$tmp_collect" 2>/dev/null
+			fi
 			[[ -s $tmp_collect ]] && cat "$tmp_collect" >> "$list_file"
 		done
 	fi
@@ -1015,13 +1020,16 @@ remote_collect_targets() {
 		find "$Backup/wifi" -type f  > "$tmp_collect" 2>/dev/null
 		[[ -s $tmp_collect ]] && cat "$tmp_collect" >> "$list_file"
 	fi
-	# 固定附加: tools/ 資料夾、start.sh、restore_settings.conf
+	# 固定附加: tools/ 資料夾、start.sh、restore_settings.conf、appList.txt、mediaList.txt
 	# 只要 list_file 已經有內容(代表本次有東西要上傳)就一併帶上,讓遠端目錄能獨立還原
 	# REMOTE_SKIP_FIXED=1 時跳過 (逐應用上傳模式，避免重複上傳)
-	if [[ -s $list_file && $REMOTE_SKIP_FIXED != 1 ]]; then
+	# REMOTE_SKIP_APPDATA=1 時也需要上傳依賴文件
+	if [[ ($REMOTE_SKIP_APPDATA = 1 || -s $list_file) && $REMOTE_SKIP_FIXED != 1 ]]; then
 		[[ -d $Backup/tools ]] && find "$Backup/tools" -type f >> "$list_file" 2>/dev/null
 		[[ -f $Backup/start.sh ]] && echo "$Backup/start.sh" >> "$list_file"
 		[[ -f $Backup/restore_settings.conf ]] && echo "$Backup/restore_settings.conf" >> "$list_file"
+		[[ -f $Backup/appList.txt ]] && echo "$Backup/appList.txt" >> "$list_file"
+		[[ -f $Backup/mediaList.txt ]] && echo "$Backup/mediaList.txt" >> "$list_file"
 	fi
 	rm -f "$tmp_collect" 2>/dev/null
 }
@@ -1368,15 +1376,28 @@ upload_remote() {
 		else
 			target_url="$base_url/$rel"
 		fi
-		local http_code curl_err
-		# stderr → 檔案 (curl 自己的錯誤訊息)
-		# body → /dev/null (不需要)
-		# stdout → http_code 變數 (-w 的輸出)
-		http_code="$(curl -sS -L --http1.1 --retry 2 --retry-delay 3 --connect-timeout 10 \
+		local http_code curl_exit
+		# 顯示上傳百分比: curl -# 進度 → awk 過濾只留百分比 → 同行刷新
+		local _sz_human
+		_sz_human=$(awk "BEGIN{s=${_sz:-0};if(s>=1048576)printf\"%.1fMB\",s/1048576;else if(s>=1024)printf\"%.0fKB\",s/1024;else printf\"%dB\",s}")
+		curl -# -S -L --http1.1 --retry 2 --retry-delay 3 --connect-timeout 10 \
 			-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' \
-			-o /dev/null "$target_url" 2>"$TMPDIR/.curl_stderr")"
-		curl_err="$(cat "$TMPDIR/.curl_stderr" 2>/dev/null)"
-		rm -f "$TMPDIR/.curl_stderr"
+			-o /dev/null "$target_url" 2>&1 > "$TMPDIR/.curl_http" | \
+			awk -v idx="$idx" -v total="$total" -v rel="$rel" -v sz="$_sz_human" '
+			BEGIN{RS="\r"}
+			/[0-9]+%/{
+				match($0,/[0-9]+\.?[0-9]*%/)
+				pct=substr($0,RSTART,RLENGTH)
+				for(i=1;i<=NF;i++) if(index($i,"/s")) spd=$i
+				printf "\r\033[38;5;51m [%d/%d] %s (%s) %s",idx,total,rel,sz,pct
+				if(spd!="") printf " %s",spd
+				printf "\033[0m "
+				fflush()
+			}' > /dev/tty
+		curl_exit=$?
+		http_code="$(cat "$TMPDIR/.curl_http" 2>/dev/null)"
+		rm -f "$TMPDIR/.curl_http"
+		printf "\r\033[K" > /dev/tty
 		# http_code 2xx 視為成功
 		case $http_code in
 		2*)
@@ -1386,8 +1407,7 @@ upload_remote() {
 		*)
 			echo "$rel  (HTTP $http_code)" >> "$fail_list"
 			echoRgb "[$idx/$total] ✗ $rel (HTTP $http_code)" "0"
-			[[ -n $curl_err ]] && remote_log "FAIL $proto $rel HTTP=$http_code err=$curl_err" \
-				|| remote_log "FAIL $proto $rel HTTP=$http_code"
+			remote_log "FAIL $proto $rel HTTP=$http_code curl_exit=$curl_exit"
 			;;
 		esac
 	done < "$list_file"
@@ -1437,6 +1457,49 @@ remote_parse_smb_url() {
 	[[ $rem_path = / ]] && rem_path=""
 	SMB_SHARE="//$server/$share_name"
 	SMB_REM_PATH="$rem_path"
+}
+
+# 從遠端下載單個文件 (用於備份前對比 app_details.json)
+# 用法: remote_download_single_file <遠端相對路徑> <本地目標路徑>
+# 回傳: 0=成功, 1=失敗
+remote_download_single_file() {
+	local remote_rel="$1" local_dest="$2"
+	[[ -z $remote_type || -z $remote_url ]] && return 1
+	local backup_subdir="Backup_${Compression_method}_${user:-0}"
+	case $remote_type in
+	webdav)
+		local base_url="${remote_url%/}/$backup_subdir"
+		local enc_rel="$(url_encode_path "$remote_rel")"
+		local target_url="$base_url/$enc_rel"
+		curl -sS -L --http1.1 --connect-timeout 10 -u "$remote_user:$remote_pass" \
+			-o "$local_dest" "$target_url" 2>/dev/null
+		[[ -s $local_dest ]]
+		;;
+	smb)
+		remote_parse_smb_url
+		local share="$SMB_SHARE"
+		local rem_path="$SMB_REM_PATH"
+		local base="${rem_path:+$rem_path/}$backup_subdir"
+		local dir_part="${remote_rel%/*}"
+		local file_part="${remote_rel##*/}"
+		local smb_dest="$TMPDIR/.smb_dl_$$"
+		mkdir -p "$smb_dest" 2>/dev/null
+		smbclient "$share" -U "$remote_user%$remote_pass" -t 10 -s /dev/null \
+			-D "$base/$dir_part" \
+			-c "lcd $smb_dest; get $file_part; exit" >/dev/null 2>&1
+		if [[ -f "$smb_dest/$file_part" ]]; then
+			mv "$smb_dest/$file_part" "$local_dest"
+			rm -rf "$smb_dest"
+			return 0
+		else
+			rm -rf "$smb_dest"
+			return 1
+		fi
+		;;
+	*)
+		return 1
+		;;
+	esac
 }
 
 # 過濾 smbclient 輸出的雜訊行 (Try help / dos charset / OS= 等橫幅文字)
@@ -1572,16 +1635,82 @@ per_app_upload_and_cleanup() {
 	[[ ! -d $target ]] && return 0
 	dir_has_files "$target" || return 0
 	[[ -z $remote_type ]] && return 1
+	# 合併遠端 app_details.json 到本地，避免丢失遠端已有的字段
+	local local_app_details="$target/app_details.json"
+	local remote_app_details="$TMPDIR/.remote_app_details_merge_$$"
+	local remote_rel="${app_name}/app_details.json"
+	if [[ -f $local_app_details ]] && remote_download_single_file "$remote_rel" "$remote_app_details" 2>/dev/null; then
+		[[ -s $remote_app_details ]] && {
+			# 合併遠端數據到本地（本地數據優先，但保留遠端已有的字段）
+			local merged="$TMPDIR/.merged_app_details_$$"
+			jq -s '.[0] * .[1]' "$remote_app_details" "$local_app_details" > "$merged" 2>/dev/null && mv "$merged" "$local_app_details"
+		}
+	fi
+	rm -f "$remote_app_details"
 	# 設定上傳範圍：只上傳這一個 app, 跳過 tools/ 等固定項避免重複上傳
+	# 第一次上傳：跳過 app_details.json, 先上傳其他所有文件
 	unset REMOTE_APPLIST REMOTE_UPLOAD_MEDIA REMOTE_UPLOAD_WIFI
 	REMOTE_APPLIST="$app_name"
 	REMOTE_SKIP_FIXED=1
+	REMOTE_APPDETAILS_SKIP=1
 	REMOTE_TRIGGER=1
 	echoRgb "—————— 逐應用上傳: $app_name ——————" "3"
+	local _first_pass_rc=0
 	case $remote_type in
-	smb) upload_smb ;;
-	webdav) upload_remote "webdav" ;;
+	smb) upload_smb || _first_pass_rc=1 ;;
+	webdav) upload_remote "webdav" || _first_pass_rc=1 ;;
 	esac
+	unset REMOTE_APPDETAILS_SKIP
+	# 第二次上傳：只有所有文件都成功時才上傳 app_details.json
+	local local_app_details="$Backup/$app_name/app_details.json"
+	if [[ -f $local_app_details ]]; then
+		if [[ $_first_pass_rc -eq 0 ]]; then
+			echoRgb "上傳 app_details.json (最後上傳)" "3"
+			local _ad_rc=0
+			case $remote_type in
+			webdav)
+				local base_url="${remote_url%/}/Backup_${Compression_method}_${user:-0}"
+				local enc_rel="$(url_encode_path "${app_name}/app_details.json")"
+				local http_code
+				http_code="$(curl -sS -L --http1.1 --retry 2 --retry-delay 3 --connect-timeout 10 \
+					-T "$local_app_details" -u "$remote_user:$remote_pass" -w '%{http_code}' \
+					-o /dev/null "$base_url/$enc_rel" 2>/dev/null)"
+				case $http_code in
+				2*) echoRgb "app_details.json 上傳成功" "1" ;;
+				*) echoRgb "app_details.json 上傳失敗 (HTTP $http_code)" "0"; _ad_rc=1 ;;
+				esac
+				;;
+			smb)
+				remote_parse_smb_url
+				local share="$SMB_SHARE"
+				local rem_path="$SMB_REM_PATH"
+				local backup_subdir="Backup_${Compression_method}_${user:-0}"
+				local base="${rem_path:+$rem_path/}$backup_subdir"
+				local local_dir="$Backup/$app_name"
+				local smb_out
+				smb_out="$(smbclient "$share" -U "$remote_user%$remote_pass" -t 10 -s /dev/null \
+					-D "$base/$app_name" \
+					-c "lcd $local_dir; put app_details.json; exit" 2>&1)"
+				if echo "$smb_out" | grep -F "app_details.json" | grep -qE 'NT_STATUS|does not exist|ERR'; then
+					echoRgb "app_details.json 上傳失敗" "0"
+					_ad_rc=1
+				else
+					echoRgb "app_details.json 上傳成功" "1"
+				fi
+				;;
+			esac
+			if [[ $_ad_rc -ne 0 ]]; then
+				echoRgb "app_details.json 上傳失敗，保留本地檔案" "0"
+			else
+				case $remote_keep_local in
+				1|true|True|TRUE) ;;
+				*) rm -f "$local_app_details" ;;
+				esac
+			fi
+		else
+			echoRgb "其他文件上傳失敗，跳過 app_details.json 上傳" "0"
+		fi
+	fi
 	# 清除標記
 	unset REMOTE_TRIGGER REMOTE_SKIP_FIXED REMOTE_APPLIST
 }
@@ -2258,11 +2387,30 @@ remote_cleanup() {
 	# 防雙重觸發 (backup 內直接呼叫 + trap EXIT 都可能呼叫)
 	[[ $REMOTE_DONE = 1 ]] && return 0
 	REMOTE_DONE=1
+	# 如果沒有備份變更，只上傳依賴文件，不上傳應用數據
+	if [[ $backup_has_changes = 0 ]]; then
+		if [[ $remote_upload_per_app = 1 ]]; then
+			echoRgb "逐應用上傳模式：無備份變更，只上傳依賴文件" "2"
+		else
+			echoRgb "無備份變更，只上傳依賴文件" "2"
+		fi
+		# 設置標記，跳過應用數據上傳
+		REMOTE_SKIP_APPDATA=1
+	elif [[ $remote_upload_per_app = 0 && -s "$TMPDIR/.changed_apps" ]]; then
+		# 非逐應用上傳模式，但有變更的應用，只上傳變更的應用
+		local changed_apps
+		changed_apps="$(sort -u "$TMPDIR/.changed_apps" | tr '\n' ' ')"
+		echoRgb "僅上傳變更的應用: $changed_apps" "2"
+		# 設置 REMOTE_APPLIST 為變更的應用列表
+		REMOTE_APPLIST="$(sort -u "$TMPDIR/.changed_apps")"
+	fi
 	case $remote_type in
 	webdav) upload_remote "webdav" ;;
 	smb) upload_remote "smb" ;;
 	*) return 0 ;;
 	esac
+	REMOTE_SKIP_APPDATA=0
+	unset REMOTE_APPLIST
 }
 # 從 /proc/uptime 算出開機時長並格式化成 X天X時X分X秒
 Show_boottime() {
@@ -3057,6 +3205,31 @@ Backup_apk() {
 	[[ ! -f $app_details ]] && echo "{\n}">"$app_details"
 	# 從預掃 map 查當前版本 (取代 fork pm + cut + head)
 	apk_version2=$(awk -v pkg="$name2" -F'\t' '$1 == pkg {print $2; exit}' "$TMPDIR/.pkg_ver" 2>/dev/null)
+	# 如果啟用遠程備份，從遠端獲取 app_details.json 進行對比
+	if [[ -n $remote_type ]]; then
+		local remote_app_details="$TMPDIR/.remote_app_details_$$"
+		local remote_rel="${name1}/app_details.json"
+		if remote_download_single_file "$remote_rel" "$remote_app_details" 2>/dev/null; then
+			[[ -s $remote_app_details ]] && {
+				# 從遠端 app_details 讀取版本號
+				local remote_apk_ver
+				remote_apk_ver=$(jq -r --arg name "$name1" 'try .[$name].apk_version catch "" // ""' "$remote_app_details" 2>/dev/null)
+				# 如果遠端版本與當前版本一致，跳過備份
+				if [[ -n $remote_apk_ver && $remote_apk_ver = "$apk_version2" ]]; then
+					if ! grep -qFw "$name2" "$TMPDIR/.backup_done" 2>/dev/null; then
+						echo "${Backup_folder##*/} $name2" >> "$TMPDIR/.backup_done"
+					fi
+					unset xb
+					let osj++
+					result=0
+					echoRgb "Apk版本無更新(遠端已備份) 跳過備份" "2"
+					rm -f "$remote_app_details"
+					return 0
+				fi
+			}
+		fi
+		rm -f "$remote_app_details"
+	fi
 	# APK_VER 已經由 app_details_read 載入 (在主迴圈呼叫過)
 	apk_version="$APK_VER"
 	if [[ $apk_version = $apk_version2 ]]; then
@@ -3114,6 +3287,10 @@ Backup_apk() {
                         }"
                         jq_inplace "$app_details" --argjson new_content "$extra_content" '. += $new_content'
                         }
+                        # 標記有備份變更
+                        backup_has_changes=1
+                        # 記錄有變更的應用
+                        echo "$name1" >> "$TMPDIR/.changed_apps"
                         # Chrome 特例
                         [[ $name2 = com.android.chrome ]] && cleanup_chrome_legacy
     				else
@@ -3206,6 +3383,29 @@ Backup_data() {
 		zmediapath=1
 		;;
 	esac
+	# 如果啟用遠程備份，從遠端獲取 app_details.json 進行對比
+	if [[ -n $remote_type ]]; then
+		local remote_app_details="$TMPDIR/.remote_app_details_$$"
+		local remote_rel="${name1}/app_details.json"
+		if remote_download_single_file "$remote_rel" "$remote_app_details" 2>/dev/null; then
+			[[ -s $remote_app_details ]] && {
+				# 從遠端 app_details 讀取 Size
+				local remote_size
+				remote_size=$(jq -r --arg entry "$1" 'try .[$entry].Size catch "" // ""' "$remote_app_details" 2>/dev/null)
+				# 如果遠端 Size 與當前一致，跳過備份
+				if [[ -n $remote_size && $remote_size != "null" ]]; then
+					local current_size
+					current_size="$(calc_dir_size "$data_path" 2>/dev/null)"
+					if [[ "$remote_size" = "$current_size" ]]; then
+						echoRgb "$1數據無變化(遠端已備份) 跳過備份" "2"
+						rm -f "$remote_app_details"
+						return 0
+					fi
+				fi
+			}
+		fi
+		rm -f "$remote_app_details"
+	fi
 	if [[ -d $data_path ]]; then
 	    unset Filesize ssaid Get_Permissions result Permissions
         Filesize="$(calc_dir_size "$data_path")"
@@ -3297,6 +3497,10 @@ Backup_data() {
                             }"
                             jq_inplace "$app_details" --argjson new_content "$extra_content" '. += $new_content'
     					fi
+                        # 標記有備份變更
+                        backup_has_changes=1
+                        # 記錄有變更的應用 (排除媒體/自定義路徑備份, 由 REMOTE_UPLOAD_MEDIA 處理)
+                        case $1 in user|data|obb|user_de) echo "$name1" >> "$TMPDIR/.changed_apps" ;; esac
     				else
     					rm -rf "$Backup_folder/$1".tar.*
     				fi
@@ -3846,6 +4050,9 @@ backup() {
 	: > "$TMPDIR/.update_apks"
 	: > "$TMPDIR/.add_apks"
 	: > "$TMPDIR/.ssaid_apks"
+	: > "$TMPDIR/.changed_apps"
+	# 初始化備份變更標記
+	backup_has_changes=0
 	#校驗選填是否正確
 	case $Lo in
 	0)
@@ -4215,7 +4422,24 @@ backup() {
 			endtime 2 "$name1 備份" "3"
 			# 邊備份邊上傳：每個應用備份完立即上傳遠端，然後刪除本機檔案節省空間
 			if [[ $remote_upload_per_app = 1 && -n $remote_type ]]; then
-				per_app_upload_and_cleanup "$name1"
+				# 有備份變更 → 上傳
+				if grep -qFw "$name1" "$TMPDIR/.changed_apps" 2>/dev/null; then
+					per_app_upload_and_cleanup "$name1"
+				else
+					# 本地無變更，但遠端可能沒有備份 → 檢查遠端 app_details.json
+					_remote_has_backup=0
+					_remote_check_file="$TMPDIR/.remote_check_$$"
+					if remote_download_single_file "${name1}/app_details.json" "$_remote_check_file" 2>/dev/null; then
+						[[ -s $_remote_check_file ]] && _remote_has_backup=1
+					fi
+					rm -f "$_remote_check_file"
+					if [[ $_remote_has_backup = 0 ]]; then
+						echoRgb "遠端無備份，上傳到遠端" "2"
+						per_app_upload_and_cleanup "$name1"
+					else
+						echoRgb "無備份變更，跳過上傳" "2"
+					fi
+				fi
 			fi
 			lxj="$(echo "$Occupation_status" | awk '{print $3}' | sed 's/%//g')"
 			echoRgb "完成$((i * 100 / r))% $hx$(echo "$Occupation_status" | awk 'END{print "剩餘:"$1"使用率:"$2}')" "3"
