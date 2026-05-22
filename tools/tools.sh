@@ -34,6 +34,12 @@ setDisplayPowerMode="${setDisplayPowerMode:-0}"
 #自定義備份文件輸出位置 支持相對路徑(留空則默認當前路徑)
 Output_path=\""$Output_path"\"
 
+#自定義備份目錄後綴(留空則不添加後綴)
+#支持日期時間變量：%yyyymmdd %hhmmss %yyyymmddhhmmss %yyyy %mm %dd
+#例：_daily  → Backup_zstd_0_daily
+#例：_%yyyymmdd  → Backup_zstd_0_20260522
+Backup_suffix=\""$Backup_suffix"\"
+
 #自定義applist.txt位置 支持相對路徑(留空則默認當前路徑)
 list_location=\""$list_location"\"
 
@@ -1095,7 +1101,7 @@ upload_smb() {
 	local share="$SMB_SHARE"
 	local rem_path="$SMB_REM_PATH"
 	# 自動加上備份目錄前綴 (跟本地結構一致)
-	local backup_subdir="Backup_${Compression_method}_${user:-0}"
+	local backup_subdir="$(get_backup_dirname)"
 	rem_path="${rem_path}/${backup_subdir}"
 	# 拆出 host 和 port (從 share 反推)
 	local _hp="${share#//}"; _hp="${_hp%%/*}"
@@ -1266,7 +1272,7 @@ upload_remote() {
 	*) echoRgb "未支援的協議: $proto" "0"; return 1 ;;
 	esac
 	# 自動加上備份目錄前綴 (跟本地結構一致)
-	local backup_subdir="Backup_${Compression_method}_${user:-0}"
+	local backup_subdir="$(get_backup_dirname)"
 	base_url="$base_url/$backup_subdir"
 	# 連線預檢: 從 base_url 解出 host:port
 	local _hp="${base_url#*://}"
@@ -1465,7 +1471,7 @@ remote_parse_smb_url() {
 remote_download_single_file() {
 	local remote_rel="$1" local_dest="$2"
 	[[ -z $remote_type || -z $remote_url ]] && return 1
-	local backup_subdir="Backup_${Compression_method}_${user:-0}"
+	local backup_subdir="$(get_backup_dirname)"
 	case $remote_type in
 	webdav)
 		local base_url="${remote_url%/}/$backup_subdir"
@@ -1669,7 +1675,7 @@ per_app_upload_and_cleanup() {
 			local _ad_rc=0
 			case $remote_type in
 			webdav)
-				local base_url="${remote_url%/}/Backup_${Compression_method}_${user:-0}"
+				local base_url="${remote_url%/}/$(get_backup_dirname)"
 				local enc_rel="$(url_encode_path "${app_name}/app_details.json")"
 				local http_code
 				http_code="$(curl -sS -L --http1.1 --retry 2 --retry-delay 3 --connect-timeout 10 \
@@ -1684,7 +1690,7 @@ per_app_upload_and_cleanup() {
 				remote_parse_smb_url
 				local share="$SMB_SHARE"
 				local rem_path="$SMB_REM_PATH"
-				local backup_subdir="Backup_${Compression_method}_${user:-0}"
+				local backup_subdir="$(get_backup_dirname)"
 				local base="${rem_path:+$rem_path/}$backup_subdir"
 				local local_dir="$Backup/$app_name"
 				local smb_out
@@ -1890,7 +1896,7 @@ remote_list_backups() {
 	*) remote_keep_local=false ;;
 	esac
 	# 目標目錄 = 跟本地備份一樣的命名規則
-	local target_dir="Backup_${Compression_method}_${user:-0}"
+	local target_dir="$(get_backup_dirname)"
 	echoRgb "目標遠端目錄: $target_dir" "3"
 	# 連線預檢
 	remote_parse_endpoint
@@ -2122,7 +2128,7 @@ remote_download_backup() {
 	local dl_start
 	dl_start=$(date +%s)
 	# 目標目錄 = 跟本地備份一樣的命名規則
-	local chosen="Backup_${Compression_method}_${user:-0}"
+	local chosen="$(get_backup_dirname)"
 	echoRgb "目標遠端目錄: $chosen" "3"
 	# 連線預檢
 	remote_parse_endpoint
@@ -2757,9 +2763,9 @@ update_script() {
 							    if [[ $Output_path != "" ]]; then
 		                            [[ ${Output_path: -1} = / ]] && Output_path="${Output_path%?}"
 		                            if [[ ${Output_path:0:1} != / ]]; then
-		                                update_path="$MODDIR/$Output_path/Backup_${Compression_method}_$user"
+		                                update_path="$MODDIR/$Output_path/$(get_backup_dirname)"
 		                            else
-		                                update_path="$Output_path/Backup_${Compression_method}_$user"
+		                                update_path="$Output_path/$(get_backup_dirname)"
 		                            fi
 		                            rm -rf "$update_path/tools"
 		                            cp -r "$path_hierarchy/tools" "$update_path"
@@ -2915,19 +2921,38 @@ update_script
 # 計算本地備份目錄路徑
 # 格式: $Output_path/Backup_${Compression_method}_${user}
 # 並建立目錄, 設定 $Backup 全域變數供其他函數使用
+# 返回帶後綴的備份目錄名 (Backup_${Compression_method}_${user}${suffix})
+# 解析 Backup_suffix 中的日期時間變量: %yyyymmdd %hhmmss %yyyymmddhhmmss %yyyy %mm %dd
+get_backup_dirname() {
+    local base="Backup_${Compression_method}_${user:-0}"
+    if [[ -n $Backup_suffix ]]; then
+        local resolved="$Backup_suffix"
+        local now="$(date '+%Y%m%d%H%M%S')"
+        resolved="${resolved//%yyyymmddhhmmss/$now}"
+        resolved="${resolved//%yyyymmdd/${now:0:8}}"
+        resolved="${resolved//%hhmmss/${now:8}}"
+        resolved="${resolved//%yyyy/${now:0:4}}"
+        resolved="${resolved//%mm/${now:4:2}}"
+        resolved="${resolved//%dd/${now:6:2}}"
+        echo "${base}${resolved}"
+    else
+        echo "$base"
+    fi
+}
+
 backup_path() {
 	if [[ $Output_path != "" ]]; then
 		[[ ${Output_path: -1} = / ]] && Output_path="${Output_path%?}"
 		if [[ ${Output_path:0:1} != / ]]; then
 		    Directory_type="相對路徑"
-		    Backup="$MODDIR/$Output_path/Backup_${Compression_method}_$user"
+		    Backup="$MODDIR/$Output_path/$(get_backup_dirname)"
 		else
 		    Directory_type="絕對路徑"
-		    Backup="$Output_path/Backup_${Compression_method}_$user"
+		    Backup="$Output_path/$(get_backup_dirname)"
 		fi
 		outshow="使用自定義目錄($Directory_type)"
 	else
-	    Backup="$MODDIR/Backup_${Compression_method}_$user"
+	    Backup="$MODDIR/$(get_backup_dirname)"
 	    if [[ ! -f ${0%/*}/app_details.json ]]; then
 		    outshow="使用當前路徑作為備份目錄"
 		else
@@ -2940,7 +2965,7 @@ backup_path() {
 	if [[ -d $OTGPATH ]]; then
 		if [[ $(echo "$MODDIR" | grep -Eo "^${OTGPATH}") != "" ]]; then
 			hx="true"
-			Backup="$MODDIR/Backup_${Compression_method}_$user"
+			Backup="$MODDIR/$(get_backup_dirname)"
 		else
 		    case $Lo in
 		    0|1)
@@ -2950,7 +2975,7 @@ backup_path() {
 			    Enter_options "檢測到隨身碟，輸入1使用隨身碟備份 0本地備份" "選擇了隨身碟備份" "本地備份" && isBoolean "$parameter" "branch" && branch="$nsx" ;;
 			esac
 			[[ $branch = true ]] && hx="$branch"
-			[[ $hx = true ]] && Backup="$OTGPATH/Backup_${Compression_method}_$user"
+			[[ $hx = true ]] && Backup="$OTGPATH/$(get_backup_dirname)"
 		fi
 		if [[ $hx = true ]]; then
 			if [[ $OTGFormat = vfat ]]; then
