@@ -31,6 +31,10 @@ Shell_LANG="$Shell_LANG"
 #1開啟 0關閉
 setDisplayPowerMode="${setDisplayPowerMode:-0}"
 
+#發送系統通知
+#1開啟 0關閉
+notification="${notification:-1}"
+
 #自定義備份文件輸出位置 支持相對路徑(留空則默認當前路徑)
 Output_path=\""$Output_path"\"
 
@@ -197,6 +201,10 @@ background_execution="${background_execution:-0}"
 #恢復開始後偽裝亮屏
 #1開啟 0關閉
 setDisplayPowerMode="${setDisplayPowerMode:-0}"
+
+#發送系統通知
+#1開啟 0關閉
+notification="${notification:-1}"
 
 #腳本語言設置 為空自動針對當前系統語言環境自動翻譯
 #1簡體中文 0繁體中文
@@ -574,7 +582,7 @@ print_tools_version() {
 	echoRgb "工具版本已記錄: $_ver_log" "2"
 }
 
-if [[ $background_execution = 1 || $setDisplayPowerMode = 1 ]]; then
+if [[ ($background_execution = 1 || $setDisplayPowerMode = 1) && $notification = 1 ]]; then
     notification() { app_process /system/bin com.xayah.dex.NotificationUtil notify -t 'SpeedBackup' "$@"; }
 else
     notification() { :; }
