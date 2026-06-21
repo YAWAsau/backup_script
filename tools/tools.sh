@@ -488,11 +488,11 @@ _manifest_add() {
 # json 健全度檢查: 檢查 app_details.json 是否含必要欄位
 # 用法: _json_health_check <json路徑> <app顯示名>
 # 必要欄位 (缺即視為異常, 會影響恢復/識別): PackageName, apk_version
-# permissions/battery_opt/Ssaid 不是每個app都一定會產生 (取決於該app是否申請過runtime權限/
+# permissions/notification_settings/battery_opt/battery_settings/Ssaid 不是每個app都一定會產生 (取決於該app是否申請過runtime權限/
 # 是否曾查到電池策略/是否使用裝置識別碼), 缺不代表異常, 單獨歸入弱提示
 # 結果: 異常訊息 append 到 $TMPDIR/.json_health_issues, 弱提示 append 到 $TMPDIR/.json_health_hints
 _json_health_check() {
-	local _file="$1" _name="$2" _pkg _ver _has_perm _has_batt _has_ssaid _issues="" _hints=""
+	local _file="$1" _name="$2" _pkg _ver _has_perm _has_batt _has_notify _has_ssaid _issues="" _hints=""
 	[[ ! -s $_file ]] && { echo "$_name: app_details.json 不存在或為空" >> "$TMPDIR/.json_health_issues"; return; }
 	if ! jq -e . "$_file" >/dev/null 2>&1; then
 		echo "$_name: json 格式損壞 (無法解析)" >> "$TMPDIR/.json_health_issues"
@@ -501,14 +501,78 @@ _json_health_check() {
 	_pkg="$(jq -r 'try ([.[] | objects | select(.PackageName != null).PackageName] | .[0]) catch "" // ""' "$_file" 2>/dev/null)"
 	_ver="$(jq -r 'try ([.[] | objects | select(.apk_version != null).apk_version] | .[0]) catch "" // ""' "$_file" 2>/dev/null)"
 	_has_perm="$(jq -r 'try ([.[] | objects | select(.permissions != null)] | length) catch 0' "$_file" 2>/dev/null)"
-	_has_batt="$(jq -r 'try ([.[] | objects | select(.battery_opt != null)] | length) catch 0' "$_file" 2>/dev/null)"
+	_has_batt="$(jq -r 'try ([.[] | objects | select(.battery_opt != null or .battery_settings != null)] | length) catch 0' "$_file" 2>/dev/null)"
+	_has_notify="$(jq -r 'try ([.[] | objects | select(.notification_settings != null)] | length) catch 0' "$_file" 2>/dev/null)"
 	_has_ssaid="$(jq -r 'try ([.[] | objects | select(.Ssaid != null)] | length) catch 0' "$_file" 2>/dev/null)"
 	[[ -z $_pkg ]] && _issues="$_issues 缺PackageName"
 	[[ -z $_ver ]] && _issues="$_issues 缺apk_version"
+	# 新增欄位型態檢查：有欄位但不是 object，恢復端會讀取異常，視為嚴重問題
+	if ! jq -e 'try all(.[] | objects | select(.permissions != null); (.permissions | type) == "object") catch true' "$_file" >/dev/null 2>&1; then
+		_issues="$_issues permissions非object"
+	fi
+	if ! jq -e 'try all(.[] | objects | select(.notification_settings != null); (.notification_settings | type) == "object") catch true' "$_file" >/dev/null 2>&1; then
+		_issues="$_issues notification_settings非object"
+	fi
+	if ! jq -e 'try all(.[] | objects | select(.battery_settings != null); (.battery_settings | type) == "object") catch true' "$_file" >/dev/null 2>&1; then
+		_issues="$_issues battery_settings非object"
+	fi
+	# notification_settings key 格式檢查：只允許 NOTIFY_APP / NOTIFY_CHANNEL / NOTIFY_GROUP
+	local _bad_notify_keys
+	_bad_notify_keys="$(jq -r '
+		try [
+			.[] | objects | select(.notification_settings != null)
+			| .notification_settings
+			| to_entries[]
+			| select((.key | startswith("NOTIFY_APP:") or startswith("NOTIFY_CHANNEL:") or startswith("NOTIFY_GROUP:")) | not)
+			| .key
+		] | unique | join(",") catch ""
+	' "$_file" 2>/dev/null)"
+	[[ -n $_bad_notify_keys ]] && _issues="$_issues notification_settings未知key($_bad_notify_keys)"
+	# battery_settings key/value 格式檢查
+	# 合法 key:
+	#   BATTERY:RUN_IN_BACKGROUND        "63 0 allow" 或 "0" 或 "allow"
+	#   BATTERY:RUN_ANY_IN_BACKGROUND    "70 0 allow" 或 "0" 或 "allow"
+	#   BATTERY:deviceidle_whitelist     true/false
+	local _bad_batt_keys _bad_batt_vals
+	_bad_batt_keys="$(jq -r '
+		try [
+			.[] | objects | select(.battery_settings != null)
+			| .battery_settings
+			| to_entries[]
+			| select((.key == "BATTERY:RUN_IN_BACKGROUND" or .key == "BATTERY:RUN_ANY_IN_BACKGROUND" or .key == "BATTERY:deviceidle_whitelist" or .key == "BATTERY:idle_whitelist" or .key == "BATTERY:doze_whitelist") | not)
+			| .key
+		] | unique | join(",") catch ""
+	' "$_file" 2>/dev/null)"
+	[[ -n $_bad_batt_keys ]] && _issues="$_issues battery_settings未知key($_bad_batt_keys)"
+	_bad_batt_vals="$(jq -r '
+		def batt_mode_ok:
+			(type == "string") and
+			(
+				test("^[0-9]+( [0-9]+ [A-Za-z_]+)?$") or
+				test("^(allow|allowed|ignore|ignored|deny|denied|errored|default|foreground|true|false)$"; "i")
+			);
+		try [
+			.[] | objects | select(.battery_settings != null)
+			| .battery_settings
+			| to_entries[]
+			| select(
+				if (.key == "BATTERY:deviceidle_whitelist" or .key == "BATTERY:idle_whitelist" or .key == "BATTERY:doze_whitelist") then
+					((.value | tostring) | test("^(true|false)$"; "i") | not)
+				elif (.key == "BATTERY:RUN_IN_BACKGROUND" or .key == "BATTERY:RUN_ANY_IN_BACKGROUND") then
+					((.value | tostring) | batt_mode_ok | not)
+				else
+					false
+				end
+			)
+			| "\(.key)=\(.value)"
+		] | unique | join(",") catch ""
+	' "$_file" 2>/dev/null)"
+	[[ -n $_bad_batt_vals ]] && _issues="$_issues battery_settings值異常($_bad_batt_vals)"
 	[[ -n $_issues ]] && echo "$_name:$_issues" >> "$TMPDIR/.json_health_issues"
-	# 弱提示: 不視為異常, 只是告知該欄位沒有紀錄 (可能本來就沒有, 不一定要重備份)
+	# 弱提示: 不視為異常，只是告知該欄位沒有紀錄
 	[[ ${_has_perm:-0} -eq 0 ]] && _hints="$_hints 無permissions"
-	[[ ${_has_batt:-0} -eq 0 ]] && _hints="$_hints 無battery_opt"
+	[[ ${_has_notify:-0} -eq 0 ]] && _hints="$_hints 無notification_settings"
+	[[ ${_has_batt:-0} -eq 0 ]] && _hints="$_hints 無battery_opt/battery_settings"
 	[[ ${_has_ssaid:-0} -eq 0 ]] && _hints="$_hints 無Ssaid"
 	[[ -n $_hints ]] && echo "$_name:$_hints" >> "$TMPDIR/.json_health_hints"
 }
@@ -769,7 +833,7 @@ while read -r file expected_hash; do
 done <<EOF
 zstd 9ef4b54148699c9874cfd45aaf38e5cc950e5d168afdcf2edf58a2463f5561ed
 tar 882639ac310a7eb4052c68c21cea02633307700f9cc8c7c469c2dd18d734a112
-classes.dex 7308f8d1499179b6248c8279ce5cb41380c453e0b86e3161e2124a5e481f0557
+classes.dex 14a6dc6a60a56595a1cec2227f5fb7aa14f6d034990b3081749145f01ac38ccd
 busybox 4d60ab3f5a59ebb2ca863f2f514e6924401b581e9b64f602665c008177626651
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
 jq 6bc62f25981328edd3cfcfe6fe51b073f2d7e7710d7ef7fcdac28d4e384fc3d4
@@ -868,12 +932,33 @@ print_tools_version() {
 			echo "[classes.dex]"
 			echo "sha256: $(sha256sum "$tools_path/classes.dex" 2>/dev/null | awk '{print $1}')"
 			echo ""
+			echo "[HiddenApiUtil]"
+			CLASSPATH="$tools_path/classes.dex" app_process /system/bin com.xayah.dex.HiddenApiUtil --version 2>&1
+			echo ""
 		}
 		# script 自己版本
 		echo "[backup_script]"
 		echo "backup_version=$backup_version"
 	} > "$_ver_log" 2>&1
 	echoRgb "工具版本已記錄: $_ver_log" "2"
+}
+
+get_dex_version_line() {
+	[[ ! -f $tools_path/classes.dex ]] && { echo "未找到classes.dex"; return 0; }
+	local _dex_ver
+	_dex_ver="$(CLASSPATH="$tools_path/classes.dex" app_process /system/bin com.xayah.dex.HiddenApiUtil --version 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+	[[ -n $_dex_ver ]] && echo "$_dex_ver" || echo "無法取得"
+}
+
+show_dex_version() {
+	[[ ! -f $tools_path/classes.dex ]] && return 0
+	local _dex_ver
+	_dex_ver="$(CLASSPATH="$tools_path/classes.dex" app_process /system/bin com.xayah.dex.HiddenApiUtil --version 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+	if [[ -n $_dex_ver ]]; then
+		echoRgb "dex版本: $_dex_ver" "3"
+	else
+		echoRgb "dex版本: 無法取得，可能 classes.dex 尚未包含 --version" "0"
+	fi
 }
 
 if [[ $background_execution = 1 || $setDisplayPowerMode = 1 ]]; then
@@ -905,7 +990,7 @@ LOGO
 echo -e "\e[38;5;213m        » RESTORE // SYNC «\e[0m"
 sleep 1 && clear
 TMPDIR="/data/local/tmp"
-[[ -n $TMPDIR ]] && rm -rf "$TMPDIR"/* 2>/dev/null
+case "$TMPDIR" in ""|"/") echo "TMPDIR異常，拒絕清理: $TMPDIR"; exit 1 ;; *) rm -rf "$TMPDIR"/* 2>/dev/null ;; esac
 [[ ! -d $TMPDIR ]] && mkdir "$TMPDIR"
 chmod 771 "$TMPDIR"
 chown '2000:2000' "$TMPDIR"
@@ -1165,6 +1250,144 @@ _perm_cn() {
 	# ---- 通知補充 ----
 	android.permission.USE_FULL_SCREEN_INTENT) echo "全螢幕通知" ;;
 	android.permission.ACCESS_NOTIFICATION_POLICY) echo "勿擾模式存取" ;;
+	android:picture_in_picture) echo "子母畫面" ;;
+	android:system_alert_window) echo "懸浮窗權限(AppOps)" ;;
+	android:use_full_screen_intent) echo "全螢幕通知(AppOps)" ;;
+	android:write_settings) echo "寫入系統設置(AppOps)" ;;
+	android:request_install_packages) echo "安裝未知應用(AppOps)" ;;
+	android:get_usage_stats) echo "使用情況存取(AppOps)" ;;
+	android:manage_external_storage) echo "管理所有檔案(AppOps)" ;;
+	android:schedule_exact_alarm) echo "精確鬧鐘(AppOps)" ;;
+	android:access_notification_policy) echo "勿擾模式存取(AppOps)" ;;
+
+	# ---- AppOps 額外名稱對照 ----
+	android:coarse_location) echo "粗略定位(AppOps)" ;;
+	android:fine_location) echo "精確定位(AppOps)" ;;
+	android:gps) echo "GPS定位(AppOps)" ;;
+	android:vibrate) echo "振動(AppOps)" ;;
+	android:read_contacts) echo "讀取聯絡人(AppOps)" ;;
+	android:write_contacts) echo "寫入聯絡人(AppOps)" ;;
+	android:read_call_log) echo "讀取通話記錄(AppOps)" ;;
+	android:write_call_log) echo "寫入通話記錄(AppOps)" ;;
+	android:read_calendar) echo "讀取日曆(AppOps)" ;;
+	android:write_calendar) echo "寫入日曆(AppOps)" ;;
+	android:wifi_scan) echo "WiFi掃描(AppOps)" ;;
+	android:post_notification) echo "發送通知(AppOps)" ;;
+	android:neighboring_cells) echo "鄰近基地台(AppOps)" ;;
+	android:call_phone) echo "直接撥打電話(AppOps)" ;;
+	android:read_sms) echo "讀取短信(AppOps)" ;;
+	android:write_sms) echo "寫入短信(AppOps)" ;;
+	android:receive_sms) echo "接收短信(AppOps)" ;;
+	android:receive_emergency_broadcast) echo "接收緊急廣播(AppOps)" ;;
+	android:receive_mms) echo "接收彩信(AppOps)" ;;
+	android:receive_wap_push) echo "接收WAP推送(AppOps)" ;;
+	android:send_sms) echo "發送短信(AppOps)" ;;
+	android:read_icc_sms) echo "讀取SIM短信(AppOps)" ;;
+	android:write_icc_sms) echo "寫入SIM短信(AppOps)" ;;
+	android:access_notifications) echo "通知存取(AppOps)" ;;
+	android:camera) echo "相機(AppOps)" ;;
+	android:record_audio) echo "麥克風(AppOps)" ;;
+	android:play_audio) echo "播放音訊(AppOps)" ;;
+	android:read_clipboard) echo "讀取剪貼板(AppOps)" ;;
+	android:write_clipboard) echo "寫入剪貼板(AppOps)" ;;
+	android:take_media_buttons) echo "接收媒體按鍵(AppOps)" ;;
+	android:take_audio_focus) echo "取得音訊焦點(AppOps)" ;;
+	android:audio_master_volume) echo "主音量控制(AppOps)" ;;
+	android:audio_voice_volume) echo "通話音量控制(AppOps)" ;;
+	android:audio_ring_volume) echo "鈴聲音量控制(AppOps)" ;;
+	android:audio_media_volume) echo "媒體音量控制(AppOps)" ;;
+	android:audio_alarm_volume) echo "鬧鐘音量控制(AppOps)" ;;
+	android:audio_notification_volume) echo "通知音量控制(AppOps)" ;;
+	android:audio_bluetooth_volume) echo "藍牙音量控制(AppOps)" ;;
+	android:wake_lock) echo "保持喚醒(AppOps)" ;;
+	android:monitor_location) echo "監控定位(AppOps)" ;;
+	android:monitor_high_power_location) echo "高功耗定位監控(AppOps)" ;;
+	android:mute_microphone) echo "靜音麥克風(AppOps)" ;;
+	android:toast_window) echo "Toast視窗(AppOps)" ;;
+	android:project_media) echo "媒體投放/投影(AppOps)" ;;
+	android:activate_vpn) echo "啟用VPN(AppOps)" ;;
+	android:write_wallpaper) echo "修改壁紙(AppOps)" ;;
+	android:assist_structure) echo "輔助結構存取(AppOps)" ;;
+	android:assist_screenshot) echo "輔助截圖存取(AppOps)" ;;
+	android:read_phone_state) echo "讀取手機狀態(AppOps)" ;;
+	android:add_voicemail) echo "新增語音信箱(AppOps)" ;;
+	android:use_sip) echo "使用SIP通話(AppOps)" ;;
+	android:process_outgoing_calls) echo "處理撥出電話(AppOps)" ;;
+	android:use_fingerprint) echo "使用指紋(AppOps)" ;;
+	android:body_sensors) echo "身體傳感器(AppOps)" ;;
+	android:read_cell_broadcasts) echo "讀取緊急廣播(AppOps)" ;;
+	android:mock_location) echo "模擬位置(AppOps)" ;;
+	android:read_external_storage) echo "讀取外部存儲(AppOps)" ;;
+	android:write_external_storage) echo "寫入外部存儲(AppOps)" ;;
+	android:turn_screen_on) echo "喚醒螢幕(AppOps)" ;;
+	android:get_accounts) echo "獲取帳戶列表(AppOps)" ;;
+	android:run_in_background) echo "背景執行(AppOps)" ;;
+	android:audio_accessibility_volume) echo "無障礙音量控制(AppOps)" ;;
+	android:read_phone_numbers) echo "讀取電話號碼(AppOps)" ;;
+	android:instant_app_start_foreground) echo "即時應用啟動前台服務(AppOps)" ;;
+	android:answer_phone_calls) echo "接聽電話(AppOps)" ;;
+	android:run_any_in_background) echo "任意背景執行(AppOps)" ;;
+	android:change_wifi_state) echo "修改WiFi狀態(AppOps)" ;;
+	android:request_delete_packages) echo "刪除應用(AppOps)" ;;
+	android:bind_accessibility_service) echo "綁定無障礙服務(AppOps)" ;;
+	android:accept_handover) echo "接管通話(AppOps)" ;;
+	android:manage_ipsec_tunnels) echo "管理IPSec通道(AppOps)" ;;
+	android:start_foreground) echo "啟動前台服務(AppOps)" ;;
+	android:bluetooth_scan) echo "藍牙掃描(AppOps)" ;;
+	android:use_biometric) echo "使用生物識別(AppOps)" ;;
+	android:activity_recognition) echo "活動識別(AppOps)" ;;
+	android:sms_financial_transactions) echo "金融短信交易(AppOps)" ;;
+	android:read_media_audio) echo "讀取音頻(AppOps)" ;;
+	android:write_media_audio) echo "寫入音頻(AppOps)" ;;
+	android:read_media_video) echo "讀取視頻(AppOps)" ;;
+	android:write_media_video) echo "寫入視頻(AppOps)" ;;
+	android:read_media_images) echo "讀取圖片(AppOps)" ;;
+	android:write_media_images) echo "寫入圖片(AppOps)" ;;
+	android:legacy_storage) echo "舊版儲存模式(AppOps)" ;;
+	android:access_accessibility) echo "無障礙存取(AppOps)" ;;
+	android:read_device_identifiers) echo "讀取裝置識別碼(AppOps)" ;;
+	android:access_media_location) echo "媒體位置存取(AppOps)" ;;
+	android:query_all_packages) echo "查詢所有應用(AppOps)" ;;
+	android:interact_across_profiles) echo "跨設定檔互動(AppOps)" ;;
+	android:activate_platform_vpn) echo "啟用平台VPN(AppOps)" ;;
+	android:loader_usage_stats) echo "載入器使用情況(AppOps)" ;;
+	android:auto_revoke_permissions_if_unused) echo "未使用自動撤銷權限(AppOps)" ;;
+	android:auto_revoke_managed_by_installer) echo "安裝器管理自動撤銷(AppOps)" ;;
+	android:no_isolated_storage) echo "停用隔離儲存(AppOps)" ;;
+	android:phone_call_microphone) echo "通話麥克風(AppOps)" ;;
+	android:phone_call_camera) echo "通話相機(AppOps)" ;;
+	android:record_audio_hotword) echo "熱詞錄音(AppOps)" ;;
+	android:manage_ongoing_calls) echo "管理進行中通話(AppOps)" ;;
+	android:manage_credentials) echo "管理憑證(AppOps)" ;;
+	android:use_icc_auth_with_device_identifier) echo "SIM認證使用裝置識別碼(AppOps)" ;;
+	android:record_audio_output) echo "錄製系統音訊輸出(AppOps)" ;;
+	android:fine_location_source) echo "精確定位來源(AppOps)" ;;
+	android:coarse_location_source) echo "粗略定位來源(AppOps)" ;;
+	android:manage_media) echo "管理媒體(AppOps)" ;;
+	android:bluetooth_connect) echo "藍牙連接(AppOps)" ;;
+	android:uwb_ranging) echo "超寬頻測距(AppOps)" ;;
+	android:activity_recognition_source) echo "活動識別來源(AppOps)" ;;
+	android:bluetooth_advertise) echo "藍牙廣播(AppOps)" ;;
+	android:record_incoming_phone_audio) echo "錄製來電音訊(AppOps)" ;;
+	android:nearby_wifi_devices) echo "鄰近WiFi設備(AppOps)" ;;
+	android:establish_vpn_service) echo "建立VPN服務(AppOps)" ;;
+	android:establish_vpn_manager) echo "建立VPN管理器(AppOps)" ;;
+	android:access_restricted_settings) echo "存取受限設定(AppOps)" ;;
+	android:receive_soundtrigger_audio) echo "接收聲音觸發音訊(AppOps)" ;;
+	android:receive_explicit_user_interaction_audio) echo "接收明確互動音訊(AppOps)" ;;
+	android:run_user_initiated_jobs) echo "執行使用者發起工作(AppOps)" ;;
+	android:read_media_visual_user_selected) echo "讀取使用者選擇媒體(AppOps)" ;;
+	android:system_exempt_from_suspension) echo "系統豁免暫停(AppOps)" ;;
+	android:system_exempt_from_dismissible_notifications) echo "系統豁免可清除通知(AppOps)" ;;
+	android:read_write_health_data) echo "讀寫健康資料(AppOps)" ;;
+	android:foreground_service_special_use) echo "前台服務特殊用途(AppOps)" ;;
+	android:camera_sandboxed) echo "沙盒相機(AppOps)" ;;
+	android:record_audio_sandboxed) echo "沙盒錄音(AppOps)" ;;
+	android:receive_sandbox_trigger_audio) echo "接收沙盒觸發音訊(AppOps)" ;;
+	android:system_exempt_from_power_restrictions) echo "系統豁免電源限制(AppOps)" ;;
+	android:system_exempt_from_hibernation) echo "系統豁免休眠(AppOps)" ;;
+	android:system_exempt_from_activity_bg_start_restriction) echo "系統豁免背景啟動限制(AppOps)" ;;
+	android:capture_consentless_bugreport_on_userdebug_build) echo "擷取無同意錯誤報告(AppOps)" ;;
 	# ---- 系統/背景執行補充 ----
 	android.permission.RUN_IN_BACKGROUND) echo "在背景執行" ;;
 	android.permission.RUN_ANY_IN_BACKGROUND) echo "任意背景執行" ;;
@@ -1207,6 +1430,7 @@ _perm_cn() {
 	android.permission.health.READ_WEIGHT) echo "讀取體重" ;;
 	android.permission.health.READ_MEDICAL_DATA_IMMUNIZATION) echo "讀取疫苗醫療記錄" ;;
 	android.permission.health.WRITE_MEDICAL_DATA) echo "寫入醫療記錄" ;;
+	android:op_*) echo "未知AppOps(${1#android:op_})" ;;
 	*) echo "$1" ;;
 	esac
 }
@@ -1286,7 +1510,68 @@ kill_Serve() {
 		fi
 	fi
 	echo "$MY_PID" > "$LOCK_DIR/pid"
-	trap "rm -rf '$LOCK_DIR'; rm -f \"\$TMPDIR/.pkg_uid\" \"\$TMPDIR/.pkg_ver\" \"\$TMPDIR/.pkg_perms\" \"\$TMPDIR/.dir_sizes\" \"\$TMPDIR/.pkg_installer\" \"\$TMPDIR/.battery_wl\" \"\$TMPDIR/.installed_pkgs\" \"\$TMPDIR/.smb_scan_results\" \"\$TMPDIR/.backup_done\" \"\$TMPDIR/.update_apks\" \"\$TMPDIR/.add_apks\" \"\$TMPDIR/.ssaid_apks\" \"\$TMPDIR/.changed_apps\" \"\$TMPDIR/.batch_grant\" \"\$TMPDIR/.batch_revoke\" \"\$TMPDIR/.batch_ops\" \"\$TMPDIR/.batch_opsreset\" \"\$TMPDIR/.restore_ssaid\" \"\$TMPDIR/.dns_cache\" \"\$TMPDIR/.backup_manifest\" \"\$TMPDIR/.remote_scripts\" \"\$TMPDIR/.remote_files\" \"\$TMPDIR/.dex_call_log\" \"\$TMPDIR/.stream_restore_list\" \"\$TMPDIR/.json_fetch\" \"\$TMPDIR/.verify_files\" \"\$TMPDIR/.stream_failed\" \"\$TMPDIR/.listver_changed\" \$TMPDIR/.remote_app_details_* 2>/dev/null; rm -rf \"\$TMPDIR/.remote_json\" 2>/dev/null; remote_cleanup" EXIT
+	
+# 安全清理暫存檔：避免 TMPDIR 異常時誤刪
+_cleanup_tmp_files() {
+	case "$TMPDIR" in
+	""|"/")
+		echoRgb "TMPDIR異常，跳過暫存清理: $TMPDIR" "0" 2>/dev/null
+		return 0
+		;;
+	esac
+	rm -f \
+		"$TMPDIR/.pkg_uid" \
+		"$TMPDIR/.pkg_ver" \
+		"$TMPDIR/.pkg_perms" \
+		"$TMPDIR/.pkg_notify" \
+		"$TMPDIR/.pkg_battery" \
+		"$TMPDIR/.pkg_installer" \
+		"$TMPDIR/.battery_wl" \
+		"$TMPDIR/.installed_pkgs" \
+		"$TMPDIR/.smb_scan_results" \
+		"$TMPDIR/.backup_done" \
+		"$TMPDIR/.update_apks" \
+		"$TMPDIR/.add_apks" \
+		"$TMPDIR/.ssaid_apks" \
+		"$TMPDIR/.batch_grant" \
+		"$TMPDIR/.batch_revoke" \
+		"$TMPDIR/.batch_ops" \
+		"$TMPDIR/.batch_opsreset" \
+		"$TMPDIR/.batch_notify" \
+		"$TMPDIR/.batch_battery" \
+		"$TMPDIR/.restore_ssaid" \
+		"$TMPDIR/.perm_expect" \
+		"$TMPDIR/.perm_actual" \
+		"$TMPDIR/.ops_expect" \
+		"$TMPDIR/.ops_actual" \
+		"$TMPDIR/.notify_expect" \
+		"$TMPDIR/.notify_actual" \
+		"$TMPDIR/.notify_mismatch" \
+		"$TMPDIR/.notify_pending" \
+		"$TMPDIR/.battery_expect" \
+		"$TMPDIR/.battery_actual" \
+		"$TMPDIR/.dir_sizes" \
+		"$TMPDIR/.changed_apps" \
+		"$TMPDIR/.backup_manifest" \
+		"$TMPDIR/.json_health_issues" \
+		"$TMPDIR/.json_health_hints" \
+		"$TMPDIR/.dns_cache" \
+		"$TMPDIR/.stream_failed" \
+		"$TMPDIR/.remote_scripts" \
+		"$TMPDIR/.remote_files" \
+		"$TMPDIR/.dex_call_log" \
+		"$TMPDIR/.stream_restore_list" \
+		"$TMPDIR/.json_fetch" \
+		"$TMPDIR/.verify_files" \
+		"$TMPDIR/.listver_changed" \
+		2>/dev/null
+	rm -rf \
+		"$TMPDIR/.remote_json" \
+		"$TMPDIR"/.remote_app_details_* \
+		2>/dev/null
+}
+
+trap "rm -rf \"$LOCK_DIR\" 2>/dev/null; _cleanup_tmp_files; remote_cleanup" EXIT
 }
 kill_Serve
 # ======================================================
@@ -3609,7 +3894,7 @@ _device="$(getprop ro.product.device 2>/dev/null)"
 _busybox_path="$(which busybox)"
 _busybox_ver="$(busybox | head -1 | cut -d' ' -f2)"
 echoRgb "---------------------SpeedBackup---------------------"
-echoRgb "腳本路徑:$MODDIR\n -已開機:$(Show_boottime)\n -執行時間:$(date +"%Y-%m-%d %H:%M:%S")\n -busybox路徑:$_busybox_path\n -busybox版本:$_busybox_ver\n -腳本版本:$backup_version\n -管理器:$Manager_version\n -品牌:$_brand\n -型號:$Device_name($_device)\n -閃存顆粒:$UFS_MODEL($ROM_TYPE)\n -$DEVICE_NAME\n -$RAMINFO\n -Android版本:$release SDK:$sdk\n -內核:$(uname -r)\n -Selinux狀態:$([[ $(getenforce) = Permissive ]] && echo "寬容" || echo "嚴格")\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
+echoRgb "腳本路徑:$MODDIR\n -已開機:$(Show_boottime)\n -執行時間:$(date +"%Y-%m-%d %H:%M:%S")\n -busybox路徑:$_busybox_path\n -busybox版本:$_busybox_ver\n -腳本版本:$backup_version\n -dex版本:$(get_dex_version_line)\n -管理器:$Manager_version\n -品牌:$_brand\n -型號:$Device_name($_device)\n -閃存顆粒:$UFS_MODEL($ROM_TYPE)\n -$DEVICE_NAME\n -$RAMINFO\n -Android版本:$release SDK:$sdk\n -內核:$(uname -r)\n -Selinux狀態:$([[ $(getenforce) = Permissive ]] && echo "寬容" || echo "嚴格")\n -By@YAWAsau\n -Support: https://jq.qq.com/?_wv=1027&k=f5clPNC3"
 case $MODDIR in
 *Backup_*)
 	if [[ -f $MODDIR/app_details.json ]]; then
@@ -3752,7 +4037,7 @@ _dex() {
 	[[ $_dex_debug = 1 ]] && {
 		local _c
 		for _c in "$@"; do case $_c in
-			grant*|revoke*|setOps*|getRuntime*|getInstalled*|getPackage*|setDisplay*|get|set) echo "$_c" >> "$TMPDIR/.dex_call_log"; break ;;
+			grant*|revoke*|setOps*|getRuntime*|getInstalled*|getPackage*|setDisplay*|getNotification*|setNotification*|getBattery*|setBattery*|get|set) echo "$_c" >> "$TMPDIR/.dex_call_log"; break ;;
 		esac; done
 	}
 	command app_process "$@"
@@ -3778,7 +4063,6 @@ case $Shell_LANG in
 	esac
 	;;
 esac
-
 alias appinfo="_dex /system/bin com.xayah.dex.HiddenApiUtil getInstalledPackagesAsUser $USER_ID $@"
 alias appinfo2="_dex /system/bin com.xayah.dex.HiddenApiUtil getPackageLabel $USER_ID $@"
 alias appinfo3="_dex /system/bin com.xayah.dex.HiddenApiUtil getPackageArchiveInfo $@"
@@ -3789,6 +4073,10 @@ alias get_Permissions="_dex /system/bin com.xayah.dex.HiddenApiUtil getRuntimePe
 alias Set_true_Permissions="_dex /system/bin com.xayah.dex.HiddenApiUtil grantRuntimePermission $USER_ID $@"
 alias Set_false_Permissions="_dex /system/bin com.xayah.dex.HiddenApiUtil revokeRuntimePermission $USER_ID $@"
 alias Set_Ops="_dex /system/bin com.xayah.dex.HiddenApiUtil setOpsMode $USER_ID $@"
+alias get_Notifications="_dex /system/bin com.xayah.dex.HiddenApiUtil getNotificationSettings $USER_ID $@"
+alias Set_Notifications="_dex /system/bin com.xayah.dex.HiddenApiUtil setNotificationSettings $USER_ID $@"
+alias get_Battery_Settings="_dex /system/bin com.xayah.dex.HiddenApiUtil getBatterySettings $USER_ID $@"
+alias Set_Battery_Settings="_dex /system/bin com.xayah.dex.HiddenApiUtil setBatterySettings $USER_ID $@"
 alias setDisplay="_dex /system/bin com.xayah.dex.HiddenApiUtil setDisplayPowerMode $@"
 find_tools_path="$(find "$path_hierarchy"/* -maxdepth 1 -name "tools" -type d ! -path "$path_hierarchy/tools" | grep -v "/Backup_[^/]*/tools$")"
 # 備份 WiFi 密碼到指定目錄, 用 classes.dex 讀 system 內的 WifiConfigStore
@@ -4280,6 +4568,35 @@ prepare_pkg_installer_map() {
 		| sed -e 's/^package://' -e 's/  installer=/\t/' \
 		| awk -F'\t' '$2 != "" && $2 != "null" {print $1"\t"$2}' > "$TMPDIR/.pkg_installer"
 }
+
+# 預掃各 app 的電池/背景設定（dex v12: RUN_IN_BACKGROUND / RUN_ANY_IN_BACKGROUND / deviceidle whitelist）
+# 寫到 $TMPDIR/.pkg_battery, 格式: pkg<TAB>json
+# dex 輸出每行: packageName BATTERY:xxx value...
+prepare_battery_settings_map() {
+	local _battery_tmp="$TMPDIR/.pkg_battery"
+	: > "$_battery_tmp"
+	local _all_pkgs
+	if [[ -n $1 ]]; then
+		_all_pkgs="$1"
+	else
+		_all_pkgs="$(echo "$txt" | awk '{print $2}' | grep -v '^$' | paste -sd' ' -)"
+	fi
+	[[ -z $_all_pkgs ]] && return
+	echoRgb "預掃電池/背景設定中..." "2"
+	get_Battery_Settings $_all_pkgs 2>/dev/null | awk '
+		NF>=3 && $0 != "null" {
+			pkg=$1; key=$2
+			val=$3; for(i=4;i<=NF;i++) val=val" "$i
+			gsub(/\\/, "\\\\", key); gsub(/"/, "\\\"", key)
+			gsub(/\\/, "\\\\", val); gsub(/"/, "\\\"", val)
+			if (seen[pkg]) entry[pkg]=entry[pkg]","
+			entry[pkg]=entry[pkg] "\"" key "\":\"" val "\""
+			seen[pkg]=1
+		}
+		END { for (p in entry) print p "\t{" entry[p] "}" }
+	' >> "$_battery_tmp"
+}
+
 # 預掃各 app 的後台運行狀態 (appops RUN_ANY_IN_BACKGROUND)
 # 預掃各 app 的後台運行狀態 (appops RUN_ANY_IN_BACKGROUND)
 # 對應系統設定「允許在背景使用 / 無限制 / 最佳化」
@@ -4288,6 +4605,18 @@ prepare_pkg_installer_map() {
 # 只記錄「有明確設定」的 (RUN_ANY_IN_BACKGROUND: xxx), 系統預設(Default mode)不記錄
 prepare_battery_whitelist() {
 	: > "$TMPDIR/.battery_wl"
+	# dex v12 已經批量讀到 RUN_ANY_IN_BACKGROUND 時，直接從 .pkg_battery 轉出舊 battery_opt，避免逐 app appops get 變慢
+	if [[ -s "$TMPDIR/.pkg_battery" ]]; then
+		jq -Rr '
+			split("	") as $x |
+			select(($x|length) >= 2) |
+			($x[1] | fromjson? // {}) as $j |
+			($j["BATTERY:RUN_ANY_IN_BACKGROUND"] // "" | split(" ") | last) as $m |
+			select($m != null and $m != "") |
+			"\($x[0])	\($m)"
+		' "$TMPDIR/.pkg_battery" > "$TMPDIR/.battery_wl" 2>/dev/null
+		[[ -s "$TMPDIR/.battery_wl" ]] && return
+	fi
 	local _list
 	if [[ -n $1 ]]; then
 		_list="$1"
@@ -4505,22 +4834,55 @@ prepare_permissions_map() {
 	get_Permissions $_all_pkgs 2>/dev/null | awk '
 		NF>=3 && $0 != "null" {
 			pkg=$1; perm=$2
-			val=$3; for(i=4;i<=NF;i++) val=val" "$i
+			if (perm == "EXTRA_OP" && NF >= 4) {
+				# 舊/未知 AppOps 輸出格式: pkg EXTRA_OP op mode
+				# JSON key 必須唯一, 否則多個 EXTRA_OP 會互相覆蓋
+				perm="EXTRA_OP_" $3
+				val=$3 " " $4
+			} else {
+				# 一般格式: pkg permissionOrAppOp true/false op mode
+				val=$3; for(i=4;i<=NF;i++) val=val" "$i
+			}
 			if (seen[pkg]) entry[pkg]=entry[pkg]","
-			# json 跳脫: 包名/權限名/值皆為安全字元(字母數字點底線空白), 直接包引號
+			# json 跳脫: 包名/權限名/值皆為安全字元(字母數字點底線冒號空白), 直接包引號
 			entry[pkg]=entry[pkg] "\"" perm "\":\"" val "\""
 			seen[pkg]=1
 		}
 		END { for (p in entry) print p "\t{" entry[p] "}" }
 	' >> "$_perms_tmp"
 }
+
+# 預掃所有 app 的通知設定（NotificationManager / NotificationChannel）
+# 寫到 $TMPDIR/.pkg_notify, 格式: pkg<TAB>json
+# dex 輸出每行: packageName NOTIFY_xxx value
+prepare_notifications_map() {
+	local _notify_tmp="$TMPDIR/.pkg_notify"
+	: > "$_notify_tmp"
+	local _all_pkgs
+	_all_pkgs="$(echo "$txt" | awk '{print $2}' | grep -v '^$' | paste -sd' ' -)"
+	[[ -z $_all_pkgs ]] && return
+	echoRgb "預掃應用通知設定中..." "2"
+	get_Notifications $_all_pkgs 2>/dev/null | awk '
+		NF>=3 && $0 != "null" {
+			pkg=$1; key=$2
+			val=$3; for(i=4;i<=NF;i++) val=val" "$i
+			# JSON escape: backslash first, then double quote
+			gsub(/\\/, "\\\\", key); gsub(/"/, "\\\"", key)
+			gsub(/\\/, "\\\\", val); gsub(/"/, "\\\"", val)
+			if (seen[pkg]) entry[pkg]=entry[pkg]","
+			entry[pkg]=entry[pkg] "\"" key "\":\"" val "\""
+			seen[pkg]=1
+		}
+		END { for (p in entry) print p "\t{" entry[p] "}" }
+	' >> "$_notify_tmp"
+}
 # 用法: app_details_read <檔案路徑>
 # 設定全域變數: APK_VER / SSAID_OLD / PERMS_OLD / PKG_NAME / BACKUP_TIME
 #              SIZE_user / SIZE_data / SIZE_obb / SIZE_user_de / SIZE_media (各類型大小)
-#              INSTALLER_OLD / BATTERY_OLD
+#              INSTALLER_OLD / BATTERY_OLD / BATTERY_SETTINGS_OLD
 app_details_read() {
 	local file="$1"
-	APK_VER=""; SSAID_OLD=""; PERMS_OLD=""; PKG_NAME=""; BACKUP_TIME=""
+	APK_VER=""; SSAID_OLD=""; PERMS_OLD=""; NOTIFY_OLD=""; BATTERY_SETTINGS_OLD=""; PKG_NAME=""; BACKUP_TIME=""
 	SIZE_user=""; SIZE_data=""; SIZE_obb=""; SIZE_user_de=""; SIZE_media=""
 	INSTALLER_OLD=""; BATTERY_OLD=""
 	[[ ! -f $file ]] && return
@@ -4532,6 +4894,8 @@ app_details_read() {
 		(try ([.[] | objects | select(.apk_version != null).apk_version] | .[0]) catch "" // ""),
 		(try ([.[] | objects | select(.Ssaid != null).Ssaid] | .[0]) catch "" // ""),
 		(try ([.[] | objects | select(.permissions != null).permissions | tojson] | .[0]) catch "" // ""),
+		(try ([.[] | objects | select(.notification_settings != null).notification_settings | tojson] | .[0]) catch "" // ""),
+		(try ([.[] | objects | select(.battery_settings != null).battery_settings | tojson] | .[0]) catch "" // ""),
 		(try ([.[] | objects | select(.PackageName != null).PackageName] | .[0]) catch "" // ""),
 		(try (.["Backup time"].date) catch "" // ""),
 		(try (.user.Size) catch "" // ""),
@@ -4547,6 +4911,8 @@ app_details_read() {
 	read -r APK_VER <&3
 	read -r SSAID_OLD <&3
 	read -r PERMS_OLD <&3
+	read -r NOTIFY_OLD <&3
+	read -r BATTERY_SETTINGS_OLD <&3
 	read -r PKG_NAME <&3
 	read -r BACKUP_TIME <&3
 	read -r SIZE_user <&3
@@ -4929,7 +5295,19 @@ Backup_Permissions() {
 				if [[ $perms_old != $Get_Permissions ]]; then
 					echoRgb "權限變更"
 					jq -n --argjson old "$perms_old" --argjson new "$Get_Permissions" \
-						'$new | to_entries | map(select(.key as $k | $old[$k] == null or ($old[$k] | split(" ")[0]) != (.value | split(" ")[0])) | "\(.key)|\(if ($old[.key] == null) then "新增→\(.value | split(" ")[0])" else "\($old[.key] | split(" ")[0])→\(.value | split(" ")[0])" end)") | .[]' \
+						'
+						def flag: split(" ")[0];
+						def opmode:
+						  (split(" ")) as $v |
+						  if ($v|length) >= 3 then " op=" + $v[1] + " mode=" + $v[2]
+						  elif ($v|length) >= 2 then " op=" + $v[0] + " mode=" + $v[1]
+						  else "" end;
+						$new
+						| to_entries
+						| map(select(.key as $k | $old[$k] == null or $old[$k] != .value)
+						  | "\(.key)|\(if ($old[.key] == null) then "新增→" + (.value|flag) + (.value|opmode) else ($old[.key]|flag) + "→" + (.value|flag) + "  " + ($old[.key]|opmode) + " →" + (.value|opmode) end)")
+						| .[]
+						' \
 						-r 2>/dev/null | while IFS='|' read -r _pname _pchange; do
 						echoRgb "$(_perm_cn "$_pname"): $_pchange"
 					done
@@ -4943,7 +5321,69 @@ Backup_Permissions() {
 		[[ $Get_Permissions != "" ]] && echoRgb "備份權限失敗" "0"
 	fi
 }
-# 備份額外 metadata: installer (安裝來源) 與 battery_opt (電池優化白名單)
+# 備份通知設定（NotificationManager / NotificationChannel）
+# 恢復時可還原通知總開關、通知圓點、對話/泡泡、channel 重要性等可寫欄位
+Backup_Notifications() {
+	# 從預掃 map 讀取當前系統通知設定
+	eval "Get_Notifications=\${_pn_${name2//[!a-zA-Z0-9]/_}}"
+	local notify_old="$NOTIFY_OLD"
+	[[ -z $Get_Notifications ]] && return
+	if [[ $notify_old = "" ]]; then
+		echoRgb "備份通知設定"
+		jq_inplace "$app_details" --arg packageName "$name1" --argjson notification_settings "$Get_Notifications" '.[$packageName].notification_settings |= $notification_settings'
+		echo_log "備份通知設定"
+		[[ $result = 0 ]] && _mark_changed
+	else
+		if [[ $notify_old != "$Get_Notifications" ]]; then
+			echoRgb "通知設定變更"
+			jq -n --argjson old "$notify_old" --argjson new "$Get_Notifications" '
+				$new
+				| to_entries
+				| map(select(.key as $k | $old[$k] == null or $old[$k] != .value)
+				  | "\(.key)|\(if ($old[.key] == null) then "新增→" + .value else $old[.key] + "→" + .value end)")
+				| .[]
+			' -r 2>/dev/null | while IFS='|' read -r _nkey _nchange; do
+				echoRgb "$(_notify_cn "$_nkey"): $_nchange"
+			done
+			jq_inplace "$app_details" --arg packageName "$name1" --argjson notification_settings "$Get_Notifications" '.[$packageName] |= . + {notification_settings: $notification_settings}'
+			echo_log "備份通知設定"
+			[[ $result = 0 ]] && _mark_changed
+		fi
+	fi
+}
+
+# 通知設定 key → 中文顯示
+_notify_cn() {
+	case $1 in
+		NOTIFY_APP:enabled) echo "通知總開關" ;;
+		NOTIFY_APP:importance) echo "通知重要性" ;;
+		NOTIFY_APP:showBadge) echo "允許使用通知圓點" ;;
+		NOTIFY_APP:bubblePreference|NOTIFY_APP:allowBubbles) echo "對話區/泡泡通知" ;;
+		NOTIFY_CHANNEL:*:showBadge) echo "允許使用通知圓點" ;;
+		NOTIFY_CHANNEL:*:importance) echo "通知分類重要性" ;;
+		NOTIFY_CHANNEL:*:allowBubbles|NOTIFY_CHANNEL:*:canBubble) echo "對話區/泡泡通知" ;;
+		NOTIFY_CHANNEL:*:importantConversation) echo "重要對話" ;;
+		NOTIFY_CHANNEL:*:demoted) echo "降低對話優先級" ;;
+		NOTIFY_CHANNEL:*:vibration) echo "通知分類震動" ;;
+		NOTIFY_CHANNEL:*:lights) echo "通知分類燈號" ;;
+		NOTIFY_CHANNEL:*:deleted) echo "通知分類已刪除" ;;
+		NOTIFY_GROUP:*:blocked) echo "通知分類群組封鎖" ;;
+		*) echo "$1" ;;
+	esac
+
+}
+
+# 電池/背景設定 key → 中文顯示
+_battery_cn() {
+	case $1 in
+		BATTERY:RUN_IN_BACKGROUND) echo "背景執行" ;;
+		BATTERY:RUN_ANY_IN_BACKGROUND) echo "任意背景執行" ;;
+		BATTERY:deviceidle_whitelist) echo "Doze白名單" ;;
+		*) echo "$1" ;;
+	esac
+}
+
+# 備份額外 metadata: installer (安裝來源) 與 battery_opt/battery_settings (電池/背景設定)
 # 從預掃 map 讀取, 不額外 fork; 變更時寫入 app_details.json
 Backup_extra() {
 	# installer name
@@ -4955,7 +5395,29 @@ Backup_extra() {
 		[[ $result = 0 ]] && echoRgb "安裝來源:$installer" "2"
 		[[ $result = 0 ]] && _mark_changed
 	fi
-	# battery: 後台運行 appops mode (allow/ignore/deny), 原樣記錄與還原
+	# battery_settings: dex v12 批量後台/電池設定（RUN_IN_BACKGROUND / RUN_ANY_IN_BACKGROUND / deviceidle whitelist）
+	local batt_settings
+	eval "batt_settings=\${_bs_${name2//[!a-zA-Z0-9]/_}}"
+	if [[ -n $batt_settings && $batt_settings != "$BATTERY_SETTINGS_OLD" ]]; then
+		if [[ $BATTERY_SETTINGS_OLD != "" ]]; then
+			echoRgb "電池/背景設定變更" "2"
+			jq -n --argjson old "$BATTERY_SETTINGS_OLD" --argjson new "$batt_settings" '
+				$new
+				| to_entries
+				| map(select(.key as $k | $old[$k] == null or $old[$k] != .value)
+				  | "\(.key)|\(if ($old[.key] == null) then "新增→" + .value else $old[.key] + "→" + .value end)")
+				| .[]
+			' -r 2>/dev/null | while IFS='|' read -r _bkey _bchange; do
+				echoRgb "$(_battery_cn "$_bkey"): $_bchange"
+			done
+		else
+			echoRgb "備份電池/背景設定" "2"
+		fi
+		jq_inplace "$app_details" --arg entry "$name1" --argjson v "$batt_settings" '.[$entry].battery_settings |= $v'
+		echo_log "備份battery_settings"
+		[[ $result = 0 ]] && _mark_changed
+	fi
+	# battery_opt: 舊版相容（RUN_ANY_IN_BACKGROUND 單一 mode）
 	local batt
 	eval "batt=\${_bw_${name2//[!a-zA-Z0-9]/_}}"
 	if [[ -n $batt && $batt != $BATTERY_OLD ]]; then
@@ -5050,6 +5512,7 @@ Backup_data() {
 		user)
 			Backup_ssaid
 			Backup_Permissions
+			Backup_Notifications
 			Backup_extra
 			;;
 		esac
@@ -5316,7 +5779,7 @@ Release_data() {
 		Set_back_1
 		;;
 	esac
-	[[ -n $TMPDIR ]] && rm -rf "$TMPDIR"/* 2>/dev/null
+	case "$TMPDIR" in ""|"/") echo "TMPDIR異常，拒絕清理: $TMPDIR"; exit 1 ;; *) rm -rf "$TMPDIR"/* 2>/dev/null ;; esac
 }
 # 安裝 apk (含 split apk 處理), 自動繞過安裝驗證
 installapk() {
@@ -5332,7 +5795,7 @@ installapk() {
 	else
 		apkfile="$(find "$Backup_folder" -maxdepth 1 -name "apk.*" -type f 2>/dev/null)"
 		if [[ $apkfile != "" ]]; then
-			[[ -n $TMPDIR ]] && rm -rf "$TMPDIR"/* 2>/dev/null
+			case "$TMPDIR" in ""|"/") echo "TMPDIR異常，拒絕清理: $TMPDIR"; exit 1 ;; *) rm -rf "$TMPDIR"/* 2>/dev/null ;; esac
 			case ${apkfile##*.} in
 			zst) tar --checkpoint-action="ttyout=%T\r" -I zstd -xmpf "$apkfile" -C "$TMPDIR" ;;
 			tar) tar --checkpoint-action="ttyout=%T\r" -xmpf "$apkfile" -C "$TMPDIR" ;;
@@ -5451,7 +5914,7 @@ get_name(){
 		fi
 		if [[ $PackageName = "" || $ChineseName = "" ]]; then
 			echoRgb "${Folder##*/}包名獲取失敗，解壓縮獲取包名中..." "0"
-			[[ -n $TMPDIR ]] && rm -rf "$TMPDIR"/* 2>/dev/null
+			case "$TMPDIR" in ""|"/") echo "TMPDIR異常，拒絕清理: $TMPDIR"; exit 1 ;; *) rm -rf "$TMPDIR"/* 2>/dev/null ;; esac
 			case ${REPLY##*.} in
 			zst) tar -I zstd -xmpf "$REPLY" -C "$TMPDIR" --wildcards --no-anchored 'base.apk' ;;
 			tar) tar -xmpf "$REPLY" -C "$TMPDIR" --wildcards --no-anchored 'base.apk' ;;
@@ -5468,7 +5931,7 @@ get_name(){
 						app=($DUMPAPK $DUMPAPK)
 						PackageName="${app[1]}"
 						ChineseName="${app[2]}"
-						[[ -n $TMPDIR ]] && rm -rf "$TMPDIR"/* 2>/dev/null
+						case "$TMPDIR" in ""|"/") echo "TMPDIR異常，拒絕清理: $TMPDIR"; exit 1 ;; *) rm -rf "$TMPDIR"/* 2>/dev/null ;; esac
 					else
 						echoRgb "appinfo輸出失敗" "0"
 					fi
@@ -5769,7 +6232,29 @@ restore_permissions () {
 	jq -r '
 		(try (to_entries[] | select(.value.permissions != null) | .value.permissions | to_entries | map(select(.value | startswith("true")) | .key) | join(" ")) catch "" // ""),
 		(try (to_entries[] | select(.value.permissions != null) | .value.permissions | to_entries | map(select(.value | startswith("false")) | .key) | join(" ")) catch "" // ""),
-		(try (.[] | select(.permissions != null).permissions | to_entries | map(.value | split(" ")) | map(select(.[1] != "-1")) | map(.[1:]) | flatten | join(" ")) catch "" // ""),
+		(try (.[] | select(.permissions != null).permissions | to_entries | map(
+			(.value | split(" ")) as $v |
+			if (($v | length) >= 3 and $v[1] != "-1") then
+				"\($v[1]) \($v[2])"
+			elif (.key | startswith("EXTRA_OP_")) and (($v | length) >= 2) then
+				"\($v[0]) \($v[1])"
+			else
+				empty
+			end
+		) | join(" ")) catch "" // ""),
+		(try (.[] | select(.notification_settings != null).notification_settings | to_entries | map("\(.key) \(.value)") | join(" ")) catch "" // ""),
+		(try (.[] | select(.battery_settings != null).battery_settings | to_entries | map(
+			(.value | split(" ")) as $v |
+			if (.key == "BATTERY:deviceidle_whitelist") then
+				"\(.key) \(.value)"
+			elif (($v | length) >= 2) then
+				"\(.key) \($v[1])"
+			elif (($v | length) >= 1) then
+				"\(.key) \($v[0])"
+			else
+				empty
+			end
+		) | join(" ")) catch "" // ""),
 		(try (.[] | select(.installer != null).installer) catch "" // ""),
 		(try (.[] | select(.battery_opt != null).battery_opt) catch "" // ""),
 		(try (.[] | select(.Ssaid != null).Ssaid) catch "" // "")
@@ -5779,6 +6264,8 @@ restore_permissions () {
 	read -r true_permissions <&3
 	read -r false_permissions <&3
 	read -r Set_Ops_permissions <&3
+	read -r Set_Notify_settings <&3
+	read -r Set_Battery_settings <&3
 	read -r _installer <&3
 	read -r _battery <&3
 	read -r _rp_ssaid <&3
@@ -5810,26 +6297,44 @@ restore_permissions () {
 			[[ $? != 0 ]] && echo_log "設置ops權限"
 		fi
 	}
+	[[ $Set_Notify_settings != "" ]] && {
+		if [[ $_batch_perm_mode = 1 ]]; then
+			printf '[%s %s] ' "$name2" "$Set_Notify_settings" >> "$TMPDIR/.batch_notify"
+		else
+			Set_Notifications "[$name2 $Set_Notify_settings]"
+			[[ $? != 0 ]] && echo_log "設置通知設定"
+		fi
+	}
+	[[ $Set_Battery_settings != "" ]] && {
+		if [[ $_batch_perm_mode = 1 ]]; then
+			printf '[%s %s] ' "$name2" "$Set_Battery_settings" >> "$TMPDIR/.batch_battery"
+		else
+			Set_Battery_Settings "[$name2 $Set_Battery_settings]"
+			[[ $? != 0 ]] && echo_log "設置電池/背景設定"
+		fi
+	}
 	# 恢復 installer (安裝來源) 與 battery_opt (後台運行 appops mode) — 已於上方一次 jq 取得
 	[[ -n $_installer ]] && {
 		pm set-installer "$name2" "$_installer" &>/dev/null
 		[[ $? = 0 ]] && echoRgb "恢復安裝來源:$_installer" "2"
 	}
-	# 原樣還原備份時的 appops mode (allow/ignore/deny)
-	case $_battery in
-	allow|ignore|deny|default)
-		appops set "$name2" RUN_ANY_IN_BACKGROUND "$_battery" &>/dev/null
-		# allow(無限制)時一併加入 doze 白名單豁免
-		[[ $_battery = allow ]] && dumpsys deviceidle whitelist "+$name2" &>/dev/null
-		echoRgb "恢復後台運行設定:$_battery" "2"
-		;;
-	esac
+	# 舊版 battery_opt 相容: 只有在沒有 battery_settings 時才套用, 避免覆蓋 dex v12 的完整設定
+	if [[ -z $Set_Battery_settings ]]; then
+		case $_battery in
+		allow|ignore|deny|default)
+			appops set "$name2" RUN_ANY_IN_BACKGROUND "$_battery" &>/dev/null
+			# allow(無限制)時一併加入 doze 白名單豁免
+			[[ $_battery = allow ]] && dumpsys deviceidle whitelist "+$name2" &>/dev/null
+			echoRgb "恢復後台運行設定:$_battery" "2"
+			;;
+		esac
+	fi
 }
 # 批量沖刷: 把累積的 grant/revoke/ops 各一次 app_process 設置 (取代逐 app 各啟動 JVM)
 # 批量恢復 N 個 app 的權限 JVM 從 3N 次降到最多 3 次
 flush_batch_permissions() {
 	[[ $_batch_perm_mode != 1 ]] && return
-	local _g="$TMPDIR/.batch_grant" _r="$TMPDIR/.batch_revoke" _o="$TMPDIR/.batch_ops" _rs="$TMPDIR/.batch_opsreset" _rspkg
+	local _g="$TMPDIR/.batch_grant" _r="$TMPDIR/.batch_revoke" _o="$TMPDIR/.batch_ops" _n="$TMPDIR/.batch_notify" _b="$TMPDIR/.batch_battery" _rs="$TMPDIR/.batch_opsreset" _rspkg
 	# 先批量 appops reset (必須在設權限前, 把各 app ops 清到預設再設)
 	if [[ -s $_rs ]]; then
 		echoRgb "重置應用ops中..." "3"
@@ -5840,7 +6345,7 @@ flush_batch_permissions() {
 		rm -f "$_rs"
 	fi
 	# 有任一暫存檔有內容才提示 (避免無權限可設時也印)
-	[[ -s $_g || -s $_r || -s $_o ]] && echoRgb "批量設置應用權限中,請稍候..." "2"
+	[[ -s $_g || -s $_r || -s $_o || -s $_n || -s $_b ]] && echoRgb "批量設置應用權限/通知/電池設定中,請稍候..." "2"
 	if [[ -s $_g ]]; then
 		echoRgb "授予權限中..." "3"
 		[[ $_dex_debug = 1 ]] && echo "FLUSH-grant" >> "$TMPDIR/.dex_call_log"
@@ -5859,7 +6364,20 @@ flush_batch_permissions() {
 		xargs app_process /system/bin com.xayah.dex.HiddenApiUtil setOpsMode "$USER_ID" < "$_o" >/dev/null 2>&1
 		[[ $? != 0 ]] && echo_log "批量設置ops權限"
 	fi
-	[[ -s $_g || -s $_r || -s $_o ]] && echoRgb "權限設置完成" "1"
+	if [[ -s $_n ]]; then
+		echoRgb "設置通知設定中..." "3"
+		[[ $_dex_debug = 1 ]] && echo "FLUSH-setNotifications" >> "$TMPDIR/.dex_call_log"
+		xargs app_process /system/bin com.xayah.dex.HiddenApiUtil setNotificationSettings "$USER_ID" < "$_n" >/dev/null 2>&1
+		[[ $? != 0 ]] && echo_log "批量設置通知設定"
+	fi
+	if [[ -s $_b ]]; then
+		echoRgb "設置電池/背景設定中..." "3"
+		[[ $_dex_debug = 1 ]] && echo "FLUSH-setBattery" >> "$TMPDIR/.dex_call_log"
+		xargs app_process /system/bin com.xayah.dex.HiddenApiUtil setBatterySettings "$USER_ID" < "$_b" >/dev/null 2>&1
+		[[ $? != 0 ]] && echo_log "批量設置電池/背景設定"
+	fi
+	[[ -s $_g || -s $_r || -s $_o || -s $_n || -s $_b ]] && echoRgb "權限/通知/電池設定完成" "1"
+	rm -f "$TMPDIR/.pkg_notify" "$TMPDIR/.pkg_battery" 2>/dev/null
 	# ====== 恢復後權限驗證 (只驗 grant/revoke 開關, 不驗 ops mode) ======
 	# flush 後一次 getRuntimePermissions 批量讀回實際權限, 跟應設狀態比對
 	if [[ $_perm_verify != 0 && ( -s $_g || -s $_r ) ]]; then
@@ -5893,14 +6411,152 @@ flush_batch_permissions() {
 				}
 			}' "$_actual" "$_expect")"
 		if [[ -z $_mismatch ]]; then
-			echoRgb "✅ 權限驗證通過: 全部正確恢復" "1"
+			echoRgb "✅ Runtime 權限驗證通過" "1"
 		else
-			echoRgb "⚠️ 以下權限與備份記錄不一致:" "0"
+			echoRgb "⚠️ 以下 Runtime 權限與備份記錄不一致:" "0"
 			echo "$_mismatch"
 		fi
 		rm -f "$_expect" "$_actual"
 	fi
-	rm -f "$_g" "$_r" "$_o"
+	# ====== 恢復後 AppOps mode 驗證 ======
+	# 驗證 setOpsMode 實際 mode 是否與備份值一致（op + mode）
+	if [[ $_perm_verify != 0 && -s $_o ]]; then
+		echoRgb "驗證 AppOps mode 恢復結果..." "2"
+		local _ops_expect="$TMPDIR/.ops_expect" _ops_actual="$TMPDIR/.ops_actual" _ops_pkgs _ops_mismatch
+		: > "$_ops_expect"
+		awk 'BEGIN{RS="]"} {
+			gsub(/\[/,""); n=split($0,a," "); if(n<3)next
+			for(i=2;i+1<=n;i+=2) print a[1]"\t"a[i]"\t"a[i+1]
+		}' "$_o" >> "$_ops_expect" 2>/dev/null
+		_ops_pkgs="$(awk -F'\t' '{print $1}' "$_ops_expect" | sort -u | paste -sd' ' -)"
+		if [[ -n $_ops_pkgs ]]; then
+			get_Permissions $_ops_pkgs 2>/dev/null | awk 'NF>=5 {print $1"\t"$4"\t"$5}' > "$_ops_actual"
+			_ops_mismatch="$(awk -F'\t' '
+				NR==FNR { act[$1"\t"$2]=$3; next }
+				{
+					key=$1"\t"$2
+					if (key in act) {
+						if (act[key] != $3) print "  ✗ "$1"  op="$2"  應mode="$3" 實際mode="act[key]
+					} else {
+						print "  ? "$1"  op="$2"  應mode="$3" 實際=未讀到"
+					}
+				}' "$_ops_actual" "$_ops_expect")"
+			if [[ -z $_ops_mismatch ]]; then
+				echoRgb "✅ AppOps mode 驗證通過" "1"
+			else
+				echoRgb "⚠️ 以下 AppOps mode 與備份記錄不一致:" "0"
+				echo "$_ops_mismatch"
+			fi
+		fi
+		rm -f "$_ops_expect" "$_ops_actual"
+	fi
+	# ====== 恢復後通知設定驗證 ======
+	# 驗證 notification_settings 的 key/value 是否與備份值一致
+	# 注意：部分 app 的 NotificationChannel 只有在 app 第一次啟動/建立通知後才會出現。
+	# 因此 NOTIFY_CHANNEL/NOTIFY_GROUP「未讀到」不直接當成恢復錯誤，而是列為「待建立分類」。
+	if [[ $_perm_verify != 0 && -s $_n ]]; then
+		echoRgb "驗證通知設定恢復結果..." "2"
+		local _notify_expect="$TMPDIR/.notify_expect" _notify_actual="$TMPDIR/.notify_actual" _notify_pkgs
+		local _notify_mismatch_file="$TMPDIR/.notify_mismatch" _notify_pending_file="$TMPDIR/.notify_pending"
+		local _notify_mismatch _notify_pending
+		: > "$_notify_expect"
+		: > "$_notify_mismatch_file"
+		: > "$_notify_pending_file"
+		awk 'BEGIN{RS="]"} {
+			gsub(/\[/,""); n=split($0,a," "); if(n<3)next
+			for(i=2;i+1<=n;i+=2) print a[1]"\t"a[i]"\t"a[i+1]
+		}' "$_n" >> "$_notify_expect" 2>/dev/null
+		_notify_pkgs="$(awk -F'\t' '{print $1}' "$_notify_expect" | sort -u | paste -sd' ' -)"
+		if [[ -n $_notify_pkgs ]]; then
+			get_Notifications $_notify_pkgs 2>/dev/null | awk 'NF>=3 {
+				val=$3; for(i=4;i<=NF;i++) val=val" "$i
+				print $1"\t"$2"\t"val
+			}' > "$_notify_actual"
+			awk -F'\t' -v mis="$_notify_mismatch_file" -v pend="$_notify_pending_file" '
+				NR==FNR { act[$1"\t"$2]=$3; next }
+				{
+					key=$1"\t"$2
+					if (key in act) {
+						if (act[key] != $3) print "  ✗ "$1"  "$2"  應="$3" 實際="act[key] >> mis
+					} else if ($2 ~ /^NOTIFY_CHANNEL:/ || $2 ~ /^NOTIFY_GROUP:/) {
+						# 通知分類/群組尚未建立：同一個 channel/group 只列一次，避免刷滿螢幕。
+						n=split($2, parts, ":")
+						if (n >= 2) print "  ? "$1"  "parts[1]":"parts[2]"  尚未建立/未讀到，啟動應用建立通知分類後再驗證" >> pend
+						else print "  ? "$1"  "$2"  尚未建立/未讀到，啟動應用建立通知分類後再驗證" >> pend
+					} else {
+						# app-level 設定未讀到才是真正不一致
+						print "  ✗ "$1"  "$2"  應="$3" 實際=未讀到" >> mis
+					}
+				}' "$_notify_actual" "$_notify_expect"
+			_notify_mismatch="$(cat "$_notify_mismatch_file" 2>/dev/null)"
+			_notify_pending="$(sort -u "$_notify_pending_file" 2>/dev/null)"
+			if [[ -z $_notify_mismatch && -z $_notify_pending ]]; then
+				echoRgb "✅ 通知設定驗證通過" "1"
+			else
+				if [[ -n $_notify_mismatch ]]; then
+					echoRgb "⚠️ 以下通知設定與備份記錄不一致:" "0"
+					echo "$_notify_mismatch"
+				fi
+				if [[ -n $_notify_pending ]]; then
+					local _pending_cnt
+		            _pending_cnt="$(awk -F'\t' '{k=$1"\t"$2} !seen[k]++ {c++} END{print c+0}' "$TMPDIR/.notify_pending" 2>/dev/null)"
+		            echoRgb "⚠️ 有 ${_pending_cnt} 個通知分類/群組尚未建立，已略過逐條顯示；啟動 app 建立 NotificationChannel 後可再重跑通知恢復/驗證" "2"
+		            echoRgb "✅ app-level 通知設定與已存在的通知分類驗證通過；缺失分類不判定為恢復錯誤" "1"
+				fi
+			fi
+		fi
+		rm -f "$_notify_expect" "$_notify_actual" "$_notify_mismatch_file" "$_notify_pending_file"
+	fi
+
+	# ====== 恢復後電池/背景設定驗證 ======
+	# RUN_* 實際輸出是 pkg key op mode modeName，驗證 mode；deviceidle_whitelist 驗證 true/false
+	if [[ $_perm_verify != 0 && -s $_b ]]; then
+		echoRgb "驗證電池/背景設定恢復結果..." "2"
+		local _battery_expect="$TMPDIR/.battery_expect" _battery_actual="$TMPDIR/.battery_actual" _battery_pkgs _battery_mismatch
+		: > "$_battery_expect"
+		awk 'BEGIN{RS="]"} {
+			gsub(/\[/,""); n=split($0,a," "); if(n<3)next
+			for(i=2;i+1<=n;i+=2) {
+				key=a[i]; val=a[i+1]
+				if (key=="BATTERY:RUN_IN_BACKGROUND" || key=="BATTERY:RUN_ANY_IN_BACKGROUND") {
+					if (val=="allow" || val=="allowed" || val=="true") val=0
+					else if (val=="ignore" || val=="ignored" || val=="false") val=1
+					else if (val=="deny" || val=="denied" || val=="errored") val=2
+					else if (val=="default") val=3
+					else if (val=="foreground") val=4
+				}
+				print a[1]"\t"key"\t"val
+			}
+		}' "$_b" >> "$_battery_expect" 2>/dev/null
+		_battery_pkgs="$(awk -F'\t' '{print $1}' "$_battery_expect" | sort -u | paste -sd' ' -)"
+		if [[ -n $_battery_pkgs ]]; then
+			get_Battery_Settings $_battery_pkgs 2>/dev/null | awk 'NF>=3 {
+				if ($2=="BATTERY:deviceidle_whitelist") {
+					print $1"\t"$2"\t"$3
+				} else if ($2=="BATTERY:RUN_IN_BACKGROUND" || $2=="BATTERY:RUN_ANY_IN_BACKGROUND") {
+					print $1"\t"$2"\t"$4
+				}
+			}' > "$_battery_actual"
+			_battery_mismatch="$(awk -F'\t' '
+				NR==FNR { act[$1"\t"$2]=$3; next }
+				{
+					key=$1"\t"$2
+					if (key in act) {
+						if (act[key] != $3) print "  ✗ "$1"  "$2"  應="$3" 實際="act[key]
+					} else {
+						print "  ? "$1"  "$2"  應="$3" 實際=未讀到"
+					}
+				}' "$_battery_actual" "$_battery_expect")"
+			if [[ -z $_battery_mismatch ]]; then
+				echoRgb "✅ 電池/背景設定驗證通過" "1"
+			else
+				echoRgb "⚠️ 以下電池/背景設定與備份記錄不一致:" "0"
+				echo "$_battery_mismatch"
+			fi
+		fi
+		rm -f "$_battery_expect" "$_battery_actual"
+	fi
+	rm -f "$_g" "$_r" "$_o" "$_n" "$_b" "$TMPDIR/.perm_expect" "$TMPDIR/.perm_actual" "$TMPDIR/.ops_expect" "$TMPDIR/.ops_actual" "$TMPDIR/.notify_expect" "$TMPDIR/.notify_actual" "$TMPDIR/.notify_mismatch" "$TMPDIR/.notify_pending" "$TMPDIR/.battery_expect" "$TMPDIR/.battery_actual" 2>/dev/null
 }
 # 取得當前正在後台運行的所有 app 列表
 # 配合「後台應用忽略」設定, 跳過正在運行的 app 不備份
@@ -6131,28 +6787,40 @@ backup() {
 		# 單獨備份模式: 只預掃這一個 app 的權限
 		local _single_pkg
 		_single_pkg="$(jq -r '.[] | select(.PackageName != null).PackageName' "${0%/*}/app_details.json" 2>/dev/null)"
-		local _perms_tmp="$TMPDIR/.pkg_perms"
-		: > "$_perms_tmp"
+		local _perms_tmp="$TMPDIR/.pkg_perms" _notify_tmp="$TMPDIR/.pkg_notify"
+		: > "$_perms_tmp"; : > "$_notify_tmp"
 		if [[ -n $_single_pkg ]]; then
-			local _raw _json
+			local _raw _json _nraw _njson
 			_raw="$(get_Permissions "$_single_pkg" 2>/dev/null)"
 			if [[ -n $_raw ]]; then
 				_json="$(echo "$_raw" | jq -nRc '[inputs | select(. != "null" and length>0) | split(" ") | {(.[1]): (.[2:] | join(" "))}] | if length > 0 then add else empty end' 2>/dev/null)"
-				[[ -n $_json ]] && printf '%s\t%s\n' "$_single_pkg" "$_json" >> "$_perms_tmp"
+				[[ -n $_json ]] && printf '%s	%s
+' "$_single_pkg" "$_json" >> "$_perms_tmp"
+			fi
+			_nraw="$(get_Notifications "$_single_pkg" 2>/dev/null)"
+			if [[ -n $_nraw ]]; then
+				_njson="$(echo "$_nraw" | jq -nRc '[inputs | select(. != "null" and length>0) | split(" ") | {(.[1]): (.[2:] | join(" "))}] | if length > 0 then add else empty end' 2>/dev/null)"
+				[[ -n $_njson ]] && printf '%s	%s
+' "$_single_pkg" "$_njson" >> "$_notify_tmp"
 			fi
 		fi
 		prepare_pkg_installer_map
+		prepare_battery_settings_map "$_single_pkg"
 		prepare_battery_whitelist "$_single_pkg"
 		prepare_remote_filelist
 		prepare_remote_scripts_map
 		prepare_remote_json_map
 		load_kv_map "$TMPDIR/.pkg_perms" _pp
+		load_kv_map "$TMPDIR/.pkg_notify" _pn
 		load_kv_map "$TMPDIR/.pkg_installer" _pi
 		load_kv_map "$TMPDIR/.battery_wl" _bw
+		load_kv_map "$TMPDIR/.pkg_battery" _bs
 	else
 		ssaid_info="$(get_ssaid "$(echo "$txt" | awk '{printf "%s ", $2}')")"
 		prepare_permissions_map
+		prepare_notifications_map
 		prepare_pkg_installer_map
+		prepare_battery_settings_map
 		prepare_battery_whitelist
 		prepare_dir_size_map
 		load_dir_size_map
@@ -6160,8 +6828,10 @@ backup() {
 		prepare_remote_scripts_map
 		prepare_remote_json_map
 		load_kv_map "$TMPDIR/.pkg_perms" _pp
+		load_kv_map "$TMPDIR/.pkg_notify" _pn
 		load_kv_map "$TMPDIR/.pkg_installer" _pi
 		load_kv_map "$TMPDIR/.battery_wl" _bw
+		load_kv_map "$TMPDIR/.pkg_battery" _bs
 	fi
 	starttime1="$(date -u "+%s")"
 	TIME="$starttime1"
@@ -7106,7 +7776,7 @@ Restore() {
 	starttime1="$TIME"
 	echoRgb "$DX完成" && endtime 1 "$DX開始到結束"
 	notification "109" "恢復完成 $(endtime 1 "$DX開始到結束")"
-	[[ -n $TMPDIR ]] && rm -rf "$TMPDIR"/* 2>/dev/null
+	case "$TMPDIR" in ""|"/") echo "TMPDIR異常，拒絕清理: $TMPDIR"; exit 1 ;; *) rm -rf "$TMPDIR"/* 2>/dev/null ;; esac
 }
 # 恢復自定義資料夾 (Media 等)
 Restore3() {

@@ -1,0 +1,23 @@
+[versions]
+agp = "8.2.2"
+gson = "2.13.1"
+httpclient5Fluent = "5.4.1"
+junit = "4.13.2"
+appcompat = "1.6.1"
+refine = "4.4.0"
+slf4jSimple = "1.7.36" # https://mvnrepository.com/artifact/org.apache.httpcomponents.client5/httpclient5-fluent/5.4.1
+
+[libraries]
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+httpclient5-fluent = { module = "org.apache.httpcomponents.client5:httpclient5-fluent", version.ref = "httpclient5Fluent" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+refine-annotation = { module = "dev.rikka.tools.refine:annotation", version.ref = "refine" }
+refine-annotation-processor = { module = "dev.rikka.tools.refine:annotation-processor", version.ref = "refine" }
+refine-runtime = { module = "dev.rikka.tools.refine:runtime", version.ref = "refine" }
+slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4jSimple" }
+
+[plugins]
+androidApplication = { id = "com.android.application", version.ref = "agp" }
+androidLibrary = { id = "com.android.library", version.ref = "agp" }
+refine = { id = "dev.rikka.tools.refine", version.ref = "refine" }
