@@ -18,6 +18,7 @@ import java.util.Objects;
 import dev.rikka.tools.refine.Refine;
 
 public class SsaidUtil {
+    private static void human(String msg) { if ("1".equals(System.getenv("DEX_HUMAN_LOG"))) System.err.println("HUMAN " + msg); }
     private static final String SSAID_USER_KEY = "userkey";
 
     private static SettingsState getSettingsState(int userId) {
@@ -75,11 +76,14 @@ public class SsaidUtil {
                 PackageInfo packageInfo = pmHidden.getPackageInfoAsUser(packageName, 0, userId);
                 int uid = packageInfo.applicationInfo.uid;
                 SettingsState settingsState = getSettingsState(userId);
-                System.out.println(packageName + " " + settingsState.getSettingLocked(getName(packageName, uid)).getValue());
+                String value = settingsState.getSettingLocked(getName(packageName, uid)).getValue();
+                System.out.println(packageName + " " + value);
+                human("讀取SSAID成功: " + packageName + " = " + value);
             }
             System.exit(0);
         } catch (Exception e) {
             System.out.printf("Failed: %s, %s\n", e.getCause(), e.getMessage());
+            human("SSAID操作失敗: " + e.getMessage());
             onHelp();
             System.exit(1);
         }
@@ -105,13 +109,16 @@ public class SsaidUtil {
                     int uid = packageInfo.applicationInfo.uid;
                     SettingsState settingsState = getSettingsState(userId);
                     settingsState.insertSettingLocked(getName(packageName, uid), ssaid, null, true, packageName);
+                    human("設定SSAID成功: " + packageName);
                 } catch (Exception e) {
                     System.out.println("Failed, skip: " + e.getMessage());
+                    human("設定SSAID失敗: " + e.getMessage());
                 }
             }
             System.exit(0);
         } catch (Exception e) {
             System.out.printf("Failed: %s, %s\n", e.getCause(), e.getMessage());
+            human("SSAID操作失敗: " + e.getMessage());
             onHelp();
             System.exit(1);
         }

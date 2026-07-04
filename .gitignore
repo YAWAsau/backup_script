@@ -1,0 +1,3 @@
+tools/dex_check.sh
+tools/uidexec
+C/uidexec.c

@@ -1,7 +1,8 @@
 package com.xayah.dex;
 
-import org.apache.hc.client5.http.fluent.Content;
-import org.apache.hc.client5.http.fluent.Request;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 public class HttpUtil {
 
@@ -38,14 +39,35 @@ public class HttpUtil {
     }
 
     private static void get(String[] args) {
+        HttpURLConnection connection = null;
         try {
-            String url = args[1];
-            Content content = Request.get(url).execute().returnContent();
-            System.out.write(content.asBytes());
-            System.exit(0);
+            URL url = new URL(args[1]);
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(30000);
+            connection.setInstanceFollowRedirects(true);
+            connection.setRequestProperty("User-Agent", "Android-DataBackup-Dex");
+            connection.setRequestProperty("Accept", "*/*");
+
+            int code = connection.getResponseCode();
+            InputStream inputStream = code >= 400 ? connection.getErrorStream() : connection.getInputStream();
+            if (inputStream != null) {
+                byte[] buffer = new byte[8192];
+                int length;
+                while ((length = inputStream.read(buffer)) != -1) {
+                    System.out.write(buffer, 0, length);
+                }
+                inputStream.close();
+            }
+            System.exit(code >= 200 && code < 400 ? 0 : 1);
         } catch (Exception e) {
             e.printStackTrace(System.out);
             System.exit(1);
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
 }

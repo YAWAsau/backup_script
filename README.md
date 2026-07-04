@@ -1,16 +1,16 @@
 # Backup_script 數據備份腳本
 
 <p align="center">
-  <a href="https://github.com/YAWAsau/backup_script/stargazers"><img src="https://img.shields.io/github/stars/YAWAsau/backup_script?label=stars&style=flat-square" /></a>
-  <a href="https://github.com/YAWAsau/backup_script/releases"><img src="https://img.shields.io/github/downloads/YAWAsau/backup_script/total?style=flat-square" /></a>
-  <a href="https://github.com/YAWAsau/backup_script/releases/latest"><img src="https://img.shields.io/github/v/release/YAWAsau/backup_script?label=release&style=flat-square" /></a>
-  <a href="https://choosealicense.com/licenses/gpl-3.0"><img src="https://img.shields.io/github/license/YAWAsau/backup_script?label=License&style=flat-square" /></a>
-  <a href="https://t.me/yawasau_script"><img src="https://img.shields.io/badge/Follow-Telegram-blue.svg?logo=telegram&style=flat-square" /></a>
+ <a href="https://github.com/YAWAsau/backup_script/stargazers"><img src="https://img.shields.io/github/stars/YAWAsau/backup_script?label=stars&style=flat-square" /></a>
+ <a href="https://github.com/YAWAsau/backup_script/releases"><img src="https://img.shields.io/github/downloads/YAWAsau/backup_script/total?style=flat-square" /></a>
+ <a href="https://github.com/YAWAsau/backup_script/releases/latest"><img src="https://img.shields.io/github/v/release/YAWAsau/backup_script?label=release&style=flat-square" /></a>
+ <a href="https://choosealicense.com/licenses/gpl-3.0"><img src="https://img.shields.io/github/license/YAWAsau/backup_script?label=License&style=flat-square" /></a>
+ <a href="https://t.me/yawasau_script"><img src="https://img.shields.io/badge/Follow-Telegram-blue.svg?logo=telegram&style=flat-square" /></a>
 </p>
 
 ---
 
-## 📖 概述
+## 概述
 
 一款專為 Android 設計的完整應用數據備份／恢復 Shell 腳本,支援 SSAID、運行時權限、OBB 數據包、WiFi 設定等完整備份,讓你換機換系統後能無縫還原所有應用狀態。
 
@@ -22,39 +22,44 @@
 
 ---
 
-## ✨ 功能特色
+## 功能特色
 
 | 功能 | 說明 |
 |------|------|
-| 📦 完整數據備份 | 換機換系統後原有數據完整保留,無需重新登入或下載額外數據包 |
-| 🔑 SSAID 備份 | 支援 SSAID 備份,可完美備份 LINE 等依賴設備識別碼的應用 |
-| 🛡️ 權限備份 | 支援備份運行時權限(Runtime Permission)與 ops 權限 |
-| 📂 Split APK | 支援備份與恢復 Split APK 格式 |
-| 🎮 OBB 數據包 | 可選備份外部 OBB 數據(如原神、王者榮耀等大型遊戲) |
-| 📡 WiFi 備份 | 支援備份與恢復 WiFi 設定 |
-| 📁 自定義資料夾備份 | 可備份 DCIM、Download、Music 等任意自定義目錄 |
-| 🗜️ 多種壓縮算法 | 支援 `tar`(僅打包)與 `zstd`(高壓縮率高速度) |
-| ⚡ 高速壓縮 | zstd 壓縮速率快速,優於鈦備份、Swift Backup |
-| 🔒 完整性校驗 | 內建 tools SHA-256 校驗與壓縮包完整性驗證 |
-| 🔄 增量備份 | 多維度比對(版本/大小/權限/SSAID),無變化則跳過 |
-| ✅ 最終計數核驗 | 備份結束後逐檔核對存在性,三態顯示結果 |
-| 🖥️ 後台執行 | 支援後台執行模式,可完全關閉終端,log 持續刷新 |
-| 💡 偽裝亮屏 | 備份/恢復期間可偽裝亮屏,避免 IO 因息屏降速 |
-| 🌐 自動更新 | 聯網偵測最新版本,支援 CDN 節點(適合中國大陸用戶) |
-| 🌏 多語言 | 自動識別系統語言環境,支援繁體中文/簡體中文自動切換 |
-| 👥 多用戶支援 | 支援多用戶環境(user 0、999 等),可手動或自動選擇用戶 |
-| ⬛ 黑名單模式 | 黑名單應用可選「完全忽略」或「僅備份安裝包」 |
-| ⬜ 白名單支援 | 支援預裝應用白名單與系統應用白名單,可指定備份範圍 |
-| 📱 進程偵測 | 可設定忽略正在運行中的應用,避免備份數據不一致 |
-| ☁️ 遠程備份上傳 | 支援 WebDAV / SMB 兩種協議,備份完成自動上傳,智能增量 |
-| 🚀 流式備份 | 邊壓縮邊傳輸,數據不落本機,節省本地空間 |
-| 📥 遠程下載恢復 | 可從遠端直接下載備份回手機,點 start.sh 即可恢復 |
-| 🔍 區網掃描 | 自動掃描區網內所有 SMB 主機,免去手動找 IP |
-| 🧪 連線測試 | 三層測試(TCP / 認證 / 路徑),設定不需備份就能驗證 |
+| 完整數據備份 | 換機換系統後原有數據完整保留,無需重新登入或下載額外數據包 |
+| Play 商店來源還原 | 還原後的應用在系統裡正確顯示為 Google Play 安裝,速度與原生安裝相同 |
+| SSAID 備份 | 支援 SSAID 備份,可完美備份 LINE 等依賴設備識別碼的應用 |
+| 權限備份 | 支援備份運行時權限(Runtime Permission)與 ops 權限 |
+| Split APK | 支援備份與恢復 Split APK 格式 |
+| OBB 數據包 | 可選備份外部 OBB 數據(如原神、王者榮耀等大型遊戲) |
+| WiFi 備份 | 支援備份與恢復 WiFi 設定 |
+| 自定義資料夾備份 | 可備份 DCIM、Download、Music 等任意自定義目錄 |
+| 多種壓縮算法 | 支援 `tar`(僅打包)與 `zstd`(高壓縮率高速度) |
+| 高速壓縮 | zstd 壓縮速率快速,優於鈦備份、Swift Backup |
+| 完整性校驗 | 內建 tools SHA-256 校驗與壓縮包完整性驗證 |
+| 增量備份 | 多維度比對(版本/大小/權限/SSAID),無變化則跳過 |
+| 最終計數核驗 | 備份結束後逐檔核對存在性,三態顯示結果 |
+| 後台執行 | 支援後台執行模式,可完全關閉終端,log 持續刷新 |
+| 偽裝亮屏 | 備份/恢復期間可偽裝亮屏,避免 IO 因息屏降速 |
+| 自動更新 | 聯網偵測最新版本,支援 CDN 節點(適合中國大陸用戶) |
+| 多語言 | 自動識別系統語言環境,支援繁體中文/簡體中文自動切換 |
+| 多用戶支援 | 支援多用戶環境(user 0、999 等),可手動或自動選擇用戶 |
+| 設定檔自動修補 | 升級版本後自動補齊設定檔缺少的項目,不需手動比對重寫 |
+| 黑名單模式 | 黑名單應用可選「完全忽略」或「僅備份安裝包」 |
+| 白名單支援 | 支援預裝應用白名單與系統應用白名單,可指定備份範圍 |
+| 進程偵測 | 可設定忽略正在運行中的應用,避免備份數據不一致 |
+| 強制停止 | 備份/恢復前可強制停止目標應用,避免佔用檔案導致失敗 |
+| 通知系統 | 統一訊息通道推送進度/結果通知,無需額外安裝配套 App |
+| 啟動自我檢測 | 首次執行自動驗證擴充功能是否正常,及早發現相容性問題 |
+| 遠程備份上傳 | 支援 WebDAV / SMB 兩種協議,備份完成自動上傳,智能增量 |
+| 流式備份 | 邊壓縮邊傳輸,數據不落本機,節省本地空間 |
+| 遠程下載恢復 | 可從遠端直接下載備份回手機,點 start.sh 即可恢復 |
+| 區網掃描 | 自動掃描區網內所有 SMB 主機,免去手動找 IP |
+| 連線測試 | 三層測試(TCP / 認證 / 路徑),設定不需備份就能驗證 |
 
 ---
 
-## 🗂️ 主選單功能
+## 主選單功能
 
 ### 備份模式
 
@@ -87,37 +92,37 @@
 
 ---
 
-## 📁 目錄結構
+## 目錄結構
 
 ```
 backup_script.zip
 │
 ├── tools/
-│   ├── busybox          # 核心工具集
-│   ├── zstd             # zstd 壓縮工具
-│   ├── tar              # tar 打包工具
-│   ├── curl             # 遠程傳輸工具 (WebDAV)
-│   ├── smbclient        # SMB 遠程傳輸
-│   ├── jq               # JSON 處理
-│   ├── find             # 文件搜索
-│   ├── keycheck         # 音量鍵監聽
-│   ├── cmd              # 系統指令橋接
-│   ├── classes.dex      # Java 功能擴展(詳見下方說明)
-│   ├── soc.json         # 處理器資料庫
-│   ├── Device_List      # 設備型號資料庫
-│   └── tools.sh         # 核心腳本
+│ ├── busybox # 核心工具集
+│ ├── zstd # zstd 壓縮工具
+│ ├── tar # tar 打包工具
+│ ├── curl # 遠程傳輸工具 (WebDAV)
+│ ├── smbclient # SMB 遠程傳輸
+│ ├── jq # JSON 處理
+│ ├── find # 文件搜索
+│ ├── keycheck # 音量鍵監聽
+│ ├── cmd # 系統指令橋接
+│ ├── classes.dex # Java 功能擴展(詳見下方說明)
+│ ├── soc.json # 處理器資料庫
+│ ├── Device_List # 設備型號資料庫
+│ └── tools.sh # 核心腳本
 │
-├── backup_settings.conf  # 備份行為設定檔
-└── start.sh              # 主執行腳本
+├── backup_settings.conf # 備份行為設定檔
+└── start.sh # 主執行腳本
 ```
 
-> ⚠️ **重要:** 無論備份或恢復,都必須確保 `tools/` 目錄完整存在,否則腳本將無法正常運作。
+> **重要:** 無論備份或恢復,都必須確保 `tools/` 目錄完整存在,否則腳本將無法正常運作。
 
 備份完成後,每個 app 子目錄會額外生成 `backup.sh` / `recover.sh` / `upload.sh`,可單獨備份、恢復或上傳單一應用。
 
 ---
 
-## ⚙️ 設定檔說明(backup_settings.conf)
+## 設定檔說明(backup_settings.conf)
 
 | 設定項 | 說明 | 預設值 |
 |--------|------|--------|
@@ -155,7 +160,7 @@ backup_script.zip
 
 ---
 
-## 🚀 使用方式
+## 使用方式
 
 > 推薦使用 [MT 管理器](https://www.coolapk.com/apk/bin.mt.plus) 執行腳本。若使用 Termux,請勿使用 `tsu`。
 
@@ -195,11 +200,11 @@ backup_script.zip
 
 若恢復結束後提示應用存在 SSAID,請**立刻重啟**後再開啟應用。若先開啟應用,Android 會生成新的 SSAID,導致應用白屏或需要重新登入。
 
-> 💡 備份資料夾內每個應用子目錄都有獨立的 `backup.sh`、`recover.sh`、`upload.sh`,可單獨操作單一應用。
+> 備份資料夾內每個應用子目錄都有獨立的 `backup.sh`、`recover.sh`、`upload.sh`,可單獨操作單一應用。
 
 ---
 
-## ☁️ 遠程備份
+## 遠程備份
 
 ### 設定方式
 
@@ -253,6 +258,7 @@ smb://NAS/Backup/
 - **最終核驗** — 備份結束後逐檔核對存在性,缺失檔案列出清單
 - **連線預檢** — 沒網路時 3 秒內判斷並停用上傳,不卡死腳本
 - **失敗保護** — 流式上傳失敗不更新遠端 json,確保下輪整體重備
+- **精準失敗判斷** — 區分「檔案本來就不存在」與「真正上傳失敗」,避免誤判導致重複備份
 
 ---
 
@@ -268,7 +274,7 @@ smb_remote_pass=密碼
 remote_stream=1
 ```
 
-> ⚠️ 流式模式為全量上傳(無本機校驗),建議搭配穩定的區網環境使用。
+> 流式模式為全量上傳(無本機校驗),建議搭配穩定的區網環境使用。
 
 ---
 
@@ -297,18 +303,18 @@ SMB 認證通過, share 可存取
 
 ---
 
-## 🔄 腳本更新方式
+## 腳本更新方式
 
 1. **ZIP 放置更新**:將下載的 `.zip` 不解壓,直接放到腳本任意目錄(`tools/` 除外),執行任何腳本即自動更新
 2. **聯網自動更新**:腳本執行時自動連線 GitHub API 檢查版本(需設置 `update=1`)
 3. **Download 目錄**:將 `.zip` 放置於 `/storage/emulated/0/Download/`,腳本自動偵測並更新
 4. **QQ 群下載**:從 QQ 群下載的腳本不解壓,直接放置後執行即可自動更新
 
-> 🔒 腳本聯網**僅用於檢查更新**,無任何資料收集或非法操作。
+> 腳本聯網**僅用於檢查更新**,無任何資料收集或非法操作。
 
 ---
 
-## ❓ 常見問題
+## 常見問題
 
 <details>
 <summary><b>Q1:批量備份/恢復大量提示失敗?</b></summary>
@@ -341,6 +347,7 @@ SMB 認證通過, share 可存取
 
 - SSAID 備份與恢復
 - 運行時權限(Runtime Permission)與 ops 權限批量備份恢復
+- 還原後應用安裝來源正確顯示為 Google Play
 - GitHub API 更新版本檢查與下載
 - 應用名稱與包名查詢
 - 繁體中文 ↔ 簡體中文自動翻譯
@@ -401,25 +408,25 @@ SMB 認證通過, share 可存取
 | | 一般備份 | 流式備份 |
 |---|---|---|
 | 本機空間佔用 | 先壓縮到本機再上傳 | 不佔用(直接傳輸) |
-| 增量比對 | ✅ 支援 | ✅ 支援 |
-| 本機完整性校驗 | ✅ 支援 | ❌ 不支援(信任傳輸) |
+| 增量比對 | 支援 | 支援 |
+| 本機完整性校驗 | 支援 | 不支援(信任傳輸) |
 | 適合場景 | 本機空間充足 | 本機空間有限 |
 </details>
 
 ---
 
-## 📬 問題反饋
+## 問題反饋
 
 遇到問題請攜帶截圖與 log 檔,透過以下方式反饋:
 
-- 🐛 [GitHub Issues](https://github.com/YAWAsau/backup_script/issues)
-- 💬 [Telegram 頻道](https://t.me/yawasau_script)
-- 🐧 QQ 群:`976613477`
-- 🧊 酷安:[@落葉淒涼TEL](http://www.coolapk.com/u/2277637)
+- [GitHub Issues](https://github.com/YAWAsau/backup_script/issues)
+- [Telegram 頻道](https://t.me/yawasau_script)
+- QQ 群:`976613477`
+- 酷安:[@落葉淒涼TEL](http://www.coolapk.com/u/2277637)
 
 ---
 
-## ☕ 支持作者
+## 支持作者
 
 備份腳本耗費了大量時間與精力,如果你覺得好用,歡迎贊助支持!
 
@@ -427,7 +434,7 @@ SMB 認證通過, share 可存取
 
 ---
 
-## 🙏 銘謝貢獻
+## 銘謝貢獻
 
 | 貢獻者 | 貢獻內容 |
 |--------|----------|
@@ -441,5 +448,5 @@ SMB 認證通過, share 可存取
 ---
 
 <p align="center">
-  <sub>GPL-3.0 Licensed · Made with ❤️ by <a href="https://github.com/YAWAsau">YAWAsau</a></sub>
+ <sub>GPL-3.0 Licensed · Made with by <a href="https://github.com/YAWAsau">YAWAsau</a></sub>
 </p>

@@ -1,21 +1,21 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# R8 shrink rules for app_process dex tools.
+# Keep CLI entry points. R8 may still shrink unused members around them.
+-keep class com.xayah.dex.HiddenApiUtil { public static void main(java.lang.String[]); }
+-keep class com.xayah.dex.NotificationUtil { public static void main(java.lang.String[]); }
+-keep class com.xayah.dex.NetworkUtil { public static void main(java.lang.String[]); }
+-keep class com.xayah.dex.SsaidUtil { public static void main(java.lang.String[]); }
+-keep class com.xayah.dex.HttpUtil { public static void main(java.lang.String[]); }
+-keep class com.xayah.dex.CCUtil { public static void main(java.lang.String[]); }
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Hidden/API stubs used by Refine, reflection, XML/settings parsing and app_process runtime.
+-keep class android.** { *; }
+-keep class com.android.** { *; }
+-keep class libcore.** { *; }
+-keep class dev.rikka.tools.refine.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Keep reflection-visible metadata, but do not obfuscate entry/class names.
+-keepattributes *Annotation*,InnerClasses,EnclosingMethod
+-dontobfuscate
+-dontwarn **
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+

@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 
 public class CCUtil {
+    private static void human(String msg) { if ("1".equals(System.getenv("DEX_HUMAN_LOG"))) System.err.println("HUMAN " + msg); }
 
     private static void onHelp() {
         System.out.println("CCUtil commands:");
@@ -27,6 +28,7 @@ public class CCUtil {
                 break;
             default:
                 System.out.println("Unknown command: " + cmd);
+                human("繁簡轉換失敗: 未知指令 " + cmd);
                 System.exit(1);
         }
     }
@@ -53,6 +55,7 @@ public class CCUtil {
                 System.out.println(ccHelper.s2t(text));
                 System.exit(0);
             } catch (Exception e) {
+                human("繁簡轉換失敗: " + e.getMessage());
                 e.printStackTrace(System.out);
                 System.exit(1);
             }
@@ -67,7 +70,8 @@ public class CCUtil {
                         }
                         System.exit(0);
                     } catch (Exception e) {
-                        e.printStackTrace(System.out);
+                        human("繁簡轉換失敗: " + e.getMessage());
+                e.printStackTrace(System.out);
                         System.exit(1);
                     }
                 }
@@ -87,6 +91,7 @@ public class CCUtil {
                 System.out.println(ccHelper.t2s(text));
                 System.exit(0);
             } catch (Exception e) {
+                human("繁簡轉換失敗: " + e.getMessage());
                 e.printStackTrace(System.out);
                 System.exit(1);
             }
@@ -101,7 +106,8 @@ public class CCUtil {
                         }
                         System.exit(0);
                     } catch (Exception e) {
-                        e.printStackTrace(System.out);
+                        human("繁簡轉換失敗: " + e.getMessage());
+                e.printStackTrace(System.out);
                         System.exit(1);
                     }
                 }
