@@ -51,7 +51,7 @@ import java.util.zip.ZipFile;
 import dev.rikka.tools.refine.Refine;
 
 public class HiddenApiUtil {
-    private static final String VERSION = "v2.4.35-notify-no-actions-single-main build=v24.20.14-7.66-31-dex-notify-no-actions-single-main-20260704";
+    private static final String VERSION = "v2.4.38-notify-no-actions-zero-ui-buildfix build=v24.20.14-7.66-34-dex-notify-no-actions-zero-ui-buildfix-20260705";
     private static boolean sInstallSessionBatchMode = false;
     private static boolean sAppOpsResetUnsupportedReported = false;
     /**

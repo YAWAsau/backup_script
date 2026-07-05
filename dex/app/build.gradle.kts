@@ -12,8 +12,8 @@ android {
         applicationId = "com.xayah.dex"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2433
-        versionName = "2.4.34-notify-no-actions-single-main"
+        versionCode = 2438
+        versionName = "2.4.38-notify-no-actions-zero-ui-buildfix"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         multiDexEnabled = false
@@ -30,7 +30,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
-        buildConfig = true
+        buildConfig = false
     }
 
     packaging {

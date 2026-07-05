@@ -35,7 +35,6 @@ import android.util.XmlApi30;
 import androidx.annotation.GuardedBy;
 import androidx.annotation.RequiresApi;
 
-import com.xayah.dex.BuildConfig;
 
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
@@ -254,7 +253,7 @@ public class SettingsStateApi31 implements SettingsState {
             mPackageToMemoryUsage = null;
         }
 
-        mHistoricalOperations = BuildConfig.DEBUG
+        mHistoricalOperations = false
                 ? new ArrayList<>(HISTORICAL_OPERATION_COUNT) : null;
 
         synchronized (mLock) {

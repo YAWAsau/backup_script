@@ -202,7 +202,7 @@ _speed_debug_append_cat() {
 	fi
 	(
 		[[ -n $_prefix ]] && printf '%s\n' "$_prefix"
-		cat "$_src"
+		sed -E 's#://[^/@[:space:]]+:[^/@[:space:]]+@#://[REDACTED]@#g; s/(password[[:space:]]*=[[:space:]]*).*/\1[REDACTED]/I' "$_src"
 	) >> "$_file" 2>/dev/null || true
 }
 _speed_debug_log() {
@@ -724,6 +724,26 @@ webdav) remote_url="$webdav_url"; remote_user="$webdav_remote_user"; remote_pass
 *) remote_url=""; remote_user=""; remote_pass="" ;;
 esac
 
+# 憑證改走檔案傳遞, 避免出現在命令行參數 (/proc/*/cmdline 任何本機進程可讀)
+_SMB_AUTHFILE=""
+_WEBDAV_NETRC=""
+if [[ $remote_type = smb && -n $remote_user ]]; then
+	_SMB_AUTHFILE="${TMPDIR:-/data/local/tmp}/.smb_authfile_$$"
+	{
+		printf 'username = %s\n' "$remote_user"
+		printf 'password = %s\n' "$remote_pass"
+	} > "$_SMB_AUTHFILE" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	chmod 0600 "$_SMB_AUTHFILE" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+elif [[ $remote_type = webdav && -n $remote_user ]]; then
+	_WEBDAV_NETRC="${TMPDIR:-/data/local/tmp}/.webdav_netrc_$$"
+	_webdav_host="${remote_url#*://}"
+	_webdav_host="${_webdav_host%%/*}"
+	_webdav_host="${_webdav_host%%:*}"
+	printf 'machine %s login %s password %s\n' "$_webdav_host" "$remote_user" "$remote_pass" \
+		> "$_WEBDAV_NETRC" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	chmod 0600 "$_WEBDAV_NETRC" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+fi
+
 # ============================================================
 # SpeedBackup single-file section: sb_10_remote_local_helpers.sh
 # ============================================================
@@ -890,14 +910,14 @@ _chmod_compressed_output() {
 	local _base="$1" _comp="$2"
 	case $_comp in
 	tar|Tar|TAR)
-		[[ -f "$_base.tar" ]] && chmod 0777 "$_base.tar" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		[[ -f "$_base.tar" ]] && chmod 0600 "$_base.tar" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		;;
 	zstd|Zstd|ZSTD)
-		[[ -f "$_base.tar.zst" ]] && chmod 0777 "$_base.tar.zst" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		[[ -f "$_base.tar.zst" ]] && chmod 0600 "$_base.tar.zst" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		;;
 	*)
-		[[ -f "$_base.tar" ]] && chmod 0777 "$_base.tar" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		[[ -f "$_base.tar.zst" ]] && chmod 0777 "$_base.tar.zst" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		[[ -f "$_base.tar" ]] && chmod 0600 "$_base.tar" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		[[ -f "$_base.tar.zst" ]] && chmod 0600 "$_base.tar.zst" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		;;
 	esac
 }
@@ -1494,7 +1514,7 @@ find "$tools_path" -maxdepth 1 ! -path "$tools_path/tools.sh" -type f | grep -Ev
 	File_name="${REPLY##*/}"
 	if [[ ! -f $filepath/$File_name ]]; then
 		cp -r "$REPLY" "$filepath"
-		chmod 0777 "$filepath/$File_name"
+		chmod 0755 "$filepath/$File_name"
 		echoRgb "$File_name > $filepath/$File_name"
 	else
 		filesha256="$(sha256sum "$filepath/$File_name" | cut -d" " -f1)"
@@ -1502,7 +1522,7 @@ find "$tools_path" -maxdepth 1 ! -path "$tools_path/tools.sh" -type f | grep -Ev
 		if [[ $filesha256 != $filesha256_1 ]]; then
 			echoRgb "$File_name sha256不一致 重新創建"
 			cp -r "$REPLY" "$filepath"
-			chmod 0777 "$filepath/$File_name"
+			chmod 0755 "$filepath/$File_name"
 			echoRgb "$File_name > $filepath/$File_name"
 		fi
 	fi
@@ -1952,6 +1972,7 @@ cleanup_tmpdir_contents() {
 		wdav_err_ wdav_propfind_ webdav_chunk_test_err_ \
 		dex_probe_ appstate_filter_ appstate_chunk_ verify_appstate_chunk_ \
 		hybrid_play_pm_ hybrid_play_pm_stderr_ hybrid_installer_pm_ hybrid_installer_pm_stderr_ sparse_dedupe_ play_uid_pm_probe_ play_uid_pm_probe_ok_ remote_debug_seq_ local_raw_ \
+		smb_authfile_ webdav_netrc_ \
 		speedbackup_wifi_save_; do
 		rm -rf "$TMPDIR/.$f"* 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	done
@@ -2026,6 +2047,13 @@ curl() {
 			case $_host in
 			*[!0-9.]*) ;;          # 含非數字/點 → 是域名
 			*) continue ;;          # 純 IP → 跳過
+			esac
+			# hostname 白名單: 只允許字母/數字/點/連字號, port 只允許數字, 防止注入額外 curl 參數
+			case $_host in
+			*[!A-Za-z0-9.-]*) continue ;;
+			esac
+			case $_port in
+			*[!0-9]*) continue ;;
 			esac
 			_ip=$(_dns_resolve "$_host")
 			if [[ -n $_ip && $_ip != "$_host" ]]; then
@@ -3040,7 +3068,7 @@ _smb_scan_hosts() {
 	for i in $(seq 1 254); do
 		( nc -z -w 1 "$SMB_SCAN_SUBNET.$i" 445 >/dev/null 2>&1 && echo "$SMB_SCAN_SUBNET.$i" >> "$results" ) &
 		pids="$pids $!"
-		if [[ $((i % 50)) -eq 0 ]]; then
+		if [[ $((i % 20)) -eq 0 ]]; then
 			wait $pids 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; pids=""
 			printf '\r -掃描 %d/254 %s' "$i" "$(progress_bar $((i * 100 / 254)))" >&2
 		fi
@@ -3057,7 +3085,7 @@ _smb_scan_hosts() {
 smb_autodetect_url() {
 	_smb_scan_hosts || return 1
 	local _auth
-	if [[ -n $remote_user ]]; then _auth="-U $remote_user%$remote_pass"; else _auth="-N"; fi
+	if [[ -n $remote_user ]]; then _auth="-A $_SMB_AUTHFILE"; else _auth="-N"; fi
 	local target share
 	while read -r target; do
 		echoRgb "發現 SMB: $target" "1"
@@ -3083,7 +3111,7 @@ scan_smb() {
 	fi
 	echoRgb "------- 掃描完成 -------" "3"
 	local _auth
-	if [[ -n $remote_user ]]; then _auth="-U $remote_user%$remote_pass"; else _auth="-N"; fi
+	if [[ -n $remote_user ]]; then _auth="-A $_SMB_AUTHFILE"; else _auth="-N"; fi
 	while read -r target; do
 		echoRgb "發現 SMB: $target" "1"
 		# 查主機名 (有 nmblookup 才查)
@@ -3181,7 +3209,7 @@ upload_smb() {
 	if [[ -s $mkdir_script ]]; then
 		echo "exit" >> "$mkdir_script"
 		local _mkdir_out _mkdir_rc
-		_mkdir_out="$(smbclient "$share" -U "$remote_user%$remote_pass" $SMB_OPTS < "$mkdir_script" 2>&1)"
+		_mkdir_out="$(smbclient "$share" -A "$_SMB_AUTHFILE" $SMB_OPTS < "$mkdir_script" 2>&1)"
 		_mkdir_rc=$?
 		remote_raw_log "remote_smb_upload_raw.log" "MKDIR rc=$_mkdir_rc script=$mkdir_script"
 		printf '%s\n' "$_mkdir_out" >> "${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/remote_smb_upload_raw.log" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -3247,7 +3275,7 @@ upload_smb() {
 		# 跑 batch, 解析每個 put 的結果
 		local smb_out _smb_batch_rc _raw_tag
 		_raw_tag="$(_remote_debug_seq smb_upload)"
-		smb_out="$(smbclient "$share" -U "$remote_user%$remote_pass" $SMB_OPTS < "$batch" 2>&1)"
+		smb_out="$(smbclient "$share" -A "$_SMB_AUTHFILE" $SMB_OPTS < "$batch" 2>&1)"
 		_smb_batch_rc=$?
 		remote_raw_log "remote_smb_upload_raw.log" "BATCH tag=$_raw_tag rc=$_smb_batch_rc rem_dir=$rem_dir local_dir=$local_dir file_count=$file_count batch=$batch"
 		{
@@ -3299,7 +3327,7 @@ upload_smb() {
 			local _ad_fname="$(basename "$REMOTE_APPDETAILS_FILE")"
 			local _ad_smb_out _ad_smb_rc _ad_tag
 			_ad_tag="$(_remote_debug_seq smb_upload)"
-			_ad_smb_out="$(smbclient "$share" -U "$remote_user%$remote_pass" -t 10 -s /dev/null \
+			_ad_smb_out="$(smbclient "$share" -A "$_SMB_AUTHFILE" -t 10 -s /dev/null \
 				-D "${rem_path:+$rem_path/}$(dirname "$_ad_rel")" \
 				-c "lcd $_ad_dir; put $_ad_fname; exit" 2>&1)"
 			_ad_smb_rc=$?
@@ -3381,7 +3409,7 @@ upload_remote() {
 	remote_raw_log "remote_webdav_upload_raw.log" "BEGIN base_url=$base_url total=$total host=$_host port=$_port backup_subdir=$backup_subdir"
 	# WebDAV: 先建初始目錄 (Backup_zstd_X 自己)
 	local _mkcol_http _mkcol_rc _mkcol_err="$TMPDIR/.webdav_mkcol_err_$$"
-	_mkcol_http="$(curl -sS -L --http1.1 -X MKCOL -u "$remote_user:$remote_pass" "$base_url" -o /dev/null -w '%{http_code}' 2>"$_mkcol_err")"
+	_mkcol_http="$(curl -sS -L --http1.1 -X MKCOL --netrc-file "$_WEBDAV_NETRC" "$base_url" -o /dev/null -w '%{http_code}' 2>"$_mkcol_err")"
 	_mkcol_rc=$?
 	remote_raw_log "remote_webdav_upload_raw.log" "MKCOL root rc=$_mkcol_rc http=$_mkcol_http url=$base_url"
 	remote_raw_cat "remote_webdav_upload_raw.log" "$_mkcol_err" "[MKCOL root stderr]"
@@ -3399,7 +3427,7 @@ upload_remote() {
 		for seg; do
 			cur="$cur/$seg"
 			local _sub_mk_err="$TMPDIR/.webdav_mkcol_err_$$" _sub_mk_http _sub_mk_rc
-			_sub_mk_http="$(curl -sS -L --http1.1 -X MKCOL -u "$remote_user:$remote_pass" "$cur" -o /dev/null -w '%{http_code}' 2>"$_sub_mk_err")"
+			_sub_mk_http="$(curl -sS -L --http1.1 -X MKCOL --netrc-file "$_WEBDAV_NETRC" "$cur" -o /dev/null -w '%{http_code}' 2>"$_sub_mk_err")"
 			_sub_mk_rc=$?
 			remote_raw_log "remote_webdav_upload_raw.log" "MKCOL dir rc=$_sub_mk_rc http=$_sub_mk_http url=$cur"
 			remote_raw_cat "remote_webdav_upload_raw.log" "$_sub_mk_err" "[MKCOL dir stderr]"
@@ -3475,7 +3503,7 @@ upload_remote() {
 		local _curl_progress="$TMPDIR/.curl_progress_$$" _curl_tag
 		_curl_tag="$(_remote_debug_seq webdav_upload)"
 		curl -# -S -L --http1.1 --retry 2 --retry-delay 3 --connect-timeout 10 \
-			-T "$f" -u "$remote_user:$remote_pass" -w '%{http_code}' \
+			-T "$f" --netrc-file "$_WEBDAV_NETRC" -w '%{http_code}' \
 			-o /dev/null "$target_url" > "$TMPDIR/.curl_http" 2>"$_curl_progress"
 		curl_exit=$?
 		cat "$_curl_progress" | awk -v idx="$idx" -v total="$total" -v rel="$rel" -v sz="$_sz_human" '
@@ -3532,7 +3560,7 @@ upload_remote() {
 			local _ad_http _ad_curl_rc _ad_curl_err="$TMPDIR/.webdav_ad_err_$$" _ad_tag
 			_ad_tag="$(_remote_debug_seq webdav_upload)"
 			_ad_http="$(curl -sS -L --http1.1 --retry 2 --retry-delay 3 --connect-timeout 10 \
-				-T "$REMOTE_APPDETAILS_FILE" -u "$remote_user:$remote_pass" -w '%{http_code}' \
+				-T "$REMOTE_APPDETAILS_FILE" --netrc-file "$_WEBDAV_NETRC" -w '%{http_code}' \
 				-o /dev/null "$_ad_url" 2>"$_ad_curl_err")"
 			_ad_curl_rc=$?
 			remote_raw_log "remote_webdav_upload_raw.log" "APP_DETAILS tag=$_ad_tag rc=$_ad_curl_rc http=$_ad_http rel=$_ad_rel url=$_ad_url"
@@ -3588,7 +3616,7 @@ remote_list_files() {
 		# 進而讓增量列表為空並誤判需要全量上傳。
 		remote_parse_smb_url
 		local _auth
-		if [[ -n $remote_user ]]; then _auth="-U $remote_user%$remote_pass"; else _auth="-N"; fi
+		if [[ -n $remote_user ]]; then _auth="-A $_SMB_AUTHFILE"; else _auth="-N"; fi
 		local SMB_OPTS="-t 300 -s /dev/null${REMOTE_PORT:+ -p $REMOTE_PORT} -m SMB3"
 		local _pref="$SMB_REM_PATH/$_path"; _pref="${_pref#/}"
 		local _p="$_pref"; _p="${_p//\//\\}"
@@ -3625,7 +3653,7 @@ remote_list_files() {
 		;;
 	webdav)
 		local _wauth=""
-		[[ -n $remote_user ]] && _wauth="-u $remote_user:$remote_pass"
+		[[ -n $remote_user ]] && _wauth="--netrc-file $_WEBDAV_NETRC"
 		local _wurl="${remote_url%/}/$_path"
 		# v24.20.14-7.12：PROPFIND 404/空目錄屬於可預期情境，不污染 stderr.log；完整 stderr 進 raw log。
 		local _wd_prop="$TMPDIR/.wdav_propfind_list_$$" _wd_err="$TMPDIR/.wdav_propfind_list_err_$$" _wd_rc
@@ -3672,7 +3700,7 @@ remote_dir_size() {
 		# 進而讓增量列表為空並誤判需要全量上傳。
 		remote_parse_smb_url
 		local _auth
-		if [[ -n $remote_user ]]; then _auth="-U $remote_user%$remote_pass"; else _auth="-N"; fi
+		if [[ -n $remote_user ]]; then _auth="-A $_SMB_AUTHFILE"; else _auth="-N"; fi
 		local SMB_OPTS="-t 300 -s /dev/null${REMOTE_PORT:+ -p $REMOTE_PORT} -m SMB3"
 		local _pref="$SMB_REM_PATH/$_path"; _pref="${_pref#/}"
 		local _p="$_pref"; _p="${_p//\//\\}"
@@ -3701,7 +3729,7 @@ remote_dir_size() {
 		;;
 	webdav)
 		local _wauth=""
-		[[ -n $remote_user ]] && _wauth="-u $remote_user:$remote_pass"
+		[[ -n $remote_user ]] && _wauth="--netrc-file $_WEBDAV_NETRC"
 		local _wurl="${remote_url%/}/$_path"
 		# v24.20.14-7.12：PROPFIND 404/空目錄回 0，stderr 只進 raw log。
 		local _wd_prop="$TMPDIR/.wdav_propfind_size_$$" _wd_err="$TMPDIR/.wdav_propfind_size_err_$$" _wd_rc
@@ -3789,7 +3817,7 @@ _stream_upload() {
 	smb)
 		# SMB 流式: 用 cd 切目錄 (對齊既有成功的 upload_smb, -D 會吃掉路徑字元) + put - 從 stdin
 		local _auth
-		if [[ -n $remote_user ]]; then _auth="-U $remote_user%$remote_pass"; else _auth="-N"; fi
+		if [[ -n $remote_user ]]; then _auth="-A $_SMB_AUTHFILE"; else _auth="-N"; fi
 		local SMB_OPTS="-t 300 -s /dev/null${REMOTE_PORT:+ -p $REMOTE_PORT} -m SMB3"
 		local _smbpath="$SMB_REM_PATH/$_rel"; _smbpath="${_smbpath#/}"
 		local _smbdir="${_smbpath%/*}" _file="${_smbpath##*/}"
@@ -3829,7 +3857,7 @@ _stream_upload() {
 		} >> "${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/stream_upload_${_stream_tag}.log" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		if [[ $_rc != 0 ]]; then
 			echoRgb "[SMB流式失敗] dir=$_cddir file=$_file" "0" >&2
-			echo "$_out" | sed 's/^/  /' >&2
+			echo "$_out" | sed -E 's#://[^/@[:space:]]+:[^/@[:space:]]+@#://[REDACTED]@#g; s/(password[[:space:]]*=[[:space:]]*).*/\1[REDACTED]/I; s/^/  /' >&2
 		fi
 		return $_rc
 		;;
@@ -3837,7 +3865,7 @@ _stream_upload() {
 		# WebDAV: 先 MKCOL 逐層建父目錄，再 curl -T - 上傳
 		local _wbase="${remote_url%/}"
 		local _wauth=""
-		[[ -n $remote_user ]] && _wauth="-u $remote_user:$remote_pass"
+		[[ -n $remote_user ]] && _wauth="--netrc-file $_WEBDAV_NETRC"
 		# 逐層建目錄
 		local _wdir="${_rel%/*}"
 		if [[ $_wdir != $_rel ]]; then
@@ -3862,7 +3890,7 @@ _stream_upload() {
 		remote_raw_cat "stream_upload_${_stream_tag}.log" "$_stream_err" "===== STREAM_UPLOAD_WEBDAV $_stream_tag rel=$_rel rc=$_rc http=$_httpcode elapsed=${_elapsed}s ====="
 		if [[ $_rc != 0 ]]; then
 			echoRgb "[WebDAV流式失敗 rc=$_rc http=$_httpcode] url=$_wbase/$_rel" "0" >&2
-			sed 's/^/  /' "$_stream_err" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} >&2
+			sed -E 's#://[^/@[:space:]]+:[^/@[:space:]]+@#://[REDACTED]@#g; s/(password[[:space:]]*=[[:space:]]*).*/\1[REDACTED]/I; s/^/  /' "$_stream_err" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} >&2
 		fi
 		rm -f "$_stream_err"
 		return $_rc
@@ -3884,7 +3912,7 @@ _stream_download() {
 	case $remote_type in
 	smb)
 		local _auth
-		if [[ -n $remote_user ]]; then _auth="-U $remote_user%$remote_pass"; else _auth="-N"; fi
+		if [[ -n $remote_user ]]; then _auth="-A $_SMB_AUTHFILE"; else _auth="-N"; fi
 		local SMB_OPTS="-t 300 -s /dev/null${REMOTE_PORT:+ -p $REMOTE_PORT} -m SMB3"
 		local _smbpath="$SMB_REM_PATH/$_rel"; _smbpath="${_smbpath#/}"
 		local _smbdir="${_smbpath%/*}" _file="${_smbpath##*/}"
@@ -3903,7 +3931,7 @@ _stream_download() {
 		;;
 	webdav)
 		local _wauth=""
-		[[ -n $remote_user ]] && _wauth="-u $remote_user:$remote_pass"
+		[[ -n $remote_user ]] && _wauth="--netrc-file $_WEBDAV_NETRC"
 		local _wd_err="$TMPDIR/.stream_download_err_$$" _wd_rc _wd_elapsed
 		curl -fsS --connect-timeout 30 --speed-time 300 --speed-limit 512 $_wauth "${remote_url%/}/$_rel" 2>"$_wd_err"
 		_wd_rc=$?
@@ -3973,7 +4001,7 @@ remote_download_single_file() {
 		# v24.20.14-7.66-16: 暫存錯誤檔可能已被其他清理流程移除；不要讓 rm 噪音污染 stderr.log。
 		rm -f "$local_dest" "$_tmp" "$_err" 2>/dev/null
 		if [[ -n $remote_user ]]; then
-			curl -sS -L --http1.1 --connect-timeout 10 -u "$remote_user:$remote_pass" \
+			curl -sS -L --http1.1 --connect-timeout 10 --netrc-file "$_WEBDAV_NETRC" \
 				-o "$_tmp" "$target_url" 2>"$_err"
 		else
 			curl -sS -L --http1.1 --connect-timeout 10 \
@@ -4002,7 +4030,7 @@ remote_download_single_file() {
 		local smb_dest="$(mktemp -d "$TMPDIR/.smb_dl_XXXXXX" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 		[[ -z $smb_dest ]] && smb_dest="$TMPDIR/.smb_dl_$$_$RANDOM"
 		mkdir -p "$smb_dest" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		smbclient "$share" -U "$remote_user%$remote_pass" -t 10 -s /dev/null \
+		smbclient "$share" -A "$_SMB_AUTHFILE" -t 10 -s /dev/null \
 			-D "$base/$dir_part" \
 			-c "lcd $smb_dest; get $file_part; exit" >/dev/null 2>&1
 		if [[ -f "$smb_dest/$file_part" ]]; then
@@ -4119,7 +4147,7 @@ remote_setup() {
 			# WebDAV 流式需伺服器支援 chunked PUT (Synology 等 Apache WebDAV 常不支援, 回 411)
 			if [[ $remote_type = webdav ]]; then
 				local _wauth_t=""
-				[[ -n $remote_user ]] && _wauth_t="-u $remote_user:$remote_pass"
+				[[ -n $remote_user ]] && _wauth_t="--netrc-file $_WEBDAV_NETRC"
 				local _chunk_err
 				_chunk_err="$TMPDIR/.webdav_chunk_test_err_$$"
 				if ! echo "chunked_test" | curl -fsS -o /dev/null --connect-timeout 15 $_wauth_t -T - "${remote_url%/}/.stream_chunk_test" 2>"$_chunk_err"; then
@@ -4399,7 +4427,7 @@ remote_test() {
 		local share="$SMB_SHARE"
 		local rem_path="$SMB_REM_PATH"
 		local out
-		out="$(smbclient "$share" -U "$remote_user%$remote_pass" -t 10 -s /dev/null${REMOTE_PORT:+ -p $REMOTE_PORT} -m SMB3 \
+		out="$(smbclient "$share" -A "$_SMB_AUTHFILE" -t 10 -s /dev/null${REMOTE_PORT:+ -p $REMOTE_PORT} -m SMB3 \
 			-c "cd ${rem_path:-/}; ls; exit" 2>&1)"
 		out="$(smb_filter_noise "$out")"
 		if echo "$out" | grep -qE 'NT_STATUS_LOGON_FAILURE'; then
@@ -4430,7 +4458,7 @@ remote_test() {
 			# 抓實際協商出的 SMB 協議版本
 			# 不同 Samba 版本輸出格式不同, 先把 debug 輸出存檔再多路徑抓取
 			local _dbg="$TMPDIR/.smb_dbg_$$"
-			smbclient "$share" -U "$remote_user%$remote_pass" -t 5 -s /dev/null${REMOTE_PORT:+ -p $REMOTE_PORT} -m SMB3 -d 5 \
+			smbclient "$share" -A "$_SMB_AUTHFILE" -t 5 -s /dev/null${REMOTE_PORT:+ -p $REMOTE_PORT} -m SMB3 -d 5 \
 				-c 'exit' >"$_dbg" 2>&1
 			local _proto
 			# 試多種關鍵字 (依不同 Samba 版本)
@@ -4454,7 +4482,7 @@ remote_test() {
 		local base_url="${remote_url%/}"
 		local code curl_err
 		# stderr 寫到檔案, 別污染 http_code
-		code="$(curl -sS -L --http1.1 --connect-timeout 10 -u "$remote_user:$remote_pass" \
+		code="$(curl -sS -L --http1.1 --connect-timeout 10 --netrc-file "$_WEBDAV_NETRC" \
 			-X PROPFIND -H "Depth: 0" -w '%{http_code}' -o /dev/null "$base_url" 2>"$TMPDIR/.curl_test_err")"
 		curl_err="$(cat "$TMPDIR/.curl_test_err" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 		rm -f "$TMPDIR/.curl_test_err"
@@ -4548,7 +4576,7 @@ remote_list_backups() {
 		local share="$SMB_SHARE"
 		local rem_path="$SMB_REM_PATH"
 		local smb_out
-		smb_out=$(smbclient "$share" -U "$remote_user%$remote_pass" -t 10 -s /dev/null${REMOTE_PORT:+ -p $REMOTE_PORT} -m SMB3 \
+		smb_out=$(smbclient "$share" -A "$_SMB_AUTHFILE" -t 10 -s /dev/null${REMOTE_PORT:+ -p $REMOTE_PORT} -m SMB3 \
 			-c "cd ${rem_path:-/}/$target_dir; ls; exit" 2>&1)
 		if echo "$smb_out" | grep -qE 'NT_STATUS_OBJECT_(PATH|NAME)_NOT_FOUND'; then
 			echoRgb "遠端目錄不存在: $target_dir" "0"
@@ -4569,7 +4597,7 @@ remote_list_backups() {
 		local http_code _wdav_err
 		_wdav_err="$TMPDIR/.wdav_err_$$"
 		: > "$TMPDIR/.wdav_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		http_code=$(curl -sS -L --http1.1 --connect-timeout 10 -u "$remote_user:$remote_pass" \
+		http_code=$(curl -sS -L --http1.1 --connect-timeout 10 --netrc-file "$_WEBDAV_NETRC" \
 			-X PROPFIND -H "Depth: 1" -w '%{http_code}' -o "$TMPDIR/.wdav_out" \
 			"$base_url/$target_dir/" 2>"$_wdav_err")
 		# debug: 把 PROPFIND 原始回應與 curl stderr 寫到 log 供除錯；不可污染 stderr.log。
@@ -4596,7 +4624,7 @@ remote_list_backups() {
 			# PROPFIND 根目錄看實際有什麼, 幫用戶確認路徑名
 			local root_code root_xml="$TMPDIR/.wdav_root"
 			local _root_err="$TMPDIR/.wdav_root_err_$$"
-			root_code=$(curl -sS -L --http1.1 --connect-timeout 10 -u "$remote_user:$remote_pass" \
+			root_code=$(curl -sS -L --http1.1 --connect-timeout 10 --netrc-file "$_WEBDAV_NETRC" \
 				-X PROPFIND -H "Depth: 1" -w '%{http_code}' -o "$root_xml" \
 				"$base_url/" 2>"$_root_err")
 			{
@@ -4959,7 +4987,7 @@ _remote_download_smb() {
 		echoRgb "[$idx/$total_items] $(progress_bar $((idx * 100 / total_items))) 下載 $item" "3"
 		mkdir -p "$dest/$item" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		local out
-		out=$(smbclient "$share" -U "$remote_user%$remote_pass" $SMB_OPTS \
+		out=$(smbclient "$share" -A "$_SMB_AUTHFILE" $SMB_OPTS \
 			-D "$base/$item" \
 			-c "lcd $dest/$item; prompt off; recurse on; mget *; exit" 2>&1)
 		out="$(smb_filter_noise "$out")"
@@ -4988,7 +5016,7 @@ _remote_download_smb() {
 	echoRgb "下載固定項目: tools/ start.sh restore_settings.conf" "3"
 	mkdir -p "$dest/tools" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	local tools_out
-	tools_out=$(smbclient "$share" -U "$remote_user%$remote_pass" $SMB_OPTS \
+	tools_out=$(smbclient "$share" -A "$_SMB_AUTHFILE" $SMB_OPTS \
 		-D "$base/tools" \
 		-c "lcd $dest/tools; prompt off; recurse on; mget *; exit" 2>&1)
 	tools_out="$(smb_filter_noise "$tools_out")"
@@ -4999,7 +5027,7 @@ _remote_download_smb() {
 	} >> "${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/remote_download_smb_fixed.log" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	# 固定 3 項: start.sh / restore_settings.conf (獨立連線)
 	local fix_out
-	fix_out=$(smbclient "$share" -U "$remote_user%$remote_pass" $SMB_OPTS \
+	fix_out=$(smbclient "$share" -A "$_SMB_AUTHFILE" $SMB_OPTS \
 		-D "$base" \
 		-c "lcd $dest; prompt off; get start.sh; get restore_settings.conf; exit" 2>&1)
 	fix_out="$(smb_filter_noise "$fix_out")"
@@ -5045,7 +5073,7 @@ _remote_download_webdav() {
 		mkdir -p "$l_dir" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		local out _scan_err="$TMPDIR/.wdav_scan_err_$$" _scan_rc _scan_tag
 		_scan_tag="$(_remote_debug_seq webdav_scan)"
-		out=$(curl -sS -L --http1.1 --connect-timeout 10 -u "$remote_user:$remote_pass" \
+		out=$(curl -sS -L --http1.1 --connect-timeout 10 --netrc-file "$_WEBDAV_NETRC" \
 			-X PROPFIND -H "Depth: 1" "$r_url/" 2>"$_scan_err")
 		_scan_rc=$?
 		remote_raw_log "remote_download_raw.log" "WEBDAV_SCAN tag=$_scan_tag rc=$_scan_rc url=$r_url/ local=$l_dir"
@@ -5110,7 +5138,7 @@ _remote_download_webdav() {
 		local _get_err="$TMPDIR/.wdav_get_err_$$" _get_tag
 		_get_tag="$(_remote_debug_seq webdav_get)"
 		curl -sS -L --http1.1 --connect-timeout 10 --retry 2 -Z --parallel-max 4 \
-			-u "$remote_user:$remote_pass" -K "$cfg" 2>"$_get_err"
+			--netrc-file "$_WEBDAV_NETRC" -K "$cfg" 2>"$_get_err"
 		local rc=$?
 		remote_raw_log "remote_download_raw.log" "WEBDAV_GET tag=$_get_tag rc=$rc cfg=$cfg list=$list"
 		{
@@ -6877,7 +6905,7 @@ update_script() {
 						mv "$path_hierarchy/tools" "$TMPDIR"
 						[[ -d $TMPDIR/tools ]] && {
 						unzip -o "$zipFile" tools/* -d "$path_hierarchy" | sed 's/inflating/釋放/g ; s/creating/創建/g ; s/Archive/解壓縮/g'
-						chmod -R 0777 "$path_hierarchy/tools" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+						chmod -R 0755 "$path_hierarchy/tools" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 						echo_log "解壓縮${zipFile##*/}"
 						if [[ $result = 0 ]]; then
 							if [[ $shell_language != $Script_target_language ]]; then
@@ -6915,7 +6943,7 @@ update_script() {
 								# FUSE 層 rm -rf 可能因權限問題失敗; 改 cp -rf 直接覆蓋無需先刪
 								mkdir -p "$update_path/tools" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 								cp -rf "$path_hierarchy/tools/." "$update_path/tools/" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || cp -r "$path_hierarchy/tools" "$update_path"
-								chmod -R 0777 "$update_path/tools" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+								chmod -R 0755 "$update_path/tools" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 								echoRgb "$update_path/tools已經更新完成"
 							fi
 						else
@@ -7480,7 +7508,7 @@ prepare_remote_json_map() {
 	if [[ $remote_type = smb ]]; then
 		# SMB: 單連線批量 get (每批 20 檔), 連線數 120→6
 		local _auth SMB_OPTS _batchcmd="" _app _n=0
-		if [[ -n $remote_user ]]; then _auth="-U $remote_user%$remote_pass"; else _auth="-N"; fi
+		if [[ -n $remote_user ]]; then _auth="-A $_SMB_AUTHFILE"; else _auth="-N"; fi
 		SMB_OPTS="-t 300 -s /dev/null${REMOTE_PORT:+ -p $REMOTE_PORT} -m SMB3"
 		local _base="$SMB_REM_PATH/$_subdir"; _base="${_base#/}"; _base="${_base//\//\\}"
 		while read -r _app; do
@@ -8687,7 +8715,14 @@ Release_data() {
 		media)
 			FILE_PATH="$path/media"
 			;;
-		thanox) FILE_PATH="/data/system" && find "/data/system" -name "thanos"* -maxdepth 1 -type d -exec rm -rf {} \; 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} ;;
+		thanox)
+			FILE_PATH="/data/system"
+			find "/data/system" -maxdepth 1 -type d -name "thanos*" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | while read -r _td; do
+				case $_td in
+					/data/system/thanos*) [[ -n $_td ]] && rm -rf "$_td" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} ;;
+				esac
+			done
+			;;
 		*)
 			if [[ $A != "" ]]; then
 				if [[ ${MODDIR_NAME##*/} = Media ]]; then

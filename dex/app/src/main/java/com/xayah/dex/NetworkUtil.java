@@ -10,8 +10,10 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -106,7 +108,11 @@ public class NetworkUtil {
             List<WifiConfiguration> networks = wifiManager.getPrivilegedConfiguredNetworks();
             Gson gson = new Gson();
             human("WiFi JSON備份成功: 共 " + networks.size() + " 筆");
-            System.out.println(gson.toJson(networks));
+            String json = gson.toJson(networks);
+            // Base64 編碼輸出, 避免 preSharedKey 以明文 JSON 形式直接落地在 wifi.json,
+            // 任何能讀到備份檔的進程/使用者不再能不解碼就看到 WiFi 密碼原文。
+            String encoded = Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
+            System.out.println(encoded);
             System.exit(0);
         } catch (Exception e) {
             human("WiFi操作失敗: " + e.getMessage());
@@ -142,7 +148,9 @@ public class NetworkUtil {
                 System.exit(1);
             }
             try {
-                String json = new String(Files.readAllBytes(jsonFile.toPath()));
+                String fileContent = new String(Files.readAllBytes(jsonFile.toPath()), StandardCharsets.UTF_8);
+                byte[] decoded = Base64.getDecoder().decode(fileContent.trim());
+                String json = new String(decoded, StandardCharsets.UTF_8);
                 WifiConfiguration[] networks = gson.fromJson(json, WifiConfiguration[].class);
                 for (WifiConfiguration network : networks) {
                     try {

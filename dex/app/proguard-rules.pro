@@ -1,5 +1,5 @@
-# R8 shrink rules for app_process dex tools.
-# Keep CLI entry points. R8 may still shrink unused members around them.
+# R8 shrink rules for pure app_process dex tools (zero UI build).
+# Keep only CLI entry points. There is no Activity/Receiver/Service UI component in this build.
 -keep class com.xayah.dex.HiddenApiUtil { public static void main(java.lang.String[]); }
 -keep class com.xayah.dex.NotificationUtil { public static void main(java.lang.String[]); }
 -keep class com.xayah.dex.NetworkUtil { public static void main(java.lang.String[]); }
