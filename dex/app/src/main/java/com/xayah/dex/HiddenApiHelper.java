@@ -16,29 +16,72 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 public class HiddenApiHelper {
-    public static Context getContext() throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, IllegalAccessException, NoSuchFieldException {
-        if (Looper.getMainLooper() == null)
-            Looper.prepareMainLooper();
-        PrintStream stderr = System.err;
-        try {
-            System.setErr(new PrintStream("/dev/null"));
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
+    private static final Object CONTEXT_LOCK = new Object();
+    private static volatile Context sContext;
+    private static volatile Object sActivityThread;
+
+    public static Context initializeContext() throws ClassNotFoundException, NoSuchMethodException,
+            InvocationTargetException, IllegalAccessException, NoSuchFieldException {
+        return getContext();
+    }
+
+    public static Context getContext() throws ClassNotFoundException, NoSuchMethodException,
+            InvocationTargetException, IllegalAccessException, NoSuchFieldException {
+        Context cached = sContext;
+        if (cached != null) return cached;
+        synchronized (CONTEXT_LOCK) {
+            cached = sContext;
+            if (cached != null) return cached;
+
+            Class<?> activityThreadClass = Class.forName("android.app.ActivityThread");
+            Object thread = null;
+            try {
+                thread = activityThreadClass.getMethod("currentActivityThread").invoke(null);
+            } catch (NoSuchMethodException ignored) {
+                // Older vendor frameworks may not expose currentActivityThread().
+            }
+
+            if (thread == null) {
+                if (Looper.myLooper() == null && Looper.getMainLooper() == null) {
+                    Looper.prepareMainLooper();
+                }
+                if (Looper.myLooper() == null) {
+                    throw new IllegalStateException(
+                            "system Context must be initialized on the daemon main thread before workers start");
+                }
+
+                PrintStream originalStderr = System.err;
+                PrintStream nullStderr = null;
+                try {
+                    nullStderr = new PrintStream("/dev/null");
+                    System.setErr(nullStderr);
+                    thread = activityThreadClass.getMethod("systemMain").invoke(null);
+                } catch (FileNotFoundException ignored) {
+                    thread = activityThreadClass.getMethod("systemMain").invoke(null);
+                } finally {
+                    System.setErr(originalStderr);
+                    if (nullStderr != null) nullStderr.close();
+                }
+            }
+
+            Context context = (Context) activityThreadClass.getMethod("getSystemContext").invoke(thread);
+            if (context == null) throw new IllegalStateException("system Context is null");
+
+            // Setup the fake initial Application once for hidden framework calls that require it.
+            Application app = new Application();
+            Field baseField = ContextWrapper.class.getDeclaredField("mBase");
+            baseField.setAccessible(true);
+            baseField.set(app, new FakeContext(context));
+            Field initialApplicationField = activityThreadClass.getDeclaredField("mInitialApplication");
+            initialApplicationField.setAccessible(true);
+            if (initialApplicationField.get(thread) == null) {
+                initialApplicationField.set(thread, app);
+            }
+
+            sActivityThread = thread;
+            sContext = context;
+            return context;
         }
-        Object thread = Class.forName("android.app.ActivityThread").getMethod("systemMain").invoke(null);
-        Context context = (Context) Class.forName("android.app.ActivityThread").getMethod("getSystemContext").invoke(thread);
-        System.setErr(stderr);
-
-        // Setup fake context.
-        Application app = new Application();
-        Field baseField = ContextWrapper.class.getDeclaredField("mBase");
-        baseField.setAccessible(true);
-        baseField.set(app, new FakeContext(context));
-        Field mInitialApplicationField = Class.forName("android.app.ActivityThread").getDeclaredField("mInitialApplication");
-        mInitialApplicationField.setAccessible(true);
-        mInitialApplicationField.set(thread, app);
-
-        return context;
     }
 
     /**
@@ -66,7 +109,7 @@ public class HiddenApiHelper {
             providerField.setAccessible(true);
             return (IContentProvider) providerField.get(providerHolder);
         } catch (ReflectiveOperationException e) {
-            e.printStackTrace(System.out);
+            e.printStackTrace(System.err);
             return null;
         }
     }

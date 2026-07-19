@@ -27,7 +27,7 @@ public class CCUtil {
                 onHelp();
                 break;
             default:
-                System.out.println("Unknown command: " + cmd);
+                System.out.println("UNKNOWN_COMMAND " + cmd.replaceAll("[\r\n\t ]+", "_"));
                 human("繁簡轉換失敗: 未知指令 " + cmd);
                 System.exit(1);
         }
@@ -56,7 +56,7 @@ public class CCUtil {
                 System.exit(0);
             } catch (Exception e) {
                 human("繁簡轉換失敗: " + e.getMessage());
-                e.printStackTrace(System.out);
+                e.printStackTrace(System.err);
                 System.exit(1);
             }
         } else {
@@ -71,7 +71,7 @@ public class CCUtil {
                         System.exit(0);
                     } catch (Exception e) {
                         human("繁簡轉換失敗: " + e.getMessage());
-                e.printStackTrace(System.out);
+                e.printStackTrace(System.err);
                         System.exit(1);
                     }
                 }
@@ -92,7 +92,7 @@ public class CCUtil {
                 System.exit(0);
             } catch (Exception e) {
                 human("繁簡轉換失敗: " + e.getMessage());
-                e.printStackTrace(System.out);
+                e.printStackTrace(System.err);
                 System.exit(1);
             }
         } else {
@@ -107,7 +107,7 @@ public class CCUtil {
                         System.exit(0);
                     } catch (Exception e) {
                         human("繁簡轉換失敗: " + e.getMessage());
-                e.printStackTrace(System.out);
+                e.printStackTrace(System.err);
                         System.exit(1);
                     }
                 }

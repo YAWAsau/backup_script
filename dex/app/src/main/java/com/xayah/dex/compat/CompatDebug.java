@@ -34,9 +34,4 @@ final class CompatDebug {
                 + (throwable.getMessage() != null ? ": " + throwable.getMessage() : ""));
     }
 
-    static void message(String message) {
-        if (DEBUG) {
-            System.err.println("[HiddenApiCompat][DEBUG] " + message);
-        }
-    }
 }

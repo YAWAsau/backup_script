@@ -2,6 +2,7 @@
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.refine)
+    alias(libs.plugins.jetbrainsKotlinAndroid)
 }
 
 android {
@@ -12,8 +13,8 @@ android {
         applicationId = "com.xayah.dex"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2438
-        versionName = "2.4.38-notify-no-actions-zero-ui-buildfix"
+        versionCode = 2610
+        versionName = "2.6.10-foreground-state"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         multiDexEnabled = false
@@ -29,8 +30,11 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
     buildFeatures {
-        buildConfig = false
+        buildConfig = true
     }
 
     packaging {

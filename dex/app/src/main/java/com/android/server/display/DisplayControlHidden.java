@@ -34,8 +34,8 @@ public final class DisplayControlHidden {
             loadMethod.setAccessible(true);
             loadMethod.invoke(Runtime.getRuntime(), displayControlClass, "android_servers");
         } catch (Throwable e) {
-            System.out.println("Could not initialize DisplayControl: " + e);
-            e.printStackTrace(System.out);
+            System.err.println("DISPLAY_CONTROL_INIT_FAILED reason=" + e.getClass().getSimpleName());
+            e.printStackTrace(System.err);
             // Do not throw an exception here, the methods will fail when they are called
         }
         CLASS = displayControlClass;
@@ -60,8 +60,8 @@ public final class DisplayControlHidden {
             Method method = getGetPhysicalDisplayTokenMethod();
             return (IBinder) method.invoke(null, physicalDisplayId);
         } catch (ReflectiveOperationException e) {
-            System.out.println("Could not invoke method: " + e);
-            e.printStackTrace(System.out);
+            System.err.println("DISPLAY_CONTROL_CALL_FAILED reason=" + e.getClass().getSimpleName());
+            e.printStackTrace(System.err);
             return null;
         }
     }
@@ -78,8 +78,8 @@ public final class DisplayControlHidden {
             Method method = getGetPhysicalDisplayIdsMethod();
             return (long[]) method.invoke(null);
         } catch (ReflectiveOperationException e) {
-            System.out.println("Could not invoke method: " + e);
-            e.printStackTrace(System.out);
+            System.err.println("DISPLAY_CONTROL_CALL_FAILED reason=" + e.getClass().getSimpleName());
+            e.printStackTrace(System.err);
             return null;
         }
     }

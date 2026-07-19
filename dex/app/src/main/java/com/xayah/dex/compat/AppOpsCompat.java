@@ -2,6 +2,7 @@ package com.xayah.dex.compat;
 
 import android.app.AppOpsManagerHidden;
 
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -78,22 +79,31 @@ public final class AppOpsCompat {
         }
     }
 
+    /**
+     * Returns the stored package-scoped mode, not the effective mode.
+     *
+     * unsafeCheckOpRawNoThrow/checkOpRawNoThrow can fold permission and uid state into the
+     * result on Android 16/vendor ROMs. Using that value to decide whether setMode() is needed
+     * caused the restore path to skip real writes after reset. getOpsForPackage is the source of
+     * truth for the package entry; absence of an entry means MODE_DEFAULT.
+     */
     public static Integer tryGetPackageModeRaw(AppOpsManagerHidden appOpsManager, int op, int uid, String packageName) {
         try {
-            Object value = HiddenApiReflection.invokeFlexible(appOpsManager, "checkOpRawNoThrow", op, uid, packageName);
-            if (value instanceof Integer) {
-                return (Integer) value;
+            List<AppOpsManagerHidden.PackageOps> packages =
+                    appOpsManager.getOpsForPackage(uid, packageName, new int[]{op});
+            if (packages == null || packages.isEmpty()) {
+                return AppOpsManagerHidden.MODE_DEFAULT;
             }
-        } catch (Throwable ignored) {
-        }
-        try {
-            Object value = HiddenApiReflection.invokeFlexible(appOpsManager, "unsafeCheckOpRawNoThrow", op, uid, packageName);
-            if (value instanceof Integer) {
-                return (Integer) value;
+            for (AppOpsManagerHidden.PackageOps packageOps : packages) {
+                if (packageOps == null || packageOps.getOps() == null) continue;
+                for (AppOpsManagerHidden.OpEntry entry : packageOps.getOps()) {
+                    if (entry != null && entry.getOp() == op) return entry.getMode();
+                }
             }
+            return AppOpsManagerHidden.MODE_DEFAULT;
         } catch (Throwable ignored) {
+            return null;
         }
-        return null;
     }
 
     public static Integer tryGetUidModeRaw(AppOpsManagerHidden appOpsManager, int op, int uid,
@@ -229,15 +239,12 @@ public final class AppOpsCompat {
             }
             int op = opObject;
             try {
+                // Package-scoped fallback must stay package-scoped. Clearing uid modes here can
+                // affect sibling packages sharing the uid and also erased runtime-permission state.
                 setPackageModeIfNeeded(appOpsManager, op, uid, packageName, AppOpsManagerHidden.MODE_DEFAULT);
                 changed++;
             } catch (Throwable throwable) {
                 CompatDebug.throwable("fallback reset package op=" + op + " package=" + packageName, throwable);
-            }
-            try {
-                setUidModeIfNeeded(appOpsManager, op, uid, AppOpsManagerHidden.MODE_DEFAULT, resolver);
-            } catch (Throwable throwable) {
-                CompatDebug.throwable("fallback reset uid op=" + op + " package=" + packageName, throwable);
             }
         }
         return changed;

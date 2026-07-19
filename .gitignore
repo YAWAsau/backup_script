@@ -1,3 +1,6 @@
 tools/dex_check.sh
 tools/uidexec
 C/uidexec.c
+tools/unixsock
+tools/filewatch
+tools/procwait

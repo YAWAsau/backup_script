@@ -3,11 +3,14 @@ agp = "8.2.2"
 refine = "4.4.0"
 gson = "2.10.1"
 junit = "4.13.2"
+kotlin = "2.0.0"
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 androidLibrary = { id = "com.android.library", version.ref = "agp" }
 refine = { id = "dev.rikka.tools.refine", version.ref = "refine" }
+jetbrainsKotlinAndroid = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 
 [libraries]
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }

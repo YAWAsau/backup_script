@@ -21,7 +21,14 @@ import java.util.Set;
 import dev.rikka.tools.refine.Refine;
 
 public class NetworkUtil {
+    private static final boolean DEBUG = "1".equals(System.getenv("HIDDENAPI_DEBUG"))
+            || "1".equals(System.getenv("DEX_DEBUG"));
     private static void human(String msg) { if ("1".equals(System.getenv("DEX_HUMAN_LOG"))) System.err.println("HUMAN " + msg); }
+    private static void commandError(String command, Exception e) {
+        System.err.println("ERROR_CODE=NETWORK_COMMAND_FAILED COMMAND=" + command
+                + " REASON=" + e.getClass().getSimpleName());
+        if (DEBUG) e.printStackTrace(System.err);
+    }
     private static final String NETWORK_PREFIX = "network";
     private static final String NETWORK_SPLIT_SYMBOL = "_";
     private static final String[] SKIP_FIELDS = {"mNetworkSeclectionDisableCounter"};
@@ -55,7 +62,7 @@ public class NetworkUtil {
                 onHelp();
                 break;
             default:
-                System.out.println("Unknown command: " + cmd);
+                System.out.println("UNKNOWN_COMMAND " + cmd.replaceAll("[\r\n\t ]+", "_"));
                 System.exit(1);
         }
     }
@@ -96,7 +103,7 @@ public class NetworkUtil {
             System.exit(0);
         } catch (Exception e) {
             human("WiFi操作失敗: " + e.getMessage());
-            e.printStackTrace(System.out);
+            commandError("getNetworks", e);
             System.exit(1);
         }
     }
@@ -116,7 +123,7 @@ public class NetworkUtil {
             System.exit(0);
         } catch (Exception e) {
             human("WiFi操作失敗: " + e.getMessage());
-            e.printStackTrace(System.out);
+            commandError("saveNetworks", e);
             System.exit(1);
         }
     }
@@ -164,20 +171,20 @@ public class NetworkUtil {
                         }
                     } catch (Exception e) {
                         human("WiFi操作失敗: " + e.getMessage());
-            e.printStackTrace(System.out);
+                        commandError("restoreNetworks.item", e);
                         status = 1;
                     }
 
                 }
             } catch (Exception e) {
                 human("WiFi操作失敗: " + e.getMessage());
-            e.printStackTrace(System.out);
+                commandError("restoreNetworks.payload", e);
                 status = 1;
             }
             System.exit(status);
         } catch (Exception e) {
             human("WiFi操作失敗: " + e.getMessage());
-            e.printStackTrace(System.out);
+            commandError("restoreNetworks", e);
             System.exit(1);
         }
     }

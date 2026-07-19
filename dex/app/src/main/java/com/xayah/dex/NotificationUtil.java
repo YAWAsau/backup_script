@@ -17,15 +17,22 @@ import android.graphics.drawable.Drawable;
 import android.os.Binder;
 import android.os.RemoteException;
 import android.os.UserHandleHidden;
+import android.net.LocalSocket;
 
 import com.xayah.dex.compat.HiddenApiServices;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -35,6 +42,7 @@ import java.util.Locale;
 import java.util.Properties;
 
 public class NotificationUtil extends BaseUtil {
+    public static final String VERSION = "v1.1.2-notify-daemon-ready-fix dex=" + HiddenApiUtil.VERSION;
     public static final int SHELL_UID = 2000;
     public static final String SHELL_PACKAGE = "com.android.shell";
     public static final int NOTIFICATION_ID = 2020;
@@ -64,8 +72,9 @@ public class NotificationUtil extends BaseUtil {
         System.out.println("NotificationUtil commands:");
         System.out.println("  help");
         System.out.println();
-        System.out.println("  notifyBatch --stdin");
+        System.out.println("  daemonunix SOCKET [idleSec] [ownerPid]");
         System.out.println();
+        System.out.println("daemon-only command: notifyBatch");
         System.out.println("notifyBatch stdin sections:");
         System.out.println("  EVENT|BACKUP_PROGRESS|RESTORE_PROGRESS|BACKUP_DONE|RESTORE_DONE|ERROR|WARN|DEBUG");
         System.out.println("  TAG|speedbackup");
@@ -92,12 +101,11 @@ public class NotificationUtil extends BaseUtil {
         System.out.println("notes:");
         System.out.println("  no notification buttons/actions are created; this build is pure classes.dex notifyBatch without companion APK dependency.");
         System.out.println("  TAG/ID are normalized: main= speedbackup_main/2020, error= speedbackup_error/2021, debug= speedbackup_debug/2023.");
-        System.out.println("examples:");
-        System.out.println("  printf 'EVENT|BACKUP_PROGRESS\\nTAG|speedbackup\\nTEXT|LINE - data\\nPROGRESS|100|50|0\\nTHROTTLE_MS|500\\nEND\\n' | notifyBatch --stdin");
+        System.out.println("  notifyBatch is daemon-only; single app_process notifyBatch CLI fallback is intentionally removed.");
     }
 
     private static boolean isSupportedCommand(String cmd) {
-        return "help".equals(cmd) || "notifyBatch".equals(cmd);
+        return "help".equals(cmd) || "daemonunix".equals(cmd) || "version".equals(cmd) || "--version".equals(cmd) || "-v".equals(cmd);
     }
 
     private static void rejectUnknownCommand(String cmd) {
@@ -110,8 +118,13 @@ public class NotificationUtil extends BaseUtil {
             case "help":
                 onHelp();
                 break;
-            case "notifyBatch":
-                notifyBatch(Binder.getCallingUid());
+            case "daemonunix":
+                cmdDaemonUnix();
+                break;
+            case "version":
+            case "--version":
+            case "-v":
+                System.out.println(VERSION);
                 break;
             default:
                 rejectUnknownCommand(mCmd);
@@ -140,6 +153,14 @@ public class NotificationUtil extends BaseUtil {
             onHelp();
             System.exit(0);
         }
+        if ("version".equals(mCmd) || "--version".equals(mCmd) || "-v".equals(mCmd)) {
+            System.out.println(VERSION);
+            System.exit(0);
+        }
+        if ("daemonunix".equals(mCmd)) {
+            cmdDaemonUnix();
+            System.exit(0);
+        }
 
         getService();
         if (sService == null) {
@@ -152,21 +173,158 @@ public class NotificationUtil extends BaseUtil {
         System.exit(0);
     }
 
+    private static final int DAEMON_PROTOCOL_VERSION = 1;
+
+    private static void cmdDaemonUnix() {
+        if (mArgs == null || mArgs.length < 2) {
+            System.err.println("NOTIFICATION_DAEMON_BAD_ARGS daemonunix <socketPath> [idleTimeoutSec] [ownerPid]");
+            System.exit(2);
+        }
+        String socketPath = mArgs[1];
+        long idleTimeoutMs = 1800_000L;
+        if (mArgs.length >= 3) {
+            try { idleTimeoutMs = Math.max(1L, Long.parseLong(mArgs[2])) * 1000L; } catch (Throwable ignored) {}
+        }
+        final int ownerPid = mArgs.length >= 4 ? parsePositiveInt(mArgs[3], -1) : -1;
+        getService();
+        if (sService == null) {
+            System.err.println("NOTIFICATION_DAEMON_FAILED reason=no_notification_service");
+            System.exit(1);
+        }
+        DaemonBootstrap.runUnixDaemon(
+                "NOTIFICATION",
+                socketPath,
+                idleTimeoutMs,
+                ownerPid,
+                "NOTIFY_DAEMON_READY_UNIX " + socketPath,
+                false,
+                NotificationUtil::handleDaemonClient);
+    }
+
+    private static void handleDaemonClient(LocalSocket client) {
+        try (LocalSocket c = client) {
+            InputStream in = c.getInputStream();
+            OutputStream out = c.getOutputStream();
+            String command = readUtf8Line(in);
+            String protocolRaw = readUtf8Line(in);
+            String bodyLengthRaw = readUtf8Line(in);
+            int protocol = parsePositiveInt(protocolRaw, -1);
+            long bodyLength = parseLongDaemon(bodyLengthRaw, -2L);
+            int rc;
+            String name;
+            String body;
+            if (protocol != DAEMON_PROTOCOL_VERSION || bodyLength < -1L) {
+                rc = 2;
+                name = "BAD_REQUEST";
+                body = "NOTIFICATION_DAEMON_BAD_REQUEST\n";
+            } else {
+                byte[] request = bodyLength == -1L ? readAll(in) : readExactly(in, bodyLength);
+                DaemonRunResult result = runDaemonCommand(command, request);
+                rc = result.rc;
+                name = rc == 0 ? "OK" : "FAIL";
+                body = result.stdout;
+            }
+            byte[] response = body.getBytes(StandardCharsets.UTF_8);
+            out.write(("RESULT " + rc + " " + name + "\n").getBytes(StandardCharsets.UTF_8));
+            out.write((String.valueOf(response.length) + "\n").getBytes(StandardCharsets.UTF_8));
+            out.write(response);
+            out.flush();
+        } catch (Throwable t) {
+            System.err.println("[notify-daemon] " + t.getClass().getName() + ": " + t.getMessage());
+        }
+    }
+
+    private static synchronized DaemonRunResult runDaemonCommand(String command, byte[] request) {
+        if (command == null) command = "";
+        command = command.trim();
+        if ("ping".equals(command)) {
+            return new DaemonRunResult(0, "PONG\n");
+        }
+        PrintStream oldOut = System.out;
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        int rc;
+        try {
+            System.setOut(new PrintStream(baos, true, "UTF-8"));
+            if ("notifyBatch".equals(command)) {
+                rc = notifyBatchCommand(new ByteArrayInputStream(request == null ? new byte[0] : request), Binder.getCallingUid(), false);
+            } else {
+                System.out.println("UNKNOWN_COMMAND " + command);
+                rc = 2;
+            }
+        } catch (Throwable t) {
+            System.out.println("NOTIFICATION_DAEMON_COMMAND_FAILED command=" + command + " exception=" + t.getClass().getName());
+            t.printStackTrace(System.err);
+            rc = 1;
+        } finally {
+            try { System.out.flush(); } catch (Throwable ignored) {}
+            System.setOut(oldOut);
+        }
+        return new DaemonRunResult(rc, baos.toString());
+    }
+
+    private static final class DaemonRunResult {
+        final int rc;
+        final String stdout;
+        DaemonRunResult(int rc, String stdout) { this.rc = rc; this.stdout = stdout == null ? "" : stdout; }
+    }
+
+    private static String readUtf8Line(InputStream in) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream(128);
+        while (true) {
+            int b = in.read();
+            if (b < 0 || b == '\n') break;
+            if (b != '\r') out.write(b);
+        }
+        return out.toString("UTF-8");
+    }
+
+    private static byte[] readExactly(InputStream in, long length) throws IOException {
+        if (length > Integer.MAX_VALUE) throw new IOException("body too large");
+        byte[] out = new byte[(int) length];
+        int off = 0;
+        while (off < out.length) {
+            int n = in.read(out, off, out.length - off);
+            if (n < 0) throw new IOException("unexpected EOF");
+            off += n;
+        }
+        return out;
+    }
+
+    private static byte[] readAll(InputStream in) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = in.read(buf)) >= 0) out.write(buf, 0, n);
+        return out.toByteArray();
+    }
+
+    private static int parsePositiveInt(String raw, int fallback) {
+        try { int v = Integer.parseInt(raw == null ? "" : raw.trim()); return v > 0 ? v : fallback; } catch (Throwable ignored) { return fallback; }
+    }
+
+    private static long parseLongDaemon(String raw, long fallback) {
+        try { return Long.parseLong(raw == null ? "" : raw.trim()); } catch (Throwable ignored) { return fallback; }
+    }
+
     @SuppressLint("NotificationPermission")
     private static void notifyBatch(int callingUid) {
-        boolean stdin = false;
+        System.exit(notifyBatchCommand(System.in, callingUid, true));
+    }
+
+    private static int notifyBatchCommand(InputStream requestInput, int callingUid, boolean parseOptions) {
+        boolean stdin = !parseOptions;
         String opt;
-        while ((opt = getNextOption()) != null) {
+        while (parseOptions && (opt = getNextOption()) != null) {
             if ("--stdin".equals(opt)) {
                 stdin = true;
             } else {
                 System.out.println("NOTIFICATION_BATCH_FAILED reason=bad_option option=" + opt);
-                System.exit(1);
+                return 1;
             }
         }
         if (!stdin) {
             onHelp();
-            System.exit(1);
+            return 1;
         }
         int events = 0;
         int sent = 0;
@@ -174,7 +332,7 @@ public class NotificationUtil extends BaseUtil {
         int failed = 0;
         try {
             final Context ctx = HiddenApiHelper.getContext();
-            final List<NotifyEvent> parsed = parseNotifyBatch();
+            final List<NotifyEvent> parsed = parseNotifyBatch(requestInput);
             for (NotifyEvent ev : parsed) {
                 events++;
                 try {
@@ -200,18 +358,18 @@ public class NotificationUtil extends BaseUtil {
                 }
             }
             System.out.println("NOTIFICATION_BATCH_OK events=" + events + " sent=" + sent + " skipped=" + skipped + " failed=" + failed);
-            System.exit(failed == 0 ? 0 : 1);
+            return failed == 0 ? 0 : 1;
         } catch (Exception e) {
             human("批量通知工具失敗: " + e.getMessage());
             System.out.println("NOTIFICATION_BATCH_FAILED reason=" + e.getClass().getSimpleName());
             e.printStackTrace(System.err);
-            System.exit(1);
+            return 1;
         }
     }
 
-    private static List<NotifyEvent> parseNotifyBatch() throws Exception {
+    private static List<NotifyEvent> parseNotifyBatch(InputStream input) throws Exception {
         final ArrayList<NotifyEvent> out = new ArrayList<>();
-        final BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        final BufferedReader br = new BufferedReader(new InputStreamReader(input));
         NotifyEvent current = new NotifyEvent();
         String line;
         while ((line = br.readLine()) != null) {

@@ -1,5 +1,5 @@
 # ============================================================
-# HiddenApiUtil / NotificationUtil classes.dex build script
+# HiddenApiUtil / NotificationUtil pure CLI classes.dex build script
 # Usage: place in Android-DataBackup\dex\ folder, run in PowerShell:
 #   .\build_dex.ps1
 # ============================================================
@@ -68,7 +68,23 @@ $outputDex = Join-Path $PSScriptRoot "classes.dex"
 Copy-Item -LiteralPath $dexFile.FullName -Destination $outputDex -Force
 Remove-Item -LiteralPath $zipPath -Force
 
-# ---- 5. No companion APK output in no-actions build ----
+# ---- 4b. Verify required classes survived R8/shrinker ----
+$dexBytes = [System.IO.File]::ReadAllBytes($outputDex)
+$dexLatin1 = [System.Text.Encoding]::GetEncoding("ISO-8859-1").GetString($dexBytes)
+$requiredDexStrings = @(
+    "com/xayah/dex/AppStateLocalization",
+    "appstate.localization.dex.v1",
+    "appstate.localization.raw_plus_cn.v1"
+)
+foreach ($needle in $requiredDexStrings) {
+    if (-not $dexLatin1.Contains($needle)) {
+        Write-Host "Dex verify failed, missing: $needle" -ForegroundColor Red
+        exit 1
+    }
+}
+Write-Host "Dex verify: AppState localization classes/capabilities present" -ForegroundColor Green
+
+# ---- 5. No companion APK / no UI output in zero-UI build ----
 Write-Host ""
 Write-Host "===== Build complete =====" -ForegroundColor Green
 Write-Host "Release APK used:" -ForegroundColor Green

@@ -42,32 +42,4 @@ abstract class BaseUtil {
         return arg;
     }
 
-    /**
-     * Return the next argument on the command line, whatever it is; if there are
-     * no arguments left, return null.
-     */
-    public static String getNextArg() {
-        if (mCurArgData != null) {
-            String arg = mCurArgData;
-            mCurArgData = null;
-            return arg;
-        } else if (mArgPos < mArgs.length) {
-            return mArgs[mArgPos++];
-        } else {
-            return null;
-        }
-    }
-
-    /**
-     * Return the next argument on the command line, whatever it is; if there are
-     * no arguments left, throws an IllegalArgumentException to report this to the user.
-     */
-    public static String getNextArgRequired() {
-        String arg = getNextArg();
-        if (arg == null) {
-            String prev = mArgs[mArgPos - 1];
-            throw new IllegalArgumentException("Argument expected after \"" + prev + "\"");
-        }
-        return arg;
-    }
 }
