@@ -1,17 +1,19 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 
 set "API=23"
 set "NDK_VERSION=25.2.9519653"
-set "TOOLS=filewatch propwait procwait unixsock"
+rem Build every native binary shipped in this folder.
+set "TOOLS=filewatch propwait procwait unixsock netwatch uidexec"
 
 echo ============================================================
-echo Android event tools builder
+echo Android native tools builder
 echo ABI : arm64
 echo API : %API%
 echo NDK : r25c (%NDK_VERSION%)
 echo Type: fully static ELF EXEC / 16 KB aligned
+echo Tools: %TOOLS%
 echo ============================================================
 
 set "SDK_ROOT="
@@ -21,6 +23,7 @@ if not defined SDK_ROOT set "SDK_ROOT=%LOCALAPPDATA%\Android\Sdk"
 
 set "NDK_ROOT=%SDK_ROOT%\ndk\%NDK_VERSION%"
 if defined EVENT_TOOLS_NDK_ROOT set "NDK_ROOT=%EVENT_TOOLS_NDK_ROOT%"
+if defined ANDROID_NDK_HOME set "NDK_ROOT=%ANDROID_NDK_HOME%"
 
 if not exist "%NDK_ROOT%\source.properties" (
     echo [ERROR] Required Android NDK r25c was not found:
@@ -29,8 +32,9 @@ if not exist "%NDK_ROOT%\source.properties" (
     echo Install:
     echo   sdkmanager "ndk;%NDK_VERSION%"
     echo.
-    echo Or set:
+    echo Or set one of:
     echo   set EVENT_TOOLS_NDK_ROOT=D:\Android\android-ndk-r25c
+    echo   set ANDROID_NDK_HOME=D:\Android\android-ndk-r25c
     exit /b 1
 )
 
@@ -57,6 +61,18 @@ if not exist "%CLANG%" (
     exit /b 1
 )
 
+if not exist "%STRIP%" (
+    echo [ERROR] llvm-strip.exe not found:
+    echo   %STRIP%
+    exit /b 1
+)
+
+if not exist "%READELF%" (
+    echo [ERROR] llvm-readelf.exe not found:
+    echo   %READELF%
+    exit /b 1
+)
+
 if not exist "%LIBC_A%" (
     echo [ERROR] Android static libc archive not found.
     echo Checked:
@@ -68,9 +84,17 @@ if not exist "%LIBC_A%" (
     exit /b 1
 )
 
+for %%T in (%TOOLS%) do (
+    if not exist "%%T.c" (
+        echo [ERROR] Missing source: %%T.c
+        exit /b 1
+    )
+)
+
 echo Static libc:
 echo   %LIBC_A%
-echo Checking legacy bionic property wait symbols...
+
+echo Checking legacy bionic property wait symbols for propwait...
 "%NM%" --defined-only "%LIBC_A%" | findstr /C:"__system_property_area_serial" >nul
 if errorlevel 1 (
     echo [ERROR] libc.a does not contain __system_property_area_serial.
@@ -84,7 +108,8 @@ if errorlevel 1 (
 echo [OK] Legacy property wait symbols found.
 
 if not exist "out" mkdir "out"
-del /q "out\filewatch" "out\propwait" "out\procwait" "out\unixsock" "out\*.o" "out\SHA256SUMS.txt" 2>nul
+for %%T in (%TOOLS%) do del /q "out\%%T" "out\%%T.o" 2>nul
+del /q "out\SHA256SUMS.txt" 2>nul
 
 set "CFLAGS=-std=c11 -Os -fvisibility=hidden -ffunction-sections -fdata-sections -Wall -Wextra -Werror"
 set "LDFLAGS=-static -Wl,--gc-sections -Wl,-z,relro,-z,now -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384"
@@ -103,7 +128,7 @@ for %%T in (%TOOLS%) do (
     "%STRIP%" --strip-all "out\%%T"
     if errorlevel 1 exit /b 1
 
-    echo [%%T] Verifying ELF...
+    echo [%%T] Verifying ELF EXEC...
     "%READELF%" -h "out\%%T" | findstr /C:"Type:" | findstr /C:"EXEC" >nul
     if errorlevel 1 (
         echo [ERROR] %%T is not ELF EXEC.
@@ -135,7 +160,7 @@ del /q "out\*.o" 2>nul
 
 echo.
 echo Writing SHA256SUMS.txt...
-powershell -NoProfile -Command "$names='filewatch','propwait','procwait','unixsock'; $lines=foreach($n in $names){$h=(Get-FileHash -Algorithm SHA256 -LiteralPath ('out\'+$n)).Hash.ToLowerInvariant(); $h+'  '+$n}; [System.IO.File]::WriteAllLines((Join-Path (Get-Location) 'out\SHA256SUMS.txt'),$lines,[System.Text.Encoding]::ASCII)"
+powershell -NoProfile -Command "$names='%TOOLS%'.Split(' ',[System.StringSplitOptions]::RemoveEmptyEntries); $lines=foreach($n in $names){$h=(Get-FileHash -Algorithm SHA256 -LiteralPath ('out\'+$n)).Hash.ToLowerInvariant(); $h+'  '+$n}; [System.IO.File]::WriteAllLines((Join-Path (Get-Location) 'out\SHA256SUMS.txt'),$lines,[System.Text.Encoding]::ASCII)"
 if errorlevel 1 (
     echo [ERROR] Failed to write SHA256SUMS.txt.
     exit /b 1
@@ -145,12 +170,15 @@ echo.
 echo Build complete:
 for %%T in (%TOOLS%) do echo   %CD%\out\%%T
 echo   %CD%\out\SHA256SUMS.txt
+
 echo.
 echo Phone quick test:
-echo   adb push out\filewatch out\propwait out\procwait out\unixsock /data/local/tmp/
-echo   adb shell su -c "chmod 755 /data/local/tmp/filewatch /data/local/tmp/propwait /data/local/tmp/procwait /data/local/tmp/unixsock"
+echo   adb push out\filewatch out\propwait out\procwait out\unixsock out\netwatch out\uidexec /data/local/tmp/
+echo   adb shell su -c "chmod 755 /data/local/tmp/filewatch /data/local/tmp/propwait /data/local/tmp/procwait /data/local/tmp/unixsock /data/local/tmp/netwatch /data/local/tmp/uidexec"
 echo   adb shell su -c "/data/local/tmp/filewatch --version"
 echo   adb shell su -c "/data/local/tmp/propwait --version"
 echo   adb shell su -c "/data/local/tmp/procwait --version"
 echo   adb shell su -c "/data/local/tmp/unixsock --version"
+echo   adb shell su -c "/data/local/tmp/netwatch --version"
+echo   adb shell su -c "/data/local/tmp/uidexec 0 0 /data -- /system/bin/id"
 exit /b 0

@@ -30,7 +30,7 @@ import kotlin.system.exitProcess
  *   body bytes
  */
 object AppStateUtil {
-    private const val VERSION = "v1.3.30-device-list-sharded-clean"
+    private const val VERSION = "v1.3.35-ssaid-metadata-restore"
     private const val DEFAULT_IDLE_TIMEOUT_SEC = 1800L
 
     @JvmStatic
@@ -48,8 +48,14 @@ object AppStateUtil {
                 printUsage()
                 exitProcess(0)
             }
-            "daemonunix" -> cmdDaemonUnix(args)
-            else -> runOneShot(args)
+            "daemonunix" -> {
+                HiddenApiBypassBridge.installExemptionsOnce()
+                cmdDaemonUnix(args)
+            }
+            else -> {
+                HiddenApiBypassBridge.installExemptionsOnce()
+                runOneShot(args)
+            }
         }
     }
 

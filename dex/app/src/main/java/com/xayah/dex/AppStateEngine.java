@@ -58,7 +58,7 @@ import dev.rikka.tools.refine.Refine;
 public final class AppStateEngine {
     public static final int SCHEMA_VERSION = 2;
     public static final int DAEMON_PROTOCOL_VERSION = 1;
-    public static final String ENGINE_VERSION = "v1.3.30-device-list-sharded-clean";
+    public static final String ENGINE_VERSION = "v1.3.35-ssaid-metadata-restore";
 
     static final Gson GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().create();
     static final Gson PRETTY_GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().setPrettyPrinting().create();
@@ -308,7 +308,10 @@ public final class AppStateEngine {
         addCapability(capabilities, "appstate.restore.batch.v4", true, true, "runtime-permission-uid-op+explicit-package-op");
         addCapability(capabilities, "appstate.verify.batch.v4", true, true, "effective-runtime-op+stable-flags");
         addCapability(capabilities, "appstate.appops_reset.integrated.v1", true, true, "package-scoped");
-        addCapability(capabilities, "appstate.ssaid.integrated.v1", true, true, "snapshot+restore+verify");
+        addCapability(capabilities, "appstate.ssaid.integrated.v1", true, true, "snapshot+restore+verify+uid-key-settings_ssaid");
+        addCapability(capabilities, "appstate.ssaid.hardening.v1", true, true, "restore-validates-16hex-lowercase;reports-uidKey-filePath-file-readback-source;file-metadata-audit");
+        addCapability(capabilities, "appstate.ssaid.metadata_restore.v1", true, true, "preserve-or-self-heal-settings_ssaid-owner-mode-context-after-root-atomic-write");
+        addCapability(capabilities, "appstate.appops.effective_scope_drift.v1", true, true, "otherAppOps raw package/uid drift tolerated when effective mode is restored; derived op10/op41 missing-row verify tolerated");
         addCapability(capabilities, "appstate.daemon.af_unix.v1", true, true, "stream-framed");
         addCapability(capabilities, "appstate.daemon.runtime_preinit.v1", true, true, "context+pm+appops-before-ready");
         addCapability(capabilities, "dex.daemon_bootstrap.shared.v1", true, true, "appstate+notify+hiddenapi");
@@ -360,6 +363,7 @@ public final class AppStateEngine {
         addCapability(capabilities, "webdav.socket.write_idle_watchdog.v1", true, true, "close-origin-socket-when-request-write-stalls-45s");
         addCapability(capabilities, "webdav.empty_body_retry_before_payload", true, true, "internal");
         addCapability(capabilities, "notification.speedbackup_status", true, false, "notifyBatch");
+        addCapability(capabilities, "hiddenapi.lsposed_hiddenapibypass.v1", true, true, "AndroidHiddenApiBypass 6.1 installed once per hiddenapi/appstate/notify process with reflection fallback; WebDavUtil does not use hidden APIs");
         addCapability(capabilities, "hiddenapi.daemon.af_unix.v1", true, true, "getPackageUid+getInstallSourceInfo+installSessionCreate+installSessionCommit+forceStopPackageBatch");
         addCapability(capabilities, "hiddenapi.force_stop_package_batch.daemon.v1", true, true, "single-package-or-batch-force-stop-via-hiddenapi-daemon");
         addCapability(capabilities, "hiddenapi.daemon.response_body.capture.fix.v1", true, true, "ping+forceStopPackageBatch-body-returned-on-socket");
@@ -1470,10 +1474,16 @@ public final class AppStateEngine {
             String ssaid = stringMember(desired, "ssaid");
             if (!ssaid.isEmpty()) {
                 try {
-                    SsaidUtil.writeSsaidValue(userId, packageName, ssaid, pmHidden);
-                    String readBack = SsaidUtil.readSsaidValue(userId, packageName, pmHidden);
-                    if (ssaid.equals(readBack)) report.success("ssaid", packageName, "write/readback matched");
-                    else report.mismatch("ssaid", packageName, "expected=" + ssaid + " actual=" + safe(readBack));
+                    String normalized = SsaidUtil.normalizeSsaidForRestore(ssaid);
+                    SsaidUtil.SsaidWriteResult result = SsaidUtil.writeSsaidValue(userId, packageName, normalized, pmHidden);
+                    if (result.readbackMatched()) {
+                        report.success("ssaid", packageName, "write/readback matched; " + result.compactDetails());
+                    } else {
+                        report.mismatch("ssaid", packageName, "write/readback mismatch; " + result.compactDetails());
+                    }
+                } catch (IllegalArgumentException e) {
+                    report.note("ssaid", packageName, ResultCode.BAD_REQUEST,
+                            "skip invalid SSAID; " + failureMessage(e) + " value=" + safe(ssaid));
                 } catch (Throwable e) {
                     report.failure("ssaid", packageName, e);
                 }
@@ -1548,15 +1558,25 @@ public final class AppStateEngine {
             boolean packageOk = packageMode == null || nullableModeEquivalent(packageMode, actualPackage);
             boolean uidOk = uidMode == null || nullableModeEquivalent(uidMode, actualUid);
             boolean explicitScopeOk = (packageMode != null || uidMode != null) && packageOk && uidOk;
-            boolean effectiveOk = modeEquivalent(expectedEffective, actualEffective)
-                    || (explicitScopeOk && isEffectiveModeAdvisory(op));
-            if (packageOk && uidOk && effectiveOk) {
-                String suffix = isEffectiveModeAdvisory(op) && !modeEquivalent(expectedEffective, actualEffective)
+            boolean effectiveModeMatched = modeEquivalent(expectedEffective, actualEffective);
+            boolean effectiveOk = effectiveModeMatched || (explicitScopeOk && isEffectiveModeAdvisory(op));
+            boolean scopeDriftIgnored = !packageOk || !uidOk;
+            boolean rawScopeOk = (packageOk && uidOk)
+                    || (effectiveModeMatched && isRawScopeDriftAllowed(category, op));
+            if (rawScopeOk && effectiveOk) {
+                String suffix = isEffectiveModeAdvisory(op) && !effectiveModeMatched
                         ? " advisoryEffective=" + actualEffective
                         : " mode=" + actualEffective;
+                String drift = scopeDriftIgnored
+                        ? " scopeDriftIgnored=true expectedPackage=" + String.valueOf(packageMode)
+                        + " actualPackage=" + String.valueOf(actualPackage)
+                        + " expectedUid=" + String.valueOf(uidMode)
+                        + " actualUid=" + String.valueOf(actualUid)
+                        : "";
                 report.success(category, key, "op=" + op + suffix
                         + " packageMode=" + String.valueOf(actualPackage)
-                        + " uidMode=" + String.valueOf(actualUid));
+                        + " uidMode=" + String.valueOf(actualUid)
+                        + drift);
             } else {
                 report.mismatch(category, key, "op=" + op
                         + " expectedEffective=" + expectedEffective + " actualEffective=" + actualEffective
@@ -1572,6 +1592,22 @@ public final class AppStateEngine {
         // OP_START_FOREGROUND / android:start_foreground. Package mode is restorable,
         // but effective mode may stay MODE_DEFAULT on Android 16 vendor builds.
         return op == 76;
+    }
+
+    private static boolean isRawScopeDriftAllowed(String category, int op) {
+        // For informational otherAppOps, the user-visible behavior is the effective
+        // mode. Some Android 15/16 vendor builds normalize package rows back to
+        // MODE_DEFAULT (or delete them) while unsafeCheckOpNoThrow() still returns
+        // the desired effective mode. Do not turn that into a restore failure.
+        return "otherAppOp".equals(category) || isDerivedEffectiveOtherAppOp(op);
+    }
+
+    private static boolean isDerivedEffectiveOtherAppOp(int op) {
+        // OP_WIFI_SCAN / android:wifi_scan and OP_MONITOR_LOCATION / android:monitor_location
+        // are commonly derived from location/Wi-Fi policy on Android 15/16 vendor ROMs.
+        // getOpsForPackage() may omit the explicit row after restore even though the
+        // effective mode checked immediately after restore is already correct.
+        return op == 10 || op == 41;
     }
 
     private static int readEffectiveModeWithRetry(AppOpsManagerHidden appOps, int op, int uid,
@@ -1710,6 +1746,7 @@ public final class AppStateEngine {
                 // android:access_restricted_settings after restore: setting it to default
                 // removed the row, which is the correct platform representation.
                 if (isDefaultAppOpRecord(e, "mode")) continue;
+                if (isDerivedEffectiveOtherAppOp(entry.getKey())) continue;
                 addMismatch(mismatches, "otherAppOps." + entry.getKey(), e, null, "missing AppOp record");
                 continue;
             }
@@ -1738,6 +1775,25 @@ public final class AppStateEngine {
         if (!desired.has("ssaid") || desired.get("ssaid").isJsonNull()) return;
         JsonElement expected = desired.get("ssaid");
         JsonElement actual = current.has("ssaid") ? current.get("ssaid") : null;
+        String expectedNorm = null;
+        String actualNorm = null;
+        try {
+            if (expected != null && !expected.isJsonNull()) {
+                expectedNorm = SsaidUtil.normalizeSsaidOrNull(expected.getAsString());
+            }
+            if (actual != null && !actual.isJsonNull()) {
+                actualNorm = SsaidUtil.normalizeSsaidOrNull(actual.getAsString());
+            }
+        } catch (Throwable ignored) {
+            expectedNorm = null;
+            actualNorm = null;
+        }
+        if (expectedNorm != null && actualNorm != null) {
+            if (!expectedNorm.equals(actualNorm)) {
+                addMismatch(mismatches, "ssaid", expectedNorm, actualNorm, "SSAID mismatch");
+            }
+            return;
+        }
         if (!jsonElementEquals(expected, actual)) {
             addMismatch(mismatches, "ssaid", expected, actual, "SSAID mismatch");
         }

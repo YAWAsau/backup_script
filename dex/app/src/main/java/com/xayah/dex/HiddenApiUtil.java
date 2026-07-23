@@ -47,7 +47,7 @@ import java.nio.charset.StandardCharsets;
 import dev.rikka.tools.refine.Refine;
 
 public class HiddenApiUtil {
-    static final String VERSION = "v2.6.61-device-list-sharded-clean build=v24.20.14-7.66-402-device-list-residue-clean-20260719";
+    static final String VERSION = "v2.6.81-ssaid-metadata-restore build=v24.20.14-7.66-439-ssaid-metadata-restore-20260723";
     /**
      * 單 JVM 批量命令期間的輕量快取。只快取系統層級固定資料或同一輪已讀 package metadata；
      * 不跨 JVM、不落檔，避免一致性風險。
@@ -116,6 +116,7 @@ public class HiddenApiUtil {
         System.out.println();
         System.out.println("  getPackageArchiveInfo APK_FILE  讀取 APK 檔案資訊");
         System.out.println();
+        System.out.println("  hiddenApiBypassStatus  初始化並顯示 AndroidHiddenApiBypass 狀態");
         System.out.println("  daemon-only commands: getPackageUid / getInstallSourceInfo / installSessionCreate / installSessionCommit / forceStopPackageBatch");
         System.out.println("    上述熱路徑只能透過 HiddenApi daemon socket 呼叫，不再提供單次 app_process CLI fallback");
         System.out.println();
@@ -157,6 +158,9 @@ public class HiddenApiUtil {
             case "setDisplayPowerMode":
                 setDisplayPowerMode(args);
                 break;
+            case "hiddenApiBypassStatus":
+                HiddenApiBypassBridge.printStatus();
+                break;
             case "daemonunix":
                 cmdDaemonUnix(args);
                 break;
@@ -179,11 +183,19 @@ public class HiddenApiUtil {
         String cmd;
         if (args != null && args.length > 0) {
             cmd = args[0];
+            if (!isColdInfoCommand(cmd)) {
+                HiddenApiBypassBridge.installExemptionsOnce();
+            }
             onCommand(cmd, args);
         } else {
             onHelp();
         }
         System.exit(0);
+    }
+
+    private static boolean isColdInfoCommand(String cmd) {
+        return "version".equals(cmd) || "--version".equals(cmd) || "--Version".equals(cmd)
+                || "-v".equals(cmd) || "help".equals(cmd);
     }
 
     private static final int DAEMON_PROTOCOL_VERSION = 1;

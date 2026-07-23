@@ -6,6 +6,11 @@ plugins {
 }
 
 android {
+    // AndroidHiddenApiBypass upstream recommends disabling dependency metadata reporting.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
     namespace = "com.xayah.dex"
     compileSdk = 34
 
@@ -13,8 +18,8 @@ android {
         applicationId = "com.xayah.dex"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2610
-        versionName = "2.6.10-foreground-state"
+        versionCode = 2681
+        versionName = "2.6.81-ssaid-metadata-restore"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         multiDexEnabled = false
@@ -61,6 +66,7 @@ configurations.configureEach {
 }
 
 dependencies {
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
     testImplementation(libs.junit)
     implementation(libs.refine.runtime)
     implementation(libs.gson)

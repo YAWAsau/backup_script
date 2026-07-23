@@ -35,7 +35,7 @@ import kotlin.system.exitProcess
  * streaming and never buffers the whole archive on disk.
  */
 object WebDavUtil {
-    private const val VERSION = "v1.5.8-daemon-hardening-watchdog dex=v2.6.61-device-list-sharded-clean build=v24.20.14-7.66-402-device-list-residue-clean-20260719"
+    private const val VERSION = "v1.5.10-standard-webdav-no-hiddenapi dex=v2.6.81-ssaid-metadata-restore build=v24.20.14-7.66-439-ssaid-metadata-restore-20260723"
 
     private val DAV_PROPFIND_BODY = """
         <?xml version="1.0" encoding="utf-8"?>

@@ -42,7 +42,7 @@ import java.util.Locale;
 import java.util.Properties;
 
 public class NotificationUtil extends BaseUtil {
-    public static final String VERSION = "v1.1.2-notify-daemon-ready-fix dex=" + HiddenApiUtil.VERSION;
+    public static final String VERSION = "v1.1.5-capability-text-fix dex=" + HiddenApiUtil.VERSION;
     public static final int SHELL_UID = 2000;
     public static final String SHELL_PACKAGE = "com.android.shell";
     public static final int NOTIFICATION_ID = 2020;
@@ -157,6 +157,9 @@ public class NotificationUtil extends BaseUtil {
             System.out.println(VERSION);
             System.exit(0);
         }
+
+        HiddenApiBypassBridge.installExemptionsOnce();
+
         if ("daemonunix".equals(mCmd)) {
             cmdDaemonUnix();
             System.exit(0);
