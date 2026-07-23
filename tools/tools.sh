@@ -439,6 +439,11 @@ backup_media="${backup_media:-0}"
 #存在進程忽略備份(1忽略0備份)
 Background_apps_ignore="${Background_apps_ignore:-0}"
 
+#備份時清理已卸載應用的備份 (1開啟 0關閉, 預設關閉)
+#開啟後: 每次備份結束會比對備份資料夾與目前已安裝應用, 將已卸載應用的備份資料夾與appList.txt項目刪除 (刪除前會二次確認)
+#僅清理本機備份; 遠端備份目錄不會被刪除 (流式上傳模式下不生效)
+prune_uninstalled="${prune_uninstalled:-0}"
+
 #添加自定義備份路徑 例：Download DCIM等文件夾 請使用絕對路徑，請勿刪除\"\"
 Custom_path=\""$Custom_path"\"
 
@@ -13400,6 +13405,64 @@ unset Backstage
 # ======================================================
 # backup() 主函數
 # ======================================================
+# issue #124: 選配 - 清理已卸載應用的備份 (預設關閉, 刪除前二次確認)
+# 比對 $Backup 內各 app 資料夾的 PackageName 與目前已安裝清單 $Apk_info,
+# 將已卸載應用的備份資料夾與 appList.txt 項目刪除。解析失敗一律跳過以保護備份。
+# 同時用於完整備份結尾與增量備份「無更新」提前結束前, 確保移除也能反映到備份。
+prune_uninstalled_backups() {
+	[[ $prune_uninstalled != true ]] && return 0
+	if [[ $remote_stream = 1 ]]; then
+		echoRgb "流式上傳模式不在本機保留備份檔, 跳過已卸載應用清理 (prune_uninstalled)" "0"
+		return 0
+	fi
+	[[ -z $Backup || ! -d $Backup ]] && return 0
+	[[ -z $Apk_info ]] && return 0
+	local _applist="$Backup/appList.txt"
+	echoRgb "檢查已卸載應用的備份 (prune_uninstalled=1)" "3"
+	# 本功能僅清理本機備份; 遠端目錄不會被刪除, 已卸載應用仍可能存在於遠端備份
+	[[ -n $remote_type ]] && echoRgb "注意: prune_uninstalled 僅清理本機備份, 遠端備份目錄請自行清理" "0"
+	# 用暫存檔累積待刪清單 (mksh 相容: 避免 $'\n' 與 <<< here-string)
+	local _prune_tmp="$TMPDIR/.prune_uninstalled_$$" _pf _pname _ppkg
+	: > "$_prune_tmp"
+	for _pf in "$Backup"/*/; do
+		_pf="${_pf%/}"
+		[[ -d $_pf ]] || continue
+		_pname="${_pf##*/}"
+		case "$_pname" in wifi|Media|tools|log) continue ;; esac
+		_ppkg=""
+		[[ -f $_pf/app_details.json ]] && _ppkg="$(jq -r 'try (.[] | select(.PackageName != null).PackageName) catch ""' "$_pf/app_details.json" 2>/dev/null | head -n 1)"
+		if [[ -z $_ppkg ]]; then
+			echoRgb "$_pname 包名解析失敗 跳過刪除以保護備份" "0"
+			continue
+		fi
+		if [[ $(echo "$Apk_info" | awk -v pkg="$_ppkg" '$1 == pkg {print $1}') = "" ]]; then
+			echo "$_pname" >> "$_prune_tmp"
+		fi
+	done
+	if [[ ! -s $_prune_tmp ]]; then
+		echoRgb "沒有已卸載應用需要清理" "1"
+	else
+		echoRgb "以下備份對應的應用已不在裝置上:" "2"
+		awk 'NF{print "  - "$0}' "$_prune_tmp"
+		# 與既有刪除路徑一致: 二次確認, 避免單次誤觸刪光備份
+		if ! ask_yn "確認列表無誤後刪除?" "刪除" "保留"; then
+			echoRgb "已取消清理, 保留所有備份" "1"
+		elif ! ask_yn "再次確認刪除這些已卸載應用的備份?" "確認刪除" "取消"; then
+			echoRgb "已取消清理, 保留所有備份" "1"
+		else
+			local _name1
+			while IFS= read -r _name1; do
+				[[ -z $_name1 ]] && continue
+				[[ -d $Backup/$_name1 ]] && rm -rf "$Backup/$_name1"
+				if [[ -f $_applist ]]; then
+					awk -v t="$_name1" 'NF==0 || $1 != t' "$_applist" > "$_applist.tmp" 2>/dev/null && mv "$_applist.tmp" "$_applist"
+				fi
+				echoRgb "已刪除 $_name1" "1"
+			done < "$_prune_tmp"
+		fi
+	fi
+	rm -f "$_prune_tmp" 2>/dev/null
+}
 # 主備份函數 - 對 appList.txt 內所有 app 執行完整備份
 # 流程: 讀清單 → 逐個 app → 備份 apk + data + user_de + obb → 保存 canonical AppState
 # 結尾備份 wifi、生成 start.sh、設置 REMOTE_TRIGGER=1 觸發遠端上傳
@@ -13474,6 +13537,8 @@ backup() {
 	echoRgb "存在進程忽略備份\n -音量上忽略，音量下備份" "2"
 	get_version "忽略" "備份" && Background_apps_ignore="$branch"
 	}
+	# prune_uninstalled 為純選配開關, 未設定一律視為關閉 (不打擾既有使用者)
+	[[ $prune_uninstalled != "" ]] && isBoolean "$prune_uninstalled" "prune_uninstalled" && prune_uninstalled="$nsx" || prune_uninstalled=false
 	i=1
 	#數據目錄
 	if [[ $list_location != "" ]]; then
@@ -13566,7 +13631,8 @@ backup() {
 	if [[ $Tmplist2 != "" ]]; then
 		txt="$(echo "$Tmplist2" | sort)"
 	else
-		[[ $Update_backup != "" ]] && echoRgb "應用目前無更新" "0" && exit 0
+		# 增量備份無 apk 更新時, 仍先清理已卸載應用的備份 (反映移除) 再提前結束
+		[[ $Update_backup != "" ]] && { echoRgb "應用目前無更新" "0"; prune_uninstalled_backups; exit 0; }
 	fi
 	if [[ ! -f $txt ]]; then
 		[[ $(echo "$txt") != "" ]] && txt="$(echo "$txt" | sed -e '/^$/d')"
@@ -14050,6 +14116,8 @@ backup() {
 	endtime 1 "批量備份開始到結束"
 	notification_progress "105" 100 100 "備份完成 $(endtime 1 "批量備份開始到結束")"
 	verify_backup_manifest
+	# issue #124: 選配 - 清理已卸載應用的備份 (完整備份結尾)
+	prune_uninstalled_backups
 	[[ -f $txt_path ]] && chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt_path"
 	[[ -f $txt_path2 ]] && chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt_path2"
 	# 備份完成後針對本次有變動的應用做 json 健全度檢查 (結構+欄位一併驗證)
