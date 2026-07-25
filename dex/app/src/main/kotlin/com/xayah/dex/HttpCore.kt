@@ -177,7 +177,7 @@ object HttpCore {
             var redirects = 0
             while (true) {
                 val (code, location) = requestOnce(
-                    method, currentUrl, user, pass, headers, bodyWriter,
+                    method, currentUrl, user, pass, headers, bodyWriter, canReplayBody,
                     retryOnConnectionFailure, closeConnectionOnNon2xx, responseConsumer
                 )
                 if (!followRedirects || code !in intArrayOf(301, 302, 303, 307, 308)) return code
@@ -195,6 +195,7 @@ object HttpCore {
             pass: String,
             headers: Map<String, String>,
             bodyWriter: (OutputStream) -> Unit,
+            canReplayBody: Boolean,
             retryOnConnectionFailure: () -> Boolean,
             closeConnectionOnNon2xx: Boolean,
             responseConsumer: (Int, Map<String, List<String>>, InputStream) -> Unit
@@ -206,14 +207,15 @@ object HttpCore {
                 retryOnConnectionFailure, closeConnectionOnNon2xx, responseConsumer
             )
             val code = first.first
-            if (code != 404 || method == "PUT" || !urlHasNonAscii(url)) return first
+            if (code != 404 || !urlHasNonAscii(url)) return first
+            if (method == "PUT" && !canReplayBody) return first
 
             // Adaptive WebDAV base-path compatibility:
             // - standards-compliant servers expect percent-encoded request targets
             // - some NAS/Windows WebDAV stacks expect raw UTF-8 for CJK base paths
-            // Retry 404 once with the opposite path mode for replay-safe methods and remember
-            // the mode that succeeds for the same scheme/host/port. PUT is deliberately excluded
-            // because a streaming body cannot be replayed safely.
+            // Retry 404 once with the opposite path mode only when the request body is replay-safe,
+            // then remember the mode that succeeds for the same scheme/host/port. Streaming PUT
+            // remains single-shot; small managed-probe payloads opt in with canReplayBody=true.
             val altMode = if (preferredMode == PathMode.ENCODED) PathMode.RAW_UTF8 else PathMode.ENCODED
             val alt = requestOnceWithMode(
                 method, url, altMode, user, pass, headers, bodyWriter,

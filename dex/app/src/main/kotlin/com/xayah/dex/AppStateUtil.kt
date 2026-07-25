@@ -175,6 +175,11 @@ object AppStateUtil {
         return pid
     }
 
+    @JvmStatic
+    fun handleRootDaemonConnection(input: InputStream, output: OutputStream) {
+        handleConnection(input, output)
+    }
+
     private fun handleConnection(input: InputStream, output: OutputStream) {
         val command = readUtf8Line(input)
         val userIdRaw = readUtf8Line(input)

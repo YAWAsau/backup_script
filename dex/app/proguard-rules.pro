@@ -33,3 +33,6 @@
 # LSPosed AndroidHiddenApiBypass 6.1: keep full helper graph.
 -keep class org.lsposed.hiddenapibypass.** { *; }
 -keep class com.xayah.dex.HiddenApiBypassBridge { *; }
+
+# SpeedBackup 464 r3: keep unified root daemon CLI entry and all members.
+-keep class com.xayah.dex.SpeedBackupRootDaemon { *; }

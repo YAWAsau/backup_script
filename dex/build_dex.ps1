@@ -74,7 +74,25 @@ $dexLatin1 = [System.Text.Encoding]::GetEncoding("ISO-8859-1").GetString($dexByt
 $requiredDexStrings = @(
     "com/xayah/dex/AppStateLocalization",
     "appstate.localization.dex.v1",
-    "appstate.localization.raw_plus_cn.v1"
+    "appstate.localization.raw_plus_cn.v1",
+    "webdav.cjk_put_replay_probe.v1",
+    "v2.6.94-single-tools-unified-root-webdav-deep-hiddenapi-sync-webdav-eof-quiet",
+    "webdav.managed_probe.nodot_temp.v1",
+    "webdav.stream_probe.subdir.v1",
+    "webdav.base_preflight.dex.v1",
+    "webdav.directory_ensure.dex.v1",
+    "webdav.options_preflight.dex.v1",
+    "dex.root_unified_daemon.v1",
+    "webdav.deep_policy_table.dex.v1",
+    "com/xayah/dex/SpeedBackupRootDaemon",
+    "ensurebaserel",
+    "ensuredirrel",
+    "optionspreflightrel",
+    "dex.cchelper.glossary.v1",
+    "dex.cchelper.table_refresh.v1",
+    "dex.cchelper.zh_tw_polish.v1",
+    "dex.cchelper.repeat_merge_fix.v1",
+    "CCUTIL_SELFTEST_OK cchelper.table_refresh.v1 zh_tw_polish.v1 repeat_merge_fix.v1"
 )
 foreach ($needle in $requiredDexStrings) {
     if (-not $dexLatin1.Contains($needle)) {
@@ -82,7 +100,7 @@ foreach ($needle in $requiredDexStrings) {
         exit 1
     }
 }
-Write-Host "Dex verify: AppState localization classes/capabilities present" -ForegroundColor Green
+Write-Host "Dex verify: required SpeedBackup 464 r3 classes/capabilities present" -ForegroundColor Green
 
 # ---- 5. No companion APK / no UI output in zero-UI build ----
 Write-Host ""

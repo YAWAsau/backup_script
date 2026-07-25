@@ -237,7 +237,7 @@ public class NotificationUtil extends BaseUtil {
         }
     }
 
-    private static synchronized DaemonRunResult runDaemonCommand(String command, byte[] request) {
+    static synchronized DaemonRunResult runDaemonCommand(String command, byte[] request) {
         if (command == null) command = "";
         command = command.trim();
         if ("ping".equals(command)) {
@@ -265,7 +265,7 @@ public class NotificationUtil extends BaseUtil {
         return new DaemonRunResult(rc, baos.toString());
     }
 
-    private static final class DaemonRunResult {
+    static final class DaemonRunResult {
         final int rc;
         final String stdout;
         DaemonRunResult(int rc, String stdout) { this.rc = rc; this.stdout = stdout == null ? "" : stdout; }

@@ -35,7 +35,7 @@ import kotlin.system.exitProcess
  * streaming and never buffers the whole archive on disk.
  */
 object WebDavUtil {
-    private const val VERSION = "v1.5.10-standard-webdav-no-hiddenapi dex=v2.6.81-ssaid-metadata-restore build=v24.20.14-7.66-439-ssaid-metadata-restore-20260723"
+    private const val VERSION = "v1.5.18-unified-root-webdav-deep-policy dex=v2.6.95-single-tools-unified-root-webdav-deep-hiddenapi-sync-webdav-eof-quiet-appops-location-verify build=v24.20.14-7.66-474-appops-location-verify-dexfix-r35-202607232022"
 
     private val DAV_PROPFIND_BODY = """
         <?xml version="1.0" encoding="utf-8"?>
@@ -70,6 +70,16 @@ object WebDavUtil {
     )
 
     private data class ManagedDecision(val direct: Boolean, val modeName: String, val serverKind: String)
+    private fun infoLog(line: String) {
+        val path = System.getenv("WEBDAV_DAEMON_INFO_LOG")?.trim().orEmpty()
+        if (path.isNotEmpty()) {
+            runCatching {
+                File(path).appendText(line + "\n", StandardCharsets.UTF_8)
+            }.onSuccess { return }
+        }
+        System.err.println(line)
+    }
+
 
     @JvmStatic
     fun main(args: Array<String>) {
@@ -88,6 +98,9 @@ object WebDavUtil {
             "putmanagedrel" -> cmdPutManagedRel(args)
             "managedproberel" -> cmdManagedProbeRel(args)
             "compatProbeRel" -> cmdCompatProbeRel(args)
+            "ensurebaserel" -> cmdEnsureBaseRel(args)
+            "ensuredirrel" -> cmdEnsureDirRel(args)
+            "optionspreflightrel" -> cmdOptionsPreflightRel(args)
             "getrel" -> cmdGetRel(args)
             "getstdoutrel" -> cmdGetStdoutRel(args)
             "deleterel" -> cmdDeleteRel(args)
@@ -378,10 +391,27 @@ object WebDavUtil {
                 putFileManagedRel(user, pass, url, extra1(), extra2(), extra3())
             }
             "managedproberel" -> httpCode = safe {
-                managedProbeRel(user, pass, url, extra1())
+                val result = managedProbeRel(user, pass, url, extra1())
+                respBody = result.second.toByteArray(StandardCharsets.UTF_8)
+                result.first
             }
             "compatProbeRel" -> httpCode = safe {
                 val result = compatProbeRel(user, pass, url, extra1())
+                respBody = result.second.toByteArray(StandardCharsets.UTF_8)
+                result.first
+            }
+            "ensurebaserel" -> httpCode = safe {
+                val result = ensureBaseRel(user, pass, url)
+                respBody = result.second.toByteArray(StandardCharsets.UTF_8)
+                result.first
+            }
+            "ensuredirrel" -> httpCode = safe {
+                val result = ensureDirRel(user, pass, url, extra1())
+                respBody = result.second.toByteArray(StandardCharsets.UTF_8)
+                result.first
+            }
+            "optionspreflightrel" -> httpCode = safe {
+                val result = optionsPreflightRel(user, pass, url, extra1(), extra2())
                 respBody = result.second.toByteArray(StandardCharsets.UTF_8)
                 result.first
             }
@@ -435,8 +465,20 @@ object WebDavUtil {
         }
 
         if (httpCode == 0 && lastError != null) {
-            System.err.println("[daemon] cmd=$command url=$url -> ${lastError!!.javaClass.name}: ${lastError!!.message}")
-            lastError!!.printStackTrace(System.err)
+            // v2.6.94: getrel/listrel/statrel may intentionally return rc!=0 for missing,
+            // truncated, or stale remote files. Do not dump full stack traces to daemon stderr
+            // for these request-scoped WebDAV transport failures; shell-side raw logs already
+            // record rc/bytes/http, and stderr must remain reserved for daemon/process fatal
+            // failures.
+            val knownTransferFailure = lastError is java.io.EOFException ||
+                (lastError!!.message ?: "").contains("unexpected EOF", ignoreCase = true) ||
+                (lastError!!.message ?: "").contains("empty HTTP response", ignoreCase = true)
+            val requestScoped = command == "getrel" || command == "listrel" || command == "statrel" ||
+                command == "propfindrel" || command == "optionsrel"
+            if (!(requestScoped && knownTransferFailure)) {
+                System.err.println("[daemon] cmd=$command url=$url -> ${lastError!!.javaClass.name}: ${lastError!!.message}")
+                lastError!!.printStackTrace(System.err)
+            }
         }
 
         if (streamingResponseStarted) {
@@ -576,8 +618,11 @@ object WebDavUtil {
     private fun cmdManagedProbeRel(args: Array<String>) {
         require(args.size >= 4) { "managedproberel <user> <pass> <baseUrl> [relBase]" }
         val relBase = args.getOrNull(4) ?: ""
-        val code = runCatching { managedProbeRel(args[1], args[2], args[3], relBase) }.getOrElse { HttpCore.extractCode(it) }
-        finish(code)
+        val result = runCatching { managedProbeRel(args[1], args[2], args[3], relBase) }
+            .getOrElse { e -> HttpCore.extractCode(e) to "step=exception error=${e.javaClass.simpleName} message=${e.message ?: ""}" }
+        print(result.second)
+        if (!result.second.endsWith("\n")) println()
+        finish(result.first)
     }
 
     private fun cmdCompatProbeRel(args: Array<String>) {
@@ -588,6 +633,30 @@ object WebDavUtil {
         System.out.flush()
         System.err.println("HTTP ${result.first}")
         exitProcess(if (result.first in 200..299) 0 else 1)
+    }
+
+    private fun cmdEnsureBaseRel(args: Array<String>) {
+        require(args.size >= 4) { "ensurebaserel <user> <pass> <configuredBaseUrl>" }
+        val result = runCatching { ensureBaseRel(args[1], args[2], args[3]) }
+            .getOrElse { e -> HttpCore.extractCode(e) to "state=exception\nerror=${e.javaClass.simpleName}\nmessage=${e.message ?: ""}\n" }
+        print(result.second)
+        finish(result.first)
+    }
+
+    private fun cmdEnsureDirRel(args: Array<String>) {
+        require(args.size >= 5) { "ensuredirrel <user> <pass> <baseUrl> <relPath>" }
+        val result = runCatching { ensureDirRel(args[1], args[2], args[3], args[4]) }
+            .getOrElse { e -> HttpCore.extractCode(e) to "state=exception\nrel=${args.getOrNull(4) ?: ""}\nerror=${e.javaClass.simpleName}\nmessage=${e.message ?: ""}\n" }
+        print(result.second)
+        finish(result.first)
+    }
+
+    private fun cmdOptionsPreflightRel(args: Array<String>) {
+        require(args.size >= 6) { "optionspreflightrel <user> <pass> <baseUrl> <relPath> <mode>" }
+        val result = runCatching { optionsPreflightRel(args[1], args[2], args[3], args[4], args[5]) }
+            .getOrElse { e -> HttpCore.extractCode(e) to "state=exception\nmode=${args.getOrNull(5) ?: "control"}\nmissing=\nerror=${e.javaClass.simpleName}\nmessage=${e.message ?: ""}\n" }
+        print(result.second)
+        finish(result.first)
     }
 
     private fun cmdGetRel(args: Array<String>) {
@@ -819,6 +888,126 @@ object WebDavUtil {
             lastCode = code
         }
         return lastCode
+    }
+
+    private data class ConfiguredBase(val origin: String, val rel: String)
+
+    private fun splitConfiguredBaseUrl(configuredBaseUrl: String): ConfiguredBase? {
+        val value = configuredBaseUrl.trim().trimEnd('/')
+        val prefix = when {
+            value.startsWith("http://", ignoreCase = true) -> "http://"
+            value.startsWith("https://", ignoreCase = true) -> "https://"
+            else -> return null
+        }
+        val rest = value.substring(prefix.length)
+        if (rest.isEmpty()) return null
+        val slash = rest.indexOf('/')
+        val authority = if (slash < 0) rest else rest.substring(0, slash)
+        if (authority.isEmpty()) return null
+        var path = if (slash < 0) "" else rest.substring(slash + 1)
+        path = path.substringBefore('#').substringBefore('?').trim('/')
+        return ConfiguredBase(prefix + authority, path)
+    }
+
+    /**
+     * Validate and, only for HTTP 404, create the configured WebDAV base path.
+     * This centralizes URL splitting, STAT, parent-chain MKCOL and final verification
+     * in the long-lived Dex daemon instead of duplicating the state machine in shell.
+     */
+    private fun ensureBaseRel(user: String, pass: String, configuredBaseUrl: String): Pair<Int, String> {
+        val base = splitConfiguredBaseUrl(configuredBaseUrl)
+            ?: return 400 to "state=invalid\norigin=\nrel=\nstat=400\nmkdir=0\nverify=0\n"
+        if (base.rel.isEmpty()) {
+            return 200 to "state=root\norigin=${base.origin}\nrel=\nstat=200\nmkdir=0\nverify=200\n"
+        }
+        val target = buildRelUrl(base.origin, base.rel)
+        val statCode = statDav(user, pass, target).first
+        if (statCode in 200..299) {
+            markDir(target, DirState.EXISTS)
+            return statCode to "state=exists\norigin=${base.origin}\nrel=${base.rel}\nstat=$statCode\nmkdir=0\nverify=$statCode\n"
+        }
+        if (statCode != 404) {
+            return statCode to "state=unavailable\norigin=${base.origin}\nrel=${base.rel}\nstat=$statCode\nmkdir=0\nverify=0\n"
+        }
+        val mkdirCode = mkcolParentsRel(user, pass, base.origin, base.rel)
+        if (mkdirCode !in 200..299) {
+            return mkdirCode to "state=create_failed\norigin=${base.origin}\nrel=${base.rel}\nstat=$statCode\nmkdir=$mkdirCode\nverify=0\n"
+        }
+        val verifyCode = statDav(user, pass, target).first
+        if (verifyCode in 200..299) {
+            markDir(target, DirState.EXISTS)
+            invalidateListCache()
+            return verifyCode to "state=created\norigin=${base.origin}\nrel=${base.rel}\nstat=$statCode\nmkdir=$mkdirCode\nverify=$verifyCode\n"
+        }
+        return verifyCode to "state=verify_failed\norigin=${base.origin}\nrel=${base.rel}\nstat=$statCode\nmkdir=$mkdirCode\nverify=$verifyCode\n"
+    }
+
+    /** Ensure a relative collection exists under an already configured base URL. */
+    private fun ensureDirRel(user: String, pass: String, baseUrl: String, relPath: String): Pair<Int, String> {
+        val rel = relPath.trim().trim('/').ifEmpty { "." }
+        val target = buildRelUrl(baseUrl, rel)
+        val statCode = statDav(user, pass, target).first
+        if (statCode in 200..299) {
+            markDir(target, DirState.EXISTS)
+            return statCode to "state=exists\nrel=$rel\nstat=$statCode\nmkdir=0\nverify=$statCode\n"
+        }
+        if (statCode != 404) {
+            return statCode to "state=unavailable\nrel=$rel\nstat=$statCode\nmkdir=0\nverify=0\n"
+        }
+        val mkdirCode = mkcolParentsRel(user, pass, baseUrl, rel)
+        if (mkdirCode !in 200..299) {
+            return mkdirCode to "state=create_failed\nrel=$rel\nstat=$statCode\nmkdir=$mkdirCode\nverify=0\n"
+        }
+        val verifyCode = statDav(user, pass, target).first
+        if (verifyCode in 200..299) {
+            markDir(target, DirState.EXISTS)
+            invalidateListCache()
+            return verifyCode to "state=created\nrel=$rel\nstat=$statCode\nmkdir=$mkdirCode\nverify=$verifyCode\n"
+        }
+        return verifyCode to "state=verify_failed\nrel=$rel\nstat=$statCode\nmkdir=$mkdirCode\nverify=$verifyCode\n"
+    }
+
+    private fun parseKeyValueLines(text: String): Map<String, String> {
+        val result = linkedMapOf<String, String>()
+        text.lineSequence().forEach { line ->
+            val index = line.indexOf('=')
+            if (index > 0) result[line.substring(0, index).trim().lowercase()] = line.substring(index + 1).trim()
+        }
+        return result
+    }
+
+    /**
+     * OPTIONS capability preflight. Missing Allow methods stay advisory, matching the
+     * historical shell policy; the real managed/stream probe remains authoritative.
+     */
+    private fun optionsPreflightRel(user: String, pass: String, baseUrl: String, relPath: String, modeRaw: String): Pair<Int, String> {
+        val rel = relPath.trim().ifEmpty { "." }
+        val mode = modeRaw.trim().lowercase().ifEmpty { "control" }
+        val target = buildRelUrl(baseUrl, rel)
+        val result = optionsDav(user, pass, target)
+        val values = parseKeyValueLines(result.second)
+        val allow = values["allow"].orEmpty()
+        val dav = values["dav"].orEmpty()
+        val server = values["server"].orEmpty()
+        val required = when (mode) {
+            "stream", "atomic", "upload" -> listOf("OPTIONS", "PROPFIND", "PUT", "GET", "DELETE", "MOVE")
+            "restore" -> listOf("OPTIONS", "PROPFIND", "GET")
+            else -> listOf("OPTIONS", "PROPFIND", "PUT", "GET", "DELETE")
+        }
+        val available = allow.split(',').map { it.trim().uppercase() }.filter { it.isNotEmpty() }.toSet()
+        val missing = if (allow.isEmpty()) emptyList() else required.filterNot { available.contains(it) }
+        val state = if (result.first in 200..299) "ok" else "unavailable"
+        val body = buildString {
+            append("state=").append(state).append('\n')
+            append("mode=").append(mode).append('\n')
+            append("rel=").append(rel).append('\n')
+            append("allow=").append(allow).append('\n')
+            append("dav=").append(dav).append('\n')
+            append("server=").append(server).append('\n')
+            append("missing=").append(missing.joinToString(" ")).append('\n')
+            append("allowAdvisory=1\n")
+        }
+        return result.first to body
     }
 
     private fun optionsDav(user: String, pass: String, url: String): Pair<Int, String> {
@@ -1268,6 +1457,29 @@ object WebDavUtil {
         })
     }
 
+    /**
+     * Replay-safe fixed payload PUT used only by capability probes.
+     *
+     * Unlike archive streaming, [bytes] can be written again after an encoded CJK path returns
+     * HTTP 404. HttpCore may retry the same PUT once with a raw UTF-8 request target and cache the
+     * successful path mode for the subsequent non-replayable streaming PUT on the same origin.
+     */
+    private fun putReplayableBytes(user: String, pass: String, url: String, bytes: ByteArray): Int {
+        val headers = linkedMapOf(
+            "Content-Type" to "application/octet-stream",
+            "Content-Length" to bytes.size.toString()
+        )
+        return http.request(
+            method = "PUT",
+            url = url,
+            user = user,
+            pass = pass,
+            headers = headers,
+            canReplayBody = true,
+            bodyWriter = { out -> out.write(bytes) }
+        )
+    }
+
     private fun serverKindCacheKey(baseUrl: String): String {
         val u = runCatching { URL(baseUrl.trimEnd('/')) }.getOrNull() ?: return baseUrl.trimEnd('/')
         val defaultPort = (u.protocol.equals("http", ignoreCase = true) && (u.port == -1 || u.port == 80)) ||
@@ -1345,7 +1557,7 @@ object WebDavUtil {
 
     private fun putStdinManagedRel(user: String, pass: String, baseUrl: String, relPath: String, mode: String?, input: InputStream): Int {
         val decision = managedDecision(user, pass, baseUrl, relPath, mode)
-        System.err.println("MANAGED_PUT mode=${decision.modeName} server=${decision.serverKind} rel=$relPath")
+        infoLog("MANAGED_PUT mode=${decision.modeName} server=${decision.serverKind} rel=$relPath")
         val code = if (decision.direct) {
             put(user, pass, buildRelUrl(baseUrl, relPath), input, contentLength = null, chunked = true)
         } else {
@@ -1367,7 +1579,7 @@ object WebDavUtil {
         val file = File(localFile)
         if (!file.isFile) return 0
         val decision = managedDecision(user, pass, baseUrl, relPath, mode)
-        System.err.println("MANAGED_PUT_FILE mode=${decision.modeName} server=${decision.serverKind} rel=$relPath file=${file.name} size=${file.length()}")
+        infoLog("MANAGED_PUT_FILE mode=${decision.modeName} server=${decision.serverKind} rel=$relPath file=${file.name} size=${file.length()}")
         val code = if (decision.direct) {
             FileInputStream(file).use { put(user, pass, buildRelUrl(baseUrl, relPath), it, file.length(), chunked = false) }
         } else {
@@ -1385,27 +1597,27 @@ object WebDavUtil {
         return code
     }
 
-    private fun managedProbeRel(user: String, pass: String, baseUrl: String, relBase: String): Int {
+    private fun managedProbeRel(user: String, pass: String, baseUrl: String, relBase: String): Pair<Int, String> {
         val kind = detectServerKind(user, pass, baseUrl)
         if (kind == "rclone" || kind == "123pan") {
-            System.err.println("MANAGED_PROBE mode=skip_direct_backend server=$kind reason=direct-put-managed-backend")
-            return 200
+            return 200 to "step=skip server=$kind reason=direct-put-managed-backend\n"
         }
         val base = relBase.trim('/').takeIf { it.isNotEmpty() && it != "." } ?: ""
-        val name = ".speedbackup_managed_probe.${System.currentTimeMillis()}.${managedUploadSeq.incrementAndGet()}"
+        val name = "speedbackup_managed_probe_${System.currentTimeMillis()}_${managedUploadSeq.incrementAndGet()}"
         val partRel = if (base.isEmpty()) "$name.part" else "$base/$name.part"
         val finalRel = if (base.isEmpty()) name else "$base/$name"
         val bytes = "speedbackup_managed_probe".toByteArray(StandardCharsets.UTF_8)
-        val putCode = put(user, pass, buildRelUrl(baseUrl, partRel), ByteArrayInputStream(bytes), bytes.size.toLong(), chunked = false)
-        if (putCode !in 200..299) return putCode
+        val putCode = putReplayableBytes(user, pass, buildRelUrl(baseUrl, partRel), bytes)
+        if (putCode !in 200..299) return putCode to "step=put http=$putCode server=$kind rel=$partRel replayable=true temp=nodot\n"
         val moveCode = move(user, pass, buildRelUrl(baseUrl, partRel), buildRelUrl(baseUrl, finalRel), overwrite = true)
         if (moveCode !in 200..299) {
-            runCatching { delete(user, pass, buildRelUrl(baseUrl, partRel)) }
-            return moveCode
+            val cleanupCode = runCatching { delete(user, pass, buildRelUrl(baseUrl, partRel)) }.getOrDefault(0)
+            return moveCode to "step=move http=$moveCode server=$kind src=$partRel dst=$finalRel cleanup=$cleanupCode\n"
         }
         val (statCode, entry) = statDav(user, pass, buildRelUrl(baseUrl, finalRel))
-        runCatching { delete(user, pass, buildRelUrl(baseUrl, finalRel)) }
-        return if (statCode in 200..299 && entry != null) 200 else statCode
+        val cleanupCode = runCatching { delete(user, pass, buildRelUrl(baseUrl, finalRel)) }.getOrDefault(0)
+        val finalCode = if (statCode in 200..299 && entry != null) 200 else statCode
+        return finalCode to "step=stat http=$statCode entry=${entry != null} server=$kind rel=$finalRel cleanup=$cleanupCode temp=nodot\n"
     }
 
     private fun getTo(user: String, pass: String, url: String, out: OutputStream): Int {
@@ -1696,8 +1908,11 @@ object WebDavUtil {
         println("  putmanagedrel <user> <pass> <baseUrl> <relPath> <localFile> [auto|atomic|direct|direct-json|direct-new-known-missing]")
         println("  managedproberel <user> <pass> <baseUrl> [relBase]")
         println("  compatProbeRel <user> <pass> <baseUrl> [testRel]")
+        println("  ensurebaserel <user> <pass> <configuredBaseUrl>")
+        println("  ensuredirrel <user> <pass> <baseUrl> <relPath>")
+        println("  optionspreflightrel <user> <pass> <baseUrl> <relPath> <mode>")
         println("  vendor quirks: webdav.vendor_quirks.v1 / webdav.vendor_auto_detect.v1")
-        println("  WEBR5 consolidated: webdav.compat_probe.v1 / webdav.atomic_probe.v2 / webdav.pacer_retry_backoff.v1 / webdav.directory_cache.v1 / webdav.propfind_xml_tolerant.v2 / webdav.error_policy_table.v1 / webdav.regression_suite.v1")
+        println("  WEBR5 consolidated: webdav.compat_probe.v1 / webdav.atomic_probe.v2 / webdav.pacer_retry_backoff.v1 / webdav.directory_cache.v1 / webdav.propfind_xml_tolerant.v2 / webdav.error_policy_table.v1 / webdav.regression_suite.v1 / webdav.deep_policy_table.dex.v1")
         println("  deleterel <user> <pass> <baseUrl> <relPath>")
         println("  moverel <user> <pass> <baseUrl> <srcRel> <dstRel> [overwrite T|F]")
         println("  copyrel <user> <pass> <baseUrl> <srcRel> <dstRel> [overwrite T|F]")

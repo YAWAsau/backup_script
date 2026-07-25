@@ -47,7 +47,7 @@ import java.nio.charset.StandardCharsets;
 import dev.rikka.tools.refine.Refine;
 
 public class HiddenApiUtil {
-    static final String VERSION = "v2.6.81-ssaid-metadata-restore build=v24.20.14-7.66-439-ssaid-metadata-restore-20260723";
+    static final String VERSION = "v2.6.95-single-tools-unified-root-webdav-deep-hiddenapi-sync-webdav-eof-quiet-appops-location-verify build=v24.20.14-7.66-474-appops-location-verify-dexfix-r35-202607232022";
     /**
      * 單 JVM 批量命令期間的輕量快取。只快取系統層級固定資料或同一輪已讀 package metadata；
      * 不跨 JVM、不落檔，避免一致性風險。
@@ -255,7 +255,7 @@ public class HiddenApiUtil {
         }
     }
 
-    private static DaemonRunResult runDaemonCommand(String command, byte[] bodyBytes) {
+    static synchronized DaemonRunResult runDaemonCommand(String command, byte[] bodyBytes) {
         if (command == null) command = "";
         command = command.trim();
         String body = new String(bodyBytes == null ? new byte[0] : bodyBytes, StandardCharsets.UTF_8);
@@ -305,7 +305,7 @@ public class HiddenApiUtil {
         return new DaemonRunResult(rc, baos.toString());
     }
 
-    private static final class DaemonRunResult {
+    static final class DaemonRunResult {
         final int rc;
         final String stdout;
         DaemonRunResult(int rc, String stdout) { this.rc = rc; this.stdout = stdout == null ? "" : stdout; }

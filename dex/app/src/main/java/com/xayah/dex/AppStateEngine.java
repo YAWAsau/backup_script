@@ -291,6 +291,10 @@ public final class AppStateEngine {
         JsonArray capabilities = new JsonArray();
         addCapability(capabilities, "dex.capabilities.v1", true, true, "json");
         addCapability(capabilities, "dex.machine_stdout.v1", true, true, "stdout=data-only;stderr=diagnostic");
+        addCapability(capabilities, "dex.cchelper.glossary.v1", true, false, "CCHelper applies SpeedBackup phrase glossary after OpenCC character conversion");
+        addCapability(capabilities, "dex.cchelper.table_refresh.v1", true, false, "CCHelper table refresh with zh-TW polish and selftest");
+        addCapability(capabilities, "dex.cchelper.zh_tw_polish.v1", true, false, "CCHelper can polish already-Traditional SpeedBackup wording without script self-rewrite");
+        addCapability(capabilities, "dex.cchelper.repeat_merge_fix.v1", true, false, "CCHelper maps 重复/合并 to 重複/合併 in zh-TW and back to 简中 correctly");
         addCapability(capabilities, "appstate.snapshot.batch.v2", true, true, "canonical-ndjson");
         addCapability(capabilities, "appstate.snapshot.compact_persist.v1", true, true, "drop-non-restorable-display-fields");
         addCapability(capabilities, "appstate.foreground_state.batch.v1", true, false, "canonical-ndjson;simple-label+packageName+active");
@@ -311,7 +315,7 @@ public final class AppStateEngine {
         addCapability(capabilities, "appstate.ssaid.integrated.v1", true, true, "snapshot+restore+verify+uid-key-settings_ssaid");
         addCapability(capabilities, "appstate.ssaid.hardening.v1", true, true, "restore-validates-16hex-lowercase;reports-uidKey-filePath-file-readback-source;file-metadata-audit");
         addCapability(capabilities, "appstate.ssaid.metadata_restore.v1", true, true, "preserve-or-self-heal-settings_ssaid-owner-mode-context-after-root-atomic-write");
-        addCapability(capabilities, "appstate.appops.effective_scope_drift.v1", true, true, "otherAppOps raw package/uid drift tolerated when effective mode is restored; derived op10/op41 missing-row verify tolerated");
+        addCapability(capabilities, "appstate.appops.effective_scope_drift.v2", true, true, "otherAppOps raw package/uid drift tolerated when effective mode is restored; derived op2/op10/op41/op42 missing-row verify tolerated");
         addCapability(capabilities, "appstate.daemon.af_unix.v1", true, true, "stream-framed");
         addCapability(capabilities, "appstate.daemon.runtime_preinit.v1", true, true, "context+pm+appops-before-ready");
         addCapability(capabilities, "dex.daemon_bootstrap.shared.v1", true, true, "appstate+notify+hiddenapi");
@@ -344,10 +348,20 @@ public final class AppStateEngine {
         addCapability(capabilities, "webdav.putbatchrel.v1", true, true, "manifest-rel-to-localfile-batch-put");
         addCapability(capabilities, "webdav.managed_put.v1", true, true, "Dex-managed direct/atomic rel upload policy");
         addCapability(capabilities, "webdav.managed_probe.v1", true, true, "Dex-managed WebDAV stream capability probe");
+        addCapability(capabilities, "webdav.cjk_put_replay_probe.v1", true, true, "replay-safe managed probe retries encoded CJK PUT 404 with raw UTF-8 and caches successful origin path mode");
+        addCapability(capabilities, "webdav.managed_probe.nodot_temp.v1", true, true, "managed probe uses non-dot temp names because some Android/NAS WebDAV roots reject hidden dotfiles with HTTP 404");
+        addCapability(capabilities, "webdav.stream_probe.subdir.v1", true, true, "remote_stream managed probe runs inside Backup_zstd_X after MKCOL instead of PUT-ing directly under remote_url root");
+        addCapability(capabilities, "webdav.daemon.normal_diagnostics_log.v1", true, true, "normal WebDAV managed upload diagnostics are written to webdav_daemon_info.log instead of daemon stderr");
         addCapability(capabilities, "webdav.rclone_json_direct_put.dex.v1", true, true, "rclone app_details.json direct PUT handled inside WebDavUtil");
         addCapability(capabilities, "webdav.rclone_direct_all.dex.v1", true, true, "rclone managed WebDAV uploads use direct PUT to avoid MOVE stat noise");
         addCapability(capabilities, "webdav.pan123_managed_direct.dex.v1", true, true, "123pan official WebDAV managed uploads use direct PUT to avoid .part MOVE HTTP 500");
         addCapability(capabilities, "webdav.compat_probe.v1", true, true, "Dex-side WebDAV OPTIONS/PUT/MOVE/STAT/GET/COPY/DELETE feature probe");
+        addCapability(capabilities, "webdav.base_preflight.dex.v1", true, true, "configured-base split+stat+404-only parent-chain MKCOL+verify inside WebDavUtil daemon");
+        addCapability(capabilities, "webdav.directory_ensure.dex.v1", true, true, "relative directory stat+404-only parent-chain MKCOL+verify inside WebDavUtil daemon");
+        addCapability(capabilities, "webdav.options_preflight.dex.v1", true, true, "OPTIONS method policy and advisory Allow analysis inside WebDavUtil daemon");
+        addCapability(capabilities, "dex.root_unified_daemon.v1", true, true, "HiddenApi/AppState/Notification can share SpeedBackupRootDaemon AF_UNIX daemon with old-daemon fallback");
+        addCapability(capabilities, "webdav.deep_policy_table.dex.v1", true, true, "WebDavUtil exposes consolidated vendor/pacer/PROPFIND/error-policy capability marker for deeper Dex-side WebDAV policy");
+        addCapability(capabilities, "dex.source.libsardine_removed.v1", true, false, "unused non-included libsardine source tree removed from release source package");
         addCapability(capabilities, "webdav.atomic_probe.v2", true, true, "PUT part + MOVE publish + GET byte compare + COPY + overwrite regression");
         addCapability(capabilities, "webdav.vendor_quirks.v1", true, true, "auto/rclone/nextcloud/jianguoyun/123pan/generic WebDAV quirk profile");
         addCapability(capabilities, "webdav.vendor_auto_detect.v1", true, true, "detect server profile from OPTIONS headers and observed probe behavior");
@@ -1603,11 +1617,17 @@ public final class AppStateEngine {
     }
 
     private static boolean isDerivedEffectiveOtherAppOp(int op) {
-        // OP_WIFI_SCAN / android:wifi_scan and OP_MONITOR_LOCATION / android:monitor_location
-        // are commonly derived from location/Wi-Fi policy on Android 15/16 vendor ROMs.
-        // getOpsForPackage() may omit the explicit row after restore even though the
-        // effective mode checked immediately after restore is already correct.
-        return op == 10 || op == 41;
+        // Some location-related otherAppOps are derived/ephemeral on Android 15/16
+        // vendor ROMs.  After restore, unsafeCheckOpNoThrow() can report the desired
+        // effective mode while getOpsForPackage() omits the explicit package row.
+        // Treat a missing row as semantically acceptable for these derived ops, just
+        // as restorePackageState already tolerates package/uid raw-scope drift when
+        // the effective behavior was restored.
+        // OP_GPS / android:gps
+        // OP_WIFI_SCAN / android:wifi_scan
+        // OP_MONITOR_LOCATION / android:monitor_location
+        // OP_MONITOR_HIGH_POWER_LOCATION / android:monitor_location_high_power
+        return op == 2 || op == 10 || op == 41 || op == 42;
     }
 
     private static int readEffectiveModeWithRetry(AppOpsManagerHidden appOps, int op, int uid,

@@ -2,6 +2,7 @@ package com.xayah.dex;
 
 import java.util.HashMap;
 
+
 public class CCHelper {
     /**
      * @see <a href="https://github.com/BYVoid/OpenCC/blob/71cb906e0880dcb88d0dd8f92a3460ba853a4fe8/data/dictionary/STCharacters.txt">STCharacters.txt</a>
@@ -8168,6 +8169,159 @@ public class CCHelper {
     private HashMap<String, String> st = new HashMap<>();
     private HashMap<String, String> ts = new HashMap<>();
 
+    /**
+     * SpeedBackup UI glossary.
+     *
+     * The OpenCC character tables above are intentionally generic. They convert
+     * characters reliably, but they cannot choose product wording such as
+     * 「默认」=>「預設」 or 「文件夹」=>「資料夾」. Keep these phrase tables small,
+     * ordered longest-first, and limited to SpeedBackup UI/config wording.
+     */
+    private static final String[][] S2T_PHRASES = new String[][]{
+            // Longest/specific first.
+            {"重復", "重複"},
+            {"合並", "合併"},
+            {"認證用戶名", "認證使用者名稱"},
+            {"配置文件", "設定檔"},
+            {"設定文件", "設定檔"},
+            {"文件夾", "資料夾"},
+            {"壓縮包", "壓縮檔"},
+            {"壓縮算法", "壓縮演算法"},
+            {"數據庫", "資料庫"},
+            {"配置詳細", "設定詳細"},
+            {"配置遺失", "設定遺失"},
+            {"默認", "預設"},
+            {"數據", "資料"},
+            {"文件", "檔案"},
+            {"遠程", "遠端"},
+            {"服務器", "伺服器"},
+            {"自定義", "自訂"},
+            {"用戶", "使用者"},
+            {"程序", "程式"},
+            {"變量", "變數"},
+            {"創建", "建立"},
+            {"加載", "載入"},
+            {"支持", "支援"},
+            {"網絡", "網路"},
+            {"軟件", "軟體"},
+            {"硬件", "硬體"},
+            {"緩存", "快取"},
+            {"屏幕", "螢幕"},
+            {"保存", "儲存"},
+            {"當前", "目前"},
+            {"鏈接", "連結"},
+            {"算法", "演算法"},
+            {"後臺", "後台"},
+            {"回圈", "迴圈"},
+            {"意誌", "意志"},
+            {"配置", "設定"}
+    };
+
+    private static final String[][] TW_POLISH_PHRASES = new String[][]{
+            // Applied to already-Traditional text too; this is product wording polish,
+            // not generic character conversion. Keep it conservative.
+            {"重復", "重複"},
+            {"合並", "合併"},
+            {"認證用戶名", "認證使用者名稱"},
+            {"配置文件", "設定檔"},
+            {"設定文件", "設定檔"},
+            {"文件夾", "資料夾"},
+            {"壓縮算法", "壓縮演算法"},
+            {"配置詳細", "設定詳細"},
+            {"配置遺失", "設定遺失"},
+            {"自定義", "自訂"},
+            {"默認", "預設"},
+            {"數據", "資料"},
+            {"文件", "檔案"},
+            {"遠程", "遠端"},
+            {"服務器", "伺服器"},
+            {"用戶", "使用者"},
+            {"程序", "程式"},
+            {"變量", "變數"},
+            {"創建", "建立"},
+            {"加載", "載入"},
+            {"支持", "支援"},
+            {"網絡", "網路"},
+            {"軟件", "軟體"},
+            {"硬件", "硬體"},
+            {"緩存", "快取"},
+            {"屏幕", "螢幕"},
+            {"保存", "儲存"},
+            {"當前", "目前"},
+            {"鏈接", "連結"},
+            {"算法", "演算法"},
+            {"後臺", "後台"},
+            {"回圈", "迴圈"},
+            {"意誌", "意志"},
+            {"配置", "設定"}
+    };
+
+    private static final String[][] T2S_PHRASES = new String[][]{
+            // Longest/specific first.
+            {"重複", "重复"},
+            {"重復", "重复"},
+            {"合併", "合并"},
+            {"合並", "合并"},
+            {"認證使用者名稱", "认证用户名"},
+            {"认证使用者名称", "认证用户名"},
+            {"配置文件", "配置文件"},
+            {"设定档", "配置文件"},
+            {"設定檔", "配置文件"},
+            {"设置档", "配置文件"},
+            {"資料夾", "文件夹"},
+            {"资料夹", "文件夹"},
+            {"壓縮檔", "压缩包"},
+            {"压缩档", "压缩包"},
+            {"壓縮演算法", "压缩算法"},
+            {"压缩演算法", "压缩算法"},
+            {"資料庫", "数据库"},
+            {"资料库", "数据库"},
+            {"設定詳細", "配置详细"},
+            {"设定详细", "配置详细"},
+            {"設定遺失", "配置丢失"},
+            {"设定遗失", "配置丢失"},
+            {"預設", "默认"},
+            {"预设", "默认"},
+            {"資料", "数据"},
+            {"资料", "数据"},
+            {"檔案", "文件"},
+            {"档案", "文件"},
+            {"遠端", "远程"},
+            {"远端", "远程"},
+            {"伺服器", "服务器"},
+            {"自訂", "自定义"},
+            {"自订", "自定义"},
+            {"使用者", "用户"},
+            {"程式", "程序"},
+            {"變數", "变量"},
+            {"变数", "变量"},
+            {"建立", "创建"},
+            {"載入", "加载"},
+            {"载入", "加载"},
+            {"支援", "支持"},
+            {"網路", "网络"},
+            {"网路", "网络"},
+            {"軟體", "软件"},
+            {"软体", "软件"},
+            {"硬體", "硬件"},
+            {"硬体", "硬件"},
+            {"快取", "缓存"},
+            {"螢幕", "屏幕"},
+            {"萤幕", "屏幕"},
+            {"儲存", "保存"},
+            {"储存", "保存"},
+            {"目前", "当前"},
+            {"連結", "链接"},
+            {"连结", "链接"},
+            {"演算法", "算法"},
+            {"後台", "后台"},
+            {"后台", "后台"},
+            {"迴圈", "循环"},
+            {"回圈", "循环"},
+            {"設定", "配置"},
+            {"设定", "配置"}
+    };
+
     void initializeMap(String dict, HashMap<String, String> map, String... revision) {
         for (String r : revision) {
             if (r != null) {
@@ -8203,7 +8357,14 @@ public class CCHelper {
                 out.append(converted);
             }
         }
-        return out.toString();
+        return twPolish(applyPhraseMap(out.toString(), S2T_PHRASES));
+    }
+
+    /**
+     * Product wording polish for already-Traditional Chinese text.
+     */
+    String twPolish(String text) {
+        return applyPhraseMap(text, TW_POLISH_PHRASES);
     }
 
     /**
@@ -8220,6 +8381,14 @@ public class CCHelper {
                 out.append(converted);
             }
         }
-        return out.toString();
+        return applyPhraseMap(out.toString(), T2S_PHRASES);
+    }
+
+    private static String applyPhraseMap(String text, String[][] phrases) {
+        String out = text;
+        for (String[] pair : phrases) {
+            out = out.replace(pair[0], pair[1]);
+        }
+        return out;
     }
 }
