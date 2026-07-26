@@ -1,6 +1,7 @@
 # Backup_script 數據備份腳本
 
 <p align="center">
+ <a href="https://deepwiki.com/YAWAsau/backup_script"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" /></a>
  <a href="https://github.com/YAWAsau/backup_script/stargazers"><img src="https://img.shields.io/github/stars/YAWAsau/backup_script?label=stars&style=flat-square" /></a>
  <a href="https://github.com/YAWAsau/backup_script/releases"><img src="https://img.shields.io/github/downloads/YAWAsau/backup_script/total?style=flat-square" /></a>
  <a href="https://github.com/YAWAsau/backup_script/releases/latest"><img src="https://img.shields.io/github/v/release/YAWAsau/backup_script?label=release&style=flat-square" /></a>
@@ -536,5 +537,5 @@ log/log_2026-07-25_21-40.txt
 ---
 
 <p align="center">
- <sub>GPL-3.0 Licensed · Made with by <a href="https://github.com/YAWAsau">YAWAsau</a></sub>
+ <sub>GPL-3.0 Licensed · Made with ❤️ by <a href="https://github.com/YAWAsau">YAWAsau</a></a></sub>
 </p>
