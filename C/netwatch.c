@@ -30,7 +30,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define NETWATCH_VERSION "1.2.0-android23-r25c-static-16k"
+#define NETWATCH_VERSION "1.2.0-android23-r25c-dyn16k"
 #define RECEIVE_BUFFER_SIZE (64U * 1024U)
 
 static volatile sig_atomic_t g_stop_requested = 0;

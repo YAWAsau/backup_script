@@ -11,7 +11,7 @@
 #include <string.h>
 #include <sys/system_properties.h>
 
-#define PROPWAIT_VERSION "1.0.1-android23-r25c-static16k"
+#define PROPWAIT_VERSION "1.0.1-android23-r25c-dyn16k"
 
 /*
  * Android 6.0 already provides these bionic symbols, but the modern NDK

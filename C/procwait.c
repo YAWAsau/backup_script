@@ -16,7 +16,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define PROCWAIT_VERSION "1.0.0-android23-r25c-static16k"
+#define PROCWAIT_VERSION "1.0.0-android23-r25c-dyn16k"
 
 #ifndef __NR_pidfd_open
 #if defined(__aarch64__)

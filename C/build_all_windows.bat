@@ -12,7 +12,7 @@ echo Android native tools builder
 echo ABI : arm64
 echo API : %API%
 echo NDK : r25c (%NDK_VERSION%)
-echo Type: fully static ELF EXEC / 16 KB aligned
+echo Type: dynamic PIE / /system/bin/linker64 / libc.so+libdl.so allowed / 16 KB aligned
 echo Tools: %TOOLS%
 echo ============================================================
 
@@ -49,11 +49,9 @@ set "TOOLCHAIN=%NDK_ROOT%\toolchains\llvm\prebuilt\windows-x86_64\bin"
 set "CLANG=%TOOLCHAIN%\clang.exe"
 set "STRIP=%TOOLCHAIN%\llvm-strip.exe"
 set "READELF=%TOOLCHAIN%\llvm-readelf.exe"
-set "NM=%TOOLCHAIN%\llvm-nm.exe"
 set "TARGET=--target=aarch64-linux-android%API%"
-set "ARCH_LIB_DIR=%NDK_ROOT%\toolchains\llvm\prebuilt\windows-x86_64\sysroot\usr\lib\aarch64-linux-android"
-set "LIBC_A=%ARCH_LIB_DIR%\libc.a"
-if not exist "%LIBC_A%" set "LIBC_A=%ARCH_LIB_DIR%\%API%\libc.a"
+set "LIB_DIR=%NDK_ROOT%\toolchains\llvm\prebuilt\windows-x86_64\sysroot\usr\lib\aarch64-linux-android\%API%"
+set "LIBC_SO=%LIB_DIR%\libc.so"
 
 if not exist "%CLANG%" (
     echo [ERROR] clang.exe not found:
@@ -73,14 +71,12 @@ if not exist "%READELF%" (
     exit /b 1
 )
 
-if not exist "%LIBC_A%" (
-    echo [ERROR] Android static libc archive not found.
-    echo Checked:
-    echo   %ARCH_LIB_DIR%\libc.a
-    echo   %ARCH_LIB_DIR%\%API%\libc.a
+if not exist "%LIBC_SO%" (
+    echo [ERROR] Android dynamic libc stub not found:
+    echo   %LIBC_SO%
     echo.
-    echo Existing architecture library layout:
-    dir /b "%ARCH_LIB_DIR%" 2>nul
+    echo Existing API library layout:
+    dir /b "%NDK_ROOT%\toolchains\llvm\prebuilt\windows-x86_64\sysroot\usr\lib\aarch64-linux-android" 2>nul
     exit /b 1
 )
 
@@ -91,28 +87,28 @@ for %%T in (%TOOLS%) do (
     )
 )
 
-echo Static libc:
-echo   %LIBC_A%
+echo Dynamic libc stub:
+echo   %LIBC_SO%
 
-echo Checking legacy bionic property wait symbols for propwait...
-"%NM%" --defined-only "%LIBC_A%" | findstr /C:"__system_property_area_serial" >nul
+echo Checking dynamic bionic property wait symbols for propwait...
+"%READELF%" --dyn-syms "%LIBC_SO%" | findstr /C:"__system_property_area_serial" >nul
 if errorlevel 1 (
-    echo [ERROR] libc.a does not contain __system_property_area_serial.
+    echo [ERROR] libc.so stub does not export __system_property_area_serial for API %API%.
     exit /b 1
 )
-"%NM%" --defined-only "%LIBC_A%" | findstr /C:"__system_property_wait_any" >nul
+"%READELF%" --dyn-syms "%LIBC_SO%" | findstr /C:"__system_property_wait_any" >nul
 if errorlevel 1 (
-    echo [ERROR] libc.a does not contain __system_property_wait_any.
+    echo [ERROR] libc.so stub does not export __system_property_wait_any for API %API%.
     exit /b 1
 )
-echo [OK] Legacy property wait symbols found.
+echo [OK] Dynamic property wait symbols found.
 
 if not exist "out" mkdir "out"
 for %%T in (%TOOLS%) do del /q "out\%%T" "out\%%T.o" 2>nul
 del /q "out\SHA256SUMS.txt" 2>nul
 
-set "CFLAGS=-std=c11 -Os -fvisibility=hidden -ffunction-sections -fdata-sections -Wall -Wextra -Werror"
-set "LDFLAGS=-static -Wl,--gc-sections -Wl,-z,relro,-z,now -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384"
+set "CFLAGS=-std=c11 -Os -fvisibility=hidden -ffunction-sections -fdata-sections -fPIE -Wall -Wextra -Werror"
+set "LDFLAGS=-pie -Wl,--gc-sections -Wl,-z,relro,-z,now -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384"
 
 for %%T in (%TOOLS%) do (
     echo.
@@ -120,36 +116,18 @@ for %%T in (%TOOLS%) do (
     "%CLANG%" %TARGET% %CFLAGS% -c "%%T.c" -o "out\%%T.o"
     if errorlevel 1 exit /b 1
 
-    echo [%%T] Linking static executable...
-    "%CLANG%" %TARGET% -static "out\%%T.o" %LDFLAGS% -o "out\%%T"
+    echo [%%T] Linking dynamic PIE executable...
+    "%CLANG%" %TARGET% "out\%%T.o" %LDFLAGS% -o "out\%%T"
     if errorlevel 1 exit /b 1
 
     echo [%%T] Stripping...
     "%STRIP%" --strip-all "out\%%T"
     if errorlevel 1 exit /b 1
 
-    echo [%%T] Verifying ELF EXEC...
-    "%READELF%" -h "out\%%T" | findstr /C:"Type:" | findstr /C:"EXEC" >nul
+    echo [%%T] Verifying ELF DYN PIE...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0verify_elf_dynamic16k.ps1" -Readelf "%READELF%" -Binary "out\%%T"
     if errorlevel 1 (
-        echo [ERROR] %%T is not ELF EXEC.
-        exit /b 1
-    )
-
-    "%READELF%" -l "out\%%T" | findstr /C:"INTERP" >nul
-    if not errorlevel 1 (
-        echo [ERROR] %%T contains INTERP.
-        exit /b 1
-    )
-
-    "%READELF%" -d "out\%%T" 2>nul | findstr /C:"NEEDED" >nul
-    if not errorlevel 1 (
-        echo [ERROR] %%T contains NEEDED dependency.
-        exit /b 1
-    )
-
-    powershell -NoProfile -Command "$bad=@(& '%READELF%' -lW 'out\%%T' | Where-Object {$_ -match '^\s*LOAD\s' -and $_ -notmatch '\s0x4000\s*$'}); if($bad.Count -gt 0){$bad | Write-Host; exit 1}"
-    if errorlevel 1 (
-        echo [ERROR] %%T has a LOAD segment not aligned to 0x4000.
+        echo [ERROR] %%T ELF verification failed.
         exit /b 1
     )
 
@@ -160,7 +138,7 @@ del /q "out\*.o" 2>nul
 
 echo.
 echo Writing SHA256SUMS.txt...
-powershell -NoProfile -Command "$names='%TOOLS%'.Split(' ',[System.StringSplitOptions]::RemoveEmptyEntries); $lines=foreach($n in $names){$h=(Get-FileHash -Algorithm SHA256 -LiteralPath ('out\'+$n)).Hash.ToLowerInvariant(); $h+'  '+$n}; [System.IO.File]::WriteAllLines((Join-Path (Get-Location) 'out\SHA256SUMS.txt'),$lines,[System.Text.Encoding]::ASCII)"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$names='%TOOLS%'.Split(' ',[System.StringSplitOptions]::RemoveEmptyEntries); $lines=foreach($n in $names){$h=(Get-FileHash -Algorithm SHA256 -LiteralPath ('out\'+$n)).Hash.ToLowerInvariant(); $h+'  '+$n}; [System.IO.File]::WriteAllLines((Join-Path (Get-Location) 'out\SHA256SUMS.txt'),$lines,[System.Text.Encoding]::ASCII)"
 if errorlevel 1 (
     echo [ERROR] Failed to write SHA256SUMS.txt.
     exit /b 1
@@ -170,6 +148,13 @@ echo.
 echo Build complete:
 for %%T in (%TOOLS%) do echo   %CD%\out\%%T
 echo   %CD%\out\SHA256SUMS.txt
+
+echo.
+echo Verification summary expected for every binary:
+echo   Type: DYN
+echo   INTERP: /system/bin/linker64
+echo   NEEDED: libc.so required; libdl.so allowed
+echo   LOAD alignment: 0x4000
 
 echo.
 echo Phone quick test:
