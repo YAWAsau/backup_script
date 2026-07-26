@@ -21,7 +21,7 @@ import java.nio.charset.StandardCharsets;
  * streaming/network daemon, and install must run under Play UID.
  */
 public final class SpeedBackupRootDaemon {
-    public static final String VERSION = "v2.6.95-single-tools-unified-root-webdav-deep-hiddenapi-sync-webdav-eof-quiet-appops-location-verify dex=" + HiddenApiUtil.VERSION;
+    public static final String VERSION = "v2.6.97-app-inventory-source-path-cache-single-tools-unified-root-webdav-deep-hiddenapi-sync-webdav-eof-quiet-appops-location-verify dex=" + HiddenApiUtil.VERSION;
     private static final int HOT_PROTOCOL_VERSION = 1;
 
     private SpeedBackupRootDaemon() {}
@@ -48,6 +48,8 @@ public final class SpeedBackupRootDaemon {
     private static void printUsage() {
         System.out.println("SpeedBackupRootDaemon " + VERSION);
         System.out.println("  capability: dex.root_unified_daemon.v1");
+        System.out.println("  capability: dex.app_inventory.snapshot.v1");
+        System.out.println("  capability: dex.app_inventory.daemon_cache.v1");
         System.out.println("  daemonunix <socketPath> [idleTimeoutSec] [ownerPid]");
     }
 

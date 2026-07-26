@@ -1,29 +1,14 @@
-SpeedBackup Dex v2.6.94 - HiddenApi synchronized / root-only daemon cleanup / WebDAV deep policy
+SpeedBackup Dex v2.6.97 - AppInventory source path cache / unified root daemon
 
 Changes:
-- WebDavUtil `ensurebaserel`: configured URL split, STAT, 404-only parent-chain MKCOL and final verification inside the daemon.
-- Shell no longer owns the configured-base path state machine.
-- Removed the unused `libsardine/` source tree; it was not included by settings.gradle.kts and was not part of classes.dex.
-- Retains v2.6.88 localization repeat/merge fixes and all AppState/SSAID/WebDAV capabilities.
+- Adds AppInventoryUtil snapshot API.
+- HiddenApiUtil exposes `appInventorySnapshot USER_ID [jsonl|appinfo|pkgName|pkgVerMap|pkgUidMap] [user|system|xposed|all] [refresh]`.
+- SpeedBackupRootDaemon HiddenApi namespace reuses AppInventory cache within the same process/run.
+- Inventory fields include packageName, label, uid, versionCode, versionName, enabled, installed, system, updatedSystem, xposed, sourceDir and splitCount.
+- tools.sh r43 routes Getlist, pkg version map, uid map and installed package map through AppInventory first, with existing pm/Dex fallbacks preserved.
+- Retains v2.6.95 AppOps location verify and all previous WebDAV/AppState/root-daemon capabilities.
 
-Build with `build_dex.ps1`, then replace `tools/classes.dex` together with the 460 single-tools shell package.
+Dex requirement for tools r43:
+`v2.6.97-app-inventory-source-path-cache-single-tools-unified-root-webdav-deep-hiddenapi-sync-webdav-eof-quiet-appops-location-verify`
 
-## v2.6.91
-
-- `ensuredirrel`: relative collection STAT / 404-only parent MKCOL / final verify in Dex.
-- `optionspreflightrel`: OPTIONS policy and advisory Allow-method analysis in Dex.
-- Shell retains transport, logs, jq/app_details and backup/restore orchestration.
-
-
-## v2.6.94
-
-- HiddenApiUtil.runDaemonCommand() 改為 synchronized，配合 SpeedBackupRootDaemon concurrentClients=true，避免 hiddenapi HashMap cache 併發讀寫風險。
-- 對應 tools 7.66-465 r16：HiddenApi/AppState/Notify 舊獨立 daemon fallback 清理。
-
-- Adds SpeedBackupRootDaemon unified root-side AF_UNIX daemon for HiddenApi/AppState/Notification, with tools.sh fallback to legacy component daemons.
-- Adds capability markers dex.root_unified_daemon.v1 and webdav.deep_policy_table.dex.v1.
-
-
-## SpeedBackup 464 r3
-
-Keeps `com.xayah.dex.SpeedBackupRootDaemon` in release/R8 output so `build_dex.ps1` verification succeeds.
+Build with `build_dex.ps1`, then replace `tools/classes.dex` together with the r43 tools package.

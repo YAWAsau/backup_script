@@ -47,7 +47,7 @@ import java.nio.charset.StandardCharsets;
 import dev.rikka.tools.refine.Refine;
 
 public class HiddenApiUtil {
-    static final String VERSION = "v2.6.95-single-tools-unified-root-webdav-deep-hiddenapi-sync-webdav-eof-quiet-appops-location-verify build=v24.20.14-7.66-474-appops-location-verify-dexfix-r35-202607232022";
+    static final String VERSION = "v2.6.97-app-inventory-source-path-cache-single-tools-unified-root-webdav-deep-hiddenapi-sync-webdav-eof-quiet-appops-location-verify build=v24.20.14-7.66-484-app-inventory-source-path-r45-202607232022";
     /**
      * 單 JVM 批量命令期間的輕量快取。只快取系統層級固定資料或同一輪已讀 package metadata；
      * 不跨 JVM、不落檔，避免一致性風險。
@@ -121,6 +121,7 @@ public class HiddenApiUtil {
         System.out.println("    上述熱路徑只能透過 HiddenApi daemon socket 呼叫，不再提供單次 app_process CLI fallback");
         System.out.println();
         System.out.println("  getInstalledPackagesAsUser USER_ID FILTER_FLAG(user|system|xposed) FORMAT(label|pkgName|flag)  取得安裝清單");
+        System.out.println("  appInventorySnapshot USER_ID [jsonl|appinfo|pkgName|pkgVerMap|pkgUidMap] [user|system|xposed|all] [refresh]  一次取得 package/label/uid/version/source/flag inventory");
         System.out.println();
         System.out.println("  forceStopPackage USER_ID PACKAGE PACKAGE PACKAGE ...  透過 ActivityManager hidden API 批量停止套件，用於備份前 soft freeze");
         System.out.println("  forceStopPackageBatch USER_ID --stdin  從 stdin 批量讀取套件名稱並停止");
@@ -145,6 +146,9 @@ public class HiddenApiUtil {
                 break;
             case "getInstalledPackagesAsUser":
                 getInstalledPackagesAsUser(args);
+                break;
+            case "appInventorySnapshot":
+                appInventorySnapshot(args);
                 break;
             case "forceStopPackage":
                 forceStopPackage(args);
@@ -274,6 +278,9 @@ public class HiddenApiUtil {
         }
         if ("forceStopPackageBatch".equals(command)) {
             return forceStopPackageBatchDaemonCommand(cmdArgs);
+        }
+        if ("appInventorySnapshot".equals(command)) {
+            return appInventorySnapshotDaemonCommand(cmdArgs);
         }
 
         PrintStream oldOut = System.out;
@@ -1376,6 +1383,26 @@ public class HiddenApiUtil {
         String updateOwnerApi;
         String packageSource;
         String packageSourceName;
+    }
+
+    private static void appInventorySnapshot(String[] args) {
+        try {
+            System.out.print(AppInventoryUtil.runCommand(args));
+            System.exit(0);
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            System.exit(1);
+        }
+    }
+
+    private static DaemonRunResult appInventorySnapshotDaemonCommand(String[] args) {
+        try {
+            return new DaemonRunResult(0, AppInventoryUtil.runCommand(args));
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            return new DaemonRunResult(1, "APP_INVENTORY_FAILED exception=" + sanitizeDiagValue(t.getClass().getName())
+                    + " message=" + sanitizeDiagValue(t.getMessage()) + "\n");
+        }
     }
 
     private static void getInstalledPackagesAsUser(String[] args) {

@@ -18,8 +18,8 @@ android {
         applicationId = "com.xayah.dex"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2690
-        versionName = "2.6.93-single-tools-unified-root-webdav-deep-hiddenapi-sync"
+        versionCode = 2696
+        versionName = "2.6.96-app-inventory-cache"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         multiDexEnabled = false

@@ -142,7 +142,7 @@ public final class AppStateLocalization {
         BUILTIN.put("op_name_READ_CONTACTS", "讀取連絡人");
         BUILTIN.put("op_name_VIBRATE", "振動");
         BUILTIN.put("op_name_GPS", "GPS");
-        BUILTIN.put("op_name_FINE_LOCATION", "精凖位置");
+        BUILTIN.put("op_name_FINE_LOCATION", "精準位置");
         BUILTIN.put("op_name_COARSE_LOCATION", "粗略位置");
         BUILTIN.put("op_name_LOCATION", "使用位置");
         BUILTIN.put("op_name_special_SENSORS", "傳感器");

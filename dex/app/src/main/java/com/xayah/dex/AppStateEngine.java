@@ -360,6 +360,9 @@ public final class AppStateEngine {
         addCapability(capabilities, "webdav.directory_ensure.dex.v1", true, true, "relative directory stat+404-only parent-chain MKCOL+verify inside WebDavUtil daemon");
         addCapability(capabilities, "webdav.options_preflight.dex.v1", true, true, "OPTIONS method policy and advisory Allow analysis inside WebDavUtil daemon");
         addCapability(capabilities, "dex.root_unified_daemon.v1", true, true, "HiddenApi/AppState/Notification can share SpeedBackupRootDaemon AF_UNIX daemon with old-daemon fallback");
+        addCapability(capabilities, "dex.app_inventory.snapshot.v1", true, true, "PackageManager inventory snapshot includes package/label/uid/version/source/flag as JSONL or shell map formats");
+        addCapability(capabilities, "dex.app_inventory.daemon_cache.v1", true, true, "SpeedBackupRootDaemon HiddenApi namespace reuses AppInventory cache within the same run");
+        addCapability(capabilities, "dex.app_inventory.source_paths.v1", true, true, "AppInventory exports sourceDir/splitSourceDirs and pkgApkPathMap for APK backup without shell pm path");
         addCapability(capabilities, "webdav.deep_policy_table.dex.v1", true, true, "WebDavUtil exposes consolidated vendor/pacer/PROPFIND/error-policy capability marker for deeper Dex-side WebDAV policy");
         addCapability(capabilities, "dex.source.libsardine_removed.v1", true, false, "unused non-included libsardine source tree removed from release source package");
         addCapability(capabilities, "webdav.atomic_probe.v2", true, true, "PUT part + MOVE publish + GET byte compare + COPY + overwrite regression");

@@ -35,7 +35,7 @@ import kotlin.system.exitProcess
  * streaming and never buffers the whole archive on disk.
  */
 object WebDavUtil {
-    private const val VERSION = "v1.5.18-unified-root-webdav-deep-policy dex=v2.6.95-single-tools-unified-root-webdav-deep-hiddenapi-sync-webdav-eof-quiet-appops-location-verify build=v24.20.14-7.66-474-appops-location-verify-dexfix-r35-202607232022"
+    private const val VERSION = "v1.5.20-unified-root-webdav-deep-policy dex=v2.6.97-app-inventory-source-path-cache-single-tools-unified-root-webdav-deep-hiddenapi-sync-webdav-eof-quiet-appops-location-verify build=v24.20.14-7.66-484-app-inventory-source-path-r45-202607232022"
 
     private val DAV_PROPFIND_BODY = """
         <?xml version="1.0" encoding="utf-8"?>
