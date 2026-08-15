@@ -4,10 +4,18 @@
 #   .\build_dex.ps1
 # ============================================================
 
+param(
+    [string]$JavaHome = "",
+    [string]$SdkRoot = ""
+)
+
 $ErrorActionPreference = "Stop"
 
 # ---- 1. Set JAVA_HOME (Android Studio bundled JDK) ----
-$javaHome = "C:\Program Files\Android\Android Studio\jbr"
+if ([string]::IsNullOrWhiteSpace($JavaHome)) {
+    $JavaHome = "C:\Program Files\Android\Android Studio\jbr"
+}
+$javaHome = $JavaHome
 if (-not (Test-Path -LiteralPath $javaHome)) {
     Write-Host "JAVA_HOME not found: $javaHome" -ForegroundColor Red
     Write-Host "Edit the javaHome variable in this script to match your Android Studio JBR path" -ForegroundColor Yellow
@@ -17,7 +25,10 @@ $env:JAVA_HOME = $javaHome
 Write-Host "JAVA_HOME = $env:JAVA_HOME" -ForegroundColor Green
 
 # ---- 2. Write local.properties (SDK path) ----
-$sdkPath = Join-Path $env:LOCALAPPDATA "Android\Sdk"
+if ([string]::IsNullOrWhiteSpace($SdkRoot)) {
+    $SdkRoot = Join-Path $env:LOCALAPPDATA "Android\Sdk"
+}
+$sdkPath = $SdkRoot
 if (-not (Test-Path -LiteralPath $sdkPath)) {
     Write-Host "Android SDK not found: $sdkPath" -ForegroundColor Red
     Write-Host "Edit the sdkPath variable in this script to match your Android SDK path" -ForegroundColor Yellow
@@ -92,7 +103,19 @@ $requiredDexStrings = @(
     "dex.cchelper.table_refresh.v1",
     "dex.cchelper.zh_tw_polish.v1",
     "dex.cchelper.repeat_merge_fix.v1",
-    "CCUTIL_SELFTEST_OK cchelper.table_refresh.v1 zh_tw_polish.v1 repeat_merge_fix.v1"
+    "CCUTIL_SELFTEST_OK cchelper.table_refresh.v1 zh_tw_polish.v1 repeat_merge_fix.v1",
+    "v2.6.151-display-timeout-daemon-session-native-package-kill-live-rescan-taskstack-package-guard-native-package-freeze-parent-control",
+    "v24.20.14-7.66-630-display-timeout-daemon-session-r201-202607232022",
+    "dex.process_observer.taskstack_package_guard.v1",
+    "PACKAGE_SCOPE_TRIGGER reason=taskstack-top-target",
+    "freeze-package-single-request-v1",
+    "thaw-uid-emergency-v1",
+    "daemon-parent-control-v1",
+    "kill-package-live-rescan-v1",
+    "dex.cgroup_freezer.native_package_kill_live_rescan.v1",
+    "native-kill-package-pre-force-stop",
+    "native-kill-package-post-force-stop",
+    "dex.display_power.root_daemon.v1"
 )
 foreach ($needle in $requiredDexStrings) {
     if (-not $dexLatin1.Contains($needle)) {
@@ -100,7 +123,7 @@ foreach ($needle in $requiredDexStrings) {
         exit 1
     }
 }
-Write-Host "Dex verify: required SpeedBackup 464 r3 classes/capabilities present" -ForegroundColor Green
+Write-Host "Dex verify: required SpeedBackup r201 display-timeout daemon session classes/capabilities present" -ForegroundColor Green
 
 # ---- 5. No companion APK / no UI output in zero-UI build ----
 Write-Host ""

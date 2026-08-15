@@ -1,5 +1,6 @@
 package android.content.pm;
 
+import android.content.Intent;
 import android.os.UserHandle;
 
 import java.util.List;
@@ -16,6 +17,14 @@ public class PackageManagerHidden {
     }
 
     public PackageInfo getPackageInfoAsUser(String packageName, int flags, int userId) {
+        throw new RuntimeException("Stub!");
+    }
+
+    public ResolveInfo resolveActivityAsUser(Intent intent, int flags, int userId) {
+        throw new RuntimeException("Stub!");
+    }
+
+    public List<ResolveInfo> queryIntentActivitiesAsUser(Intent intent, int flags, int userId) {
         throw new RuntimeException("Stub!");
     }
 

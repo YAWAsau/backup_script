@@ -35,7 +35,7 @@ import kotlin.system.exitProcess
  * streaming and never buffers the whole archive on disk.
  */
 object WebDavUtil {
-    private const val VERSION = "v1.5.20-unified-root-webdav-deep-policy dex=v2.6.97-app-inventory-source-path-cache-single-tools-unified-root-webdav-deep-hiddenapi-sync-webdav-eof-quiet-appops-location-verify build=v24.20.14-7.66-484-app-inventory-source-path-r45-202607232022"
+    private const val VERSION = "v1.5.23-relpath-traversal-guard dex=v2.6.164-r309-label-pathsafe build=v24.20.14-7.66-732-label-pathsafe-r309-202607232022"
 
     private val DAV_PROPFIND_BODY = """
         <?xml version="1.0" encoding="utf-8"?>
@@ -55,6 +55,7 @@ object WebDavUtil {
     private val listOkCache = ConcurrentHashMap<ListCacheKey, String>()
     private val serverKindCache = ConcurrentHashMap<String, String>()
     private val managedUploadSeq = AtomicInteger(0)
+    private val streamLogSeq = AtomicInteger(0)
 
     private data class ListCacheKey(val url: String, val depth: Int)
     private enum class DirState { EXISTS, MISSING, FAILED }
@@ -80,6 +81,153 @@ object WebDavUtil {
         System.err.println(line)
     }
 
+    private fun envLong(name: String, defaultValue: Long, minValue: Long, maxValue: Long): Long {
+        val raw = System.getenv(name)?.trim()?.toLongOrNull() ?: return defaultValue
+        if (raw == 0L) return 0L
+        return raw.coerceIn(minValue, maxValue)
+    }
+
+    private fun streamHeartbeatMs(): Long = envLong("WEBDAV_STREAM_HEARTBEAT_SEC", 30L, 5L, 3600L) * 1000L
+    private fun streamProgressStepBytes(): Long = envLong("WEBDAV_STREAM_PROGRESS_STEP_MB", 256L, 16L, 4096L) * 1024L * 1024L
+    private fun streamIdleWarnMs(): Long = envLong("WEBDAV_STREAM_IDLE_WARN_SEC", 60L, 10L, 86400L) * 1000L
+    private fun streamVerbose(): Boolean {
+        val raw = System.getenv("WEBDAV_STREAM_VERBOSE")?.trim()?.lowercase(java.util.Locale.US) ?: return false
+        return raw == "1" || raw == "true" || raw == "yes" || raw == "on"
+    }
+
+    private fun formatMiB(bytes: Long): String = String.format(java.util.Locale.US, "%.1f", bytes.toDouble() / 1048576.0)
+
+    private fun classifyStreamError(e: Throwable?): String {
+        if (e == null) return "unknown"
+        val text = ((e.javaClass.name ?: "") + " " + (e.message ?: "")).lowercase(java.util.Locale.US)
+        return when {
+            text.contains("connection reset") || text.contains("econnreset") -> "remote_reset"
+            text.contains("broken pipe") || text.contains("epipe") -> "remote_pipe_broken"
+            text.contains("timed out") || text.contains("timeout") || text.contains("etimedout") -> "server_timeout"
+            text.contains("socket closed") || text.contains("closed channel") -> "socket_closed"
+            text.contains("ssl") || text.contains("tls") || text.contains("handshake") -> "tls_failure"
+            text.contains("unexpected eof") || text.contains("eofexception") -> "unexpected_eof"
+            text.contains("no route") || text.contains("network is unreachable") || text.contains("unreachable") -> "network_unreachable"
+            else -> "daemon_io_exception"
+        }
+    }
+
+    private class WebDavStreamMeter(
+        private val relPath: String,
+        private val modeName: String,
+        private val serverKind: String,
+        private val targetRel: String,
+    ) {
+        private val tag = "wdavstream-" + streamLogSeq.incrementAndGet()
+        private val heartbeatMs = streamHeartbeatMs()
+        private val progressStepBytes = streamProgressStepBytes()
+        private val idleWarnMs = streamIdleWarnMs()
+        private val verbose = streamVerbose()
+        private val startMs = System.currentTimeMillis()
+        private val bytes = AtomicLong(0L)
+        private val lastProgressMs = AtomicLong(startMs)
+        private val lastLogMs = AtomicLong(startMs)
+        private val done = AtomicBoolean(false)
+        private val nextProgressBytes = AtomicLong(if (progressStepBytes > 0L) progressStepBytes else Long.MAX_VALUE)
+        private val lastIdleBytesLogged = AtomicLong(-1L)
+
+        fun begin() {
+            infoLog("WEBDAV_STREAM_BEGIN tag=$tag rel=$relPath target=$targetRel mode=$modeName server=$serverKind heartbeatSec=${heartbeatMs / 1000L} progressStepMB=${progressStepBytes / 1048576L} idleWarnSec=${idleWarnMs / 1000L}")
+            if (heartbeatMs > 0L || idleWarnMs > 0L) {
+                Thread { watchLoop() }.apply { isDaemon = true; name = "webdav-stream-meter-$tag"; start() }
+            }
+        }
+
+        fun wrap(source: InputStream): InputStream = object : InputStream() {
+            override fun read(): Int {
+                val v = source.read()
+                if (v >= 0) onBytes(1)
+                return v
+            }
+
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                val n = source.read(buffer, offset, length)
+                if (n > 0) onBytes(n.toLong())
+                return n
+            }
+
+            override fun close() {
+                source.close()
+            }
+        }
+
+        private fun onBytes(delta: Long) {
+            val total = bytes.addAndGet(delta)
+            val now = System.currentTimeMillis()
+            lastProgressMs.set(now)
+            if (verbose) {
+                maybeLog("progress", total, now, "verbose=1")
+                return
+            }
+            while (total >= nextProgressBytes.get()) {
+                val threshold = nextProgressBytes.get()
+                if (nextProgressBytes.compareAndSet(threshold, threshold + progressStepBytes)) {
+                    maybeLog("progress", total, now, "thresholdMB=${threshold / 1048576L}")
+                    break
+                }
+            }
+        }
+
+        private fun maybeLog(kind: String, total: Long, now: Long, extra: String = "") {
+            if (kind == "heartbeat" && heartbeatMs <= 0L) return
+            val elapsedMs = (now - startMs).coerceAtLeast(1L)
+            val idleMs = (now - lastProgressMs.get()).coerceAtLeast(0L)
+            val speedKib = if (elapsedMs > 0L) (total * 1000L / elapsedMs / 1024L) else 0L
+            if (kind == "heartbeat" && now - lastLogMs.get() < heartbeatMs) return
+            lastLogMs.set(now)
+            val suffix = if (extra.isNotBlank()) " $extra" else ""
+            infoLog("WEBDAV_STREAM_${kind.uppercase(java.util.Locale.US)} tag=$tag rel=$relPath sentBytes=$total sentMiB=${formatMiB(total)} elapsedMs=$elapsedMs idleMs=$idleMs speedKiBps=$speedKib$suffix")
+        }
+
+        private fun watchLoop() {
+            val sleepMs = when {
+                heartbeatMs > 0L -> minOf(5000L, maxOf(1000L, heartbeatMs / 2L))
+                idleWarnMs > 0L -> minOf(5000L, maxOf(1000L, idleWarnMs / 2L))
+                else -> 5000L
+            }
+            while (!done.get()) {
+                try { Thread.sleep(sleepMs) } catch (_: InterruptedException) { return }
+                if (done.get()) return
+                val now = System.currentTimeMillis()
+                val total = bytes.get()
+                val idleMs = now - lastProgressMs.get()
+                if (idleWarnMs > 0L && idleMs >= idleWarnMs && lastIdleBytesLogged.get() != total) {
+                    lastIdleBytesLogged.set(total)
+                    maybeLog("idle", total, now, "idleWarn=1")
+                } else if (heartbeatMs > 0L && now - lastLogMs.get() >= heartbeatMs) {
+                    maybeLog("heartbeat", total, now)
+                }
+            }
+        }
+
+        fun finish(httpCode: Int) {
+            if (!done.compareAndSet(false, true)) return
+            val now = System.currentTimeMillis()
+            val total = bytes.get()
+            val elapsedMs = (now - startMs).coerceAtLeast(1L)
+            val speedKib = total * 1000L / elapsedMs / 1024L
+            val ok = httpCode in 200..299
+            val event = if (ok) "WEBDAV_STREAM_DONE" else "WEBDAV_STREAM_FAIL"
+            val kind = if (ok) "ok" else "http_status"
+            infoLog("$event tag=$tag kind=$kind rel=$relPath target=$targetRel mode=$modeName server=$serverKind http=$httpCode sentBytes=$total sentMiB=${formatMiB(total)} elapsedMs=$elapsedMs speedKiBps=$speedKib")
+        }
+
+        fun fail(e: Throwable) {
+            if (!done.compareAndSet(false, true)) return
+            val now = System.currentTimeMillis()
+            val total = bytes.get()
+            val elapsedMs = (now - startMs).coerceAtLeast(1L)
+            val speedKib = total * 1000L / elapsedMs / 1024L
+            val message = (e.message ?: "").replace('\n', ' ').replace('\r', ' ').take(180)
+            infoLog("WEBDAV_STREAM_FAIL tag=$tag kind=${classifyStreamError(e)} rel=$relPath target=$targetRel mode=$modeName server=$serverKind http=0 sentBytes=$total sentMiB=${formatMiB(total)} elapsedMs=$elapsedMs speedKiBps=$speedKib error=${e.javaClass.simpleName} message=$message")
+        }
+    }
+
 
     @JvmStatic
     fun main(args: Array<String>) {
@@ -100,6 +248,7 @@ object WebDavUtil {
             "compatProbeRel" -> cmdCompatProbeRel(args)
             "ensurebaserel" -> cmdEnsureBaseRel(args)
             "ensuredirrel" -> cmdEnsureDirRel(args)
+            "ensuredirsbatchrel" -> cmdEnsureDirsBatchRel(args)
             "optionspreflightrel" -> cmdOptionsPreflightRel(args)
             "getrel" -> cmdGetRel(args)
             "getstdoutrel" -> cmdGetStdoutRel(args)
@@ -410,6 +559,12 @@ object WebDavUtil {
                 respBody = result.second.toByteArray(StandardCharsets.UTF_8)
                 result.first
             }
+            "ensuredirsbatchrel" -> httpCode = safe {
+                val body = readRequestBody(input, requestBodyLen).toString(StandardCharsets.UTF_8)
+                val result = ensureDirsBatchRel(user, pass, url, body)
+                respBody = result.second.toByteArray(StandardCharsets.UTF_8)
+                result.first
+            }
             "optionspreflightrel" -> httpCode = safe {
                 val result = optionsPreflightRel(user, pass, url, extra1(), extra2())
                 respBody = result.second.toByteArray(StandardCharsets.UTF_8)
@@ -651,6 +806,15 @@ object WebDavUtil {
         finish(result.first)
     }
 
+    private fun cmdEnsureDirsBatchRel(args: Array<String>) {
+        require(args.size >= 4) { "ensuredirsbatchrel <user> <pass> <baseUrl>  (stdin: rel lines)" }
+        val body = readRequestBody(System.`in`, -1L).toString(StandardCharsets.UTF_8)
+        val result = runCatching { ensureDirsBatchRel(args[1], args[2], args[3], body) }
+            .getOrElse { e -> HttpCore.extractCode(e) to "FAIL\t.\t${HttpCore.extractCode(e)}\t${e.javaClass.simpleName}\nsummary\ttotal=0\tok=0\tbad=1\n" }
+        print(result.second)
+        finish(result.first)
+    }
+
     private fun cmdOptionsPreflightRel(args: Array<String>) {
         require(args.size >= 6) { "optionspreflightrel <user> <pass> <baseUrl> <relPath> <mode>" }
         val result = runCatching { optionsPreflightRel(args[1], args[2], args[3], args[4], args[5]) }
@@ -743,9 +907,22 @@ object WebDavUtil {
 
     private fun buildRelUrl(baseUrl: String, relPath: String): String {
         val base = baseUrl.trimEnd('/')
-        val rel = relPath.trimStart('/')
-        if (rel.isEmpty() || rel == ".") return base
+        val rel = sanitizeRelPath(relPath)
+        if (rel.isEmpty()) return base
         return "$base/$rel"
+    }
+
+    private fun sanitizeRelPath(relPath: String): String {
+        val raw = relPath.replace('\\', '/').trimStart('/')
+        if (raw.isEmpty() || raw == ".") return ""
+        val out = ArrayList<String>()
+        val ctrl = Regex("[\\u0000-\\u001F\\u007F]")
+        for (part in raw.split('/')) {
+            if (part.isEmpty() || part == ".") continue
+            val safe = if (part == "..") "__" else part.replace(ctrl, "_")
+            if (safe.isNotEmpty()) out.add(safe)
+        }
+        return out.joinToString("/")
     }
 
     // ---------------------------------------------------------------- WebDAV HTTP ----
@@ -965,6 +1142,48 @@ object WebDavUtil {
             return verifyCode to "state=created\nrel=$rel\nstat=$statCode\nmkdir=$mkdirCode\nverify=$verifyCode\n"
         }
         return verifyCode to "state=verify_failed\nrel=$rel\nstat=$statCode\nmkdir=$mkdirCode\nverify=$verifyCode\n"
+    }
+
+    /** Ensure multiple relative collections in one daemon request. Input body: one rel path per line. */
+    private fun ensureDirsBatchRel(user: String, pass: String, baseUrl: String, body: String): Pair<Int, String> {
+        val rels = body.lineSequence()
+            .map { it.trim().trim('/') }
+            .filter { it.isNotEmpty() && it != "." }
+            .distinct()
+            .toList()
+        if (rels.isEmpty()) return 200 to "summary\ttotal=0\tok=0\tbad=0\n"
+        val out = StringBuilder()
+        var ok = 0
+        var bad = 0
+        var finalCode = 200
+        for (rel in rels) {
+            val result = ensureDirRel(user, pass, baseUrl, rel)
+            val code = result.first
+            val values = parseKeyValueLines(result.second)
+            val state = values["state"].orEmpty().ifEmpty { if (code in 200..299) "ok" else "fail" }
+            if (code in 200..299) {
+                ok++
+                out.append(if (state == "exists") "EXISTS" else "OK")
+                    .append('\t').append(rel)
+                    .append('\t').append(code)
+                    .append('\t').append(state)
+                    .append('\n')
+            } else {
+                bad++
+                if (finalCode in 200..299) finalCode = code
+                out.append("FAIL")
+                    .append('\t').append(rel)
+                    .append('\t').append(code)
+                    .append('\t').append(state)
+                    .append('\n')
+            }
+        }
+        out.append("summary\ttotal=").append(rels.size)
+            .append("\tok=").append(ok)
+            .append("\tbad=").append(bad)
+            .append('\n')
+        if (ok > 0) invalidateListCache()
+        return finalCode to out.toString()
     }
 
     private fun parseKeyValueLines(text: String): Map<String, String> {
@@ -1557,20 +1776,29 @@ object WebDavUtil {
 
     private fun putStdinManagedRel(user: String, pass: String, baseUrl: String, relPath: String, mode: String?, input: InputStream): Int {
         val decision = managedDecision(user, pass, baseUrl, relPath, mode)
-        infoLog("MANAGED_PUT mode=${decision.modeName} server=${decision.serverKind} rel=$relPath")
-        val code = if (decision.direct) {
-            put(user, pass, buildRelUrl(baseUrl, relPath), input, contentLength = null, chunked = true)
-        } else {
-            val partRel = managedPartRel(relPath)
-            val putCode = put(user, pass, buildRelUrl(baseUrl, partRel), input, contentLength = null, chunked = true)
-            if (putCode !in 200..299) {
-                putCode
+        val targetRel = if (decision.direct) relPath else managedPartRel(relPath)
+        infoLog("MANAGED_PUT mode=${decision.modeName} server=${decision.serverKind} rel=$relPath target=$targetRel streamMeter=1")
+        val meter = WebDavStreamMeter(relPath, decision.modeName, decision.serverKind, targetRel)
+        meter.begin()
+        val meteredInput = meter.wrap(input)
+        val code = try {
+            if (decision.direct) {
+                put(user, pass, buildRelUrl(baseUrl, relPath), meteredInput, contentLength = null, chunked = true)
             } else {
-                val moveCode = move(user, pass, buildRelUrl(baseUrl, partRel), buildRelUrl(baseUrl, relPath), overwrite = true)
-                if (moveCode !in 200..299) runCatching { delete(user, pass, buildRelUrl(baseUrl, partRel)) }
-                moveCode
+                val putCode = put(user, pass, buildRelUrl(baseUrl, targetRel), meteredInput, contentLength = null, chunked = true)
+                if (putCode !in 200..299) {
+                    putCode
+                } else {
+                    val moveCode = move(user, pass, buildRelUrl(baseUrl, targetRel), buildRelUrl(baseUrl, relPath), overwrite = true)
+                    if (moveCode !in 200..299) runCatching { delete(user, pass, buildRelUrl(baseUrl, targetRel)) }
+                    moveCode
+                }
             }
+        } catch (e: Throwable) {
+            meter.fail(e)
+            throw e
         }
+        meter.finish(code)
         if (code in 200..299) invalidateListCache()
         return code
     }
@@ -1900,6 +2128,7 @@ object WebDavUtil {
         println("WebDavUtil $VERSION commands:")
         println("  version")
         println("  rel-only capability: webdav.rel_only.v1; legacy URL aliases disabled")
+        println("  stream diagnostics capability: webdav.stream_heartbeat_error_kind.dex.v1")
         println("  mkdirrel <user> <pass> <baseUrl> <relPath>")
         println("  mkdirsrel <user> <pass> <baseUrl> <relPath>")
         println("  putrel <user> <pass> <baseUrl> <relPath> <localFile>")
@@ -1910,6 +2139,7 @@ object WebDavUtil {
         println("  compatProbeRel <user> <pass> <baseUrl> [testRel]")
         println("  ensurebaserel <user> <pass> <configuredBaseUrl>")
         println("  ensuredirrel <user> <pass> <baseUrl> <relPath>")
+        println("  ensuredirsbatchrel <user> <pass> <baseUrl>  (stdin: rel lines)")
         println("  optionspreflightrel <user> <pass> <baseUrl> <relPath> <mode>")
         println("  vendor quirks: webdav.vendor_quirks.v1 / webdav.vendor_auto_detect.v1")
         println("  WEBR5 consolidated: webdav.compat_probe.v1 / webdav.atomic_probe.v2 / webdav.pacer_retry_backoff.v1 / webdav.directory_cache.v1 / webdav.propfind_xml_tolerant.v2 / webdav.error_policy_table.v1 / webdav.regression_suite.v1 / webdav.deep_policy_table.dex.v1")

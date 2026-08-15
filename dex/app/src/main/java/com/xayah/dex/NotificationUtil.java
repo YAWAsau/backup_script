@@ -12,8 +12,13 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.ParceledListSlice;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.Icon;
 import android.os.Binder;
 import android.os.RemoteException;
 import android.os.UserHandleHidden;
@@ -42,7 +47,7 @@ import java.util.Locale;
 import java.util.Properties;
 
 public class NotificationUtil extends BaseUtil {
-    public static final String VERSION = "v1.1.5-capability-text-fix dex=" + HiddenApiUtil.VERSION;
+    public static final String VERSION = "v1.1.6-inline-notification-icon dex=" + HiddenApiUtil.VERSION;
     public static final int SHELL_UID = 2000;
     public static final String SHELL_PACKAGE = "com.android.shell";
     public static final int NOTIFICATION_ID = 2020;
@@ -59,8 +64,11 @@ public class NotificationUtil extends BaseUtil {
     private static final int DEFAULT_ERROR_ID = 2021;
     private static final int DEFAULT_DEBUG_ID = 2023;
     private static final int MAX_INBOX_LINES = 6;
+    private static final int SPEEDBACKUP_NOTIFICATION_COLOR = 0xFF2F6FED;
+    private static final int SPEEDBACKUP_SMALL_ICON_SIZE_PX = 96;
 
     private static INotificationManager sService;
+    private static volatile Icon sSpeedBackupSmallIcon;
 
     private static void human(String msg) {
         if ("1".equals(System.getenv("DEX_HUMAN_LOG"))) {
@@ -565,12 +573,12 @@ public class NotificationUtil extends BaseUtil {
         }
         builder.setContentTitle(ev.title)
                 .setContentText(ev.text)
-                .setSmallIcon(android.R.drawable.sym_def_app_icon)
                 .setOngoing(ev.ongoing)
                 .setAutoCancel(ev.autoCancel)
                 .setOnlyAlertOnce(ev.onlyAlertOnce)
                 .setShowWhen(ev.showWhen)
                 .setWhen(ev.when);
+        applySpeedBackupNotificationIcon(builder);
         if (ev.subText != null && ev.subText.length() > 0) {
             builder.setSubText(ev.subText);
         }
@@ -605,6 +613,63 @@ public class NotificationUtil extends BaseUtil {
             final NotificationManager notificationManager = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
             notificationManager.notify(ev.tag, ev.id, n);
         }
+    }
+
+    private static void applySpeedBackupNotificationIcon(Notification.Builder builder) {
+        try {
+            builder.setSmallIcon(getSpeedBackupSmallIcon());
+        } catch (Throwable t) {
+            builder.setSmallIcon(android.R.drawable.stat_sys_download_done);
+        }
+        try {
+            builder.setColor(SPEEDBACKUP_NOTIFICATION_COLOR);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static Icon getSpeedBackupSmallIcon() {
+        Icon cached = sSpeedBackupSmallIcon;
+        if (cached != null) return cached;
+        synchronized (NotificationUtil.class) {
+            cached = sSpeedBackupSmallIcon;
+            if (cached != null) return cached;
+            cached = Icon.createWithBitmap(drawSpeedBackupSmallIconBitmap());
+            sSpeedBackupSmallIcon = cached;
+            return cached;
+        }
+    }
+
+    private static Bitmap drawSpeedBackupSmallIconBitmap() {
+        final int size = SPEEDBACKUP_SMALL_ICON_SIZE_PX;
+        final Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        final Canvas canvas = new Canvas(bitmap);
+        canvas.scale(size / 48.0f, size / 48.0f);
+
+        final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+        stroke.setColor(Color.WHITE);
+        stroke.setStyle(Paint.Style.STROKE);
+        stroke.setStrokeCap(Paint.Cap.ROUND);
+        stroke.setStrokeJoin(Paint.Join.ROUND);
+        stroke.setStrokeWidth(3.4f);
+
+        final Path lid = new Path();
+        lid.moveTo(10.5f, 17.0f);
+        lid.lineTo(14.6f, 9.6f);
+        lid.lineTo(33.4f, 9.6f);
+        lid.lineTo(37.5f, 17.0f);
+        canvas.drawPath(lid, stroke);
+
+        final RectF body = new RectF(10.5f, 17.0f, 37.5f, 36.5f);
+        canvas.drawRoundRect(body, 3.2f, 3.2f, stroke);
+        canvas.drawLine(11.2f, 17.0f, 36.8f, 17.0f, stroke);
+
+        stroke.setStrokeWidth(4.2f);
+        final Path check = new Path();
+        check.moveTo(18.3f, 25.8f);
+        check.lineTo(23.0f, 30.5f);
+        check.lineTo(30.6f, 22.0f);
+        canvas.drawPath(check, stroke);
+        return bitmap;
     }
 
     private static void setCompatPriority(Notification.Builder builder, int importance) {

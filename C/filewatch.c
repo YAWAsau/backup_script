@@ -17,7 +17,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define FILEWATCH_VERSION "1.0.0-android23-r25c-dyn16k"
+#define FILEWATCH_VERSION "1.0.0-android28-r28c-dyn16k-relroguard-r238"
 #define EVENT_BUFFER_SIZE (64U * 1024U)
 static volatile sig_atomic_t g_stop = 0;
 

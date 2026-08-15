@@ -15,7 +15,7 @@ import java.util.Locale;
  * underlying failure reason to stderr.
  */
 public final class HiddenApiBypassBridge {
-    public static final String VERSION = "lsposed-hiddenapibypass-6.1";
+    public static final String VERSION = "lsposed-hiddenapibypass-6.1-softgate-r322";
 
     private static final Object LOCK = new Object();
     private static volatile boolean attempted;
@@ -73,6 +73,8 @@ public final class HiddenApiBypassBridge {
     public static String statusLine() {
         return "HIDDEN_API_BYPASS attempted=" + attempted
                 + " enabled=" + enabled
+                + " required=false"
+                + " softGate=true"
                 + " mode=" + sanitize(mode)
                 + " version=" + VERSION
                 + " sdk=" + Build.VERSION.SDK_INT

@@ -21,7 +21,7 @@ import java.nio.charset.StandardCharsets;
  * streaming/network daemon, and install must run under Play UID.
  */
 public final class SpeedBackupRootDaemon {
-    public static final String VERSION = "v2.6.97-app-inventory-source-path-cache-single-tools-unified-root-webdav-deep-hiddenapi-sync-webdav-eof-quiet-appops-location-verify dex=" + HiddenApiUtil.VERSION;
+    public static final String VERSION = "v2.6.160-root-observer-version-procsnap dex=" + HiddenApiUtil.VERSION;
     private static final int HOT_PROTOCOL_VERSION = 1;
 
     private SpeedBackupRootDaemon() {}
@@ -48,8 +48,75 @@ public final class SpeedBackupRootDaemon {
     private static void printUsage() {
         System.out.println("SpeedBackupRootDaemon " + VERSION);
         System.out.println("  capability: dex.root_unified_daemon.v1");
+        System.out.println("  capability: dex.display_power.root_daemon.v1");
         System.out.println("  capability: dex.app_inventory.snapshot.v1");
         System.out.println("  capability: dex.app_inventory.daemon_cache.v1");
+        System.out.println("  capability: dex.app_inventory.pkg_uid.single.v1");
+        System.out.println("  capability: dex.app_inventory.package_status.single.v1");
+        System.out.println("  capability: dex.process_observer.watch.v1");
+        System.out.println("  capability: dex.process_observer.guard.v2");
+        System.out.println("  capability: dex.process_observer.pre_guard.v3");
+        System.out.println("  capability: dex.app_wake_block.v1");
+        System.out.println("  capability: dex.process_observer.integrated_wake_block.v1");
+        System.out.println("  capability: dex.app_kill.context.v1");
+        System.out.println("  capability: dex.process_observer.task_stack.v1");
+        System.out.println("  capability: dex.process_observer.debounce.v1");
+        System.out.println("  capability: dex.process_observer.debounce.v2");
+        System.out.println("  capability: dex.process_observer.lifecycle_token.v1");
+        System.out.println("  capability: dex.process_observer.bootstrap_gate.v1");
+        System.out.println("  capability: dex.process_observer.global_daemon.v1");
+        System.out.println("  capability: dex.process_observer.target_lifecycle.v1");
+        System.out.println("  capability: dex.process_observer.batch_watchset.v1");
+        System.out.println("  capability: dex.process_observer.batch_stop_safe.v1");
+        System.out.println("  capability: dex.process_observer.batch_persistent_safety.v1");
+        System.out.println("  capability: dex.process_observer.live_respawn_guard.v1");
+        System.out.println("  capability: dex.process_observer.cgroup_high_risk_only.v1");
+        System.out.println("  capability: dex.process_observer.high_risk_notop_cgroup_freeze.v1");
+        System.out.println("  capability: dex.process_observer.cgroup_freeze_reuse.v1");
+        System.out.println("  capability: dex.process_observer.cgroup_freeze_reuse_all_alive_pids.v1");
+        System.out.println("  capability: dex.process_observer.cgroup_stale_token_prune.v1");
+        System.out.println("  capability: dex.process_observer.high_risk_top_fast_freeze.v1");
+        System.out.println("  capability: dex.app_wake_block.persistent_state.v1");
+        System.out.println("  capability: dex.app_wake_block.persistent_restore.v1");
+        System.out.println("  capability: dex.app_wake_block.restore_verify.v1");
+        System.out.println("  capability: dex.app_wake_block.persistent_cleanup.v1");
+        System.out.println("  capability: dex.app_wake_block.state_delete_verify.v1");
+        System.out.println("  capability: dex.app_wake_block.cleanup_force_zero_ttl.v1");
+        System.out.println("  capability: dex.app_wake_block.exempted_restore_alias.v1");
+        System.out.println("  capability: dex.app_wake_block.deviceidle_whitelist_restore.v1");
+        System.out.println("  capability: dex.app_wake_block.direct_appops.v1");
+        System.out.println("  capability: dex.app_wake_block.direct_standby.v1");
+        System.out.println("  capability: dex.app_wake_block.direct_deviceidle.v1");
+        System.out.println("  capability: dex.process_observer.raw_transaction_code.v1");
+        System.out.println("  capability: dex.uid_net_block.netpolicy_direct.v1");
+        System.out.println("  capability: dex.uid_net_block.netd_direct_probe.v1");
+        System.out.println("  capability: dex.uid_net_block.persistent_restore.v1");
+        System.out.println("  capability: dex.uid_net_block.smart_policy.v1");
+        System.out.println("  capability: dex.cgroup_freezer.lifecycle.v1");
+        System.out.println("  capability: dex.process_observer.cgroup_freezer_guard.v1");
+        System.out.println("  capability: dex.cgroup_freezer.persistent_restore.v1");
+        System.out.println("  capability: dex.process_observer.cgroup_freezer_fallback_kill.v1");
+        System.out.println("  capability: dex.cgroup_freezer.native_helper_optional.v1");
+        System.out.println("  capability: dex.process_observer.native_logd_events_optional.v1");
+        System.out.println("  capability: dex.cgroup_freezer.native_daemon_optional.v1");
+        System.out.println("  capability: dex.cgroup_freezer.batch_daemon_prewarm.v1");
+        System.out.println("  capability: dex.cgroup_freezer.native_package_atomic.v1");
+        System.out.println("  capability: dex.cgroup_freezer.native_thaw_uid_emergency.v1");
+        System.out.println("  capability: dex.cgroup_freezer.daemon_parent_control.v1");
+        System.out.println("  capability: dex.cgroup_freezer.binder_freeze_optional.v1");
+        System.out.println("  capability: dex.cgroup_freezer.native_scan_package_optional.v1");
+        System.out.println("  capability: dex.cgroup_freezer.v1_fallback_optional.v1");
+        System.out.println("  capability: dex.process_observer.smart_policy.v1");
+        System.out.println("  capability: dex.app_wake_block.token_match_guard.v1");
+        System.out.println("  capability: dex.app_wake_block.token_epoch.v1");
+        System.out.println("  capability: dex.process_observer.token_epoch.v1");
+        System.out.println("  capability: dex.process_observer.stop_missing_restore.v1");
+        System.out.println("  capability: dex.app_kill.verify.v1");
+        System.out.println("  capability: dex.app_kill.top_check.v1");
+        System.out.println("  capability: dex.app_wake_block.parser.v2");
+        System.out.println("  capability: dex.hidden_api.bootstrap.v2");
+        System.out.println("  capability: dex.hidden_api.bypass_softgate.v1");
+        System.out.println("  capability: dex.hidden_api.runtime_probe.v1");
         System.out.println("  daemonunix <socketPath> [idleTimeoutSec] [ownerPid]");
     }
 
@@ -65,6 +132,22 @@ public final class SpeedBackupRootDaemon {
             AppStateEngine.initializeRuntime();
         } catch (Throwable t) {
             System.err.println("ROOT_DAEMON_APPSTATE_INIT_WARN reason=" + t.getClass().getSimpleName());
+        }
+        try {
+            String cleanup = AppWakeBlockUtil.cleanupStalePersistentStates("root-daemon-start");
+            if (cleanup != null && cleanup.trim().length() > 0 && !cleanup.contains(" stale=0 ")) {
+                System.err.print(cleanup);
+            }
+        } catch (Throwable t) {
+            System.err.println("APP_WAKE_BLOCK_PERSISTENT_CLEANUP_WARN reason=root-daemon-start exception=" + t.getClass().getSimpleName());
+        }
+        try {
+            String cleanup = UidNetworkBlockUtil.cleanupStalePersistentStates("root-daemon-start");
+            if (cleanup != null && cleanup.trim().length() > 0 && !cleanup.contains(" stale=0 ")) {
+                System.err.print(cleanup);
+            }
+        } catch (Throwable t) {
+            System.err.println("UID_NET_BLOCK_PERSISTENT_CLEANUP_WARN reason=root-daemon-start exception=" + t.getClass().getSimpleName());
         }
         DaemonBootstrap.runUnixDaemon(
                 "SPEEDBACKUP_ROOT",

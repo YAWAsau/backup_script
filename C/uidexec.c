@@ -14,6 +14,8 @@
 #define PATH_MAX 4096
 #endif
 
+#define UIDEXEC_VERSION "1.0.0-android28-r28c-dyn16k-relroguard-r238"
+
 static int debug_enabled(void) {
     const char *debug = getenv("UIDEXEC_DEBUG");
     return debug != NULL && strcmp(debug, "0") != 0 && debug[0] != '\0';
@@ -137,6 +139,11 @@ static void drop_identity(uid_t uid, gid_t gid) {
 }
 
 int main(int argc, char **argv) {
+    if (argc == 2 && (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "version") == 0)) {
+        printf("uidexec %s\n", UIDEXEC_VERSION);
+        return 0;
+    }
+
     if (argc < 6) {
         usage(argv[0]);
         return 2;

@@ -18,8 +18,8 @@ android {
         applicationId = "com.xayah.dex"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2696
-        versionName = "2.6.96-app-inventory-cache"
+        versionCode = 2719
+        versionName = "2.6.151-display-timeout-daemon-session"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         multiDexEnabled = false

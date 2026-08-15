@@ -4,6 +4,8 @@ import android.annotation.SuppressLint;
 import android.app.ActivityManager;
 import android.app.AppOpsManagerHidden;
 import android.content.Context;
+import android.content.ComponentName;
+import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ActivityInfoHidden;
 import android.content.pm.ApplicationInfo;
@@ -11,6 +13,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManagerHidden;
 import android.content.pm.PermissionInfo;
+import android.content.pm.ResolveInfo;
 import android.os.Build;
 import android.os.UserHandle;
 import android.os.UserHandleHidden;
@@ -38,9 +41,9 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.concurrent.TimeUnit;
@@ -58,7 +61,7 @@ import dev.rikka.tools.refine.Refine;
 public final class AppStateEngine {
     public static final int SCHEMA_VERSION = 2;
     public static final int DAEMON_PROTOCOL_VERSION = 1;
-    public static final String ENGINE_VERSION = "v1.3.35-ssaid-metadata-restore";
+    public static final String ENGINE_VERSION = "v1.3.80-observer-version-procsnap";
 
     static final Gson GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().create();
     static final Gson PRETTY_GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().setPrettyPrinting().create();
@@ -71,6 +74,7 @@ public final class AppStateEngine {
         UNSUPPORTED(40, false),
         PERMISSION_DENIED(50, false),
         VERIFY_MISMATCH(60, false),
+        VERIFY_VENDOR_CONSTRAINED(61, false),
         INTERNAL_ERROR(70, true);
 
         public final int code;
@@ -92,7 +96,7 @@ public final class AppStateEngine {
         }
 
         public int processExitCode() {
-            if (resultCode == ResultCode.OK || resultCode == ResultCode.PARTIAL || resultCode == ResultCode.VERIFY_MISMATCH) {
+            if (resultCode == ResultCode.OK || resultCode == ResultCode.PARTIAL || resultCode == ResultCode.VERIFY_MISMATCH || resultCode == ResultCode.VERIFY_VENDOR_CONSTRAINED) {
                 return 0;
             }
             return resultCode == ResultCode.BAD_REQUEST ? 2 : 1;
@@ -253,6 +257,8 @@ public final class AppStateEngine {
                     return foregroundList(userId);
                 case "foregroundtop":
                     return foregroundTop(userId);
+                case "defaulthome":
+                    return defaultHome(userId);
                 case "restore":
                     return restoreAppState(userId, body);
                 case "verify":
@@ -291,6 +297,8 @@ public final class AppStateEngine {
         JsonArray capabilities = new JsonArray();
         addCapability(capabilities, "dex.capabilities.v1", true, true, "json");
         addCapability(capabilities, "dex.machine_stdout.v1", true, true, "stdout=data-only;stderr=diagnostic");
+        addCapability(capabilities, "dex.label_path_segment_safe.v1", true, true, "Dex app labels emitted to tools are path-segment sanitized for local/remote backup roots");
+        addCapability(capabilities, "dex.webdav.relpath_traversal_guard.v1", true, true, "WebDavUtil buildRelUrl rejects dot-dot traversal in relative paths");
         addCapability(capabilities, "dex.cchelper.glossary.v1", true, false, "CCHelper applies SpeedBackup phrase glossary after OpenCC character conversion");
         addCapability(capabilities, "dex.cchelper.table_refresh.v1", true, false, "CCHelper table refresh with zh-TW polish and selftest");
         addCapability(capabilities, "dex.cchelper.zh_tw_polish.v1", true, false, "CCHelper can polish already-Traditional SpeedBackup wording without script self-rewrite");
@@ -304,6 +312,10 @@ public final class AppStateEngine {
         addCapability(capabilities, "appstate.foreground_list.json.v1", true, false, "single-json;top+foreground+foreground_service+active+background+cached;packageName+label");
         addCapability(capabilities, "appstate.foreground_list.simple_json.v1", true, false, "app-items-only-label+packageName;no-uid-no-process-no-importance");
         addCapability(capabilities, "appstate.foreground_top.v1", true, false, "focused-top-package+dumpsys-activity-window-fallback");
+        addCapability(capabilities, "appstate.default_home.v1", true, false, "PackageManager HOME intent resolution; detects ResolverActivity as partial");
+        addCapability(capabilities, "appstate.default_home.role_fallback.v1", true, false, "RoleManager HOME holder fallback when resolveActivity returns android/empty");
+        addCapability(capabilities, "appstate.default_home.get_home_activities.v1", true, false, "PackageManager getHomeActivities default ComponentName fallback before role/single-candidate fallback");
+        addCapability(capabilities, "appstate.default_home.get_home_activities.reflect.v1", true, false, "Compile-safe reflection bridge for getHomeActivities on SDK stubs that hide the method");
         addCapability(capabilities, "appstate.foreground_state.dumpsys_fallback.v1", true, false, "activity-processes+oom+activities+window");
         addCapability(capabilities, "appstate.shared_payload.v1", true, true, "snapshot=restore=verify");
         addCapability(capabilities, "appstate.special_access.integrated.v1", true, true, "snapshot+restore+verify");
@@ -311,11 +323,97 @@ public final class AppStateEngine {
         addCapability(capabilities, "appstate.verify.batch.v3", true, true, "canonical-ndjson+structured-mismatch");
         addCapability(capabilities, "appstate.restore.batch.v4", true, true, "runtime-permission-uid-op+explicit-package-op");
         addCapability(capabilities, "appstate.verify.batch.v4", true, true, "effective-runtime-op+stable-flags");
+        addCapability(capabilities, "appstate.verify.vendor_classification.dex.v1", true, true, "VERIFY_VENDOR_CONSTRAINED emitted by Dex when all verify mismatches are vendor/platform-constrained AppOps or pruned legacy records");
         addCapability(capabilities, "appstate.appops_reset.integrated.v1", true, true, "package-scoped");
         addCapability(capabilities, "appstate.ssaid.integrated.v1", true, true, "snapshot+restore+verify+uid-key-settings_ssaid");
         addCapability(capabilities, "appstate.ssaid.hardening.v1", true, true, "restore-validates-16hex-lowercase;reports-uidKey-filePath-file-readback-source;file-metadata-audit");
         addCapability(capabilities, "appstate.ssaid.metadata_restore.v1", true, true, "preserve-or-self-heal-settings_ssaid-owner-mode-context-after-root-atomic-write");
         addCapability(capabilities, "appstate.appops.effective_scope_drift.v2", true, true, "otherAppOps raw package/uid drift tolerated when effective mode is restored; derived op2/op10/op41/op42 missing-row verify tolerated");
+        addCapability(capabilities, "appstate.other_appops.unknown_skip.v1", true, true, "skip framework-rejected unknown/private otherAppOps such as op154/op155 instead of poisoning AppState restore/verify");
+        addCapability(capabilities, "dex.app_inventory.package_status.single.v1", true, true, "single-package PackageManager status facade for restore-time installed/version/uid decisions");
+        addCapability(capabilities, "dex.app_inventory.package_filter_batch.v1", true, true, "appInventorySnapshot supports packages:<csv> batch filtering from one cached inventory scan");
+        addCapability(capabilities, "dex.app_inventory.getlist_onecall.v1", true, true, "appInventoryGetlist combines user/xposed inventory, targeted system packages and default HOME metadata in one daemon command");
+        addCapability(capabilities, "dex.process_observer.watch.v1", true, true, "IActivityManager.registerProcessObserver event-driven per-package process watch; no polling");
+        addCapability(capabilities, "dex.process_observer.guard.v2", true, true, "observer action uses force-stop + verify + killUid/process-group escalation; success requires final alive=false");
+        addCapability(capabilities, "dex.process_observer.pre_guard.v3", true, true, "observer start immediately runs pre-guard/top-check before waiting for callbacks");
+        addCapability(capabilities, "dex.process_observer.task_stack.v1", true, true, "registerTaskStackListener event path catches top-activity/task-stack changes without polling");
+        addCapability(capabilities, "dex.process_observer.taskstack_package_guard.v1", true, true, "TOP task-stack transition without event PID triggers immediate package-scope cgroup freeze for high-risk packages; freezer failure escalates to force-stop/kill");
+        addCapability(capabilities, "dex.process_observer.live_respawn_guard.v1", true, true, "task-stack targetAlive-not-top triggers immediate package-scope guard instead of waiting for a later shell checkpoint");
+        addCapability(capabilities, "dex.process_observer.cgroup_high_risk_only.v1", true, true, "ProcessObserver cgroup-freeze primary path is restricted to the hardcoded high-risk package set; ordinary packages use instant force-stop/kill guard");
+        addCapability(capabilities, "dex.process_observer.high_risk_notop_cgroup_freeze.v1", true, true, "high-risk targetAlive-not-top task-stack events keep cgroup-freeze-first semantics instead of force-stopping QQ/WeChat-style packages");
+        addCapability(capabilities, "dex.process_observer.cgroup_freeze_reuse.v1", true, true, "high-risk ProcessObserver reuses already-frozen package pid sets instead of opening duplicate cgroup freezer tokens");
+        addCapability(capabilities, "dex.process_observer.cgroup_freeze_reuse_all_alive_pids.v1", true, true, "high-risk pid-scope cgroup freeze records the full alive pid-set so sibling callbacks reuse the same cgroup token");
+        addCapability(capabilities, "dex.process_observer.cgroup_stale_token_prune.v1", true, true, "high-risk process observer prunes cgroup tokens whose frozen pid-set has already exited before freezing a newer pid generation");
+        addCapability(capabilities, "dex.process_observer.cgroup_dead_pid_package_retry.v1", true, true, "high-risk onProcessDied dead-pid cgroup failures retry package-scope cgroup freeze before any force-stop fallback");
+        addCapability(capabilities, "dex.process_observer.high_risk_top_fast_freeze.v1", true, true, "high-risk TOP task-stack transitions attempt direct package-scope cgroup freeze before heavier guard-stop context collection");
+        addCapability(capabilities, "dex.process_observer.debounce.v1", true, true, "recent final alive=false suppresses redundant process-died force-stop actions");
+        addCapability(capabilities, "dex.process_observer.debounce.v2", true, true, "debounce elapsedMs is monotonic/clamped and action execution is serialized to avoid negative debug deltas");
+        addCapability(capabilities, "dex.process_observer.lifecycle_token.v1", true, true, "non-blocking processObserverStart/processObserverStop token lifecycle for tools payloads; no duration guessing");
+        addCapability(capabilities, "dex.process_observer.bootstrap_gate.v1", true, true, "callbacks are not actioned until wake-block apply and pre-guard complete, avoiding startup callback interleaving");
+        addCapability(capabilities, "dex.process_observer.global_daemon.v1", true, true, "RootDaemon registers process observer/task stack listener once and routes callbacks to active targets");
+        addCapability(capabilities, "dex.process_observer.target_lifecycle.v1", true, true, "processObserverStart/Stop add and remove package targets while global listeners stay registered");
+        addCapability(capabilities, "dex.process_observer.batch_watchset.v1", true, true, "processObserverBatchStart/Stop batch watch-set commands are available for tools; no per-app empty fallback call");
+        addCapability(capabilities, "dex.process_observer.batch_stop_safe.v1", true, true, "processObserverBatchStop reports ok/restoreOk/stateDeleted and preserves failed sessions for safety-net cleanup");
+        addCapability(capabilities, "dex.process_observer.batch_persistent_safety.v1", true, true, "processObserver batch writes per-token persistent safety state; stale cleanup restores wake-block/cgroup safety nets before deleting state");
+        addCapability(capabilities, "dex.app_wake_block.persistent_state.v1", true, true, "wake-block writes atomic disk snapshot after original-state capture and each touched AppOps/standby apply");
+        addCapability(capabilities, "dex.app_wake_block.persistent_restore.v1", true, true, "wake-block can restore by wake token, process-observer owner token, package, or all stale snapshots after daemon restart");
+        addCapability(capabilities, "dex.app_wake_block.restore_verify.v1", true, true, "wake-block restore aggregates AppOps/standby shell rc; failed restore keeps persistent state and reports failure");
+        addCapability(capabilities, "dex.app_wake_block.persistent_cleanup.v1", true, true, "wake-block persistent state cleanup restores stale snapshots once and deletes files older than the TTL to prevent unbounded accumulation");
+        addCapability(capabilities, "dex.app_wake_block.state_delete_verify.v1", true, true, "wake-block restore success requires persisted state deletion; delete failure reports STOP_FAILED and retains state");
+        addCapability(capabilities, "dex.app_wake_block.cleanup_force_zero_ttl.v1", true, true, "appWakeBlockCleanupStale TTL_MS=0 treats all persistent states as stale for manual/post-restore cleanup");
+        addCapability(capabilities, "dex.app_wake_block.exempted_restore_alias.v1", true, true, "legacy compatibility marker; superseded by deviceidle whitelist restore");
+        addCapability(capabilities, "dex.app_wake_block.deviceidle_whitelist_restore.v1", true, true, "exempted standby bucket is restored through deviceidle whitelist instead of unsupported am set-standby-bucket exempted");
+        addCapability(capabilities, "dex.app_wake_block.direct_appops.v1", true, true, "wake-block AppOps get/set prefers AppOpsManager hidden API before shell fallback");
+        addCapability(capabilities, "dex.app_wake_block.direct_appops_public_name.v1", true, true, "wake-block maps RUN_IN_BACKGROUND/RUN_ANY_IN_BACKGROUND to public AppOps names before strOpToOp, avoiding unnecessary cmd appops fallback");
+        addCapability(capabilities, "dex.app_wake_block.direct_standby.v1", true, true, "wake-block standby bucket get/set prefers UsageStatsManager/IUsageStatsManager before shell fallback");
+        addCapability(capabilities, "dex.app_wake_block.direct_deviceidle.v1", true, true, "wake-block deviceidle whitelist get/set prefers IDeviceIdleController before shell fallback");
+        addCapability(capabilities, "appstate.deviceidle_whitelist.direct_collect.v1", true, true, "AppState batterySettings deviceidleWhitelist collection prefers IDeviceIdleController before dumpsys fallback");
+        addCapability(capabilities, "appstate.deviceidle_whitelist.direct_restore.v1", true, true, "AppState deviceidle whitelist restore prefers IDeviceIdleController before cmd/dumpsys fallback");
+        addCapability(capabilities, "dex.force_stop.best_effort_daemon_first.v1", true, true, "tools force-stop helper prefers forceStopPackageBatch daemon before am force-stop fallback");
+        addCapability(capabilities, "dex.process_observer.raw_transaction_code.v1", true, true, "process observer callback log includes raw Binder transaction code for AIDL mapping diagnostics");
+        addCapability(capabilities, "dex.process_observer.direct_top_check.v1", true, true, "process observer TOP_CHECK uses IActivityTaskManager direct reflection; no dumpsys activity/window shell path");
+        addCapability(capabilities, "dex.uid_live_state.v1", true, true, "uidLiveState emits UID/running-process/procState facts with IUidObserver API probe; no planner/hash");
+        addCapability(capabilities, "dex.package_install_snapshot.v1", true, true, "packageInstallSnapshot emits installer/sourceDir/dataDir/MATCH_UNINSTALLED/packagesForUid facts; no planner/hash");
+        addCapability(capabilities, "dex.package_restriction_snapshot.v1", true, true, "packageRestrictionSnapshot emits standby/hibernation/auto-revoke/AppOps restriction facts; no planner/hash");
+        addCapability(capabilities, "dex.process_observer.pure_event_cgroup_first.v1", true, true, "observer startup/pre-guard force-stop is disabled; event PID or TOP package scope is frozen first, kill only when freezer fails");
+        addCapability(capabilities, "dex.uid_net_block.netpolicy_direct.v1", true, true, "per-UID network block prefers INetworkPolicyManager Binder policy before any shell route");
+        addCapability(capabilities, "dex.uid_net_block.netd_direct_probe.v1", true, true, "diagnostic direct INetd bandwidth naughty-app Binder provider is available as optional hard mode/probe");
+        addCapability(capabilities, "dex.uid_net_block.persistent_restore.v1", true, true, "UID network block writes persistent state and restores stale/missing tokens with expected user/package guard");
+        addCapability(capabilities, "dex.uid_net_block.smart_policy.v1", true, true, "tools can enable per-UID network block only for high-risk packages to avoid broad overhead");
+        addCapability(capabilities, "dex.cgroup_freezer.lifecycle.v1", true, true, "cgroup freezer tar-scope guard with start/stop tokens, freeze-all-current-pids, per-pid /proc cgroup path resolution, cgroup.events verification, persistent restore cleanup, and process-observer new-pid sessions");
+        addCapability(capabilities, "dex.process_observer.cgroup_freezer_guard.v1", true, true, "process observer freezes newly awakened high-risk package pids during tar-scope guard and falls back to event-driven force-stop when unavailable");
+        addCapability(capabilities, "dex.cgroup_freezer.persistent_restore.v1", true, true, "cgroup freezer persistent state restore/cleanup for unexpected exit or daemon restart");
+        addCapability(capabilities, "dex.process_observer.cgroup_freezer_fallback_kill.v1", true, true, "process observer escalates to event-driven force-stop/kill when cgroup freezer is unavailable or verify fails");
+        addCapability(capabilities, "dex.cgroup_freezer.native_helper_optional.v1", true, true, "cgroup freezer lifecycle can use optional native cgfreezer helper for raw /proc and cgroup.freeze hot path, with Java fallback and the same persistent restore semantics");
+        addCapability(capabilities, "dex.process_observer.native_logd_events_optional.v1", true, true, "process observer can use optional native cgfreezer LOG_ID_EVENTS helper as a secondary event source for am_proc_start/am_proc_died, pid cache, and low-overhead new-pid detection");
+        addCapability(capabilities, "dex.cgroup_freezer.native_daemon_optional.v1", true, true, "optional cgfreezerd unix socket daemon provides persistent scan/freeze/thaw/logd event hot path with Dex lifecycle/state fallback");
+        addCapability(capabilities, "dex.cgroup_freezer.batch_daemon_prewarm.v1", true, true, "tools can prewarm/verify native cgfreezerd once at batch start so per-app freeze uses an already-running daemon");
+        addCapability(capabilities, "dex.cgroup_freezer.persistent_batch_session.v1", true, true, "native cgfreezerd stays alive after batch prewarm; each app sends fast SCAN/FREEZE/THAW/KILL commands and resolves uid/pid in C for the current round");
+        addCapability(capabilities, "dex.cgroup_freezer.native_package_atomic.v1", true, true, "native cgfreezerd FREEZE_PKG performs one live C-side package scan and freezes all current package pids in one daemon request while Dex retains token and persistent restore ownership");
+        addCapability(capabilities, "dex.cgroup_freezer.native_package_kill_live_rescan.v1", true, true, "when FREEZE_PKG fails, Dex orders native KILL_PKG live /proc scan+identity-verified SIGKILL, AMS force-stop, then native post-force-stop rescan before legacy Dex escalation");
+        addCapability(capabilities, "dex.cgroup_freezer.native_thaw_uid_emergency.v1", true, true, "native THAW_UID is reserved for uncertain native package-freeze cleanup and thaws app-UID cgroup and Binder freezer state");
+        addCapability(capabilities, "dex.cgroup_freezer.daemon_parent_control.v1", true, true, "cgfreezerd parent handles HELLO/CAPS/PING/STATUS/STOP directly without forking, ensuring complete STOP responses and daemon health counters");
+        addCapability(capabilities, "dex.process_observer.dead_event_noop.v1", true, true, "ProcessObserver ignores onProcessDied callbacks when no target process remains alive, avoiding unnecessary cgroup fallback force-stop during restore cleanup");
+        addCapability(capabilities, "dex.cgroup_freezer.binder_freeze_optional.v1", true, true, "optional native Binder freezer ioctl barrier before cgroup.freeze, with unsupported/EAGAIN fallback to cgroup freezer");
+        addCapability(capabilities, "dex.cgroup_freezer.v1_fallback_optional.v1", true, true, "optional native cgfreezerd cgroup v1 freezer fallback for older Android/kernel devices when cgroup v2 per-pid freezer is unavailable; Dex lifecycle/state semantics remain unchanged");
+        addCapability(capabilities, "dex.cgroup_freezer.native_scan_package_optional.v1", true, true, "cgroup freezer can use optional native cgfreezer scan-package for low-overhead /proc package pid scanning, with Java fallback");
+        addCapability(capabilities, "dex.cgroup_freezer.cgroup_first_no_suspend.v1", true, true, "tools starts cgroup freezer before legacy kill/suspend and skips package suspend when freezer token is active");
+        addCapability(capabilities, "dex.process_observer.event_pid_freeze_first.v1", true, true, "ProcessObserver attempts cgroup freeze for eventPid even before full /proc scan sees the process");
+        addCapability(capabilities, "dex.process_observer.smart_policy.v1", true, true, "tools can choose guard-stop without wake-block for low-risk apps and restricted wake-block for high-risk packages");
+        addCapability(capabilities, "dex.process_observer.restore_freeze_action.v1", true, true, "ProcessObserver accepts cgroup-freeze action so restore freeze-list/default HOME respawns are frozen event-driven instead of monitor-only");
+        addCapability(capabilities, "dex.app_wake_block.token_match_guard.v1", true, true, "wake-block persistent restore validates expected user/package with owner/wake token to prevent cross-session token collision mismatch");
+        addCapability(capabilities, "dex.app_wake_block.token_epoch.v1", true, true, "wake-block token seed includes process time/pid epoch to reduce token reuse after daemon restart");
+        addCapability(capabilities, "dex.process_observer.token_epoch.v1", true, true, "process-observer token seed includes process time/pid epoch to reduce owner-token reuse after daemon restart");
+        addCapability(capabilities, "dex.process_observer.stop_missing_restore.v1", true, true, "processObserverStop missing-token path invokes Dex persistent wake-block restore before tools shell fallback");
+        addCapability(capabilities, "dex.app_kill.top_check.v1", true, true, "appKillGuard/processObserver guard logs topPackage/topActivity before and after force-stop");
+        addCapability(capabilities, "dex.app_kill.context.v1", true, true, "kill guard emits KILL_CONTEXT killState=foreground/background/foreground-service-event/background-subprocess/already-dead");
+        addCapability(capabilities, "dex.app_kill.verify.v1", true, true, "single package kill guard with before/after alive-pid verification");
+        addCapability(capabilities, "dex.app_wake_block.v1", true, true, "short-window force-stop/AppOps/standby-bucket wake block with snapshot+restore token");
+        addCapability(capabilities, "dex.app_wake_block.restore.v1", true, true, "wake-block logs original RUN_IN_BACKGROUND/RUN_ANY_IN_BACKGROUND/standby bucket and restores touched state");
+        addCapability(capabilities, "dex.app_wake_block.parser.v2", true, true, "wake-block parser separates AppOps packageMode/uidMode/effectiveMode and maps numeric standby buckets such as 10=active");
+        addCapability(capabilities, "dex.hidden_api.bootstrap.v2", true, true, "Hidden API exemption bootstrap is attempted once as an optional compatibility helper in app_process/root-daemon mode");
+        addCapability(capabilities, "dex.hidden_api.bypass_softgate.v1", true, true, "HiddenApiBypass success is no longer a hard capability gate; functional hidden/service API smoke tests decide pass/fail");
+        addCapability(capabilities, "dex.hidden_api.runtime_probe.v1", true, true, "runtime probe reports non-SDK class/method/service availability for process observer, task stack, force-stop, AppOps and standby APIs");
         addCapability(capabilities, "appstate.daemon.af_unix.v1", true, true, "stream-framed");
         addCapability(capabilities, "appstate.daemon.runtime_preinit.v1", true, true, "context+pm+appops-before-ready");
         addCapability(capabilities, "dex.daemon_bootstrap.shared.v1", true, true, "appstate+notify+hiddenapi");
@@ -323,6 +421,7 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.daemon_hardening.oom_protect.v1", true, true, "daemon best-effort oom_score_adj/renice self-protection");
         addCapability(capabilities, "dex.daemon_supervisor.watchdog.v1", true, true, "external Dex watchdog can restart killed root-side daemons while owner process is alive");
         addCapability(capabilities, "dex.http_util.get.v1", true, true, "short-lived HttpUtil get; used by tools Device_List sharded downloader");
+        addCapability(capabilities, "dex.smb.target_probe.v1", true, false, "direct configured host:port TCP probe for SMB target precheck; auth/share verification stays in tools via smbclient");
         addCapability(capabilities, "dex.device_list.download.v1", false, false, "removed: batch device-list downloader aborted on some Android 16 app_process builds; tools use HttpUtil sharded downloader");
         addCapability(capabilities, "dex.google_package_snapshot.shared.v1", true, true, "install-diagnostics+appstate-verify");
         addCapability(capabilities, "appstate.structured_result_codes.v2", true, true, "result-header+package+item-ndjson");
@@ -331,6 +430,8 @@ public final class AppStateEngine {
         addCapability(capabilities, "appstate.default_appop_missing_equivalent.v1", true, true, "missing-row-equals-mode-default");
         addCapability(capabilities, "appstate.permission_denied_item_partial.v1", true, true, "item-level-securityexception-does-not-poison-batch");
         addCapability(capabilities, "appstate.legacy_permission_normalize.v1", true, true, "skip-nonchangeable-grants+special-appop-permission-bridge");
+        addCapability(capabilities, "appstate.permission_appop_nonrestorable_skip.v1", true, true, "skip framework-rejected private permission AppOps such as SYSTEM_APPLICATION_OVERLAY/op164");
+        addCapability(capabilities, "appstate.permission_flags_nonrestorable_skip.v1", true, true, "skip framework-rejected custom permission flag writes such as Shizuku API_V23 flags=0");
         addCapability(capabilities, "appstate.non_ok_structured_body.v1", true, true, "daemon-body-kept-for-non-ok-package-results");
         addCapability(capabilities, "appstate.runtime_permission_uid_restore.v1", true, true, "clear-package+set-uid-effective-mode");
         addCapability(capabilities, "appstate.permission_flags.stable_mask.v1", true, true, "exclude-os-managed-revoked-compat");
@@ -360,10 +461,15 @@ public final class AppStateEngine {
         addCapability(capabilities, "webdav.directory_ensure.dex.v1", true, true, "relative directory stat+404-only parent-chain MKCOL+verify inside WebDavUtil daemon");
         addCapability(capabilities, "webdav.options_preflight.dex.v1", true, true, "OPTIONS method policy and advisory Allow analysis inside WebDavUtil daemon");
         addCapability(capabilities, "dex.root_unified_daemon.v1", true, true, "HiddenApi/AppState/Notification can share SpeedBackupRootDaemon AF_UNIX daemon with old-daemon fallback");
+        addCapability(capabilities, "dex.display_power.root_daemon.v1", true, true, "setDisplayPowerMode is available as a RootDaemon hot command");
         addCapability(capabilities, "dex.app_inventory.snapshot.v1", true, true, "PackageManager inventory snapshot includes package/label/uid/version/source/flag as JSONL or shell map formats");
         addCapability(capabilities, "dex.app_inventory.daemon_cache.v1", true, true, "SpeedBackupRootDaemon HiddenApi namespace reuses AppInventory cache within the same run");
         addCapability(capabilities, "dex.app_inventory.source_paths.v1", true, true, "AppInventory exports sourceDir/splitSourceDirs and pkgApkPathMap for APK backup without shell pm path");
+        addCapability(capabilities, "dex.app_inventory.pkg_uid.single.v1", true, true, "single package UID refresh after install touched restore");
+        addCapability(capabilities, "dex.process_observer.integrated_wake_block.v1", true, true, "processObserver action suffixes *-appops/*-restricted start wake-block internally and restore on observer stop");
+        addCapability(capabilities, "dex.process_observer.action_wake_suffix.v1", true, true, "guard-stop-restricted/guard-kill-restricted single-command observer+wake-block syntax");
         addCapability(capabilities, "webdav.deep_policy_table.dex.v1", true, true, "WebDavUtil exposes consolidated vendor/pacer/PROPFIND/error-policy capability marker for deeper Dex-side WebDAV policy");
+        addCapability(capabilities, "webdav.stream_heartbeat_error_kind.dex.v1", true, true, "WebDavUtil managed stream logs low-noise heartbeat/progress/idle/fail kind with sent bytes");
         addCapability(capabilities, "dex.source.libsardine_removed.v1", true, false, "unused non-included libsardine source tree removed from release source package");
         addCapability(capabilities, "webdav.atomic_probe.v2", true, true, "PUT part + MOVE publish + GET byte compare + COPY + overwrite regression");
         addCapability(capabilities, "webdav.vendor_quirks.v1", true, true, "auto/rclone/nextcloud/jianguoyun/123pan/generic WebDAV quirk profile");
@@ -380,7 +486,9 @@ public final class AppStateEngine {
         addCapability(capabilities, "webdav.socket.write_idle_watchdog.v1", true, true, "close-origin-socket-when-request-write-stalls-45s");
         addCapability(capabilities, "webdav.empty_body_retry_before_payload", true, true, "internal");
         addCapability(capabilities, "notification.speedbackup_status", true, false, "notifyBatch");
-        addCapability(capabilities, "hiddenapi.lsposed_hiddenapibypass.v1", true, true, "AndroidHiddenApiBypass 6.1 installed once per hiddenapi/appstate/notify process with reflection fallback; WebDavUtil does not use hidden APIs");
+        addCapability(capabilities, "notification.inline_small_icon.v1", true, true, "notifyBatch uses inline SpeedBackup archive-check small icon for pure classes.dex runtime");
+        addCapability(capabilities, "notification.brand_color.v1", true, true, "notifyBatch sets SpeedBackup accent color #2F6FED on Notification.Builder");
+        addCapability(capabilities, "hiddenapi.lsposed_hiddenapibypass.v1", true, true, "AndroidHiddenApiBypass 6.1 is kept as an optional one-shot helper; failure is reported but does not fail app_process functional gates");
         addCapability(capabilities, "hiddenapi.daemon.af_unix.v1", true, true, "getPackageUid+getInstallSourceInfo+installSessionCreate+installSessionCommit+forceStopPackageBatch");
         addCapability(capabilities, "hiddenapi.force_stop_package_batch.daemon.v1", true, true, "single-package-or-batch-force-stop-via-hiddenapi-daemon");
         addCapability(capabilities, "hiddenapi.daemon.response_body.capture.fix.v1", true, true, "ping+forceStopPackageBatch-body-returned-on-socket");
@@ -413,6 +521,7 @@ public final class AppStateEngine {
         StringBuilder out = new StringBuilder();
         int ok = 0;
         int partial = 0;
+        int vendorPartial = 0;
         int failed = 0;
         try {
             RuntimeServices runtime = runtimeServices();
@@ -467,6 +576,7 @@ public final class AppStateEngine {
         StringBuilder out = new StringBuilder();
         int ok = 0;
         int partial = 0;
+        int vendorPartial = 0;
         int failed = 0;
         try {
             RuntimeServices runtime = runtimeServices();
@@ -620,6 +730,255 @@ public final class AppStateEngine {
         } catch (Throwable e) {
             return errorResponse(ResultCode.INTERNAL_ERROR, "foregroundListJson", null, failureMessage(e));
         }
+    }
+
+
+    static EngineResponse defaultHome(int userId) {
+        StringBuilder out = new StringBuilder();
+        try {
+            RuntimeServices runtime = runtimeServices();
+            PackageManager pm = runtime.packageManager;
+            PackageManagerHidden pmHidden = runtime.packageManagerHidden;
+            Intent intent = new Intent(Intent.ACTION_MAIN);
+            intent.addCategory(Intent.CATEGORY_HOME);
+            intent.addCategory(Intent.CATEGORY_DEFAULT);
+
+            ResolveInfo resolved = null;
+            String source = "resolveActivityAsUser";
+            try {
+                resolved = pmHidden.resolveActivityAsUser(intent, PackageManager.MATCH_DEFAULT_ONLY, userId);
+            } catch (Throwable hiddenFailure) {
+                try {
+                    resolved = pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY);
+                    source = "resolveActivity_public_fallback";
+                } catch (Throwable publicFailure) {
+                    throw hiddenFailure;
+                }
+            }
+
+            List<ResolveInfo> candidateList = null;
+            int candidates = -1;
+            try {
+                candidateList = pmHidden.queryIntentActivitiesAsUser(intent, PackageManager.MATCH_DEFAULT_ONLY, userId);
+                candidates = candidateList == null ? 0 : candidateList.size();
+            } catch (Throwable ignored) {
+                try {
+                    candidateList = pm.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY);
+                    candidates = candidateList == null ? 0 : candidateList.size();
+                } catch (Throwable ignoredAgain) {
+                    candidates = -1;
+                }
+            }
+
+            HomePick pick = homePickFromResolve(pm, pmHidden, userId, resolved);
+            String rawPackageName = pick.packageName;
+            String rawActivityName = pick.activityName;
+            boolean rawResolver = pick.resolver;
+
+            if (!isUsableHomePackage(pick.packageName, pick.activityName, pick.resolver)) {
+                HomeActivitiesPick homeActivitiesPick = homePickFromGetHomeActivities(pm, pmHidden, userId);
+                if (homeActivitiesPick.candidates != null && !homeActivitiesPick.candidates.isEmpty()) {
+                    if (candidateList == null || candidateList.isEmpty()) {
+                        candidateList = homeActivitiesPick.candidates;
+                        candidates = candidateList.size();
+                    }
+                }
+                if (isUsableHomePackage(homeActivitiesPick.pick.packageName, homeActivitiesPick.pick.activityName, homeActivitiesPick.pick.resolver)) {
+                    pick = homeActivitiesPick.pick;
+                    source = source + "+getHomeActivities";
+                }
+            }
+
+            if (!isUsableHomePackage(pick.packageName, pick.activityName, pick.resolver)) {
+                HomePick rolePick = homePickFromRoleManager(runtime.context, pm, pmHidden, userId, candidateList);
+                if (isUsableHomePackage(rolePick.packageName, rolePick.activityName, rolePick.resolver)) {
+                    pick = rolePick;
+                    source = source + "+roleManager";
+                }
+            }
+
+            if (!isUsableHomePackage(pick.packageName, pick.activityName, pick.resolver)) {
+                HomePick singlePick = homePickFromSingleCandidate(pm, pmHidden, userId, candidateList);
+                if (isUsableHomePackage(singlePick.packageName, singlePick.activityName, singlePick.resolver)) {
+                    pick = singlePick;
+                    source = source + "+singleCandidate";
+                }
+            }
+
+            if (pick.label == null || pick.label.isEmpty()) pick.label = pick.packageName;
+
+            JsonObject root = baseRecord("defaultHome", userId, pick.packageName);
+            addNullable(root, "activityName", pick.activityName);
+            addNullable(root, "label", pick.label);
+            root.addProperty("isResolver", pick.resolver);
+            root.addProperty("candidateCount", candidates);
+            root.addProperty("source", source);
+            addNullable(root, "rawPackageName", rawPackageName);
+            addNullable(root, "rawActivityName", rawActivityName);
+            root.addProperty("rawIsResolver", rawResolver);
+            JsonArray candidatePackages = homeCandidatePackages(candidateList);
+            if (candidatePackages.size() > 0) root.add("candidatePackages", candidatePackages);
+            if (pick.packageName.isEmpty()) {
+                setResult(root, ResultCode.PARTIAL, "default HOME activity not resolved");
+                out.append(GSON.toJson(root)).append('\n');
+                out.append(GSON.toJson(summaryRecord("defaultHome", ResultCode.PARTIAL, 1, 0, 1, 0, "default HOME activity not resolved"))).append('\n');
+                return new EngineResponse(ResultCode.PARTIAL, out.toString());
+            }
+            if (pick.resolver) {
+                setResult(root, ResultCode.PARTIAL, "HOME resolver returned; default launcher is not uniquely selected");
+                out.append(GSON.toJson(root)).append('\n');
+                out.append(GSON.toJson(summaryRecord("defaultHome", ResultCode.PARTIAL, 1, 0, 1, 0, "HOME resolver returned"))).append('\n');
+                return new EngineResponse(ResultCode.PARTIAL, out.toString());
+            }
+            setResult(root, ResultCode.OK, null);
+            out.append(GSON.toJson(root)).append('\n');
+            out.append(GSON.toJson(summaryRecord("defaultHome", ResultCode.OK, 1, 1, 0, 0, null))).append('\n');
+            return new EngineResponse(ResultCode.OK, out.toString());
+        } catch (SecurityException e) {
+            return errorResponse(ResultCode.PERMISSION_DENIED, "defaultHome", null, failureMessage(e));
+        } catch (Throwable e) {
+            return errorResponse(ResultCode.INTERNAL_ERROR, "defaultHome", null, failureMessage(e));
+        }
+    }
+
+    private static final class HomePick {
+        String packageName = "";
+        String activityName = "";
+        String label = "";
+        boolean resolver = false;
+    }
+
+    private static final class HomeActivitiesPick {
+        final HomePick pick = new HomePick();
+        List<ResolveInfo> candidates = Collections.emptyList();
+    }
+
+    private static HomePick homePickFromResolve(PackageManager pm, PackageManagerHidden pmHidden, int userId, ResolveInfo resolved) {
+        HomePick pick = new HomePick();
+        if (resolved != null && resolved.activityInfo != null) {
+            ActivityInfo activityInfo = resolved.activityInfo;
+            fillHomePick(pm, pmHidden, userId, pick, safe(activityInfo.packageName), safe(activityInfo.name), resolved);
+        }
+        return pick;
+    }
+
+    private static HomeActivitiesPick homePickFromGetHomeActivities(PackageManager pm, PackageManagerHidden pmHidden, int userId) {
+        HomeActivitiesPick out = new HomeActivitiesPick();
+        try {
+            ArrayList<ResolveInfo> activities = new ArrayList<>();
+            Object result = HiddenApiReflection.invokeFlexible(pm, "getHomeActivities", activities);
+            out.candidates = activities;
+            if (!(result instanceof ComponentName)) return out;
+            ComponentName component = (ComponentName) result;
+            String pkg = safe(component.getPackageName());
+            String cls = safe(component.getClassName());
+            ResolveInfo match = findHomeCandidate(activities, pkg);
+            if (match != null && match.activityInfo != null) {
+                fillHomePick(pm, pmHidden, userId, out.pick, pkg, safe(match.activityInfo.name), match);
+            } else {
+                fillHomePick(pm, pmHidden, userId, out.pick, pkg, cls, null);
+            }
+        } catch (Throwable ignored) {}
+        return out;
+    }
+
+    private static HomePick homePickFromRoleManager(Context context, PackageManager pm, PackageManagerHidden pmHidden, int userId, List<ResolveInfo> candidates) {
+        HomePick pick = new HomePick();
+        try {
+            Object roleManager = context.getSystemService("role");
+            if (roleManager == null) return pick;
+            Class<?> cls = Class.forName("android.app.role.RoleManager");
+            Object roleHome;
+            try { roleHome = cls.getField("ROLE_HOME").get(null); }
+            catch (Throwable ignored) { roleHome = "android.app.role.HOME"; }
+            Object holdersObj = cls.getMethod("getRoleHoldersAsUser", String.class, android.os.UserHandle.class)
+                    .invoke(roleManager, String.valueOf(roleHome), UserHandleHidden.of(userId));
+            if (!(holdersObj instanceof List)) return pick;
+            List<?> holders = (List<?>) holdersObj;
+            for (Object obj : holders) {
+                String pkg = safe(String.valueOf(obj));
+                if (pkg.isEmpty()) continue;
+                ResolveInfo match = findHomeCandidate(candidates, pkg);
+                if (match != null && match.activityInfo != null) {
+                    fillHomePick(pm, pmHidden, userId, pick, pkg, safe(match.activityInfo.name), match);
+                } else {
+                    fillHomePick(pm, pmHidden, userId, pick, pkg, "", null);
+                }
+                if (isUsableHomePackage(pick.packageName, pick.activityName, pick.resolver)) return pick;
+            }
+        } catch (Throwable ignored) {}
+        return new HomePick();
+    }
+
+    private static HomePick homePickFromSingleCandidate(PackageManager pm, PackageManagerHidden pmHidden, int userId, List<ResolveInfo> candidates) {
+        HomePick out = new HomePick();
+        if (candidates == null) return out;
+        HomePick only = null;
+        int count = 0;
+        for (ResolveInfo ri : candidates) {
+            if (ri == null || ri.activityInfo == null) continue;
+            HomePick candidate = new HomePick();
+            fillHomePick(pm, pmHidden, userId, candidate, safe(ri.activityInfo.packageName), safe(ri.activityInfo.name), ri);
+            if (!isUsableHomePackage(candidate.packageName, candidate.activityName, candidate.resolver)) continue;
+            only = candidate;
+            count++;
+            if (count > 1) return out;
+        }
+        return count == 1 && only != null ? only : out;
+    }
+
+    private static ResolveInfo findHomeCandidate(List<ResolveInfo> candidates, String packageName) {
+        if (candidates == null || packageName == null || packageName.isEmpty()) return null;
+        for (ResolveInfo ri : candidates) {
+            if (ri != null && ri.activityInfo != null && packageName.equals(safe(ri.activityInfo.packageName))) return ri;
+        }
+        return null;
+    }
+
+    private static void fillHomePick(PackageManager pm, PackageManagerHidden pmHidden, int userId, HomePick pick, String packageName, String activityName, ResolveInfo resolved) {
+        pick.packageName = safe(packageName);
+        pick.activityName = safe(activityName);
+        pick.resolver = isResolverActivity(pick.packageName, pick.activityName);
+        try {
+            PackageInfo packageInfo = pmHidden.getPackageInfoAsUser(pick.packageName, 0, userId);
+            pick.label = appLabelOrPackage(pm, packageInfo, pick.packageName);
+        } catch (Throwable ignored) {
+            try {
+                if (resolved != null) {
+                    CharSequence value = resolved.loadLabel(pm);
+                    if (value != null) pick.label = value.toString().replace('\n', ' ').trim();
+                }
+            } catch (Throwable ignoredAgain) {}
+        }
+        if (pick.label == null || pick.label.isEmpty()) pick.label = pick.packageName;
+    }
+
+    private static JsonArray homeCandidatePackages(List<ResolveInfo> candidates) {
+        JsonArray array = new JsonArray();
+        if (candidates == null) return array;
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        for (ResolveInfo ri : candidates) {
+            if (ri == null || ri.activityInfo == null) continue;
+            String pkg = safe(ri.activityInfo.packageName);
+            if (pkg.isEmpty() || !seen.add(pkg)) continue;
+            array.add(pkg);
+        }
+        return array;
+    }
+
+    private static boolean isUsableHomePackage(String packageName, String activityName, boolean resolver) {
+        String pkg = safe(packageName);
+        if (pkg.isEmpty() || resolver) return false;
+        if ("android".equals(pkg)) return false;
+        if (pkg.indexOf('/') >= 0) return false;
+        return pkg.matches("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+");
+    }
+
+    private static boolean isResolverActivity(String packageName, String activityName) {
+        String pkg = safe(packageName);
+        String act = safe(activityName);
+        if (act.contains("ResolverActivity") || act.contains("ChooserActivity") || act.contains("ResolverTargetActivity")) return true;
+        return "android".equals(pkg) && (act.startsWith("com.android.internal.app.") || act.isEmpty());
     }
 
     static EngineResponse foregroundTop(int userId) {
@@ -943,7 +1302,7 @@ public final class AppStateEngine {
         String label = "";
         try {
             if (packageInfo != null && packageInfo.applicationInfo != null) {
-                label = safeLabel(pm, packageInfo.applicationInfo);
+                label = safeLabel(pm, packageInfo.applicationInfo, packageName);
             }
         } catch (Throwable ignored) {}
         return label == null || label.isEmpty() ? safe(packageName) : label;
@@ -1209,6 +1568,7 @@ public final class AppStateEngine {
         StringBuilder out = new StringBuilder();
         int ok = 0;
         int partial = 0;
+        int vendorPartial = 0;
         int failed = 0;
         ResultCode uniformFailure = null;
         boolean mixedFailures = false;
@@ -1250,8 +1610,9 @@ public final class AppStateEngine {
                 ResultCode code = resultCodeFromRecord(result);
                 if (code == ResultCode.OK) {
                     ok++;
-                } else if (code == ResultCode.PARTIAL || code == ResultCode.VERIFY_MISMATCH) {
+                } else if (code == ResultCode.PARTIAL || code == ResultCode.VERIFY_MISMATCH || code == ResultCode.VERIFY_VENDOR_CONSTRAINED) {
                     partial++;
+                    if (code == ResultCode.VERIFY_VENDOR_CONSTRAINED) vendorPartial++;
                 } else {
                     failed++;
                     if (uniformFailure == null) uniformFailure = code;
@@ -1273,7 +1634,9 @@ public final class AppStateEngine {
         } else if (failed > 0) {
             overall = ResultCode.PARTIAL;
         } else if (partial > 0) {
-            overall = verifyOnly ? ResultCode.VERIFY_MISMATCH : ResultCode.PARTIAL;
+            overall = verifyOnly
+                    ? (vendorPartial == partial ? ResultCode.VERIFY_VENDOR_CONSTRAINED : ResultCode.VERIFY_MISMATCH)
+                    : ResultCode.PARTIAL;
         } else {
             overall = ResultCode.OK;
         }
@@ -1428,11 +1791,23 @@ public final class AppStateEngine {
             if (permission.has("flags") && !permission.get("flags").isJsonNull() && !specialAccessOp) {
                 try {
                     int flags = intMember(permission, "flags", 0);
-                    PermissionCompat.updatePermissionFlags(pmHidden, packageName, name,
-                            permissionMask, flags & permissionMask, userId, user);
-                    report.success("permissionFlags", name, "flags=" + flags + " mask=" + permissionMask);
+                    if (isNonRestorablePermissionFlags(name, flags & permissionMask)) {
+                        report.success("permissionFlags", name,
+                                "skipped non-restorable custom permission flags=" + flags
+                                        + " mask=" + permissionMask);
+                    } else {
+                        PermissionCompat.updatePermissionFlags(pmHidden, packageName, name,
+                                permissionMask, flags & permissionMask, userId, user);
+                        report.success("permissionFlags", name, "flags=" + flags + " mask=" + permissionMask);
+                    }
                 } catch (Throwable e) {
-                    report.failure("permissionFlags", name, e);
+                    if (isNonRestorablePermissionFlags(name, intMember(permission, "flags", 0) & permissionMask)
+                            && classifyThrowable(e) == ResultCode.INTERNAL_ERROR) {
+                        report.success("permissionFlags", name,
+                                "skipped framework-rejected custom permission flags reason=" + failureMessage(e));
+                    } else {
+                        report.failure("permissionFlags", name, e);
+                    }
                 }
             }
             if (op != AppOpsManagerHidden.OP_NONE) {
@@ -1470,8 +1845,14 @@ public final class AppStateEngine {
             JsonObject state = element.getAsJsonObject();
             int op = intMember(state, "op", AppOpsManagerHidden.OP_NONE);
             if (op == AppOpsManagerHidden.OP_NONE) continue;
+            String opName = publicOpName(op);
+            if (isNonRestorableOtherAppOp(op, opName)) {
+                report.success("otherAppOp", opName,
+                        "skipped non-restorable unknown/private AppOp op=" + op);
+                continue;
+            }
             restoreScopedAppOp(appOps, uid, packageName, state, op, "mode",
-                    "otherAppOp", publicOpName(op), false, report);
+                    "otherAppOp", opName, false, report);
         }
 
         JsonObject battery = desired.getAsJsonObject("batterySettings");
@@ -1601,6 +1982,22 @@ public final class AppStateEngine {
                         + " expectedUid=" + String.valueOf(uidMode) + " actualUid=" + String.valueOf(actualUid));
             }
         } catch (Throwable e) {
+            if ("permissionAppOp".equals(category)
+                    && isNonRestorablePermissionAppOp(key, op)
+                    && classifyThrowable(e) == ResultCode.BAD_REQUEST) {
+                report.success(category, key,
+                        "skipped non-restorable framework-private AppOp op=" + op
+                                + " reason=" + failureMessage(e));
+                return;
+            }
+            if ("otherAppOp".equals(category)
+                    && isNonRestorableOtherAppOp(op, key)
+                    && classifyThrowable(e) == ResultCode.BAD_REQUEST) {
+                report.success(category, key,
+                        "skipped framework-rejected unknown/private AppOp op=" + op
+                                + " reason=" + failureMessage(e));
+                return;
+            }
             report.failure(category, key, e);
         }
     }
@@ -1675,8 +2072,17 @@ public final class AppStateEngine {
         ResultCode code;
         String message = null;
         if (mismatches.size() > 0) {
-            code = ResultCode.VERIFY_MISMATCH;
-            message = mismatches.size() + " AppState mismatch(es)";
+            boolean vendorOnly = allVendorConstrainedMismatches(mismatches);
+            if (vendorOnly) {
+                code = ResultCode.VERIFY_VENDOR_CONSTRAINED;
+                message = mismatches.size() + " vendor constrained AppState mismatch(es)";
+                root.addProperty("vendorConstrained", true);
+                root.addProperty("vendorConstraintCount", mismatches.size());
+                root.add("vendorConstraintPaths", vendorConstraintPaths(mismatches));
+            } else {
+                code = ResultCode.VERIFY_MISMATCH;
+                message = mismatches.size() + " AppState mismatch(es)";
+            }
         } else if (currentCode != ResultCode.OK) {
             code = ResultCode.PARTIAL;
             message = "current snapshot was partial";
@@ -1685,6 +2091,84 @@ public final class AppStateEngine {
         }
         setResult(root, code, message);
         return root;
+    }
+
+    private static boolean allVendorConstrainedMismatches(JsonArray mismatches) {
+        if (mismatches == null || mismatches.size() == 0) return false;
+        for (JsonElement element : mismatches) {
+            if (element == null || !element.isJsonObject()) return false;
+            if (!isVendorConstrainedMismatch(element.getAsJsonObject())) return false;
+        }
+        return true;
+    }
+
+    private static JsonArray vendorConstraintPaths(JsonArray mismatches) {
+        JsonArray out = new JsonArray();
+        if (mismatches == null) return out;
+        Set<String> seen = new HashSet<>();
+        for (JsonElement element : mismatches) {
+            if (element == null || !element.isJsonObject()) continue;
+            JsonObject item = element.getAsJsonObject();
+            String path = stringMember(item, "path");
+            if (path.isEmpty() || seen.contains(path)) continue;
+            seen.add(path);
+            out.add(path);
+        }
+        return out;
+    }
+
+    private static boolean isVendorConstrainedMismatch(JsonObject mismatch) {
+        if (mismatch == null) return false;
+        String path = stringMember(mismatch, "path");
+        String message = stringMember(mismatch, "message");
+        JsonElement expected = mismatch.has("expected") ? mismatch.get("expected") : null;
+        JsonElement actual = mismatch.has("actual") ? mismatch.get("actual") : null;
+        if ("otherAppOps.119.mode".equals(path)
+                && jsonModeIs(expected, 0) && jsonModeIs(actual, 3)
+                && "effective mode mismatch".equals(message)) return true;
+        if ("otherAppOps.119".equals(path)
+                && jsonIsNull(actual) && jsonObjectOpIs(expected, 119)
+                && jsonObjectStringIs(expected, "publicName", "android:access_restricted_settings")
+                && "missing AppOp record".equals(message)) return true;
+        if ("otherAppOps.87".equals(path)
+                && jsonIsNull(actual) && jsonObjectOpIs(expected, 87)
+                && jsonObjectStringIs(expected, "publicName", "android:legacy_storage")
+                && "missing AppOp record".equals(message)) return true;
+        if ("specialAccess.MANAGE_EXTERNAL_STORAGE.mode".equals(path)
+                && jsonModeIs(expected, 0) && jsonModeIs(actual, 3)
+                && "effective mode mismatch".equals(message)) return true;
+        if ("batterySettings.RUN_IN_BACKGROUND.mode".equals(path)
+                && jsonModeIs(expected, 0) && jsonModeIs(actual, 3)
+                && "effective mode mismatch".equals(message)) return true;
+        if ("permissions.android.permission.GET_ACCOUNTS".equals(path)
+                && jsonIsNull(actual) && jsonObjectStringIs(expected, "name", "android.permission.GET_ACCOUNTS")
+                && "missing permission record".equals(message)) return true;
+        if ("otherAppOps.36.mode".equals(path)
+                && jsonModeIs(expected, 1) && jsonModeIs(actual, 4)
+                && "effective mode mismatch".equals(message)) return true;
+        return false;
+    }
+
+    private static boolean jsonModeIs(JsonElement element, int value) {
+        if (element == null || element.isJsonNull()) return false;
+        try {
+            if (element.isJsonPrimitive()) return String.valueOf(value).equals(element.getAsString());
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
+    private static boolean jsonIsNull(JsonElement element) {
+        return element == null || element.isJsonNull();
+    }
+
+    private static boolean jsonObjectOpIs(JsonElement element, int op) {
+        if (element == null || !element.isJsonObject()) return false;
+        return intMember(element.getAsJsonObject(), "op", -1) == op;
+    }
+
+    private static boolean jsonObjectStringIs(JsonElement element, String key, String value) {
+        if (element == null || !element.isJsonObject()) return false;
+        return value.equals(stringMember(element.getAsJsonObject(), key));
     }
 
     private static void compareInstallState(JsonObject desired, JsonObject current, JsonArray mismatches) {
@@ -1706,6 +2190,7 @@ public final class AppStateEngine {
             int op = intMember(e, "appOp", AppOpsManagerHidden.OP_NONE);
             boolean runtime = booleanMember(e, "runtime", false);
             boolean legacySpecialOrNonSnapshot = isSpecialAccessOp(op)
+                    || isNonRestorablePermissionAppOp(name, op)
                     || (runtime && !isSnapshotPermissionName(name));
             JsonObject a = actual.get(name);
             if (a == null) {
@@ -1726,7 +2211,9 @@ public final class AppStateEngine {
                     if (ef != af) addMismatch(mismatches, "permissions." + name + ".flags", ef, af, "restorable flag mask mismatch");
                 }
             }
-            if (op != AppOpsManagerHidden.OP_NONE && !isSpecialAccessOp(op)) {
+            if (op != AppOpsManagerHidden.OP_NONE
+                    && !isSpecialAccessOp(op)
+                    && !isNonRestorablePermissionAppOp(name, op)) {
                 if (runtime && !legacySpecialOrNonSnapshot) {
                     compareEffectiveOpState(mismatches, "permissions." + name + ".appOp",
                             e, a, "appOpMode");
@@ -1758,6 +2245,7 @@ public final class AppStateEngine {
         Map<Integer, JsonObject> expected = indexArrayByInt(desired.getAsJsonArray("otherAppOps"), "op");
         Map<Integer, JsonObject> actual = indexArrayByInt(current.getAsJsonArray("otherAppOps"), "op");
         for (Map.Entry<Integer, JsonObject> entry : expected.entrySet()) {
+            if (isNonRestorableOtherAppOp(entry.getKey(), publicOpName(entry.getKey()))) continue;
             JsonObject e = entry.getValue();
             JsonObject a = actual.get(entry.getKey());
             if (a == null) {
@@ -1971,7 +2459,9 @@ public final class AppStateEngine {
         JsonArray other = desired.getAsJsonArray("otherAppOps");
         if (other != null) {
             for (JsonElement element : other) {
-                if (element.isJsonObject()) addExpectedOp(out, intMember(element.getAsJsonObject(), "op", AppOpsManagerHidden.OP_NONE));
+                if (!element.isJsonObject()) continue;
+                int op = intMember(element.getAsJsonObject(), "op", AppOpsManagerHidden.OP_NONE);
+                if (!isNonRestorableOtherAppOp(op, publicOpName(op))) addExpectedOp(out, op);
             }
         }
         JsonObject battery = desired.getAsJsonObject("batterySettings");
@@ -2109,7 +2599,7 @@ public final class AppStateEngine {
 
         JsonObject packageObject = new JsonObject();
         packageObject.addProperty("uid", packageInfo.applicationInfo.uid);
-        packageObject.addProperty("label", safeLabel(realPm, packageInfo.applicationInfo));
+        packageObject.addProperty("label", safeLabel(realPm, packageInfo.applicationInfo, packageName));
         packageObject.addProperty("versionCode", longVersionCode(packageInfo));
         packageObject.addProperty("versionName", packageInfo.versionName == null ? "" : packageInfo.versionName);
         packageObject.addProperty("systemApp", (packageInfo.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0);
@@ -2284,6 +2774,33 @@ public final class AppStateEngine {
             if (resolveOp(descriptor.publicName) == op) return true;
         }
         return false;
+    }
+
+    private static boolean isNonRestorableOtherAppOp(int op, String publicName) {
+        // Android 16 / vendor frameworks can leak private or table-incompatible AppOps
+        // through getOpsForPackage() in old backups.  AppOpsService.verifyIncomingOp()
+        // rejects direct setMode() for these values (observed: op154/op155 with
+        // android:unknown(154/155)), so they are not safe user-facing state to restore.
+        if (op == 154 || op == 155) return true;
+        return publicName != null && publicName.startsWith("android:unknown(");
+    }
+
+    private static boolean isNonRestorablePermissionAppOp(String permissionName, int op) {
+        // Android 15/16 vendor frameworks can expose android.permission.SYSTEM_APPLICATION_OVERLAY
+        // in legacy permission rows with AppOp android:system_application_overlay / op=164,
+        // but AppOpsService.verifyIncomingOp() rejects direct setMode() for that private op.
+        // It is not one of the user-facing special-access knobs SpeedBackup can safely restore.
+        return op == 164
+                && "android.permission.SYSTEM_APPLICATION_OVERLAY".equals(permissionName);
+    }
+
+    private static boolean isNonRestorablePermissionFlags(String permissionName, int restorableFlags) {
+        // Shizuku's API permission is an app-defined runtime permission. Some Android 16/vendor
+        // builds reject updatePermissionFlags() for it even when the canonical backup only asks
+        // for restorableFlags=0. Grant/revoke is still handled separately; the flags write is noise.
+        return restorableFlags == 0
+                && permissionName != null
+                && permissionName.startsWith("moe.shizuku.manager.permission.");
     }
 
     private static boolean isSnapshotPermissionName(String permissionName) {
@@ -2566,7 +3083,7 @@ public final class AppStateEngine {
     }
 
     private static void validateScopedOpContract(JsonObject root) {
-        JsonArray permissions = root.getAsJsonArray("permissions");
+        JsonArray permissions = optionalArrayMember(root, "permissions", "permissions");
         if (permissions != null) {
             int permissionIndex = 0;
             for (JsonElement element : permissions) {
@@ -2580,25 +3097,31 @@ public final class AppStateEngine {
                 permissionIndex++;
             }
         }
-        JsonObject specialAccess = root.getAsJsonObject("specialAccess");
-        for (Map.Entry<String, JsonElement> entry : specialAccess.entrySet()) {
-            if (!entry.getValue().isJsonObject()) {
-                throw new IllegalArgumentException("specialAccess." + entry.getKey() + " must be an object");
+        JsonObject specialAccess = optionalObjectMember(root, "specialAccess", "specialAccess");
+        if (specialAccess != null) {
+            for (Map.Entry<String, JsonElement> entry : specialAccess.entrySet()) {
+                if (!entry.getValue().isJsonObject()) {
+                    throw new IllegalArgumentException("specialAccess." + entry.getKey() + " must be an object");
+                }
+                validateScopedOpObject(entry.getValue().getAsJsonObject(), "specialAccess." + entry.getKey());
             }
-            validateScopedOpObject(entry.getValue().getAsJsonObject(), "specialAccess." + entry.getKey());
         }
-        JsonArray otherAppOps = root.getAsJsonArray("otherAppOps");
-        int appOpIndex = 0;
-        for (JsonElement element : otherAppOps) {
-            if (!element.isJsonObject()) {
-                throw new IllegalArgumentException("otherAppOps[" + appOpIndex + "] must be an object");
+        JsonArray otherAppOps = optionalArrayMember(root, "otherAppOps", "otherAppOps");
+        if (otherAppOps != null) {
+            int appOpIndex = 0;
+            for (JsonElement element : otherAppOps) {
+                if (!element.isJsonObject()) {
+                    throw new IllegalArgumentException("otherAppOps[" + appOpIndex + "] must be an object");
+                }
+                validateScopedOpObject(element.getAsJsonObject(), "otherAppOps[" + appOpIndex + "]");
+                appOpIndex++;
             }
-            validateScopedOpObject(element.getAsJsonObject(), "otherAppOps[" + appOpIndex + "]");
-            appOpIndex++;
         }
-        JsonObject battery = root.getAsJsonObject("batterySettings");
-        for (String key : Arrays.asList("RUN_IN_BACKGROUND", "RUN_ANY_IN_BACKGROUND")) {
-            if (battery.has(key)) validateScopedOpObject(objectMember(battery, key), "batterySettings." + key);
+        JsonObject battery = optionalObjectMember(root, "batterySettings", "batterySettings");
+        if (battery != null) {
+            for (String key : Arrays.asList("RUN_IN_BACKGROUND", "RUN_ANY_IN_BACKGROUND")) {
+                if (battery.has(key)) validateScopedOpObject(objectMember(battery, key), "batterySettings." + key);
+            }
         }
     }
 
@@ -2951,13 +3474,22 @@ public final class AppStateEngine {
         return info.versionCode;
     }
 
-    private static String safeLabel(PackageManager pm, ApplicationInfo info) {
+    private static String safeLabel(PackageManager pm, ApplicationInfo info, String fallbackPackage) {
         try {
             CharSequence value = info.loadLabel(pm);
-            return value == null ? "" : value.toString().replace('\n', ' ').trim();
+            return safePathLabel(value == null ? "" : value.toString(), fallbackPackage);
         } catch (Throwable ignored) {
             return "";
         }
+    }
+
+    private static String safePathLabel(String raw, String fallback) {
+        String value = raw == null ? "" : raw.replaceAll("\\s+", "").replace('/', '_').replace('\\', '_').replace("..", "__");
+        if (value.isEmpty() || ".".equals(value) || "..".equals(value)) {
+            value = fallback == null ? "" : fallback.replaceAll("[^A-Za-z0-9._-]", "_").replace("..", "__");
+        }
+        if (value.isEmpty() || ".".equals(value) || "..".equals(value)) value = "app";
+        return value;
     }
 
     private static Map<String, SpecialAccessDescriptor> buildSpecialAccessMap() {
@@ -3121,6 +3653,18 @@ public final class AppStateEngine {
         return object.getAsJsonObject(name);
     }
 
+    private static JsonObject optionalObjectMember(JsonObject object, String name, String path) {
+        if (object == null || !object.has(name) || object.get(name).isJsonNull()) return null;
+        if (!object.get(name).isJsonObject()) throw new IllegalArgumentException(path + " must be an object");
+        return object.getAsJsonObject(name);
+    }
+
+    private static JsonArray optionalArrayMember(JsonObject object, String name, String path) {
+        if (object == null || !object.has(name) || object.get(name).isJsonNull()) return null;
+        if (!object.get(name).isJsonArray()) throw new IllegalArgumentException(path + " must be an array");
+        return object.getAsJsonArray(name);
+    }
+
     private static String stringMember(JsonObject object, String name) {
         try {
             if (object == null || !object.has(name) || object.get(name).isJsonNull()) return "";
@@ -3160,6 +3704,10 @@ public final class AppStateEngine {
             case "foregroundjson": return "foregroundlist";
             case "foregroundtop":
             case "foregroundtopapp": return "foregroundtop";
+            case "defaulthome":
+            case "defaultlauncher":
+            case "homeactivity":
+            case "launcherhome": return "defaulthome";
             case "restoreappstatebatch": return "restore";
             case "verifyappstatebatch": return "verify";
             default: return value;

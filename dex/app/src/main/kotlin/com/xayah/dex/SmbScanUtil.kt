@@ -3,9 +3,12 @@ package com.xayah.dex
 import java.io.File
 import java.io.IOException
 import java.net.Inet4Address
+import java.net.ConnectException
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
+import java.net.NoRouteToHostException
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.util.Collections
 import java.util.concurrent.Callable
 import java.util.concurrent.CompletionService
@@ -26,6 +29,15 @@ import kotlin.system.exitProcess
 object SmbScanUtil {
     private data class HostRange(val start: Long, val end: Long)
     private data class ScanResult(val ip: String, val port: Int, val elapsedMs: Long)
+    private data class ProbeResult(
+        val ok: Boolean,
+        val host: String,
+        val port: Int,
+        val timeoutMs: Int,
+        val elapsedMs: Long,
+        val code: String,
+        val message: String
+    )
 
     @JvmStatic
     fun main(args: Array<String>) {
@@ -35,6 +47,7 @@ object SmbScanUtil {
         }
         when (args[0]) {
             "scanSmb" -> cmdScanSmb(args)
+            "probeTarget", "probeSmbTarget" -> cmdProbeTarget(args)
             else -> {
                 printUsage()
                 exitProcess(2)
@@ -79,6 +92,37 @@ object SmbScanUtil {
             println("${r.ip}\t${r.port}\topen\t${r.elapsedMs}ms")
         }
         exitProcess(if (results.isNotEmpty()) 0 else 1)
+    }
+
+
+    private fun cmdProbeTarget(args: Array<String>) {
+        val host = args.getOrNull(1)?.trim().orEmpty()
+        val port = clampInt(args.getOrNull(2)?.toIntOrNull() ?: 445, 1, 65535)
+        val timeoutMs = clampInt(args.getOrNull(3)?.toIntOrNull() ?: 900, 80, 10000)
+        val retryTimeoutMs = clampInt(args.getOrNull(4)?.toIntOrNull() ?: max(1500, timeoutMs), 0, 15000)
+        if (host.isEmpty()) {
+            System.err.println("bad host")
+            exitProcess(2)
+        }
+
+        val attempts = ArrayList<ProbeResult>()
+        val first = probeDetailed(host, port, timeoutMs)
+        attempts += first
+        if (first.ok) {
+            println(first.toJson(attempt = 1, finalResult = true))
+            exitProcess(0)
+        }
+        val shouldRetry = retryTimeoutMs > timeoutMs && first.code != "refused" && first.code != "security"
+        if (shouldRetry) {
+            val second = probeDetailed(host, port, retryTimeoutMs)
+            attempts += second
+            for ((index, result) in attempts.withIndex()) {
+                println(result.toJson(attempt = index + 1, finalResult = index == attempts.lastIndex))
+            }
+            exitProcess(if (second.ok) 0 else 1)
+        }
+        println(first.toJson(attempt = 1, finalResult = true))
+        exitProcess(1)
     }
 
     private fun scan(
@@ -154,6 +198,57 @@ object SmbScanUtil {
         } catch (_: RuntimeException) {
             null
         }
+    }
+
+
+    private fun probeDetailed(host: String, port: Int, timeoutMs: Int): ProbeResult {
+        val start = System.nanoTime()
+        fun elapsed(): Long = max(1L, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start))
+        return try {
+            Socket().use { socket ->
+                socket.reuseAddress = true
+                socket.tcpNoDelay = true
+                socket.soTimeout = timeoutMs
+                socket.connect(InetSocketAddress(host, port), timeoutMs)
+            }
+            ProbeResult(true, host, port, timeoutMs, elapsed(), "open", "")
+        } catch (e: SocketTimeoutException) {
+            ProbeResult(false, host, port, timeoutMs, elapsed(), "timeout", e.message.orEmpty())
+        } catch (e: ConnectException) {
+            val msg = e.message.orEmpty()
+            val code = if (msg.contains("refused", ignoreCase = true)) "refused" else "connect_failed"
+            ProbeResult(false, host, port, timeoutMs, elapsed(), code, msg)
+        } catch (e: NoRouteToHostException) {
+            ProbeResult(false, host, port, timeoutMs, elapsed(), "unreachable", e.message.orEmpty())
+        } catch (e: SecurityException) {
+            ProbeResult(false, host, port, timeoutMs, elapsed(), "security", e.message.orEmpty())
+        } catch (e: IOException) {
+            ProbeResult(false, host, port, timeoutMs, elapsed(), "io", e.message.orEmpty())
+        } catch (e: RuntimeException) {
+            ProbeResult(false, host, port, timeoutMs, elapsed(), "runtime", e.message.orEmpty())
+        }
+    }
+
+    private fun ProbeResult.toJson(attempt: Int, finalResult: Boolean): String {
+        return "{\"recordType\":\"smbTargetProbe\",\"stage\":\"tcp\",\"ok\":$ok" +
+            ",\"host\":\"${jsonEscape(host)}\",\"port\":$port,\"timeoutMs\":$timeoutMs" +
+            ",\"elapsedMs\":$elapsedMs,\"code\":\"${jsonEscape(code)}\"" +
+            ",\"attempt\":$attempt,\"final\":$finalResult,\"message\":\"${jsonEscape(message)}\"}"
+    }
+
+    private fun jsonEscape(raw: String): String {
+        val out = StringBuilder(raw.length + 16)
+        for (ch in raw) {
+            when (ch) {
+                '\\' -> out.append("\\\\")
+                '"' -> out.append("\\\"")
+                '\n' -> out.append("\\n")
+                '\r' -> out.append("\\r")
+                '\t' -> out.append("\\t")
+                else -> if (ch.code < 32) out.append(String.format("\\u%04x", ch.code)) else out.append(ch)
+            }
+        }
+        return out.toString()
     }
 
     private fun autoCidr24(): String? {
@@ -276,9 +371,11 @@ object SmbScanUtil {
     private fun printUsage() {
         println("SmbScanUtil commands:")
         println("  scanSmb [cidr|auto] [timeoutMs] [concurrency] [firstOnly] [ports]")
+        println("  probeTarget HOST [PORT] [timeoutMs] [retryTimeoutMs]")
         println("examples:")
         println("  scanSmb auto 800 192 0 445,139")
         println("  scanSmb 192.168.1.0/24 800 192 1 445,139")
+        println("  probeTarget 192.168.1.100 445 900 1500")
         println("output:")
         println("  <ip>\\t<port>\\topen\\t<elapsedMs>ms")
     }

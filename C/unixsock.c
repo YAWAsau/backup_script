@@ -16,7 +16,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define VERSION "unixsock 2.1.0-stream-framed"
+#define VERSION "unixsock 2.3.0-plain-lines-single-eof-api28-r28c-relroguard-r253"
 #define COPY_BUFFER_SIZE (128 * 1024)
 #define HEADER_LINE_MAX 4096
 
@@ -33,7 +33,11 @@ static void usage(FILE *out) {
             "while the socket response continues to stdout. With --header-file, the first\n"
             "two newline-terminated response lines are written to that file and only the\n"
             "remaining binary body is written to stdout. The second header line may be\n"
-            "an exact byte count, -1 (raw until EOF), or -2 (daemon chunk framing).\n",
+            "an exact byte count, -1 (raw until EOF), or -2 (daemon chunk framing).\n"
+            "With --allow-plain-response and --header-file, a single-line plain\n"
+            "response at EOF or a nonnumeric second response line is replayed to\n"
+            "stdout and the header file receives the first line plus -1. Strict\n"
+            "framed behavior is unchanged without --allow-plain-response.\n",
             VERSION);
 }
 
@@ -304,8 +308,9 @@ static int connect_tcp_socket(const char *host, const char *port) {
     return fd;
 }
 
-static int parse_header_file_arg(int argc, char **argv, int start_index, const char **header_file) {
+static int parse_relay_args(int argc, char **argv, int start_index, const char **header_file, int *allow_plain_response) {
     *header_file = NULL;
+    *allow_plain_response = 0;
     int index = start_index;
     while (index < argc) {
         if (strcmp(argv[index], "--header-file") == 0) {
@@ -314,12 +319,17 @@ static int parse_header_file_arg(int argc, char **argv, int start_index, const c
             index += 2;
             continue;
         }
+        if (strcmp(argv[index], "--allow-plain-response") == 0) {
+            *allow_plain_response = 1;
+            index += 1;
+            continue;
+        }
         return -1;
     }
     return 0;
 }
 
-static int relay_connection(int socket_fd, const char *header_file) {
+static int relay_connection(int socket_fd, const char *header_file, int allow_plain_response) {
     signal(SIGPIPE, SIG_IGN);
 
     pid_t writer_pid = fork();
@@ -347,13 +357,45 @@ static int relay_connection(int socket_fd, const char *header_file) {
         char line2[HEADER_LINE_MAX];
         size_t length1 = 0;
         size_t length2 = 0;
-        if (read_header_line(socket_fd, line1, sizeof(line1), &length1) != 0 ||
-            read_header_line(socket_fd, line2, sizeof(line2), &length2) != 0) {
+        if (read_header_line(socket_fd, line1, sizeof(line1), &length1) != 0) {
             fprintf(stderr, "unixsock: invalid or incomplete response header: %s\n", strerror(errno));
             response_result = -1;
+        } else if (read_header_line(socket_fd, line2, sizeof(line2), &length2) != 0) {
+            if (allow_plain_response && errno == EPROTO) {
+                static const char raw_until_eof[] = "-1\n";
+                if (write_response_header_file(header_file, line1, length1, raw_until_eof, sizeof(raw_until_eof) - 1) != 0) {
+                    fprintf(stderr, "unixsock: cannot write header file %s: %s\n", header_file, strerror(errno));
+                    response_result = -1;
+                } else {
+                    body_mode = -1;
+                    if (write_all(STDOUT_FILENO, line1, length1) != 0 ||
+                        write_all(STDOUT_FILENO, "\n", 1) != 0) {
+                        response_result = -1;
+                    }
+                }
+            } else {
+                fprintf(stderr, "unixsock: invalid or incomplete response header: %s\n", strerror(errno));
+                response_result = -1;
+            }
         } else if (parse_body_mode(line2, &body_mode) != 0) {
-            fprintf(stderr, "unixsock: invalid response body mode: %s\n", line2);
-            response_result = -1;
+            if (allow_plain_response) {
+                static const char raw_until_eof[] = "-1\n";
+                if (write_response_header_file(header_file, line1, length1, raw_until_eof, sizeof(raw_until_eof) - 1) != 0) {
+                    fprintf(stderr, "unixsock: cannot write header file %s: %s\n", header_file, strerror(errno));
+                    response_result = -1;
+                } else {
+                    body_mode = -1;
+                    if (write_all(STDOUT_FILENO, line1, length1) != 0 ||
+                        write_all(STDOUT_FILENO, "\n", 1) != 0 ||
+                        write_all(STDOUT_FILENO, line2, length2) != 0 ||
+                        write_all(STDOUT_FILENO, "\n", 1) != 0) {
+                        response_result = -1;
+                    }
+                }
+            } else {
+                fprintf(stderr, "unixsock: invalid response body mode: %s\n", line2);
+                response_result = -1;
+            }
         } else if (write_response_header_file(header_file, line1, length1, line2, length2) != 0) {
             fprintf(stderr, "unixsock: cannot write header file %s: %s\n", header_file, strerror(errno));
             response_result = -1;
@@ -407,16 +449,17 @@ int main(int argc, char **argv) {
     }
 
     const char *header_file = NULL;
+    int allow_plain_response = 0;
     int socket_fd = -1;
 
     if (strcmp(argv[1], "relay-unix") == 0 || strcmp(argv[1], "relay") == 0) {
-        if (parse_header_file_arg(argc, argv, 3, &header_file) != 0) {
+        if (parse_relay_args(argc, argv, 3, &header_file, &allow_plain_response) != 0) {
             usage(stderr);
             return 2;
         }
         socket_fd = connect_unix_socket(argv[2]);
     } else if (strcmp(argv[1], "relay-tcp") == 0) {
-        if (argc < 4 || parse_header_file_arg(argc, argv, 4, &header_file) != 0) {
+        if (argc < 4 || parse_relay_args(argc, argv, 4, &header_file, &allow_plain_response) != 0) {
             usage(stderr);
             return 2;
         }
@@ -431,5 +474,5 @@ int main(int argc, char **argv) {
         return 3;
     }
 
-    return relay_connection(socket_fd, header_file);
+    return relay_connection(socket_fd, header_file, allow_plain_response);
 }

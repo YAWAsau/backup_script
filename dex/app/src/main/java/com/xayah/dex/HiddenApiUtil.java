@@ -43,11 +43,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.zip.ZipFile;
 import java.nio.charset.StandardCharsets;
+import java.lang.reflect.Method;
 
 import dev.rikka.tools.refine.Refine;
 
 public class HiddenApiUtil {
-    static final String VERSION = "v2.6.97-app-inventory-source-path-cache-single-tools-unified-root-webdav-deep-hiddenapi-sync-webdav-eof-quiet-appops-location-verify build=v24.20.14-7.66-484-app-inventory-source-path-r45-202607232022";
+    static final String VERSION = "v2.6.170-r334-observer-version-procsnap build=v24.20.14-7.66-757-observer-version-procsnap-r334-202607232022";
     /**
      * 單 JVM 批量命令期間的輕量快取。只快取系統層級固定資料或同一輪已讀 package metadata；
      * 不跨 JVM、不落檔，避免一致性風險。
@@ -116,12 +117,54 @@ public class HiddenApiUtil {
         System.out.println();
         System.out.println("  getPackageArchiveInfo APK_FILE  讀取 APK 檔案資訊");
         System.out.println();
-        System.out.println("  hiddenApiBypassStatus  初始化並顯示 AndroidHiddenApiBypass 狀態");
-        System.out.println("  daemon-only commands: getPackageUid / getInstallSourceInfo / installSessionCreate / installSessionCommit / forceStopPackageBatch");
+        System.out.println("  hiddenApiBypassStatus  初始化並顯示 AndroidHiddenApiBypass softgate 狀態（狀態失敗不代表功能失敗）");
+        System.out.println("  hiddenApiRuntimeProbe [USER_ID PACKAGE]  依官方 non-SDK 限制邊界做 Hidden API runtime probe；可附 package 檢查 appops/standby shell 行為");
+        System.out.println("  cgroupFreezeStart USER_ID PACKAGE [PID|-1] [TIMEOUT_MS] [OWNER]  daemon 內啟動 cgroup freezer lifecycle guard；優先使用可選 native cgfreezer hot path，並逐 pid 驗證");
+        System.out.println("  cgroupFreezeStop TOKEN [USER_ID PACKAGE]  停止 cgroup freezer guard 並驗證還原原始 frozen 狀態");
+        System.out.println("  cgroupFreezeStatus  列出 daemon 內 cgroup freezer guard 狀態");
+        System.out.println("  cgroupFreezeDaemonEnsure [REASON]  批次開始前啟動/確認 native cgfreezerd 持久 session；daemon 不隨每 App 關閉，每 App 只快速 SCAN/FREEZE/THAW/KILL");
+        System.out.println("  cgroupFreezeRestorePackage USER_ID PACKAGE  依 package 還原 cgroup freezer persistent state");
+        System.out.println("  cgroupFreezeRestoreAll [REASON]  還原所有 cgroup freezer persistent state");
+        System.out.println("  cgroupFreezeCleanupStale [REASON] [TTL_MS]  還原並清理過期 cgroup freezer persistent state");
+        System.out.println("  daemon-only commands: getPackageUid / appInventoryPkgUid / appInventoryPackageStatus / appKillGuard / appWakeBlockStart / appWakeBlockStop / appWakeBlockStatus / appWakeBlockHold / appWakeBlockRestoreObserverToken / appWakeBlockRestorePackage / appWakeBlockRestoreAll / appWakeBlockCleanupStale / uidNetBlockStart / uidNetBlockStop / uidNetBlockStatus / uidNetBlockRestorePackage / uidNetBlockRestoreAll / uidNetBlockCleanupStale / uidNetBlockProbe / cgroupFreezeStart / cgroupFreezeStop / cgroupFreezeStatus / cgroupFreezeDaemonEnsure / cgroupFreezeRestorePackage / cgroupFreezeRestoreAll / cgroupFreezeCleanupStale / processObserverWatch / processObserverStart / processObserverStop / processObserverBatchStart / processObserverBatchStop / processObserverStatus / processObserverTop / processObserverForeground / uidLiveState / uidObserverProbe / uidObserverWatch / packageLiveState / packageInstallSnapshot / packageRestrictionSnapshot / forceStopPackageVerify / hiddenApiRuntimeProbe / getInstallSourceInfo / installSessionCreate / installSessionCommit / forceStopPackageBatch");
         System.out.println("    上述熱路徑只能透過 HiddenApi daemon socket 呼叫，不再提供單次 app_process CLI fallback");
         System.out.println();
         System.out.println("  getInstalledPackagesAsUser USER_ID FILTER_FLAG(user|system|xposed) FORMAT(label|pkgName|flag)  取得安裝清單");
         System.out.println("  appInventorySnapshot USER_ID [jsonl|appinfo|pkgName|pkgVerMap|pkgUidMap] [user|system|xposed|all] [refresh]  一次取得 package/label/uid/version/source/flag inventory");
+        System.out.println("  appInventoryGetlist USER_ID [targetPackageCsv] [refresh]  單次輸出 appList 所需 user/xposed + 白名單/system HOME 與 HOME metadata");
+        System.out.println("  appInventoryPkgUid USER_ID PACKAGE [refresh]  單包取得 PackageManager 當下 UID，供 restore install 後 chown refresh");
+        System.out.println("  appInventoryPackageStatus USER_ID PACKAGE [refresh]  單包取得 PackageManager 當下 installed/uid/version/source/dataDir 狀態");
+        System.out.println("  uidNetBlockStart USER_ID PACKAGE [netpolicy|auto|netd|none] [LOG_PATH]  daemon 內啟動高風險 App per-UID 網路封鎖；優先 INetworkPolicyManager direct，netd 為手動 hard mode");
+        System.out.println("  uidNetBlockStop TOKEN [USER_ID PACKAGE]  停止 per-UID 網路封鎖並驗證還原");
+        System.out.println("  uidNetBlockStatus  列出 daemon 內 UID 網路封鎖狀態");
+        System.out.println("  uidNetBlockRestorePackage USER_ID PACKAGE  從 Dex persistent snapshot 依 package 還原 UID 網路封鎖");
+        System.out.println("  uidNetBlockRestoreAll [REASON]  還原所有 UID 網路封鎖 snapshot");
+        System.out.println("  uidNetBlockCleanupStale [REASON] [TTL_MS]  清理超過 TTL 的 UID 網路封鎖 snapshot，清理前先嘗試還原");
+        System.out.println("  uidNetBlockProbe USER_ID PACKAGE  診斷 netpolicy/netd direct Binder 能力與實際 policy 常數");
+        System.out.println("  processObserverWatch USER_ID PACKAGE DURATION_MS [monitor|cgroup-freeze|stop-app|guard-stop|guard-stop-appops|guard-stop-restricted|kill|kill-stop|guard-kill|guard-kill-restricted] [LOG_PATH]  debug only：限時阻塞測試；tools 主流程請用 Start/Stop token lifecycle");
+        System.out.println("  processObserverStart USER_ID PACKAGE [monitor|cgroup-freeze|stop-app|guard-stop|guard-stop-appops|guard-stop-restricted|kill|kill-stop|guard-kill|guard-kill-restricted] [LOG_PATH]  daemon 內新增 global observer target；正式 tools app lifecycle 使用，Stop 時自動恢復 wake-block");
+        System.out.println("  processObserverStop TOKEN  停止 daemon 內 process observer");
+        System.out.println("  processObserverBatchStart USER_ID SPEC_FILE  從 tab spec 一次新增多個 process observer target，降低 per-app root/unixsock round-trip");
+        System.out.println("  processObserverBatchStop STATE_FILE [USER_ID]  依 tools 保存的 batch token state 一次停止多個 observer target");
+        System.out.println("  processObserverStatus  列出 daemon 內 process observer 狀態");
+        System.out.println("  processObserverTop USER_ID  直接查 IActivityTaskManager TOP，不跑 dumpsys，不接管 planner");
+        System.out.println("  processObserverForeground USER_ID PACKAGE [PACKAGE...]  輸出 top/alive/active 狀態，不接管 backup/restore decision");
+        System.out.println("  packageLiveState USER_ID PACKAGE [PACKAGE...]  合併 PM installed/uid/version 與 ProcessObserver top/alive，facts-only，不算 hash");
+        System.out.println("  packageInstallSnapshot USER_ID PACKAGE [PACKAGE...]  讀取 installer/sourceDir/dataDir/MATCH_UNINSTALLED/packagesForUid，facts-only，不算 hash");
+        System.out.println("  packageRestrictionSnapshot USER_ID PACKAGE [PACKAGE...]  讀取 standby/hibernation/auto-revoke/AppOps 限制狀態，facts-only，不算 hash");
+        System.out.println("  uidLiveState USER_ID PACKAGE [PACKAGE...]  以 IUidObserver API probe + running process snapshot 輸出 UID active/procState，facts-only，不算 hash");
+        System.out.println("  uidObserverProbe  探測 IActivityManager.registerUidObserver hidden API 是否存在，不註冊長駐 observer");
+        System.out.println("  uidObserverWatch USER_ID PACKAGE [DURATION_MS]  短時間註冊 IUidObserver 收集 UID 事件，debug only，planner=0");
+        System.out.println("  forceStopPackageVerify USER_ID PACKAGE [TIMEOUT_MS]  force-stop 後直接驗證 alive/top 狀態，失敗交 native kill fallback");
+        System.out.println("  appKillGuard USER_ID PACKAGE [stop-app|guard-stop|kill-stop|guard-kill]  單次執行 force-stop/killUid/killProcessGroup 並輸出 top-check/verify/killState");
+        System.out.println("  appWakeBlockStart USER_ID PACKAGE [normal|appops|restricted] [LOG_PATH]  daemon 內啟動短窗口喚醒阻擋，保存 AppOps/standby 原狀態");
+        System.out.println("  appWakeBlockStop TOKEN  恢復 appWakeBlockStart 保存的 AppOps/standby 狀態");
+        System.out.println("  appWakeBlockStatus  列出 daemon 內 wake-block 狀態");
+        System.out.println("  appWakeBlockHold USER_ID PACKAGE DURATION_MS [normal|appops|restricted] [LOG_PATH]  單次測試：套 wake-block、等待、再自動恢復");
+        System.out.println("  appWakeBlockRestoreObserverToken TOKEN  從 Dex persistent snapshot 依 processObserver token 還原 wake-block");
+        System.out.println("  appWakeBlockRestorePackage USER_ID PACKAGE  從 Dex persistent snapshot 依 package 還原 wake-block");
+        System.out.println("  appWakeBlockRestoreAll  還原所有 Dex persistent wake-block snapshot");
+        System.out.println("  appWakeBlockCleanupStale [REASON] [TTL_MS]  清理超過 TTL 的 Dex persistent wake-block snapshot，清理前先嘗試還原");
         System.out.println();
         System.out.println("  forceStopPackage USER_ID PACKAGE PACKAGE PACKAGE ...  透過 ActivityManager hidden API 批量停止套件，用於備份前 soft freeze");
         System.out.println("  forceStopPackageBatch USER_ID --stdin  從 stdin 批量讀取套件名稱並停止");
@@ -150,6 +193,130 @@ public class HiddenApiUtil {
             case "appInventorySnapshot":
                 appInventorySnapshot(args);
                 break;
+            case "appInventoryGetlist":
+                appInventoryGetlist(args);
+                break;
+            case "appInventoryPkgUid":
+                appInventoryPkgUid(args);
+                break;
+            case "appInventoryPackageStatus":
+                appInventoryPackageStatus(args);
+                break;
+            case "processObserverWatch":
+                processObserverWatch(args);
+                break;
+            case "processObserverStart":
+                processObserverStart(args);
+                break;
+            case "processObserverStop":
+                processObserverStop(args);
+                break;
+            case "processObserverBatchStart":
+                processObserverBatchStart(args);
+                break;
+            case "processObserverBatchStop":
+                processObserverBatchStop(args);
+                break;
+            case "processObserverStatus":
+                processObserverStatus();
+                break;
+            case "processObserverTop":
+                processObserverTop(args);
+                break;
+            case "processObserverForeground":
+                processObserverForeground(args);
+                break;
+            case "packageLiveState":
+                packageLiveState(args);
+                break;
+            case "packageInstallSnapshot":
+                packageInstallSnapshot(args);
+                break;
+            case "packageRestrictionSnapshot":
+                packageRestrictionSnapshot(args);
+                break;
+            case "uidLiveState":
+            case "uidObserverState":
+                uidLiveState(args);
+                break;
+            case "uidObserverProbe":
+                uidObserverProbe();
+                break;
+            case "uidObserverWatch":
+                uidObserverWatch(args);
+                break;
+            case "forceStopPackageVerify":
+                forceStopPackageVerify(args);
+                break;
+            case "appKillGuard":
+                appKillGuard(args);
+                break;
+            case "appWakeBlockStart":
+                appWakeBlockStart(args);
+                break;
+            case "appWakeBlockStop":
+                appWakeBlockStop(args);
+                break;
+            case "appWakeBlockStatus":
+                appWakeBlockStatus();
+                break;
+            case "appWakeBlockHold":
+                appWakeBlockHold(args);
+                break;
+            case "appWakeBlockRestoreObserverToken":
+                appWakeBlockRestoreObserverToken(args);
+                break;
+            case "appWakeBlockRestorePackage":
+                appWakeBlockRestorePackage(args);
+                break;
+            case "appWakeBlockRestoreAll":
+                appWakeBlockRestoreAll(args);
+                break;
+            case "appWakeBlockCleanupStale":
+                appWakeBlockCleanupStale(args);
+                break;
+            case "uidNetBlockStart":
+                uidNetBlockStart(args);
+                break;
+            case "uidNetBlockStop":
+                uidNetBlockStop(args);
+                break;
+            case "uidNetBlockStatus":
+                uidNetBlockStatus();
+                break;
+            case "uidNetBlockRestorePackage":
+                uidNetBlockRestorePackage(args);
+                break;
+            case "uidNetBlockRestoreAll":
+                uidNetBlockRestoreAll(args);
+                break;
+            case "uidNetBlockCleanupStale":
+                uidNetBlockCleanupStale(args);
+                break;
+            case "uidNetBlockProbe":
+                uidNetBlockProbe(args);
+                break;
+            case "cgroupFreezeStart":
+                cgroupFreezeStart(args);
+                break;
+            case "cgroupFreezeStop":
+                cgroupFreezeStop(args);
+                break;
+            case "cgroupFreezeStatus":
+                cgroupFreezeStatus();
+                break;
+            case "cgroupFreezeDaemonEnsure":
+                cgroupFreezeDaemonEnsure(args);
+                break;
+            case "cgroupFreezeRestorePackage":
+                cgroupFreezeRestorePackage(args);
+                break;
+            case "cgroupFreezeRestoreAll":
+                cgroupFreezeRestoreAll(args);
+                break;
+            case "cgroupFreezeCleanupStale":
+                cgroupFreezeCleanupStale(args);
+                break;
             case "forceStopPackage":
                 forceStopPackage(args);
                 break;
@@ -164,6 +331,9 @@ public class HiddenApiUtil {
                 break;
             case "hiddenApiBypassStatus":
                 HiddenApiBypassBridge.printStatus();
+                break;
+            case "hiddenApiRuntimeProbe":
+                hiddenApiRuntimeProbe(args);
                 break;
             case "daemonunix":
                 cmdDaemonUnix(args);
@@ -281,6 +451,136 @@ public class HiddenApiUtil {
         }
         if ("appInventorySnapshot".equals(command)) {
             return appInventorySnapshotDaemonCommand(cmdArgs);
+        }
+        if ("appInventoryGetlist".equals(command)) {
+            return appInventoryGetlistDaemonCommand(cmdArgs);
+        }
+        if ("appInventoryPkgUid".equals(command)) {
+            return appInventoryPkgUidDaemonCommand(cmdArgs);
+        }
+        if ("appInventoryPackageStatus".equals(command)) {
+            return appInventoryPackageStatusDaemonCommand(cmdArgs);
+        }
+        if ("processObserverWatch".equals(command)) {
+            return processObserverWatchDaemonCommand(cmdArgs);
+        }
+        if ("processObserverStart".equals(command)) {
+            return processObserverStartDaemonCommand(cmdArgs);
+        }
+        if ("processObserverStop".equals(command)) {
+            return processObserverStopDaemonCommand(cmdArgs);
+        }
+        if ("processObserverBatchStart".equals(command)) {
+            return processObserverBatchStartDaemonCommand(cmdArgs);
+        }
+        if ("processObserverBatchStop".equals(command)) {
+            return processObserverBatchStopDaemonCommand(cmdArgs);
+        }
+        if ("processObserverStatus".equals(command)) {
+            return new DaemonRunResult(0, ProcessObserverUtil.status());
+        }
+        if ("processObserverTop".equals(command)) {
+            return processObserverTopDaemonCommand(cmdArgs);
+        }
+        if ("processObserverForeground".equals(command)) {
+            return processObserverForegroundDaemonCommand(cmdArgs);
+        }
+        if ("packageLiveState".equals(command)) {
+            return packageLiveStateDaemonCommand(cmdArgs);
+        }
+        if ("packageInstallSnapshot".equals(command)) {
+            return packageInstallSnapshotDaemonCommand(cmdArgs);
+        }
+        if ("packageRestrictionSnapshot".equals(command)) {
+            return packageRestrictionSnapshotDaemonCommand(cmdArgs);
+        }
+        if ("uidLiveState".equals(command) || "uidObserverState".equals(command)) {
+            return uidLiveStateDaemonCommand(cmdArgs);
+        }
+        if ("uidObserverProbe".equals(command)) {
+            return new DaemonRunResult(0, ProcessObserverUtil.uidObserverProbe());
+        }
+        if ("uidObserverWatch".equals(command)) {
+            return uidObserverWatchDaemonCommand(cmdArgs);
+        }
+        if ("forceStopPackageVerify".equals(command)) {
+            return forceStopPackageVerifyDaemonCommand(cmdArgs);
+        }
+        if ("appKillGuard".equals(command)) {
+            return appKillGuardDaemonCommand(cmdArgs);
+        }
+        if ("appWakeBlockStart".equals(command)) {
+            return appWakeBlockStartDaemonCommand(cmdArgs);
+        }
+        if ("appWakeBlockStop".equals(command)) {
+            return appWakeBlockStopDaemonCommand(cmdArgs);
+        }
+        if ("appWakeBlockStatus".equals(command)) {
+            return new DaemonRunResult(0, AppWakeBlockUtil.status());
+        }
+        if ("appWakeBlockHold".equals(command)) {
+            return appWakeBlockHoldDaemonCommand(cmdArgs);
+        }
+        if ("appWakeBlockRestoreObserverToken".equals(command)) {
+            return appWakeBlockRestoreObserverTokenDaemonCommand(cmdArgs);
+        }
+        if ("appWakeBlockRestorePackage".equals(command)) {
+            return appWakeBlockRestorePackageDaemonCommand(cmdArgs);
+        }
+        if ("appWakeBlockRestoreAll".equals(command)) {
+            return appWakeBlockRestoreAllDaemonCommand(cmdArgs);
+        }
+        if ("appWakeBlockCleanupStale".equals(command)) {
+            return appWakeBlockCleanupStaleDaemonCommand(cmdArgs);
+        }
+        if ("uidNetBlockStart".equals(command)) {
+            return uidNetBlockStartDaemonCommand(cmdArgs);
+        }
+        if ("uidNetBlockStop".equals(command)) {
+            return uidNetBlockStopDaemonCommand(cmdArgs);
+        }
+        if ("uidNetBlockStatus".equals(command)) {
+            return new DaemonRunResult(0, UidNetworkBlockUtil.status());
+        }
+        if ("uidNetBlockRestorePackage".equals(command)) {
+            return uidNetBlockRestorePackageDaemonCommand(cmdArgs);
+        }
+        if ("uidNetBlockRestoreAll".equals(command)) {
+            return uidNetBlockRestoreAllDaemonCommand(cmdArgs);
+        }
+        if ("uidNetBlockCleanupStale".equals(command)) {
+            return uidNetBlockCleanupStaleDaemonCommand(cmdArgs);
+        }
+        if ("uidNetBlockProbe".equals(command)) {
+            return uidNetBlockProbeDaemonCommand(cmdArgs);
+        }
+        if ("cgroupFreezeStart".equals(command)) {
+            return cgroupFreezeStartDaemonCommand(cmdArgs);
+        }
+        if ("cgroupFreezeStop".equals(command)) {
+            return cgroupFreezeStopDaemonCommand(cmdArgs);
+        }
+        if ("cgroupFreezeStatus".equals(command)) {
+            return new DaemonRunResult(0, CgroupFreezeUtil.status());
+        }
+        if ("cgroupFreezeDaemonEnsure".equals(command)) {
+            String reason = cmdArgs != null && cmdArgs.length > 1 ? argAt(cmdArgs, 1) : "daemon-batch";
+            return new DaemonRunResult(0, CgroupFreezeUtil.ensureNativeDaemonForBatch(reason));
+        }
+        if ("cgroupFreezeRestorePackage".equals(command)) {
+            return cgroupFreezeRestorePackageDaemonCommand(cmdArgs);
+        }
+        if ("cgroupFreezeRestoreAll".equals(command)) {
+            return cgroupFreezeRestoreAllDaemonCommand(cmdArgs);
+        }
+        if ("cgroupFreezeCleanupStale".equals(command)) {
+            return cgroupFreezeCleanupStaleDaemonCommand(cmdArgs);
+        }
+        if ("setDisplayPowerMode".equals(command)) {
+            return setDisplayPowerModeDaemonCommand(cmdArgs);
+        }
+        if ("hiddenApiRuntimeProbe".equals(command)) {
+            return hiddenApiRuntimeProbeDaemonCommand(cmdArgs);
         }
 
         PrintStream oldOut = System.out;
@@ -1385,6 +1685,594 @@ public class HiddenApiUtil {
         String packageSourceName;
     }
 
+
+    private static void appInventoryPkgUid(String[] args) {
+        try {
+            System.out.print(AppInventoryUtil.pkgUidSingle(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args)));
+            System.exit(0);
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            System.exit(1);
+        }
+    }
+
+    private static DaemonRunResult appInventoryPkgUidDaemonCommand(String[] args) {
+        try {
+            return new DaemonRunResult(0, AppInventoryUtil.pkgUidSingle(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args)));
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            return new DaemonRunResult(1, "APP_INVENTORY_PKG_UID_FAILED exception=" + sanitizeDiagValue(t.getClass().getName())
+                    + " message=" + sanitizeDiagValue(t.getMessage()) + "\n");
+        }
+    }
+
+
+
+    private static void hiddenApiRuntimeProbe(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = args != null && args.length > 2 ? argAt(args, 2) : "";
+        System.out.print(HiddenApiRuntimeProbe.run(userId, pkg));
+        System.exit(0);
+    }
+
+    private static DaemonRunResult hiddenApiRuntimeProbeDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = args != null && args.length > 2 ? argAt(args, 2) : "";
+        return new DaemonRunResult(0, HiddenApiRuntimeProbe.run(userId, pkg));
+    }
+
+    private static void appKillGuard(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        String action = args != null && args.length > 3 ? argAt(args, 3) : "guard-stop";
+        System.out.print(ProcessObserverUtil.killGuardOnce(userId, pkg, action));
+        System.exit(0);
+    }
+
+    private static DaemonRunResult appKillGuardDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        String action = args != null && args.length > 3 ? argAt(args, 3) : "guard-stop";
+        return new DaemonRunResult(0, ProcessObserverUtil.killGuardOnce(userId, pkg, action));
+    }
+
+    private static void appWakeBlockStart(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        String mode = args != null && args.length > 3 ? argAt(args, 3) : "normal";
+        String logPath = args != null && args.length > 4 ? argAt(args, 4) : "-";
+        System.out.print(AppWakeBlockUtil.start(userId, pkg, mode, logPath));
+        System.exit(0);
+    }
+
+    private static void appWakeBlockStop(String[] args) {
+        int token = parseIntArg(args, 1, -1);
+        int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
+        String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
+        System.out.print(AppWakeBlockUtil.stop(token, expectedUser, expectedPkg));
+        System.exit(0);
+    }
+
+    private static void appWakeBlockStatus() {
+        System.out.print(AppWakeBlockUtil.status());
+        System.exit(0);
+    }
+
+    private static void appWakeBlockHold(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        long durationMs = parseLongArg(args, 3, 60000L);
+        String mode = args != null && args.length > 4 ? argAt(args, 4) : "normal";
+        String logPath = args != null && args.length > 5 ? argAt(args, 5) : "-";
+        System.out.print(AppWakeBlockUtil.hold(userId, pkg, durationMs, mode, logPath));
+        System.exit(0);
+    }
+
+    private static void appWakeBlockRestoreObserverToken(String[] args) {
+        int token = parseIntArg(args, 1, -1);
+        int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
+        String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
+        System.out.print(AppWakeBlockUtil.restorePersistedObserverToken(token, "cli-observer-token-" + token, expectedUser, expectedPkg));
+        System.exit(0);
+    }
+
+    private static void appWakeBlockRestorePackage(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        System.out.print(AppWakeBlockUtil.restorePersistedPackage(userId, pkg, "cli-package"));
+        System.exit(0);
+    }
+
+    private static void appWakeBlockRestoreAll(String[] args) {
+        String reason = args != null && args.length > 1 ? argAt(args, 1) : "cli-all";
+        System.out.print(AppWakeBlockUtil.restorePersistedAll(reason));
+        System.exit(0);
+    }
+
+    private static void appWakeBlockCleanupStale(String[] args) {
+        String reason = args != null && args.length > 1 ? argAt(args, 1) : "cli-cleanup-stale";
+        long ttlMs = args != null && args.length > 2 ? parseLongArg(args, 2, 24L * 60L * 60L * 1000L) : 24L * 60L * 60L * 1000L;
+        System.out.print(AppWakeBlockUtil.cleanupStalePersistentStates(reason, ttlMs));
+        System.exit(0);
+    }
+
+    private static DaemonRunResult appWakeBlockStartDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        String mode = args != null && args.length > 3 ? argAt(args, 3) : "normal";
+        String logPath = args != null && args.length > 4 ? argAt(args, 4) : "-";
+        return new DaemonRunResult(0, AppWakeBlockUtil.start(userId, pkg, mode, logPath));
+    }
+
+    private static DaemonRunResult appWakeBlockStopDaemonCommand(String[] args) {
+        int token = parseIntArg(args, 1, -1);
+        int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
+        String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
+        return new DaemonRunResult(0, AppWakeBlockUtil.stop(token, expectedUser, expectedPkg));
+    }
+
+    private static DaemonRunResult appWakeBlockHoldDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        long durationMs = parseLongArg(args, 3, 60000L);
+        String mode = args != null && args.length > 4 ? argAt(args, 4) : "normal";
+        String logPath = args != null && args.length > 5 ? argAt(args, 5) : "-";
+        return new DaemonRunResult(0, AppWakeBlockUtil.hold(userId, pkg, durationMs, mode, logPath));
+    }
+
+    private static DaemonRunResult appWakeBlockRestoreObserverTokenDaemonCommand(String[] args) {
+        int token = parseIntArg(args, 1, -1);
+        int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
+        String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
+        return new DaemonRunResult(0, AppWakeBlockUtil.restorePersistedObserverToken(token, "daemon-observer-token-" + token, expectedUser, expectedPkg));
+    }
+
+    private static DaemonRunResult appWakeBlockRestorePackageDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        return new DaemonRunResult(0, AppWakeBlockUtil.restorePersistedPackage(userId, pkg, "daemon-package"));
+    }
+
+    private static DaemonRunResult appWakeBlockRestoreAllDaemonCommand(String[] args) {
+        String reason = args != null && args.length > 1 ? argAt(args, 1) : "daemon-all";
+        return new DaemonRunResult(0, AppWakeBlockUtil.restorePersistedAll(reason));
+    }
+
+    private static DaemonRunResult appWakeBlockCleanupStaleDaemonCommand(String[] args) {
+        String reason = args != null && args.length > 1 ? argAt(args, 1) : "daemon-cleanup-stale";
+        long ttlMs = args != null && args.length > 2 ? parseLongArg(args, 2, 24L * 60L * 60L * 1000L) : 24L * 60L * 60L * 1000L;
+        return new DaemonRunResult(0, AppWakeBlockUtil.cleanupStalePersistentStates(reason, ttlMs));
+    }
+
+    private static void uidNetBlockStart(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        String mode = args != null && args.length > 3 ? argAt(args, 3) : "netpolicy";
+        String logPath = args != null && args.length > 4 ? argAt(args, 4) : "-";
+        System.out.print(UidNetworkBlockUtil.start(userId, pkg, mode, logPath));
+        System.exit(0);
+    }
+
+    private static void uidNetBlockStop(String[] args) {
+        int token = parseIntArg(args, 1, -1);
+        int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
+        String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
+        System.out.print(UidNetworkBlockUtil.stop(token, expectedUser, expectedPkg));
+        System.exit(0);
+    }
+
+    private static void uidNetBlockStatus() {
+        System.out.print(UidNetworkBlockUtil.status());
+        System.exit(0);
+    }
+
+    private static void uidNetBlockRestorePackage(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        System.out.print(UidNetworkBlockUtil.restorePersistedPackage(userId, pkg, "cli-package"));
+        System.exit(0);
+    }
+
+    private static void uidNetBlockRestoreAll(String[] args) {
+        String reason = args != null && args.length > 1 ? argAt(args, 1) : "cli-all";
+        System.out.print(UidNetworkBlockUtil.restorePersistedAll(reason));
+        System.exit(0);
+    }
+
+    private static void uidNetBlockCleanupStale(String[] args) {
+        String reason = args != null && args.length > 1 ? argAt(args, 1) : "cli-cleanup-stale";
+        long ttlMs = args != null && args.length > 2 ? parseLongArg(args, 2, 24L * 60L * 60L * 1000L) : 24L * 60L * 60L * 1000L;
+        System.out.print(UidNetworkBlockUtil.cleanupStalePersistentStates(reason, ttlMs));
+        System.exit(0);
+    }
+
+    private static void uidNetBlockProbe(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        System.out.print(UidNetworkBlockUtil.probe(userId, pkg));
+        System.exit(0);
+    }
+
+    private static DaemonRunResult uidNetBlockStartDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        String mode = args != null && args.length > 3 ? argAt(args, 3) : "netpolicy";
+        String logPath = args != null && args.length > 4 ? argAt(args, 4) : "-";
+        return new DaemonRunResult(0, UidNetworkBlockUtil.start(userId, pkg, mode, logPath));
+    }
+
+    private static DaemonRunResult uidNetBlockStopDaemonCommand(String[] args) {
+        int token = parseIntArg(args, 1, -1);
+        int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
+        String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
+        return new DaemonRunResult(0, UidNetworkBlockUtil.stop(token, expectedUser, expectedPkg));
+    }
+
+    private static DaemonRunResult uidNetBlockRestorePackageDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        return new DaemonRunResult(0, UidNetworkBlockUtil.restorePersistedPackage(userId, pkg, "daemon-package"));
+    }
+
+    private static DaemonRunResult uidNetBlockRestoreAllDaemonCommand(String[] args) {
+        String reason = args != null && args.length > 1 ? argAt(args, 1) : "daemon-all";
+        return new DaemonRunResult(0, UidNetworkBlockUtil.restorePersistedAll(reason));
+    }
+
+    private static DaemonRunResult uidNetBlockCleanupStaleDaemonCommand(String[] args) {
+        String reason = args != null && args.length > 1 ? argAt(args, 1) : "daemon-cleanup-stale";
+        long ttlMs = args != null && args.length > 2 ? parseLongArg(args, 2, 24L * 60L * 60L * 1000L) : 24L * 60L * 60L * 1000L;
+        return new DaemonRunResult(0, UidNetworkBlockUtil.cleanupStalePersistentStates(reason, ttlMs));
+    }
+
+    private static DaemonRunResult uidNetBlockProbeDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        return new DaemonRunResult(0, UidNetworkBlockUtil.probe(userId, pkg));
+    }
+
+    private static void cgroupFreezeStart(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        int pid = parseIntArg(args, 3, -1);
+        int timeoutMs = parseIntArg(args, 4, 1500);
+        String owner = args != null && args.length > 5 ? argAt(args, 5) : "manual";
+        System.out.print(CgroupFreezeUtil.start(userId, pkg, pid, timeoutMs, owner));
+        System.exit(0);
+    }
+
+    private static void cgroupFreezeStop(String[] args) {
+        int token = parseIntArg(args, 1, -1);
+        int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
+        String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
+        System.out.print(CgroupFreezeUtil.stop(token, expectedUser, expectedPkg));
+        System.exit(0);
+    }
+
+    private static void cgroupFreezeStatus() {
+        System.out.print(CgroupFreezeUtil.status());
+        System.exit(0);
+    }
+
+    private static void cgroupFreezeDaemonEnsure(String[] args) {
+        String reason = args != null && args.length > 1 ? argAt(args, 1) : "cli-batch";
+        System.out.print(CgroupFreezeUtil.ensureNativeDaemonForBatch(reason));
+        System.exit(0);
+    }
+
+    private static void cgroupFreezeRestorePackage(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        System.out.print(CgroupFreezeUtil.restorePersistedPackage(userId, pkg, "cli-package"));
+        System.exit(0);
+    }
+
+    private static void cgroupFreezeRestoreAll(String[] args) {
+        String reason = args != null && args.length > 1 ? argAt(args, 1) : "cli-all";
+        System.out.print(CgroupFreezeUtil.restorePersistedAll(reason));
+        System.exit(0);
+    }
+
+    private static void cgroupFreezeCleanupStale(String[] args) {
+        String reason = args != null && args.length > 1 ? argAt(args, 1) : "cli-cleanup-stale";
+        long ttlMs = args != null && args.length > 2 ? parseLongArg(args, 2, 24L * 60L * 60L * 1000L) : 24L * 60L * 60L * 1000L;
+        System.out.print(CgroupFreezeUtil.cleanupStalePersistentStates(reason, ttlMs));
+        System.exit(0);
+    }
+
+    private static DaemonRunResult cgroupFreezeStartDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        int pid = parseIntArg(args, 3, -1);
+        int timeoutMs = parseIntArg(args, 4, 1500);
+        String owner = args != null && args.length > 5 ? argAt(args, 5) : "daemon";
+        return new DaemonRunResult(0, CgroupFreezeUtil.start(userId, pkg, pid, timeoutMs, owner));
+    }
+
+    private static DaemonRunResult cgroupFreezeStopDaemonCommand(String[] args) {
+        int token = parseIntArg(args, 1, -1);
+        int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
+        String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
+        return new DaemonRunResult(0, CgroupFreezeUtil.stop(token, expectedUser, expectedPkg));
+    }
+
+    private static DaemonRunResult cgroupFreezeRestorePackageDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        return new DaemonRunResult(0, CgroupFreezeUtil.restorePersistedPackage(userId, pkg, "daemon-package"));
+    }
+
+    private static DaemonRunResult cgroupFreezeRestoreAllDaemonCommand(String[] args) {
+        String reason = args != null && args.length > 1 ? argAt(args, 1) : "daemon-all";
+        return new DaemonRunResult(0, CgroupFreezeUtil.restorePersistedAll(reason));
+    }
+
+    private static DaemonRunResult cgroupFreezeCleanupStaleDaemonCommand(String[] args) {
+        String reason = args != null && args.length > 1 ? argAt(args, 1) : "daemon-cleanup-stale";
+        long ttlMs = args != null && args.length > 2 ? parseLongArg(args, 2, 24L * 60L * 60L * 1000L) : 24L * 60L * 60L * 1000L;
+        return new DaemonRunResult(0, CgroupFreezeUtil.cleanupStalePersistentStates(reason, ttlMs));
+    }
+
+    private static void processObserverStart(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        String action = args != null && args.length > 3 ? argAt(args, 3) : "monitor";
+        String logPath = args != null && args.length > 4 ? argAt(args, 4) : "-";
+        System.out.print(ProcessObserverUtil.startAsync(userId, pkg, action, logPath));
+        System.exit(0);
+    }
+
+    private static void processObserverStop(String[] args) {
+        int token = parseIntArg(args, 1, -1);
+        int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
+        String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
+        System.out.print(ProcessObserverUtil.stopAsync(token, expectedUser, expectedPkg));
+        System.exit(0);
+    }
+
+
+    private static void processObserverBatchStart(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String specPath = argAt(args, 2);
+        System.out.print(ProcessObserverUtil.startBatchAsync(userId, specPath));
+        System.exit(0);
+    }
+
+    private static void processObserverBatchStop(String[] args) {
+        String statePath = argAt(args, 1);
+        int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
+        System.out.print(ProcessObserverUtil.stopBatchAsync(statePath, expectedUser));
+        System.exit(0);
+    }
+
+    private static void processObserverStatus() {
+        System.out.print(ProcessObserverUtil.status());
+        System.exit(0);
+    }
+
+    private static void processObserverTop(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        System.out.print(ProcessObserverUtil.topStatus(userId));
+        System.exit(0);
+    }
+
+    private static void processObserverForeground(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        System.out.print(ProcessObserverUtil.foregroundStatus(userId, args, 2));
+        System.exit(0);
+    }
+    private static void packageLiveState(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        System.out.print(ProcessObserverUtil.packageLiveState(userId, args, 2));
+        System.exit(0);
+    }
+
+    private static void uidLiveState(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        System.out.print(ProcessObserverUtil.uidLiveState(userId, args, 2));
+        System.exit(0);
+    }
+
+    private static void packageInstallSnapshot(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        System.out.print(ProcessObserverUtil.packageInstallSnapshot(userId, args, 2));
+        System.exit(0);
+    }
+
+    private static void packageRestrictionSnapshot(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        System.out.print(ProcessObserverUtil.packageRestrictionSnapshot(userId, args, 2));
+        System.exit(0);
+    }
+
+    private static void uidObserverProbe() {
+        System.out.print(ProcessObserverUtil.uidObserverProbe());
+        System.exit(0);
+    }
+
+    private static void uidObserverWatch(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        System.out.print(ProcessObserverUtil.uidObserverWatch(userId, args, 2));
+        System.exit(0);
+    }
+
+    private static void forceStopPackageVerify(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        System.out.print(ProcessObserverUtil.forceStopPackageVerify(userId, args, 2));
+        System.exit(0);
+    }
+
+
+    private static DaemonRunResult processObserverTopDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        return new DaemonRunResult(0, ProcessObserverUtil.topStatus(userId));
+    }
+
+    private static DaemonRunResult processObserverForegroundDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        return new DaemonRunResult(0, ProcessObserverUtil.foregroundStatus(userId, args, 2));
+    }
+    private static DaemonRunResult packageLiveStateDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        return new DaemonRunResult(0, ProcessObserverUtil.packageLiveState(userId, args, 2));
+    }
+
+    private static DaemonRunResult uidLiveStateDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        return new DaemonRunResult(0, ProcessObserverUtil.uidLiveState(userId, args, 2));
+    }
+
+    private static DaemonRunResult packageInstallSnapshotDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        return new DaemonRunResult(0, ProcessObserverUtil.packageInstallSnapshot(userId, args, 2));
+    }
+
+    private static DaemonRunResult packageRestrictionSnapshotDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        return new DaemonRunResult(0, ProcessObserverUtil.packageRestrictionSnapshot(userId, args, 2));
+    }
+
+    private static DaemonRunResult uidObserverWatchDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        return new DaemonRunResult(0, ProcessObserverUtil.uidObserverWatch(userId, args, 2));
+    }
+
+    private static DaemonRunResult forceStopPackageVerifyDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        return new DaemonRunResult(0, ProcessObserverUtil.forceStopPackageVerify(userId, args, 2));
+    }
+
+
+    private static DaemonRunResult processObserverStartDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String pkg = argAt(args, 2);
+        String action = args != null && args.length > 3 ? argAt(args, 3) : "monitor";
+        String logPath = args != null && args.length > 4 ? argAt(args, 4) : "-";
+        return new DaemonRunResult(0, ProcessObserverUtil.startAsync(userId, pkg, action, logPath));
+    }
+
+    private static DaemonRunResult processObserverStopDaemonCommand(String[] args) {
+        int token = parseIntArg(args, 1, -1);
+        int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
+        String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
+        return new DaemonRunResult(0, ProcessObserverUtil.stopAsync(token, expectedUser, expectedPkg));
+    }
+
+
+    private static DaemonRunResult processObserverBatchStartDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String specPath = argAt(args, 2);
+        return new DaemonRunResult(0, ProcessObserverUtil.startBatchAsync(userId, specPath));
+    }
+
+    private static DaemonRunResult processObserverBatchStopDaemonCommand(String[] args) {
+        String statePath = argAt(args, 1);
+        int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
+        String out = ProcessObserverUtil.stopBatchAsync(statePath, expectedUser);
+        int rc = (out.contains("PROCESS_OBSERVER_BATCH_STOP_OK") && out.contains("ok=true") && out.contains("restoreOk=true") && out.contains("stateDeleted=true")) ? 0 : 1;
+        return new DaemonRunResult(rc, out);
+    }
+
+    private static void processObserverWatch(String[] args) {
+        try {
+            int userId = parseIntArg(args, 1, 0);
+            String pkg = argAt(args, 2);
+            long durationMs = parseLongArg(args, 3, 60000L);
+            String action = args != null && args.length > 4 ? argAt(args, 4) : "monitor";
+            String logPath = args != null && args.length > 5 ? argAt(args, 5) : "-";
+            System.out.print(ProcessObserverUtil.watchBlocking(userId, pkg, durationMs, action, logPath));
+            System.exit(0);
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            System.exit(1);
+        }
+    }
+
+    private static DaemonRunResult processObserverWatchDaemonCommand(String[] args) {
+        try {
+            int userId = parseIntArg(args, 1, 0);
+            String pkg = argAt(args, 2);
+            long durationMs = parseLongArg(args, 3, 60000L);
+            String action = args != null && args.length > 4 ? argAt(args, 4) : "monitor";
+            String logPath = args != null && args.length > 5 ? argAt(args, 5) : "-";
+            return new DaemonRunResult(0, ProcessObserverUtil.watchBlocking(userId, pkg, durationMs, action, logPath));
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            return new DaemonRunResult(1, "PROCESS_OBSERVER_WATCH_FAILED exception=" + sanitizeDiagValue(t.getClass().getName())
+                    + " message=" + sanitizeDiagValue(t.getMessage()) + "\n");
+        }
+    }
+
+    private static long parseLongArg(String[] args, int index, long fallback) {
+        try {
+            if (args == null || args.length <= index) return fallback;
+            return Long.parseLong(args[index]);
+        } catch (Throwable ignored) {
+            return fallback;
+        }
+    }
+
+    private static void appInventoryPackageStatus(String[] args) {
+        try {
+            System.out.print(AppInventoryUtil.packageStatusSingle(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args)));
+            System.exit(0);
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            System.exit(1);
+        }
+    }
+
+    private static DaemonRunResult appInventoryPackageStatusDaemonCommand(String[] args) {
+        try {
+            return new DaemonRunResult(0, AppInventoryUtil.packageStatusSingle(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args)));
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            return new DaemonRunResult(1, "APP_INVENTORY_PACKAGE_STATUS_FAILED exception=" + sanitizeDiagValue(t.getClass().getName())
+                    + " message=" + sanitizeDiagValue(t.getMessage()) + "\n");
+        }
+    }
+
+    private static int parseIntArg(String[] args, int index, int fallback) {
+        try {
+            if (args == null || args.length <= index) return fallback;
+            return Integer.parseInt(args[index]);
+        } catch (Throwable ignored) {
+            return fallback;
+        }
+    }
+
+    private static String argAt(String[] args, int index) {
+        return args != null && args.length > index && args[index] != null ? args[index] : "";
+    }
+
+    private static boolean hasRefreshArg(String[] args) {
+        if (args == null) return false;
+        for (String a : args) {
+            if ("refresh".equalsIgnoreCase(a) || "--refresh".equalsIgnoreCase(a)) return true;
+        }
+        return false;
+    }
+
+    private static void appInventoryGetlist(String[] args) {
+        try {
+            System.out.print(AppInventoryUtil.runGetlistCommand(args));
+            System.exit(0);
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            System.exit(1);
+        }
+    }
+
+    private static DaemonRunResult appInventoryGetlistDaemonCommand(String[] args) {
+        try {
+            return new DaemonRunResult(0, AppInventoryUtil.runGetlistCommand(args));
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            return new DaemonRunResult(1, "APP_INVENTORY_GETLIST_FAILED exception=" + sanitizeDiagValue(t.getClass().getName())
+                    + " message=" + sanitizeDiagValue(t.getMessage()) + "\n");
+        }
+    }
+
     private static void appInventorySnapshot(String[] args) {
         try {
             System.out.print(AppInventoryUtil.runCommand(args));
@@ -1622,6 +2510,12 @@ public class HiddenApiUtil {
         return "SCOPE_MISMATCH_WARN";
     }
 
+
+    private static Object getPackageManagerService() throws Exception {
+        return HiddenApiServices.interfaceService(HiddenApiServices.SERVICE_PACKAGE,
+                "android.content.pm.IPackageManager$Stub");
+    }
+
     private static void forceStopPackage(String[] args) {
         try {
             int userId = Integer.parseInt(args[1]);
@@ -1721,8 +2615,23 @@ public class HiddenApiUtil {
     }
 
     public static void setDisplayPowerMode(String[] args) {
+        DaemonRunResult result = setDisplayPowerModeCommand(args, false);
+        System.out.print(result.stdout);
+        System.exit(result.rc);
+    }
+
+    private static DaemonRunResult setDisplayPowerModeDaemonCommand(String[] args) {
+        return setDisplayPowerModeCommand(args, true);
+    }
+
+    private static DaemonRunResult setDisplayPowerModeCommand(String[] args, boolean viaRootDaemon) {
         try {
-            int mode = Integer.parseInt(args[1]);
+            int mode = parseIntArg(args, 1, -1);
+            if (mode != 0 && mode != 2) {
+                return new DaemonRunResult(2,
+                        "DISPLAY_POWER_MODE ok=false reason=bad_mode mode=" + mode
+                                + " viaRootDaemon=" + viaRootDaemon + "\n");
+            }
             long[] physicalDisplayIds;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 physicalDisplayIds = DisplayControlHidden.getPhysicalDisplayIds();
@@ -1731,6 +2640,7 @@ public class HiddenApiUtil {
             } else {
                 physicalDisplayIds = new long[]{0L};
             }
+            int changed = 0;
             for (long id : physicalDisplayIds) {
                 IBinder token;
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -1740,17 +2650,33 @@ public class HiddenApiUtil {
                 } else {
                     token = SurfaceControlHidden.getBuiltInDisplay((int) id);
                 }
+                if (token == null) continue;
                 SurfaceControlHidden.setDisplayPowerMode(token, mode);
+                changed++;
             }
-            System.exit(0);
-        } catch (Exception e) {
-            e.printStackTrace(System.err);
-            System.exit(1);
+            return new DaemonRunResult(changed > 0 ? 0 : 1,
+                    "DISPLAY_POWER_MODE ok=" + (changed > 0)
+                            + " mode=" + mode + " displays=" + changed
+                            + " viaRootDaemon=" + viaRootDaemon + "\n");
+        } catch (Throwable e) {
+            return new DaemonRunResult(1,
+                    "DISPLAY_POWER_MODE ok=false reason=" + e.getClass().getSimpleName()
+                            + " message=" + sanitizeDiagValue(e.getMessage())
+                            + " viaRootDaemon=" + viaRootDaemon + "\n");
         }
     }
 
     private static String removeSpaces(String string) {
-        return string.replaceAll("\\s", "");
+        return safePathLabel(string, "app");
+    }
+
+    private static String safePathLabel(String string, String fallback) {
+        String value = string == null ? "" : string.replaceAll("\\s+", "").replace('/', '_').replace('\\', '_').replace("..", "__");
+        if (value.isEmpty() || ".".equals(value) || "..".equals(value)) {
+            value = fallback == null ? "" : fallback.replaceAll("[^A-Za-z0-9._-]", "_").replace("..", "__");
+        }
+        if (value.isEmpty() || ".".equals(value) || "..".equals(value)) value = "app";
+        return value;
     }
 
     /**

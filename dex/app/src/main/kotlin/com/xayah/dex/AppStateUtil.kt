@@ -30,7 +30,7 @@ import kotlin.system.exitProcess
  *   body bytes
  */
 object AppStateUtil {
-    private const val VERSION = "v1.3.35-ssaid-metadata-restore"
+    private const val VERSION = "v1.3.78-vendor-classify-dex"
     private const val DEFAULT_IDLE_TIMEOUT_SEC = 1800L
 
     @JvmStatic
@@ -67,6 +67,7 @@ object AppStateUtil {
             "foregroundrunning", "foregroundrunningbatch", "foregroundstaterunning", "foregroundstaterunningbatch" -> "foregroundrunning"
             "foregroundlist", "foregroundlistjson", "foregroundstatelist", "foregroundstatejson", "foregroundjson" -> "foregroundlist"
             "foregroundtop", "foregroundtopapp" -> "foregroundtop"
+            "defaulthome", "defaultlauncher", "homeactivity", "launcherhome" -> "defaulthome"
             "restoreappstatebatch" -> "restore"
             "verifyappstatebatch" -> "verify"
             else -> value
@@ -96,7 +97,7 @@ object AppStateUtil {
         val normalized = normalizeCommand(command)
         val body = when (normalized) {
             "snapshot", "foregroundstate" -> packageBody(args, 2)
-            "foregroundrunning", "foregroundtop", "foregroundlist" -> ""
+            "foregroundrunning", "foregroundtop", "foregroundlist", "defaulthome" -> ""
             "restore", "verify" -> payloadBody(args, 2)
             "localize", "localizebatch" -> args.drop(2).joinToString(" ")
             "ping" -> ""
@@ -272,6 +273,7 @@ object AppStateUtil {
         println("  foregroundStateRunning USER_ID")
         println("  foregroundListJson USER_ID")
         println("  foregroundTop USER_ID")
+        println("  defaultHome USER_ID")
         println("  restoreAppStateBatch USER_ID --stdin|--file=SNAPSHOT_NDJSON")
         println("  verifyAppStateBatch USER_ID --stdin|--file=SNAPSHOT_NDJSON")
         println("  daemonunix SOCKET_PATH [idleTimeoutSec] [ownerPid]")

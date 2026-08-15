@@ -39,3 +39,5 @@
 
 # SpeedBackup r43: keep inventory helper used by HiddenApiUtil/root daemon.
 -keep class com.xayah.dex.AppInventoryUtil { *; }
+
+# SpeedBackup r201: durable display-timeout transaction and watchdog must survive R8.
