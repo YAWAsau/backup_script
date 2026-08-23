@@ -19,9 +19,11 @@ Backup_script 是一款專為 Android 設計的完整應用數據備份／恢復
 
 新版支援流式備份：資料可直接 `tar | zstd | 傳輸`，不需要先落地成本機壓縮包，適合本機空間不足的裝置。對於沒有變化的應用，腳本會透過版本、資料大小、AppState、SSAID 與遠端檔案狀態進行 fast-skip，避免重複壓縮與重複上傳。
 
+新版 AppState metadata 採用 `app_details_bundle.tar.zst` bundle-only 遠端同步流程：功能 7 會先彙總本地 metadata 再上傳，功能 10 會先下載 bundle 並同級解包後再恢復。
+
 > 作者為台灣人，預設發布繁體版本。簡體中文環境下腳本可自動切換語言。
 
-**系統需求：** `Android 8+` · `arm64 架構` · `Root 權限(Magisk / KernelSU)`
+**系統需求：** `Android 9+` · `arm64 架構` · `Root 權限(Magisk / KernelSU)`
 
 ---
 
@@ -34,7 +36,8 @@ Backup_script 是一款專為 Android 設計的完整應用數據備份／恢復
 | Play 商店來源還原 | 支援恢復 installer / install source，使應用在系統中正確顯示來源 |
 | SSAID 備份與恢復 | 支援備份與恢復 Android SSAID，適合 LINE 等依賴設備識別碼的應用 |
 | 權限與 AppOps | 支援運行時權限、AppOps、特殊存取、電池策略等狀態備份與恢復 |
-| 舊 JSON 相容 | 舊版 `app_details.json` 會自動轉換為新版 AppState restore record，不需手動轉檔 |
+| AppState metadata bundle | 新版 metadata 統一彙總為根層 `app_details_bundle.tar.zst`，遠端同步與下載以 bundle 為準 |
+| 本地舊 JSON 恢復相容 | 本地既有舊備份的 `app_details.json` 可在恢復時轉換為新版 AppState restore record |
 | Split APK | 支援多 split APK 備份與恢復 |
 | OBB 數據包 | 可選備份外部 OBB 數據，如大型遊戲資料包 |
 | Wi-Fi 備份 | 支援 Wi-Fi 設定備份與恢復 |
@@ -44,8 +47,9 @@ Backup_script 是一款專為 Android 設計的完整應用數據備份／恢復
 | 全量 fast-skip | 本地 / WebDAV / SMB 全部無變化時可整批折疊跳過，不進逐 App 主流程 |
 | 遠端備份 | 支援 WebDAV / SMB 備份、下載、恢復、列表與健康檢查 |
 | 流式備份 | 邊壓縮邊傳輸，資料不落本機，節省本地空間 |
-| 遠端預掃 | 遠端備份前批量取得遠端列表與 JSON，降低主循環網路開銷 |
-| 遠端 JSON 健康檢查 | 遠端 `app_details.json` 缺失或損壞會列出清單，不靜默忽略 |
+| 事件等待與進程穩定檢查 | 使用 `eventwait` / `procwait` 輔助遠端串流等待、備份前穩定等待與恢復守護收尾 |
+| 遠端預掃 | 遠端備份前批量取得遠端列表與 metadata 狀態，降低主循環網路開銷 |
+| 遠端 metadata 健康檢查 | 遠端 `app_details_bundle.tar.zst` 缺失、損壞或內容不完整會明確提示，不靜默忽略 |
 | SMB 掃描 | 自動掃描區網 SMB 主機與 share，免手動找 IP |
 | WebDAV 相容 | 支援逐層建目錄、PUT/MOVE/STAT/GET 校驗、404 非致命判斷等 WebDAV 相容處理 |
 | 日誌與 debug 包 | 自動生成 speed_debug 診斷包，legacy `log/log_yyyy-mm-dd_hh-mm.txt` 會同步主日誌摘要 |
@@ -71,9 +75,9 @@ Backup_script 是一款專為 Android 設計的完整應用數據備份／恢復
 | 備份自定義資料夾 | 備份 `backup_settings.conf` 中設定的自定義目錄 |
 | 備份 Wi-Fi | 備份目前設備的 Wi-Fi 設定 |
 | 測試遠端連線 | 驗證 WebDAV / SMB 設定與寫入能力 |
-| 單獨上傳當前備份 | 將現有本地備份同步到遠端，不重新執行備份 |
+| 單獨上傳當前備份 | 將現有本地備份先彙總 `app_details_bundle.tar.zst`，再同步到遠端，不重新執行備份 |
 | 列出遠端備份 | 連線遠端並產生 `appList_network.txt` |
-| 從遠端下載備份 | 依清單下載遠端備份到本地，可直接恢復 |
+| 從遠端下載備份 | 依清單下載遠端備份；必須先取得 `app_details_bundle.tar.zst`，下載後自動解包 metadata |
 | 殺死運行中腳本 | 安全終止正在執行的備份腳本進程樹 |
 
 ### 恢復模式
@@ -110,9 +114,12 @@ backup_script.zip
 │   ├── unixsock       # AF_UNIX socket 輔助工具
 │   ├── filewatch      # 檔案狀態輔助工具
 │   ├── procwait       # 進程等待輔助工具
-│   ├── classes.dex    # Java / Dex 功能擴展
+│   ├── eventwait      # 遠端串流事件等待輔助工具
+│   ├── speedscan      # 檔案樹掃描與 restore facts 輔助工具
+│   ├── netwatch       # 遠端流程網路變更偵測輔助工具
+│   ├── cgfreezer      # cgroup freeze / thaw 輔助工具
+│   ├── classes.dex    # Java / Dex 功能擴展，內建設備型號資料庫
 │   ├── soc.json       # 處理器資料庫
-│   ├── Device_List    # 設備型號資料庫
 │   └── tools.sh       # 核心腳本
 │
 ├── backup_settings.conf # 備份行為設定檔
@@ -122,7 +129,7 @@ backup_script.zip
 
 > **重要：** 無論備份或恢復，都必須確保 `tools/` 目錄完整存在，否則腳本可能無法正常運作。
 
-備份完成後，每個 App 子目錄會生成 `backup.sh` / `recover.sh` / `upload.sh`，可單獨備份、恢復或上傳單一應用。
+備份完成後，每個 App 子目錄會生成 `backup.sh` / `recover.sh` / `upload.sh`，可單獨備份、恢復或上傳單一應用。遠端恢復所需的 AppState metadata 以備份根目錄的 `app_details_bundle.tar.zst` 為主；若手動操作單一 App 上傳，建議再使用「單獨上傳當前備份」同步根層 metadata bundle。
 
 ---
 
@@ -247,11 +254,11 @@ remote_keep_local=1
 
 ```text
 Backup_zstd_0/
+├── app_details_bundle.tar.zst  # AppState metadata bundle，內含 manifest.tsv 與各 App 的 app_details.json
 ├── LINE/
 │   ├── apk.tar.zst
 │   ├── user.tar.zst
 │   ├── user_de.tar.zst
-│   ├── app_details.json
 │   ├── backup.sh
 │   ├── recover.sh
 │   └── upload.sh
@@ -265,14 +272,54 @@ Backup_zstd_0/
 
 不同 Android 使用者會分開到不同目錄，例如 `Backup_zstd_0/`、`Backup_zstd_999/`。
 
+新版遠端 metadata 採用 bundle-only 流程。遠端根層的 `app_details_bundle.tar.zst` 是恢復與遠端下載所需的 metadata 主檔；bundle 內部保留 App 目錄結構，下載後會在本地備份根目錄同級解包成 `<App目錄>/app_details.json`。
+
 ### 遠端備份特性
 
 - **流式備份**：`remote_stream=1` 時，資料直接壓縮並傳輸到遠端，本地不落壓縮包。
 - **遠端 fast-skip**：若遠端資料、版本、AppState 與檔案狀態都未變化，會整批跳過。
-- **遠端 JSON 健康檢查**：缺失、損壞或格式不合法的 `app_details.json` 會列出清單。
-- **失敗保護**：流式上傳失敗時不更新遠端 JSON，避免下輪誤判已備份完成。
+- **遠端 metadata bundle 健康檢查**：缺失、損壞或內容不完整的 `app_details_bundle.tar.zst` 會明確提示。
+- **失敗保護**：流式上傳失敗時不更新遠端 metadata 狀態，避免下輪誤判已備份完成。
 - **WebDAV 目錄建立**：會逐層建立遠端目錄並 verify，降低不同 WebDAV server 的相容問題。
 - **SMB 寫入預檢**：正式備份前會測試遠端目錄建立與寫入能力。
+
+---
+
+## AppState metadata bundle
+
+新版 AppState metadata 以備份根目錄的 `app_details_bundle.tar.zst` 為主，不再把遠端逐 App `app_details.json` 作為功能 7 / 功能 10 的 metadata 同步主路徑。
+
+### 產生與上傳
+
+完整備份流程會生成根層 `app_details_bundle.tar.zst`。使用功能 7「單獨上傳當前備份」時，腳本會先掃描本地備份目錄內的：
+
+```text
+<App目錄>/app_details.json
+```
+
+並重新彙總成：
+
+```text
+app_details_bundle.tar.zst
+```
+
+然後再上傳到遠端根層。功能 7 的上傳清單會過濾逐 App `app_details.json`，metadata 只同步 bundle。
+
+### 下載與解包
+
+功能 10「從遠端下載備份」會要求遠端根層存在：
+
+```text
+app_details_bundle.tar.zst
+```
+
+下載成功後，腳本會在本地備份根目錄同級解包，恢復成：
+
+```text
+<App目錄>/app_details.json
+```
+
+如果遠端缺少 `app_details_bundle.tar.zst`，功能 10 會中止下載；不再 fallback 到遠端逐 App `app_details.json`。
 
 ---
 
@@ -311,13 +358,15 @@ tar → zstd → WebDAV / SMB
 
 **Step 3 — 從遠端下載備份**
 
-主選單選「從遠端下載備份」。下載完成後，直接執行下載資料夾中的 `start.sh` 進行恢復。
+主選單選「從遠端下載備份」。腳本會先下載遠端根層 `app_details_bundle.tar.zst`，並在本地備份根目錄同級解包出各 App 的 `app_details.json`。若遠端缺少 `app_details_bundle.tar.zst`，下載會中止，避免產生 metadata 不完整的本地備份。
+
+下載完成後，直接執行下載資料夾中的 `start.sh` 進行恢復。
 
 ---
 
-## 舊版 JSON 相容
+## 本地舊版 JSON 恢復相容
 
-新版恢復流程支援舊版 `app_details.json`。若舊 JSON 沒有新版 `app_state` 欄位，但仍保留：
+本地既有舊備份仍可在恢復時讀取逐 App `app_details.json`。若舊 JSON 沒有新版 `app_state` 欄位，但仍保留：
 
 ```text
 permissions
@@ -329,7 +378,7 @@ PackageName
 user / user_de / data Size
 ```
 
-腳本會在恢復時自動轉換為新版 AppState restore record，等效於：
+腳本會在恢復時嘗試轉換為新版 AppState restore record，等效於：
 
 ```text
 sourceFormat=legacy-app-details-migrated
@@ -337,7 +386,9 @@ recordType=snapshot
 schemaVersion=2
 ```
 
-也就是舊備份不需要手動轉檔。舊 JSON 已有的 SSAID、權限、AppOps、電池策略與安裝來源會盡量恢復；舊 JSON 本來沒有的新欄位則無法憑空補出。
+舊 JSON 已有的 SSAID、權限、AppOps、電池策略與安裝來源會盡量恢復；舊 JSON 本來沒有的新欄位則無法憑空補出。
+
+> 注意：此相容僅針對本地既有舊備份恢復。新版功能 7 / 功能 10 的遠端同步流程採 `app_details_bundle.tar.zst` bundle-only，不再使用遠端逐 App `app_details.json` 作為 metadata 主路徑。
 
 ---
 
@@ -349,11 +400,14 @@ schemaVersion=2
 - SSAID 備份與恢復輔助
 - 運行時權限、AppOps、特殊存取、電池策略狀態處理
 - 安裝來源、installer、Play 來源恢復輔助
-- App 名稱、包名、版本、split 資訊查詢
-- WebDAV rel API、AF_UNIX daemon 與傳輸輔助
+- App 名稱、包名、版本、split 資訊與安裝後 facts 批量查詢
+- WebDAV rel API、strict rel path gate、AF_UNIX daemon 與傳輸輔助
 - SMB 主機與 share 掃描輔助
 - 通知批量更新
 - 權限 / AppOps / 特殊存取中文語意輸出
+- 預設 HOME / IME / 電話 / SMS / 瀏覽器 / 助理等 role facts 查詢
+- storage / media path facts 查詢
+- 內建設備型號資料庫，release 內不再需要外置 `tools/Device_List`
 
 啟動自檢由 `dex_check.sh` 執行，只檢查目前 Dex 版本實際具備的能力與 `tools.sh` 當前使用的 Dex route。
 
@@ -402,6 +456,8 @@ log/log_2026-07-25_21-40.txt
 - `verify_app_state_output.log`：AppState verify 輸出
 - `stream_upload.log` / `stream_download.log`：流式上傳 / 下載日誌
 - `extract.log`：恢復解壓日誌
+- `restore_app_phase_timing.tsv`：恢復階段耗時統計
+- `restore_apk_timing.tsv`：APK 安裝階段耗時統計
 
 ---
 
@@ -453,6 +509,8 @@ log/log_2026-07-25_21-40.txt
 - `backup.sh`：單獨備份該 App
 - `recover.sh`：單獨恢復該 App
 - `upload.sh`：單獨上傳該 App 到遠端
+
+注意：新版遠端恢復 metadata 以根層 `app_details_bundle.tar.zst` 為準。若手動執行單 App `upload.sh`，建議再回主選單執行「單獨上傳當前備份」，讓腳本重新彙總並上傳 metadata bundle。
 </details>
 
 <details>
@@ -464,7 +522,7 @@ log/log_2026-07-25_21-40.txt
 <details>
 <summary><b>Q9：WebDAV 上傳或列表顯示 HTTP 404？</b></summary>
 
-請檢查 `webdav_url` 是否指向正確 WebDAV 端點，例如 `/dav/`、`/remote.php/webdav/` 或 rclone serve 的根路徑。若是 app_details 不存在的 404，腳本會按「遠端尚無備份」處理，不一定是錯誤。
+請檢查 `webdav_url` 是否指向正確 WebDAV 端點，例如 `/dav/`、`/remote.php/webdav/` 或 rclone serve 的根路徑。若是 `app_details_bundle.tar.zst` 不存在，功能 10 會中止下載；備份或上傳流程請先生成並同步 metadata bundle。
 </details>
 
 <details>
@@ -497,7 +555,13 @@ log/log_2026-07-25_21-40.txt
 </details>
 
 <details>
-<summary><b>Q13：為什麼 log 裡有些 stderr 是 0KB？</b></summary>
+<summary><b>Q13：功能 10 提示缺少 app_details_bundle.tar.zst？</b></summary>
+
+新版遠端下載需要根層 `app_details_bundle.tar.zst`。請先使用新版完整備份，或在本地備份資料夾使用「單獨上傳當前備份」，讓腳本彙總本地各 App 的 `app_details.json` 並上傳 metadata bundle。
+</details>
+
+<details>
+<summary><b>Q14：為什麼 log 裡有些 stderr 是 0KB？</b></summary>
 
 `stderr.log`、`root_daemon_stderr.log`、`webdav_daemon_stderr.log` 為 0KB 通常是正常現象，代表沒有錯誤輸出。主流程請看 `main.log` 或 `log/log_yyyy-mm-dd_hh-mm.txt`。
 </details>
