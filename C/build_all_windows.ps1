@@ -95,7 +95,7 @@ function Ld-Flags-For-PageSize([int]$PageSize) {
     return @('-pie', '-Wl,--gc-sections', '-Wl,-z,relro,-z,now', '-Wl,--build-id=sha1', "-Wl,-z,max-page-size=$PageSize", "-Wl,-z,common-page-size=$PageSize")
 }
 
-$GenericDynamicTools = @('filewatch','propwait','procwait','unixsock','netwatch','uidexec')
+$GenericDynamicTools = @('filewatch','procwait','eventwait','unixsock','netwatch','uidexec')
 $SpeedscanTool = 'speedscan'
 $CgfreezerTool = 'cgfreezer'
 
@@ -112,7 +112,7 @@ $ndkMajor = Parse-Ndk-Major $NdkVersion
 
 Log '============================================================'
 Log 'SpeedBackup Android native tools builder'
-Log 'native_c package: r238-cgstats-fixedbase-api28-relroguard-relroguard'
+Log 'native_c package: r416-run-tmpdir-clean-api28-relroguard'
 Log 'ABI : arm64'
 Log "API : $Api"
 Log 'Minimum runtime baseline: Android 9 / API 28 when using the default -Api value'
@@ -173,13 +173,6 @@ Log '[INFO] Build script validates compilation, ABI, dynamic dependencies, LOAD 
 Log '[INFO] Runtime capability/version contracts belong to dex_check/release assembly, not this compiler.'
 
 Log "Dynamic libc stub: $libcSo"
-Log 'Checking dynamic bionic property wait symbols for propwait...'
-$dynSyms = & $readelf --dyn-syms $libcSo 2>&1
-if ($LASTEXITCODE -ne 0) { $dynSyms | ForEach-Object { Log $_.ToString() }; Fail 'readelf --dyn-syms libc.so failed' }
-if (-not ($dynSyms | Select-String -SimpleMatch '__system_property_area_serial')) { Fail "libc.so stub does not export __system_property_area_serial for API $Api" }
-if (-not ($dynSyms | Select-String -SimpleMatch '__system_property_wait_any')) { Fail "libc.so stub does not export __system_property_wait_any for API $Api" }
-Log '[OK] Dynamic property wait symbols found.'
-
 $outPath = Join-Path $ScriptDir $OutDir
 $objPath = Join-Path $outPath 'obj'
 if (Test-Path -LiteralPath $outPath) { Remove-Item -LiteralPath $outPath -Recurse -Force }

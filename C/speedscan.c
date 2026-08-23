@@ -1,4 +1,4 @@
-// SpeedBackup speedscan r238-api28-r28c-relroguard
+// SpeedBackup speedscan r413-api28-r28c-restore-facts-fixup-timing
 // Native local scanner for Android/Linux. No libc extensions beyond POSIX dirent/stat.
 // Commands:
 //   speedscan dir-size PATH
@@ -10,12 +10,14 @@
 //   speedscan batch-chmod MODE LIST    # chmod every path from LIST
 //   speedscan batch-chown UID GID LIST  # chown every path from LIST
 //   speedscan tree-chown UID GID ROOT   # recursive lchown, no symlink follow
+//   speedscan tree-fixup UID GID ROOT [DIR_MODE|-] [FILE_MODE|-] # recursive lchown plus optional chmod, no symlink follow
 //   speedscan has-files ROOT           # exit 0 and print 1 when regular file exists, else 1/0
 //   speedscan manifest ROOT OUT        # recursive manifest
 //   speedscan scan-summary ROOT [MANIFEST_OUT|-] # one walk: size/files/dirs/hasFiles/maxMtime + optional manifest, no hash
 //   speedscan path-audit ROOT LIST      # facts-only symlink/root escape/mount-cross audit, no hash
 //   speedscan label-audit ROOT [MAX_ROWS] # quick SELinux/xattr ownership audit, no hash
 //   speedscan facts ROOT [MANIFEST_OUT|-] # unified summary+manifest facts, no hash
+//   speedscan restore-facts ROOT [MANIFEST_OUT|-] # restore-tree facts alias, no hash
 
 #define _GNU_SOURCE
 #define _XOPEN_SOURCE 700
@@ -738,6 +740,125 @@ static int cmd_tree_chown(const char *uid_s, const char *gid_s, const char *root
     return rc;
 }
 
+
+typedef struct FixupResult {
+    uint64_t visited;
+    uint64_t chownChanged;
+    uint64_t chownSkipped;
+    uint64_t chmodChanged;
+    uint64_t chmodSkipped;
+    uint64_t typeSkipped;
+    uint64_t symlinkSkipped;
+    uint64_t errors;
+    uint64_t chownMs;
+    uint64_t chmodMs;
+} FixupResult;
+
+static int tree_fixup_walk(const char *path, uid_t uid, gid_t gid, int do_dir_mode, mode_t dir_mode, int do_file_mode, mode_t file_mode, FixupResult *res) {
+    DIR *dir;
+    struct dirent *de;
+    struct stat st;
+    char child[PATH_MAX];
+    int rc = 0;
+    mode_t target_mode;
+    long op_start;
+
+    if (!path || !*path || !res) return 2;
+    if (lstat(path, &st) != 0) {
+        res->errors++;
+        return 1;
+    }
+    res->visited++;
+
+    /* r338: strict no-symlink-follow policy. Do not chown/chmod symlinks or their targets. */
+    if (S_ISLNK(st.st_mode)) {
+        res->symlinkSkipped++;
+        return 0;
+    }
+
+    if ((uid_t)st.st_uid != uid || (gid_t)st.st_gid != gid) {
+        op_start = now_ms();
+        if (lchown(path, uid, gid) != 0) {
+            res->errors++;
+            rc = 1;
+        } else {
+            res->chownChanged++;
+        }
+        res->chownMs += (uint64_t)(now_ms() - op_start);
+    } else {
+        res->chownSkipped++;
+    }
+
+    if (S_ISDIR(st.st_mode) && do_dir_mode) {
+        target_mode = (st.st_mode & ~07777) | (dir_mode & 07777);
+        if ((st.st_mode & 07777) != (dir_mode & 07777)) {
+            op_start = now_ms();
+            if (chmod(path, target_mode & 07777) != 0) { res->errors++; rc = 1; }
+            else res->chmodChanged++;
+            res->chmodMs += (uint64_t)(now_ms() - op_start);
+        } else res->chmodSkipped++;
+    } else if (S_ISREG(st.st_mode) && do_file_mode) {
+        target_mode = (st.st_mode & ~07777) | (file_mode & 07777);
+        if ((st.st_mode & 07777) != (file_mode & 07777)) {
+            op_start = now_ms();
+            if (chmod(path, target_mode & 07777) != 0) { res->errors++; rc = 1; }
+            else res->chmodChanged++;
+            res->chmodMs += (uint64_t)(now_ms() - op_start);
+        } else res->chmodSkipped++;
+    } else {
+        res->typeSkipped++;
+    }
+    if (!S_ISDIR(st.st_mode)) return rc;
+    dir = opendir(path);
+    if (!dir) {
+        res->errors++;
+        return 1;
+    }
+    while ((de = readdir(dir)) != NULL) {
+        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
+        if (join_path(path, de->d_name, child, sizeof(child)) != 0) {
+            res->errors++;
+            rc = 1;
+            continue;
+        }
+        if (tree_fixup_walk(child, uid, gid, do_dir_mode, dir_mode, do_file_mode, file_mode, res) != 0) rc = 1;
+    }
+    closedir(dir);
+    return rc;
+}
+
+static int parse_optional_mode(const char *s, int *enabled, mode_t *out) {
+    if (!s || !*s || strcmp(s, "-") == 0 || strcmp(s, "none") == 0) { *enabled = 0; *out = 0; return 0; }
+    if (parse_octal_mode(s, out) != 0) return -1;
+    *enabled = 1;
+    return 0;
+}
+
+static int cmd_tree_fixup(const char *uid_s, const char *gid_s, const char *root, const char *dir_mode_s, const char *file_mode_s) {
+    uid_t uid;
+    uid_t gid_tmp;
+    gid_t gid;
+    int do_dir_mode = 0, do_file_mode = 0;
+    mode_t dir_mode = 0, file_mode = 0;
+    FixupResult res;
+    int rc;
+    long start = now_ms();
+
+    if (parse_uint_id(uid_s, &uid) != 0) return 2;
+    if (parse_uint_id(gid_s, &gid_tmp) != 0) return 2;
+    gid = (gid_t)gid_tmp;
+    if (!root || !*root) return 2;
+    if (parse_optional_mode(dir_mode_s, &do_dir_mode, &dir_mode) != 0) return 2;
+    if (parse_optional_mode(file_mode_s, &do_file_mode, &file_mode) != 0) return 2;
+    memset(&res, 0, sizeof(res));
+    rc = tree_fixup_walk(root, uid, gid, do_dir_mode, dir_mode, do_file_mode, file_mode, &res);
+    printf("TREE_FIXUP_SUMMARY visited=%" PRIu64 "\tchownChanged=%" PRIu64 "\tchownSkipped=%" PRIu64 "\tchmodChanged=%" PRIu64 "\tchmodSkipped=%" PRIu64 "\ttypeSkipped=%" PRIu64 "\tsymlinkSkipped=%" PRIu64 "\tmetadataNoop=%" PRIu64 "\tskipped=%" PRIu64 "\terrors=%" PRIu64 "\tchownMs=%" PRIu64 "\tchmodMs=%" PRIu64 "\tdirMode=%s\tfileMode=%s\thash=0\tpolicy=no-symlink-follow\telapsedMs=%ld\n",
+           res.visited, res.chownChanged, res.chownSkipped, res.chmodChanged, res.chmodSkipped, res.typeSkipped, res.symlinkSkipped,
+           res.chownSkipped + res.chmodSkipped, res.symlinkSkipped, res.errors, res.chownMs, res.chmodMs,
+           do_dir_mode ? dir_mode_s : "-", do_file_mode ? file_mode_s : "-", now_ms() - start);
+    return rc;
+}
+
 static int manifest_walk(FILE *out, const char *root, const char *path, size_t root_len) {
     DIR *dir;
     struct dirent *de;
@@ -941,7 +1062,7 @@ static int cmd_path_audit(const char *root, const char *list_path) {
 }
 
 static void usage(void) {
-    fprintf(stderr, "speedscan r238-api28-r28c-relroguard\n");
+    fprintf(stderr, "speedscan r413-api28-r28c-restore-facts-fixup-timing\n");
     fprintf(stderr, "usage:\n");
     fprintf(stderr, "  speedscan dir-size PATH\n");
     fprintf(stderr, "  speedscan dir-size-map MANIFEST\n");
@@ -952,17 +1073,19 @@ static void usage(void) {
     fprintf(stderr, "  speedscan batch-chmod MODE LIST\n");
     fprintf(stderr, "  speedscan batch-chown UID GID LIST\n");
     fprintf(stderr, "  speedscan tree-chown UID GID ROOT\n");
+    fprintf(stderr, "  speedscan tree-fixup UID GID ROOT [DIR_MODE|-] [FILE_MODE|-]\n");
     fprintf(stderr, "  speedscan has-files ROOT\n");
     fprintf(stderr, "  speedscan manifest ROOT OUT\n");
     fprintf(stderr, "  speedscan scan-summary ROOT [MANIFEST_OUT|-]\n");
     fprintf(stderr, "  speedscan path-audit ROOT LIST\n");
     fprintf(stderr, "  speedscan label-audit ROOT [MAX_ROWS]\n");
     fprintf(stderr, "  speedscan facts ROOT [FACTS_OUT|-]\n");
+    fprintf(stderr, "  speedscan restore-facts ROOT [FACTS_OUT|-]\n");
 }
 
 int main(int argc, char **argv) {
     if (argc >= 2 && (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "version") == 0)) {
-        printf("speedscan r238-api28-r28c-relroguard\n");
+        printf("speedscan r413-api28-r28c-restore-facts-fixup-timing\n");
         return 0;
     }
     if (argc < 3) {
@@ -978,12 +1101,14 @@ int main(int argc, char **argv) {
     if (strcmp(argv[1], "batch-chmod") == 0) { if (argc < 4) { usage(); return 2; } return cmd_batch_chmod(argv[2], argv[3]); }
     if (strcmp(argv[1], "batch-chown") == 0) { if (argc < 5) { usage(); return 2; } return cmd_batch_chown(argv[2], argv[3], argv[4]); }
     if (strcmp(argv[1], "tree-chown") == 0) { if (argc < 5) { usage(); return 2; } return cmd_tree_chown(argv[2], argv[3], argv[4]); }
+    if (strcmp(argv[1], "tree-fixup") == 0) { if (argc < 5) { usage(); return 2; } return cmd_tree_fixup(argv[2], argv[3], argv[4], argc >= 6 ? argv[5] : "-", argc >= 7 ? argv[6] : "-"); }
     if (strcmp(argv[1], "has-files") == 0) return cmd_has_files(argv[2]);
     if (strcmp(argv[1], "manifest") == 0) { if (argc < 4) { usage(); return 2; } return cmd_manifest(argv[2], argv[3]); }
     if (strcmp(argv[1], "scan-summary") == 0) return cmd_scan_summary(argv[2], argc >= 4 ? argv[3] : "-");
     if (strcmp(argv[1], "path-audit") == 0) { if (argc < 4) { usage(); return 2; } return cmd_path_audit(argv[2], argv[3]); }
     if (strcmp(argv[1], "label-audit") == 0) return cmd_label_audit(argv[2], argc >= 4 ? argv[3] : "4096");
     if (strcmp(argv[1], "facts") == 0) return cmd_facts(argv[2], argc >= 4 ? argv[3] : "-");
+    if (strcmp(argv[1], "restore-facts") == 0) return cmd_facts(argv[2], argc >= 4 ? argv[3] : "-");
     usage();
     return 2;
 }

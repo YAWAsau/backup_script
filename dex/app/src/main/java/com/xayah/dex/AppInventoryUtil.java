@@ -33,7 +33,7 @@ import dev.rikka.tools.refine.Refine;
  * In a persistent root daemon this class keeps a per-user/per-locale cache for the current run.
  */
 final class AppInventoryUtil {
-    static final String VERSION = "v1.3.3-r322-getlist-onecall";
+    static final String VERSION = "v1.3.12-r370-framework-facts";
     private static final String XPOSED_METADATA = "xposedminversion";
     private static final Gson GSON = new Gson();
     private static final Map<String, List<Item>> CACHE = new HashMap<>();
@@ -72,13 +72,19 @@ final class AppInventoryUtil {
         }
         List<Item> items = snapshot(userId, refresh);
         HomeInfo home = defaultHomeInfo(userId);
+        ImeInfo ime = defaultImeInfo(userId);
         Set<String> targets = parsePackageSet(targetCsv);
         if (!home.packageName.isEmpty()) targets.add(home.packageName);
+        if (!ime.packageName.isEmpty()) targets.add(ime.packageName);
         StringBuilder out = new StringBuilder(items.size() * 64);
         out.append("#META\tdefaultHome\t")
                 .append(sanitize(home.packageName)).append('\t')
                 .append(sanitize(home.label)).append('\t')
                 .append(sanitize(home.source)).append('\n');
+        out.append("#META\tdefaultIme\t")
+                .append(sanitize(ime.packageName)).append('\t')
+                .append(sanitize(ime.label)).append('\t')
+                .append(sanitize(ime.source)).append('\n');
         for (Item item : items) {
             if (item == null || item.packageName == null || item.packageName.isEmpty()) continue;
             boolean include = !item.system || item.xposed || targets.contains(item.packageName);
@@ -204,6 +210,101 @@ final class AppInventoryUtil {
         }
     }
 
+    static synchronized String packageStatusBatch(int userId, String[] packageNames, boolean refresh) throws Exception {
+        if (refresh) {
+            clearCache();
+        }
+        StringBuilder out = new StringBuilder();
+        if (packageNames == null || packageNames.length == 0) {
+            return statusMissing(userId, "", "BAD_ARGS");
+        }
+        boolean any = false;
+        for (String raw : packageNames) {
+            if (raw == null) continue;
+            String pkg = raw.trim();
+            if (pkg.isEmpty() || "refresh".equalsIgnoreCase(pkg) || "--refresh".equalsIgnoreCase(pkg)) continue;
+            any = true;
+            out.append(packageStatusSingle(userId, pkg, false));
+        }
+        if (!any) out.append(statusMissing(userId, "", "BAD_ARGS"));
+        return out.toString();
+    }
+
+    static synchronized String packageFactsBatch(int userId, String[] packageNames, boolean refresh) throws Exception {
+        if (refresh) clearCache();
+        StringBuilder out = new StringBuilder();
+        out.append("#schema\tspeedbackup.pm_facts.v1\n");
+        out.append("#fields\tpackage\tinstalled\tuid\tversionCode\tversionName\tenabled\tsystem\tupdatedSystem\txposed\tcategory\tinstaller\tsourceDir\tpublicSourceDir\tsplitCount\tsplitSourceDirs\tdataDir\tdeDataDir\tuserDataExists\tuserDeDataExists\treason\n");
+        if (packageNames == null || packageNames.length == 0) {
+            out.append("MISSING\t\tfalse\t-1\t-1\t\tfalse\tfalse\tfalse\tfalse\t\t\t\t\t0\t\t\t\tfalse\tfalse\tBAD_ARGS\n");
+            return out.toString();
+        }
+        Context ctx = HiddenApiHelper.getContext();
+        PackageManager pm = PackageManagerUtil.getPackageManager(ctx).packageManager();
+        PackageManagerHidden pmHidden = Refine.unsafeCast(pm);
+        boolean any = false;
+        for (String raw : packageNames) {
+            if (raw == null) continue;
+            String pkgName = raw.trim();
+            if (pkgName.isEmpty() || "refresh".equalsIgnoreCase(pkgName) || "--refresh".equalsIgnoreCase(pkgName)) continue;
+            any = true;
+            try {
+                PackageInfo pkg = pmHidden.getPackageInfoAsUser(pkgName, PackageManager.GET_META_DATA, userId);
+                Item item = toItem(pm, pkg, userId);
+                if (item == null) {
+                    appendMissingFact(out, userId, pkgName, "ITEM_NULL");
+                } else {
+                    appendItemFact(out, item, "OK");
+                }
+            } catch (Throwable t) {
+                appendMissingFact(out, userId, pkgName, t.getClass().getSimpleName());
+            }
+        }
+        if (!any) appendMissingFact(out, userId, "", "BAD_ARGS");
+        return out.toString();
+    }
+
+    private static void appendItemFact(StringBuilder out, Item item, String reason) {
+        String splits = item.splitSourceDirs == null ? "" : String.join("|", item.splitSourceDirs);
+        String userDataDir = item.packageName == null || item.packageName.isEmpty() ? "" : "/data/user/" + item.userId + "/" + item.packageName;
+        String userDeDataDir = item.packageName == null || item.packageName.isEmpty() ? "" : "/data/user_de/" + item.userId + "/" + item.packageName;
+        out.append("OK").append('\t')
+                .append(sanitize(item.packageName)).append('\t')
+                .append(item.installed).append('\t')
+                .append(item.uid).append('\t')
+                .append(item.versionCode).append('\t')
+                .append(sanitize(item.versionName)).append('\t')
+                .append(item.enabled).append('\t')
+                .append(item.system).append('\t')
+                .append(item.updatedSystem).append('\t')
+                .append(item.xposed).append('\t')
+                .append(sanitize(item.category)).append('\t')
+                .append(sanitize(item.installerPackageName)).append('\t')
+                .append(sanitize(item.sourceDir)).append('\t')
+                .append(sanitize(item.publicSourceDir)).append('\t')
+                .append(item.splitCount).append('\t')
+                .append(sanitize(splits)).append('\t')
+                .append(sanitize(userDataDir)).append('\t')
+                .append(sanitize(userDeDataDir)).append('\t')
+                .append(!userDataDir.isEmpty() && new File(userDataDir).isDirectory()).append('\t')
+                .append(!userDeDataDir.isEmpty() && new File(userDeDataDir).isDirectory()).append('\t')
+                .append(sanitize(reason)).append('\n');
+    }
+
+    private static void appendMissingFact(StringBuilder out, int userId, String pkgName, String reason) {
+        String pkg = pkgName == null ? "" : pkgName.trim();
+        String userDataDir = pkg.isEmpty() ? "" : "/data/user/" + userId + "/" + pkg;
+        String userDeDataDir = pkg.isEmpty() ? "" : "/data/user_de/" + userId + "/" + pkg;
+        out.append("MISSING").append('\t')
+                .append(sanitize(pkg)).append('\t')
+                .append("false\t-1\t-1\t\tfalse\tfalse\tfalse\tfalse\t\t\t\t\t0\t\t")
+                .append(sanitize(userDataDir)).append('\t')
+                .append(sanitize(userDeDataDir)).append('\t')
+                .append(!userDataDir.isEmpty() && new File(userDataDir).isDirectory()).append('\t')
+                .append(!userDeDataDir.isEmpty() && new File(userDeDataDir).isDirectory()).append('\t')
+                .append(sanitize(reason)).append('\n');
+    }
+
     private static String statusMissing(int userId, String packageName, String reason) {
         String pkgName = packageName == null ? "" : packageName.trim();
         JsonObject o = new JsonObject();
@@ -287,6 +388,8 @@ final class AppInventoryUtil {
             item.updatedSystem = (ai.flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0;
             item.xposed = isXposed(ai);
             item.sourceDir = ai.sourceDir == null ? "" : ai.sourceDir;
+            item.publicSourceDir = ai.publicSourceDir == null ? "" : ai.publicSourceDir;
+            try { item.installerPackageName = pm.getInstallerPackageName(pkg.packageName); } catch (Throwable ignored) { item.installerPackageName = ""; }
             item.splitSourceDirs = ai.splitSourceDirs == null ? new String[0] : ai.splitSourceDirs;
             item.splitCount = item.splitSourceDirs.length;
             List<String> flags = new ArrayList<>();
@@ -430,6 +533,37 @@ final class AppInventoryUtil {
         return out;
     }
 
+
+    private static final class ImeInfo {
+        String packageName = "";
+        String label = "";
+        String source = "";
+    }
+
+    private static ImeInfo defaultImeInfo(int userId) {
+        ImeInfo out = new ImeInfo();
+        try {
+            AppStateEngine.EngineResponse response = AppStateEngine.defaultIme(userId);
+            String body = response == null ? "" : response.body;
+            for (String line : body.split("\\n")) {
+                if (line == null || line.trim().isEmpty()) continue;
+                JsonObject o = GSON.fromJson(line, JsonObject.class);
+                if (o == null || !"defaultIme".equals(jsonString(o, "recordType"))) continue;
+                JsonObject result = o.has("result") && o.get("result").isJsonObject()
+                        ? o.getAsJsonObject("result") : null;
+                String resultName = result == null ? "" : jsonString(result, "name");
+                if (!"OK".equals(resultName)) continue;
+                String pkg = jsonString(o, "packageName");
+                if (!pkg.matches("[A-Za-z0-9_.-]+") || pkg.startsWith(".") || pkg.contains("..")) continue;
+                out.packageName = pkg;
+                out.label = safePathLabel(jsonString(o, "label"), pkg);
+                out.source = jsonString(o, "source");
+                return out;
+            }
+        } catch (Throwable ignored) {}
+        return out;
+    }
+
     private static String jsonString(JsonObject object, String key) {
         try {
             if (object != null && object.has(key) && !object.get(key).isJsonNull()) {
@@ -469,6 +603,8 @@ final class AppInventoryUtil {
         String flag;
         String category;
         String sourceDir;
+        String publicSourceDir;
+        String installerPackageName;
         String[] splitSourceDirs;
         int splitCount;
 
@@ -489,6 +625,8 @@ final class AppInventoryUtil {
             o.addProperty("flag", flag == null ? "" : flag);
             o.addProperty("category", category == null ? "" : category);
             o.addProperty("sourceDir", sourceDir == null ? "" : sourceDir);
+            o.addProperty("publicSourceDir", publicSourceDir == null ? "" : publicSourceDir);
+            o.addProperty("installerPackageName", installerPackageName == null ? "" : installerPackageName);
             JsonArray splits = new JsonArray();
             if (splitSourceDirs != null) {
                 for (String split : splitSourceDirs) {

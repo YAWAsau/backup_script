@@ -30,7 +30,7 @@ import kotlin.system.exitProcess
  *   body bytes
  */
 object AppStateUtil {
-    private const val VERSION = "v1.3.78-vendor-classify-dex"
+    private const val VERSION = "v1.3.84-r373-restore-permissionappop-vendor"
     private const val DEFAULT_IDLE_TIMEOUT_SEC = 1800L
 
     @JvmStatic
@@ -68,6 +68,11 @@ object AppStateUtil {
             "foregroundlist", "foregroundlistjson", "foregroundstatelist", "foregroundstatejson", "foregroundjson" -> "foregroundlist"
             "foregroundtop", "foregroundtopapp" -> "foregroundtop"
             "defaulthome", "defaultlauncher", "homeactivity", "launcherhome" -> "defaulthome"
+            "defaultime", "defaultinputmethod", "inputmethod", "ime" -> "defaultime"
+            "settingsget", "settings-get" -> "settingsget"
+            "settingsput", "settings-put" -> "settingsput"
+            "frameworkfacts", "framework-facts", "appstatefacts", "restrictionfacts" -> "frameworkfacts"
+            "devicefacts", "device-facts", "deviceinfo", "device-info" -> "devicefacts"
             "restoreappstatebatch" -> "restore"
             "verifyappstatebatch" -> "verify"
             else -> value
@@ -79,6 +84,11 @@ object AppStateUtil {
         if (command == "capabilities") {
             val pretty = args.any { it == "--pretty" }
             val response = AppStateEngine.capabilities(pretty)
+            print(response.body)
+            exitProcess(response.processExitCode())
+        }
+        if (normalizeCommand(command) == "devicefacts" && args.size < 2) {
+            val response = AppStateEngine.dispatch(command, 0, "", "")
             print(response.body)
             exitProcess(response.processExitCode())
         }
@@ -97,7 +107,10 @@ object AppStateUtil {
         val normalized = normalizeCommand(command)
         val body = when (normalized) {
             "snapshot", "foregroundstate" -> packageBody(args, 2)
-            "foregroundrunning", "foregroundtop", "foregroundlist", "defaulthome" -> ""
+            "foregroundrunning", "foregroundtop", "foregroundlist", "defaulthome", "defaultime" -> ""
+            "settingsget", "settingsput" -> args.drop(2).joinToString("\n")
+            "frameworkfacts" -> packageBody(args, 2)
+            "devicefacts" -> ""
             "restore", "verify" -> payloadBody(args, 2)
             "localize", "localizebatch" -> args.drop(2).joinToString(" ")
             "ping" -> ""
@@ -274,6 +287,11 @@ object AppStateUtil {
         println("  foregroundListJson USER_ID")
         println("  foregroundTop USER_ID")
         println("  defaultHome USER_ID")
+        println("  defaultIme USER_ID   # r340 exec settings --user USER_ID")
+        println("  settingsGet USER_ID secure|global|system KEY")
+        println("  settingsPut USER_ID secure|global|system KEY VALUE")
+        println("  frameworkFacts USER_ID PACKAGE...|--stdin")
+        println("  deviceFacts [USER_ID]   # Dex 內建 Device_List，輸出原始機型 + 中文機型")
         println("  restoreAppStateBatch USER_ID --stdin|--file=SNAPSHOT_NDJSON")
         println("  verifyAppStateBatch USER_ID --stdin|--file=SNAPSHOT_NDJSON")
         println("  daemonunix SOCKET_PATH [idleTimeoutSec] [ownerPid]")

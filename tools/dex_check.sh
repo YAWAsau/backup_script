@@ -8,11 +8,11 @@ TOOLS_PATH="${TOOLS_PATH:-}"
 TEST_LOG_DIR="${TEST_LOG_DIR:-/data/local/tmp}"
 TEST_LOG_FILE="${TEST_LOG_FILE:-$TEST_LOG_DIR/dex_check.log}"
 TEST_SUMMARY_FILE="${TEST_SUMMARY_FILE:-$TEST_LOG_DIR/dex_full_test.summary}"
-DEX_CHECK_VERSION="v24.20.14-7.66-757-observer-version-procsnap-r334-202607232022"
+DEX_CHECK_VERSION="v24.20.14-7.66-842-current-upload-bundle-r419-202607232022"
 BACKUP_WIFI_ENABLE="${BACKUP_WIFI_ENABLE:-1}"
 SB_SELFTEST_LEVEL="${SB_SELFTEST_LEVEL:-quick}"
 CHANGELOG_URL="${CHANGELOG_URL:-https://api.github.com/repos/XayahSuSuSu/Android-DataBackup/releases/latest}"
-SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-v24.20.14-7.66-757-observer-version-procsnap-r334-202607232022}"
+SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-v24.20.14-7.66-842-current-upload-bundle-r419-202607232022}"
 SPEEDBACKUP_PATCH_BUILD="${SPEEDBACKUP_PATCH_BUILD:-}"
 PATH="/data/backup_tools:$(dirname "$CLASSPATH_PATH" 2>/dev/null):$PATH"
 export PATH
@@ -174,17 +174,28 @@ require_caps_json(){
 			"dex.app_inventory.package_status.single.v1",
 			"dex.app_inventory.package_filter_batch.v1",
 			"dex.app_inventory.getlist_onecall.v1",
+			"dex.app_inventory.package_facts.batch.v1",
 			"dex.hidden_api.bypass_softgate.v1",
 			"appstate.snapshot.batch.v2",
 			"appstate.restore.batch.v4",
 			"appstate.verify.batch.v4",
 			"appstate.verify.vendor_classification.dex.v1",
+			"appstate.restore.vendor_classification.dex.v1",
+			"appstate.restore.permission_appop_vendor_classification.dex.v1",
+			"appstate.restore.special_access_vendor_classification.dex.v1",
+			"appstate.verify.default_dialer_vendor_classification.dex.v1",
 			"appstate.daemon.af_unix.v1",
 			"appstate.structured_result_codes.v2",
 			"appstate.ssaid.integrated.v1",
 			"appstate.special_access.integrated.v1",
 			"appstate.scoped_appops_fields.v1",
 			"appstate.default_home.v1",
+            "appstate.default_ime.v1",
+            "appstate.default_ime.exec_settings.v1",
+			"dex.settings.exec_shim.v1",
+			"dex.framework_facts.batch.v1",
+			"dex.device_facts.v1",
+			"dex.device_model_name_map.v1",
 			"appstate.foreground_state.batch.v1",
 			"appstate.foreground_list.json.v1",
 			"dex.process_observer.global_daemon.v1",
@@ -213,6 +224,10 @@ require_caps_json(){
 			"dex.display_power.root_daemon.v1",
 			"webdav.rel_only.v1",
 			"webdav.managed_put.v1",
+            "webdav.putstdin.skip_parent_mkdir.v1",
+			"webdav.managed_list_classify.v1",
+			"webdav.managed_batch_put_with_parents.v1",
+			"webdav.propfind.no_cache.v1",
 			"webdav.stream_heartbeat_error_kind.dex.v1",
 			"dex.smb.target_probe.v1",
 			"notification.daemon.af_unix.v1",
@@ -275,7 +290,7 @@ else
 fi
 _hidden_help="$(run_dex help 2>&1)"; _hidden_help_rc=$?
 [ "$_hidden_help_rc" -eq 0 ] && ok "HiddenApiUtil help可讀" "rc=0" || critical_fail "HiddenApiUtil help可讀" "rc=$_hidden_help_rc"
-for _cmd in getPackageLabel getInstalledPackagesAsUser appInventorySnapshot appInventoryPkgUid appInventoryPackageStatus forceStopPackageBatch forceStopPackageVerify uidLiveState uidObserverProbe uidObserverWatch packageLiveState setDisplayPowerMode cgroupFreezeStart cgroupFreezeStop cgroupFreezeDaemonEnsure processObserverStart processObserverStop processObserverBatchStart processObserverBatchStop processObserverStatus processObserverTop processObserverForeground; do
+for _cmd in getPackageLabel getInstalledPackagesAsUser appInventorySnapshot appInventoryPkgUid appInventoryPackageStatus appInventoryPackageStatusBatch appInventoryPackageFactsBatch appInventoryPostInstallFactsBatch defaultRoleFacts storageMediaFacts deviceFacts forceStopPackageBatch forceStopPackageVerify uidLiveState uidObserverProbe uidObserverWatch packageLiveState setDisplayPowerMode cgroupFreezeStart cgroupFreezeStop cgroupFreezeDaemonEnsure processObserverStart processObserverStop processObserverBatchStart processObserverBatchStop processObserverStatus processObserverTop processObserverForeground; do
 	require_text "HiddenApiUtil核心入口 $_cmd" "$_hidden_help" "$_cmd"
 done
 
@@ -288,13 +303,39 @@ else
 fi
 _appstate_help="$(run_class_stdout "$APPSTATE_CLASS" help 2>&1)"; _appstate_help_rc=$?
 [ "$_appstate_help_rc" -eq 0 ] && ok "AppStateUtil help可讀" "rc=0" || critical_fail "AppStateUtil help可讀" "rc=$_appstate_help_rc"
-for _cmd in capabilities snapshotAppStateBatch foregroundStateBatch foregroundStateRunning foregroundTop foregroundListJson restoreAppStateBatch verifyAppStateBatch defaultHome daemonunix; do
+for _cmd in capabilities snapshotAppStateBatch foregroundStateBatch foregroundStateRunning foregroundTop foregroundListJson restoreAppStateBatch verifyAppStateBatch defaultHome defaultIme settingsGet settingsPut frameworkFacts deviceFacts daemonunix; do
 	require_text "AppStateUtil核心入口 $_cmd" "$_appstate_help" "$_cmd"
 done
 
 _inv_out="$(run_class_stdout "$HIDDEN_CLASS" appInventoryPackageStatus "$USER_ID" "$PKG" refresh 2>/dev/null)"; _inv_rc=$?
 printf '%s\n' "$_inv_out" > "$TEST_LOG_DIR/appinventory_package_status.json" 2>/dev/null
 if [ "$_inv_rc" -eq 0 ] && printf '%s\n' "$_inv_out" | jq -e '.schema=="speedbackup.app_inventory.status.v1" or .schema=="speedbackup.app_inventory.v1" or has("packageName")' >/dev/null 2>&1; then ok "appInventoryPackageStatus smoke" "rc=0"; else warn "appInventoryPackageStatus smoke" "rc=$_inv_rc"; fi
+
+_device_facts_out="$(run_class_stdout "$HIDDEN_CLASS" deviceFacts 2>/dev/null)"; _device_facts_rc=$?
+printf '%s\n' "$_device_facts_out" > "$TEST_LOG_DIR/device_facts.json" 2>/dev/null
+if [ "$_device_facts_rc" -eq 0 ] && printf '%s\n' "$_device_facts_out" | jq -e '.schema=="speedbackup.device_facts.v1" and (.modelNameSource|length>0) and (.marketNameZh|length>0) and (.modelDbEntryCount >= 4000) and (.modelDbSourceLines >= 4000) and ((.modelDbSourceSha256|length)==64)' >/dev/null 2>&1; then ok "deviceFacts Dex全量內建機型表 smoke" "rc=0"; else warn "deviceFacts Dex全量內建機型表 smoke" "rc=$_device_facts_rc"; fi
+
+_facts_out="$(run_class_stdout "$HIDDEN_CLASS" appInventoryPackageFactsBatch "$USER_ID" "$PKG" refresh 2>/dev/null)"; _facts_rc=$?
+printf '%s\n' "$_facts_out" > "$TEST_LOG_DIR/appinventory_package_facts.tsv" 2>/dev/null
+if [ "$_facts_rc" -eq 0 ] && printf '%s\n' "$_facts_out" | grep -q '^#schema[[:space:]]speedbackup.pm_facts.v1' && printf '%s\n' "$_facts_out" | grep -q "^OK[[:space:]]$PKG[[:space:]]"; then ok "appInventoryPackageFactsBatch smoke" "rc=0"; else warn "appInventoryPackageFactsBatch smoke" "rc=$_facts_rc"; fi
+
+_post_facts_out="$(run_class_stdout "$HIDDEN_CLASS" appInventoryPostInstallFactsBatch "$USER_ID" "$PKG" refresh 2>/dev/null)"; _post_facts_rc=$?
+printf '%s\n' "$_post_facts_out" > "$TEST_LOG_DIR/appinventory_post_install_facts.tsv" 2>/dev/null
+if [ "$_post_facts_rc" -eq 0 ] && printf '%s\n' "$_post_facts_out" | grep -q '^#schema[[:space:]]speedbackup.pm_facts.v1' && printf '%s\n' "$_post_facts_out" | grep -q "^OK[[:space:]]$PKG[[:space:]]"; then ok "appInventoryPostInstallFactsBatch smoke" "rc=0"; else warn "appInventoryPostInstallFactsBatch smoke" "rc=$_post_facts_rc"; fi
+
+_role_facts_out="$(run_class_stdout "$HIDDEN_CLASS" defaultRoleFacts "$USER_ID" 2>/dev/null)"; _role_facts_rc=$?
+printf '%s\n' "$_role_facts_out" > "$TEST_LOG_DIR/default_role_facts.tsv" 2>/dev/null
+if [ "$_role_facts_rc" -eq 0 ] && printf '%s\n' "$_role_facts_out" | grep -q '^#schema[[:space:]]speedbackup.default_role_facts.v1'; then ok "defaultRoleFacts smoke" "rc=0"; else warn "defaultRoleFacts smoke" "rc=$_role_facts_rc"; fi
+
+_storage_facts_out="$(run_class_stdout "$HIDDEN_CLASS" storageMediaFacts "$USER_ID" 2>/dev/null)"; _storage_facts_rc=$?
+printf '%s\n' "$_storage_facts_out" > "$TEST_LOG_DIR/storage_media_facts.tsv" 2>/dev/null
+if [ "$_storage_facts_rc" -eq 0 ] && printf '%s\n' "$_storage_facts_out" | grep -q '^#schema[[:space:]]speedbackup.storage_media_facts.v1'; then ok "storageMediaFacts smoke" "rc=0"; else warn "storageMediaFacts smoke" "rc=$_storage_facts_rc"; fi
+_settings_out="$(run_class_stdout "$APPSTATE_CLASS" settingsGet "$USER_ID" secure default_input_method 2>/dev/null)"; _settings_rc=$?
+printf '%s\n' "$_settings_out" > "$TEST_LOG_DIR/appstate_settings_get_smoke.ndjson" 2>/dev/null
+if [ "$_settings_rc" -eq 0 ] && printf '%s\n' "$_settings_out" | jq -s -e 'any(.[]; .recordType=="settingsGet" and .source=="exec_settings")' >/dev/null 2>&1; then ok "settingsGet exec shim smoke" "rc=0"; else warn "settingsGet exec shim smoke" "rc=$_settings_rc"; fi
+_framework_out="$(run_class_stdout "$APPSTATE_CLASS" frameworkFacts "$USER_ID" "$PKG" 2>/dev/null)"; _framework_rc=$?
+printf '%s\n' "$_framework_out" > "$TEST_LOG_DIR/appstate_framework_facts_smoke.ndjson" 2>/dev/null
+if [ "$_framework_rc" -eq 0 ] && printf '%s\n' "$_framework_out" | jq -s -e --arg p "$PKG" 'any(.[]; .recordType=="frameworkFacts" and .packageName==$p) and any(.[]; .recordType=="summary" and .command=="frameworkFacts")' >/dev/null 2>&1; then ok "frameworkFacts smoke" "rc=0"; else warn "frameworkFacts smoke" "rc=$_framework_rc"; fi
 _snap_out="$(run_class_stdout "$APPSTATE_CLASS" snapshotAppStateBatch "$USER_ID" "$PKG")"; _snap_rc=$?
 printf '%s\n' "$_snap_out" > "$TEST_LOG_DIR/appstate_snapshot_probe.ndjson" 2>/dev/null
 if [ "$_snap_rc" -eq 0 ] && printf '%s\n' "$_snap_out" | jq -s -e --arg p "$PKG" 'any(.[]; .recordType=="snapshot" and .packageName==$p and (.result.name=="OK" or .result.name=="PARTIAL")) and any(.[]; .recordType=="summary" and .command=="snapshotAppStateBatch")' >/dev/null 2>&1; then ok "snapshotAppStateBatch smoke" "rc=0"; else critical_fail "snapshotAppStateBatch smoke" "rc=$_snap_rc"; fi
@@ -306,70 +347,46 @@ printf '%s\n' "$_home_out" > "$TEST_LOG_DIR/appstate_default_home_smoke.ndjson" 
 if [ "$_home_rc" -eq 0 ] && printf '%s\n' "$_home_out" | jq -s -e 'any(.[]; .recordType=="defaultHome") and any(.[]; .recordType=="summary" and .command=="defaultHome")' >/dev/null 2>&1; then ok "defaultHome smoke" "rc=0"; else critical_fail "defaultHome smoke" "rc=$_home_rc"; fi
 
 _top_out="$(run_dex processObserverTop "$USER_ID" 2>/dev/null)"; _top_rc=$?
-printf '%s
-' "$_top_out" > "$TEST_LOG_DIR/process_observer_top_smoke.txt" 2>/dev/null
-if [ "$_top_rc" -eq 0 ] && printf '%s
-' "$_top_out" | grep -q 'PROCESS_OBSERVER_TOP'; then ok "processObserverTop direct smoke" "rc=0"; else warn "processObserverTop direct smoke" "rc=$_top_rc"; fi
+printf '%s\n' "$_top_out" > "$TEST_LOG_DIR/process_observer_top_smoke.txt" 2>/dev/null
+if [ "$_top_rc" -eq 0 ] && printf '%s\n' "$_top_out" | grep -q 'PROCESS_OBSERVER_TOP'; then ok "processObserverTop direct smoke" "rc=0"; else warn "processObserverTop direct smoke" "rc=$_top_rc"; fi
 _pof_out="$(run_dex processObserverForeground "$USER_ID" "$PKG" 2>/dev/null)"; _pof_rc=$?
-printf '%s
-' "$_pof_out" > "$TEST_LOG_DIR/process_observer_foreground_smoke.txt" 2>/dev/null
-if [ "$_pof_rc" -eq 0 ] && printf '%s
-' "$_pof_out" | grep -q 'PROCESS_OBSERVER_FOREGROUND'; then ok "processObserverForeground direct smoke" "rc=0"; else warn "processObserverForeground direct smoke" "rc=$_pof_rc"; fi
+printf '%s\n' "$_pof_out" > "$TEST_LOG_DIR/process_observer_foreground_smoke.txt" 2>/dev/null
+if [ "$_pof_rc" -eq 0 ] && printf '%s\n' "$_pof_out" | grep -q 'PROCESS_OBSERVER_FOREGROUND'; then ok "processObserverForeground direct smoke" "rc=0"; else warn "processObserverForeground direct smoke" "rc=$_pof_rc"; fi
 _pls_out="$(run_dex packageLiveState "$USER_ID" "$PKG" 2>/dev/null)"; _pls_rc=$?
-printf '%s
-' "$_pls_out" > "$TEST_LOG_DIR/package_live_state_smoke.txt" 2>/dev/null
-if [ "$_pls_rc" -eq 0 ] && printf '%s
-' "$_pls_out" | grep -q 'PACKAGE_LIVE_STATE'; then ok "packageLiveState direct smoke" "rc=0 hash=0"; else warn "packageLiveState direct smoke" "rc=$_pls_rc"; fi
+printf '%s\n' "$_pls_out" > "$TEST_LOG_DIR/package_live_state_smoke.txt" 2>/dev/null
+if [ "$_pls_rc" -eq 0 ] && printf '%s\n' "$_pls_out" | grep -q 'PACKAGE_LIVE_STATE'; then ok "packageLiveState direct smoke" "rc=0 hash=0"; else warn "packageLiveState direct smoke" "rc=$_pls_rc"; fi
 _pis_out="$(run_dex packageInstallSnapshot "$USER_ID" "$PKG" 2>/dev/null)"; _pis_rc=$?
-printf '%s
-' "$_pis_out" > "$TEST_LOG_DIR/package_install_snapshot_smoke.txt" 2>/dev/null
-if [ "$_pis_rc" -eq 0 ] && printf '%s
-' "$_pis_out" | grep -q 'PACKAGE_INSTALL_SNAPSHOT' && printf '%s
-' "$_pis_out" | grep -q 'hash=0'; then ok "packageInstallSnapshot direct smoke" "rc=0 hash=0"; else warn "packageInstallSnapshot direct smoke" "rc=$_pis_rc"; fi
+printf '%s\n' "$_pis_out" > "$TEST_LOG_DIR/package_install_snapshot_smoke.txt" 2>/dev/null
+if [ "$_pis_rc" -eq 0 ] && printf '%s\n' "$_pis_out" | grep -q 'PACKAGE_INSTALL_SNAPSHOT' && printf '%s\n' "$_pis_out" | grep -q 'hash=0'; then ok "packageInstallSnapshot direct smoke" "rc=0 hash=0"; else warn "packageInstallSnapshot direct smoke" "rc=$_pis_rc"; fi
 _prs_out="$(run_dex packageRestrictionSnapshot "$USER_ID" "$PKG" 2>/dev/null)"; _prs_rc=$?
-printf '%s
-' "$_prs_out" > "$TEST_LOG_DIR/package_restriction_snapshot_smoke.txt" 2>/dev/null
-if [ "$_prs_rc" -eq 0 ] && printf '%s
-' "$_prs_out" | grep -q 'PACKAGE_RESTRICTION_SNAPSHOT' && printf '%s
-' "$_prs_out" | grep -q 'hash=0'; then ok "packageRestrictionSnapshot direct smoke" "rc=0 hash=0"; else warn "packageRestrictionSnapshot direct smoke" "rc=$_prs_rc"; fi
+printf '%s\n' "$_prs_out" > "$TEST_LOG_DIR/package_restriction_snapshot_smoke.txt" 2>/dev/null
+if [ "$_prs_rc" -eq 0 ] && printf '%s\n' "$_prs_out" | grep -q 'PACKAGE_RESTRICTION_SNAPSHOT' && printf '%s\n' "$_prs_out" | grep -q 'hash=0'; then ok "packageRestrictionSnapshot direct smoke" "rc=0 hash=0"; else warn "packageRestrictionSnapshot direct smoke" "rc=$_prs_rc"; fi
 _uid_probe_out="$(run_dex uidObserverProbe 2>/dev/null)"; _uid_probe_rc=$?
-printf '%s
-' "$_uid_probe_out" > "$TEST_LOG_DIR/uid_observer_probe_smoke.txt" 2>/dev/null
-if [ "$_uid_probe_rc" -eq 0 ] && printf '%s
-' "$_uid_probe_out" | grep -q 'UID_OBSERVER_PROBE'; then ok "uidObserverProbe direct smoke" "rc=0"; else warn "uidObserverProbe direct smoke" "rc=$_uid_probe_rc"; fi
+printf '%s\n' "$_uid_probe_out" > "$TEST_LOG_DIR/uid_observer_probe_smoke.txt" 2>/dev/null
+if [ "$_uid_probe_rc" -eq 0 ] && printf '%s\n' "$_uid_probe_out" | grep -q 'UID_OBSERVER_PROBE'; then ok "uidObserverProbe direct smoke" "rc=0"; else warn "uidObserverProbe direct smoke" "rc=$_uid_probe_rc"; fi
 _uid_out="$(run_dex uidLiveState "$USER_ID" "$PKG" 2>/dev/null)"; _uid_rc=$?
-printf '%s
-' "$_uid_out" > "$TEST_LOG_DIR/uid_live_state_smoke.txt" 2>/dev/null
-if [ "$_uid_rc" -eq 0 ] && printf '%s
-' "$_uid_out" | grep -q 'UID_LIVE_STATE'; then ok "uidLiveState direct smoke" "rc=0 hash=0"; else warn "uidLiveState direct smoke" "rc=$_uid_rc"; fi
+printf '%s\n' "$_uid_out" > "$TEST_LOG_DIR/uid_live_state_smoke.txt" 2>/dev/null
+if [ "$_uid_rc" -eq 0 ] && printf '%s\n' "$_uid_out" | grep -q 'UID_LIVE_STATE'; then ok "uidLiveState direct smoke" "rc=0 hash=0"; else warn "uidLiveState direct smoke" "rc=$_uid_rc"; fi
 _uid_watch_out="$(run_dex uidObserverWatch "$USER_ID" "$PKG" 120 2>/dev/null)"; _uid_watch_rc=$?
-printf '%s
-' "$_uid_watch_out" > "$TEST_LOG_DIR/uid_observer_watch_smoke.txt" 2>/dev/null
-if [ "$_uid_watch_rc" -eq 0 ] && printf '%s
-' "$_uid_watch_out" | grep -q 'UID_OBSERVER_WATCH_DONE'; then ok "uidObserverWatch direct smoke" "rc=0"; else warn "uidObserverWatch direct smoke" "rc=$_uid_watch_rc"; fi
+printf '%s\n' "$_uid_watch_out" > "$TEST_LOG_DIR/uid_observer_watch_smoke.txt" 2>/dev/null
+if [ "$_uid_watch_rc" -eq 0 ] && printf '%s\n' "$_uid_watch_out" | grep -q 'UID_OBSERVER_WATCH_DONE'; then ok "uidObserverWatch direct smoke" "rc=0"; else warn "uidObserverWatch direct smoke" "rc=$_uid_watch_rc"; fi
 _fsv_out="$(run_dex forceStopPackageVerify "$USER_ID" "$PKG" 100 2>/dev/null)"; _fsv_rc=$?
-printf '%s
-' "$_fsv_out" > "$TEST_LOG_DIR/force_stop_verify_smoke.txt" 2>/dev/null
-if [ "$_fsv_rc" -eq 0 ] && printf '%s
-' "$_fsv_out" | grep -q 'FORCE_STOP_VERIFY'; then ok "forceStopPackageVerify direct smoke" "rc=0"; else warn "forceStopPackageVerify direct smoke" "rc=$_fsv_rc"; fi
+printf '%s\n' "$_fsv_out" > "$TEST_LOG_DIR/force_stop_verify_smoke.txt" 2>/dev/null
+if [ "$_fsv_rc" -eq 0 ] && printf '%s\n' "$_fsv_out" | grep -q 'FORCE_STOP_VERIFY'; then ok "forceStopPackageVerify direct smoke" "rc=0"; else warn "forceStopPackageVerify direct smoke" "rc=$_fsv_rc"; fi
 
 _wdav_help="$(run_class "$WEBDAV_CLASS" help 2>&1)"; _wdav_help_rc=$?
 # r208: WebDavUtil help may print complete usage then exit 2 on older command dispatchers.
 # Treat stdout content as the smoke criterion; exit code alone is not a core capability failure.
-if printf '%s
-' "$_wdav_help" | grep -q 'WebDavUtil' && 	printf '%s
-' "$_wdav_help" | grep -q 'daemonunix' && 	printf '%s
-' "$_wdav_help" | grep -q 'putstdinmanagedrel'; then
+if printf '%s\n' "$_wdav_help" | grep -q 'WebDavUtil' && 	printf '%s\n' "$_wdav_help" | grep -q 'daemonunix' && 	printf '%s\n' "$_wdav_help" | grep -q 'putstdinmanagedrel'; then
 	if [ "$_wdav_help_rc" -eq 0 ]; then
 		ok "WebDavUtil help可讀" "rc=0"
 	else
 		ok "WebDavUtil help可讀" "stdout-ok rc=$_wdav_help_rc"
 	fi
-	for _cmd in daemonunix putstdinmanagedrel putmanagedrel listrel statrel optionspreflightrel ensurebaserel ensuredirsbatchrel; do require_text "WebDavUtil核心入口 $_cmd" "$_wdav_help" "$_cmd"; done
+	for _cmd in daemonunix putstdinmanagedrel putmanagedrel managedbatchputrelwithparents managedlistclassifyrel listrel classifylistrel preparedirsplanrel statrel optionspreflightrel ensurebaserel ensuredirsbatchrel; do require_text "WebDavUtil核心入口 $_cmd" "$_wdav_help" "$_cmd"; done
 	# getrel 是 WebDAV 下載路徑使用的 legacy/alias command；部分 Dex help 不再列出，但命令可能仍存在。
 	# dex_check 只做核心 smoke，不再因 help usage 少列 alias 而中止工具。
-	if printf '%s
-' "$_wdav_help" | grep -q 'getrel'; then
+	if printf '%s\n' "$_wdav_help" | grep -q 'getrel'; then
 		ok "WebDavUtil可選入口 getrel" "present"
 	else
 		warn "WebDavUtil可選入口 getrel" "not-listed-in-help"
@@ -425,6 +442,8 @@ check_key_tool zstd critical
 check_key_tool busybox warn
 check_key_tool smbclient warn
 check_key_tool keycheck warn
+check_key_tool procwait warn
+check_key_tool eventwait warn
 check_key_tool speedscan warn
 check_key_tool unixsock warn
 check_key_tool cgfreezerd warn

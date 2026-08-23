@@ -61,7 +61,7 @@ import dev.rikka.tools.refine.Refine;
 public final class AppStateEngine {
     public static final int SCHEMA_VERSION = 2;
     public static final int DAEMON_PROTOCOL_VERSION = 1;
-    public static final String ENGINE_VERSION = "v1.3.80-observer-version-procsnap";
+    public static final String ENGINE_VERSION = "v1.3.95-r413-full-event-dex-cfacts";
 
     static final Gson GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().create();
     static final Gson PRETTY_GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().setPrettyPrinting().create();
@@ -259,6 +259,16 @@ public final class AppStateEngine {
                     return foregroundTop(userId);
                 case "defaulthome":
                     return defaultHome(userId);
+                case "defaultime":
+                    return defaultIme(userId);
+                case "settingsget":
+                    return settingsExec(userId, false, body);
+                case "settingsput":
+                    return settingsExec(userId, true, body);
+                case "frameworkfacts":
+                    return frameworkFacts(userId, parsePackageLines(body));
+                case "devicefacts":
+                    return new EngineResponse(ResultCode.OK, DeviceFactsUtil.json());
                 case "restore":
                     return restoreAppState(userId, body);
                 case "verify":
@@ -313,6 +323,16 @@ public final class AppStateEngine {
         addCapability(capabilities, "appstate.foreground_list.simple_json.v1", true, false, "app-items-only-label+packageName;no-uid-no-process-no-importance");
         addCapability(capabilities, "appstate.foreground_top.v1", true, false, "focused-top-package+dumpsys-activity-window-fallback");
         addCapability(capabilities, "appstate.default_home.v1", true, false, "PackageManager HOME intent resolution; detects ResolverActivity as partial");
+        addCapability(capabilities, "appstate.default_ime.v1", true, true, "Default input method resolver exported for tools cgroup-first backup/restore policy");
+        addCapability(capabilities, "appstate.default_ime.exec_settings.v1", true, false, "Default IME is resolved by executing settings --user USER_ID get secure default_input_method, then PackageManager enriches label/install state");
+        addCapability(capabilities, "dex.settings.exec_shim.v1", true, false, "settingsGet/settingsPut wrap /system/bin/settings --user USER_ID get|put namespace key [value] with NDJSON output; no ContentResolver caller-identity guess");
+        addCapability(capabilities, "dex.app_inventory.package_facts.batch.v1", true, false, "appInventoryPackageFactsBatch emits stable PackageManager/installer/source/split/data-dir TSV facts; tools consumes facts and still owns plans");
+        addCapability(capabilities, "dex.pm.post_install_facts_batch.v1", true, false, "appInventoryPostInstallFactsBatch refreshes PackageManager facts after APK install; tools still owns restore decisions");
+        addCapability(capabilities, "dex.default_role_facts.batch.v1", true, false, "defaultRoleFacts emits HOME/DIALER/SMS/BROWSER/ASSISTANT role holders; tools still owns policy");
+        addCapability(capabilities, "dex.storage_media_facts.v1", true, false, "storageMediaFacts emits user data/media/emulated path facts; tools still owns restore decisions");
+        addCapability(capabilities, "dex.framework_facts.batch.v1", true, false, "frameworkFacts emits compact per-package PM/AppState/AppOps restriction facts for diagnostics; tools still owns plans");
+        addCapability(capabilities, "dex.device_facts.v1", true, false, "deviceFacts emits raw Build/SystemProperties facts and ROM hints; tools still owns decisions");
+        addCapability(capabilities, "dex.device_model_name_map.v1", true, false, "Device_List is Dex-builtin only; external tools/Device_List override is intentionally removed");
         addCapability(capabilities, "appstate.default_home.role_fallback.v1", true, false, "RoleManager HOME holder fallback when resolveActivity returns android/empty");
         addCapability(capabilities, "appstate.default_home.get_home_activities.v1", true, false, "PackageManager getHomeActivities default ComponentName fallback before role/single-candidate fallback");
         addCapability(capabilities, "appstate.default_home.get_home_activities.reflect.v1", true, false, "Compile-safe reflection bridge for getHomeActivities on SDK stubs that hide the method");
@@ -324,6 +344,10 @@ public final class AppStateEngine {
         addCapability(capabilities, "appstate.restore.batch.v4", true, true, "runtime-permission-uid-op+explicit-package-op");
         addCapability(capabilities, "appstate.verify.batch.v4", true, true, "effective-runtime-op+stable-flags");
         addCapability(capabilities, "appstate.verify.vendor_classification.dex.v1", true, true, "VERIFY_VENDOR_CONSTRAINED emitted by Dex when all verify mismatches are vendor/platform-constrained AppOps or pruned legacy records");
+        addCapability(capabilities, "appstate.restore.vendor_classification.dex.v1", true, true, "restoreAppStateBatch treats known platform/vendor-owned runtime and scoped AppOps as non-partial structured vendor-constrained successes");
+        addCapability(capabilities, "appstate.restore.permission_appop_vendor_classification.dex.v1", true, true, "permissionAppOp restore classifies active IME INTERACT_ACROSS_PROFILES op=93 default-to-allowed policy drift as non-partial vendor constrained success");
+        addCapability(capabilities, "appstate.restore.special_access_vendor_classification.dex.v1", true, true, "restore specialAccess classifies platform/role-owned MANAGE_EXTERNAL_STORAGE and default dialer full-screen-intent drift as non-partial vendor constrained success");
+        addCapability(capabilities, "appstate.verify.default_dialer_vendor_classification.dex.v1", true, true, "verify classifies default/system dialer platform-retained WRITE_SECURE_SETTINGS/INTERACT_ACROSS_USERS/full-screen-intent drift as vendor constrained");
         addCapability(capabilities, "appstate.appops_reset.integrated.v1", true, true, "package-scoped");
         addCapability(capabilities, "appstate.ssaid.integrated.v1", true, true, "snapshot+restore+verify+uid-key-settings_ssaid");
         addCapability(capabilities, "appstate.ssaid.hardening.v1", true, true, "restore-validates-16hex-lowercase;reports-uidKey-filePath-file-readback-source;file-metadata-audit");
@@ -442,12 +466,20 @@ public final class AppStateEngine {
         addCapability(capabilities, "appstate.token_sections", false, false, "removed");
         addCapability(capabilities, "appops.reset.package_batch", false, false, "removed-from-public-surface");
         addCapability(capabilities, "webdav.rel_only.v1", true, true, "only *rel WebDAV operations are exposed for stream/atomic/data paths");
+        addCapability(capabilities, "webdav.relpath.strict_gate.v1", true, true, "WebDavUtil rejects absolute/dot-dot/control/encoded traversal relative paths before URL build");
         addCapability(capabilities, "webdav.legacy_url_surface", false, false, "non-rel URL aliases removed: mkdirs/putstdin/putstdinchunked/getstdout/move/copy");
         addCapability(capabilities, "webdav.daemon.af_unix", true, true, "stream-framed");
         addCapability(capabilities, "webdav.daemon.mkcol_cache.v1", true, true, "per-daemon-url-cache");
         addCapability(capabilities, "webdav.daemon.list_cache.v1", true, true, "per-daemon-propfind-cache-invalidated-on-write");
         addCapability(capabilities, "webdav.putbatchrel.v1", true, true, "manifest-rel-to-localfile-batch-put");
         addCapability(capabilities, "webdav.managed_put.v1", true, true, "Dex-managed direct/atomic rel upload policy");
+        addCapability(capabilities, "webdav.putstdin.skip_parent_mkdir.v1", true, true, "putstdinmanagedrel accepts parent mkdir mode from tools; batch-ensured parents can skip per-payload MKCOL while non-cached paths are ensured inside WebDavUtil");
+        addCapability(capabilities, "webdav.list_classify.dex.v1", true, true, "WebDavUtil classifylistrel emits kind/rel/size/mtime/name TSV for app payload, app metadata, media payload and reserved payload classification");
+        addCapability(capabilities, "webdav.remote_list.deep_facts.dex.v1", true, true, "remote depth listing facts are classified inside Dex; tools consumes TSV facts and keeps app_details/restore planning in shell");
+        addCapability(capabilities, "webdav.prepare_dirs_plan.dex.v1", true, true, "WebDavUtil preparedirsplanrel owns WebDAV directory list/exists/create transaction while tools passes desired app-dir manifest and seeds cache from TSV facts");
+        addCapability(capabilities, "webdav.managed_list_classify.v1", true, true, "managedlistclassifyrel exposes transport-owned WebDAV classified TSV facts without shell-side file type guessing");
+        addCapability(capabilities, "webdav.managed_batch_put_with_parents.v1", true, true, "managedbatchputrelwithparents accepts rel/local manifest and performs parent prepare plus managed PUT as a transport transaction; tools still owns backup plan");
+        addCapability(capabilities, "webdav.propfind.no_cache.v1", true, true, "WebDavUtil PROPFIND sends no-cache headers to reduce stale directory listings from rclone/proxies");
         addCapability(capabilities, "webdav.managed_probe.v1", true, true, "Dex-managed WebDAV stream capability probe");
         addCapability(capabilities, "webdav.cjk_put_replay_probe.v1", true, true, "replay-safe managed probe retries encoded CJK PUT 404 with raw UTF-8 and caches successful origin path mode");
         addCapability(capabilities, "webdav.managed_probe.nodot_temp.v1", true, true, "managed probe uses non-dot temp names because some Android/NAS WebDAV roots reject hidden dotfiles with HTTP 404");
@@ -466,9 +498,17 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.app_inventory.daemon_cache.v1", true, true, "SpeedBackupRootDaemon HiddenApi namespace reuses AppInventory cache within the same run");
         addCapability(capabilities, "dex.app_inventory.source_paths.v1", true, true, "AppInventory exports sourceDir/splitSourceDirs and pkgApkPathMap for APK backup without shell pm path");
         addCapability(capabilities, "dex.app_inventory.pkg_uid.single.v1", true, true, "single package UID refresh after install touched restore");
+        addCapability(capabilities, "dex.package_manager.batch_facts.v1", true, true, "PackageManager facts stay Dex-side through AppInventory/packageLiveState/packageInstallSnapshot; no restorePlan ownership");
+        addCapability(capabilities, "dex.app_inventory.package_facts.batch.v1", true, true, "PackageManager/installer/source/split/data-dir facts are available as stable TSV batch output");
+        addCapability(capabilities, "dex.pm.post_install_facts_batch.v1", true, true, "post-install PackageManager facts are available as a daemon batch command");
+        addCapability(capabilities, "dex.settings.exec_shim.v1", true, true, "settings-backed framework facts such as default IME use Dex wrapper/exec shim boundaries instead of shell guessing");
+        addCapability(capabilities, "dex.appops.restriction_facts.v1", true, true, "AppOps/restriction facts are queried in Dex snapshots; shell only consumes facts");
         addCapability(capabilities, "dex.process_observer.integrated_wake_block.v1", true, true, "processObserver action suffixes *-appops/*-restricted start wake-block internally and restore on observer stop");
         addCapability(capabilities, "dex.process_observer.action_wake_suffix.v1", true, true, "guard-stop-restricted/guard-kill-restricted single-command observer+wake-block syntax");
         addCapability(capabilities, "webdav.deep_policy_table.dex.v1", true, true, "WebDavUtil exposes consolidated vendor/pacer/PROPFIND/error-policy capability marker for deeper Dex-side WebDAV policy");
+        addCapability(capabilities, "webdav.managed_list_classify.v1", true, true, "WebDAV classified remote list facts are transport-owned in Dex");
+        addCapability(capabilities, "webdav.managed_batch_put_with_parents.v1", true, true, "WebDAV batch managed PUT with parent prepare is available as Dex transport transaction");
+        addCapability(capabilities, "webdav.propfind.no_cache.v1", true, true, "WebDAV PROPFIND requests include no-cache headers");
         addCapability(capabilities, "webdav.stream_heartbeat_error_kind.dex.v1", true, true, "WebDavUtil managed stream logs low-noise heartbeat/progress/idle/fail kind with sent bytes");
         addCapability(capabilities, "dex.source.libsardine_removed.v1", true, false, "unused non-included libsardine source tree removed from release source package");
         addCapability(capabilities, "webdav.atomic_probe.v2", true, true, "PUT part + MOVE publish + GET byte compare + COPY + overwrite regression");
@@ -839,6 +879,261 @@ public final class AppStateEngine {
         } catch (Throwable e) {
             return errorResponse(ResultCode.INTERNAL_ERROR, "defaultHome", null, failureMessage(e));
         }
+    }
+
+
+    private static final class DefaultImeReadResult {
+        final String raw;
+        final String source;
+        final String detail;
+        final int exitCode;
+        final long elapsedMs;
+
+        DefaultImeReadResult(String raw, String source, String detail, int exitCode, long elapsedMs) {
+            this.raw = safe(raw);
+            this.source = safe(source);
+            this.detail = safe(detail);
+            this.exitCode = exitCode;
+            this.elapsedMs = elapsedMs;
+        }
+    }
+
+    private static String shortFailure(Throwable t) {
+        if (t == null) return "unknown";
+        Throwable c = t;
+        try {
+            if (t instanceof java.lang.reflect.InvocationTargetException && ((java.lang.reflect.InvocationTargetException) t).getTargetException() != null) {
+                c = ((java.lang.reflect.InvocationTargetException) t).getTargetException();
+            }
+        } catch (Throwable ignored) {}
+        String name = c.getClass().getSimpleName();
+        String msg = safe(c.getMessage()).replace('\n', ' ').replace('\r', ' ');
+        if (msg.length() > 96) msg = msg.substring(0, 96);
+        return msg.isEmpty() ? name : name + ":" + msg;
+    }
+
+    private static String readProcessOutput(Process process) {
+        StringBuilder out = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (out.length() > 0) out.append('\n');
+                out.append(line);
+                if (out.length() > 2048) break;
+            }
+        } catch (Throwable ignored) {}
+        return out.toString();
+    }
+
+    private static DefaultImeReadResult readDefaultImeViaSettingsCli(int userId) {
+        long start = System.nanoTime();
+        Process process = null;
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "/system/bin/settings", "--user", String.valueOf(userId),
+                    "get", "secure", "default_input_method");
+            pb.redirectErrorStream(true);
+            process = pb.start();
+            boolean done = process.waitFor(2500, TimeUnit.MILLISECONDS);
+            long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+            if (!done) {
+                try { process.destroyForcibly(); } catch (Throwable ignored) {}
+                return new DefaultImeReadResult("", "exec_settings_secure_timeout", "timeoutMs=2500", 124, elapsedMs);
+            }
+            int rc = process.exitValue();
+            String output = safe(readProcessOutput(process)).trim();
+            String firstLine = output;
+            int nl = firstLine.indexOf('\n');
+            if (nl >= 0) firstLine = firstLine.substring(0, nl).trim();
+            if (rc == 0 && !firstLine.isEmpty() && !"null".equalsIgnoreCase(firstLine)) {
+                return new DefaultImeReadResult(firstLine, "exec_settings_secure", "settings --user USER_ID get secure default_input_method", rc, elapsedMs);
+            }
+            String detail = output.isEmpty() ? "empty" : output.replace('\n', ' ');
+            if (detail.length() > 128) detail = detail.substring(0, 128);
+            return new DefaultImeReadResult("", "exec_settings_secure_empty", detail, rc, elapsedMs);
+        } catch (Throwable t) {
+            long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+            return new DefaultImeReadResult("", "exec_settings_secure_failed:" + shortFailure(t), shortFailure(t), -1, elapsedMs);
+        } finally {
+            if (process != null) {
+                try { process.getInputStream().close(); } catch (Throwable ignored) {}
+                try { process.getOutputStream().close(); } catch (Throwable ignored) {}
+                try { process.getErrorStream().close(); } catch (Throwable ignored) {}
+            }
+        }
+    }
+
+    static EngineResponse defaultIme(int userId) {
+        StringBuilder out = new StringBuilder();
+        try {
+            RuntimeServices runtime = runtimeServices();
+            PackageManager pm = runtime.packageManager;
+            PackageManagerHidden pmHidden = runtime.packageManagerHidden;
+            DefaultImeReadResult read = readDefaultImeViaSettingsCli(userId);
+            String raw = safe(read.raw);
+            String source = safe(read.source);
+            String pkg = "";
+            String service = "";
+            ComponentName component = raw.isEmpty() ? null : ComponentName.unflattenFromString(raw);
+            if (component != null) {
+                pkg = safe(component.getPackageName());
+                service = safe(component.getClassName());
+            } else if (raw.contains("/")) {
+                pkg = safe(raw.substring(0, raw.indexOf('/')));
+                service = safe(raw.substring(raw.indexOf('/') + 1));
+            } else {
+                pkg = safe(raw);
+            }
+            if (!isValidPackageName(pkg)) pkg = "";
+            String label = pkg;
+            boolean installed = false;
+            boolean enabled = false;
+            long versionCode = -1L;
+            try {
+                PackageInfo info = pmHidden.getPackageInfoAsUser(pkg, PackageManager.GET_META_DATA, userId);
+                if (info != null && info.applicationInfo != null) {
+                    installed = true;
+                    enabled = info.applicationInfo.enabled;
+                    versionCode = longVersionCode(info);
+                    String loadedLabel = safeLabel(pm, info.applicationInfo, pkg);
+                    if (loadedLabel != null && !loadedLabel.isEmpty()) label = loadedLabel;
+                }
+            } catch (Throwable ignored) {
+                installed = false;
+            }
+            JsonObject root = baseRecord("defaultIme", userId, pkg);
+            addNullable(root, "componentName", raw);
+            addNullable(root, "serviceName", service);
+            addNullable(root, "label", label);
+            root.addProperty("installed", installed);
+            root.addProperty("enabled", enabled);
+            root.addProperty("versionCode", versionCode);
+            root.addProperty("source", source);
+            root.addProperty("settingsExitCode", read.exitCode);
+            root.addProperty("elapsedMs", read.elapsedMs);
+            addNullable(root, "detail", read.detail);
+            if (pkg.isEmpty()) {
+                setResult(root, ResultCode.PARTIAL, "default input method not configured");
+                out.append(GSON.toJson(root)).append('\n');
+                out.append(GSON.toJson(summaryRecord("defaultIme", ResultCode.PARTIAL, 1, 0, 1, 0, "default input method not configured"))).append('\n');
+                return new EngineResponse(ResultCode.PARTIAL, out.toString());
+            }
+            setResult(root, ResultCode.OK, installed ? null : "default input method package not installed for user");
+            out.append(GSON.toJson(root)).append('\n');
+            out.append(GSON.toJson(summaryRecord("defaultIme", ResultCode.OK, 1, 1, 0, 0, installed ? null : "package not installed"))).append('\n');
+            return new EngineResponse(ResultCode.OK, out.toString());
+        } catch (SecurityException e) {
+            return errorResponse(ResultCode.PERMISSION_DENIED, "defaultIme", null, failureMessage(e));
+        } catch (Throwable e) {
+            return errorResponse(ResultCode.INTERNAL_ERROR, "defaultIme", null, failureMessage(e));
+        }
+    }
+
+    private static EngineResponse settingsExec(int userId, boolean put, String body) {
+        try {
+            List<String> tokens = new ArrayList<>();
+            if (body != null) {
+                for (String line : body.split("\r?\n")) {
+                    String v = line == null ? "" : line.trim();
+                    if (!v.isEmpty() && !v.startsWith("#")) tokens.add(v);
+                }
+            }
+            if ((!put && tokens.size() < 2) || (put && tokens.size() < 3)) {
+                return errorResponse(ResultCode.BAD_REQUEST, put ? "settingsPut" : "settingsGet", null, "settings command requires namespace/key[/value]");
+            }
+            String namespace = safeSettingsNamespace(tokens.get(0));
+            String key = safeSettingsKey(tokens.get(1));
+            String value = put ? String.join(" ", tokens.subList(2, tokens.size())) : "";
+            List<String> cmd = new ArrayList<>();
+            cmd.add("/system/bin/settings");
+            cmd.add("--user");
+            cmd.add(String.valueOf(userId));
+            cmd.add(put ? "put" : "get");
+            cmd.add(namespace);
+            cmd.add(key);
+            if (put) cmd.add(value);
+            long started = System.currentTimeMillis();
+            Process process = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+            boolean done = process.waitFor(4000, TimeUnit.MILLISECONDS);
+            if (!done) {
+                process.destroyForcibly();
+                JsonObject timeout = baseRecord(put ? "settingsPut" : "settingsGet", userId, "");
+                timeout.addProperty("namespace", namespace);
+                timeout.addProperty("key", key);
+                timeout.addProperty("source", "exec_settings");
+                timeout.addProperty("elapsedMs", System.currentTimeMillis() - started);
+                setResult(timeout, ResultCode.PARTIAL, "settings command timeout");
+                return new EngineResponse(ResultCode.PARTIAL, GSON.toJson(timeout) + "\n");
+            }
+            String output = readProcessOutput(process).trim();
+            int rc = process.exitValue();
+            JsonObject root = baseRecord(put ? "settingsPut" : "settingsGet", userId, "");
+            root.addProperty("namespace", namespace);
+            root.addProperty("key", key);
+            if (put) root.addProperty("writtenValue", value);
+            else root.addProperty("value", "null".equals(output) ? "" : output);
+            root.addProperty("exitCode", rc);
+            root.addProperty("source", "exec_settings");
+            root.addProperty("elapsedMs", System.currentTimeMillis() - started);
+            setResult(root, rc == 0 ? ResultCode.OK : ResultCode.PARTIAL, rc == 0 ? null : output);
+            return new EngineResponse(rc == 0 ? ResultCode.OK : ResultCode.PARTIAL, GSON.toJson(root) + "\n");
+        } catch (Throwable e) {
+            return errorResponse(classifyThrowable(e), put ? "settingsPut" : "settingsGet", null, failureMessage(e));
+        }
+    }
+
+    private static String safeSettingsNamespace(String raw) {
+        String v = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
+        if ("secure".equals(v) || "global".equals(v) || "system".equals(v)) return v;
+        throw new IllegalArgumentException("unsupported settings namespace: " + safe(v));
+    }
+
+    private static String safeSettingsKey(String raw) {
+        String v = safe(raw).trim();
+        if (v.matches("[A-Za-z0-9_.:-]+") && !v.startsWith(".") && !v.contains("..")) return v;
+        throw new IllegalArgumentException("unsafe settings key: " + safe(v));
+    }
+
+    private static EngineResponse frameworkFacts(int userId, List<String> packages) {
+        StringBuilder out = new StringBuilder();
+        int ok = 0;
+        int failed = 0;
+        for (String pkg : packages) {
+            try {
+                EngineResponse snap = snapshot(userId, Collections.singletonList(pkg));
+                JsonObject root = baseRecord("frameworkFacts", userId, pkg);
+                root.addProperty("source", "snapshot+restriction");
+                root.addProperty("snapshotResult", snap.resultCode.name());
+                JsonArray snapshotRecords = new JsonArray();
+                for (String line : snap.body.split("\n")) {
+                    if (line.trim().isEmpty()) continue;
+                    JsonObject obj = GSON.fromJson(line, JsonObject.class);
+                    if (obj != null && "snapshot".equals(stringMember(obj, "recordType"))) {
+                        snapshotRecords.add(obj);
+                    }
+                }
+                root.add("snapshot", snapshotRecords);
+                JsonArray restrictionLines = new JsonArray();
+                String restriction = ProcessObserverUtil.packageRestrictionSnapshot(userId, new String[]{"packageRestrictionSnapshot", String.valueOf(userId), pkg}, 2);
+                for (String line : restriction.split("\n")) {
+                    if (!line.trim().isEmpty()) restrictionLines.add(line);
+                }
+                root.add("restrictions", restrictionLines);
+                setResult(root, ResultCode.OK, null);
+                out.append(GSON.toJson(root)).append('\n');
+                ok++;
+            } catch (Throwable t) {
+                out.append(GSON.toJson(packageErrorRecord("frameworkFacts", userId, pkg, classifyThrowable(t), failureMessage(t)))).append('\n');
+                failed++;
+            }
+        }
+        ResultCode rc = failed == 0 ? ResultCode.OK : (ok > 0 ? ResultCode.PARTIAL : ResultCode.INTERNAL_ERROR);
+        out.append(GSON.toJson(summaryRecord("frameworkFacts", rc, packages.size(), ok, ok > 0 && failed > 0 ? 1 : 0, failed, null))).append('\n');
+        return new EngineResponse(rc, out.toString());
+    }
+
+    private static boolean isValidPackageName(String pkg) {
+        return pkg != null && pkg.matches("[A-Za-z0-9_.-]+") && !pkg.startsWith(".") && !pkg.contains("..") && pkg.contains(".");
     }
 
     private static final class HomePick {
@@ -1681,6 +1976,12 @@ public final class AppStateEngine {
             items.add(item);
         }
 
+        void vendorConstrainedSuccess(String category, String key, String message) {
+            JsonObject item = operationItem(category, key, ResultCode.OK, message);
+            item.addProperty("vendorConstrained", true);
+            items.add(item);
+        }
+
         void note(String category, String key, ResultCode code, String message) {
             JsonObject item = operationItem(category, key, code, message);
             items.add(item);
@@ -1903,6 +2204,53 @@ public final class AppStateEngine {
         restoreScopedAppOp(appOps, uid, packageName, state, op, "mode", "battery", key, true, report);
     }
 
+    private static boolean isVendorConstrainedImeCrossProfileAppOp(String packageName, String permissionName,
+                                                                   int op, int expectedEffective,
+                                                                   int actualEffective) {
+        // Android 16 / vendor frameworks can derive INTERACT_ACROSS_PROFILES for the active/system IME
+        // from profile and input-method policy. In field logs this restore mismatch appears in the
+        // permissionAppOp scoped writer as expectedEffective=MODE_DEFAULT and actualEffective=MODE_ALLOWED
+        // while the explicit package/uid scope is already restored. That matches verify-time vendor
+        // classification and must not make restoreAppStateBatch PARTIAL. Keep the older ignored->allowed
+        // tolerance too, because different ROMs can normalize the same policy-owned bit differently.
+        if (!"android.permission.INTERACT_ACROSS_PROFILES".equals(permissionName)) return false;
+        if (op != 93) return false;
+        if (packageName == null || !packageName.contains("inputmethod")) return false;
+        if (actualEffective != AppOpsManagerHidden.MODE_ALLOWED) return false;
+        return expectedEffective == AppOpsManagerHidden.MODE_DEFAULT
+                || expectedEffective == AppOpsManagerHidden.MODE_IGNORED;
+    }
+
+    private static boolean isDefaultOrSystemDialerPackage(String packageName) {
+        if (packageName == null) return false;
+        return "com.google.android.dialer".equals(packageName)
+                || "com.android.dialer".equals(packageName)
+                || packageName.endsWith(".dialer")
+                || packageName.contains(".dialer.");
+    }
+
+    private static boolean isVendorConstrainedSpecialAccessRestore(String packageName, String category, String key,
+                                                                   int op, int expectedEffective,
+                                                                   int actualEffective,
+                                                                   boolean packageOk, boolean uidOk) {
+        if (!"specialAccess".equals(category)) return false;
+        if (!packageOk || !uidOk) return false;
+        if ("MANAGE_EXTERNAL_STORAGE".equals(key)
+                && op == 92
+                && expectedEffective == AppOpsManagerHidden.MODE_ALLOWED
+                && actualEffective == AppOpsManagerHidden.MODE_DEFAULT) {
+            return true;
+        }
+        if ("USE_FULL_SCREEN_INTENT".equals(key)
+                && op == 133
+                && expectedEffective == AppOpsManagerHidden.MODE_ALLOWED
+                && actualEffective == AppOpsManagerHidden.MODE_DEFAULT
+                && isDefaultOrSystemDialerPackage(packageName)) {
+            return true;
+        }
+        return false;
+    }
+
     private static void restoreRuntimePermissionAppOp(AppOpsManagerHidden appOps, int uid,
                                                       String packageName, JsonObject state, int op,
                                                       String category, String key,
@@ -1915,6 +2263,13 @@ public final class AppStateEngine {
             if (modeEquivalent(expectedEffective, actualEffective)) {
                 report.success(category, key, "op=" + op + " uidMode=" + expectedEffective
                         + " effective=" + actualEffective);
+            } else if (isVendorConstrainedImeCrossProfileAppOp(packageName, key, op, expectedEffective, actualEffective)) {
+                report.vendorConstrainedSuccess(category, key,
+                        "op=" + op
+                                + " expectedEffective=" + expectedEffective
+                                + " actualEffective=" + actualEffective
+                                + " strategy=runtime_permission_uid"
+                                + " vendorConstrained=true reason=platform_owned_active_ime_profile_appop mode=r373");
             } else {
                 report.mismatch(category, key, "op=" + op
                         + " expectedEffective=" + expectedEffective
@@ -1975,6 +2330,23 @@ public final class AppStateEngine {
                         + " packageMode=" + String.valueOf(actualPackage)
                         + " uidMode=" + String.valueOf(actualUid)
                         + drift);
+            } else if ("permissionAppOp".equals(category)
+                    && isVendorConstrainedImeCrossProfileAppOp(packageName, key, op, expectedEffective, actualEffective)
+                    && packageOk && uidOk) {
+                report.vendorConstrainedSuccess(category, key, "op=" + op
+                        + " expectedEffective=" + expectedEffective + " actualEffective=" + actualEffective
+                        + " expectedPackage=" + String.valueOf(packageMode) + " actualPackage=" + String.valueOf(actualPackage)
+                        + " expectedUid=" + String.valueOf(uidMode) + " actualUid=" + String.valueOf(actualUid)
+                        + " strategy=scoped_appop"
+                        + " vendorConstrained=true reason=platform_owned_active_ime_profile_appop mode=r373");
+            } else if (isVendorConstrainedSpecialAccessRestore(packageName, category, key, op,
+                    expectedEffective, actualEffective, packageOk, uidOk)) {
+                report.vendorConstrainedSuccess(category, key, "op=" + op
+                        + " expectedEffective=" + expectedEffective + " actualEffective=" + actualEffective
+                        + " expectedPackage=" + String.valueOf(packageMode) + " actualPackage=" + String.valueOf(actualPackage)
+                        + " expectedUid=" + String.valueOf(uidMode) + " actualUid=" + String.valueOf(actualUid)
+                        + " strategy=scoped_special_access"
+                        + " vendorConstrained=true reason=platform_or_role_owned_special_access mode=r376");
             } else {
                 report.mismatch(category, key, "op=" + op
                         + " expectedEffective=" + expectedEffective + " actualEffective=" + actualEffective
@@ -2072,7 +2444,7 @@ public final class AppStateEngine {
         ResultCode code;
         String message = null;
         if (mismatches.size() > 0) {
-            boolean vendorOnly = allVendorConstrainedMismatches(mismatches);
+            boolean vendorOnly = allVendorConstrainedMismatches(packageName, mismatches);
             if (vendorOnly) {
                 code = ResultCode.VERIFY_VENDOR_CONSTRAINED;
                 message = mismatches.size() + " vendor constrained AppState mismatch(es)";
@@ -2093,11 +2465,11 @@ public final class AppStateEngine {
         return root;
     }
 
-    private static boolean allVendorConstrainedMismatches(JsonArray mismatches) {
+    private static boolean allVendorConstrainedMismatches(String packageName, JsonArray mismatches) {
         if (mismatches == null || mismatches.size() == 0) return false;
         for (JsonElement element : mismatches) {
             if (element == null || !element.isJsonObject()) return false;
-            if (!isVendorConstrainedMismatch(element.getAsJsonObject())) return false;
+            if (!isVendorConstrainedMismatch(packageName, element.getAsJsonObject())) return false;
         }
         return true;
     }
@@ -2117,7 +2489,7 @@ public final class AppStateEngine {
         return out;
     }
 
-    private static boolean isVendorConstrainedMismatch(JsonObject mismatch) {
+    private static boolean isVendorConstrainedMismatch(String packageName, JsonObject mismatch) {
         if (mismatch == null) return false;
         String path = stringMember(mismatch, "path");
         String message = stringMember(mismatch, "message");
@@ -2137,6 +2509,17 @@ public final class AppStateEngine {
         if ("specialAccess.MANAGE_EXTERNAL_STORAGE.mode".equals(path)
                 && jsonModeIs(expected, 0) && jsonModeIs(actual, 3)
                 && "effective mode mismatch".equals(message)) return true;
+        if (isDefaultOrSystemDialerPackage(packageName)) {
+            if ("permissions.android.permission.WRITE_SECURE_SETTINGS.granted".equals(path)
+                    && jsonBooleanIs(expected, false) && jsonBooleanIs(actual, true)
+                    && "value mismatch".equals(message)) return true;
+            if ("permissions.android.permission.INTERACT_ACROSS_USERS.granted".equals(path)
+                    && jsonBooleanIs(expected, false) && jsonBooleanIs(actual, true)
+                    && "value mismatch".equals(message)) return true;
+            if ("specialAccess.USE_FULL_SCREEN_INTENT.mode".equals(path)
+                    && jsonModeIs(expected, 0) && jsonModeIs(actual, 3)
+                    && "effective mode mismatch".equals(message)) return true;
+        }
         if ("batterySettings.RUN_IN_BACKGROUND.mode".equals(path)
                 && jsonModeIs(expected, 0) && jsonModeIs(actual, 3)
                 && "effective mode mismatch".equals(message)) return true;
@@ -2145,6 +2528,12 @@ public final class AppStateEngine {
                 && "missing permission record".equals(message)) return true;
         if ("otherAppOps.36.mode".equals(path)
                 && jsonModeIs(expected, 1) && jsonModeIs(actual, 4)
+                && "effective mode mismatch".equals(message)) return true;
+        // Android 16 may derive INTERACT_ACROSS_PROFILES AppOp for the active/system IME.
+        // This is platform policy owned by profile/input-method services, not a durable
+        // package AppState bit that root restore can force across users/ROMs.
+        if ("permissions.android.permission.INTERACT_ACROSS_PROFILES.appOp.appOpMode".equals(path)
+                && jsonModeIs(expected, 3) && jsonModeIs(actual, 0)
                 && "effective mode mismatch".equals(message)) return true;
         return false;
     }
@@ -2159,6 +2548,14 @@ public final class AppStateEngine {
 
     private static boolean jsonIsNull(JsonElement element) {
         return element == null || element.isJsonNull();
+    }
+
+    private static boolean jsonBooleanIs(JsonElement element, boolean value) {
+        if (element == null || element.isJsonNull()) return false;
+        try {
+            if (element.isJsonPrimitive()) return element.getAsBoolean() == value;
+        } catch (Throwable ignored) {}
+        return false;
     }
 
     private static boolean jsonObjectOpIs(JsonElement element, int op) {

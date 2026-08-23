@@ -35,7 +35,7 @@ import kotlin.system.exitProcess
  * streaming and never buffers the whole archive on disk.
  */
 object WebDavUtil {
-    private const val VERSION = "v1.5.23-relpath-traversal-guard dex=v2.6.164-r309-label-pathsafe build=v24.20.14-7.66-732-label-pathsafe-r309-202607232022"
+    private const val VERSION = "v1.5.31-r373-managed-transport-facts dex=v2.6.182-r373-restore-permissionappop-vendor build=v24.20.14-7.66-796-restore-permissionappop-vendor-r373-202607232022"
 
     private val DAV_PROPFIND_BODY = """
         <?xml version="1.0" encoding="utf-8"?>
@@ -244,11 +244,14 @@ object WebDavUtil {
             "putstdinchunkedrel" -> cmdPutStdinChunkedRel(args)
             "putstdinmanagedrel" -> cmdPutStdinManagedRel(args)
             "putmanagedrel" -> cmdPutManagedRel(args)
+            "managedbatchputrelwithparents" -> cmdManagedBatchPutRelWithParents(args)
+            "managedlistclassifyrel" -> cmdManagedListClassifyRel(args)
             "managedproberel" -> cmdManagedProbeRel(args)
             "compatProbeRel" -> cmdCompatProbeRel(args)
             "ensurebaserel" -> cmdEnsureBaseRel(args)
             "ensuredirrel" -> cmdEnsureDirRel(args)
             "ensuredirsbatchrel" -> cmdEnsureDirsBatchRel(args)
+            "preparedirsplanrel" -> cmdPrepareDirsPlanRel(args)
             "optionspreflightrel" -> cmdOptionsPreflightRel(args)
             "getrel" -> cmdGetRel(args)
             "getstdoutrel" -> cmdGetStdoutRel(args)
@@ -259,6 +262,7 @@ object WebDavUtil {
             "statrel" -> cmdStatRel(args)
             "optionsrel" -> cmdOptionsRel(args)
             "listrel" -> cmdListRel(args)
+            "classifylistrel" -> cmdClassifyListRel(args)
             "encodepath" -> cmdEncodePath(args)
             "decodepath" -> cmdDecodePath(args)
             "daemon" -> cmdDaemon(args)
@@ -534,10 +538,21 @@ object WebDavUtil {
                 put(user, pass, relUrl(), input, contentLength = null, chunked = true).also { if (it in 200..299) invalidateListCache() }
             }
             "putstdinmanagedrel" -> httpCode = safe {
-                putStdinManagedRel(user, pass, url, extra1(), extra2(), input)
+                putStdinManagedRel(user, pass, url, extra1(), extra2(), extra3(), input)
             }
             "putmanagedrel" -> httpCode = safe {
-                putFileManagedRel(user, pass, url, extra1(), extra2(), extra3())
+                putFileManagedRel(user, pass, url, extra1(), extra2(), extra3(), extraParts().getOrElse(3) { "ensureParentMkdir" })
+            }
+            "managedbatchputrelwithparents" -> httpCode = safe {
+                val body = readRequestBody(input, requestBodyLen).toString(StandardCharsets.UTF_8)
+                val result = managedBatchPutRelWithParents(user, pass, url, extra1(), extra2(), extra3(), body)
+                respBody = result.second.toByteArray(StandardCharsets.UTF_8)
+                result.first
+            }
+            "managedlistclassifyrel" -> httpCode = safe {
+                val result = classifyListRel(user, pass, url, extra1(), extra2().toIntOrNull() ?: -1)
+                respBody = result.second.toByteArray(StandardCharsets.UTF_8)
+                result.first
             }
             "managedproberel" -> httpCode = safe {
                 val result = managedProbeRel(user, pass, url, extra1())
@@ -562,6 +577,12 @@ object WebDavUtil {
             "ensuredirsbatchrel" -> httpCode = safe {
                 val body = readRequestBody(input, requestBodyLen).toString(StandardCharsets.UTF_8)
                 val result = ensureDirsBatchRel(user, pass, url, body)
+                respBody = result.second.toByteArray(StandardCharsets.UTF_8)
+                result.first
+            }
+            "preparedirsplanrel" -> httpCode = safe {
+                val body = readRequestBody(input, requestBodyLen).toString(StandardCharsets.UTF_8)
+                val result = prepareDirsPlanRel(user, pass, url, extra1(), extra2().ifEmpty { "create" }, body, extra3())
                 respBody = result.second.toByteArray(StandardCharsets.UTF_8)
                 result.first
             }
@@ -604,6 +625,14 @@ object WebDavUtil {
                 val depth = extra2().toIntOrNull() ?: -1
                 httpCode = safe {
                     val result = listCached(user, pass, relUrl(), depth)
+                    if (result.first in 200..299) respBody = result.second.toByteArray(StandardCharsets.UTF_8)
+                    result.first
+                }
+            }
+            "classifylistrel" -> {
+                val depth = extra2().toIntOrNull() ?: -1
+                httpCode = safe {
+                    val result = classifyListRel(user, pass, url, extra1(), depth)
                     if (result.first in 200..299) respBody = result.second.toByteArray(StandardCharsets.UTF_8)
                     result.first
                 }
@@ -753,19 +782,43 @@ object WebDavUtil {
     }
 
     private fun cmdPutStdinManagedRel(args: Array<String>) {
-        require(args.size >= 5) { "putstdinmanagedrel <user> <pass> <baseUrl> <relPath> [mode]" }
+        require(args.size >= 5) { "putstdinmanagedrel <user> <pass> <baseUrl> <relPath> [mode] [ensureParentMkdir|skipParentMkdir]" }
         val mode = args.getOrNull(5) ?: "auto"
+        val parentMode = args.getOrNull(6) ?: "ensureParentMkdir"
         val code = runCatching {
-            putStdinManagedRel(args[1], args[2], args[3], args[4], mode, System.`in`)
+            putStdinManagedRel(args[1], args[2], args[3], args[4], mode, parentMode, System.`in`)
         }.getOrElse { HttpCore.extractCode(it) }
         finish(code)
     }
 
     private fun cmdPutManagedRel(args: Array<String>) {
-        require(args.size >= 6) { "putmanagedrel <user> <pass> <baseUrl> <relPath> <localFile> [mode]" }
+        require(args.size >= 6) { "putmanagedrel <user> <pass> <baseUrl> <relPath> <localFile> [mode] [ensureParentMkdir|skipParentMkdir]" }
         val mode = args.getOrNull(6) ?: "auto"
+        val parentMode = args.getOrNull(7) ?: "ensureParentMkdir"
         val code = runCatching {
-            putFileManagedRel(args[1], args[2], args[3], args[4], args[5], mode)
+            putFileManagedRel(args[1], args[2], args[3], args[4], args[5], mode, parentMode)
+        }.getOrElse { HttpCore.extractCode(it) }
+        finish(code)
+    }
+
+    private fun cmdManagedBatchPutRelWithParents(args: Array<String>) {
+        require(args.size >= 4) { "managedbatchputrelwithparents <user> <pass> <baseUrl> [mode] [ensureParentMkdir|skipParentMkdir]  (stdin: rel\tlocalFile lines)" }
+        val mode = args.getOrNull(4) ?: "auto"
+        val parentMode = args.getOrNull(5) ?: "ensureParentMkdir"
+        val body = readRequestBody(System.`in`, -1L).toString(StandardCharsets.UTF_8)
+        val result = runCatching { managedBatchPutRelWithParents(args[1], args[2], args[3], mode, parentMode, "", body) }
+            .getOrElse { e -> HttpCore.extractCode(e) to "FAIL\t.\t.\t${HttpCore.extractCode(e)}\t${e.javaClass.simpleName}\nSUMMARY\ttotal=0\tok=0\tfailed=1\tmode=exception\n" }
+        print(result.second)
+        finish(result.first)
+    }
+
+    private fun cmdManagedListClassifyRel(args: Array<String>) {
+        require(args.size >= 5) { "managedlistclassifyrel <user> <pass> <baseUrl> <relPath> [depth]" }
+        val depth = args.getOrNull(5)?.toIntOrNull() ?: -1
+        val code = runCatching {
+            val result = classifyListRel(args[1], args[2], args[3], args[4], depth)
+            if (result.first in 200..299) print(result.second)
+            result.first
         }.getOrElse { HttpCore.extractCode(it) }
         finish(code)
     }
@@ -811,6 +864,15 @@ object WebDavUtil {
         val body = readRequestBody(System.`in`, -1L).toString(StandardCharsets.UTF_8)
         val result = runCatching { ensureDirsBatchRel(args[1], args[2], args[3], body) }
             .getOrElse { e -> HttpCore.extractCode(e) to "FAIL\t.\t${HttpCore.extractCode(e)}\t${e.javaClass.simpleName}\nsummary\ttotal=0\tok=0\tbad=1\n" }
+        print(result.second)
+        finish(result.first)
+    }
+
+    private fun cmdPrepareDirsPlanRel(args: Array<String>) {
+        require(args.size >= 5) { "preparedirsplanrel <user> <pass> <baseUrl> <rootRel> [create|check] [progressFile]  (stdin: desired dir rel lines)" }
+        val body = readRequestBody(System.`in`, -1L).toString(StandardCharsets.UTF_8)
+        val result = runCatching { prepareDirsPlanRel(args[1], args[2], args[3], args[4], args.getOrNull(5) ?: "create", body, args.getOrNull(6) ?: "") }
+            .getOrElse { e -> HttpCore.extractCode(e) to "FAIL\t.\t${HttpCore.extractCode(e)}\t${e.javaClass.simpleName}\nSUMMARY\ttotal=0\texisting=0\tcreated=0\tok=0\tfailed=1\trootStatus=0\tmode=exception\n" }
         print(result.second)
         finish(result.first)
     }
@@ -893,6 +955,17 @@ object WebDavUtil {
         finish(code)
     }
 
+    private fun cmdClassifyListRel(args: Array<String>) {
+        require(args.size >= 5) { "classifylistrel <user> <pass> <baseUrl> <relPath> [depth]" }
+        val depth = args.getOrNull(5)?.toIntOrNull() ?: -1
+        val code = runCatching {
+            val result = classifyListRel(args[1], args[2], args[3], args[4], depth)
+            if (result.first in 200..299) print(result.second)
+            result.first
+        }.getOrElse { HttpCore.extractCode(it) }
+        finish(code)
+    }
+
     private fun cmdEncodePath(args: Array<String>) {
         require(args.size >= 2) { "encodepath <text>" }
         print(HttpCore.percentEncodePath(args[1]))
@@ -913,14 +986,21 @@ object WebDavUtil {
     }
 
     private fun sanitizeRelPath(relPath: String): String {
-        val raw = relPath.replace('\\', '/').trimStart('/')
+        val normalized = relPath.replace('\\', '/')
+        if (normalized.isEmpty() || normalized == ".") return ""
+        require(!normalized.startsWith("/")) { "WEBDAV_REL_PATH_REJECT absolute" }
+        val raw = normalized.trim('/')
         if (raw.isEmpty() || raw == ".") return ""
         val out = ArrayList<String>()
         val ctrl = Regex("[\\u0000-\\u001F\\u007F]")
-        for (part in raw.split('/')) {
-            if (part.isEmpty() || part == ".") continue
-            val safe = if (part == "..") "__" else part.replace(ctrl, "_")
-            if (safe.isNotEmpty()) out.add(safe)
+        for (partRaw in raw.split('/')) {
+            val part = partRaw.trim()
+            require(part.isNotEmpty() && part != ".") { "WEBDAV_REL_PATH_REJECT empty_component" }
+            val decoded = runCatching { HttpCore.percentDecodePath(part) }.getOrElse { part }
+            require(part != ".." && decoded != "..") { "WEBDAV_REL_PATH_REJECT traversal" }
+            require(!decoded.contains('/') && !decoded.contains('\\')) { "WEBDAV_REL_PATH_REJECT encoded_separator" }
+            require(!ctrl.containsMatchIn(part) && !ctrl.containsMatchIn(decoded)) { "WEBDAV_REL_PATH_REJECT control_char" }
+            out.add(part)
         }
         return out.joinToString("/")
     }
@@ -1184,6 +1264,146 @@ object WebDavUtil {
             .append('\n')
         if (ok > 0) invalidateListCache()
         return finalCode to out.toString()
+    }
+
+    /**
+     * Dex-side WebDAV directory preparation plan.
+     *
+     * tools still owns the backup plan and passes desired app directory rels. WebDavUtil owns
+     * the WebDAV transaction: list direct children of rootRel, classify which desired parents
+     * already exist, create only missing parents, and return TSV facts for tools cache seeding.
+     */
+    private fun prepareDirsPlanRel(user: String, pass: String, baseUrl: String, rootRelRaw: String, modeRaw: String, body: String, progressFile: String = ""): Pair<Int, String> {
+        val rootRel = sanitizeRelPath(rootRelRaw).trim('/').takeIf { it.isNotEmpty() && it != "." }.orEmpty()
+        val createMissing = when (modeRaw.trim().lowercase(java.util.Locale.US)) {
+            "0", "false", "no", "check", "checkonly", "dryrun" -> false
+            else -> true
+        }
+        val desired = body.lineSequence()
+            .map { normalizeDesiredDirRel(it, rootRel) }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .toList()
+        if (desired.isEmpty()) {
+            writePrepareDirsProgress(progressFile, 0, 0, 0, 0, 0, "EMPTY", "")
+            return 200 to "SUMMARY\ttotal=0\texisting=0\tcreated=0\tok=0\tfailed=0\trootStatus=0\tmode=${if (createMissing) "create" else "check"}\n"
+        }
+        writePrepareDirsProgress(progressFile, desired.size, 0, 0, 0, 0, "BEGIN", "")
+
+        val existing = HashSet<String>()
+        var rootStatus = 0
+        val rootUrl = buildRelUrl(baseUrl, rootRel)
+        runCatching { propfindRaw(user, pass, rootUrl, 1) }
+            .onSuccess { (status, respBody) ->
+                rootStatus = status
+                if (status in 200..299) {
+                    for (entry in parseDavEntries(respBody)) {
+                        if (!entry.isDirectory) continue
+                        val childRel = davEntryRelativePath(entry.href, rootRel)
+                        if (childRel.isEmpty() || childRel.contains('/')) continue
+                        val fullRel = if (rootRel.isEmpty()) sanitizeRelPath(childRel) else sanitizeRelPath("$rootRel/$childRel")
+                        if (fullRel.isNotEmpty()) {
+                            existing.add(fullRel)
+                            markDir(buildRelUrl(baseUrl, fullRel), DirState.EXISTS)
+                        }
+                    }
+                }
+            }
+            .onFailure { rootStatus = HttpCore.extractCode(it) }
+
+        if (rootStatus !in 200..299 && rootStatus != 404 && rootStatus != 410) {
+            val out = StringBuilder()
+            desired.forEach { rel -> out.append("FAIL\t").append(rel).append("\t").append(rootStatus).append("\troot-list-failed\n") }
+            out.append("SUMMARY\ttotal=").append(desired.size)
+                .append("\texisting=0\tcreated=0\tok=0\tfailed=").append(desired.size)
+                .append("\trootStatus=").append(rootStatus)
+                .append("\tmode=").append(if (createMissing) "create" else "check")
+                .append('\n')
+            return rootStatus to out.toString()
+        }
+
+        val out = StringBuilder(desired.size * 48)
+        var existingCount = 0
+        var createdCount = 0
+        var okCount = 0
+        var failedCount = 0
+        var finalCode = 200
+        var doneCount = 0
+        for (rel in desired) {
+            if (existing.contains(rel)) {
+                existingCount++
+                okCount++
+                out.append("EXISTING\t").append(rel).append("\t200\tlist-depth1\n")
+                doneCount++
+                writePrepareDirsProgress(progressFile, desired.size, doneCount, existingCount, createdCount, failedCount, "EXISTING", rel)
+                continue
+            }
+            if (!createMissing) {
+                failedCount++
+                if (finalCode in 200..299) finalCode = 404
+                out.append("MISSING\t").append(rel).append("\t404\tcheck-only\n")
+                doneCount++
+                writePrepareDirsProgress(progressFile, desired.size, doneCount, existingCount, createdCount, failedCount, "MISSING", rel)
+                continue
+            }
+            val result = ensureDirRel(user, pass, baseUrl, rel)
+            val code = result.first
+            val state = parseKeyValueLines(result.second)["state"].orEmpty().ifEmpty { if (code in 200..299) "ok" else "fail" }
+            if (code in 200..299) {
+                okCount++
+                if (state == "created") createdCount++ else existingCount++
+                out.append(if (state == "created") "CREATED" else "EXISTING")
+                    .append('\t').append(rel)
+                    .append('\t').append(code)
+                    .append('\t').append(state)
+                    .append('\n')
+                doneCount++
+                writePrepareDirsProgress(progressFile, desired.size, doneCount, existingCount, createdCount, failedCount, if (state == "created") "CREATED" else "EXISTING", rel)
+            } else {
+                failedCount++
+                if (finalCode in 200..299) finalCode = code
+                out.append("FAIL")
+                    .append('\t').append(rel)
+                    .append('\t').append(code)
+                    .append('\t').append(state)
+                    .append('\n')
+                doneCount++
+                writePrepareDirsProgress(progressFile, desired.size, doneCount, existingCount, createdCount, failedCount, "FAIL", rel)
+            }
+        }
+        out.append("SUMMARY\ttotal=").append(desired.size)
+            .append("\texisting=").append(existingCount)
+            .append("\tcreated=").append(createdCount)
+            .append("\tok=").append(okCount)
+            .append("\tfailed=").append(failedCount)
+            .append("\trootStatus=").append(rootStatus)
+            .append("\tmode=").append(if (createMissing) "create" else "check")
+            .append('\n')
+        if (createdCount > 0) invalidateListCache()
+        return finalCode to out.toString()
+    }
+
+
+
+    private fun writePrepareDirsProgress(pathRaw: String, total: Int, done: Int, existing: Int, created: Int, failed: Int, status: String, rel: String) {
+        val path = pathRaw.trim()
+        if (path.isEmpty()) return
+        if (!(path.startsWith("/data/local/tmp/") || path.startsWith("/data/speed_debug/"))) return
+        runCatching {
+            val file = File(path)
+            file.parentFile?.mkdirs()
+            val safeStatus = status.replace('\t', '_').replace('\n', '_').replace('\r', '_')
+            val safeRel = rel.replace('\t', '_').replace('\n', '_').replace('\r', '_')
+            file.writeText("$done\t$total\t$existing\t$created\t$failed\t$safeStatus\t$safeRel\n", StandardCharsets.UTF_8)
+        }
+    }
+
+    private fun normalizeDesiredDirRel(raw: String, rootRel: String): String {
+        val rel = sanitizeRelPath(raw.trim()).trim('/').takeIf { it.isNotEmpty() && it != "." }.orEmpty()
+        if (rel.isEmpty()) return ""
+        if (rootRel.isEmpty()) return rel
+        if (rel == rootRel || rel.startsWith("$rootRel/")) return rel
+        return if (!rel.contains('/')) sanitizeRelPath("$rootRel/$rel") else rel
     }
 
     private fun parseKeyValueLines(text: String): Map<String, String> {
@@ -1774,7 +1994,43 @@ object WebDavUtil {
         return "$rel.part.${System.currentTimeMillis()}.$seq"
     }
 
-    private fun putStdinManagedRel(user: String, pass: String, baseUrl: String, relPath: String, mode: String?, input: InputStream): Int {
+    private enum class ParentMkdirMode(val wire: String) {
+        ENSURE("ensureParentMkdir"),
+        SKIP("skipParentMkdir"),
+    }
+
+    private fun parseParentMkdirMode(raw: String?): ParentMkdirMode {
+        val v = (raw ?: "ensureParentMkdir").trim().lowercase(java.util.Locale.US)
+        return when (v) {
+            "skip", "skipparentmkdir", "skip-parent-mkdir", "parentalreadyensured", "parentalreadyensured=1", "skipparentmkdir=1" -> ParentMkdirMode.SKIP
+            else -> ParentMkdirMode.ENSURE
+        }
+    }
+
+    private fun parentRelForManagedPut(relPath: String): String {
+        val rel = relPath.trim('/').takeIf { it.isNotEmpty() && it != "." } ?: return ""
+        return rel.substringBeforeLast('/', missingDelimiterValue = "")
+    }
+
+    private fun ensureManagedPutParent(user: String, pass: String, baseUrl: String, relPath: String, parentModeRaw: String?): Int {
+        val parentRel = parentRelForManagedPut(relPath)
+        val mode = parseParentMkdirMode(parentModeRaw)
+        if (parentRel.isEmpty()) {
+            infoLog("MANAGED_PUT_PARENT mode=none rel=$relPath parent= code=200")
+            return 200
+        }
+        if (mode == ParentMkdirMode.SKIP) {
+            infoLog("MANAGED_PUT_PARENT mode=skipParentMkdir rel=$relPath parent=$parentRel code=200")
+            return 200
+        }
+        val code = mkcolParentsRel(user, pass, baseUrl, parentRel)
+        infoLog("MANAGED_PUT_PARENT mode=ensureParentMkdir rel=$relPath parent=$parentRel code=$code")
+        return code
+    }
+
+    private fun putStdinManagedRel(user: String, pass: String, baseUrl: String, relPath: String, mode: String?, parentMode: String?, input: InputStream): Int {
+        val parentCode = ensureManagedPutParent(user, pass, baseUrl, relPath, parentMode)
+        if (parentCode !in 200..299) return parentCode
         val decision = managedDecision(user, pass, baseUrl, relPath, mode)
         val targetRel = if (decision.direct) relPath else managedPartRel(relPath)
         infoLog("MANAGED_PUT mode=${decision.modeName} server=${decision.serverKind} rel=$relPath target=$targetRel streamMeter=1")
@@ -1803,9 +2059,11 @@ object WebDavUtil {
         return code
     }
 
-    private fun putFileManagedRel(user: String, pass: String, baseUrl: String, relPath: String, localFile: String, mode: String?): Int {
+    private fun putFileManagedRel(user: String, pass: String, baseUrl: String, relPath: String, localFile: String, mode: String?, parentMode: String?): Int {
         val file = File(localFile)
         if (!file.isFile) return 0
+        val parentCode = ensureManagedPutParent(user, pass, baseUrl, relPath, parentMode)
+        if (parentCode !in 200..299) return parentCode
         val decision = managedDecision(user, pass, baseUrl, relPath, mode)
         infoLog("MANAGED_PUT_FILE mode=${decision.modeName} server=${decision.serverKind} rel=$relPath file=${file.name} size=${file.length()}")
         val code = if (decision.direct) {
@@ -1823,6 +2081,80 @@ object WebDavUtil {
         }
         if (code in 200..299) invalidateListCache()
         return code
+    }
+
+    private fun managedBatchPutRelWithParents(user: String, pass: String, baseUrl: String, mode: String?, parentMode: String?, rootRelRaw: String, body: String): Pair<Int, String> {
+        data class BatchItem(val rel: String, val localFile: String)
+        val items = ArrayList<BatchItem>()
+        val parentManifest = StringBuilder()
+        val seenParents = HashSet<String>()
+        for (line in body.lineSequence()) {
+            val raw = line.trim()
+            if (raw.isEmpty() || raw.startsWith("#")) continue
+            val parts = raw.split('\t')
+            if (parts.size < 2) continue
+            val rel = sanitizeRelPath(parts[0])
+            val file = parts[1].trim()
+            if (rel.isEmpty() || file.isEmpty()) continue
+            items.add(BatchItem(rel, file))
+            val parent = parentRelForManagedPut(rel)
+            if (parent.isNotEmpty() && seenParents.add(parent)) parentManifest.append(parent).append('\n')
+        }
+        if (items.isEmpty()) return 200 to "SUMMARY\ttotal=0\tok=0\tfailed=0\tparents=0\tmode=batch-empty\n"
+        val parentResult = if (parseParentMkdirMode(parentMode) == ParentMkdirMode.SKIP || parentManifest.isEmpty()) {
+            200 to "SUMMARY\ttotal=0\texisting=0\tcreated=0\tok=0\tfailed=0\trootStatus=0\tmode=skip-parent\n"
+        } else {
+            val rootRel = rootRelRaw.ifBlank { commonRootForParents(seenParents) }
+            prepareDirsPlanRel(user, pass, baseUrl, rootRel, "create", parentManifest.toString(), "")
+        }
+        val out = StringBuilder(items.size * 96)
+        var ok = 0
+        var failed = 0
+        var finalCode = parentResult.first
+        out.append("PARENTS\tcode=").append(parentResult.first)
+            .append("\tparents=").append(seenParents.size)
+            .append("\tmode=preparedirsplanrel\n")
+        if (parentResult.first !in 200..299) {
+            out.append(parentResult.second)
+            out.append("SUMMARY\ttotal=").append(items.size).append("\tok=0\tfailed=").append(items.size).append("\tparents=").append(seenParents.size).append("\tmode=parent-failed\n")
+            return finalCode to out.toString()
+        }
+        for (item in items) {
+            val file = File(item.localFile)
+            if (!file.isFile) {
+                failed++
+                if (finalCode in 200..299) finalCode = 404
+                out.append("FAIL\t").append(item.rel).append('\t').append(item.localFile).append("\t404\tlocal-file-missing\n")
+                continue
+            }
+            val code = putFileManagedRel(user, pass, baseUrl, item.rel, item.localFile, mode, "skipParentMkdir")
+            if (code in 200..299) {
+                ok++
+                out.append("OK\t").append(item.rel).append('\t').append(item.localFile).append('\t').append(code).append("\tmanaged-put\n")
+            } else {
+                failed++
+                if (finalCode in 200..299) finalCode = code
+                out.append("FAIL\t").append(item.rel).append('\t').append(item.localFile).append('\t').append(code).append("\tmanaged-put\n")
+            }
+        }
+        out.append("SUMMARY\ttotal=").append(items.size)
+            .append("\tok=").append(ok)
+            .append("\tfailed=").append(failed)
+            .append("\tparents=").append(seenParents.size)
+            .append("\tmode=managedBatchPutRelWithParents\n")
+        return finalCode to out.toString()
+    }
+
+    private fun commonRootForParents(parents: Set<String>): String {
+        if (parents.isEmpty()) return ""
+        val first = parents.first().split('/').filter { it.isNotEmpty() }
+        if (first.isEmpty()) return ""
+        val out = ArrayList<String>()
+        for (i in first.indices) {
+            val seg = first[i]
+            if (parents.all { p -> p.split('/').filter { it.isNotEmpty() }.getOrNull(i) == seg }) out.add(seg) else break
+        }
+        return out.joinToString("/")
     }
 
     private fun managedProbeRel(user: String, pass: String, baseUrl: String, relBase: String): Pair<Int, String> {
@@ -1917,6 +2249,8 @@ object WebDavUtil {
             val headers = linkedMapOf(
                 "Depth" to if (depth < 0) "infinity" else depth.toString(),
                 "Content-Type" to "application/xml; charset=utf-8",
+                "Cache-Control" to "no-cache",
+                "Pragma" to "no-cache",
                 "Content-Length" to DAV_PROPFIND_BODY.size.toString()
             )
             val code = http.request("PROPFIND", url, user, pass, headers, bodyWriter = { out -> out.write(DAV_PROPFIND_BODY) }, followRedirects = true, canReplayBody = true) { status, respHeaders, input ->
@@ -1937,6 +2271,86 @@ object WebDavUtil {
         val displayName: String = "",
         val status: Int = 200,
     )
+
+
+    private fun classifyListRel(user: String, pass: String, baseUrl: String, relPath: String, depth: Int): Pair<Int, String> {
+        val targetUrl = buildRelUrl(baseUrl, relPath)
+        val (status, body) = propfindRaw(user, pass, targetUrl, depth)
+        if (status !in 200..299) return status to ""
+        val baseRel = sanitizeRelPath(relPath).trim('/').takeIf { it.isNotEmpty() && it != "." }.orEmpty()
+        val entries = parseDavEntries(body)
+        val out = StringBuilder(entries.size * 64)
+        for (entry in entries) {
+            val rel = davEntryRelativePath(entry.href, baseRel)
+            if (rel.isEmpty()) continue
+            val name = rel.substringAfterLast('/')
+            val kind = classifyDavRel(rel, entry.isDirectory)
+            out.append(kind).append('\t')
+                .append(rel).append('\t')
+                .append(entry.length).append('\t')
+                .append(sanitizeTsv(entry.lastModified)).append('\t')
+                .append(sanitizeTsv(name)).append('\n')
+        }
+        return status to out.toString()
+    }
+
+    private fun davEntryRelativePath(href: String, baseRelRaw: String): String {
+        var rel = href.substringBefore('?').substringBefore('#').trim()
+        if (rel.startsWith("http://", ignoreCase = true) || rel.startsWith("https://", ignoreCase = true)) {
+            rel = runCatching { URL(rel).path }.getOrElse { rel }
+        }
+        rel = HttpCore.percentDecodePath(rel)
+        rel = rel.replace('\\', '/').trimStart('/')
+        rel = rel.trimEnd('/')
+        val baseRel = baseRelRaw.replace('\\', '/').trim('/').takeIf { it.isNotEmpty() && it != "." }.orEmpty()
+        if (baseRel.isEmpty()) return rel
+        if (rel == baseRel) return ""
+        if (rel.startsWith("$baseRel/")) return rel.substring(baseRel.length + 1)
+        val marker = "/$baseRel/"
+        val idx = rel.indexOf(marker)
+        if (idx >= 0) return rel.substring(idx + marker.length)
+        val tailIdx = rel.lastIndexOf(baseRel)
+        if (tailIdx >= 0) {
+            val candidate = rel.substring(tailIdx + baseRel.length).trimStart('/')
+            if (candidate.isNotEmpty()) return candidate
+        }
+        return rel
+    }
+
+    private fun classifyDavRel(rel: String, isDirectory: Boolean): String {
+        if (isDirectory) return "DIR"
+        val name = rel.substringAfterLast('/')
+        val firstLevel = !rel.contains('/')
+        val underMedia = rel.startsWith("Media/") && rel.count { it == '/' } == 1
+        if (isInternalMarkerName(name)) return "INTERNAL_MARKER"
+        if (isAppMetadataName(name)) return "APP_METADATA"
+        if (isReservedAppPayloadName(name)) return if (rel.contains('/')) "APP_PAYLOAD" else "RESERVED_SKIP"
+        if ((firstLevel || underMedia) && isTarPayloadName(name)) return "MEDIA_PAYLOAD"
+        if (name.endsWith(".json", ignoreCase = true)) return "JSON"
+        return "FILE"
+    }
+
+    private fun isTarPayloadName(name: String): Boolean =
+        name.endsWith(".tar", ignoreCase = true) || name.endsWith(".tar.zst", ignoreCase = true)
+
+    private fun isAppMetadataName(name: String): Boolean = when (name) {
+        "app_details_bundle.tar", "app_details_bundle.tar.zst", "app_details.tar", "app_details.tar.zst", "app_details.json" -> true
+        else -> false
+    }
+
+    private fun isInternalMarkerName(name: String): Boolean = when (name) {
+        ".speedbackup_root_ready", ".speedbackup_dir_ready", ".speedbackup_transport_ready" -> true
+        else -> false
+    }
+
+    private fun isReservedAppPayloadName(name: String): Boolean = when (name) {
+        "apk.tar", "apk.tar.zst", "data.tar", "data.tar.zst", "user.tar", "user.tar.zst",
+        "user_de.tar", "user_de.tar.zst", "obb.tar", "obb.tar.zst", "hma.tar", "hma.tar.zst",
+        "thanox.tar", "thanox.tar.zst" -> true
+        else -> false
+    }
+
+    private fun sanitizeTsv(value: String): String = value.replace('\t', ' ').replace('\r', ' ').replace('\n', ' ')
 
     private fun parseDavList(body: ByteArray): String {
         val entries = parseDavEntries(body)
@@ -2133,13 +2547,16 @@ object WebDavUtil {
         println("  mkdirsrel <user> <pass> <baseUrl> <relPath>")
         println("  putrel <user> <pass> <baseUrl> <relPath> <localFile>")
         println("  putbatchrel <user> <pass> <baseUrl> <baseRel>  (stdin: rel\tlocalFile lines)")
-        println("  putstdinmanagedrel <user> <pass> <baseUrl> <relPath> [auto|atomic|direct|direct-json|direct-new-known-missing]")
-        println("  putmanagedrel <user> <pass> <baseUrl> <relPath> <localFile> [auto|atomic|direct|direct-json|direct-new-known-missing]")
+        println("  putstdinmanagedrel <user> <pass> <baseUrl> <relPath> [auto|atomic|direct|direct-json|direct-new-known-missing] [ensureParentMkdir|skipParentMkdir]")
+        println("  putmanagedrel <user> <pass> <baseUrl> <relPath> <localFile> [auto|atomic|direct|direct-json|direct-new-known-missing] [ensureParentMkdir|skipParentMkdir]")
+        println("  managedbatchputrelwithparents <user> <pass> <baseUrl> [mode] [ensureParentMkdir|skipParentMkdir]  (stdin: rel<TAB>localFile; Dex prepares parents then managed PUTs files)")
+        println("  managedlistclassifyrel <user> <pass> <baseUrl> <relPath> [depth]  (alias of classifylistrel; transport-owned classified facts)")
         println("  managedproberel <user> <pass> <baseUrl> [relBase]")
         println("  compatProbeRel <user> <pass> <baseUrl> [testRel]")
         println("  ensurebaserel <user> <pass> <configuredBaseUrl>")
         println("  ensuredirrel <user> <pass> <baseUrl> <relPath>")
         println("  ensuredirsbatchrel <user> <pass> <baseUrl>  (stdin: rel lines)")
+        println("  preparedirsplanrel <user> <pass> <baseUrl> <rootRel> [create|check] [progressFile]  (stdin: desired dir rel lines; TSV EXISTING/CREATED/FAIL/SUMMARY; optional progress TSV file)")
         println("  optionspreflightrel <user> <pass> <baseUrl> <relPath> <mode>")
         println("  vendor quirks: webdav.vendor_quirks.v1 / webdav.vendor_auto_detect.v1")
         println("  WEBR5 consolidated: webdav.compat_probe.v1 / webdav.atomic_probe.v2 / webdav.pacer_retry_backoff.v1 / webdav.directory_cache.v1 / webdav.propfind_xml_tolerant.v2 / webdav.error_policy_table.v1 / webdav.regression_suite.v1 / webdav.deep_policy_table.dex.v1")
@@ -2150,6 +2567,7 @@ object WebDavUtil {
         println("  statrel <user> <pass> <baseUrl> <relPath>")
         println("  optionsrel <user> <pass> <baseUrl> <relPath>")
         println("  listrel <user> <pass> <baseUrl> <relPath> [depth]")
+        println("  classifylistrel <user> <pass> <baseUrl> <relPath> [depth]  (TSV kind\trel\tsize\tmtime\tname)")
         println("  encodepath <text>")
         println("  decodepath <text>")
         println("  daemon <port> [idleTimeoutSec] [ownerPid]          (persistent mode, TCP loopback)")

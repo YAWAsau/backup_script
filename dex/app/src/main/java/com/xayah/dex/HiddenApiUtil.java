@@ -48,7 +48,7 @@ import java.lang.reflect.Method;
 import dev.rikka.tools.refine.Refine;
 
 public class HiddenApiUtil {
-    static final String VERSION = "v2.6.170-r334-observer-version-procsnap build=v24.20.14-7.66-757-observer-version-procsnap-r334-202607232022";
+    static final String VERSION = "v2.6.189-r413-full-event-dex-cfacts build=v24.20.14-7.66-836-full-event-dex-cfacts-r413-202607232022";
     /**
      * 單 JVM 批量命令期間的輕量快取。只快取系統層級固定資料或同一輪已讀 package metadata；
      * 不跨 JVM、不落檔，避免一致性風險。
@@ -126,14 +126,19 @@ public class HiddenApiUtil {
         System.out.println("  cgroupFreezeRestorePackage USER_ID PACKAGE  依 package 還原 cgroup freezer persistent state");
         System.out.println("  cgroupFreezeRestoreAll [REASON]  還原所有 cgroup freezer persistent state");
         System.out.println("  cgroupFreezeCleanupStale [REASON] [TTL_MS]  還原並清理過期 cgroup freezer persistent state");
-        System.out.println("  daemon-only commands: getPackageUid / appInventoryPkgUid / appInventoryPackageStatus / appKillGuard / appWakeBlockStart / appWakeBlockStop / appWakeBlockStatus / appWakeBlockHold / appWakeBlockRestoreObserverToken / appWakeBlockRestorePackage / appWakeBlockRestoreAll / appWakeBlockCleanupStale / uidNetBlockStart / uidNetBlockStop / uidNetBlockStatus / uidNetBlockRestorePackage / uidNetBlockRestoreAll / uidNetBlockCleanupStale / uidNetBlockProbe / cgroupFreezeStart / cgroupFreezeStop / cgroupFreezeStatus / cgroupFreezeDaemonEnsure / cgroupFreezeRestorePackage / cgroupFreezeRestoreAll / cgroupFreezeCleanupStale / processObserverWatch / processObserverStart / processObserverStop / processObserverBatchStart / processObserverBatchStop / processObserverStatus / processObserverTop / processObserverForeground / uidLiveState / uidObserverProbe / uidObserverWatch / packageLiveState / packageInstallSnapshot / packageRestrictionSnapshot / forceStopPackageVerify / hiddenApiRuntimeProbe / getInstallSourceInfo / installSessionCreate / installSessionCommit / forceStopPackageBatch");
+        System.out.println("  daemon-only commands: getPackageUid / appInventoryPkgUid / appInventoryPackageStatus / appInventoryPackageStatusBatch / appInventoryPackageFactsBatch / appInventoryPostInstallFactsBatch / appKillGuard / appWakeBlockStart / appWakeBlockStop / appWakeBlockStatus / appWakeBlockHold / appWakeBlockRestoreObserverToken / appWakeBlockRestorePackage / appWakeBlockRestoreAll / appWakeBlockCleanupStale / uidNetBlockStart / uidNetBlockStop / uidNetBlockStatus / uidNetBlockRestorePackage / uidNetBlockRestoreAll / uidNetBlockCleanupStale / uidNetBlockProbe / cgroupFreezeStart / cgroupFreezeStop / cgroupFreezeStatus / cgroupFreezeDaemonEnsure / cgroupFreezeRestorePackage / cgroupFreezeRestoreAll / cgroupFreezeCleanupStale / processObserverWatch / processObserverStart / processObserverStop / processObserverBatchStart / processObserverBatchStop / processObserverStatus / processObserverTop / processObserverForeground / uidLiveState / uidObserverProbe / uidObserverWatch / packageLiveState / packageInstallSnapshot / packageRestrictionSnapshot / forceStopPackageVerify / hiddenApiRuntimeProbe / getInstallSourceInfo / installSessionCreate / installSessionCommit / forceStopPackageBatch");
         System.out.println("    上述熱路徑只能透過 HiddenApi daemon socket 呼叫，不再提供單次 app_process CLI fallback");
         System.out.println();
         System.out.println("  getInstalledPackagesAsUser USER_ID FILTER_FLAG(user|system|xposed) FORMAT(label|pkgName|flag)  取得安裝清單");
         System.out.println("  appInventorySnapshot USER_ID [jsonl|appinfo|pkgName|pkgVerMap|pkgUidMap] [user|system|xposed|all] [refresh]  一次取得 package/label/uid/version/source/flag inventory");
-        System.out.println("  appInventoryGetlist USER_ID [targetPackageCsv] [refresh]  單次輸出 appList 所需 user/xposed + 白名單/system HOME 與 HOME metadata");
+        System.out.println("  appInventoryGetlist USER_ID [targetPackageCsv] [refresh]  單次輸出 appList 所需 user/xposed + 白名單/system HOME/IME 與 HOME/IME metadata");
         System.out.println("  appInventoryPkgUid USER_ID PACKAGE [refresh]  單包取得 PackageManager 當下 UID，供 restore install 後 chown refresh");
         System.out.println("  appInventoryPackageStatus USER_ID PACKAGE [refresh]  單包取得 PackageManager 當下 installed/uid/version/source/dataDir 狀態");
+        System.out.println("  appInventoryPackageStatusBatch USER_ID PACKAGE [PACKAGE...] [refresh]  批量取得 PackageManager packageStatus NDJSON");
+        System.out.println("  appInventoryPackageFactsBatch USER_ID PACKAGE [PACKAGE...] [refresh]  批量取得 PackageManager/installer/source/split/dataDir TSV facts");
+        System.out.println("  appInventoryPostInstallFactsBatch USER_ID PACKAGE [PACKAGE...] [refresh]  安裝提交後批量重新取得 PackageManager facts TSV");
+        System.out.println("  defaultRoleFacts USER_ID  批量輸出 HOME/DIALER/SMS/BROWSER/ASSISTANT role holders facts TSV");
+        System.out.println("  storageMediaFacts USER_ID  輸出 emulated/data/media/storage facts TSV");
         System.out.println("  uidNetBlockStart USER_ID PACKAGE [netpolicy|auto|netd|none] [LOG_PATH]  daemon 內啟動高風險 App per-UID 網路封鎖；優先 INetworkPolicyManager direct，netd 為手動 hard mode");
         System.out.println("  uidNetBlockStop TOKEN [USER_ID PACKAGE]  停止 per-UID 網路封鎖並驗證還原");
         System.out.println("  uidNetBlockStatus  列出 daemon 內 UID 網路封鎖狀態");
@@ -152,6 +157,7 @@ public class HiddenApiUtil {
         System.out.println("  packageLiveState USER_ID PACKAGE [PACKAGE...]  合併 PM installed/uid/version 與 ProcessObserver top/alive，facts-only，不算 hash");
         System.out.println("  packageInstallSnapshot USER_ID PACKAGE [PACKAGE...]  讀取 installer/sourceDir/dataDir/MATCH_UNINSTALLED/packagesForUid，facts-only，不算 hash");
         System.out.println("  packageRestrictionSnapshot USER_ID PACKAGE [PACKAGE...]  讀取 standby/hibernation/auto-revoke/AppOps 限制狀態，facts-only，不算 hash");
+        System.out.println("  deviceFacts  輸出 Dex 內建機型映射後的設備 facts JSON；Device_List 不再外置");
         System.out.println("  uidLiveState USER_ID PACKAGE [PACKAGE...]  以 IUidObserver API probe + running process snapshot 輸出 UID active/procState，facts-only，不算 hash");
         System.out.println("  uidObserverProbe  探測 IActivityManager.registerUidObserver hidden API 是否存在，不註冊長駐 observer");
         System.out.println("  uidObserverWatch USER_ID PACKAGE [DURATION_MS]  短時間註冊 IUidObserver 收集 UID 事件，debug only，planner=0");
@@ -201,6 +207,24 @@ public class HiddenApiUtil {
                 break;
             case "appInventoryPackageStatus":
                 appInventoryPackageStatus(args);
+                break;
+            case "appInventoryPackageStatusBatch":
+                appInventoryPackageStatusBatch(args);
+                break;
+            case "appInventoryPackageFactsBatch":
+                appInventoryPackageFactsBatch(args);
+                break;
+            case "appInventoryPostInstallFactsBatch":
+                appInventoryPostInstallFactsBatch(args);
+                break;
+            case "defaultRoleFacts":
+                defaultRoleFacts(args);
+                break;
+            case "storageMediaFacts":
+                storageMediaFacts(args);
+                break;
+            case "deviceFacts":
+                deviceFacts();
                 break;
             case "processObserverWatch":
                 processObserverWatch(args);
@@ -372,6 +396,10 @@ public class HiddenApiUtil {
                 || "-v".equals(cmd) || "help".equals(cmd);
     }
 
+    private static void deviceFacts() {
+        System.out.print(DeviceFactsUtil.json());
+    }
+
     private static final int DAEMON_PROTOCOL_VERSION = 1;
 
     private static void cmdDaemonUnix(String[] args) {
@@ -460,6 +488,21 @@ public class HiddenApiUtil {
         }
         if ("appInventoryPackageStatus".equals(command)) {
             return appInventoryPackageStatusDaemonCommand(cmdArgs);
+        }
+        if ("appInventoryPackageStatusBatch".equals(command)) {
+            return appInventoryPackageStatusBatchDaemonCommand(cmdArgs);
+        }
+        if ("appInventoryPackageFactsBatch".equals(command)) {
+            return appInventoryPackageFactsBatchDaemonCommand(cmdArgs);
+        }
+        if ("appInventoryPostInstallFactsBatch".equals(command)) {
+            return appInventoryPostInstallFactsBatchDaemonCommand(cmdArgs);
+        }
+        if ("defaultRoleFacts".equals(command)) {
+            return defaultRoleFactsDaemonCommand(cmdArgs);
+        }
+        if ("storageMediaFacts".equals(command)) {
+            return storageMediaFactsDaemonCommand(cmdArgs);
         }
         if ("processObserverWatch".equals(command)) {
             return processObserverWatchDaemonCommand(cmdArgs);
@@ -2230,6 +2273,200 @@ public class HiddenApiUtil {
             return new DaemonRunResult(1, "APP_INVENTORY_PACKAGE_STATUS_FAILED exception=" + sanitizeDiagValue(t.getClass().getName())
                     + " message=" + sanitizeDiagValue(t.getMessage()) + "\n");
         }
+    }
+
+    private static void appInventoryPackageStatusBatch(String[] args) {
+        try {
+            int userId = parseIntArg(args, 1, 0);
+            String[] pkgs = args == null || args.length <= 2 ? new String[0] : java.util.Arrays.copyOfRange(args, 2, args.length);
+            System.out.print(AppInventoryUtil.packageStatusBatch(userId, pkgs, hasRefreshArg(args)));
+            System.exit(0);
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            System.exit(1);
+        }
+    }
+
+    private static DaemonRunResult appInventoryPackageStatusBatchDaemonCommand(String[] args) {
+        try {
+            int userId = parseIntArg(args, 1, 0);
+            String[] pkgs = args == null || args.length <= 2 ? new String[0] : java.util.Arrays.copyOfRange(args, 2, args.length);
+            return new DaemonRunResult(0, AppInventoryUtil.packageStatusBatch(userId, pkgs, hasRefreshArg(args)));
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            return new DaemonRunResult(1, "APP_INVENTORY_PACKAGE_STATUS_BATCH_FAILED exception=" + sanitizeDiagValue(t.getClass().getName())
+                    + " message=" + sanitizeDiagValue(t.getMessage()) + "\n");
+        }
+    }
+
+    private static void appInventoryPackageFactsBatch(String[] args) {
+        try {
+            int userId = parseIntArg(args, 1, 0);
+            String[] pkgs = args == null || args.length <= 2 ? new String[0] : java.util.Arrays.copyOfRange(args, 2, args.length);
+            System.out.print(AppInventoryUtil.packageFactsBatch(userId, pkgs, hasRefreshArg(args)));
+            System.exit(0);
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            System.exit(1);
+        }
+    }
+
+    private static DaemonRunResult appInventoryPackageFactsBatchDaemonCommand(String[] args) {
+        try {
+            int userId = parseIntArg(args, 1, 0);
+            String[] pkgs = args == null || args.length <= 2 ? new String[0] : java.util.Arrays.copyOfRange(args, 2, args.length);
+            return new DaemonRunResult(0, AppInventoryUtil.packageFactsBatch(userId, pkgs, hasRefreshArg(args)));
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            return new DaemonRunResult(1, "APP_INVENTORY_PACKAGE_FACTS_BATCH_FAILED exception=" + sanitizeDiagValue(t.getClass().getName())
+                    + " message=" + sanitizeDiagValue(t.getMessage()) + "\n");
+        }
+    }
+
+
+    private static String[] packageArgsWithoutRefresh(String[] args, int start) {
+        if (args == null || args.length <= start) return new String[0];
+        ArrayList<String> out = new ArrayList<>();
+        for (int i = start; i < args.length; i++) {
+            String v = args[i];
+            if (v == null) continue;
+            v = v.trim();
+            if (v.length() == 0) continue;
+            if ("refresh".equalsIgnoreCase(v) || "--refresh".equalsIgnoreCase(v)) continue;
+            out.add(v);
+        }
+        return out.toArray(new String[0]);
+    }
+
+    private static void appInventoryPostInstallFactsBatch(String[] args) {
+        try {
+            int userId = parseIntArg(args, 1, 0);
+            String[] pkgs = packageArgsWithoutRefresh(args, 2);
+            System.out.print(AppInventoryUtil.packageFactsBatch(userId, pkgs, true));
+            System.exit(0);
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            System.exit(1);
+        }
+    }
+
+    private static DaemonRunResult appInventoryPostInstallFactsBatchDaemonCommand(String[] args) {
+        try {
+            int userId = parseIntArg(args, 1, 0);
+            String[] pkgs = packageArgsWithoutRefresh(args, 2);
+            return new DaemonRunResult(0, AppInventoryUtil.packageFactsBatch(userId, pkgs, true));
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            return new DaemonRunResult(1, "APP_INVENTORY_POST_INSTALL_FACTS_BATCH_FAILED exception=" + sanitizeDiagValue(t.getClass().getName())
+                    + " message=" + sanitizeDiagValue(t.getMessage()) + "\n");
+        }
+    }
+
+
+    private static String defaultRoleFactsOutput(int userId) {
+        StringBuilder out = new StringBuilder();
+        out.append("#schema\tspeedbackup.default_role_facts.v1\n");
+        out.append("#fields\trole\tpackage\tuserId\tsource\tinstalled\tuid\tlabel\treason\n");
+        String[][] roles = new String[][] {
+                {"HOME", "android.app.role.HOME"},
+                {"DIALER", "android.app.role.DIALER"},
+                {"SMS", "android.app.role.SMS"},
+                {"BROWSER", "android.app.role.BROWSER"},
+                {"ASSISTANT", "android.app.role.ASSISTANT"}
+        };
+        try {
+            Context ctx = HiddenApiHelper.getContext();
+            PackageManager pm = PackageManagerUtil.getPackageManager(ctx).packageManager();
+            PackageManagerHidden pmHidden = Refine.unsafeCast(pm);
+            Object roleManager = ctx.getSystemService("role");
+            Method m = null;
+            if (roleManager != null) {
+                try { m = roleManager.getClass().getMethod("getRoleHoldersAsUser", String.class, android.os.UserHandle.class); }
+                catch (Throwable ignored) { m = null; }
+            }
+            for (String[] r : roles) {
+                boolean any = false;
+                if (roleManager != null && m != null) {
+                    try {
+                        Object holders = m.invoke(roleManager, r[1], UserHandleHidden.of(userId));
+                        if (holders instanceof List) {
+                            for (Object h : (List<?>) holders) {
+                                String pkg = String.valueOf(h == null ? "" : h);
+                                if (pkg.length() == 0) continue;
+                                any = true;
+                                appendRoleFact(out, pm, pmHidden, userId, r[0], pkg, "RoleManager", "ok");
+                            }
+                        }
+                    } catch (Throwable t) {
+                        out.append("ERR\t").append(r[0]).append("\t-\t").append(userId).append("\tRoleManager\tfalse\t-1\t-\t")
+                                .append(sanitizeMachineValue(t.getClass().getSimpleName())).append('\n');
+                        any = true;
+                    }
+                }
+                if (!any) {
+                    out.append("MISS\t").append(r[0]).append("\t-\t").append(userId).append("\tRoleManager\tfalse\t-1\t-\tno_holder\n");
+                }
+            }
+        } catch (Throwable t) {
+            out.append("FAILED\tALL\t-\t").append(userId).append("\tRoleManager\tfalse\t-1\t-\t")
+                    .append(sanitizeMachineValue(t.getClass().getName())).append('\n');
+        }
+        return out.toString();
+    }
+
+    private static void appendRoleFact(StringBuilder out, PackageManager pm, PackageManagerHidden pmHidden, int userId, String role, String pkg, String source, String reason) {
+        boolean installed = false;
+        int uid = -1;
+        String label = "-";
+        try { uid = getPackageUidCached(pmHidden, pkg, userId); installed = uid >= 0; } catch (Throwable ignored) { installed = false; }
+        try { label = getPackageLabelCached(pm, pmHidden, pkg, userId); } catch (Throwable ignored) { label = "-"; }
+        out.append("OK\t").append(role).append('\t').append(sanitizeMachineValue(pkg)).append('\t').append(userId).append('\t')
+                .append(source).append('\t').append(installed ? "true" : "false").append('\t').append(uid).append('\t')
+                .append(sanitizeDiagValue(label)).append('\t').append(reason).append('\n');
+    }
+
+    private static void defaultRoleFacts(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        System.out.print(defaultRoleFactsOutput(userId));
+        System.exit(0);
+    }
+
+    private static DaemonRunResult defaultRoleFactsDaemonCommand(String[] args) {
+        try { return new DaemonRunResult(0, defaultRoleFactsOutput(parseIntArg(args, 1, 0))); }
+        catch (Throwable t) { return new DaemonRunResult(1, "DEFAULT_ROLE_FACTS_FAILED\t" + sanitizeMachineValue(t.getClass().getName()) + "\n"); }
+    }
+
+    private static String storageMediaFactsOutput(int userId) {
+        StringBuilder out = new StringBuilder();
+        out.append("#schema\tspeedbackup.storage_media_facts.v1\n");
+        out.append("#fields\tkey\tpath\texists\tisDirectory\tcanRead\tcanWrite\tbytes\tuserId\n");
+        appendPathFact(out, "data_user", "/data/user/" + userId, userId);
+        appendPathFact(out, "data_user_de", "/data/user_de/" + userId, userId);
+        appendPathFact(out, "media_user", "/data/media/" + userId, userId);
+        appendPathFact(out, "storage_emulated", "/storage/emulated/" + userId, userId);
+        appendPathFact(out, "android_data", "/storage/emulated/" + userId + "/Android/data", userId);
+        appendPathFact(out, "android_obb", "/storage/emulated/" + userId + "/Android/obb", userId);
+        return out.toString();
+    }
+
+    private static void appendPathFact(StringBuilder out, String key, String path, int userId) {
+        File f = new File(path);
+        long bytes = f.exists() && f.isFile() ? f.length() : 0L;
+        out.append("OK\t").append(key).append('\t').append(sanitizeDiagValue(path)).append('\t')
+                .append(f.exists() ? "true" : "false").append('\t').append(f.isDirectory() ? "true" : "false").append('\t')
+                .append(f.canRead() ? "true" : "false").append('\t').append(f.canWrite() ? "true" : "false").append('\t')
+                .append(bytes).append('\t').append(userId).append('\n');
+    }
+
+    private static void storageMediaFacts(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        System.out.print(storageMediaFactsOutput(userId));
+        System.exit(0);
+    }
+
+    private static DaemonRunResult storageMediaFactsDaemonCommand(String[] args) {
+        try { return new DaemonRunResult(0, storageMediaFactsOutput(parseIntArg(args, 1, 0))); }
+        catch (Throwable t) { return new DaemonRunResult(1, "STORAGE_MEDIA_FACTS_FAILED\t" + sanitizeMachineValue(t.getClass().getName()) + "\n"); }
     }
 
     private static int parseIntArg(String[] args, int index, int fallback) {
