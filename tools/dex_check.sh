@@ -8,11 +8,11 @@ TOOLS_PATH="${TOOLS_PATH:-}"
 TEST_LOG_DIR="${TEST_LOG_DIR:-/data/local/tmp}"
 TEST_LOG_FILE="${TEST_LOG_FILE:-$TEST_LOG_DIR/dex_check.log}"
 TEST_SUMMARY_FILE="${TEST_SUMMARY_FILE:-$TEST_LOG_DIR/dex_full_test.summary}"
-DEX_CHECK_VERSION="v24.20.14-7.66-842-current-upload-bundle-r419-202607232022"
+DEX_CHECK_VERSION="v24.20.14-7.66-863-finalpack-timeout-cache-restore-r440-202607232022"
 BACKUP_WIFI_ENABLE="${BACKUP_WIFI_ENABLE:-1}"
 SB_SELFTEST_LEVEL="${SB_SELFTEST_LEVEL:-quick}"
 CHANGELOG_URL="${CHANGELOG_URL:-https://api.github.com/repos/XayahSuSuSu/Android-DataBackup/releases/latest}"
-SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-v24.20.14-7.66-842-current-upload-bundle-r419-202607232022}"
+SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-v24.20.14-7.66-863-finalpack-timeout-cache-restore-r440-202607232022}"
 SPEEDBACKUP_PATCH_BUILD="${SPEEDBACKUP_PATCH_BUILD:-}"
 PATH="/data/backup_tools:$(dirname "$CLASSPATH_PATH" 2>/dev/null):$PATH"
 export PATH
@@ -213,6 +213,10 @@ require_caps_json(){
             "dex.process_observer.cgroup_dead_pid_package_retry.v1",
             "dex.process_observer.high_risk_top_fast_freeze.v1",
             "dex.process_observer.restore_freeze_action.v1",
+            "dex.process_observer.restore_session_direct_start.v1",
+            "dex.process_observer.restore_session_facts_cache.v1",
+            "dex.process_observer.restore_action_policy_builder.v1",
+            "dex.process_observer.batch_stop_summary_tsv.v1",
 			"dex.app_wake_block.persistent_restore.v1",
 			"dex.uid_net_block.persistent_restore.v1",
 			"dex.cgroup_freezer.lifecycle.v1",
@@ -290,7 +294,7 @@ else
 fi
 _hidden_help="$(run_dex help 2>&1)"; _hidden_help_rc=$?
 [ "$_hidden_help_rc" -eq 0 ] && ok "HiddenApiUtil help可讀" "rc=0" || critical_fail "HiddenApiUtil help可讀" "rc=$_hidden_help_rc"
-for _cmd in getPackageLabel getInstalledPackagesAsUser appInventorySnapshot appInventoryPkgUid appInventoryPackageStatus appInventoryPackageStatusBatch appInventoryPackageFactsBatch appInventoryPostInstallFactsBatch defaultRoleFacts storageMediaFacts deviceFacts forceStopPackageBatch forceStopPackageVerify uidLiveState uidObserverProbe uidObserverWatch packageLiveState setDisplayPowerMode cgroupFreezeStart cgroupFreezeStop cgroupFreezeDaemonEnsure processObserverStart processObserverStop processObserverBatchStart processObserverBatchStop processObserverStatus processObserverTop processObserverForeground; do
+for _cmd in getPackageLabel getInstalledPackagesAsUser appInventorySnapshot appInventoryPkgUid appInventoryPackageStatus appInventoryPackageStatusBatch appInventoryPackageFactsBatch appInventoryPostInstallFactsBatch defaultRoleFacts storageMediaFacts deviceFacts forceStopPackageBatch forceStopPackageVerify uidLiveState uidObserverProbe uidObserverWatch packageLiveState setDisplayPowerMode cgroupFreezeStart cgroupFreezeStop cgroupFreezeDaemonEnsure processObserverStart processObserverStop processObserverBatchStart processObserverBatchStop processObserverRestoreSessionStart processObserverStatus processObserverTop processObserverForeground; do
 	require_text "HiddenApiUtil核心入口 $_cmd" "$_hidden_help" "$_cmd"
 done
 

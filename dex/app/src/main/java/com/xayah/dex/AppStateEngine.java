@@ -61,7 +61,7 @@ import dev.rikka.tools.refine.Refine;
 public final class AppStateEngine {
     public static final int SCHEMA_VERSION = 2;
     public static final int DAEMON_PROTOCOL_VERSION = 1;
-    public static final String ENGINE_VERSION = "v1.3.95-r413-full-event-dex-cfacts";
+    public static final String ENGINE_VERSION = "v1.3.99-r432-dex-restore-session-facts-argv-compilefix";
 
     static final Gson GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().create();
     static final Gson PRETTY_GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().setPrettyPrinting().create();
@@ -378,6 +378,11 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.process_observer.target_lifecycle.v1", true, true, "processObserverStart/Stop add and remove package targets while global listeners stay registered");
         addCapability(capabilities, "dex.process_observer.batch_watchset.v1", true, true, "processObserverBatchStart/Stop batch watch-set commands are available for tools; no per-app empty fallback call");
         addCapability(capabilities, "dex.process_observer.batch_stop_safe.v1", true, true, "processObserverBatchStop reports ok/restoreOk/stateDeleted and preserves failed sessions for safety-net cleanup");
+        addCapability(capabilities, "dex.process_observer.restore_session_nologd.v1", true, true, "ProcessObserver restore session can disable per-target native logd observer for fast batch stop while preserving framework callbacks");
+        addCapability(capabilities, "dex.process_observer.restore_session_direct_start.v1", true, true, "ProcessObserver can build and start restore guard session directly from restore_package_compare_map.tsv, avoiding shell per-app spec construction");
+        addCapability(capabilities, "dex.process_observer.restore_session_facts_cache.v1", true, true, "ProcessObserver restore session direct start emits restore_session_facts.tsv with HOME/IME/role/package uid installed facts");
+        addCapability(capabilities, "dex.process_observer.restore_action_policy_builder.v1", true, true, "ProcessObserver Dex direct start owns restore-session action building from policy flags, HOME/IME and high-risk hints");
+        addCapability(capabilities, "dex.process_observer.batch_stop_summary_tsv.v1", true, true, "ProcessObserver batch stop can write per-package result summary TSV for tools/debug without parsing token detail logs");
         addCapability(capabilities, "dex.process_observer.batch_persistent_safety.v1", true, true, "processObserver batch writes per-token persistent safety state; stale cleanup restores wake-block/cgroup safety nets before deleting state");
         addCapability(capabilities, "dex.app_wake_block.persistent_state.v1", true, true, "wake-block writes atomic disk snapshot after original-state capture and each touched AppOps/standby apply");
         addCapability(capabilities, "dex.app_wake_block.persistent_restore.v1", true, true, "wake-block can restore by wake token, process-observer owner token, package, or all stale snapshots after daemon restart");

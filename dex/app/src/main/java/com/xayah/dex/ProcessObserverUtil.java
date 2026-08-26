@@ -13,6 +13,7 @@ import android.os.Build;
 import android.os.Binder;
 import android.os.IBinder;
 import android.os.IInterface;
+import android.os.UserHandleHidden;
 import android.os.Parcel;
 import android.system.Os;
 import android.system.OsConstants;
@@ -35,6 +36,7 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.lang.reflect.Proxy;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -59,7 +61,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * waiting for the requested test duration while Binder callbacks arrive.
  */
 final class ProcessObserverUtil {
-    static final String VERSION = "v3.12-r334-restore-freeze-observer-versionfix";
+    static final String VERSION = "v3.17-r432-restore-session-facts-argv-compilefix";
     private static final String DESCRIPTOR = "android.app.IProcessObserver";
     private static final String TASK_STACK_DESCRIPTOR = "android.app.ITaskStackListener";
     private static final long ACTION_DEBOUNCE_MS = 900L;
@@ -90,7 +92,7 @@ final class ProcessObserverUtil {
         int token = NEXT_TOKEN.incrementAndGet();
         WatchSession session = null;
         try {
-            session = new WatchSession(userId, safePackage(packageName), Math.max(1000L, durationMs), normalizeAction(action), wakeBlockModeFromAction(action), logPath);
+            session = new WatchSession(userId, safePackage(packageName), Math.max(1000L, durationMs), action, wakeBlockModeFromAction(action), logPath);
             session.token = token;
             synchronized (ProcessObserverUtil.class) {
                 SESSIONS.put(token, session);
@@ -118,7 +120,7 @@ final class ProcessObserverUtil {
         int token = NEXT_TOKEN.incrementAndGet();
         WatchSession session = null;
         try {
-            session = new WatchSession(userId, safePackage(packageName), 0L, normalizeAction(action), wakeBlockModeFromAction(action), logPath);
+            session = new WatchSession(userId, safePackage(packageName), 0L, action, wakeBlockModeFromAction(action), logPath);
             session.token = token;
             SESSIONS.put(token, session);
             session.startTarget();
@@ -155,6 +157,412 @@ final class ProcessObserverUtil {
     }
 
 
+
+    static synchronized String startRestoreSessionFromCompareMap(int userId, String compareMapPath, String pkgsOutPath,
+                                                                 String policy, String logPath, String homePkg, String imePkg,
+                                                                 String factsOutPath) {
+        long t0 = System.currentTimeMillis();
+        StringBuilder out = new StringBuilder();
+        out.append(cleanupStaleBatchStates("restore-session-direct-start", BATCH_STATE_TTL_MS));
+        File cmp = new File(compareMapPath == null ? "" : compareMapPath);
+        if (!cmp.isFile()) {
+            return "PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_START_FAILED reason=compare_map_missing path="
+                    + sanitize(compareMapPath) + "\n" + out;
+        }
+        int requested = 0;
+        int started = 0;
+        int failed = 0;
+        int factsRows = 0;
+        HashSet<String> seen = new HashSet<>();
+        String commonLogPath = (logPath == null || logPath.trim().isEmpty()) ? "-" : logPath.trim();
+        RestoreSessionPolicyOptions opts = parseRestoreSessionPolicy(policy);
+        String home = normalizeOptionalPackageArg(homePkg);
+        String ime = normalizeOptionalPackageArg(imePkg);
+        if (opts.defaultHomeEnabled && home.isEmpty()) home = resolveDefaultHomePackage(userId);
+        if (opts.defaultImeEnabled && ime.isEmpty()) ime = resolveDefaultImePackage(userId);
+        PrintWriter pkgsOut = null;
+        PrintWriter factsOut = null;
+        Context ctx = null;
+        PackageManager realPm = null;
+        PackageManagerHidden pmHidden = null;
+        try {
+            ctx = HiddenApiHelper.getContext();
+            realPm = PackageManagerUtil.getPackageManager(ctx).packageManager();
+            pmHidden = Refine.unsafeCast(realPm);
+        } catch (Throwable t) {
+            out.append("PROCESS_OBSERVER_RESTORE_SESSION_FACTS_CONTEXT_FAILED exception=")
+                    .append(sanitize(t.getClass().getName()))
+                    .append(" message=").append(sanitize(t.getMessage())).append('\n');
+        }
+        try {
+            if (pkgsOutPath != null && !pkgsOutPath.trim().isEmpty() && !"-".equals(pkgsOutPath.trim())) {
+                File pkgsFile = new File(pkgsOutPath.trim());
+                File parent = pkgsFile.getParentFile();
+                if (parent != null) parent.mkdirs();
+                pkgsOut = new PrintWriter(new OutputStreamWriter(new FileOutputStream(pkgsFile, false), StandardCharsets.UTF_8));
+            }
+            if (factsOutPath != null && !factsOutPath.trim().isEmpty() && !"-".equals(factsOutPath.trim())) {
+                File factsFile = new File(factsOutPath.trim());
+                File parent = factsFile.getParentFile();
+                if (parent != null) parent.mkdirs();
+                factsOut = new PrintWriter(new OutputStreamWriter(new FileOutputStream(factsFile, false), StandardCharsets.UTF_8));
+                factsOut.println("#schema\tspeedbackup.restore_session_facts.v1");
+                factsOut.println("#fields\tkind\trole\tpackage\tlabel\tuserId\tinstalled\tuid\taction\treason\tsource\tsystem\tversionCode\tsourceDir");
+                factsRows += appendRestoreSessionFactRow(factsOut, realPm, pmHidden, userId, "META", "DEFAULT_HOME", home, home, "", "default-home", "AppStateEngine.defaultHome");
+                factsRows += appendRestoreSessionFactRow(factsOut, realPm, pmHidden, userId, "META", "DEFAULT_IME", ime, ime, "", "default-ime", "AppStateEngine.defaultIme");
+                factsRows += appendRestoreSessionRoleFacts(factsOut, ctx, realPm, pmHidden, userId);
+            }
+            HashMap<String, Integer> header = new HashMap<>();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(cmp), StandardCharsets.UTF_8))) {
+                String line;
+                boolean headerSeen = false;
+                while ((line = br.readLine()) != null) {
+                    if (line.trim().isEmpty() || line.startsWith("#")) continue;
+                    String[] parts = line.split("\t", -1);
+                    if (!headerSeen) {
+                        headerSeen = true;
+                        for (int i = 0; i < parts.length; i++) header.put(parts[i].trim(), i);
+                        if (header.containsKey("package") && header.containsKey("label")) continue;
+                    }
+                    int pkgIdx = header.containsKey("package") ? header.get("package") : 2;
+                    int labelIdx = header.containsKey("label") ? header.get("label") : 1;
+                    String pkg = pkgIdx >= 0 && pkgIdx < parts.length ? safePackage(parts[pkgIdx]) : "";
+                    String label = labelIdx >= 0 && labelIdx < parts.length ? parts[labelIdx].trim() : pkg;
+                    if (pkg.isEmpty() || !pkg.matches("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) continue;
+                    if (!seen.add(pkg)) continue;
+                    requested++;
+                    if (isSpeedBackupSelfPackage(pkg)) {
+                        out.append("PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_SKIP package=").append(pkg)
+                                .append(" label=").append(sanitize(label)).append(" reason=self\n");
+                        factsRows += appendRestoreSessionFactRow(factsOut, realPm, pmHidden, userId, "PKG", "RESTORE", pkg, label, "none", "skip:self", "compare-map");
+                        continue;
+                    }
+                    if (label.isEmpty()) label = pkg;
+                    RestoreSessionActionDecision decision = restoreSessionActionForPackage(pkg, opts, home, ime);
+                    if (isDisabledAction(decision.action)) {
+                        out.append("PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_SKIP package=").append(pkg)
+                                .append(" label=").append(sanitize(label)).append(" reason=action_off action=").append(sanitize(decision.action)).append('\n');
+                        factsRows += appendRestoreSessionFactRow(factsOut, realPm, pmHidden, userId, "PKG", "RESTORE", pkg, label, decision.action, "skip:" + decision.reason, "compare-map");
+                        continue;
+                    }
+                    factsRows += appendRestoreSessionFactRow(factsOut, realPm, pmHidden, userId, "PKG", "RESTORE", pkg, label, decision.action, decision.reason, "compare-map");
+                    int token = NEXT_TOKEN.incrementAndGet();
+                    WatchSession session = null;
+                    try {
+                        session = new WatchSession(userId, pkg, 0L, decision.action, wakeBlockModeFromAction(decision.action), commonLogPath);
+                        session.token = token;
+                        SESSIONS.put(token, session);
+                        session.startTarget();
+                        boolean stateOk = persistBatchState(token, userId, pkg, label, decision.action, commonLogPath, "restore-session-direct-start:" + decision.reason);
+                        started++;
+                        if (pkgsOut != null) pkgsOut.println(pkg + "\t" + label + "\t" + decision.action + "\t" + decision.reason);
+                        out.append("PROCESS_OBSERVER_BATCH_START_ITEM token=").append(token)
+                                .append(" user=").append(userId)
+                                .append(" package=").append(pkg)
+                                .append(" label=").append(sanitize(label))
+                                .append(" action=").append(decision.action)
+                                .append(" actionReason=").append(sanitize(decision.reason))
+                                .append(" wakeBlockMode=").append(wakeBlockModeFromAction(decision.action))
+                                .append(" lifecycle=batch-watchset")
+                                .append(" persistentState=").append(stateOk)
+                                .append(" log=").append(sanitize(commonLogPath)).append('\n');
+                    } catch (Throwable t) {
+                        failed++;
+                        SESSIONS.remove(token);
+                        deleteBatchState(token);
+                        if (session != null) {
+                            try { session.finish("restore-session-direct-start-failed:" + t.getClass().getSimpleName()); } catch (Throwable ignored) {}
+                        }
+                        out.append("PROCESS_OBSERVER_BATCH_START_ITEM_FAILED index=").append(requested)
+                                .append(" package=").append(pkg)
+                                .append(" label=").append(sanitize(label))
+                                .append(" action=").append(sanitize(decision.action))
+                                .append(" actionReason=").append(sanitize(decision.reason))
+                                .append(" exception=").append(sanitize(t.getClass().getName()))
+                                .append(" message=").append(sanitize(t.getMessage())).append('\n');
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            return "PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_START_FAILED exception=" + sanitize(t.getClass().getName())
+                    + " message=" + sanitize(t.getMessage()) + "\n" + out;
+        } finally {
+            if (pkgsOut != null) {
+                try { pkgsOut.flush(); pkgsOut.close(); } catch (Throwable ignored) {}
+            }
+            if (factsOut != null) {
+                try { factsOut.flush(); factsOut.close(); } catch (Throwable ignored) {}
+            }
+        }
+        long elapsed = Math.max(0L, System.currentTimeMillis() - t0);
+        if (started > 0) {
+            out.insert(0, "PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_START_OK version=" + VERSION
+                    + " user=" + userId
+                    + " requested=" + requested
+                    + " started=" + started
+                    + " failed=" + failed
+                    + " source=" + sanitize(cmp.getName())
+                    + " pkgsOut=" + sanitize(pkgsOutPath)
+                    + " factsOut=" + sanitize(factsOutPath)
+                    + " factsRows=" + factsRows
+                    + " policy=" + sanitize(opts.raw)
+                    + " policyBase=" + sanitize(opts.base)
+                    + " policyBuilder=dex-r430"
+                    + " home=" + sanitize(home)
+                    + " ime=" + sanitize(ime)
+                    + " elapsedMs=" + elapsed
+                    + " lifecycle=batch-watchset\n");
+        } else {
+            out.insert(0, "PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_START_FAILED version=" + VERSION
+                    + " reason=no_candidates requested=" + requested + " started=0 failed=" + failed
+                    + " source=" + sanitize(cmp.getName()) + " factsOut=" + sanitize(factsOutPath)
+                    + " factsRows=" + factsRows + " elapsedMs=" + elapsed + "\n");
+        }
+        return out.toString();
+    }
+
+    private static final class RestoreSessionPolicyOptions {
+        String raw = "smart";
+        String base = "smart";
+        boolean defaultHomeEnabled = true;
+        boolean defaultImeEnabled = true;
+        final Set<String> hardFreeze = new HashSet<>();
+    }
+
+    private static final class RestoreSessionActionDecision {
+        final String action;
+        final String reason;
+        RestoreSessionActionDecision(String action, String reason) {
+            this.action = action == null ? "" : action;
+            this.reason = reason == null ? "" : reason;
+        }
+    }
+
+    private static String normalizeOptionalPackageArg(String raw) {
+        if (raw == null) return "";
+        String v = raw.trim();
+        if (v.isEmpty()) return "";
+        if ("-".equals(v) || "__EMPTY__".equals(v)) return "";
+        return safePackage(v);
+    }
+
+    private static RestoreSessionPolicyOptions parseRestoreSessionPolicy(String policy) {
+        RestoreSessionPolicyOptions opts = new RestoreSessionPolicyOptions();
+        opts.raw = (policy == null || policy.trim().isEmpty()) ? "smart" : policy.trim();
+        String[] parts = opts.raw.split(";");
+        if (parts.length > 0 && parts[0] != null && !parts[0].trim().isEmpty()) opts.base = parts[0].trim().toLowerCase(Locale.US);
+        for (int i = 1; i < parts.length; i++) {
+            String part = parts[i] == null ? "" : parts[i].trim();
+            if (part.isEmpty()) continue;
+            int eq = part.indexOf('=');
+            String k = eq >= 0 ? part.substring(0, eq).trim().toLowerCase(Locale.US) : part.toLowerCase(Locale.US);
+            String v = eq >= 0 ? part.substring(eq + 1).trim() : "1";
+            if ("home".equals(k) || "default_home".equals(k)) opts.defaultHomeEnabled = optionEnabled(v);
+            else if ("ime".equals(k) || "default_ime".equals(k)) opts.defaultImeEnabled = optionEnabled(v);
+            else if ("hard".equals(k) || "hardfreeze".equals(k) || "hard_freeze".equals(k) || "highrisk".equals(k)) {
+                for (String p : v.split("[, ]+")) {
+                    String pkg = safePackage(p);
+                    if (!pkg.isEmpty()) opts.hardFreeze.add(pkg);
+                }
+            }
+        }
+        return opts;
+    }
+
+    private static boolean optionEnabled(String raw) {
+        String v = raw == null ? "" : raw.trim().toLowerCase(Locale.US);
+        return !(v.isEmpty() || "0".equals(v) || "false".equals(v) || "no".equals(v) || "off".equals(v) || "disable".equals(v) || "disabled".equals(v));
+    }
+
+    private static RestoreSessionActionDecision restoreSessionActionForPackage(String pkg, RestoreSessionPolicyOptions opts, String homePkg, String imePkg) {
+        if (pkg == null || pkg.isEmpty()) return new RestoreSessionActionDecision("none", "empty-package");
+        if (isRestoreHardFreezePackage(pkg)) return new RestoreSessionActionDecision("cgroup-freeze", "builtin-hard-freeze");
+        if (opts != null && opts.hardFreeze.contains(pkg)) return new RestoreSessionActionDecision("cgroup-freeze", "policy-hard-freeze");
+        if (opts != null && opts.defaultHomeEnabled && homePkg != null && !homePkg.isEmpty() && pkg.equals(homePkg)) return new RestoreSessionActionDecision("cgroup-freeze", "default-home");
+        if (opts != null && opts.defaultImeEnabled && imePkg != null && !imePkg.isEmpty() && pkg.equals(imePkg)) return new RestoreSessionActionDecision("cgroup-freeze", "default-ime");
+        if (isNeverPausePackage(pkg)) return new RestoreSessionActionDecision("monitor", "never-pause-framework");
+        String p = opts == null ? "smart" : opts.base;
+        if ("all".equals(p) || "full".equals(p) || "restricted".equals(p) || "guard-stop-restricted".equals(p)) return new RestoreSessionActionDecision("guard-stop-restricted", "policy-" + p);
+        if ("basic".equals(p) || "lite".equals(p) || "force-stop".equals(p) || "guard-stop".equals(p)) return new RestoreSessionActionDecision("guard-stop:nologd", "policy-" + p);
+        if ("appops".equals(p) || "guard-stop-appops".equals(p)) return new RestoreSessionActionDecision("guard-stop-appops", "policy-" + p);
+        if ("monitor".equals(p) || "log".equals(p) || "none".equals(p) || "off".equals(p) || "disable".equals(p)) return new RestoreSessionActionDecision(p, "policy-" + p);
+        return new RestoreSessionActionDecision(isRestoreHardFreezePackage(pkg) ? "guard-stop-restricted" : "guard-stop:nologd", "policy-smart");
+    }
+
+    private static String resolveDefaultHomePackage(int userId) {
+        try {
+            AppStateEngine.EngineResponse response = AppStateEngine.defaultHome(userId);
+            String body = response == null ? "" : response.body;
+            for (String line : body.split("\\n")) {
+                if (line == null || line.trim().isEmpty()) continue;
+                JsonObject o = JsonParser.parseString(line).getAsJsonObject();
+                if (o == null || !"defaultHome".equals(jsonValue(o, "recordType"))) continue;
+                JsonObject result = o.has("result") && o.get("result").isJsonObject() ? o.getAsJsonObject("result") : null;
+                if (result != null && !"OK".equals(jsonValue(result, "name"))) continue;
+                String pkg = safePackage(jsonValue(o, "packageName"));
+                boolean resolver = false;
+                try { if (o.has("isResolver")) resolver = o.get("isResolver").getAsBoolean(); } catch (Throwable ignored) {}
+                if (!pkg.isEmpty() && !resolver) return pkg;
+            }
+        } catch (Throwable ignored) {}
+        return "";
+    }
+
+    private static String resolveDefaultImePackage(int userId) {
+        try {
+            AppStateEngine.EngineResponse response = AppStateEngine.defaultIme(userId);
+            String body = response == null ? "" : response.body;
+            for (String line : body.split("\\n")) {
+                if (line == null || line.trim().isEmpty()) continue;
+                JsonObject o = JsonParser.parseString(line).getAsJsonObject();
+                if (o == null || !"defaultIme".equals(jsonValue(o, "recordType"))) continue;
+                JsonObject result = o.has("result") && o.get("result").isJsonObject() ? o.getAsJsonObject("result") : null;
+                if (result != null && !"OK".equals(jsonValue(result, "name"))) continue;
+                String pkg = safePackage(jsonValue(o, "packageName"));
+                if (!pkg.isEmpty()) return pkg;
+            }
+        } catch (Throwable ignored) {}
+        return "";
+    }
+
+    private static String jsonValue(JsonObject o, String key) {
+        try { if (o != null && o.has(key) && !o.get(key).isJsonNull()) return o.get(key).getAsString(); } catch (Throwable ignored) {}
+        return "";
+    }
+
+    private static int appendRestoreSessionRoleFacts(PrintWriter out, Context ctx, PackageManager pm, PackageManagerHidden pmHidden, int userId) {
+        if (out == null || ctx == null) return 0;
+        int rows = 0;
+        String[][] roles = new String[][] {
+                {"HOME", "android.app.role.HOME"},
+                {"DIALER", "android.app.role.DIALER"},
+                {"SMS", "android.app.role.SMS"},
+                {"BROWSER", "android.app.role.BROWSER"},
+                {"ASSISTANT", "android.app.role.ASSISTANT"}
+        };
+        Object roleManager = null;
+        Method m = null;
+        try {
+            roleManager = ctx.getSystemService("role");
+            if (roleManager != null) m = roleManager.getClass().getMethod("getRoleHoldersAsUser", String.class, android.os.UserHandle.class);
+        } catch (Throwable ignored) { m = null; }
+        for (String[] role : roles) {
+            boolean any = false;
+            if (roleManager != null && m != null) {
+                try {
+                    Object holders = m.invoke(roleManager, role[1], UserHandleHidden.of(userId));
+                    if (holders instanceof List) {
+                        for (Object h : (List<?>) holders) {
+                            String pkg = safePackage(String.valueOf(h == null ? "" : h));
+                            if (pkg.isEmpty()) continue;
+                            rows += appendRestoreSessionFactRow(out, pm, pmHidden, userId, "ROLE", role[0], pkg, pkg, "", "role-holder", "RoleManager");
+                            any = true;
+                        }
+                    }
+                } catch (Throwable t) {
+                    out.println("ROLE\t" + tsv(role[0]) + "\t-\t-\t" + userId + "\tfalse\t-1\t\terror:" + tsv(t.getClass().getSimpleName()) + "\tRoleManager\tfalse\t-1\t");
+                    rows++;
+                    any = true;
+                }
+            }
+            if (!any) {
+                out.println("ROLE\t" + tsv(role[0]) + "\t-\t-\t" + userId + "\tfalse\t-1\t\tno-holder\tRoleManager\tfalse\t-1\t");
+                rows++;
+            }
+        }
+        return rows;
+    }
+
+    private static int appendRestoreSessionFactRow(PrintWriter out, PackageManager pm, PackageManagerHidden pmHidden, int userId,
+                                                   String kind, String role, String pkg, String label, String action, String reason, String source) {
+        if (out == null) return 0;
+        String safePkg = safePackage(pkg);
+        if (safePkg.isEmpty()) {
+            out.println(tsv(kind) + "\t" + tsv(role) + "\t-\t" + tsv(label) + "\t" + userId + "\tfalse\t-1\t" + tsv(action) + "\t" + tsv(reason) + "\t" + tsv(source) + "\tfalse\t-1\t");
+            return 1;
+        }
+        boolean installed = false;
+        boolean system = false;
+        int uid = -1;
+        long versionCode = -1L;
+        String sourceDir = "";
+        String finalLabel = label == null || label.trim().isEmpty() ? safePkg : label.trim();
+        if (pmHidden != null) {
+            try {
+                PackageInfo pi = pmHidden.getPackageInfoAsUser(safePkg, PackageManager.GET_META_DATA, userId);
+                if (pi != null && pi.applicationInfo != null) {
+                    installed = true;
+                    uid = pi.applicationInfo.uid;
+                    system = (pi.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
+                    sourceDir = safeString(pi.applicationInfo.sourceDir);
+                    versionCode = longVersionCode(pi);
+                    if (pm != null) {
+                        try {
+                            CharSequence cs = pi.applicationInfo.loadLabel(pm);
+                            if (cs != null && cs.length() > 0) finalLabel = cs.toString();
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+        if (uid < 0) uid = resolveTargetUid(userId, safePkg);
+        out.println(tsv(kind) + "\t" + tsv(role) + "\t" + tsv(safePkg) + "\t" + tsv(finalLabel) + "\t" + userId + "\t" + installed + "\t" + uid
+                + "\t" + tsv(action) + "\t" + tsv(reason) + "\t" + tsv(source) + "\t" + system + "\t" + versionCode + "\t" + tsv(sourceDir));
+        return 1;
+    }
+
+    private static String tsv(String raw) {
+        if (raw == null) return "";
+        return raw.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ').replace('\0', ' ').trim();
+    }
+
+    private static boolean isDisabledAction(String action) {
+        if (action == null) return true;
+        String a = action.trim().toLowerCase(Locale.US);
+        return a.isEmpty() || "none".equals(a) || "off".equals(a) || "disable".equals(a) || "disabled".equals(a);
+    }
+
+    private static boolean isSpeedBackupSelfPackage(String pkg) {
+        return "bin.mt.plus".equals(pkg) || "bin.mt.plus.canary".equals(pkg) || "com.termux".equals(pkg);
+    }
+
+    private static boolean isRestoreHardFreezePackage(String pkg) {
+        return "com.tencent.mm".equals(pkg)
+                || "com.tencent.mobileqq".equals(pkg)
+                || "com.tencent.tim".equals(pkg)
+                || "com.tencent.wework".equals(pkg)
+                || "com.eg.android.AlipayGphone".equals(pkg)
+                || "com.taobao.taobao".equals(pkg)
+                || "com.ss.android.ugc.aweme".equals(pkg)
+                || (pkg != null && pkg.startsWith("com.baidu.input"));
+    }
+
+    private static boolean isNeverPausePackage(String pkg) {
+        if (pkg == null) return false;
+        return "android".equals(pkg)
+                || "system".equals(pkg)
+                || "com.android.systemui".equals(pkg)
+                || "com.android.phone".equals(pkg)
+                || pkg.startsWith("com.android.providers.")
+                || "com.android.server.telecom".equals(pkg)
+                || "com.android.nfc".equals(pkg)
+                || "com.android.bluetooth".equals(pkg)
+                || "com.android.shell".equals(pkg)
+                || "com.android.permissioncontroller".equals(pkg)
+                || "com.google.android.permissioncontroller".equals(pkg)
+                || "com.android.vending".equals(pkg)
+                || "com.google.android.gms".equals(pkg)
+                || "com.google.android.gsf".equals(pkg)
+                || pkg.startsWith("com.android.launcher")
+                || "com.google.android.apps.nexuslauncher".equals(pkg)
+                || "com.miui.home".equals(pkg)
+                || "com.sec.android.app.launcher".equals(pkg)
+                || "com.oppo.launcher".equals(pkg)
+                || "com.coloros.launcher".equals(pkg)
+                || "com.huawei.android.launcher".equals(pkg)
+                || "com.vivo.launcher".equals(pkg);
+    }
+
     static synchronized String startBatchAsync(int userId, String specPath) {
         StringBuilder out = new StringBuilder();
         out.append(cleanupStaleBatchStates("batch-start", BATCH_STATE_TTL_MS));
@@ -173,7 +581,7 @@ final class ProcessObserverUtil {
                 String[] parts = line.split("\t", -1);
                 String pkg = parts.length > 0 ? safePackage(parts[0]) : "";
                 String label = parts.length > 1 ? parts[1].trim() : pkg;
-                String action = parts.length > 2 ? normalizeAction(parts[2]) : "guard-stop";
+                String action = parts.length > 2 ? parts[2].trim() : "guard-stop";
                 String logPath = parts.length > 3 ? parts[3].trim() : "-";
                 if (pkg.isEmpty()) {
                     failed++;
@@ -230,10 +638,19 @@ final class ProcessObserverUtil {
     }
 
     static synchronized String stopBatchAsync(String statePath, int expectedUserId) {
+        return stopBatchAsync(statePath, expectedUserId, "");
+    }
+
+    static synchronized String stopBatchAsync(String statePath, int expectedUserId, String summaryPath) {
         StringBuilder out = new StringBuilder();
+        StringBuilder summaryTsv = new StringBuilder();
+        summaryTsv.append("#schema\tspeedbackup.process_observer.batch_stop_summary.v1\n");
+        summaryTsv.append("#fields\ttoken\tpackage\tlabel\tresult\trestoreOk\tstateDeleted\taction\tevents\tmatches\tactions\ttaskEvents\tnativeLogdEvents\tnativeLogdMatches\tcgroupFreezeTokens\twakeBlockToken\tstopMs\terror\treason\n");
+        int summaryRows = 0;
         out.append(cleanupStaleBatchStates("batch-stop", BATCH_STATE_TTL_MS));
         File state = new File(statePath == null ? "" : statePath);
         if (!state.isFile()) {
+            writeBatchStopSummaryIfRequested(summaryPath, summaryTsv, 0, out);
             return "PROCESS_OBSERVER_BATCH_STOP_MISSING path=" + sanitize(statePath) + " expectedUser=" + expectedUserId + " stateRetained=false\n" + out;
         }
         int requested = 0;
@@ -254,6 +671,8 @@ final class ProcessObserverUtil {
                 requested++;
                 WatchSession session = SESSIONS.get(token);
                 if (session == null) {
+                    Properties persisted = readBatchState(batchStateFile(token));
+                    String action = persisted.getProperty("action", "");
                     BatchSafetyResult r = restoreBatchSafetyNet(token, expectedUserId, pkg, "process-observer-batch-stop-missing-" + token);
                     out.append(r.output);
                     if (r.restoreOk && r.stateDeleted) {
@@ -262,6 +681,8 @@ final class ProcessObserverUtil {
                                 .append(" package=").append(pkg)
                                 .append(" label=").append(sanitize(label))
                                 .append(" restoreOk=true stateDeleted=true lifecycle=batch-watchset\n");
+                        appendBatchStopSummaryRow(summaryTsv, token, pkg, label, "recovered", true, true, action,
+                                "0", "0", "0", "0", "0", "0", "0", "-1", "0", "", "safety-restore");
                     } else {
                         missing++;
                         out.append("PROCESS_OBSERVER_BATCH_STOP_ITEM_MISSING token=").append(token)
@@ -270,11 +691,16 @@ final class ProcessObserverUtil {
                                 .append(" restoreOk=").append(r.restoreOk)
                                 .append(" stateDeleted=").append(r.stateDeleted)
                                 .append(" stateRetained=true\n");
+                        appendBatchStopSummaryRow(summaryTsv, token, pkg, label, "missing", r.restoreOk, r.stateDeleted, action,
+                                "0", "0", "0", "0", "0", "0", "0", "-1", "0", "state-retained", "missing-session");
                     }
+                    summaryRows++;
                     continue;
                 }
+                long stopT0 = System.currentTimeMillis();
                 try {
                     String summary = session.finish("batch-stop-token-" + token);
+                    long stopMs = Math.max(0L, System.currentTimeMillis() - stopT0);
                     SESSIONS.remove(token);
                     boolean deleted = deleteBatchState(token);
                     if (deleted) {
@@ -288,18 +714,31 @@ final class ProcessObserverUtil {
                             .append(" label=").append(sanitize(label))
                             .append(" result=stopped restoreOk=true stateDeleted=").append(deleted)
                             .append(" ").append(sanitize(summary.trim())).append('\n');
+                    appendBatchStopSummaryRow(summaryTsv, token, pkg, label, "stopped", true, deleted, session.action,
+                            summaryValue(summary, "events", "0"), summaryValue(summary, "matches", "0"), summaryValue(summary, "actions", "0"),
+                            summaryValue(summary, "taskEvents", "0"), summaryValue(summary, "nativeLogdEvents", "0"), summaryValue(summary, "nativeLogdMatches", "0"),
+                            summaryValue(summary, "cgroupFreezeTokens", "0"), summaryValue(summary, "wakeBlockToken", "-1"), String.valueOf(stopMs), deleted ? "" : "state-delete-failed", "normal-stop");
+                    summaryRows++;
                 } catch (Throwable t) {
                     failed++;
+                    long stopMs = Math.max(0L, System.currentTimeMillis() - stopT0);
                     out.append("PROCESS_OBSERVER_BATCH_STOP_ITEM_FAILED token=").append(token)
                             .append(" package=").append(pkg)
                             .append(" label=").append(sanitize(label))
                             .append(" exception=").append(sanitize(t.getClass().getName()))
                             .append(" message=").append(sanitize(t.getMessage()))
                             .append(" stateRetained=true").append('\n');
+                    appendBatchStopSummaryRow(summaryTsv, token, pkg, label, "failed", false, false, session.action,
+                            String.valueOf(session.events.get()), String.valueOf(session.matches.get()), String.valueOf(session.actions.get()),
+                            String.valueOf(session.taskEvents.get()), String.valueOf(session.nativeLogdEvents.get()), String.valueOf(session.nativeLogdMatches.get()),
+                            String.valueOf(session.cgroupFreezeTokens.size()), String.valueOf(session.wakeBlockToken), String.valueOf(stopMs),
+                            t.getClass().getSimpleName(), "exception");
+                    summaryRows++;
                 }
             }
             boolean complete = requested > 0 && requested == (stopped + recovered) && missing == 0 && failed == 0 && stateDeleteFailed == 0;
             String header = complete ? "PROCESS_OBSERVER_BATCH_STOP_OK" : "PROCESS_OBSERVER_BATCH_STOP_INCOMPLETE";
+            writeBatchStopSummaryIfRequested(summaryPath, summaryTsv, summaryRows, out);
             out.insert(0, header + " version=" + VERSION
                     + " expectedUser=" + expectedUserId
                     + " requested=" + requested
@@ -308,21 +747,66 @@ final class ProcessObserverUtil {
                     + " missing=" + missing
                     + " failed=" + failed
                     + " stateDeleteFailed=" + stateDeleteFailed
+                    + " summaryRows=" + summaryRows
+                    + " summaryPath=" + sanitize(summaryPath)
                     + " ok=" + complete
                     + " restoreOk=" + complete
                     + " stateDeleted=" + complete
                     + " stateRetained=" + (!complete)
-                    + " lifecycle=batch-watchset safeStop=r296 persistentSafety=true\n");
+                    + " lifecycle=batch-watchset safeStop=r430 summaryTsv=true persistentSafety=true\n");
         } catch (Throwable t) {
+            writeBatchStopSummaryIfRequested(summaryPath, summaryTsv, summaryRows, out);
             return "PROCESS_OBSERVER_BATCH_STOP_FAILED exception=" + sanitize(t.getClass().getName())
                     + " message=" + sanitize(t.getMessage())
                     + " requested=" + requested
                     + " stopped=" + stopped
                     + " recovered=" + recovered
                     + " missing=" + missing
-                    + " failed=" + failed + "\n" + out;
+                    + " failed=" + failed
+                    + " summaryRows=" + summaryRows + "\n" + out;
         }
         return out.toString();
+    }
+
+    private static void appendBatchStopSummaryRow(StringBuilder sb, int token, String pkg, String label, String result,
+                                                  boolean restoreOk, boolean stateDeleted, String action,
+                                                  String events, String matches, String actions, String taskEvents,
+                                                  String nativeLogdEvents, String nativeLogdMatches, String cgroupFreezeTokens,
+                                                  String wakeBlockToken, String stopMs, String error, String reason) {
+        sb.append(token).append('\t').append(tsv(pkg)).append('\t').append(tsv(label)).append('\t').append(tsv(result))
+                .append('\t').append(restoreOk).append('\t').append(stateDeleted).append('\t').append(tsv(action))
+                .append('\t').append(tsv(events)).append('\t').append(tsv(matches)).append('\t').append(tsv(actions))
+                .append('\t').append(tsv(taskEvents)).append('\t').append(tsv(nativeLogdEvents)).append('\t').append(tsv(nativeLogdMatches))
+                .append('\t').append(tsv(cgroupFreezeTokens)).append('\t').append(tsv(wakeBlockToken)).append('\t').append(tsv(stopMs))
+                .append('\t').append(tsv(error)).append('\t').append(tsv(reason)).append('\n');
+    }
+
+    private static String summaryValue(String summary, String key, String fallback) {
+        if (summary == null || key == null || key.isEmpty()) return fallback;
+        String prefix = key + "=";
+        String[] parts = summary.split("\\s+");
+        for (String part : parts) {
+            if (part != null && part.startsWith(prefix)) return part.substring(prefix.length());
+        }
+        return fallback;
+    }
+
+    private static void writeBatchStopSummaryIfRequested(String summaryPath, StringBuilder summaryTsv, int rows, StringBuilder out) {
+        if (summaryPath == null || summaryPath.trim().isEmpty() || "-".equals(summaryPath.trim())) return;
+        boolean ok = false;
+        try {
+            File f = new File(summaryPath.trim());
+            File parent = f.getParentFile();
+            if (parent != null) parent.mkdirs();
+            try (PrintWriter pw = new PrintWriter(new OutputStreamWriter(new FileOutputStream(f, false), StandardCharsets.UTF_8))) {
+                pw.print(summaryTsv.toString());
+            }
+            ok = f.isFile() && f.length() > 0;
+        } catch (Throwable ignored) {
+            ok = false;
+        }
+        out.append("PROCESS_OBSERVER_BATCH_STOP_SUMMARY_WRITTEN path=").append(sanitize(summaryPath))
+                .append(" rows=").append(rows).append(" ok=").append(ok).append('\n');
     }
 
     private static File batchStateDir() {
@@ -1148,13 +1632,15 @@ final class ProcessObserverUtil {
         volatile int wakeBlockToken = -1;
         volatile int token = -1;
         volatile NativeLogdObserver nativeLogdObserver;
+        volatile boolean nativeLogdEnabled = true;
         volatile boolean callbacksReady = false;
 
         WatchSession(int userId, String packageName, long durationMs, String action, String wakeBlockMode, String logPath) {
             this.userId = userId;
             this.packageName = packageName;
             this.durationMs = durationMs;
-            this.action = action;
+            this.nativeLogdEnabled = nativeLogdEnabledFromAction(action);
+            this.action = normalizeAction(action);
             this.wakeBlockMode = wakeBlockMode == null ? "" : wakeBlockMode.trim();
             this.logPath = logPath == null ? "" : logPath.trim();
         }
@@ -1503,6 +1989,10 @@ final class ProcessObserverUtil {
 
         private void startNativeLogdObserverIfAvailable() {
             if ("monitor".equals(action) || "log".equals(action)) {
+                return;
+            }
+            if (!nativeLogdEnabled) {
+                logLine("PROCESS_OBSERVER_NATIVE_LOGD_SKIP reason=action-nologd optional=1 action=" + sanitize(action));
                 return;
             }
             String daemonSocket = CgroupFreezeUtil.nativeDaemonSocketPath();
@@ -2683,6 +3173,7 @@ final class ProcessObserverUtil {
 
     private static String normalizeAction(String action) {
         String a = action == null ? "monitor" : action.trim().toLowerCase(Locale.ROOT);
+        a = stripRuntimeSuffix(a);
         a = stripWakeBlockSuffix(a);
         if (a.equals("log")) return "log";
         if (a.equals("monitor")) return "monitor";
@@ -2697,11 +3188,38 @@ final class ProcessObserverUtil {
 
     private static String wakeBlockModeFromAction(String action) {
         String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
+        a = stripRuntimeSuffix(a);
         if (a.isEmpty() || a.equals("monitor") || a.equals("log")) return "";
         if (a.contains("restricted") || a.contains("restrict") || a.contains("wake-block")) return "restricted";
         if (a.contains("appops") || a.contains("wake-appops") || a.contains("bg-deny")) return "appops";
         if (a.endsWith("-wake") || a.endsWith("+wake") || a.endsWith(":wake") || a.contains("integrated-wake")) return "normal";
         return "";
+    }
+
+
+    private static boolean nativeLogdEnabledFromAction(String action) {
+        String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
+        return !(a.contains(":nologd") || a.contains("+nologd") || a.contains("-nologd") || a.contains("_nologd")
+                || a.contains(":no-logd") || a.contains("+no-logd") || a.contains("-no-logd") || a.contains("_no_logd"));
+    }
+
+    private static String stripRuntimeSuffix(String action) {
+        String a = action == null ? "monitor" : action.trim().toLowerCase(Locale.ROOT);
+        String[] suffixes = new String[]{
+                ":nologd", "+nologd", "-nologd", "_nologd",
+                ":no-logd", "+no-logd", "-no-logd", "_no_logd"
+        };
+        boolean changed;
+        do {
+            changed = false;
+            for (String suffix : suffixes) {
+                if (a.endsWith(suffix)) {
+                    a = a.substring(0, a.length() - suffix.length());
+                    changed = true;
+                }
+            }
+        } while (changed);
+        return a;
     }
 
     private static String stripWakeBlockSuffix(String action) {

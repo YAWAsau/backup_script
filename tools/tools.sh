@@ -11,10 +11,10 @@ shell_language="zh-TW"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202608231655"
+backup_version="202608262208"
 # 固定用 GitHub release tag 作為線上更新比較基準；不要用每日 rebuild 日期，避免本地開發版被誤判舊版。
 speedbackup_release_tag="202607232022"
-speedbackup_patch_build="v24.20.14-7.66-842-current-upload-bundle-r419-202607232022"
+speedbackup_patch_build="v24.20.14-7.66-864-restore-session-selected-scope-r441-202607232022"
 # r222: 延續 r217/r219/r220 外科手術線；一次收斂 audit 剩餘低/中風險項目。
 # r222: WebDAV/SMB 只抽 UI/progress/fixed-items/filelist facade，不合併協議核心；JSON 只抽底層 helper，不改 app_details schema。
 # r222: Dex 不接管 JSON / app_details / 備份恢復規劃；C 只吃批量檔案事實操作；cgfreezerd 不動。
@@ -202,7 +202,7 @@ _speedbackup_bool_on() {
 _speedbackup_apply_internal_policy() {
 	SPEED_DEBUG_ENABLE=1
 	SPEED_DEBUG_KEEP_TARS=10
-	SPEED_DEBUG_SNAPSHOT_ON_NORMAL=1
+	SPEED_DEBUG_SNAPSHOT_ON_NORMAL=0
 	SPEED_DEBUG_SNAPSHOT_ON_EXIT=0
 	SPEED_DEBUG_DEX_FIRST_TEST=1
 	SPEED_DEBUG_DEX_TRANSLATE=1
@@ -469,8 +469,181 @@ _speed_debug_sync_legacy_log() {
 	return 0
 }
 
+# r440: final pack 收尾拆成兩段：
+# 1) final tar 前只恢復 display-on 與停止音量監聽，保留使用者可見提示；
+# 2) final debug tar 與 EXIT cleanup 都嘗試完成後，才在 EXIT trap 最後一步還原 screen_off_timeout，避免關屏後後續收尾被系統延後調度。
+# r436 的 final pack 前額外 wake poke（dex_hiddenapi_raw setDisplayPowerMode 2 / input keyevent 224）維持撤回。
+_SPEEDBACKUP_DISPLAY_RESTORE_DEFERRED="${_SPEEDBACKUP_DISPLAY_RESTORE_DEFERRED:-0}"
+_SPEEDBACKUP_DISPLAY_RESTORE_DEFER_REASON="${_SPEEDBACKUP_DISPLAY_RESTORE_DEFER_REASON:-}"
+_SPEEDBACKUP_DISPLAY_RESTORE_POST_PACK_PHASE="${_SPEEDBACKUP_DISPLAY_RESTORE_POST_PACK_PHASE:-0}"
+_SPEEDBACKUP_DISPLAY_POWER_RESTORED_FOR_FINAL_PACK="${_SPEEDBACKUP_DISPLAY_POWER_RESTORED_FOR_FINAL_PACK:-0}"
+_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_ORIG="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_ORIG:-}"
+_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_REQUESTED="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_REQUESTED:-}"
+_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_APPLIED="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_APPLIED:-}"
+_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY:-0}"
+
+_speedbackup_display_timeout_cache_capture() {
+	local _scr_save _req_save _applied_save _orig="" _requested="" _applied=""
+	command -v _display_timeout_save_file >/dev/null 2>&1 || return 1
+	_scr_save="$(_display_timeout_save_file)"
+	_req_save="${TMPDIR:-/data/local/tmp}/.screen_timeout_requested"
+	_applied_save="${TMPDIR:-/data/local/tmp}/.screen_timeout_applied"
+	[[ -s $_scr_save ]] || return 1
+	_orig="$(cat "$_scr_save" 2>/dev/null)"
+	case $_orig in ''|*[!0-9]*) return 1 ;; esac
+	_requested="$_DISPLAY_TIMEOUT_REQUESTED_MS"
+	if [[ -s $_req_save ]]; then
+		_requested="$(cat "$_req_save" 2>/dev/null)"
+		case $_requested in ''|*[!0-9]*) _requested="$_DISPLAY_TIMEOUT_REQUESTED_MS" ;; esac
+	fi
+	_applied="$_requested"
+	if [[ -s $_applied_save ]]; then
+		_applied="$(cat "$_applied_save" 2>/dev/null)"
+		case $_applied in ''|*[!0-9]*) _applied="$_requested" ;; esac
+	fi
+	_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_ORIG="$_orig"
+	_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_REQUESTED="$_requested"
+	_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_APPLIED="$_applied"
+	_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY=1
+	_speed_debug_log "DISPLAY_TIMEOUT_RESTORE_CACHE_CAPTURE original=$_orig requested=$_requested applied=$_applied mode=r440"
+	return 0
+}
+
+_speedbackup_display_timeout_restore_from_cache() {
+	local _reason="${1:-cached-final-restore}" _orig="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_ORIG:-}" _requested="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_REQUESTED:-}" _applied="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_APPLIED:-}" _current="" _readback=""
+	[[ "${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY:-0}" = 1 ]] || return 1
+	case $_orig in ''|*[!0-9]*) return 1 ;; esac
+	case $_requested in ''|*[!0-9]*) _requested="${_DISPLAY_TIMEOUT_REQUESTED_MS:-2147483647}" ;; esac
+	case $_applied in ''|*[!0-9]*) _applied="$_requested" ;; esac
+	_current="$(settings get system screen_off_timeout 2>/dev/null)"
+	if [[ $_current = "$_orig" ]]; then
+		rm -f "$(_display_timeout_save_file 2>/dev/null)" "${TMPDIR:-/data/local/tmp}/.screen_timeout_requested" "${TMPDIR:-/data/local/tmp}/.screen_timeout_applied" "${TMPDIR:-/data/local/tmp}/.screen_timeout_session_id" "${TMPDIR:-/data/local/tmp}/.screen_timeout_backend" 2>/dev/null
+		_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY=0
+		_DISPLAY_TIMEOUT_ACTIVE=0
+		Get_dark_screen_seconds=""
+		_speed_debug_log "DISPLAY_TIMEOUT_SHELL_END_CACHE original=$_orig requested=$_requested applied=$_applied readback=$_current restored=already reason=$_reason backend=shell-timeout-stale-guard mode=r440"
+		return 0
+	fi
+	if [[ $_current != "$_applied" ]]; then
+		_speed_debug_log "DISPLAY_TIMEOUT_SHELL_END_CACHE externalChange=true current=$_current original=$_orig requested=$_requested applied=$_applied restored=false reason=$_reason backend=shell-timeout-stale-guard mode=r440"
+		_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY=0
+		_DISPLAY_TIMEOUT_ACTIVE=0
+		Get_dark_screen_seconds=""
+		return 0
+	fi
+	settings put system screen_off_timeout "$_orig" >/dev/null 2>&1 || return 1
+	_readback="$(settings get system screen_off_timeout 2>/dev/null)"
+	[[ $_readback = "$_orig" ]] || return 1
+	rm -f "$(_display_timeout_save_file 2>/dev/null)" "${TMPDIR:-/data/local/tmp}/.screen_timeout_requested" "${TMPDIR:-/data/local/tmp}/.screen_timeout_applied" "${TMPDIR:-/data/local/tmp}/.screen_timeout_session_id" "${TMPDIR:-/data/local/tmp}/.screen_timeout_backend" 2>/dev/null
+	_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY=0
+	_DISPLAY_TIMEOUT_ACTIVE=0
+	Get_dark_screen_seconds=""
+	_speed_debug_log "DISPLAY_TIMEOUT_SHELL_END_CACHE original=$_orig requested=$_requested applied=$_applied readback=$_readback restored=true reason=$_reason backend=shell-timeout-stale-guard mode=r440"
+	return 0
+}
+
+_speedbackup_display_restore_should_defer_for_pack() {
+	[[ "${SPEEDBACKUP_DISPLAY_RESTORE_AFTER_DEBUG_PACK:-1}" = 1 ]] || return 1
+	[[ "${_SPEEDBACKUP_DISPLAY_RESTORE_POST_PACK_PHASE:-0}" = 1 ]] && return 1
+	[[ "${SPEED_DEBUG_PACKED:-0}" = 1 ]] && return 1
+	[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d "$SPEED_DEBUG_RUN_DIR" ]] || return 1
+	command -v _display_timeout_session_active >/dev/null 2>&1 || return 1
+	_display_timeout_session_active || return 1
+	return 0
+}
+
+_speedbackup_display_power_restore_for_final_pack() {
+	local _reason="${1:-before-final-debug-pack}" _display_rc=0
+	[[ ${setDisplayPowerMode:-} = true ]] || return 0
+	[[ "${_SPEEDBACKUP_DISPLAY_POWER_RESTORED_FOR_FINAL_PACK:-0}" = 1 ]] && return 0
+	_speed_debug_log "DISPLAY_POWER_RESTORE_BEFORE_FINAL_PACK_BEGIN reason=$_reason mode=r440"
+	# 只用既有 setDisplay 2 恢復顯示狀態；不再額外呼叫 dex_hiddenapi_raw 或 input keyevent 224。
+	if setDisplay 2 >/dev/null 2>&1; then
+		_display_rc=0
+	else
+		_display_rc=$?
+	fi
+	_speed_debug_log "DISPLAY_POWER_RESTORE_BEFORE_FINAL_PACK_SET mode=2 rc=$_display_rc inputKeyevent224=0 rawFallback=0 mode=r440"
+	_display_power_volume_watcher_stop || true
+	rm -f "$(_display_power_volume_hint_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_DISPLAY_POWER_VOLUME_HINT_SHOWN=0
+	_SPEEDBACKUP_DISPLAY_POWER_RESTORED_FOR_FINAL_PACK=1
+	echo_log "設置螢幕狀態display-on(mode=2)" "" 0
+	return 0
+}
+
+_speedbackup_display_timeout_restore_after_debug_pack() {
+	local _reason="${1:-final-debug-pack-done}" _rc=0
+	if [[ ${_DISPLAY_RESTORE_DONE:-0} = 1 ]]; then
+		_speed_debug_pack_log "[speed_debug] EXIT最後螢幕/鎖屏設定還原跳過: already_done=1 reason=$_reason mode=r440"
+		return 0
+	fi
+	if ! command -v _display_timeout_session_active >/dev/null 2>&1 || ! _display_timeout_session_active; then
+		if [[ "${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY:-0}" != 1 ]]; then
+			_speed_debug_pack_log "[speed_debug] EXIT最後螢幕/鎖屏設定還原跳過: no-active-display-session reason=$_reason mode=r440"
+			return 0
+		fi
+	fi
+	_speed_debug_pack_log "[speed_debug] EXIT最後還原螢幕/鎖屏設定: reason=$_reason deferred=${_SPEEDBACKUP_DISPLAY_RESTORE_DEFERRED:-0} deferReason=${_SPEEDBACKUP_DISPLAY_RESTORE_DEFER_REASON:-none} displayPowerPreRestored=${_SPEEDBACKUP_DISPLAY_POWER_RESTORED_FOR_FINAL_PACK:-0} cacheReady=${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY:-0}"
+	echoRgb "正在還原螢幕/鎖屏設定" "3"
+	# r440: EXIT 最後一步可能已清掉 run tmpdir/TMPDIR marker；優先使用 r439 捕獲的記憶體 cache 還原 timeout。
+	# 這可避免 _DISPLAY_TIMEOUT_ACTIVE=1 但 .screen_timeout_orig 已被 tmpdir cleanup 刪除時，_display_timeout_shell_end 誤判成功卻沒有真正寫回原值。
+	if [[ "${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY:-0}" = 1 ]]; then
+		_speed_debug_pack_log "[speed_debug] EXIT最後螢幕/鎖屏設定還原路徑: path=memory-cache reason=$_reason mode=r440"
+		if _speedbackup_display_timeout_restore_from_cache "$_reason"; then
+			echo_log "由shell還原無操作息屏時間" "" 0
+			_DISPLAY_RESTORE_DONE=1
+			_rc=0
+		else
+			echoRgb "還原無操作息屏時間失敗；shell暫存保留供下次啟動修復。" "0"
+			_rc=1
+		fi
+	elif command -v _display_timeout_session_active >/dev/null 2>&1 && _display_timeout_session_active; then
+		_speed_debug_pack_log "[speed_debug] EXIT最後螢幕/鎖屏設定還原路徑: path=session-marker reason=$_reason mode=r440"
+		if _display_timeout_shell_end; then
+			echo_log "由shell還原無操作息屏時間" "" 0
+			_DISPLAY_RESTORE_DONE=1
+			_rc=0
+		else
+			echoRgb "還原無操作息屏時間失敗；shell暫存保留供下次啟動修復。" "0"
+			_rc=1
+		fi
+	else
+		echoRgb "還原無操作息屏時間失敗；shell暫存保留供下次啟動修復。" "0"
+		_rc=1
+	fi
+	_speed_debug_pack_log "[speed_debug] EXIT最後螢幕/鎖屏設定還原完成: rc=$_rc reason=$_reason mode=r440"
+	return $_rc
+}
+
+_speedbackup_display_restore_defer_for_debug_pack() {
+	local _reason="${1:-before-final-debug-pack}"
+	_SPEEDBACKUP_DISPLAY_RESTORE_DEFERRED=1
+	_SPEEDBACKUP_DISPLAY_RESTORE_DEFER_REASON="$_reason"
+	_speedbackup_display_timeout_cache_capture || true
+	_speed_debug_log "DISPLAY_RESTORE_DEFER reason=$_reason action=display-before-pack-timeout-at-final-exit active=${_DISPLAY_TIMEOUT_ACTIVE:-0} setDisplayPowerMode=${setDisplayPowerMode:-} cacheReady=${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY:-0} mode=r440"
+	_speedbackup_display_power_restore_for_final_pack "$_reason" || true
+	return 0
+}
+
+_speedbackup_display_restore_after_debug_pack() {
+	local _reason="${1:-final-debug-pack-done}" _rc=0
+	if [[ "${_SPEEDBACKUP_DISPLAY_RESTORE_DEFERRED:-0}" != 1 ]]; then
+		if ! command -v _display_timeout_session_active >/dev/null 2>&1 || ! _display_timeout_session_active; then
+			return 0
+		fi
+	fi
+	_SPEEDBACKUP_DISPLAY_RESTORE_POST_PACK_PHASE=1
+	_speedbackup_display_timeout_restore_after_debug_pack "$_reason"
+	_rc=$?
+	_SPEEDBACKUP_DISPLAY_RESTORE_POST_PACK_PHASE=0
+	_SPEEDBACKUP_DISPLAY_RESTORE_DEFERRED=0
+	_SPEEDBACKUP_DISPLAY_RESTORE_DEFER_REASON=""
+	return $_rc
+}
+
 _speed_debug_pack_common() {
-	local _mode="$1" _ec="${2:-0}" _delete="${3:-0}"
+	local _mode="$1" _ec="${2:-0}" _delete="${3:-0}" _pack_start_ms="" _pack_elapsed_ms="unknown" _archive_size="unknown"
 	# 打包以 run 目錄存在為準，不再只看 SPEED_DEBUG_ENABLE；
 	# 因為 debug 已建立後，conf 或環境若改動 SPEED_DEBUG_ENABLE，也不應讓打包靜默跳過。
 	if [[ -z ${SPEED_DEBUG_RUN_DIR:-} ]]; then
@@ -501,6 +674,7 @@ _speed_debug_pack_common() {
 	_tar_bin="$(command -v tar 2>/dev/null)"
 	[[ -z $_tar_bin && -x /data/backup_tools/tar ]] && _tar_bin="/data/backup_tools/tar"
 	[[ -z $_tar_bin ]] && _tar_bin="tar"
+	_pack_start_ms="$(_speed_now_ms 2>/dev/null)"
 	_speed_debug_pack_log "[speed_debug] ${_mode}打包: run=$SPEED_DEBUG_RUN_DIR out=$SPEED_DEBUG_ARCHIVE tar=$_tar_bin"
 	rm -f "$SPEED_DEBUG_ARCHIVE" "$_pack_err" 2>/dev/null
 	(
@@ -510,6 +684,9 @@ _speed_debug_pack_common() {
 	) 2>"$_pack_err"
 	local _tar_rc=$?
 	if [[ $_tar_rc = 0 && -s "$SPEED_DEBUG_ARCHIVE" ]]; then
+		case $_pack_start_ms in ''|*[!0-9]*) _pack_elapsed_ms="unknown" ;; *) _pack_elapsed_ms="$(( $(_speed_now_ms 2>/dev/null) - _pack_start_ms ))" ;; esac
+		_archive_size="$(wc -c < "$SPEED_DEBUG_ARCHIVE" 2>/dev/null)"; case $_archive_size in ''|*[!0-9]*) _archive_size="unknown" ;; esac
+		_speed_debug_pack_log "[speed_debug] ${_mode}打包完成: rc=0 elapsedMs=$_pack_elapsed_ms bytes=$_archive_size mode=r440"
 		rm -f "$_pack_err" 2>/dev/null
 		if [[ $_delete = 1 ]]; then
 			_speed_debug_safe_remove_run_dir "$SPEED_DEBUG_RUN_DIR"
@@ -539,6 +716,10 @@ _speed_debug_pack() {
 	fi
 	SPEED_DEBUG_PACKED=1
 	_speed_debug_pack_common "final" "${1:-0}" 1
+	local _pack_rc=$?
+	# r440: 不在 _speed_debug_pack 內還原 screen_off_timeout；
+	# 還原放到 EXIT trap 最後一步，避免 tar 完成後又因恢復鎖屏/息屏而讓後續 EXIT 收尾被螢幕關閉延後。
+	return $_pack_rc
 }
 
 _speed_debug_consolidate_detail_pattern() {
@@ -570,6 +751,16 @@ _speed_debug_consolidate_detail_pattern() {
 		rm -f "$_f" 2>/dev/null && _count=$((_count + 1))
 	done
 	[[ $_count -gt 0 ]] && _speed_debug_pack_log "[speed_debug] 已合併 ${_title:-$_pattern}: $_count 個 -> $_outname"
+	return 0
+}
+
+_speed_debug_consolidate_foreground_hot_logs() {
+	# r436: 正常完成路徑也要把 ProcessObserver foreground 高量 per-app txt 收斂成少量單檔。
+	# 保持其它重型 detail consolidation 預設跳過，避免回到 r424 前 snapshot/final 雙重打包開銷。
+	[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d "$SPEED_DEBUG_RUN_DIR" ]] || return 0
+	_speed_debug_consolidate_detail_pattern "process_observer_foreground_foreground_state_pkg_active_details.log" "process_observer_foreground_foreground_state_pkg_active_*.txt" "process observer foreground active detail"
+	_speed_debug_consolidate_detail_pattern "process_observer_foreground_pkg_process_pids_details.log" "process_observer_foreground_pkg_process_pids_*.txt" "process observer foreground process-pids detail"
+	_speed_debug_consolidate_detail_pattern "process_observer_foreground_cgroup_freezer_start_details.log" "process_observer_foreground_cgroup_freezer_start_*.txt" "process observer foreground cgroup-freezer detail"
 	return 0
 }
 
@@ -631,9 +822,14 @@ _speed_debug_dedupe_logs() {
 
 _speed_debug_normal_finish_pack() {
 	# 正常流程主動建立 final 包並刪除 run_xxx，避免單獨入口 / pipeline subshell 的 EXIT trap 沒有執行時留下 run 目錄。
-	# 若 EXIT trap 之後仍觸發，_speed_debug_pack 會因 SPEED_DEBUG_PACKED=1 自動跳過，不會重複打包。
-	_speed_debug_dedupe_logs
-	if [[ "${SPEED_DEBUG_SNAPSHOT_ON_NORMAL:-1}" = 1 && "${SPEED_DEBUG_SNAPSHOT_DONE:-0}" != 1 ]]; then
+	# r424: 正常成功路徑預設不再做昂貴的 detail consolidation 與 snapshot+final 雙打包；完整分片仍留在 speed_debug tar 內。
+	if [[ "${SPEED_DEBUG_CONSOLIDATE_ON_NORMAL:-0}" = 1 || "${diagnostic_mode:-0}" = 1 ]]; then
+		_speed_debug_dedupe_logs
+	else
+		_speed_debug_consolidate_foreground_hot_logs
+		_speed_debug_pack_log "[speed_debug] normal finish 重型 detail 合併跳過: mode=r440 keep_per_app_details=1 foregroundHotMerged=1"
+	fi
+	if [[ "${SPEED_DEBUG_SNAPSHOT_ON_NORMAL:-0}" = 1 && "${SPEED_DEBUG_SNAPSHOT_DONE:-0}" != 1 ]]; then
 		_speed_debug_snapshot_pack "${1:-0}"
 	fi
 	_speedbackup_run_tmpdir_stop_daemons_for_cleanup normal_finish
@@ -2872,6 +3068,7 @@ _restore_stream_perf_record() {
 	fi
 }
 
+
 _restore_apk_timing_field() {
 	printf '%s' "$1" | tr '\t\r\n' '   ' 2>/dev/null
 }
@@ -3832,7 +4029,7 @@ _speedbackup_stop_cgfreezer_for_replace_startup() {
 	for _p in /proc/[0-9]*; do
 		[[ -r $_p/cmdline ]] || continue
 		_pid="${_p##*/}"
-		_cmd="$(tr '\000' ' ' < "$_p/cmdline" 2>/dev/null | cut -c1-240)"
+		_cmd="$({ tr '\000' ' ' < "$_p/cmdline"; } 2>/dev/null | cut -c1-240)"
 		case "$_cmd" in
 		*cgfreezer*daemon*)
 			kill "$_pid" 2>/dev/null || true
@@ -4452,7 +4649,7 @@ _dex_exec_unfiltered() {
 
 dex_hiddenapi_raw() {
 	case "$1" in
-	getPackageUid|getInstallSourceInfo|forceStopPackageBatch|forceStopPackageVerify|uidLiveState|uidObserverState|uidObserverProbe|uidObserverWatch|packageLiveState|setDisplayPowerMode|processObserverStart|processObserverStop|processObserverBatchStart|processObserverBatchStop|processObserverStatus|processObserverTop|processObserverForeground|appWakeBlockStart|appWakeBlockStop|appWakeBlockStatus|appWakeBlockRestoreObserverToken|appWakeBlockRestorePackage|appWakeBlockRestoreAll|appWakeBlockCleanupStale|uidNetBlockStart|uidNetBlockStop|uidNetBlockStatus|uidNetBlockRestorePackage|uidNetBlockRestoreAll|uidNetBlockCleanupStale|uidNetBlockProbe|cgroupFreezeStart|cgroupFreezeStop|cgroupFreezeStatus|cgroupFreezeRestorePackage|cgroupFreezeRestoreAll|cgroupFreezeCleanupStale)
+	getPackageUid|getInstallSourceInfo|forceStopPackageBatch|forceStopPackageVerify|uidLiveState|uidObserverState|uidObserverProbe|uidObserverWatch|packageLiveState|setDisplayPowerMode|processObserverStart|processObserverStop|processObserverBatchStart|processObserverBatchStop|processObserverRestoreSessionStart|processObserverStatus|processObserverTop|processObserverForeground|appWakeBlockStart|appWakeBlockStop|appWakeBlockStatus|appWakeBlockRestoreObserverToken|appWakeBlockRestorePackage|appWakeBlockRestoreAll|appWakeBlockCleanupStale|uidNetBlockStart|uidNetBlockStop|uidNetBlockStatus|uidNetBlockRestorePackage|uidNetBlockRestoreAll|uidNetBlockCleanupStale|uidNetBlockProbe|cgroupFreezeStart|cgroupFreezeStop|cgroupFreezeStatus|cgroupFreezeRestorePackage|cgroupFreezeRestoreAll|cgroupFreezeCleanupStale)
 		# 465/r16: HiddenApi hot commands require unified root daemon; old HiddenApi daemon fallback removed.
 		# r111: processObserverStart/Stop 必須走 RootDaemon；global observer/target/session 都存在於 RootDaemon JVM。
 		_root_daemon_call_args_hot hiddenapi "$@"
@@ -4825,9 +5022,9 @@ _speedbackup_tool_sha_table() {
 	cat <<'SB_TOOL_SHA_TABLE'
 busybox 4d60ab3f5a59ebb2ca863f2f514e6924401b581e9b64f602665c008177626651
 cgfreezer 6a4a8f48d9b6144045f34bd2daca8e6c96bca320a7111e69b1472f1750938099
-classes.dex a4a524e4002f9020a9d1949a68a22a775a42735f8da5eb27ee79fee26cd9a820
+classes.dex a12cc28868a2c08cee1bf929f4a8aa15f0899adffc33b64a9f7cbb68be28e5f2
 cmd 08da8ac23b6e99788fd3ce6c19c7b5a083b2ad48be35963a48d01d6ee7f3bb6d
-dex_check.sh f2e77b63e66192bab414d4722d9bcb15cdce4e4fdf7b279410fed953ceb30152
+dex_check.sh de60c880d482e26c00b175efbebc5b79f95b2311f77b80f19d2175deacedca3a
 eventwait 0adb6cb832f89a8be1bace1a653536732a9858a9eec544ac6c0796196c430b41
 filewatch 5d68e29180c8c791f4e531f8e6a39ef6689dfa2ea1e0c17e837770375588c4e5
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
@@ -5803,10 +6000,16 @@ kill_Serve() {
     	# r324: menu/getlist/update 等非備份/恢復流程不應觸發螢幕/無操作息屏還原文案或 display-on；
     	# 只有本輪真的開過 display timeout / watcher session，才做 restore。
     	if command -v _display_timeout_session_active >/dev/null 2>&1 && _display_timeout_session_active; then
-    		_speedbackup_call_if_exists Set_screen_pause_seconds off
-    		_speed_debug_log "EXIT_DISPLAY_RESTORE requested=1 reason=active-display-session mode=r324"
+    		if [[ "${_SPEEDBACKUP_DISPLAY_RESTORE_DEFERRED:-0}" = 1 ]]; then
+    			# r440: 正常流程已要求把 timeout 還原延到 EXIT 最後一步；
+    			# 這裡只記錄，不提前還原，避免螢幕關閉後卡住後續 final-pack-skip / tmpdir cleanup。
+    			_speed_debug_log "EXIT_DISPLAY_RESTORE_DEFER requested=1 reason=pending-final-exit active=1 packed=${SPEED_DEBUG_PACKED:-0} mode=r440"
+    		else
+    			_speedbackup_call_if_exists Set_screen_pause_seconds off
+    			_speed_debug_log "EXIT_DISPLAY_RESTORE requested=1 reason=active-display-session mode=r440"
+    		fi
     	else
-    		_speed_debug_log "EXIT_DISPLAY_RESTORE_SKIP requested=0 reason=no-active-display-session mode=r324"
+    		_speed_debug_log "EXIT_DISPLAY_RESTORE_SKIP requested=0 reason=no-active-display-session mode=r440"
     	fi
     	_RESTORE_KEEP_SESSION_MAPS=0
     	_RESTORE_PRESERVE_BATCH_QUEUE=0
@@ -5859,6 +6062,8 @@ kill_Serve() {
     	if [[ "${SPEEDBACKUP_ENTRY_QUIET_TRAP:-0}" = 1 ]]; then _speed_debug_log "trap開始建立speed_debug最終包"; else echoRgb "trap開始建立speed_debug最終包" "3"; fi
     	_speed_debug_pack "$_ec"
     	_speedbackup_run_tmpdir_final_cleanup
+    	# r440: timeout/鎖屏還原是 EXIT trap 最後一個實際收尾動作；完成後才印 trap 收尾完成，避免使用者在 timeout 尚未寫回前離開。
+    	_speedbackup_display_restore_after_debug_pack "exit-trap-last-step" || true
     	if [[ "${SPEEDBACKUP_ENTRY_QUIET_TRAP:-0}" = 1 ]]; then _speed_debug_log "trap收尾流程完成(exit=$_ec)"; else echoRgb "trap收尾流程完成(exit=$_ec)" "3"; fi
     	return "$_ec"
     }
@@ -14473,8 +14678,13 @@ _resolve_real_mount() {
 	fi
 }
 _backup_df_target() {
-	local _p="$1" _fallback
+	local _p="$1" _fallback _resolved
 	[[ -n $_p ]] || return 1
+	_resolved="$(_backup_resolved_mounted_path "$_p")"
+	if [[ -n $_resolved ]] && df -h "$_resolved" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+		echo "$_resolved"
+		return 0
+	fi
 	if df -h "$_p" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
 		echo "$_p"
 		return 0
@@ -14487,8 +14697,27 @@ _backup_mount_point() {
 	_mp="$(df -h "$_p" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | awk 'NR==2{print $NF; exit}')"
 	printf '%s\n' "$_mp"
 }
+_backup_resolved_mounted_path() {
+	# r421: 若備份目錄位於 /storage/emulated 視圖中的 bind/mount 子樹，
+	# df 原路徑會先命中整個 /storage/emulated FUSE，顯示成內置儲存。
+	# 這裡只在 resolve 出非 /data* 的真實掛載路徑時採用，避免一般內置儲存顯示被改成 /data。
+	local _p="$1" _r
+	[[ -n $_p ]] || return 1
+	_r="$(_resolve_real_mount "$_p")"
+	[[ -n $_r && $_r != "$_p" ]] || return 1
+	case "$_r" in
+		/data|/data/*) return 1 ;;
+	esac
+	[[ -e $_r || -d $_r ]] || return 1
+	printf '%s\n' "$_r"
+}
 _backup_underlying_storage_path() {
-	local _p="$1" _rest _candidate
+	local _p="$1" _rest _candidate _resolved
+	_resolved="$(_backup_resolved_mounted_path "$_p")"
+	if [[ -n $_resolved && $_resolved != "$_p" ]]; then
+		printf '%s\n' "$_resolved"
+		return 0
+	fi
 	case "$_p" in
 	/storage/emulated/0/*)
 		_rest="${_p#/storage/emulated/0/}"
@@ -14570,16 +14799,22 @@ _media_restore_perf_done() {
 }
 
 _backup_mount_display_suffix() {
-	local _backup="$1" _df_target="$2" _mp _under _out=""
+	local _backup="$1" _df_target="$2" _mp _under _out="" _label="底層對應" _resolved
 	_mp="$(_backup_mount_point "$_df_target")"
 	[[ -n $_mp ]] && _out=" -└─ 掛載點: $_mp"
-	_under="$(_backup_underlying_storage_path "$_backup")"
+	_resolved="$(_backup_resolved_mounted_path "$_backup")"
+	if [[ -n $_resolved ]]; then
+		_under="$_resolved"
+		_label="實際統計路徑"
+	else
+		_under="$(_backup_underlying_storage_path "$_backup")"
+	fi
 	if [[ -n $_under && $_under != "$_backup" ]]; then
 		if [[ -n $_out ]]; then
 			_out="$_out
- -└─ 底層對應: $_under"
+ -└─ $_label: $_under"
 		else
-			_out=" -└─ 底層對應: $_under"
+			_out=" -└─ $_label: $_under"
 		fi
 	fi
 	printf '%s' "$_out"
@@ -17311,6 +17546,56 @@ _CGROUP_FREEZER_REQUIRED_NATIVE_CAPS="${SPEEDBACKUP_CGROUP_FREEZER_REQUIRED_CAPS
 _cgroup_freezer_daemon_socket_path() {
 	printf '%s\n' "${SPEEDBACKUP_CGROUP_FREEZER_SOCKET:-/data/local/tmp/speedbackup_cgfreezerd.sock}"
 }
+
+_cgroup_freezer_daemon_process_sweep() {
+	# r420: cgfreezerd 是批量備份/恢復期間的 persistent helper，流程結束後不應留在系統進程表。
+	# 先走 socket STOP；若 socket 已被 unlink、unixsock 不可用、或舊版 daemon 沒回 pid，最後用嚴格 cmdline 白名單掃描兜底。
+	local _reason="${1:-final_cleanup}" _socket _p _pid _cmd _matched=0 _term=0 _kill=0 _alive _i
+	_socket="$(_cgroup_freezer_daemon_socket_path)"
+	for _p in /proc/[0-9]*; do
+		_pid="${_p##*/}"
+		case $_pid in ''|*[!0-9]*) continue ;; esac
+		# 只匹配 cgfreezer daemon，不碰一次性 scan/freeze/kill 子命令，也不碰 tools.sh 自身。
+		_cmd="$({ tr '\000' ' ' < "$_p/cmdline"; } 2>/dev/null)"
+		[[ -n $_cmd ]] || continue
+		case " $_cmd " in
+			*"cgfreezer daemon "*) ;;
+			*) continue ;;
+		esac
+		# 優先要求 socket path 或常見工具路徑；argv0 只有 cgfreezer 時仍視為本 helper daemon。
+		case " $_cmd " in
+			*" $_socket "*|*"/data/backup_tools/cgfreezer daemon "*|*"/data/local/tmp/"*"/cgfreezer daemon "*|*" cgfreezer daemon "*) ;;
+			*) continue ;;
+		esac
+		_matched=$((_matched + 1))
+		kill "$_pid" 2>/dev/null && _term=$((_term + 1))
+	done
+	if [[ $_matched -gt 0 ]]; then
+		_i=0
+		while [[ $_i -lt 10 ]]; do
+			_alive=0
+			for _p in /proc/[0-9]*; do
+				_pid="${_p##*/}"
+				case $_pid in ''|*[!0-9]*) continue ;; esac
+				_cmd="$({ tr '\000' ' ' < "$_p/cmdline"; } 2>/dev/null)"
+				case " $_cmd " in *"cgfreezer daemon "*) _alive=1; break ;; esac
+			done
+			[[ $_alive = 0 ]] && break
+			sleep 0.05
+			_i=$((_i + 1))
+		done
+		if [[ ${_alive:-0} != 0 ]]; then
+			for _p in /proc/[0-9]*; do
+				_pid="${_p##*/}"
+				case $_pid in ''|*[!0-9]*) continue ;; esac
+				_cmd="$({ tr '\000' ' ' < "$_p/cmdline"; } 2>/dev/null)"
+				case " $_cmd " in *"cgfreezer daemon "*) kill -9 "$_pid" 2>/dev/null && _kill=$((_kill + 1)) ;; esac
+			done
+		fi
+	fi
+	_speed_debug_log "CGFREEZER_DAEMON_PROCESS_SWEEP reason=$_reason matched=$_matched term=$_term kill9=$_kill socket=$_socket mode=r420"
+	return 0
+}
 _cgroup_freezer_daemon_sock_call() {
 	local _cmd="$1" _out="$2" _socket _rc _err
 	[[ -n $_cmd && -n $_out ]] || return 2
@@ -17369,8 +17654,26 @@ _cgroup_freezer_daemon_final_stop_unlink() {
 	# Use raw line-v4 relay; cgfreezerd replies plain text lines, not root-daemon header framing.
 	local _reason="${1:-final_cleanup}" _socket _out _err _rc _flat _pid _i _alive
 	_socket="$(_cgroup_freezer_daemon_socket_path)"
-	[[ -S $_socket ]] || { _speed_debug_log "CGROUP_FREEZER_DAEMON_FINAL_STOP_SKIP reason=$_reason state=no-socket socket=$_socket"; return 0; }
-	_webdav_unixsock_relay_ready || { rm -f "$_socket" 2>/dev/null; _speed_debug_log "CGROUP_FREEZER_DAEMON_FINAL_STOP reason=$_reason rc=127 action=unlink-no-unixsock socket=$_socket"; return 0; }
+	if [[ ! -S $_socket ]]; then
+		# r433: menu/update/list-only exit often has no cgfreezerd session at all.
+		# The old no-socket fallback still scanned /proc, and on some Android 16 builds this
+		# could block the EXIT trap before speed_debug final pack / tmpdir cleanup.
+		# Only run the expensive process sweep when this run actually started a batch
+		# cgfreezerd session, or when explicitly requested for diagnostics.
+		if [[ ${_CGROUP_FREEZER_BATCH_SESSION_ACTIVE:-0} = 1 || -n ${_CGROUP_FREEZER_BATCH_SESSION_REASON:-} || ${SPEEDBACKUP_CGROUP_FREEZER_SWEEP_ON_NO_SOCKET:-0} = 1 ]]; then
+			_speed_debug_log "CGROUP_FREEZER_DAEMON_FINAL_STOP_SKIP reason=$_reason state=no-socket socket=$_socket action=process-sweep active=${_CGROUP_FREEZER_BATCH_SESSION_ACTIVE:-0} activeReason=${_CGROUP_FREEZER_BATCH_SESSION_REASON:-} mode=r433"
+			_cgroup_freezer_daemon_process_sweep "no-socket-${_reason}" || true
+		else
+			_speed_debug_log "CGROUP_FREEZER_DAEMON_FINAL_STOP_SKIP reason=$_reason state=no-socket socket=$_socket action=skip-no-session active=0 mode=r433"
+		fi
+		return 0
+	fi
+	if ! _webdav_unixsock_relay_ready; then
+		rm -f "$_socket" 2>/dev/null
+		_speed_debug_log "CGROUP_FREEZER_DAEMON_FINAL_STOP reason=$_reason rc=127 action=unlink-no-unixsock-process-sweep socket=$_socket"
+		_cgroup_freezer_daemon_process_sweep "no-unixsock-${_reason}" || true
+		return 0
+	fi
 	_cgroup_freezer_daemon_debug_status "before_final_stop_${_reason}" || true
 	_out="$(_webdav_tmp_path cgroup_freezer_daemon_final_stop_${$}_$RANDOM)"
 	_err="${_out}.stderr"
@@ -17393,7 +17696,8 @@ _cgroup_freezer_daemon_final_stop_unlink() {
 		_i=$((_i + 1))
 	done
 	rm -f "$_socket" 2>/dev/null
-	_speed_debug_log "CGROUP_FREEZER_DAEMON_FINAL_STOP reason=$_reason rc=$_rc socket=$_socket pid=${_pid:-unknown} waitLoops=$_i aliveAfter=$_alive action=stop-unlink out=$_flat"
+	_cgroup_freezer_daemon_process_sweep "after-stop-${_reason}" || true
+	_speed_debug_log "CGROUP_FREEZER_DAEMON_FINAL_STOP reason=$_reason rc=$_rc socket=$_socket pid=${_pid:-unknown} waitLoops=$_i aliveAfter=$_alive action=stop-unlink-process-sweep out=$_flat"
 	rm -f "$_out" 2>/dev/null
 	return 0
 }
@@ -18001,10 +18305,13 @@ _restore_post_state_kill_pkg_before_thaw() {
 ' "$_after" | awk -F, '{print NF}')"
 	_speed_debug_log "RESTORE_POST_STATE_KILL_RECHECK pkg=$_pkg label=$_label reason=$_reason alive=$_recheck_cnt pids=${_after:-none} recheckMs=$_recheck_ms fastPath=$_fast mode=r334"
 	if [[ $_recheck_cnt -gt 0 ]]; then
-		if [[ $_default_home_kill = 1 && $_fast = 1 ]]; then
+		if [[ $_fast = 1 && $_default_home_kill = 1 ]]; then
 			# r334: default HOME 可能由系統立即重拉。恢復資料/AppState 後已殺掉舊 pid；
 			# 新 pid 由 r331 ProcessObserver cgroup-freeze action 接手，避免在 thaw 前進入 kill→respawn 迴圈。
 			_speed_debug_log "RESTORE_POST_STATE_DEFAULT_HOME_RESPAWN_ACCEPT pkg=$_pkg label=$_label reason=$_reason pids=${_after:-none} action=accept-post-restore-respawn observer=cgroup-freeze skipSecondKill=1 mode=r334"
+		elif [[ $_fast = 1 && $_default_ime_kill = 1 ]]; then
+			# r426: default IME 會被系統/目前輸入焦點立即重拉；AppState/SSAID 已完成後不再進第二輪 kill→respawn。
+			_speed_debug_log "RESTORE_POST_STATE_DEFAULT_IME_RESPAWN_ACCEPT pkg=$_pkg label=$_label reason=$_reason pids=${_after:-none} action=accept-post-restore-respawn observer=cgroup-freeze skipSecondKill=1 mode=r427"
 		else
 			_restore_live_guard_kill_process_snapshot "$_pkg" "$_label" "post_state_${_reason}_recheck" "$([[ $_default_home_kill = 1 ]] && echo process_only || echo auto)" 2 || true
 			_after="$(_pkg_process_pids "$_pkg" 2>/dev/null | tr '
@@ -18094,6 +18401,7 @@ _process_observer_token_state_file() {
 PROCESS_OBSERVER_BATCH_ACTIVE=0
 PROCESS_OBSERVER_BATCH_STATE=""
 PROCESS_OBSERVER_BATCH_PKGS=""
+PROCESS_OBSERVER_BATCH_SCOPE=""
 PROCESS_OBSERVER_BATCH_CAP_OK=""
 _process_observer_batch_capability_ok() {
 	case "${SPEEDBACKUP_PROCESS_OBSERVER_BATCH_CAP_GATE:-1}" in
@@ -18248,6 +18556,7 @@ _process_observer_batch_start_backup() {
 		PROCESS_OBSERVER_BATCH_ACTIVE=1
 		PROCESS_OBSERVER_BATCH_STATE="$_state"
 		PROCESS_OBSERVER_BATCH_PKGS="$_pkgs"
+		PROCESS_OBSERVER_BATCH_SCOPE="backup_batch"
 		_speed_debug_log "PROCESS_OBSERVER_BATCH_GUARD_READY started=$_started state=$_state pkgs=$_pkgs lifecycle=batch-watchset parser=r268"
 	else
 		_speed_debug_log "PROCESS_OBSERVER_BATCH_GUARD_FAIL rc=$_rc started=$_started requested=$_requested spec=$_spec parser=r268"
@@ -18256,11 +18565,355 @@ _process_observer_batch_start_backup() {
 	rm -f "$_spec" "$_out" "$_norm" 2>/dev/null
 	return 0
 }
+
+_process_observer_restore_session_enabled() {
+	case "${SPEEDBACKUP_RESTORE_GUARD_SESSION:-1}" in
+	0|false|FALSE|no|NO|off|OFF|disable|DISABLE) return 1 ;;
+	esac
+	_process_observer_guard_enabled || return 1
+	_process_observer_batch_capability_ok || return 1
+	return 0
+}
+_process_observer_restore_session_action_fast() {
+	local _pkg="$1" _home="$2" _ime="$3" _policy="${SPEEDBACKUP_PROCESS_OBSERVER_POLICY:-smart}" _action
+	[[ -n $_pkg ]] || return 1
+	# r425: restore session spec 是 100+ App 熱路徑；不能逐 App 呼叫
+	# _process_observer_action_for_pkg，避免反覆 ensure default HOME/IME。
+	case $_pkg in
+		com.tencent.mm|com.tencent.mobileqq|com.tencent.tim|com.tencent.wework|com.eg.android.AlipayGphone|com.taobao.taobao|com.ss.android.ugc.aweme|com.baidu.input*)
+			printf '%s
+' "cgroup-freeze"; return 0 ;;
+	esac
+	[[ -n $_home && $_pkg = "$_home" ]] && { printf '%s
+' "cgroup-freeze"; return 0; }
+	[[ -n $_ime && $_pkg = "$_ime" ]] && { printf '%s
+' "cgroup-freeze"; return 0; }
+	_process_observer_pkg_in_words "$_pkg" "${SPEEDBACKUP_CGROUP_FAST_SETTLE_PACKAGES:-}" && { printf '%s
+' "cgroup-freeze"; return 0; }
+	if _pkg_is_quiesce_never_pause "$_pkg"; then
+		printf '%s
+' "monitor"
+		return 0
+	fi
+	case $_policy in
+	all|full|restricted|guard-stop-restricted)
+		_action="guard-stop-restricted" ;;
+	basic|lite|force-stop|guard-stop)
+		_action="guard-stop:nologd" ;;
+	appops|guard-stop-appops)
+		_action="guard-stop-appops" ;;
+	monitor|log|none|off|disable)
+		_action="$_policy" ;;
+	smart|auto|*)
+		if _process_observer_high_risk_pkg "$_pkg"; then
+			_action="guard-stop-restricted"
+		else
+			_action="guard-stop:nologd"
+		fi ;;
+	esac
+	[[ -n ${SPEEDBACKUP_PROCESS_OBSERVER_ACTION:-} ]] && _action="$SPEEDBACKUP_PROCESS_OBSERVER_ACTION"
+	printf '%s
+' "$_action"
+}
+
+# r441: compare-map 可能是整個備份來源的全量表；單選/子集恢復時不能用全量 compare-map 建 restore session，
+# 否則會出現「恢復 1 個 app，但批量守護 117 / 高風險守護 4」的過寬守護範圍。
+_process_observer_restore_session_compare_map_scope_ok() {
+	local _cmp="$1" _stage="${2:-unknown}" _cmp_rows _sel_rows
+	case "${SPEEDBACKUP_RESTORE_GUARD_SESSION_ALLOW_WIDE_COMPARE:-0}" in
+	1|true|TRUE|yes|YES|on|ON|enable|ENABLE)
+		_speed_debug_log "RESTORE_GUARD_SESSION_COMPARE_SCOPE_WIDE_ALLOWED stage=$_stage reason=env-override mode=r441"
+		return 0
+		;;
+	esac
+	[[ -s $_cmp ]] || return 1
+	_cmp_rows="$(awk -F '	' '
+		NR==1 {next}
+		/^#/ {next}
+		NF >= 3 && $3 ~ /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+$/ {c++}
+		END {print c+0}
+	' "$_cmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	_sel_rows="$(printf '%s
+' "${txt:-}" | awk '
+		NF != 0 {c++}
+		END {print c+0}
+	' 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	case $_cmp_rows in ''|*[!0-9]*) _cmp_rows=0 ;; esac
+	case $_sel_rows in ''|*[!0-9]*) _sel_rows=0 ;; esac
+	if [[ $_sel_rows -gt 0 && $_cmp_rows -gt $_sel_rows ]]; then
+		_speed_debug_log "RESTORE_GUARD_SESSION_COMPARE_SCOPE_SKIP stage=$_stage reason=selected-subset cmpRows=$_cmp_rows selectedRows=$_sel_rows action=parse-effective-list mode=r441"
+		return 1
+	fi
+	_speed_debug_log "RESTORE_GUARD_SESSION_COMPARE_SCOPE_OK stage=$_stage cmpRows=$_cmp_rows selectedRows=$_sel_rows mode=r441"
+	return 0
+}
+
+_process_observer_restore_session_build_from_compare_map() {
+	local _spec="$1" _pkgs="$2" _cmp _tmp _pkg _label _action _log _count=0 _t0 _elapsed _home _ime
+	_t0="$(_speed_now_ms)"
+	_cmp="${TMPDIR:-/data/local/tmp}/.restore_package_compare_map.tsv"
+	[[ -s $_cmp ]] || _cmp="${SPEED_DEBUG_RUN_DIR:-}/restore_package_compare_map.tsv"
+	[[ -s $_cmp ]] || return 1
+	_process_observer_restore_session_compare_map_scope_ok "$_cmp" "tools-build-spec" || return 1
+	_tmp="${TMPDIR:-/data/local/tmp}/.restore_guard_session_compare_${$}_$RANDOM"
+	_home=""; _ime=""
+	case "${SPEEDBACKUP_CGROUP_FAST_SETTLE_DEFAULT_HOME:-1}" in 0|false|FALSE|no|NO|off|OFF|disable|DISABLE) ;; *) _default_home_pkg_ensure >/dev/null 2>&1 || true; _home="${_DEFAULT_HOME_PKG_CACHE:-}" ;; esac
+	case "${SPEEDBACKUP_CGROUP_FAST_SETTLE_DEFAULT_IME:-1}" in 0|false|FALSE|no|NO|off|OFF|disable|DISABLE) ;; *) _default_ime_pkg_ensure >/dev/null 2>&1 || true; _ime="${_DEFAULT_IME_PKG_CACHE:-}" ;; esac
+	awk -F '	' '
+		NR==1 {next}
+		/^#/ {next}
+		NF >= 3 {
+			pkg=$3; label=$2;
+			if (pkg ~ /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+$/ && !seen[pkg]++) print pkg "	" label;
+		}
+	' "$_cmp" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_tmp" 2>/dev/null; return 1; }
+	while IFS='	' read -r _pkg _label; do
+		[[ -n $_pkg ]] || continue
+		case $_pkg in bin.mt.plus|bin.mt.plus.canary|com.termux) _speed_debug_log "RESTORE_GUARD_SESSION_CANDIDATE_SKIP pkg=$_pkg label=$_label reason=self mode=r427"; continue ;; esac
+		[[ -n $_label ]] || _label="$_pkg"
+		_action="$(_process_observer_restore_session_action_fast "$_pkg" "$_home" "$_ime")"
+		case $_action in ''|none|off|disable) _speed_debug_log "RESTORE_GUARD_SESSION_CANDIDATE_SKIP pkg=$_pkg label=$_label reason=action_off source=compare_map mode=r427"; continue ;; esac
+		_log="$(_process_observer_log_path "$_pkg" "$_label" "restore_session")"
+		printf '%s	%s	%s	%s
+' "$_pkg" "$_label" "$_action" "$_log" >> "$_spec" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		printf '%s	%s
+' "$_pkg" "$_label" >> "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		_count=$((_count + 1))
+	done < "$_tmp"
+	rm -f "$_tmp" 2>/dev/null
+	[[ $_count -gt 0 ]] || return 1
+	_elapsed=$(( $(_speed_now_ms) - _t0 ))
+	_speed_debug_log "RESTORE_GUARD_SESSION_SPEC_READY count=$_count spec=$_spec pkgs=$_pkgs policy=restore-session-auto parse=compare-map-fast source=${_cmp##*/} elapsedMs=$_elapsed home=${_home:-none} ime=${_ime:-none} mode=r427"
+	return 0
+}
+
+_process_observer_restore_session_build_spec() {
+	local _spec="$1" _pkgs="$2" _line _work _name _pkg _label _action _log _count=0 _appd _pkg_token
+	: > "$_spec" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
+	: > "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
+	_process_observer_restore_session_enabled || { _speed_debug_log "RESTORE_GUARD_SESSION_SKIP reason=disabled_or_missing_capability mode=r427"; return 1; }
+	[[ -n ${txt:-} ]] || { _speed_debug_log "RESTORE_GUARD_SESSION_SKIP reason=empty_applist mode=r427"; return 1; }
+	# r424: compare map 已在恢復前建立，直接用 label/package TSV 建 session，避免逐 App jq 讀 app_details 導致守護 session 啟動卡數十秒。
+	if _process_observer_restore_session_build_from_compare_map "$_spec" "$_pkgs"; then
+		return 0
+	fi
+	while IFS= read -r _line; do
+		case $_line in ''|\#*|＃*) continue ;; esac
+		_work="$(printf '%s\n' "$_line" | sed 's/^[ 	]*//;s/[ 	]*$//')"
+		case "$_work" in
+		!play[[:space:]]*|！play[[:space:]]*)
+			_work="${_work#*!play}"; _work="${_work#*！play}"; _work="$(printf '%s\n' "$_work" | sed 's/^[ 	]*//;s/[ 	]*$//')" ;;
+		![[:space:]]*|！[[:space:]]*|!*)
+			_work="${_work#!}"; _work="${_work#！}"; _work="$(printf '%s\n' "$_work" | sed 's/^[ 	]*//;s/[ 	]*$//')" ;;
+		esac
+		_name=""; _pkg=""; _label=""
+		# r423: 遠端流式恢復的 appList_network 可能只有資料夾/顯示名稱；包名必須從已解包的 app_details_bundle stage 取得。
+		_appd="${TMPDIR:-/data/local/tmp}/.restore_stage/$_work/app_details.json"
+		if [[ -s $_appd ]] && _appdetails_json_parse_ok "$_appd"; then
+			_pkg="$(_appdetails_get_first_pkg "$_appd")"
+			_label="$(_appdetails_get_first_entry_name "$_appd")"
+			[[ -n $_label ]] || _label="$_work"
+			_name="$_label"
+		else
+			# 一般本地 appList 允許空格或 tab 分隔；包名可被括號包住。
+			_pkg_token="$(printf '%s\n' "$_work" | awk '{for(i=1;i<=NF;i++){t=$i; gsub(/^[!！(（]+/,"",t); gsub(/[)）,;]+$/,"",t); if(t ~ /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+$/){print t; exit}}}' 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+			_pkg="$_pkg_token"
+			if [[ -n $_pkg ]]; then
+				_name="$(printf '%s\n' "$_work" | awk -v p="$_pkg" '{out=""; for(i=1;i<=NF;i++){t=$i; gsub(/^[!！(（]+/,"",t); gsub(/[)）,;]+$/,"",t); if(t==p) break; out=(out?out" ":"")$i} print out}' 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+				[[ -n $_name ]] || _name="$_pkg"
+				_label="$_name"
+			fi
+		fi
+		[[ -n $_pkg ]] || { _speed_debug_log "RESTORE_GUARD_SESSION_CANDIDATE_SKIP line=$_work reason=no_pkg_or_stage_appdetails mode=r427"; continue; }
+		case $_pkg in bin.mt.plus|bin.mt.plus.canary|com.termux) _speed_debug_log "RESTORE_GUARD_SESSION_CANDIDATE_SKIP pkg=$_pkg label=$_name reason=self mode=r427"; continue ;; esac
+		[[ -n $_label ]] || _label="${_name:-$_pkg}"
+		_action="$(_process_observer_action_for_pkg "$_pkg" "restore_app_scope")"
+		case $_action in ''|none|off|disable) _speed_debug_log "RESTORE_GUARD_SESSION_CANDIDATE_SKIP pkg=$_pkg label=$_label reason=action_off mode=r427"; continue ;; esac
+		_log="$(_process_observer_log_path "$_pkg" "$_label" "restore_session")"
+		printf '%s	%s	%s	%s\n' "$_pkg" "$_label" "$_action" "$_log" >> "$_spec" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		printf '%s	%s\n' "$_pkg" "$_label" >> "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		_count=$((_count + 1))
+	done <<EOF_PROCESS_OBSERVER_RESTORE_SESSION_SPEC
+$txt
+EOF_PROCESS_OBSERVER_RESTORE_SESSION_SPEC
+	[[ $_count -gt 0 ]] || { _speed_debug_log "RESTORE_GUARD_SESSION_SKIP reason=no_restore_candidates mode=r427"; return 1; }
+	_speed_debug_log "RESTORE_GUARD_SESSION_SPEC_READY count=$_count spec=$_spec pkgs=$_pkgs policy=restore-session-auto parse=stage-or-whitespace mode=r427"
+	return 0
+}
+
+_process_observer_restore_session_direct_capability_ok() {
+	case "${SPEEDBACKUP_RESTORE_GUARD_SESSION_DIRECT_DEX:-1}" in
+	0|false|FALSE|no|NO|off|OFF|disable|DISABLE) return 1 ;;
+	esac
+	local _cap="" _out="" _in=""
+	if [[ -n ${SPEED_DEBUG_RUN_DIR:-} && -s ${SPEED_DEBUG_RUN_DIR:-}/appstate_capabilities.json ]]; then
+		_cap="${SPEED_DEBUG_RUN_DIR}/appstate_capabilities.json"
+	else
+		_in="$(_webdav_tmp_path restore_session_direct_cap_in_${$}_$RANDOM)"
+		_out="$(_webdav_tmp_path restore_session_direct_cap_out_${$}_$RANDOM)"
+		printf '{}\n' > "$_in" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+		if _root_appstate_call capabilities "$_in" "$_out" >/dev/null 2>&1 && [[ -s $_out ]]; then
+			_cap="$_out"
+		fi
+	fi
+	if [[ -s $_cap ]] && jq -e '
+		. as $root |
+		(any($root.capabilities[]?; .name == "dex.process_observer.restore_session_direct_start.v1" and .enabled == true)) and
+		(any($root.capabilities[]?; .name == "dex.process_observer.restore_session_facts_cache.v1" and .enabled == true)) and
+		(any($root.capabilities[]?; .name == "dex.process_observer.restore_action_policy_builder.v1" and .enabled == true)) and
+		(any($root.capabilities[]?; .name == "dex.process_observer.batch_stop_summary_tsv.v1" and .enabled == true))
+	' "$_cap" >/dev/null 2>&1; then
+		case "$_out" in "$TMPDIR"/*) rm -f "$_out" 2>/dev/null ;; esac
+		case "$_in" in "$TMPDIR"/*) rm -f "$_in" 2>/dev/null ;; esac
+		return 0
+	fi
+	case "$_out" in "$TMPDIR"/*) rm -f "$_out" 2>/dev/null ;; esac
+	case "$_in" in "$TMPDIR"/*) rm -f "$_in" 2>/dev/null ;; esac
+	return 1
+}
+
+_process_observer_restore_session_direct_start() {
+	local _pkgs="$1" _state="$2" _cmp _out _norm _rc _flat _started _requested _log _policy _base_policy _home_flag _ime_flag _hard_csv _facts _t0 _elapsed _facts_rows
+	_process_observer_restore_session_direct_capability_ok || return 1
+	_cmp="${TMPDIR:-/data/local/tmp}/.restore_package_compare_map.tsv"
+	[[ -s $_cmp ]] || _cmp="${SPEED_DEBUG_RUN_DIR:-}/restore_package_compare_map.tsv"
+	[[ -s $_cmp ]] || return 1
+	_process_observer_restore_session_compare_map_scope_ok "$_cmp" "dex-direct-start" || return 1
+	_t0="$(_speed_now_ms)"
+	_home_flag=1; _ime_flag=1
+	case "${SPEEDBACKUP_CGROUP_FAST_SETTLE_DEFAULT_HOME:-1}" in 0|false|FALSE|no|NO|off|OFF|disable|DISABLE) _home_flag=0 ;; esac
+	case "${SPEEDBACKUP_CGROUP_FAST_SETTLE_DEFAULT_IME:-1}" in 0|false|FALSE|no|NO|off|OFF|disable|DISABLE) _ime_flag=0 ;; esac
+	_hard_csv="$(printf '%s\n' "${SPEEDBACKUP_CGROUP_FAST_SETTLE_PACKAGES:-}" | tr ' ;' ',,' | sed 's/,,*/,/g;s/^,//;s/,$//' 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	_base_policy="${SPEEDBACKUP_PROCESS_OBSERVER_POLICY:-smart}"
+	_policy="${_base_policy};home=${_home_flag};ime=${_ime_flag}"
+	[[ -n $_hard_csv ]] && _policy="${_policy};hard=${_hard_csv}"
+	if [[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]]; then
+		_log="$SPEED_DEBUG_RUN_DIR/process_observer_restore_app_scope.log"
+		_facts="$SPEED_DEBUG_RUN_DIR/restore_session_facts.tsv"
+	else
+		_log="${TMPDIR:-/data/local/tmp}/process_observer_restore_app_scope.log"
+		_facts="${TMPDIR:-/data/local/tmp}/restore_session_facts.tsv"
+	fi
+	_out="$(_webdav_tmp_path restore_guard_session_direct_${$}_$RANDOM)"
+	_norm="$(_webdav_tmp_path restore_guard_session_direct_norm_${$}_$RANDOM)"
+	rm -f "$_pkgs" "$_state" "$_facts" 2>/dev/null
+	_speed_debug_log "RESTORE_GUARD_SESSION_DIRECT_BEGIN user=${USER_ID:-${user:-0}} compare=${_cmp##*/} pkgs=$_pkgs facts=$_facts policy=$_policy policyBuilder=dex-r430 home=dex ime=dex mode=r433"
+	dex_hiddenapi_raw processObserverRestoreSessionStart "${USER_ID:-${user:-0}}" "$_cmp" "$_pkgs" "$_policy" "$_log" "-" "-" "$_facts" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_rc=$?
+	_flat="$(tr '\n' '|' < "$_out" 2>/dev/null | cut -c1-1600)"
+	_speed_debug_log "RESTORE_GUARD_SESSION_DIRECT_SENT rc=$_rc out=$_flat"
+	tr '|' '\n' < "$_out" > "$_norm" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || cp -f "$_out" "$_norm" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	awk '
+		$1=="PROCESS_OBSERVER_BATCH_START_ITEM" {
+			token=""; pkg=""; label=""; logp=""; action=""; actionReason="";
+			for (i=2;i<=NF;i++) {
+				split($i,a,"=");
+				if (a[1]=="token") token=a[2];
+				else if (a[1]=="package") pkg=a[2];
+				else if (a[1]=="label") label=a[2];
+				else if (a[1]=="log") logp=a[2];
+				else if (a[1]=="action") action=a[2];
+				else if (a[1]=="actionReason") actionReason=a[2];
+			}
+			if (token != "" && pkg != "") print token "\t" pkg "\t" label "\tapp\trestore_app_scope\t" logp "\trestore_session\t" action "\t" actionReason;
+		}
+	' "$_norm" > "$_state" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_started="$(awk 'NF{n++} END{print n+0}' "$_state" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	_requested="$(awk 'NF{n++} END{print n+0}' "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	if [[ -s $_facts ]]; then
+		_facts_rows="$(awk 'BEGIN{n=0} /^[^#]/ && NF{n++} END{print n+0}' "$_facts" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	else
+		_facts_rows=0
+		_speed_debug_log "RESTORE_GUARD_SESSION_FACTS_MISSING path=$_facts rc=$_rc mode=r433"
+	fi
+	case $_started in ''|*[!0-9]*) _started=0 ;; esac
+	case $_requested in ''|*[!0-9]*) _requested=0 ;; esac
+	case $_facts_rows in ''|*[!0-9]*) _facts_rows=0 ;; esac
+	_elapsed=$(( $(_speed_now_ms) - _t0 ))
+	if [[ $_rc = 0 && $_started -gt 0 ]] && grep -F 'PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_START_OK' "$_out" >/dev/null 2>&1; then
+		cat "$_state" >> "$(_process_observer_token_state_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+		PROCESS_OBSERVER_BATCH_ACTIVE=1
+		PROCESS_OBSERVER_BATCH_STATE="$_state"
+		PROCESS_OBSERVER_BATCH_PKGS="$_pkgs"
+		PROCESS_OBSERVER_BATCH_SCOPE="restore_session"
+		_speed_debug_log "RESTORE_GUARD_SESSION_READY requested=$_requested started=$_started state=$_state pkgs=$_pkgs facts=$_facts factsRows=$_facts_rows lifecycle=batch-watchset policy=dex-direct-restore-session policyBuilder=dex-r430 release=bulk-post-appstate elapsedMs=$_elapsed mode=r433"
+		rm -f "$_out" "$_norm" 2>/dev/null
+		return 0
+	fi
+	_speed_debug_log "RESTORE_GUARD_SESSION_DIRECT_FALLBACK rc=$_rc requested=$_requested started=$_started factsRows=$_facts_rows elapsedMs=$_elapsed out=$_flat mode=r433"
+	rm -f "$_out" "$_norm" "$_pkgs" "$_state" 2>/dev/null
+	return 1
+}
+
+_process_observer_restore_session_start() {
+	local _spec _pkgs _state _out _norm _rc _flat _started _requested
+	_process_observer_restore_session_enabled || return 0
+	[[ ${PROCESS_OBSERVER_BATCH_ACTIVE:-0} = 1 ]] && { _speed_debug_log "RESTORE_GUARD_SESSION_SKIP reason=batch_already_active scope=${PROCESS_OBSERVER_BATCH_SCOPE:-unknown} mode=r427"; return 0; }
+	_spec="${TMPDIR:-/data/local/tmp}/.speedbackup_restore_guard_session_spec_${$}"
+	_pkgs="$(_process_observer_batch_pkgs_file)"
+	_state="$(_process_observer_batch_state_file)"
+	rm -f "$_spec" "$_pkgs" "$_state" 2>/dev/null
+	if _process_observer_restore_session_direct_start "$_pkgs" "$_state"; then
+		rm -f "$_spec" 2>/dev/null
+		return 0
+	fi
+	rm -f "$_pkgs" "$_state" 2>/dev/null
+	_process_observer_restore_session_build_spec "$_spec" "$_pkgs" || { rm -f "$_spec" "$_pkgs" "$_state" 2>/dev/null; return 0; }
+	_out="$(_webdav_tmp_path restore_guard_session_start_${$}_$RANDOM)"
+	_norm="$(_webdav_tmp_path restore_guard_session_start_norm_${$}_$RANDOM)"
+	_speed_debug_log "RESTORE_GUARD_SESSION_BEGIN user=${USER_ID:-${user:-0}} spec=$_spec state=$_state policy=tools-owner-dex-events-c-exec mode=r427"
+	dex_hiddenapi_raw processObserverBatchStart "${USER_ID:-${user:-0}}" "$_spec" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_rc=$?
+	_flat="$(tr '\n' '|' < "$_out" 2>/dev/null | cut -c1-1400)"
+	_speed_debug_log "RESTORE_GUARD_SESSION_POLICY_SENT rc=$_rc out=$_flat"
+	tr '|' '\n' < "$_out" > "$_norm" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || cp -f "$_out" "$_norm" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	awk '
+		$1=="PROCESS_OBSERVER_BATCH_START_ITEM" {
+			token=""; pkg=""; label=""; logp="";
+			for (i=2;i<=NF;i++) {
+				split($i,a,"=");
+				if (a[1]=="token") token=a[2];
+				else if (a[1]=="package") pkg=a[2];
+				else if (a[1]=="label") label=a[2];
+				else if (a[1]=="log") logp=a[2];
+			}
+			if (token != "" && pkg != "") print token "\t" pkg "\t" label "\tapp\trestore_app_scope\t" logp "\trestore_session";
+		}
+	' "$_norm" > "$_state" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_started="$(awk 'NF{n++} END{print n+0}' "$_state" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	_requested="$(awk 'NF{n++} END{print n+0}' "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	case $_started in ''|*[!0-9]*) _started=0 ;; esac
+	case $_requested in ''|*[!0-9]*) _requested=0 ;; esac
+	if [[ $_rc = 0 && $_started -gt 0 ]]; then
+		cat "$_state" >> "$(_process_observer_token_state_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+		PROCESS_OBSERVER_BATCH_ACTIVE=1
+		PROCESS_OBSERVER_BATCH_STATE="$_state"
+		PROCESS_OBSERVER_BATCH_PKGS="$_pkgs"
+		PROCESS_OBSERVER_BATCH_SCOPE="restore_session"
+		_speed_debug_log "RESTORE_GUARD_SESSION_READY requested=$_requested started=$_started state=$_state pkgs=$_pkgs lifecycle=batch-watchset policy=dex-auto-c-exec release=bulk-post-appstate mode=r427"
+	else
+		_speed_debug_log "RESTORE_GUARD_SESSION_FAIL rc=$_rc requested=$_requested started=$_started spec=$_spec out=$_flat mode=r427"
+		rm -f "$_state" "$_pkgs" 2>/dev/null
+	fi
+	rm -f "$_spec" "$_out" "$_norm" 2>/dev/null
+	return 0
+}
+
 _process_observer_batch_stop() {
-	local _reason="${1:-batch-stop}" _state="${PROCESS_OBSERVER_BATCH_STATE:-}" _pkgs="${PROCESS_OBSERVER_BATCH_PKGS:-}" _out _rc _flat _requested _stopped _recovered _missing _failed _sum
-	[[ -n $_state && -s $_state ]] || { PROCESS_OBSERVER_BATCH_ACTIVE=0; return 0; }
+	local _reason="${1:-batch-stop}" _state="${PROCESS_OBSERVER_BATCH_STATE:-}" _pkgs="${PROCESS_OBSERVER_BATCH_PKGS:-}" _out _rc _flat _requested _stopped _recovered _missing _failed _sum _summary
+	[[ -n $_state && -s $_state ]] || { PROCESS_OBSERVER_BATCH_ACTIVE=0; PROCESS_OBSERVER_BATCH_SCOPE=""; return 0; }
 	_out="$(_webdav_tmp_path process_observer_batch_stop_${$}_$RANDOM)"
-	dex_hiddenapi_raw processObserverBatchStop "$_state" "${USER_ID:-${user:-0}}" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	if [[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]]; then
+		_summary="$SPEED_DEBUG_RUN_DIR/process_observer_batch_stop_summary.tsv"
+	else
+		_summary="${TMPDIR:-/data/local/tmp}/process_observer_batch_stop_summary.tsv"
+	fi
+	rm -f "$_summary" 2>/dev/null
+	_requested="$(awk 'NF{n++} END{print n+0}' "$_state" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	case $_requested in ''|*[!0-9]*) _requested=0 ;; esac
+	[[ $_requested -gt 0 ]] && _speedbackup_progress_step 0 "$_requested" "正在解除批量喚醒守護" "process_observer_batch_stop" "107"
+	_speed_debug_log "PROCESS_OBSERVER_BATCH_STOP_BEGIN reason=$_reason requested=$_requested state=$_state summary=$_summary mode=r433"
+	dex_hiddenapi_raw processObserverBatchStop "$_state" "${USER_ID:-${user:-0}}" "$_summary" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_rc=$?
 	_flat="$(tr '\n' '|' < "$_out" 2>/dev/null | cut -c1-1400)"
 	_requested="$(printf '%s\n' "$_flat" | sed -n 's/.*requested=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
@@ -18273,7 +18926,7 @@ _process_observer_batch_stop() {
 	case $_recovered in ''|*[!0-9]*) _recovered=0 ;; esac
 	case $_missing in ''|*[!0-9]*) _missing=0 ;; esac
 	case $_failed in ''|*[!0-9]*) _failed=0 ;; esac
-	_speed_debug_log "PROCESS_OBSERVER_BATCH_STOP reason=$_reason rc=$_rc requested=$_requested stopped=$_stopped recovered=$_recovered missing=$_missing failed=$_failed out=$_flat"
+	_speed_debug_log "PROCESS_OBSERVER_BATCH_STOP reason=$_reason rc=$_rc requested=$_requested stopped=$_stopped recovered=$_recovered missing=$_missing failed=$_failed summary=$_summary out=$_flat"
 	_sum=$((_stopped + _recovered))
 	if [[ $_rc = 0 && $_requested -gt 0 && $_requested = $_sum && $_missing = 0 && $_failed = 0 ]] && grep -F 'PROCESS_OBSERVER_BATCH_STOP_OK' "$_out" >/dev/null 2>&1 && grep -F 'restoreOk=true' "$_out" >/dev/null 2>&1 && grep -F 'stateDeleted=true' "$_out" >/dev/null 2>&1; then
 		_process_observer_batch_state_prune_main "$_state" || true
@@ -18281,7 +18934,9 @@ _process_observer_batch_stop() {
 		PROCESS_OBSERVER_BATCH_ACTIVE=0
 		PROCESS_OBSERVER_BATCH_STATE=""
 		PROCESS_OBSERVER_BATCH_PKGS=""
-		_speed_debug_log "PROCESS_OBSERVER_BATCH_STOP_CLEANUP_OK reason=$_reason requested=$_requested stopped=$_stopped recovered=$_recovered stateDeleted=true mode=r296"
+		PROCESS_OBSERVER_BATCH_SCOPE=""
+		[[ $_requested -gt 0 ]] && _speedbackup_progress_step "$_requested" "$_requested" "批量喚醒守護已解除" "process_observer_batch_stop" "107"
+		_speed_debug_log "PROCESS_OBSERVER_BATCH_STOP_CLEANUP_OK reason=$_reason requested=$_requested stopped=$_stopped recovered=$_recovered stateDeleted=true summary=$_summary mode=r433"
 		return 0
 	fi
 	_speed_debug_log "PROCESS_OBSERVER_BATCH_STOP_RETAIN_STATE reason=$_reason rc=$_rc requested=$_requested stopped=$_stopped recovered=$_recovered missing=$_missing failed=$_failed state=$_state pkgs=$_pkgs stateRetained=true mode=r296"
@@ -18335,6 +18990,7 @@ _process_observer_batch_release_pkg() {
 			PROCESS_OBSERVER_BATCH_ACTIVE=0
 			PROCESS_OBSERVER_BATCH_STATE=""
 			PROCESS_OBSERVER_BATCH_PKGS=""
+			PROCESS_OBSERVER_BATCH_SCOPE=""
 		fi
 		rm -f "$_subset" "$_remain" "$_pkgtmp" "$_out" 2>/dev/null
 		_speed_debug_log "PROCESS_OBSERVER_BATCH_RELEASE_PKG_OK reason=$_reason pkg=$_pkg label=$_label requested=$_requested stopped=$_stopped recovered=$_recovered stateDeleted=true mode=r297"
@@ -19009,7 +19665,7 @@ _process_observer_start_app() {
 		PROCESS_OBSERVER_APP_LABEL="$_label"
 		PROCESS_OBSERVER_APP_STAGE="$_stage"
 		PROCESS_OBSERVER_APP_LOG=""
-		_speed_debug_log "PROCESS_OBSERVER_APP_BATCH_REUSE pkg=$_pkg label=$_label stage=$_stage lifecycle=batch-watchset action=skip-per-app-start release=per-app-r297"
+		_speed_debug_log "PROCESS_OBSERVER_APP_BATCH_REUSE pkg=$_pkg label=$_label stage=$_stage lifecycle=batch-watchset action=skip-per-app-start release=${PROCESS_OBSERVER_BATCH_SCOPE:-batch}-r422"
 		return 0
 	fi
 	if [[ -n ${PROCESS_OBSERVER_APP_TOKEN:-} && ${PROCESS_OBSERVER_APP_PKG:-} = "$_pkg" ]]; then
@@ -19206,6 +19862,13 @@ _process_observer_stop_app() {
 	PROCESS_OBSERVER_APP_LOG=""
 	if [[ -z $_token ]]; then
 		if [[ -n $_pkg ]] && _process_observer_batch_pkg_active "$_pkg"; then
+			if [[ ${PROCESS_OBSERVER_BATCH_SCOPE:-} = restore_session ]]; then
+				case $_reason in
+				restore_app_scope_done|restore_stream_fatal|app-switch-restore_app_scope)
+					_speed_debug_log "RESTORE_GUARD_SESSION_KEEP pkg=$_pkg label=$_label reason=$_reason scope=restore_session release=bulk-post-appstate mode=r427"
+					return 0 ;;
+				esac
+			fi
 			_process_observer_batch_release_pkg "$_pkg" "$_label" "$_reason" || true
 			_backup_app_quiesce_scope_cache_clear "$_pkg" "process-observer-batch-release-${_reason}" || true
 		fi
@@ -21548,15 +22211,22 @@ _pm_installer_arg() {
 }
 
 _pm_install_single() {
-	local _apk="$1" _installer="$2" _iarg _bypass="" _legacy=""
+	local _apk="$1" _installer="$2" _pkg="${3:-}" _iarg _bypass="" _legacy="" _err _rc
 	[[ -f $_apk ]] || return 1
 	_iarg="$(_pm_installer_arg "$_installer")"
 	[[ $sdk -gt 33 ]] && _bypass="--bypass-low-target-sdk-block"
 	# 與 _pm_install_create_session / _restore_install_with_hybrid_installer_pm 一致：
 	# sdk<30 (Android 9/10) 需要 -l，這裡原本漏掉，單一 apk (最常見路徑) 在舊機上會跟其他安裝路線不一致。
 	[[ $sdk -lt 30 ]] && _legacy="-l"
+	_err="${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/pm_install_stderr.log"
+	mkdir -p "${_err%/*}" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	# shellcheck disable=SC2086
-	pm install -r $_bypass --user "$user" -t $_legacy $_iarg "$_apk" >/dev/null
+	pm install -r $_bypass --user "$user" -t $_legacy $_iarg "$_apk" >/dev/null 2>>"$_err"
+	_rc=$?
+	if [[ $_rc != 0 ]]; then
+		_restore_log_install_method "${_pkg:-unknown}" "pm_install_failed" "rc=$_rc user=$user apk=${_apk##*/} stderr=pm_install_stderr.log"
+	fi
+	return "$_rc"
 }
 
 _pm_install_create_session() {
@@ -21566,6 +22236,44 @@ _pm_install_create_session() {
 	[[ $sdk -lt 30 ]] && _legacy="-l"
 	# shellcheck disable=SC2086
 	pm install-create $_bypass --user "$user" -t $_legacy $_iarg
+}
+
+_restore_pm_install_existing_for_user() {
+	# r435: install-existing 僅預設用於非 owner user。
+	# user=0 全量恢復直接走 APK install，避免每個 missing App 先做 install-existing 造成額外開銷；
+	# 需要時可用 SPEEDBACKUP_RESTORE_INSTALL_EXISTING_FOR_OWNER=1 手動打開 owner user install-existing。
+	# 非 owner user 可能只差「此 user 未啟用 package」，所以保留 r434 的 install-existing 優先路徑。
+	local _pkg="$1" _label="$2" _backup_ver="$3" _out _err _rc _t0 _elapsed _raw _cmd _ok=0
+	[[ -n $_pkg && -n ${user:-} ]] || return 1
+	_out="$TMPDIR/.pm_install_existing_${_pkg//[!a-zA-Z0-9_.-]/_}_${$}_$RANDOM.out"
+	_err="$TMPDIR/.pm_install_existing_${_pkg//[!a-zA-Z0-9_.-]/_}_${$}_$RANDOM.err"
+	_t0="$(_speed_now_ms)"
+	_restore_log_install_method "$_pkg" "pm_install_existing_try" "user=$user backupVersion=${_backup_ver:-unknown} label=$(_restore_apk_timing_field "$_label")"
+	for _cmd in pm cmd; do
+		: > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		: > "$_err" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		case $_cmd in
+			pm) pm install-existing --user "$user" "$_pkg" >"$_out" 2>"$_err" ;;
+			cmd) cmd package install-existing --user "$user" "$_pkg" >"$_out" 2>"$_err" ;;
+		esac
+		_rc=$?
+		_elapsed="$(_restore_elapsed_ms "$_t0")"
+		_raw="$(cat "$_out" "$_err" 2>/dev/null | tr '\t\r\n' '   ' | sed 's/[ ][ ]*/_/g' | cut -c1-360)"
+		_restore_log_install_method "$_pkg" "pm_install_existing_result" "cmd=$_cmd rc=$_rc elapsedMs=$_elapsed raw=${_raw:-empty}"
+		if [[ $_rc = 0 ]]; then
+			_ok=1
+			break
+		fi
+	done
+	rm -f "$_out" "$_err" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	[[ $_ok = 1 ]] || return 1
+	if _pkg_uid_map_refresh_after_install "$_pkg"; then
+		_speed_debug_log "RESTORE_INSTALL_EXISTING_OK package=$_pkg label=$(_restore_apk_timing_field "$_label") user=$user version=${RESTORE_PKG_VER:-unknown} backupVersion=${_backup_ver:-unknown} mode=r440"
+		echoRgb "已為用戶$user啟用既有安裝：$_label" "1"
+		return 0
+	fi
+	_speed_debug_log "RESTORE_INSTALL_EXISTING_VERIFY_FAIL package=$_pkg label=$(_restore_apk_timing_field "$_label") user=$user backupVersion=${_backup_ver:-unknown} mode=r440"
+	return 1
 }
 
 # 安裝 apk (含 split apk 處理), 自動繞過安裝驗證
@@ -21711,7 +22419,7 @@ installapk() {
 			1)
 				echoRgb "恢復普通apk" "2"
 				_restore_log_install_method "$name2" "pm_install" "apk=single installer=${_installer:-null}"
-				_pm_install_single "$_apk_stage"/*.apk "$_installer"
+				_pm_install_single "$_apk_stage"/*.apk "$_installer" "$name2"
 				echo_log "Apk安裝"
 				;;
 			0)
@@ -21730,7 +22438,7 @@ installapk() {
 					return 1
 				fi
 				if [[ -f $_apk_stage/nmsl.apk ]]; then
-					_pm_install_single "$_apk_stage/nmsl.apk" "$_installer"
+					_pm_install_single "$_apk_stage/nmsl.apk" "$_installer" "$name2"
 					echo_log "nmsl.apk安裝"
 				fi
 				# 用 glob 取代 find | grep -v (省 fork)
@@ -22108,6 +22816,7 @@ _speedbackup_progress_label() {
 		prepare_remote_fast_skip_map) echo "比對遠端變更" ;;
 		webdav_prepare_app_dirs) echo "WebDAV預建App遠端目錄" ;;
 		appdetails_bundle_preupload_json|remote_json_health_verify|stream_json_health_verify|nonstream_json_health_verify|post_json_health_verify|json_structure_check) echo "JSON健全度檢查" ;;
+		process_observer_batch_stop) echo "批量喚醒守護" ;;
 		restore_post_kill_before_thaw) echo "高風險App守護" ;;
 		process_observer_stop_all) echo "解除程序守護" ;;
 		uid_netblock_stop_all) echo "解除網路阻斷" ;;
@@ -22808,6 +23517,10 @@ Set_screen_pause_seconds () {
 			_display_power_volume_watcher_start || true
 		}
 	elif [[ $1 = off ]]; then
+		if _speedbackup_display_restore_should_defer_for_pack; then
+			_speedbackup_display_restore_defer_for_debug_pack "set-screen-off-before-final-debug-pack"
+			return 0
+		fi
 		if [[ ${_DISPLAY_RESTORE_DONE:-0} = 1 ]]; then
 			_speed_debug_log "DISPLAY_RESTORE_SKIP already_done=1 reason=duplicate-off-call"
 			return 0
@@ -22816,15 +23529,9 @@ Set_screen_pause_seconds () {
 			_speed_debug_log "DISPLAY_RESTORE_SKIP reason=no-active-display-session active=${_DISPLAY_TIMEOUT_ACTIVE:-0} setDisplayPowerMode=${setDisplayPowerMode:-} mode=r324"
 			return 0
 		fi
-		[[ $setDisplayPowerMode = true ]] && {
-			setDisplay 2 >/dev/null 2>&1 || true
-			input keyevent 224 >/dev/null 2>&1 || true
-			_speed_debug_log "DISPLAY_RESTORE_WAKE_FIRST mode=2 beforeWatcherStop=1 duplicateFinalSet=0"
-			_display_power_volume_watcher_stop || true
-			rm -f "$(_display_power_volume_hint_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-			_DISPLAY_POWER_VOLUME_HINT_SHOWN=0
-			echo_log "設置螢幕狀態display-on(mode=2)" "" 0
-		}
+		if [[ $setDisplayPowerMode = true ]]; then
+			_speedbackup_display_power_restore_for_final_pack "set-screen-off" || true
+		fi
 		if _display_timeout_shell_end; then
 			echo_log "由shell還原無操作息屏時間" "" 0
 			_DISPLAY_RESTORE_DONE=1
@@ -25431,6 +26138,7 @@ Restore() {
 	_restore_hybrid_installer_pm_consecutive_fail=0
 	_speedbackup_progress_hint "正在啟動批量恢復守護 session（預設瞬殺，固定高風險 App 才強凍結）" "restore_batch_guard_prewarm"
 	_cgroup_freezer_batch_daemon_ensure "restore-batch" || true
+	_process_observer_restore_session_start || true
 	_process_observer_guard_hint_once "restore-batch" || true
 	while [[ $i -le $r ]]; do
 		if [[ $remote_stream = 1 && -n $remote_type ]] && _remote_stream_fatal_active; then
@@ -25569,29 +26277,88 @@ Restore() {
 			if [[ -z $_is_installed ]]; then
 				_restore_notify_fixed_progress "$i" "$r" 25 "恢復第$i/$r：安裝APK $name1"
 				RESTORE_APK_ACTION_CONTEXT="install"
-				installapk
-				# r336: commit rc=0 只代表 installer/session 接受；安裝後必須再次查 PackageManager。
-				local _install_result="${result:-1}"
+				# r435: 非 owner user 先嘗試把已存在於其他 user/owner 的 package 啟用到目前 user。
+				# owner user 預設直接 APK install，避免大批量全量恢復時每個 missing App 多一次 pm/cmd install-existing 探測。
+				local _install_existing_used=0 _install_existing_ver="" _try_install_existing=0
 				_apk_verify_ms=0
-				if [[ $_install_result = 0 ]]; then
-					_apk_verify_start="$(_speed_now_ms)"
-					if _pkg_uid_map_refresh_after_install "$name2"; then
-						_apk_verify_ms="$(_restore_elapsed_ms "$_apk_verify_start")"
-						_is_installed=1
-						case $apk_version in ''|null|NULL|*[!0-9]*) echoRgb "全新安裝完成" "1" ;; *) echoRgb "全新安裝版本>$apk_version" "1" ;; esac
+				case ${user:-0} in
+				0) [[ ${SPEEDBACKUP_RESTORE_INSTALL_EXISTING_FOR_OWNER:-0} = 1 ]] && _try_install_existing=1 ;;
+				*) _try_install_existing=1 ;;
+				esac
+				if [[ $_try_install_existing = 1 ]] && _restore_pm_install_existing_for_user "$name2" "$name1" "$apk_version"; then
+					_install_existing_used=1
+					_install_existing_ver="${RESTORE_PKG_VER:-}"
+					_is_installed=1
+					result=0
+					RESTORE_APK_TIMING_EXTRACT_MS=0
+					RESTORE_APK_TIMING_INSTALL_MS=0
+					RESTORE_APK_TIMING_COMMIT_MS=0
+					RESTORE_APK_TIMING_TOTAL_MS=0
+					RESTORE_APK_TIMING_BYTES=0
+					_apk_verify_ms=0
+					case $apk_version in
+					''|null|NULL|*[!0-9]*) ;;
+					*)
+						case $_install_existing_ver in
+						''|null|NULL|*[!0-9]*) ;;
+						*)
+							if [[ $apk_version -gt $_install_existing_ver ]]; then
+								echoRgb "既有安裝版本$_install_existing_ver 低於備份版本$apk_version，嘗試 APK 更新" "2"
+								RESTORE_APK_ACTION_CONTEXT="update_after_install_existing"
+								installapk
+								local _upgrade_after_existing_result="${result:-1}"
+								_apk_verify_start="$(_speed_now_ms)"
+								if _pkg_uid_map_refresh_after_install "$name2"; then
+									_apk_verify_ms="$(_restore_elapsed_ms "$_apk_verify_start")"
+									_is_installed=1
+									if [[ $_upgrade_after_existing_result = 0 ]]; then
+										echoRgb "APK更新完成" "1"
+									else
+										echoRgb "APK更新失敗，但既有安裝已啟用，改用現有安裝恢復資料" "0"
+										_restore_install_issue_record "$name2" "$name1" "install_existing_then_update_failed_existing_package_used" "current=$_install_existing_ver backup=$apk_version result=$_upgrade_after_existing_result"
+									fi
+								else
+									_apk_verify_ms="$(_restore_elapsed_ms "$_apk_verify_start")"
+									_is_installed=0
+									echoRgb "既有安裝啟用後狀態消失，跳過資料/AppState恢復" "0"
+									_restore_install_issue_record "$name2" "$name1" "install_existing_then_update_package_unavailable" "current=$_install_existing_ver backup=$apk_version result=$_upgrade_after_existing_result"
+								fi
+							fi
+							;;
+						esac
+						;;
+					esac
+				fi
+				if [[ $_install_existing_used != 1 ]]; then
+					installapk
+					# r336: commit rc=0 只代表 installer/session 接受；安裝後必須再次查 PackageManager。
+					local _install_result="${result:-1}"
+					if [[ $_install_result = 0 ]]; then
+						_apk_verify_start="$(_speed_now_ms)"
+						if _pkg_uid_map_refresh_after_install "$name2"; then
+							_apk_verify_ms="$(_restore_elapsed_ms "$_apk_verify_start")"
+							_is_installed=1
+							case $apk_version in ''|null|NULL|*[!0-9]*) echoRgb "全新安裝完成" "1" ;; *) echoRgb "全新安裝版本>$apk_version" "1" ;; esac
+						else
+							_apk_verify_ms="$(_restore_elapsed_ms "$_apk_verify_start")"
+							_is_installed=0
+							result=1
+							echoRgb "APK提交成功但系統仍找不到 $name2，跳過資料/AppState恢復" "0"
+							_restore_install_issue_record "$name2" "$name1" "install_success_but_package_missing" "phase=new_install apkVersion=${apk_version:-unknown}"
+						fi
 					else
-						_apk_verify_ms="$(_restore_elapsed_ms "$_apk_verify_start")"
 						_is_installed=0
-						result=1
-						echoRgb "APK提交成功但系統仍找不到 $name2，跳過資料/AppState恢復" "0"
-						_restore_install_issue_record "$name2" "$name1" "install_success_but_package_missing" "phase=new_install apkVersion=${apk_version:-unknown}"
+						_restore_install_issue_record "$name2" "$name1" "install_failed_not_installed" "phase=new_install result=$_install_result apkVersion=${apk_version:-unknown}"
 					fi
 				else
-					_is_installed=0
-					_restore_install_issue_record "$name2" "$name1" "install_failed_not_installed" "phase=new_install result=$_install_result apkVersion=${apk_version:-unknown}"
+					_install_result=0
 				fi
 				RESTORE_APK_TIMING_VERIFY_MS="$_apk_verify_ms"
-				_restore_apk_timing_record "$name2" "$name1" "${RESTORE_APK_TIMING_BYTES:-0}" "" "${apk_version:-}" "install" "${RESTORE_APK_TIMING_EXTRACT_MS:-0}" "${RESTORE_APK_TIMING_INSTALL_MS:-0}" "${RESTORE_APK_TIMING_COMMIT_MS:-0}" "$_apk_verify_ms" "${RESTORE_APK_TIMING_TOTAL_MS:-0}" "new_install_result_${result:-$_install_result}"
+				if [[ $_install_existing_used = 1 ]]; then
+					_restore_apk_timing_record "$name2" "$name1" "${RESTORE_APK_TIMING_BYTES:-0}" "${_install_existing_ver:-}" "${apk_version:-}" "install_existing" "${RESTORE_APK_TIMING_EXTRACT_MS:-0}" "${RESTORE_APK_TIMING_INSTALL_MS:-0}" "${RESTORE_APK_TIMING_COMMIT_MS:-0}" "$_apk_verify_ms" "${RESTORE_APK_TIMING_TOTAL_MS:-0}" "new_install_existing_result_${result:-0}"
+				else
+					_restore_apk_timing_record "$name2" "$name1" "${RESTORE_APK_TIMING_BYTES:-0}" "" "${apk_version:-}" "install" "${RESTORE_APK_TIMING_EXTRACT_MS:-0}" "${RESTORE_APK_TIMING_INSTALL_MS:-0}" "${RESTORE_APK_TIMING_COMMIT_MS:-0}" "$_apk_verify_ms" "${RESTORE_APK_TIMING_TOTAL_MS:-0}" "new_install_result_${result:-$_install_result}"
+				fi
 				if [[ $_RESTORE_STREAM = 1 ]] && _remote_stream_fatal_active; then
 					_speed_debug_log "STREAM_RESTORE_ABORT_CURRENT_APP reason=remote_stream_fatal app=$name1 stage=apk_install result=${result:-}"
 					break
@@ -25757,12 +26524,31 @@ Restore() {
 						_restore_phase_timing_record "appstate_queue" "$_restore_appstate_phase_t0" "$name1" "$name2" "result=queued" "0"
 					fi
 					_restore_guard_final_t0="$(_speed_now_ms)"
-					_restore_live_guard_scope_final_pkg "$name2" "$name1" "restore_app_scope_done" || true
-					_restore_procwait_pkg_gone "$name2" 700 120 "restore_live_guard_final" "${user:-${USER_ID:-0}}" >/dev/null 2>&1 || true
+					_restore_guard_final_detail="procwait=pkg-gone"
+					if [[ ${PROCESS_OBSERVER_BATCH_SCOPE:-} = restore_session ]] && _process_observer_batch_pkg_active "$name2"; then
+						case "${SPEEDBACKUP_RESTORE_SESSION_PER_APP_FINAL_CHECK:-0}" in
+						1|true|TRUE|yes|YES|on|ON|enable|ENABLE)
+							_restore_live_guard_scope_final_pkg "$name2" "$name1" "restore_app_scope_done" || true
+							case "${SPEEDBACKUP_RESTORE_SESSION_PER_APP_PROCWAIT:-0}" in
+							1|true|TRUE|yes|YES|on|ON|enable|ENABLE)
+								_restore_procwait_pkg_gone "$name2" 700 120 "restore_live_guard_final" "${user:-${USER_ID:-0}}" >/dev/null 2>&1 || true
+								_restore_guard_final_detail="session-keep-final-check-procwait=pkg-gone" ;;
+							*)
+								_speed_debug_log "RESTORE_GUARD_SESSION_APP_PROCWAIT_SKIP pkg=$name2 label=$name1 reason=restore_app_scope_done release=bulk-post-appstate mode=r433"
+								_restore_guard_final_detail="session-keep-final-check-skip-procwait" ;;
+							esac ;;
+						*)
+							_speed_debug_log "RESTORE_GUARD_SESSION_APP_FINAL_CHECK_SKIP pkg=$name2 label=$name1 reason=restore_app_scope_done release=bulk-post-appstate policy=batch-session-covers-wake mode=r433"
+							_restore_guard_final_detail="session-keep-skip-final-check" ;;
+						esac
+					else
+						_restore_live_guard_scope_final_pkg "$name2" "$name1" "restore_app_scope_done" || true
+						_restore_procwait_pkg_gone "$name2" 700 120 "restore_live_guard_final" "${user:-${USER_ID:-0}}" >/dev/null 2>&1 || true
+					fi
 					_process_observer_stop_app "restore_app_scope_done" || true
 					_uid_netblock_stop_app "restore_app_scope_done" || true
 					_cgroup_freezer_stop_app "restore_app_scope_done" || true
-					_restore_phase_timing_record "guard_final_release" "$_restore_guard_final_t0" "$name1" "$name2" "procwait=pkg-gone" "0"
+					_restore_phase_timing_record "guard_final_release" "$_restore_guard_final_t0" "$name1" "$name2" "$_restore_guard_final_detail" "0"
 					_live_app_resume_paused
 					}
 				fi
@@ -25785,7 +26571,7 @@ Restore() {
 			# 應用迴圈結束後立刻批量寫入權限/AppOps/電池設定。
 			# 不可拖到 Media/自訂資料夾恢復之後；大檔流式 Media 可能被使用者中斷，
 			# 若此時尚未 flush，整批應用權限就會停留在暫存佇列，實際沒有套用。
-			_speedbackup_progress_hint "開始批量恢復權限/AppOps/電池/SSAID，普通 App 已釋放守護，高風險 App 保持守護" "restore_post_appstate_begin"
+			_speedbackup_progress_hint "開始批量恢復權限/AppOps/電池/SSAID，恢復守護 session 將在批量處理後統一釋放" "restore_post_appstate_begin"
 			flush_batch_appstate
 			_restore_post_state_guard_stop_all "restore_post_appstate_done" || true
 			_RESTORE_PRESERVE_BATCH_QUEUE=0

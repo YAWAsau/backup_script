@@ -48,7 +48,7 @@ import java.lang.reflect.Method;
 import dev.rikka.tools.refine.Refine;
 
 public class HiddenApiUtil {
-    static final String VERSION = "v2.6.189-r413-full-event-dex-cfacts build=v24.20.14-7.66-836-full-event-dex-cfacts-r413-202607232022";
+    static final String VERSION = "v2.6.197-r432-dex-restore-session-facts-argv-compilefix build=v24.20.14-7.66-855-dex-restore-session-facts-argv-compilefix-r432-202607232022";
     /**
      * 單 JVM 批量命令期間的輕量快取。只快取系統層級固定資料或同一輪已讀 package metadata；
      * 不跨 JVM、不落檔，避免一致性風險。
@@ -126,7 +126,7 @@ public class HiddenApiUtil {
         System.out.println("  cgroupFreezeRestorePackage USER_ID PACKAGE  依 package 還原 cgroup freezer persistent state");
         System.out.println("  cgroupFreezeRestoreAll [REASON]  還原所有 cgroup freezer persistent state");
         System.out.println("  cgroupFreezeCleanupStale [REASON] [TTL_MS]  還原並清理過期 cgroup freezer persistent state");
-        System.out.println("  daemon-only commands: getPackageUid / appInventoryPkgUid / appInventoryPackageStatus / appInventoryPackageStatusBatch / appInventoryPackageFactsBatch / appInventoryPostInstallFactsBatch / appKillGuard / appWakeBlockStart / appWakeBlockStop / appWakeBlockStatus / appWakeBlockHold / appWakeBlockRestoreObserverToken / appWakeBlockRestorePackage / appWakeBlockRestoreAll / appWakeBlockCleanupStale / uidNetBlockStart / uidNetBlockStop / uidNetBlockStatus / uidNetBlockRestorePackage / uidNetBlockRestoreAll / uidNetBlockCleanupStale / uidNetBlockProbe / cgroupFreezeStart / cgroupFreezeStop / cgroupFreezeStatus / cgroupFreezeDaemonEnsure / cgroupFreezeRestorePackage / cgroupFreezeRestoreAll / cgroupFreezeCleanupStale / processObserverWatch / processObserverStart / processObserverStop / processObserverBatchStart / processObserverBatchStop / processObserverStatus / processObserverTop / processObserverForeground / uidLiveState / uidObserverProbe / uidObserverWatch / packageLiveState / packageInstallSnapshot / packageRestrictionSnapshot / forceStopPackageVerify / hiddenApiRuntimeProbe / getInstallSourceInfo / installSessionCreate / installSessionCommit / forceStopPackageBatch");
+        System.out.println("  daemon-only commands: getPackageUid / appInventoryPkgUid / appInventoryPackageStatus / appInventoryPackageStatusBatch / appInventoryPackageFactsBatch / appInventoryPostInstallFactsBatch / appKillGuard / appWakeBlockStart / appWakeBlockStop / appWakeBlockStatus / appWakeBlockHold / appWakeBlockRestoreObserverToken / appWakeBlockRestorePackage / appWakeBlockRestoreAll / appWakeBlockCleanupStale / uidNetBlockStart / uidNetBlockStop / uidNetBlockStatus / uidNetBlockRestorePackage / uidNetBlockRestoreAll / uidNetBlockCleanupStale / uidNetBlockProbe / cgroupFreezeStart / cgroupFreezeStop / cgroupFreezeStatus / cgroupFreezeDaemonEnsure / cgroupFreezeRestorePackage / cgroupFreezeRestoreAll / cgroupFreezeCleanupStale / processObserverWatch / processObserverStart / processObserverStop / processObserverBatchStart / processObserverBatchStop / processObserverRestoreSessionStart / processObserverStatus / processObserverTop / processObserverForeground / uidLiveState / uidObserverProbe / uidObserverWatch / packageLiveState / packageInstallSnapshot / packageRestrictionSnapshot / forceStopPackageVerify / hiddenApiRuntimeProbe / getInstallSourceInfo / installSessionCreate / installSessionCommit / forceStopPackageBatch");
         System.out.println("    上述熱路徑只能透過 HiddenApi daemon socket 呼叫，不再提供單次 app_process CLI fallback");
         System.out.println();
         System.out.println("  getInstalledPackagesAsUser USER_ID FILTER_FLAG(user|system|xposed) FORMAT(label|pkgName|flag)  取得安裝清單");
@@ -150,7 +150,8 @@ public class HiddenApiUtil {
         System.out.println("  processObserverStart USER_ID PACKAGE [monitor|cgroup-freeze|stop-app|guard-stop|guard-stop-appops|guard-stop-restricted|kill|kill-stop|guard-kill|guard-kill-restricted] [LOG_PATH]  daemon 內新增 global observer target；正式 tools app lifecycle 使用，Stop 時自動恢復 wake-block");
         System.out.println("  processObserverStop TOKEN  停止 daemon 內 process observer");
         System.out.println("  processObserverBatchStart USER_ID SPEC_FILE  從 tab spec 一次新增多個 process observer target，降低 per-app root/unixsock round-trip");
-        System.out.println("  processObserverBatchStop STATE_FILE [USER_ID]  依 tools 保存的 batch token state 一次停止多個 observer target");
+        System.out.println("  processObserverBatchStop STATE_FILE [USER_ID] [SUMMARY_OUT]  依 tools 保存的 batch token state 一次停止多個 observer target，可輸出每 package summary TSV");
+        System.out.println("  processObserverRestoreSessionStart USER_ID COMPARE_MAP PKGS_OUT [POLICY] [LOG_PATH] [HOME_PKG] [IME_PKG] [FACTS_OUT]  Dex 直接從恢復 compare map 建立 restore guard session，輸出 facts cache，跳過 shell 逐 App spec builder");
         System.out.println("  processObserverStatus  列出 daemon 內 process observer 狀態");
         System.out.println("  processObserverTop USER_ID  直接查 IActivityTaskManager TOP，不跑 dumpsys，不接管 planner");
         System.out.println("  processObserverForeground USER_ID PACKAGE [PACKAGE...]  輸出 top/alive/active 狀態，不接管 backup/restore decision");
@@ -240,6 +241,9 @@ public class HiddenApiUtil {
                 break;
             case "processObserverBatchStop":
                 processObserverBatchStop(args);
+                break;
+            case "processObserverRestoreSessionStart":
+                processObserverRestoreSessionStart(args);
                 break;
             case "processObserverStatus":
                 processObserverStatus();
@@ -518,6 +522,9 @@ public class HiddenApiUtil {
         }
         if ("processObserverBatchStop".equals(command)) {
             return processObserverBatchStopDaemonCommand(cmdArgs);
+        }
+        if ("processObserverRestoreSessionStart".equals(command)) {
+            return processObserverRestoreSessionStartDaemonCommand(cmdArgs);
         }
         if ("processObserverStatus".equals(command)) {
             return new DaemonRunResult(0, ProcessObserverUtil.status());
@@ -2084,7 +2091,22 @@ public class HiddenApiUtil {
     private static void processObserverBatchStop(String[] args) {
         String statePath = argAt(args, 1);
         int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
-        System.out.print(ProcessObserverUtil.stopBatchAsync(statePath, expectedUser));
+        String summaryPath = args != null && args.length > 3 ? argAt(args, 3) : "";
+        System.out.print(ProcessObserverUtil.stopBatchAsync(statePath, expectedUser, summaryPath));
+        System.exit(0);
+    }
+
+
+    private static void processObserverRestoreSessionStart(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String compareMap = argAt(args, 2);
+        String pkgsOut = argAt(args, 3);
+        String policy = args != null && args.length > 4 ? argAt(args, 4) : "smart";
+        String logPath = args != null && args.length > 5 ? argAt(args, 5) : "-";
+        String homePkg = args != null && args.length > 6 ? argAt(args, 6) : "";
+        String imePkg = args != null && args.length > 7 ? argAt(args, 7) : "";
+        String factsOut = args != null && args.length > 8 ? argAt(args, 8) : "";
+        System.out.print(ProcessObserverUtil.startRestoreSessionFromCompareMap(userId, compareMap, pkgsOut, policy, logPath, homePkg, imePkg, factsOut));
         System.exit(0);
     }
 
@@ -2211,8 +2233,24 @@ public class HiddenApiUtil {
     private static DaemonRunResult processObserverBatchStopDaemonCommand(String[] args) {
         String statePath = argAt(args, 1);
         int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
-        String out = ProcessObserverUtil.stopBatchAsync(statePath, expectedUser);
+        String summaryPath = args != null && args.length > 3 ? argAt(args, 3) : "";
+        String out = ProcessObserverUtil.stopBatchAsync(statePath, expectedUser, summaryPath);
         int rc = (out.contains("PROCESS_OBSERVER_BATCH_STOP_OK") && out.contains("ok=true") && out.contains("restoreOk=true") && out.contains("stateDeleted=true")) ? 0 : 1;
+        return new DaemonRunResult(rc, out);
+    }
+
+
+    private static DaemonRunResult processObserverRestoreSessionStartDaemonCommand(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String compareMap = argAt(args, 2);
+        String pkgsOut = argAt(args, 3);
+        String policy = args != null && args.length > 4 ? argAt(args, 4) : "smart";
+        String logPath = args != null && args.length > 5 ? argAt(args, 5) : "-";
+        String homePkg = args != null && args.length > 6 ? argAt(args, 6) : "";
+        String imePkg = args != null && args.length > 7 ? argAt(args, 7) : "";
+        String factsOut = args != null && args.length > 8 ? argAt(args, 8) : "";
+        String out = ProcessObserverUtil.startRestoreSessionFromCompareMap(userId, compareMap, pkgsOut, policy, logPath, homePkg, imePkg, factsOut);
+        int rc = out.contains("PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_START_OK") ? 0 : 1;
         return new DaemonRunResult(rc, out);
     }
 
