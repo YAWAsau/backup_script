@@ -11,14 +11,14 @@ shell_language="zh-TW"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202608291752"
+backup_version="202608300330"
 # 固定用 GitHub release tag 作為線上更新比較基準；不要用每日 rebuild 日期，避免本地開發版被誤判舊版。
 speedbackup_release_tag="202607232022"
-speedbackup_patch_build="v24.20.14-7.66-900-dexcheck-section-log-r477-202607232022"
+speedbackup_patch_build="v24.20.14-7.66-907-update-external-inbox-target-guard-r484-202607232022"
 # r222: 延續 r217/r219/r220 外科手術線；一次收斂 audit 剩餘低/中風險項目。
 # r222: WebDAV/SMB 只抽 UI/progress/fixed-items/filelist facade，不合併協議核心；JSON 只抽底層 helper，不改 app_details schema。
 # r222: Dex 不接管 JSON / app_details / 備份恢復規劃；C 只吃批量檔案事實操作；cgfreezerd 不動。
-SPEEDBACKUP_CGROUP_FREEZER_REQUIRED_CAPS="cgroup-v2-uid-root-fallback freeze-package-single-request-v1 kill-package-live-rescan-v1 pidfd-signal-optional-v1 cgroup-kill-fastpath-v1 thaw-uid-emergency-v1 daemon-parent-control-v1 daemon-stats-v1 batch-pid-list-v1"
+SPEEDBACKUP_CGROUP_FREEZER_REQUIRED_CAPS="cgroup-v2-uid-root-fallback freeze-package-single-request-v1 kill-package-live-rescan-v1 pidfd-signal-optional-v1 cgroup-kill-fastpath-v1 thaw-uid-emergency-v1 daemon-parent-control-v1 daemon-stats-v1 batch-pid-list-v1 cgroup-wchan-confirm-v1"
 # mksh/管線/command substitution 情境下，$$ 不一定是目前實際 shell process。
 # WebDAV daemon owner watch 必須綁真正執行 tools.sh 的 process，否則 owner 誤判死亡會讓 daemon 每次 request 後退出。
 _SPEEDBACKUP_SELF_PID=""
@@ -5744,10 +5744,10 @@ SPEEDBACKUP_TOOL_SHA_VERIFIED=""
 _speedbackup_tool_sha_table() {
 	cat <<'SB_TOOL_SHA_TABLE'
 busybox 4d60ab3f5a59ebb2ca863f2f514e6924401b581e9b64f602665c008177626651
-cgfreezer d93dc0b48855b3c6ef59af356c784cafcf4201b10ad06444ca5ebbd33c69e8d0
-classes.dex dfd662c28b1307c6d704562181cbb0ee7b486cd3ff94ee424181fd6cb079375d
+cgfreezer c23f9078860b7e9f89a342340b3f84cc59ba8df32cd7a4edb169c1fc20f3ef20
+classes.dex 65aae0f4e77efcc813062c7639d36bf4f9a57e2dec3e782520951cc4d8832e2b
 cmd 08da8ac23b6e99788fd3ce6c19c7b5a083b2ad48be35963a48d01d6ee7f3bb6d
-dex_check.sh 6ac409fec7a1fa0b0a766d488b28e2da20a1a745813fdf1819c444d7b68e633a
+dex_check.sh 236e43228cdb4da04752ac0800abf8812737479eb2bf19dc2c0c4006e8f22c4b
 eventwait 259059d2b274eb8c29814ee9900d6ec0f44d70a2cd71ac577a9f05c3a6b1b0c5
 filewatch 5d68e29180c8c791f4e531f8e6a39ef6689dfa2ea1e0c17e837770375588c4e5
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
@@ -5826,8 +5826,8 @@ quit=0
 while read -r file expected_hash; do
 	_speedbackup_tool_is_startup_core "$file" || { _speed_debug_log "STARTUP_SHA_DEFER file=$file"; continue; }
 	if [[ -f $tools_path/$file ]]; then
-		if [[ $file = classes.dex && $expected_hash = VERSION_ONLY ]]; then
-			_speed_debug_log "STARTUP_SHA_VERSION_ONLY file=$file"
+		if [[ $expected_hash = VERSION_ONLY ]]; then
+			_speed_debug_log "STARTUP_SHA_VERSION_ONLY file=$file reason=local-build-capability-gated"
 			_speedbackup_tool_mark_verified "$file"
 			continue
 		fi
@@ -13547,6 +13547,8 @@ _appstate_capabilities_missing_summary() {
 			"dex.app_inventory.package_status.single.v1",
 			"dex.app_inventory.getlist_onecall.v1",
 			"dex.app_inventory.package_facts.batch.v1",
+			"dex.pm.pre_restore_package_state.batch.v1",
+			"dex.pm.installer_context_facts.v1",
 			"dex.pm.post_install_facts_batch.v1",
 			"dex.settings.exec_shim.v1",
 			"dex.pm.visible_after_install.v1",
@@ -13656,6 +13658,8 @@ _dex_capabilities_contract_ok() {
 			"dex.app_inventory.package_status.single.v1",
 			"dex.app_inventory.getlist_onecall.v1",
 			"dex.app_inventory.package_facts.batch.v1",
+			"dex.pm.pre_restore_package_state.batch.v1",
+			"dex.pm.installer_context_facts.v1",
 			"dex.pm.post_install_facts_batch.v1",
 			"dex.settings.exec_shim.v1",
 			"dex.pm.visible_after_install.v1",
@@ -14788,6 +14792,27 @@ _sb_update_is_backup_root() {
 	return 1
 }
 
+_sb_update_path_is_external_inbox() {
+	# r484: Download/QQ file_recv are update-package inboxes only; never treat them as update targets.
+	# pwd -P on Android may expose /storage, /mnt/*/emulated, /mnt/user/*/primary, or /data/media forms.
+	local _d="$1"
+	case "$_d" in
+		/storage/emulated/[0-9]*/Download|/sdcard/Download|/storage/self/primary/Download|/mnt/sdcard/Download|/data/media/[0-9]*/Download)
+			return 0 ;;
+		/mnt/user/[0-9]*/primary/Download|/mnt/runtime/*/emulated/[0-9]*/Download|/mnt/pass_through/*/emulated/[0-9]*/Download|/mnt/installer/*/emulated/[0-9]*/Download)
+			return 0 ;;
+		/storage/emulated/[0-9]*/Android/data/com.tencent.mobileqq/Tencent/QQfile_recv|/sdcard/Android/data/com.tencent.mobileqq/Tencent/QQfile_recv|/storage/self/primary/Android/data/com.tencent.mobileqq/Tencent/QQfile_recv|/data/media/[0-9]*/Android/data/com.tencent.mobileqq/Tencent/QQfile_recv)
+			return 0 ;;
+		/mnt/user/[0-9]*/primary/Android/data/com.tencent.mobileqq/Tencent/QQfile_recv|/mnt/runtime/*/emulated/[0-9]*/Android/data/com.tencent.mobileqq/Tencent/QQfile_recv|/mnt/pass_through/*/emulated/[0-9]*/Android/data/com.tencent.mobileqq/Tencent/QQfile_recv|/mnt/installer/*/emulated/[0-9]*/Android/data/com.tencent.mobileqq/Tencent/QQfile_recv)
+			return 0 ;;
+	esac
+	return 1
+}
+
+_sb_update_target_is_external_inbox() {
+	_sb_update_path_is_external_inbox "$1"
+}
+
 _sb_update_report_line() {
 	local _report="$1"; shift
 	printf '%s\n' "$*" >> "$_report" 2>/dev/null
@@ -14795,36 +14820,50 @@ _sb_update_report_line() {
 
 _sb_update_collect_targets() {
 	# $1=zip_dir, $2=targets_file
-	local _zip_dir="$1" _targets="$2" _main="" _backup="" _parent="" _br
+	local _zip_dir="$1" _targets="$2" _main="" _backup="" _parent="" _br _external_inbox=0
 	: > "$_targets" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
-	# 若更新包放在單 app 目錄，避免誤動；提示回到 Backup_zstd_X 或主根。
-	if [[ -f $_zip_dir/app_details.json || -f $_zip_dir/app_details ]]; then
-		_parent="${_zip_dir%/*}"
-		printf '%s\t%s\n' "abort_app_dir" "$_parent" >> "$_targets"
-		return 0
-	fi
-	if _sb_update_is_backup_root "$_zip_dir"; then
-		_backup="$_zip_dir"
-		printf '%s\t%s\n' "backup" "$_backup" >> "$_targets"
-		_parent="${_backup%/*}"
-		if [[ -d $_parent/tools || -f $_parent/start.sh ]]; then
-			printf '%s\t%s\n' "main_parent" "$_parent" >> "$_targets"
+	_sb_update_path_is_external_inbox "$_zip_dir" && _external_inbox=1
+	# r484: Download/QQ file_recv may contain unrelated Tools/tools/start.sh; they are sources only, not roots.
+	# Therefore app-dir / backup-root / direct-main detection from zip_dir is disabled for these inboxes.
+	if [[ $_external_inbox != 1 ]]; then
+		# 若更新包放在單 app 目錄，避免誤動；提示回到 Backup_zstd_X 或主根。
+		if [[ -f $_zip_dir/app_details.json || -f $_zip_dir/app_details ]]; then
+			_parent="${_zip_dir%/*}"
+			printf '%s\t%s\n' "abort_app_dir" "$_parent" >> "$_targets"
+			return 0
 		fi
-		return 0
+		if _sb_update_is_backup_root "$_zip_dir"; then
+			_backup="$_zip_dir"
+			printf '%s\t%s\n' "backup" "$_backup" >> "$_targets"
+			_parent="${_backup%/*}"
+			if [[ -d $_parent/tools || -f $_parent/start.sh ]]; then
+				printf '%s\t%s\n' "main_parent" "$_parent" >> "$_targets"
+			fi
+			return 0
+		fi
+		if [[ -d $_zip_dir/tools || -f $_zip_dir/start.sh || -f $_zip_dir/backup_settings.conf ]]; then
+			_main="$_zip_dir"
+		fi
 	fi
-	# 更新包放在主根，或 Download/QQ 由主流程傳入時，優先使用 path_hierarchy。
-	if [[ -d $_zip_dir/tools || -f $_zip_dir/start.sh || -f $_zip_dir/backup_settings.conf ]]; then
-		_main="$_zip_dir"
-	elif [[ -n $path_hierarchy && -d $path_hierarchy/tools ]]; then
+	# 更新包放在 Download/QQ 收件匣時，必須回到目前執行中的主根；不可用 zip_dir。
+	if [[ -z $_main && -n $path_hierarchy && -d $path_hierarchy/tools ]]; then
 		_main="$path_hierarchy"
-	elif [[ -n $MODDIR && -d $MODDIR/tools ]]; then
+	elif [[ -z $_main && -n $MODDIR && -d $MODDIR/tools ]]; then
 		_main="$MODDIR"
+	fi
+	if [[ -n $_main ]] && _sb_update_target_is_external_inbox "$_main"; then
+		_speed_debug_log "UPDATE_TARGET_REJECT_EXTERNAL_INBOX zipDir=$_zip_dir main=$_main reason=external_inbox_must_not_be_target mode=r484"
+		return 1
 	fi
 	[[ -z $_main || ! -d $_main ]] && return 1
 	printf '%s\t%s\n' "main" "$_main" >> "$_targets"
 	find "$_main" -maxdepth 1 -type d -name 'Backup_*' 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | while read -r _br; do
 		[[ -z $_br || $_br = "$_main" ]] && continue
 		[[ -d $_br/tools || -f $_br/restore_settings.conf || -f $_br/app_details.json ]] || continue
+		if _sb_update_target_is_external_inbox "$_br"; then
+			_speed_debug_log "UPDATE_EMBEDDED_TARGET_SKIP_EXTERNAL_INBOX target=$_br mode=r484"
+			continue
+		fi
 		printf '%s\t%s\n' "embedded" "$_br" >> "$_targets"
 	done
 	return 0
@@ -15260,6 +15299,16 @@ update_script() {
 		return 1
 	}
 	_sb_update_report_line "$_report" "Targets: $_target_count"
+	while IFS='	' read -r _kind _target; do
+		[[ -z $_kind || -z $_target ]] && continue
+		if _sb_update_target_is_external_inbox "$_target"; then
+			_sb_update_report_line "$_report" "Result: FAIL unsafe external inbox target=$_target"
+			_sb_update_write_state "$_state" "fail_unsafe_external_inbox_target" "$_from" "$_to" "$_target_count" 0 true
+			_sb_update_cleanup_workspace "$_update_dir" "$_report" "$_state" "fail_unsafe_external_inbox_target"
+			echoRgb "更新失敗: 拒絕把 Download/QQ 收件目錄當更新目標，已保護外部 Tools 目錄" "0"
+			return 1
+		fi
+	done < "$_targets"
 	while IFS='	' read -r _kind _target; do
 		[[ -z $_kind || -z $_target ]] && continue
 		_sb_update_backup_target_for_rollback "$_target" "$_rollback" || true
@@ -16138,6 +16187,33 @@ _app_inventory_package_facts_batch_call() {
 	return 1
 }
 
+_app_inventory_pre_restore_package_state_batch_call() {
+	local _pkgfile="$1" _refresh="${2:-refresh}" _body _out _rc
+	[[ -s $_pkgfile ]] || return 1
+	_body="$(_webdav_tmp_path root_prerestore_pkgstate_args)"
+	_out="$(_webdav_tmp_path root_prerestore_pkgstate_out)"
+	{
+		printf '%s\n' "${USER_ID:-${user:-0}}"
+		cat "$_pkgfile" 2>/dev/null
+		[[ -n $_refresh ]] && printf '%s\n' "$_refresh"
+	} > "$_body"
+	_root_daemon_call_file_hot hiddenapi preRestorePackageStateBatch "$_body" "$_out"
+	_rc=$?
+	if [[ $_rc = 125 ]]; then
+		_speed_debug_log "PRE_RESTORE_PACKAGE_STATE_BATCH_ROOT_DAEMON_FALLBACK count=$(wc -l < "$_pkgfile" 2>/dev/null)"
+		_dex_raw com.xayah.dex.HiddenApiUtil preRestorePackageStateBatch "${USER_ID:-${user:-0}}" $(cat "$_pkgfile" 2>/dev/null) $_refresh > "$_out"
+		_rc=$?
+	fi
+	if [[ $_rc = 0 ]] && grep -Fqx '#schema	speedbackup.pre_restore_package_state.v1' "$_out" 2>/dev/null; then
+		cat "$_out" 2>/dev/null
+		rm -f "$_body" "$_out" 2>/dev/null
+		return 0
+	fi
+	cat "$_out" 2>/dev/null
+	rm -f "$_body" "$_out" 2>/dev/null
+	return 1
+}
+
 _restore_framework_facts_prefetch() {
 	local _body _out _rc _role_ok=0 _storage_ok=0 _volume_ok=0 _homeime_ok=0 _t0 _elapsed _rows _target_path
 	_t0="$(_speed_now_ms)"
@@ -16384,7 +16460,14 @@ _restore_package_facts_prefetch() {
 	_count="$(wc -l < "$_pkglist" 2>/dev/null | tr -d ' ')"; case $_count in ''|*[!0-9]*) _count=0 ;; esac
 	[[ $_count -gt 0 ]] || { rm -f "$_pkglist" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; return 1; }
 	_t0="$(_speed_now_ms)"
-	if _app_inventory_package_facts_batch_call "$_pkglist" refresh > "$_facts" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+	local _facts_source
+	_facts_source="preRestorePackageStateBatch"
+	if ! _app_inventory_pre_restore_package_state_batch_call "$_pkglist" refresh > "$_facts" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+		_speed_debug_log "PRE_RESTORE_PACKAGE_STATE_BATCH_FAIL requested=$_count mode=r481 fallback=appInventoryPackageFactsBatch"
+		_facts_source="appInventoryPackageFactsBatch"
+		_app_inventory_package_facts_batch_call "$_pkglist" refresh > "$_facts" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	fi
+	if [[ -s $_facts ]] && { grep -Fqx '#schema	speedbackup.pre_restore_package_state.v1' "$_facts" 2>/dev/null || grep -Fqx '#schema	speedbackup.pm_facts.v1' "$_facts" 2>/dev/null; }; then
 		_ok="$(awk -F '\t' '$1=="OK" && $3=="true"{c++} END{print c+0}' "$_facts" 2>/dev/null)"
 		_missing="$(awk -F '\t' '$1!="#schema" && $1!="#fields" && $1!="OK"{c++} END{print c+0}' "$_facts" 2>/dev/null)"
 		_facts_total="$(awk -F '\t' '$1!="#schema" && $1!="#fields"{c++} END{print c+0}' "$_facts" 2>/dev/null)"
@@ -16394,7 +16477,7 @@ _restore_package_facts_prefetch() {
 		_eventwait_output_files_stable_ms restore_package_facts_maps_ready 50 1200 "$_facts" "$TMPDIR/.installed_pkgs" "$TMPDIR/.pkg_uid" "$TMPDIR/.pkg_ver" >/dev/null 2>&1 || true
 		_elapsed="$(( $(_speed_now_ms) - _t0 ))"
 		[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f "$_facts" "$SPEED_DEBUG_RUN_DIR/package_facts_map.tsv" 2>/dev/null || true
-		_speed_debug_log "RESTORE_PACKAGE_FACTS_PREFETCH_OK requested=$_count factsTotal=${_facts_total:-0} selected=${_selected:-0} installed=${_ok:-0} missing=${_missing:-0} elapsedMs=$_elapsed mode=r386 source=appInventoryPackageFactsBatch"
+		_speed_debug_log "RESTORE_PACKAGE_FACTS_PREFETCH_OK requested=$_count factsTotal=${_facts_total:-0} selected=${_selected:-0} installed=${_ok:-0} missing=${_missing:-0} elapsedMs=$_elapsed mode=r481 source=${_facts_source:-unknown}"
 		_restore_package_compare_build "${TMPDIR:-/data/local/tmp}/.restore_stage" "$_selected" || _speed_debug_log "RESTORE_PACKAGE_COMPARE_MAP_SKIP reason=build_failed selected=${_selected:-0} mode=r386"
 		rm -f "$_pkglist" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		return 0
@@ -16415,6 +16498,7 @@ _restore_package_status_from_facts_cache() {
 $_row
 EOF
 	RESTORE_PKG_INSTALLED="$_installed"
+	RESTORE_PKG_PREINSTALLED="$_installed"
 	RESTORE_PKG_UID="$_uid"
 	RESTORE_PKG_VER="$_ver"
 	RESTORE_PKG_USER_DATA_EXISTS="$_ud"
@@ -16424,11 +16508,11 @@ EOF
 		_installed_map_set_one "$_pkg" || true
 		case $_uid in ''|*[!0-9]*) ;; *) _pkg_uid_map_set_one "$_pkg" "$_uid" || true ;; esac
 		case $_ver in ''|*[!0-9]*) ;; *) _pkg_ver_map_set_one "$_pkg" "$_ver" || true ;; esac
-		_speed_debug_log "RESTORE_PACKAGE_STATUS_OK package=$_pkg installed=true uid=${_uid:-NA} version=${_ver:-NA} userData=$_ud userDe=$_de reason=$_reason source=package_facts_cache-r386 status=$_status"
+		_speed_debug_log "RESTORE_PACKAGE_STATUS_OK package=$_pkg installed=true uid=${_uid:-NA} version=${_ver:-NA} userData=$_ud userDe=$_de reason=$_reason source=pre_restore_package_state_cache-r481 status=$_status"
 		;;
 	*)
 		_restore_installed_map_drop_one "$_pkg"
-		_speed_debug_log "RESTORE_PACKAGE_STATUS_MISSING package=$_pkg reason=$_reason statusReason=$_why action=install_if_apk source=package_facts_cache-r386 status=$_status"
+		_speed_debug_log "RESTORE_PACKAGE_STATUS_MISSING package=$_pkg reason=$_reason statusReason=$_why action=install_if_apk source=pre_restore_package_state_cache-r481 status=$_status"
 		;;
 	esac
 	return 0
@@ -16456,6 +16540,7 @@ _restore_installed_map_drop_one() {
 _restore_package_status_refresh() {
 	local _pkg="$1" _reason="${2:-restore_pre_app}" _json _tmp _installed _uid _ver _ud _de _src _why
 	RESTORE_PKG_INSTALLED=""
+	RESTORE_PKG_PREINSTALLED=""
 	RESTORE_PKG_UID=""
 	RESTORE_PKG_VER=""
 	RESTORE_PKG_USER_DATA_EXISTS=""
@@ -16484,6 +16569,7 @@ _restore_package_status_refresh() {
 	_src="$(jq -r '.source // "packageManager"' "$_tmp" 2>/dev/null)"
 	_why="$(jq -r '.reason // ""' "$_tmp" 2>/dev/null)"
 	RESTORE_PKG_INSTALLED="$_installed"
+	RESTORE_PKG_PREINSTALLED="$_installed"
 	RESTORE_PKG_UID="$_uid"
 	RESTORE_PKG_VER="$_ver"
 	RESTORE_PKG_USER_DATA_EXISTS="$_ud"
@@ -16564,6 +16650,7 @@ _restore_package_visible_wait_after_install() {
 
 _pkg_uid_map_refresh_after_install() {
 	local _pkg="$1"
+	RESTORE_PKG_VISIBLE_AFTER_INSTALL_OK=0
 	[[ -n $_pkg ]] || return 1
 	_restore_package_visible_wait_after_install "$_pkg" after_install || {
 		_speed_debug_log "RESTORE_INSTALLED_UID_REFRESH_FAIL package=$_pkg reason=package_visible_wait_failed source=post_install_facts_or_package_status mode=r459"
@@ -16579,7 +16666,8 @@ _pkg_uid_map_refresh_after_install() {
 		return 1
 		;;
 	esac
-	_speed_debug_log "RESTORE_INSTALLED_UID_REFRESH package=$_pkg uid=$RESTORE_PKG_UID mode=postInstallFactsBatch source=post_install_facts_or_package_status"
+	RESTORE_PKG_VISIBLE_AFTER_INSTALL_OK=1
+	_speed_debug_log "RESTORE_INSTALLED_UID_REFRESH package=$_pkg uid=$RESTORE_PKG_UID mode=postInstallFactsBatch source=post_install_facts_or_package_status visibleAfterInstall=1"
 	return 0
 }
 
@@ -18581,11 +18669,9 @@ _cgroup_freezer_cleanup_stale_now() {
 	return 0
 }
 
-
 _CGROUP_FREEZER_BATCH_SESSION_ACTIVE=0
 _CGROUP_FREEZER_BATCH_SESSION_REASON=""
-
-_CGROUP_FREEZER_REQUIRED_NATIVE_CAPS="${SPEEDBACKUP_CGROUP_FREEZER_REQUIRED_CAPS:-cgroup-v2-uid-root-fallback}"
+_CGROUP_FREEZER_REQUIRED_NATIVE_CAPS="${SPEEDBACKUP_CGROUP_FREEZER_REQUIRED_CAPS:-cgroup-v2-uid-root-fallback cgroup-wchan-confirm-v1}"
 _cgroup_freezer_daemon_socket_path() {
 	printf '%s\n' "${SPEEDBACKUP_CGROUP_FREEZER_SOCKET:-/data/local/tmp/speedbackup_cgfreezerd.sock}"
 }
@@ -18940,7 +19026,7 @@ _cgroup_freezer_terminal_start_result() {
 # r216: LSPosed/NoANR companion property bridge removed.
 # cgroup freezer now only performs scoped freeze/thaw/kill; no debug.* frozen UID props are written.
 _cgroup_freezer_start_app() {
-	local _pkg="$1" _label="$2" _stage="${3:-app-scope}" _out _rc _token _state _timeout _event_pid
+	local _pkg="$1" _label="$2" _stage="${3:-app-scope}" _out _rc _token _state _timeout _event_pid _wchan_rc
 	[[ -n $_pkg ]] || return 0
 	_cgroup_freezer_pkg_enabled "$_pkg" "$_stage" || { _speed_debug_log "CGROUP_FREEZER_SKIP pkg=$_pkg label=$_label stage=$_stage policy=${SPEEDBACKUP_CGROUP_FREEZER:-auto}"; return 0; }
 	case $_pkg in bin.mt.plus|bin.mt.plus.canary|com.termux) _speed_debug_log "CGROUP_FREEZER_SKIP_SELF pkg=$_pkg stage=$_stage"; return 0 ;; esac
@@ -18972,7 +19058,12 @@ _cgroup_freezer_start_app() {
 			CGROUP_FREEZER_APP_STAGE="$_stage"
 			_cgroup_freezer_log_key_lines "$_out" || true
 			_cgroup_freezer_terminal_start_result "$_out" "$_pkg" "$_label" "$_stage" || true
-			_speed_debug_log "CGROUP_FREEZER_TAR_SCOPE_START_OK token=$_token pkg=$_pkg label=$_label stage=$_stage out=$(_cgroup_freezer_compact_out "$_out")"
+			_cgroup_freezer_wchan_confirm_pkg "$_pkg" "$_label" "after_freeze_start_${_stage}" frozen "$_stage"
+			_wchan_rc=$?
+			if [[ $_wchan_rc = 1 ]]; then
+				_cgroup_freezer_wchan_corrective_pkg "$_pkg" "$_label" "after_freeze_start_${_stage}" frozen "$_stage" || true
+			fi
+			_speed_debug_log "CGROUP_FREEZER_TAR_SCOPE_START_OK token=$_token pkg=$_pkg label=$_label stage=$_stage wchanConfirm=true out=$(_cgroup_freezer_compact_out "$_out")"
 			rm -f "$_out" 2>/dev/null
 			return 0
 		fi
@@ -19000,11 +19091,21 @@ _cgroup_freezer_remove_state_token() {
 }
 
 _cgroup_freezer_stop_token() {
-	local _token="$1" _reason="$2" _pkg="$3" _stage="$4" _out _rc _flat _dex_out _dex_rc
+	local _token="$1" _reason="$2" _pkg="$3" _stage="$4" _out _rc _flat _dex_out _dex_rc _wchan_rc
 	[[ -n $_token ]] || return 0
+	_cgroup_freezer_wchan_confirm_pkg "$_pkg" "${CGROUP_FREEZER_APP_LABEL:-$_pkg}" "before_freeze_stop_${_reason}" frozen "$_stage"
+	_wchan_rc=$?
+	if [[ $_wchan_rc = 1 ]]; then
+		_cgroup_freezer_wchan_corrective_pkg "$_pkg" "${CGROUP_FREEZER_APP_LABEL:-$_pkg}" "before_freeze_stop_${_reason}" frozen "$_stage" || true
+	fi
 	_out="$(_webdav_tmp_path cgroup_freezer_stop_${$}_$RANDOM)"
 	dex_hiddenapi_raw cgroupFreezeStop "$_token" "${USER_ID:-${user:-0}}" "$_pkg" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_rc=$?
+	_cgroup_freezer_wchan_confirm_pkg "$_pkg" "${CGROUP_FREEZER_APP_LABEL:-$_pkg}" "after_freeze_stop_${_reason}" thawed "$_stage"
+	_wchan_rc=$?
+	if [[ $_wchan_rc = 1 ]]; then
+		_cgroup_freezer_wchan_corrective_pkg "$_pkg" "${CGROUP_FREEZER_APP_LABEL:-$_pkg}" "after_freeze_stop_${_reason}" thawed "$_stage" || true
+	fi
 	_flat="$(_cgroup_freezer_compact_out "$_out")"
 	_cgroup_freezer_log_key_lines "$_out" || true
 	_speed_debug_log "CGROUP_FREEZER_STOP token=$_token reason=$_reason pkg=$_pkg stage=$_stage rc=$_rc out=$_flat"
@@ -19261,6 +19362,73 @@ _restore_live_guard_scope_final_pkg() {
 		return 0
 	fi
 	_restore_live_guard_final_kill_recheck_pkg "$_pkg" "$_label" "$_reason" auto
+	return 0
+}
+
+_restore_lowrisk_guard_trim_enabled() {
+	case "${SPEEDBACKUP_RESTORE_LOW_RISK_GUARD_TRIM:-1}" in
+	0|false|FALSE|no|NO|off|OFF|disable|DISABLE) return 1 ;;
+	esac
+	return 0
+}
+
+_restore_lowrisk_guard_trim_high_risk_pkg() {
+	local _pkg="$1"
+	[[ -n $_pkg ]] || return 0
+	_restore_live_guard_pkg_critical "$_pkg" && return 0
+	command -v _speedbackup_hard_freeze_pkg >/dev/null 2>&1 && _speedbackup_hard_freeze_pkg "$_pkg" && return 0
+	command -v _speedbackup_cgroup_fast_settle_default_home_pkg >/dev/null 2>&1 && _speedbackup_cgroup_fast_settle_default_home_pkg "$_pkg" && return 0
+	command -v _speedbackup_cgroup_fast_settle_default_ime_pkg >/dev/null 2>&1 && _speedbackup_cgroup_fast_settle_default_ime_pkg "$_pkg" && return 0
+	command -v _speedbackup_cgroup_fast_settle_pkg >/dev/null 2>&1 && _speedbackup_cgroup_fast_settle_pkg "$_pkg" && return 0
+	command -v _process_observer_high_risk_pkg >/dev/null 2>&1 && _process_observer_high_risk_pkg "$_pkg" && return 0
+	case $_pkg in
+		com.tencent.mm|com.tencent.mobileqq|com.tencent.tim|com.tencent.wework|com.eg.android.AlipayGphone|com.taobao.taobao|com.ss.android.ugc.aweme|com.google.android.inputmethod.latin|com.baidu.input*|com.sohu.inputmethod.sogou*|com.android.launcher*|com.miui.home|net.oneplus.launcher|com.google.android.apps.nexuslauncher)
+			return 0 ;;
+	esac
+	return 1
+}
+
+_restore_lowrisk_guard_trim_app() {
+	local _pkg="$1" _label="${2:-$1}" _stage="${3:-restore_app_scope}" _installed="${4:-}" _preinstalled="${5:-}" _rc _pids _alive _active _top _count
+	_restore_lowrisk_guard_trim_enabled || return 1
+	[[ $_stage = restore_app_scope && -n $_pkg ]] || return 1
+	# r480: trim 只允許「本輪恢復前未安裝、剛由本輪 APK 安裝成功」的 App。
+	# 已安裝/覆蓋恢復的 App 可能有 provider、receiver、job、push 或 ROM 掃描喚醒風險，保留 r477/r478 完整 per-app guard。
+	case $_preinstalled in
+		1|true|TRUE|yes|YES)
+			_speed_debug_log "RESTORE_LOW_RISK_GUARD_TRIM_SKIP pkg=$_pkg label=$_label stage=$_stage reason=preexisting_install_wake_risk preInstalled=$_preinstalled installed=${_installed:-0} pkgInstalled=${RESTORE_PKG_INSTALLED:-unknown} visibleAfterInstall=${RESTORE_PKG_VISIBLE_AFTER_INSTALL_OK:-0} mode=r481"
+			return 1 ;;
+	esac
+	case $_installed:${RESTORE_PKG_INSTALLED:-}:${RESTORE_PKG_VISIBLE_AFTER_INSTALL_OK:-0} in
+		1:true:1|1:1:1) ;;
+		*) _speed_debug_log "RESTORE_LOW_RISK_GUARD_TRIM_SKIP pkg=$_pkg label=$_label stage=$_stage reason=new_install_visible_after_install_not_confirmed preInstalled=${_preinstalled:-0} installed=${_installed:-0} pkgInstalled=${RESTORE_PKG_INSTALLED:-unknown} visibleAfterInstall=${RESTORE_PKG_VISIBLE_AFTER_INSTALL_OK:-0} mode=r481"; return 1 ;;
+	esac
+	if [[ ${PROCESS_OBSERVER_BATCH_SCOPE:-} != restore_session ]] || ! _process_observer_batch_pkg_active "$_pkg"; then
+		_speed_debug_log "RESTORE_LOW_RISK_GUARD_TRIM_SKIP pkg=$_pkg label=$_label stage=$_stage reason=batch_session_not_covering scope=${PROCESS_OBSERVER_BATCH_SCOPE:-none} mode=r481"
+		return 1
+	fi
+	if _restore_lowrisk_guard_trim_high_risk_pkg "$_pkg"; then
+		_speed_debug_log "RESTORE_LOW_RISK_GUARD_TRIM_SKIP pkg=$_pkg label=$_label stage=$_stage reason=high_risk_or_home_ime mode=r481"
+		return 1
+	fi
+	_process_observer_foreground_status "$_pkg" "restore_lowrisk_guard_trim_probe" >/dev/null 2>&1
+	_rc=$?
+	_active="${PROCESS_OBSERVER_DIRECT_ACTIVE:-unknown}"
+	_top="${PROCESS_OBSERVER_DIRECT_TOP:-unknown}"
+	_alive="${PROCESS_OBSERVER_DIRECT_ALIVE:-unknown}"
+	_pids="${PROCESS_OBSERVER_DIRECT_PIDS:-}"
+	case $_rc in
+		1) ;;
+		0) _speed_debug_log "RESTORE_LOW_RISK_GUARD_TRIM_SKIP pkg=$_pkg label=$_label stage=$_stage reason=active active=$_active topTarget=$_top alive=$_alive alivePids=${_pids:-none} mode=r481"; return 1 ;;
+		*) _speed_debug_log "RESTORE_LOW_RISK_GUARD_TRIM_SKIP pkg=$_pkg label=$_label stage=$_stage reason=foreground_status_unknown rc=$_rc active=$_active topTarget=$_top alive=$_alive alivePids=${_pids:-none} mode=r481"; return 1 ;;
+	esac
+	case $_top in true) _speed_debug_log "RESTORE_LOW_RISK_GUARD_TRIM_SKIP pkg=$_pkg label=$_label stage=$_stage reason=top_target active=$_active topTarget=$_top alive=$_alive alivePids=${_pids:-none} mode=r481"; return 1 ;; esac
+	case $_alive in true) _speed_debug_log "RESTORE_LOW_RISK_GUARD_TRIM_SKIP pkg=$_pkg label=$_label stage=$_stage reason=alive_background active=$_active topTarget=$_top alive=$_alive alivePids=${_pids:-none} mode=r481"; return 1 ;; esac
+	case $_pids in ''|none|-) ;;
+		*) _count="$(echo "$_pids" | awk -F, '{print NF}' 2>/dev/null)"; _speed_debug_log "RESTORE_LOW_RISK_GUARD_TRIM_SKIP pkg=$_pkg label=$_label stage=$_stage reason=alive_pids active=$_active topTarget=$_top alive=$_alive alivePids=$_pids count=${_count:-0} mode=r481"; return 1 ;;
+	esac
+	RESTORE_LOW_RISK_GUARD_TRIM_COUNT=$((${RESTORE_LOW_RISK_GUARD_TRIM_COUNT:-0} + 1))
+	_speed_debug_log "RESTORE_LOW_RISK_GUARD_TRIM_APPLY pkg=$_pkg label=$_label stage=$_stage reason=new_install_batch_session_covers_inactive_lowrisk active=$_active topTarget=$_top alive=$_alive alivePids=none finalSnapshotKill=true action=skip-per-app-cgroup-kill-netblock-liveguard-new-install-only mode=r481"
 	return 0
 }
 
@@ -20473,12 +20641,138 @@ _force_stop_pkg_verify_daemon() {
 	return 1
 }
 
+_cgroup_freezer_wchan_corrective_enabled() {
+	case "${SPEEDBACKUP_CGROUP_FREEZER_WCHAN_CORRECTIVE:-1}" in
+	0|false|FALSE|no|NO|off|OFF|disable|DISABLE) return 1 ;;
+	esac
+	_cgroup_freezer_wchan_enabled || return 1
+	return 0
+}
+
+_cgroup_freezer_wchan_corrective_max() {
+	local _max="${SPEEDBACKUP_CGROUP_FREEZER_WCHAN_CORRECTIVE_MAX:-1}"
+	case $_max in ''|*[!0-9]*) _max=1 ;; esac
+	[[ $_max -lt 0 ]] && _max=0
+	[[ $_max -gt 2 ]] && _max=2
+	printf '%s\n' "$_max"
+}
+
+_cgroup_freezer_native_freeze_retry_pkg() {
+	local _pkg="$1" _phase="${2:-wchan_corrective_freeze}" _timeout="${3:-700}" _out _rc _flat _safe_pkg _safe_phase
+	[[ -n $_pkg ]] || return 1
+	case $_timeout in ''|*[!0-9]*) _timeout=700 ;; esac
+	_out="$(_webdav_tmp_path cgroup_wchan_corrective_freeze_${$}_$RANDOM)"
+	_cgroup_freezer_daemon_sock_call "FREEZE_PKG $_pkg ${USER_ID:-${user:-0}} $_timeout" "$_out"
+	_rc=$?
+	_flat="$(tr '\n' '|' < "$_out" 2>/dev/null | cut -c1-1400)"
+	_speed_debug_log "CGROUP_WCHAN_CORRECTIVE_ACTION action=freeze_pkg_retry phase=$_phase pkg=$_pkg timeoutMs=$_timeout rc=$_rc out=$_flat mode=r483"
+	if [[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_out ]]; then
+		_safe_phase="$(_process_observer_status_safe_name "$_phase" 2>/dev/null || printf '%s' "$_phase")"
+		_safe_pkg="$(_process_observer_status_safe_name "$_pkg" 2>/dev/null || printf '%s' "$_pkg")"
+		cp -f "$_out" "$SPEED_DEBUG_RUN_DIR/cgroup_wchan_corrective_freeze_${_safe_phase}_${_safe_pkg}.txt" 2>/dev/null || true
+	fi
+	rm -f "$_out" 2>/dev/null
+	return $_rc
+}
+
+_cgroup_freezer_native_thaw_uid_pkg() {
+	local _pkg="$1" _phase="${2:-wchan_corrective_thaw}" _timeout="${3:-700}" _uid _out _rc _flat _safe_pkg _safe_phase
+	[[ -n $_pkg ]] || return 1
+	_uid="$(get_app_uid "$_pkg" 2>/dev/null | head -n 1 | tr -d ' \t\r\n')"
+	case $_uid in ''|*[!0-9]*)
+		_speed_debug_log "CGROUP_WCHAN_CORRECTIVE_ACTION_SKIP action=thaw_uid phase=$_phase pkg=$_pkg reason=uid_missing mode=r483"
+		return 1 ;;
+	esac
+	case $_timeout in ''|*[!0-9]*) _timeout=700 ;; esac
+	_out="$(_webdav_tmp_path cgroup_wchan_corrective_thaw_${$}_$RANDOM)"
+	_cgroup_freezer_daemon_sock_call "THAW_UID $_uid $_timeout" "$_out"
+	_rc=$?
+	_flat="$(tr '\n' '|' < "$_out" 2>/dev/null | cut -c1-1400)"
+	_speed_debug_log "CGROUP_WCHAN_CORRECTIVE_ACTION action=thaw_uid phase=$_phase pkg=$_pkg uid=$_uid timeoutMs=$_timeout rc=$_rc out=$_flat mode=r483"
+	if [[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_out ]]; then
+		_safe_phase="$(_process_observer_status_safe_name "$_phase" 2>/dev/null || printf '%s' "$_phase")"
+		_safe_pkg="$(_process_observer_status_safe_name "$_pkg" 2>/dev/null || printf '%s' "$_pkg")"
+		cp -f "$_out" "$SPEED_DEBUG_RUN_DIR/cgroup_wchan_corrective_thaw_${_safe_phase}_${_safe_pkg}.txt" 2>/dev/null || true
+	fi
+	rm -f "$_out" 2>/dev/null
+	return $_rc
+}
+
+_cgroup_freezer_restore_package_direct() {
+	local _pkg="$1" _phase="${2:-wchan_corrective_restore}" _out _rc _flat _safe_pkg _safe_phase
+	[[ -n $_pkg ]] || return 1
+	_out="$(_webdav_tmp_path cgroup_wchan_corrective_restore_${$}_$RANDOM)"
+	dex_hiddenapi_raw cgroupFreezeRestorePackage "${USER_ID:-${user:-0}}" "$_pkg" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_rc=$?
+	_flat="$(tr '\n' '|' < "$_out" 2>/dev/null | cut -c1-1200)"
+	_speed_debug_log "CGROUP_WCHAN_CORRECTIVE_ACTION action=restore_package phase=$_phase pkg=$_pkg rc=$_rc out=$_flat mode=r483"
+	if [[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_out ]]; then
+		_safe_phase="$(_process_observer_status_safe_name "$_phase" 2>/dev/null || printf '%s' "$_phase")"
+		_safe_pkg="$(_process_observer_status_safe_name "$_pkg" 2>/dev/null || printf '%s' "$_pkg")"
+		cp -f "$_out" "$SPEED_DEBUG_RUN_DIR/cgroup_wchan_corrective_restore_${_safe_phase}_${_safe_pkg}.txt" 2>/dev/null || true
+	fi
+	rm -f "$_out" 2>/dev/null
+	return $_rc
+}
+
+_cgroup_freezer_wchan_corrective_pkg() {
+	local _pkg="$1" _label="${2:-$1}" _phase="${3:-corrective}" _expect="${4:-any}" _stage="${5:-}" _max _i=0 _timeout _after_phase _rc
+	_cgroup_freezer_wchan_corrective_enabled || { _speed_debug_log "CGROUP_WCHAN_CORRECTIVE_SKIP phase=$_phase pkg=$_pkg label=$_label stage=$_stage expected=$_expect reason=disabled mode=r483"; return 0; }
+	[[ -n $_pkg ]] || return 0
+	case $_expect in frozen|thawed|not-frozen) ;; *) _speed_debug_log "CGROUP_WCHAN_CORRECTIVE_SKIP phase=$_phase pkg=$_pkg label=$_label stage=$_stage expected=$_expect reason=expect_any mode=r483"; return 0 ;; esac
+	case $_phase in before_freeze_stop_*)
+		_speed_debug_log "CGROUP_WCHAN_CORRECTIVE_SKIP phase=$_phase pkg=$_pkg label=$_label stage=$_stage expected=$_expect reason=before_stop_external_thaw_observe_only mode=r483"
+		return 0 ;;
+	esac
+	_max="$(_cgroup_freezer_wchan_corrective_max)"
+	[[ $_max -gt 0 ]] || { _speed_debug_log "CGROUP_WCHAN_CORRECTIVE_SKIP phase=$_phase pkg=$_pkg label=$_label stage=$_stage expected=$_expect reason=max_zero mode=r483"; return 0; }
+	case $_expect in
+	frozen)
+		_timeout="${SPEEDBACKUP_CGROUP_FREEZER_WCHAN_REFREEZE_TIMEOUT_MS:-700}"
+		case $_timeout in ''|*[!0-9]*) _timeout=700 ;; esac
+		while [[ $_i -lt $_max ]]; do
+			_i=$((_i + 1))
+			_speed_debug_log "CGROUP_WCHAN_CORRECTIVE_BEGIN phase=$_phase pkg=$_pkg label=$_label stage=$_stage expected=$_expect attempt=$_i action=freeze_pkg_retry mode=r483"
+			_cgroup_freezer_native_freeze_retry_pkg "$_pkg" "${_phase}_attempt${_i}" "$_timeout" || true
+			_after_phase="after_corrective_${_phase}_attempt${_i}"
+			_cgroup_freezer_wchan_confirm_pkg "$_pkg" "$_label" "$_after_phase" frozen "$_stage"
+			_rc=$?
+			if [[ $_rc = 0 ]]; then
+				_speed_debug_log "CGROUP_WCHAN_CORRECTIVE_DONE phase=$_phase pkg=$_pkg label=$_label stage=$_stage expected=$_expect attempt=$_i result=fixed mode=r483"
+				return 0
+			fi
+		done
+		_speed_debug_log "CGROUP_WCHAN_CORRECTIVE_DONE phase=$_phase pkg=$_pkg label=$_label stage=$_stage expected=$_expect attempts=$_max result=still_mismatch mode=r483"
+		return 1 ;;
+	thawed|not-frozen)
+		_timeout="${SPEEDBACKUP_CGROUP_FREEZER_WCHAN_THAW_TIMEOUT_MS:-700}"
+		case $_timeout in ''|*[!0-9]*) _timeout=700 ;; esac
+		while [[ $_i -lt $_max ]]; do
+			_i=$((_i + 1))
+			_speed_debug_log "CGROUP_WCHAN_CORRECTIVE_BEGIN phase=$_phase pkg=$_pkg label=$_label stage=$_stage expected=$_expect attempt=$_i action=thaw_uid_restore_package mode=r483"
+			_cgroup_freezer_native_thaw_uid_pkg "$_pkg" "${_phase}_attempt${_i}" "$_timeout" || true
+			_cgroup_freezer_restore_package_direct "$_pkg" "${_phase}_attempt${_i}" || true
+			_after_phase="after_corrective_${_phase}_attempt${_i}"
+			_cgroup_freezer_wchan_confirm_pkg "$_pkg" "$_label" "$_after_phase" "$_expect" "$_stage"
+			_rc=$?
+			if [[ $_rc = 0 ]]; then
+				_speed_debug_log "CGROUP_WCHAN_CORRECTIVE_DONE phase=$_phase pkg=$_pkg label=$_label stage=$_stage expected=$_expect attempt=$_i result=fixed mode=r483"
+				return 0
+			fi
+		done
+		_speed_debug_log "CGROUP_WCHAN_CORRECTIVE_DONE phase=$_phase pkg=$_pkg label=$_label stage=$_stage expected=$_expect attempts=$_max result=still_mismatch mode=r483"
+		return 1 ;;
+	esac
+	return 0
+}
+
 _cgroup_freezer_native_kill_pkg() {
-	local _pkg="$1" _stage="${2:-native_kill}" _event_pid="${3:--1}" _timeout="${4:-700}" _out _rc _flat _remain
+	local _pkg="$1" _stage="${2:-native_kill}" _event_pid="${3:--1}" _timeout="${4:-700}" _out _rc _flat _remain _wchan_rc
 	[[ -n $_pkg ]] || return 1
 	case $_event_pid in ''|*[!0-9]*) _event_pid=-1 ;; esac
 	case $_timeout in ''|*[!0-9]*) _timeout=700 ;; esac
 	_cgroup_freezer_proc_snapshot "$_pkg" "before_native_kill_${_stage}" >/dev/null 2>&1 || true
+	_cgroup_freezer_wchan_confirm_pkg "$_pkg" "$_pkg" "before_native_kill_${_stage}" any "native_kill" || true
 	_uid_live_state_status "$_pkg" "before_native_kill_${_stage}" >/dev/null 2>&1 || true
 	_process_observer_status_cache_invalidate_pkg "$_pkg" "before_native_kill_${_stage}" >/dev/null 2>&1 || true
 	_out="$(_webdav_tmp_path cgroup_freezer_native_kill_${$}_$RANDOM)"
@@ -20493,6 +20787,11 @@ _cgroup_freezer_native_kill_pkg() {
 		[[ -n ${PROCESS_OBSERVER_DIRECT_PIDS:-} && ${PROCESS_OBSERVER_DIRECT_PIDS:-} != none ]] && _cgroup_freezer_kill_pid_list "$_pkg" "${PROCESS_OBSERVER_DIRECT_PIDS:-}" "after_native_kill_${_stage}" 9 >/dev/null 2>&1 || true
 	fi
 	_cgroup_freezer_proc_snapshot "$_pkg" "after_native_kill_${_stage}" >/dev/null 2>&1 || true
+	_cgroup_freezer_wchan_confirm_pkg "$_pkg" "$_pkg" "after_native_kill_${_stage}" thawed "native_kill"
+	_wchan_rc=$?
+	if [[ $_wchan_rc = 1 ]]; then
+		_cgroup_freezer_wchan_corrective_pkg "$_pkg" "$_pkg" "after_native_kill_${_stage}" thawed "native_kill" || true
+	fi
 	if [[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_out ]]; then
 		cp -f "$_out" "$SPEED_DEBUG_RUN_DIR/cgroup_native_kill_${_stage}_$(_process_observer_status_safe_name "$_pkg").txt" 2>/dev/null || true
 	fi
@@ -20548,6 +20847,51 @@ _cgroup_freezer_proc_snapshot() {
 	fi
 	rm -f "$_out" 2>/dev/null
 	return $_rc
+}
+
+_cgroup_freezer_wchan_enabled() {
+	case "${SPEEDBACKUP_CGROUP_FREEZER_WCHAN_CONFIRM:-1}" in
+	0|false|FALSE|no|NO|off|OFF|disable|DISABLE) return 1 ;;
+	esac
+	return 0
+}
+
+_cgroup_freezer_wchan_confirm_pkg() {
+	local _pkg="$1" _label="${2:-$1}" _phase="${3:-confirm}" _expect="${4:-any}" _stage="${5:-}" _pids _out _rc _flat _summary _safe_phase _safe_pkg _ok _checked _frozen _sigstop _mismatch
+	_cgroup_freezer_wchan_enabled || return 0
+	[[ -n $_pkg ]] || return 0
+	case $_expect in frozen|thawed|not-frozen|any) ;; *) _expect=any ;; esac
+	_pids="$(_pkg_process_pids "$_pkg" 2>/dev/null | tr '\n' ',' | sed 's/,$//')"
+	if [[ -z $_pids ]]; then
+		case $_expect in
+		frozen) _speed_debug_log "CGROUP_WCHAN_CONFIRM_SKIP pkg=$_pkg label=$_label phase=$_phase stage=$_stage expected=$_expect reason=no_pids ok=false mode=r483"; return 2 ;;
+		*) _speed_debug_log "CGROUP_WCHAN_CONFIRM_SKIP pkg=$_pkg label=$_label phase=$_phase stage=$_stage expected=$_expect reason=no_pids ok=true mode=r483"; return 0 ;;
+		esac
+	fi
+	_out="$(_webdav_tmp_path cgroup_wchan_${$}_$RANDOM)"
+	_cgroup_freezer_daemon_sock_call "WCHAN_PID_LIST ${USER_ID:-${user:-0}} $_pids $_expect" "$_out"
+	_rc=$?
+	_summary="$(grep -E 'CGFREEZER_WCHAN(_UID)?_DONE ' "$_out" 2>/dev/null | tail -n 1 | cut -c1-900)"
+	_flat="$(tr '\n' '|' < "$_out" 2>/dev/null | cut -c1-1400)"
+	_ok="$(_cgroup_freezer_kv_from_line "$_summary" ok)"
+	_checked="$(_cgroup_freezer_kv_from_line "$_summary" checked)"
+	_frozen="$(_cgroup_freezer_kv_from_line "$_summary" frozen)"
+	_sigstop="$(_cgroup_freezer_kv_from_line "$_summary" sigstop)"
+	_mismatch="$(_cgroup_freezer_kv_from_line "$_summary" mismatch)"
+	_speed_debug_log "CGROUP_WCHAN_CONFIRM phase=$_phase pkg=$_pkg label=$_label stage=$_stage expected=$_expect pids=$_pids rc=$_rc ok=${_ok:-unknown} checked=${_checked:-unknown} frozen=${_frozen:-unknown} sigstop=${_sigstop:-unknown} mismatch=${_mismatch:-unknown} summary=${_summary:-none} mode=r483"
+	if [[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_out ]]; then
+		_safe_phase="$(_process_observer_status_safe_name "$_phase" 2>/dev/null || printf '%s' "$_phase")"
+		_safe_pkg="$(_process_observer_status_safe_name "$_pkg" 2>/dev/null || printf '%s' "$_pkg")"
+		cp -f "$_out" "$SPEED_DEBUG_RUN_DIR/cgroup_wchan_${_safe_phase}_${_safe_pkg}.txt" 2>/dev/null || true
+	fi
+	case $_expect:${_ok:-false} in
+	frozen:false|thawed:false|not-frozen:false)
+		_speed_debug_log "CGROUP_WCHAN_CONFIRM_WARN phase=$_phase pkg=$_pkg label=$_label stage=$_stage expected=$_expect rc=$_rc out=$_flat mode=r483"
+		rm -f "$_out" 2>/dev/null
+		return 1 ;;
+	esac
+	rm -f "$_out" 2>/dev/null
+	return 0
 }
 
 _cgroup_freezer_kill_pid_list() {
@@ -22526,6 +22870,33 @@ _restore_pkg_data_dir_for_user() {
 	return 1
 }
 
+_restore_installer_context_facts_call() {
+	local _target_pkg="$1" _installer="$2" _body _out _rc
+	[[ -n $_target_pkg && -n $_installer ]] || return 1
+	_body="$(_webdav_tmp_path root_installer_context_args)"
+	_out="$(_webdav_tmp_path root_installer_context_out)"
+	{
+		printf '%s\n' "${USER_ID:-${user:-0}}"
+		printf '%s\n' "$_target_pkg"
+		printf '%s\n' "$_installer"
+		printf '%s\n' refresh
+	} > "$_body"
+	_root_daemon_call_file_hot hiddenapi installerContextFacts "$_body" "$_out" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_rc=$?
+	if [[ $_rc = 125 ]]; then
+		_dex_raw com.xayah.dex.HiddenApiUtil installerContextFacts "${USER_ID:-${user:-0}}" "$_target_pkg" "$_installer" refresh > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		_rc=$?
+	fi
+	if [[ $_rc = 0 ]] && grep -Fqx '#schema	speedbackup.installer_context_facts.v1' "$_out" 2>/dev/null; then
+		cat "$_out" 2>/dev/null
+		rm -f "$_body" "$_out" 2>/dev/null
+		return 0
+	fi
+	[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f "$_out" "$SPEED_DEBUG_RUN_DIR/installer_context_facts_failed.tsv" 2>/dev/null || true
+	rm -f "$_body" "$_out" 2>/dev/null
+	return 1
+}
+
 _restore_select_installer_context() {
 	local _target_pkg="$1" _installer="$2" _uid _data_dir
 	RESTORE_INSTALLER_PKG=""
@@ -22543,24 +22914,56 @@ _restore_select_installer_context() {
 		_restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=non_play_installer installer=$_installer"
 		return 1
 	fi
+	local _ctx _status _target _inst _uid _data_dir _de_dir _installed _enabled _usable_pm _usable_hybrid _reason
+	_ctx="$(_restore_installer_context_facts_call "$_target_pkg" "$_installer" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})" || _ctx=""
+	if printf '%s\n' "$_ctx" | grep -Fqx '#schema	speedbackup.installer_context_facts.v1' 2>/dev/null; then
+		[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && printf '%s\n' "$_ctx" >> "$SPEED_DEBUG_RUN_DIR/installer_context_facts.tsv" 2>/dev/null || true
+		IFS="$(printf '	')" read -r _status _target _inst _user_id _target_installed _target_installer _installed _enabled _uid _data_dir _de_dir _ver _is_play _usable_pm _usable_hybrid _reason <<EOF_INSTALLER_CONTEXT
+$(printf '%s\n' "$_ctx" | awk -F '	' '$1=="OK" || $1=="MISSING"{print; exit}' 2>/dev/null)
+EOF_INSTALLER_CONTEXT
+		if [[ $_status = OK && $_installed = true && $_enabled = true ]]; then
+			case $_uid in ''|*[!0-9]*)
+				echoRgb "備份安裝來源 $_installer 無法取得 UID，跳過安裝來源偽裝" "2"
+				_restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=uid_missing installer=$_installer source=installerContextFacts-r481"
+				return 1
+				;;
+			esac
+			case $_usable_hybrid:$_data_dir in true:/*)
+				_restore_log_install_method "$_target_pkg" "installer_context_ok" "installer=$_installer uid=$_uid dataDir=$_data_dir reason=${_reason:-OK} source=installerContextFacts-r481"
+				;;
+			*)
+				_data_dir=""
+				_restore_log_install_method "$_target_pkg" "installer_context_pm_only" "installer=$_installer uid=$_uid reason=${_reason:-data_dir_missing} source=installerContextFacts-r481"
+				;;
+			esac
+			RESTORE_INSTALLER_PKG="$_installer"
+			RESTORE_INSTALLER_UID="$_uid"
+			RESTORE_INSTALLER_DATA_DIR="$_data_dir"
+			return 0
+		fi
+		case $_installed:$_enabled in
+		false:*) echoRgb "備份安裝來源 $_installer 目前不存在，跳過安裝來源偽裝" "2"; _restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=package_missing installer=$_installer source=installerContextFacts-r481 factsReason=${_reason:-unknown}"; return 1 ;;
+		true:false) echoRgb "備份安裝來源 $_installer 目前停用，跳過安裝來源偽裝" "2"; _restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=package_disabled installer=$_installer source=installerContextFacts-r481 factsReason=${_reason:-unknown}"; return 1 ;;
+		esac
+	fi
+	_speed_debug_log "INSTALLER_CONTEXT_FACTS_FALLBACK target=$_target_pkg installer=$_installer mode=r481 reason=dex_facts_unavailable"
 	if ! _restore_pkg_exists_for_user "$_installer"; then
 		echoRgb "備份安裝來源 $_installer 目前不存在，跳過安裝來源偽裝" "2"
-		_restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=package_missing installer=$_installer"
+		_restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=package_missing installer=$_installer fallback=appinventory"
 		return 1
 	fi
 	_uid="$(_restore_pkg_uid_for_user "$_installer")"
 	case $_uid in ''|*[!0-9]*)
 		echoRgb "備份安裝來源 $_installer 無法取得 UID，跳過安裝來源偽裝" "2"
-		_restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=uid_missing installer=$_installer"
+		_restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=uid_missing installer=$_installer fallback=appinventory"
 		return 1
 		;;
 	esac
 	_data_dir="$(_restore_pkg_data_dir_for_user "$_installer")"
 	if [[ -z $_data_dir ]]; then
-		# pm -i 仍可使用，但 UID hybrid 需要一個穩定 app data dir 給 uidexec。
-		_restore_log_install_method "$_target_pkg" "installer_context_pm_only" "installer=$_installer uid=$_uid reason=data_dir_missing"
+		_restore_log_install_method "$_target_pkg" "installer_context_pm_only" "installer=$_installer uid=$_uid reason=data_dir_missing fallback=appinventory"
 	else
-		_restore_log_install_method "$_target_pkg" "installer_context_ok" "installer=$_installer uid=$_uid dataDir=$_data_dir"
+		_restore_log_install_method "$_target_pkg" "installer_context_ok" "installer=$_installer uid=$_uid dataDir=$_data_dir fallback=appinventory"
 	fi
 	RESTORE_INSTALLER_PKG="$_installer"
 	RESTORE_INSTALLER_UID="$_uid"
@@ -27330,6 +27733,7 @@ Restore() {
 	# 此迴圈同時服務批量恢復(N個app)與單獨恢復(1個app); 單獨恢復時收集1組→flush設1組, 等價立即執行
 	_batch_appstate_mode=1
 	_RESTORE_PRESERVE_BATCH_QUEUE=1
+	RESTORE_LOW_RISK_GUARD_TRIM_COUNT=0
 	# 清空本輪批量恢復暫存，installer/電池也一併清，避免同一 shell session 內殘留
 : > "$TMPDIR/.batch_appstate_ndjson" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_restore_install_issue_reset
@@ -27454,11 +27858,12 @@ Restore() {
 			fi
 			[[ $restore = true ]] && {
 			starttime2="$(date -u "+%s")"
-			local _restore_app_total_t0 _restore_pkg_status_t0 _restore_data_phase_t0 _restore_appstate_phase_t0 _restore_guard_final_t0
+			local _restore_app_total_t0 _restore_pkg_status_t0 _restore_data_phase_t0 _restore_appstate_phase_t0 _restore_guard_final_t0 _restore_lowrisk_guard_trimmed
 			_restore_app_total_t0="$(_speed_now_ms)"
 			# r101: 恢復端 installed/version/uid 預掃只當 cache；處理每個 App 時即時查單包 packageStatus 校正。
 			local _is_installed
 			_is_installed=""
+			RESTORE_PKG_VISIBLE_AFTER_INSTALL_OK=0
 			_restore_pkg_status_t0="$(_speed_now_ms)"
 			_restore_package_status_refresh "$name2" "restore_pre_app" || _speed_debug_log "RESTORE_PACKAGE_STATUS_WARN package=$name2 reason=pre_app_failed fallback=cache"
 			_restore_phase_timing_record "pm_pre_status" "$_restore_pkg_status_t0" "$name1" "$name2" "installed=${RESTORE_PKG_INSTALLED:-unknown} uid=${RESTORE_PKG_UID:-unknown} ver=${RESTORE_PKG_VER:-unknown}" "0"
@@ -27477,7 +27882,16 @@ Restore() {
 				*) _STREAM_APK_SRC="$_RESTORE_SUBDIR/$name1/apk.tar.zst" ;;
 				esac
 			fi
-			local _was_installed="$_is_installed"
+			local _was_installed="${RESTORE_PKG_PREINSTALLED:-$_is_installed}"
+			# r481: preRestorePackageStateBatch emits explicit false for missing packages.
+			# Do not treat non-empty "false" as preinstalled; recovery_mode must only skip data
+			# when the app truly existed before this restore pass.
+			if _speedbackup_bool_on "$_was_installed"; then
+				_was_installed=1
+			else
+				_was_installed=""
+			fi
+			_speed_debug_log "RESTORE_PREINSTALLED_BOOL_NORMALIZE package=$name2 label=$name1 raw=${RESTORE_PKG_PREINSTALLED:-unset} installedBefore=${_was_installed:-0} mode=r481"
 			if [[ -z $_is_installed ]]; then
 				_restore_notify_fixed_progress "$i" "$r" 25 "恢復第$i/$r：安裝APK $name1"
 				RESTORE_APK_ACTION_CONTEXT="install"
@@ -27638,26 +28052,32 @@ Restore() {
 				esac
 			fi
 			_restore_notify_fixed_progress "$i" "$r" 40 "恢復第$i/$r：APK處理完成 $name1"
-			# 流式 + 僅恢復未安裝模式: 已裝的 app 跳過數據恢復 (流式無預篩, 在此落實 recovery_mode 語義)
-			if [[ $_RESTORE_STREAM = 1 && $recovery_mode = true && -n $_was_installed ]]; then
+			# 流式 + 僅恢復未安裝模式: 僅「恢復前已安裝」才跳過數據恢復；
+			# r481 修正 r480 preRestorePackageStateBatch false 被 -n 誤當已安裝。
+			if [[ $_RESTORE_STREAM = 1 && $recovery_mode = true ]] && _speedbackup_bool_on "$_was_installed"; then
 				echoRgb "$name1 已安裝, 僅恢復未安裝模式下跳過數據恢復" "2"
 			elif [[ $_is_installed = 1 ]]; then
 				if [[ $No_backupdata = "" ]]; then
 				    [[ $name2 != *mt* ]] && {
 					_restore_data_phase_t0="$(_speed_now_ms)"
+					_restore_lowrisk_guard_trimmed=0
 					# r240: 恢復也只讓硬編碼高風險 App 先嘗試 cgroup；一般 App 預設瞬殺。
 					_speed_debug_log "PROGRESS_HINT_SUPPRESS_ONCE_ONLY tag=restore_guard_start app=$name1 package=$name2 msg=正在啟動恢復守護"
-					_cgroup_freezer_start_app "$name2" "$name1" "restore_app_scope" || true
-					if [[ -n ${CGROUP_FREEZER_APP_TOKEN:-} && ${CGROUP_FREEZER_APP_PKG:-} = "$name2" ]]; then
-						_speed_debug_log "CGROUP_GUARD_ACTIVE_SKIP_FALLBACK pkg=$name2 label=$name1 stage=restore_app_scope token=${CGROUP_FREEZER_APP_TOKEN:-} iconGrey=false"
+					if _restore_lowrisk_guard_trim_app "$name2" "$name1" "restore_app_scope" "${_is_installed:-0}" "${_was_installed:-0}"; then
+						_restore_lowrisk_guard_trimmed=1
 					else
-						kill_app
-						_speed_debug_log "QUIESCE_ENTRY_CGROUP_ONLY pkg=$name2 label=$name1 reason=restore_app_scope_fallback iconGrey=false"
+						_cgroup_freezer_start_app "$name2" "$name1" "restore_app_scope" || true
+						if [[ -n ${CGROUP_FREEZER_APP_TOKEN:-} && ${CGROUP_FREEZER_APP_PKG:-} = "$name2" ]]; then
+							_speed_debug_log "CGROUP_GUARD_ACTIVE_SKIP_FALLBACK pkg=$name2 label=$name1 stage=restore_app_scope token=${CGROUP_FREEZER_APP_TOKEN:-} iconGrey=false"
+						else
+							kill_app
+							_speed_debug_log "QUIESCE_ENTRY_CGROUP_ONLY pkg=$name2 label=$name1 reason=restore_app_scope_fallback iconGrey=false"
+						fi
+						_uid_netblock_start_app "$name2" "$name1" "restore_app_scope" || true
+						if _speedbackup_cgroup_fast_settle_default_ime_pkg "$name2"; then _speed_debug_log "PROCESS_OBSERVER_RESTORE_CGROUP_FREEZE_ACTION package=$name2 label=$name1 reason=default_ime mode=r370"; fi
+						_process_observer_start_app "$name2" "$name1" "restore_app_scope" || true
+						_restore_live_guard_scope_start "$name2" "$name1" "restore_app_scope" || true
 					fi
-					_uid_netblock_start_app "$name2" "$name1" "restore_app_scope" || true
-					if _speedbackup_cgroup_fast_settle_default_ime_pkg "$name2"; then _speed_debug_log "PROCESS_OBSERVER_RESTORE_CGROUP_FREEZE_ACTION package=$name2 label=$name1 reason=default_ime mode=r370"; fi
-					_process_observer_start_app "$name2" "$name1" "restore_app_scope" || true
-					_restore_live_guard_scope_start "$name2" "$name1" "restore_app_scope" || true
 					if [[ $_RESTORE_STREAM = 1 ]]; then
 						_restore_notify_fixed_progress "$i" "$r" 50 "恢復第$i/$r：恢復資料 $name1"
 						# 流式: 枚舉資料類型, 設 _STREAM_SRC 遠端路徑, 逐個流式解壓
@@ -27733,7 +28153,10 @@ Restore() {
 					fi
 					_restore_guard_final_t0="$(_speed_now_ms)"
 					_restore_guard_final_detail="procwait=pkg-gone"
-					if [[ ${PROCESS_OBSERVER_BATCH_SCOPE:-} = restore_session ]] && _process_observer_batch_pkg_active "$name2"; then
+					if [[ ${_restore_lowrisk_guard_trimmed:-0} = 1 ]]; then
+						_speed_debug_log "RESTORE_LOW_RISK_GUARD_TRIM_FINAL_KEEP pkg=$name2 label=$name1 reason=restore_app_scope_done release=bulk-post-appstate policy=new-install-batch-session-covers-inactive-lowrisk mode=r481"
+						_restore_guard_final_detail="lowrisk-guard-trim-session-keep"
+					elif [[ ${PROCESS_OBSERVER_BATCH_SCOPE:-} = restore_session ]] && _process_observer_batch_pkg_active "$name2"; then
 						case "${SPEEDBACKUP_RESTORE_SESSION_PER_APP_FINAL_CHECK:-0}" in
 						1|true|TRUE|yes|YES|on|ON|enable|ENABLE)
 							_restore_live_guard_scope_final_pkg "$name2" "$name1" "restore_app_scope_done" || true
@@ -27781,6 +28204,7 @@ Restore() {
 			# 若此時尚未 flush，整批應用權限就會停留在暫存佇列，實際沒有套用。
 			_speedbackup_progress_hint "開始批量恢復權限/AppOps/電池/SSAID，恢復守護 session 將在批量處理後統一釋放" "restore_post_appstate_begin"
 			flush_batch_appstate
+			_speed_debug_log "RESTORE_LOW_RISK_GUARD_TRIM_SUMMARY count=${RESTORE_LOW_RISK_GUARD_TRIM_COUNT:-0} mode=r481"
 			_restore_post_state_guard_stop_all "restore_post_appstate_done" || true
 			_RESTORE_PRESERVE_BATCH_QUEUE=0
 			_batch_appstate_mode=0

@@ -49,7 +49,7 @@ import java.util.concurrent.TimeUnit;
 import dev.rikka.tools.refine.Refine;
 
 public class HiddenApiUtil {
-    static final String VERSION = "v2.6.202-r474-facts-prefetch-cleanup build=v24.20.14-7.66-897-facts-prefetch-cleanup-r474-202607232022";
+    static final String VERSION = "v2.6.203-r480-pre-restore-pm-state build=v24.20.14-7.66-903-dex-pre-restore-pm-state-r480-202607232022";
     /**
      * 單 JVM 批量命令期間的輕量快取。只快取系統層級固定資料或同一輪已讀 package metadata；
      * 不跨 JVM、不落檔，避免一致性風險。
@@ -127,7 +127,7 @@ public class HiddenApiUtil {
         System.out.println("  cgroupFreezeRestorePackage USER_ID PACKAGE  依 package 還原 cgroup freezer persistent state");
         System.out.println("  cgroupFreezeRestoreAll [REASON]  還原所有 cgroup freezer persistent state");
         System.out.println("  cgroupFreezeCleanupStale [REASON] [TTL_MS]  還原並清理過期 cgroup freezer persistent state");
-        System.out.println("  daemon-only commands: getPackageUid / appInventoryPkgUid / appInventoryPackageStatus / appInventoryPackageStatusBatch / appInventoryPackageFactsBatch / appInventoryPostInstallFactsBatch / appKillGuard / appWakeBlockStart / appWakeBlockStop / appWakeBlockStatus / appWakeBlockHold / appWakeBlockRestoreObserverToken / appWakeBlockRestorePackage / appWakeBlockRestoreAll / appWakeBlockCleanupStale / uidNetBlockStart / uidNetBlockStop / uidNetBlockStatus / uidNetBlockRestorePackage / uidNetBlockRestoreAll / uidNetBlockCleanupStale / uidNetBlockProbe / cgroupFreezeStart / cgroupFreezeStop / cgroupFreezeStatus / cgroupFreezeDaemonEnsure / cgroupFreezeRestorePackage / cgroupFreezeRestoreAll / cgroupFreezeCleanupStale / processObserverWatch / processObserverStart / processObserverStop / processObserverBatchStart / processObserverBatchStop / processObserverRestoreSessionStart / processObserverStatus / processObserverTop / processObserverForeground / uidLiveState / uidObserverProbe / uidObserverWatch / packageLiveState / packageInstallSnapshot / packageRestrictionSnapshot / forceStopPackageVerify / hiddenApiRuntimeProbe / getInstallSourceInfo / installSessionCreate / installSessionCommit / forceStopPackageBatch");
+        System.out.println("  daemon-only commands: getPackageUid / appInventoryPkgUid / appInventoryPackageStatus / appInventoryPackageStatusBatch / appInventoryPackageFactsBatch / preRestorePackageStateBatch / installerContextFacts / appInventoryPostInstallFactsBatch / appKillGuard / appWakeBlockStart / appWakeBlockStop / appWakeBlockStatus / appWakeBlockHold / appWakeBlockRestoreObserverToken / appWakeBlockRestorePackage / appWakeBlockRestoreAll / appWakeBlockCleanupStale / uidNetBlockStart / uidNetBlockStop / uidNetBlockStatus / uidNetBlockRestorePackage / uidNetBlockRestoreAll / uidNetBlockCleanupStale / uidNetBlockProbe / cgroupFreezeStart / cgroupFreezeStop / cgroupFreezeStatus / cgroupFreezeDaemonEnsure / cgroupFreezeRestorePackage / cgroupFreezeRestoreAll / cgroupFreezeCleanupStale / processObserverWatch / processObserverStart / processObserverStop / processObserverBatchStart / processObserverBatchStop / processObserverRestoreSessionStart / processObserverStatus / processObserverTop / processObserverForeground / uidLiveState / uidObserverProbe / uidObserverWatch / packageLiveState / packageInstallSnapshot / packageRestrictionSnapshot / forceStopPackageVerify / hiddenApiRuntimeProbe / getInstallSourceInfo / installSessionCreate / installSessionCommit / forceStopPackageBatch");
         System.out.println("    上述熱路徑只能透過 HiddenApi daemon socket 呼叫，不再提供單次 app_process CLI fallback");
         System.out.println();
         System.out.println("  getInstalledPackagesAsUser USER_ID FILTER_FLAG(user|system|xposed) FORMAT(label|pkgName|flag)  取得安裝清單");
@@ -137,6 +137,8 @@ public class HiddenApiUtil {
         System.out.println("  appInventoryPackageStatus USER_ID PACKAGE [refresh]  單包取得 PackageManager 當下 installed/uid/version/source/dataDir 狀態");
         System.out.println("  appInventoryPackageStatusBatch USER_ID PACKAGE [PACKAGE...] [refresh]  批量取得 PackageManager packageStatus NDJSON");
         System.out.println("  appInventoryPackageFactsBatch USER_ID PACKAGE [PACKAGE...] [refresh]  批量取得 PackageManager/installer/source/split/dataDir TSV facts");
+        System.out.println("  preRestorePackageStateBatch USER_ID PACKAGE [PACKAGE...] [refresh]  恢復前批量取得 user-installed/any-user/hidden/suspended/installer TSV facts");
+        System.out.println("  installerContextFacts USER_ID TARGET_PACKAGE INSTALLER_PACKAGE [refresh]  取得 installer package 是否可用、UID、dataDir 與安裝來源 context facts");
         System.out.println("  packageFacts USER_ID PACKAGE [refresh]  單包 PackageManager facts TSV，給 shell 替代 pm path/list/get uid");
         System.out.println("  packageInstalledUsers PACKAGE [MAX_USER_ID] [refresh]  掃描 package 已安裝 user facts TSV");
         System.out.println("  packageVisibleAfterInstall USER_ID PACKAGE [refresh]  安裝後 bounded 可見性 facts TSV");
@@ -220,6 +222,12 @@ public class HiddenApiUtil {
                 break;
             case "appInventoryPackageFactsBatch":
                 appInventoryPackageFactsBatch(args);
+                break;
+            case "preRestorePackageStateBatch":
+                preRestorePackageStateBatch(args);
+                break;
+            case "installerContextFacts":
+                installerContextFacts(args);
                 break;
             case "packageFacts":
                 packageFacts(args);
@@ -519,6 +527,12 @@ public class HiddenApiUtil {
         }
         if ("appInventoryPackageFactsBatch".equals(command)) {
             return appInventoryPackageFactsBatchDaemonCommand(cmdArgs);
+        }
+        if ("preRestorePackageStateBatch".equals(command)) {
+            return preRestorePackageStateBatchDaemonCommand(cmdArgs);
+        }
+        if ("installerContextFacts".equals(command)) {
+            return installerContextFactsDaemonCommand(cmdArgs);
         }
         if ("packageFacts".equals(command)) {
             return packageFactsDaemonCommand(cmdArgs);
@@ -2397,6 +2411,52 @@ public class HiddenApiUtil {
         }
     }
 
+
+
+    private static void preRestorePackageStateBatch(String[] args) {
+        try {
+            int userId = parseIntArg(args, 1, 0);
+            String[] pkgs = packageArgsWithoutRefresh(args, 2);
+            System.out.print(AppInventoryUtil.preRestorePackageStateBatch(userId, pkgs, hasRefreshArg(args)));
+            System.exit(0);
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            System.exit(1);
+        }
+    }
+
+    private static DaemonRunResult preRestorePackageStateBatchDaemonCommand(String[] args) {
+        try {
+            int userId = parseIntArg(args, 1, 0);
+            String[] pkgs = packageArgsWithoutRefresh(args, 2);
+            return new DaemonRunResult(0, AppInventoryUtil.preRestorePackageStateBatch(userId, pkgs, hasRefreshArg(args)));
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+            return new DaemonRunResult(1, "PRE_RESTORE_PACKAGE_STATE_BATCH_FAILED exception=" + sanitizeDiagValue(t.getClass().getName())
+                    + " message=" + sanitizeDiagValue(t.getMessage()) + "\n");
+        }
+    }
+
+    private static void installerContextFacts(String[] args) {
+        try {
+            int userId = parseIntArg(args, 1, 0);
+            if (args == null || args.length < 4) throw new IllegalArgumentException("installerContextFacts USER_ID TARGET_PACKAGE INSTALLER_PACKAGE [refresh]");
+            System.out.print(AppInventoryUtil.installerContextFacts(userId, args[2], args[3], hasRefreshArg(args)));
+            System.exit(0);
+        } catch (Throwable t) {
+            System.err.println("INSTALLER_CONTEXT_FACTS_FAILED\texception=" + sanitizeMachineValue(t.getClass().getName())
+                    + "\tmessage=" + sanitizeMachineValue(t.getMessage()));
+            System.exit(1);
+        }
+    }
+
+    private static DaemonRunResult installerContextFactsDaemonCommand(String[] args) {
+        try {
+            return new DaemonRunResult(0, AppInventoryUtil.installerContextFacts(parseIntArg(args, 1, 0), argAt(args, 2), argAt(args, 3), hasRefreshArg(args)));
+        } catch (Throwable t) {
+            return new DaemonRunResult(1, "INSTALLER_CONTEXT_FACTS_FAILED\t" + sanitizeMachineValue(t.getClass().getName()) + "\n");
+        }
+    }
 
     private static String[] packageArgsWithoutRefresh(String[] args, int start) {
         if (args == null || args.length <= start) return new String[0];

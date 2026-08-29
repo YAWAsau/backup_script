@@ -39,6 +39,8 @@
  *   FREEZE_PID_LIST USER_ID PIDCSV TIMEOUT_MS
  *   KILL_PID_LIST USER_ID PIDCSV SIGNAL
  *   PROC_SNAPSHOT PACKAGE USER_ID
+ *   WCHAN_PID_LIST USER_ID PIDCSV [frozen|thawed|any]
+ *   WCHAN_UID UID [frozen|thawed|any]
  *   BINDER_INFO PID
  *   SUBSCRIBE PACKAGE USER_ID DURATION_MS
  *   EXIT
@@ -73,8 +75,8 @@
 #define MAX_CACHE_PIDS 256
 #define LOGGER_ENTRY_MAX_LEN 5120
 #define LOG_ID_EVENTS 2
-#define CGFREEZER_VERSION "r461-cgroup-kill-fastpath-api28-r28c"
-#define CGFREEZER_PROTOCOL "line-v7-cgroup-kill-r461"
+#define CGFREEZER_VERSION "r482-wchan-confirm-api28-r28c"
+#define CGFREEZER_PROTOCOL "line-v8-wchan-confirm-r482"
 #define MAX_UID_PATHS 128
 #define MAX_UID_PIDS 512
 #define MAX_DAEMON_CHILDREN 64
@@ -157,7 +159,7 @@ static char g_daemon_last_command[64] = {0};
 static char g_daemon_last_error[160] = "none";
 
 static const char *cgfreezer_caps(void) {
-    return "check-root,backend-probe,scan,freeze,freeze-package-single-request-v1,kill-package-live-rescan-v1,pidfd-signal-optional-v1,thaw,thaw-uid-emergency-v1,binder-freeze,binder-info,subscribe-logd,pid-cache,uid-cache,cgroup-v2-events,cgroup-v2-uid-root-fallback,cgroup-v1-freezer,daemon-parent-control-v1,daemon-stats-v1,daemon-stats-detail-v1,last-error-v1,daemon-control-plain-lines-v2,kill-report-v2,batch-pid-list-v1,proc-snapshot-v1,pidfd-kill-v1,cgroup-kill-fastpath-v1";
+    return "check-root,backend-probe,scan,freeze,freeze-package-single-request-v1,kill-package-live-rescan-v1,pidfd-signal-optional-v1,thaw,thaw-uid-emergency-v1,binder-freeze,binder-info,subscribe-logd,pid-cache,uid-cache,cgroup-v2-events,cgroup-v2-uid-root-fallback,cgroup-v1-freezer,daemon-parent-control-v1,daemon-stats-v1,daemon-stats-detail-v1,last-error-v1,daemon-control-plain-lines-v2,kill-report-v2,batch-pid-list-v1,proc-snapshot-v1,pidfd-kill-v1,cgroup-kill-fastpath-v1,cgroup-wchan-confirm-v1,proc-wchan-v1,uid-wchan-v1";
 }
 
 static void on_signal(int sig) {
@@ -1983,6 +1985,138 @@ static int read_oom_score_adj(pid_t pid) {
     return parse_int_arg(buf, 9999);
 }
 
+static int read_proc_wchan(pid_t pid, char *buf, size_t cap) {
+    char path[128];
+    if (!buf || cap == 0 || pid <= 0) return -1;
+    buf[0] = '\0';
+    snprintf(path, sizeof(path), "/proc/%d/wchan", pid);
+    if (read_file(path, buf, cap) < 0) return -1;
+    if (!buf[0]) snprintf(buf, cap, "-");
+    return 0;
+}
+
+static const char *classify_wchan_freeze_kind(const char *wchan) {
+    if (!wchan || !*wchan || strcmp(wchan, "-") == 0 || strcmp(wchan, "0") == 0) return "unknown";
+    if (strstr(wchan, "__refrigerator") || strstr(wchan, "refrigerator")) return "v1";
+    if (strstr(wchan, "do_freezer_trap") || strstr(wchan, "get_signal")) return "v2";
+    if (strstr(wchan, "do_signal_stop")) return "sigstop";
+    return "not-frozen";
+}
+
+static bool wchan_kind_is_frozen(const char *kind) {
+    return kind && (strcmp(kind, "v1") == 0 || strcmp(kind, "v2") == 0);
+}
+
+static bool wchan_kind_is_stopped(const char *kind) {
+    return kind && strcmp(kind, "sigstop") == 0;
+}
+
+static bool wchan_expect_ok(const char *expect, const char *kind) {
+    if (!expect || !*expect || strcmp(expect, "any") == 0) return true;
+    if (strcmp(expect, "frozen") == 0) return wchan_kind_is_frozen(kind);
+    if (strcmp(expect, "thawed") == 0 || strcmp(expect, "not-frozen") == 0) return !wchan_kind_is_frozen(kind) && !wchan_kind_is_stopped(kind);
+    return true;
+}
+
+static const char *normalize_wchan_expect(const char *expect) {
+    if (!expect || !*expect) return "any";
+    if (strcmp(expect, "frozen") == 0 || strcmp(expect, "thawed") == 0 || strcmp(expect, "not-frozen") == 0 || strcmp(expect, "any") == 0) return expect;
+    return "any";
+}
+
+static void print_wchan_entry(const char *origin, int user_id, pid_t pid, int uid, const char *expect, const char *process, int *checked, int *frozen, int *sigstop, int *unknown, int *mismatch) {
+    char wchan[256] = {0};
+    char state = proc_state_char(pid);
+    const char *kind = "unknown";
+    bool match = true;
+    if (read_proc_wchan(pid, wchan, sizeof(wchan)) == 0) {
+        kind = classify_wchan_freeze_kind(wchan);
+    } else {
+        snprintf(wchan, sizeof(wchan), "-");
+        kind = "unknown";
+    }
+    if (checked) (*checked)++;
+    if (frozen && wchan_kind_is_frozen(kind)) (*frozen)++;
+    if (sigstop && wchan_kind_is_stopped(kind)) (*sigstop)++;
+    if (unknown && strcmp(kind, "unknown") == 0) (*unknown)++;
+    match = wchan_expect_ok(expect, kind);
+    if (!match && mismatch) (*mismatch)++;
+    printf("CGFREEZER_WCHAN_ENTRY ok=%s origin=%s user=%d pid=%d uid=%d state=%c oomAdj=%d expect=%s match=%s freezeKind=%s wchan=", match ? "true" : "false", origin ? origin : "unknown", user_id, pid, uid, state, read_oom_score_adj(pid), expect ? expect : "any", match ? "true" : "false", kind);
+    sanitize_print(wchan);
+    printf(" process="); sanitize_print(process && *process ? process : "-"); printf("\n");
+}
+
+static int cmd_wchan_pid_list(int user_id, const char *pid_csv, const char *expect_arg) {
+    long start = now_ms();
+    const char *expect = normalize_wchan_expect(expect_arg);
+    char tmp[MAX_TEXT];
+    int checked = 0, frozen = 0, sigstop = 0, unknown = 0, mismatch = 0, skipped = 0;
+    if (!pid_csv || !*pid_csv || strcmp(pid_csv, "-") == 0 || strcmp(pid_csv, "none") == 0) {
+        bool ok = strcmp(expect, "thawed") == 0 || strcmp(expect, "not-frozen") == 0 || strcmp(expect, "any") == 0;
+        printf("CGFREEZER_WCHAN_DONE ok=%s origin=pid-list user=%d checked=0 frozen=0 sigstop=0 unknown=0 mismatch=0 skipped=0 expect=%s reason=no_pids elapsedMs=%ld\n", ok ? "true" : "false", user_id, expect, now_ms() - start);
+        return ok ? 0 : 11;
+    }
+    snprintf(tmp, sizeof(tmp), "%s", pid_csv);
+    printf("CGFREEZER_WCHAN_BEGIN ok=true origin=pid-list user=%d expect=%s pids=", user_id, expect); sanitize_print(pid_csv); printf("\n");
+    char *save = NULL;
+    char *item = strtok_r(tmp, ",", &save);
+    while (item) {
+        int pid_i = parse_int_arg(item, -1);
+        pid_t pid = (pid_t)pid_i;
+        int uid = pid_i > 0 ? parse_status_uid(pid) : -1;
+        char process[512] = {0};
+        if (pid_i > 0) read_cmdline(pid, process, sizeof(process));
+        if (pid_i <= 0 || uid < 0 || (user_id >= 0 && user_id_from_uid(uid) != user_id)) {
+            skipped++;
+            printf("CGFREEZER_WCHAN_ENTRY ok=false origin=pid-list user=%d pid=%d uid=%d expect=%s match=false freezeKind=unknown wchan=- process=- reason=skip_bad_pid_or_user\n", user_id, pid_i, uid, expect);
+            item = strtok_r(NULL, ",", &save);
+            continue;
+        }
+        print_wchan_entry("pid-list", user_id, pid, uid, expect, process, &checked, &frozen, &sigstop, &unknown, &mismatch);
+        item = strtok_r(NULL, ",", &save);
+    }
+    bool ok = true;
+    if (strcmp(expect, "frozen") == 0) ok = checked > 0 && frozen > 0 && mismatch == 0;
+    else if (strcmp(expect, "thawed") == 0 || strcmp(expect, "not-frozen") == 0) ok = mismatch == 0;
+    printf("CGFREEZER_WCHAN_DONE ok=%s origin=pid-list user=%d checked=%d frozen=%d sigstop=%d unknown=%d mismatch=%d skipped=%d expect=%s reason=%s elapsedMs=%ld\n", ok ? "true" : "false", user_id, checked, frozen, sigstop, unknown, mismatch, skipped, expect, ok ? "ok" : "expect_mismatch", now_ms() - start);
+    return ok ? 0 : 12;
+}
+
+static int cmd_wchan_uid(int uid_filter, const char *expect_arg) {
+    long start = now_ms();
+    const char *expect = normalize_wchan_expect(expect_arg);
+    int checked = 0, frozen = 0, sigstop = 0, unknown = 0, mismatch = 0, skipped = 0, user_id = uid_filter >= 0 ? user_id_from_uid(uid_filter) : -1;
+    if (uid_filter < 0) {
+        printf("CGFREEZER_WCHAN_UID_DONE ok=false uid=%d checked=0 frozen=0 sigstop=0 unknown=0 mismatch=0 skipped=0 expect=%s reason=bad_uid elapsedMs=%ld\n", uid_filter, expect, now_ms() - start);
+        return 64;
+    }
+    printf("CGFREEZER_WCHAN_BEGIN ok=true origin=uid uid=%d user=%d expect=%s\n", uid_filter, user_id, expect);
+    int dfd = open("/proc", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (dfd < 0) {
+        printf("CGFREEZER_WCHAN_UID_DONE ok=false uid=%d checked=0 frozen=0 sigstop=0 unknown=0 mismatch=0 skipped=0 expect=%s reason=proc_open_errno_%d elapsedMs=%ld\n", uid_filter, expect, errno, now_ms() - start);
+        return 3;
+    }
+    DIR *dir = fdopendir(dfd);
+    if (!dir) { close(dfd); return 3; }
+    struct dirent *de;
+    while ((de = readdir(dir)) != NULL) {
+        if (!isdigit((unsigned char)de->d_name[0])) continue;
+        pid_t pid = (pid_t)atoi(de->d_name);
+        if (pid <= 0) continue;
+        int uid = parse_status_uid(pid);
+        if (uid != uid_filter) continue;
+        char process[512] = {0};
+        if (read_cmdline(pid, process, sizeof(process)) < 0) snprintf(process, sizeof(process), "-");
+        print_wchan_entry("uid", user_id, pid, uid, expect, process, &checked, &frozen, &sigstop, &unknown, &mismatch);
+    }
+    closedir(dir);
+    bool ok = true;
+    if (strcmp(expect, "frozen") == 0) ok = checked > 0 && frozen > 0 && mismatch == 0;
+    else if (strcmp(expect, "thawed") == 0 || strcmp(expect, "not-frozen") == 0) ok = mismatch == 0;
+    printf("CGFREEZER_WCHAN_UID_DONE ok=%s uid=%d user=%d checked=%d frozen=%d sigstop=%d unknown=%d mismatch=%d skipped=%d expect=%s reason=%s elapsedMs=%ld\n", ok ? "true" : "false", uid_filter, user_id, checked, frozen, sigstop, unknown, mismatch, skipped, expect, ok ? "ok" : "expect_mismatch", now_ms() - start);
+    return ok ? 0 : 12;
+}
+
 static int cmd_proc_snapshot(const char *pkg, int user_id) {
     long start = now_ms();
     int rows = 0, errors = 0;
@@ -2091,6 +2225,18 @@ static int handle_daemon_command_line(char *line) {
         int timeout = parse_int_arg(argv[2], 1500);
         return cmd_thaw_uid(uid, timeout);
     }
+    if (strcmp(argv[0], "WCHAN_PID_LIST") == 0) {
+        if (argc < 3) { printf("CGFREEZER_WCHAN_DONE ok=false origin=pid-list reason=bad_args\n"); return 64; }
+        int user = parse_int_arg(argv[1], -1);
+        const char *expect = argc >= 4 ? argv[3] : "any";
+        return cmd_wchan_pid_list(user, argv[2], expect);
+    }
+    if (strcmp(argv[0], "WCHAN_UID") == 0) {
+        if (argc < 2) { printf("CGFREEZER_WCHAN_UID_DONE ok=false reason=bad_args\n"); return 64; }
+        int uid = parse_int_arg(argv[1], -1);
+        const char *expect = argc >= 3 ? argv[2] : "any";
+        return cmd_wchan_uid(uid, expect);
+    }
     if (strcmp(argv[0], "BINDER_INFO") == 0) {
         if (argc < 2) { printf("CGFREEZER_BINDER_INFO ok=false reason=bad_args\n"); return 64; }
         int pid = parse_int_arg(argv[1], -1);
@@ -2180,7 +2326,7 @@ static int daemon_cmd_class(const char *cmd) {
     if (strcmp(cmd, "FREEZE_PKG") == 0) return 2;
     if (strcmp(cmd, "KILL_PKG") == 0 || strcmp(cmd, "KILL_PID_LIST") == 0) return 3;
     if (strncmp(cmd, "THAW", 4) == 0) return 4;
-    if (strcmp(cmd, "SCAN") == 0 || strcmp(cmd, "PROC_SNAPSHOT") == 0 || strcmp(cmd, "SUBSCRIBE") == 0) return 5;
+    if (strcmp(cmd, "SCAN") == 0 || strcmp(cmd, "PROC_SNAPSHOT") == 0 || strcmp(cmd, "WCHAN_PID_LIST") == 0 || strcmp(cmd, "WCHAN_UID") == 0 || strcmp(cmd, "SUBSCRIBE") == 0) return 5;
     if (strcmp(cmd, "HELLO") == 0 || strcmp(cmd, "CAPS") == 0 || strcmp(cmd, "PING") == 0 || strcmp(cmd, "STATUS") == 0 || strcmp(cmd, "STATS") == 0 || strcmp(cmd, "STATS_DETAIL") == 0 || strcmp(cmd, "LAST_ERROR") == 0) return 7;
     return 0;
 }
@@ -2225,7 +2371,7 @@ static void daemon_note_command(const char *line) {
     else if (strcmp(argv[0], "FREEZE_PKG") == 0) g_stat_freeze_pkg++;
     else if (strcmp(argv[0], "KILL_PKG") == 0 || strcmp(argv[0], "KILL_PID_LIST") == 0) g_stat_kill_pkg++;
     else if (strcmp(argv[0], "FREEZE_PID_LIST") == 0) g_stat_freeze++;
-    else if (strcmp(argv[0], "PROC_SNAPSHOT") == 0) g_stat_scan++;
+    else if (strcmp(argv[0], "PROC_SNAPSHOT") == 0 || strcmp(argv[0], "WCHAN_PID_LIST") == 0 || strcmp(argv[0], "WCHAN_UID") == 0) g_stat_scan++;
     else if (strncmp(argv[0], "THAW", 4) == 0) g_stat_thaw++;
     else if (strcmp(argv[0], "SCAN") == 0) g_stat_scan++;
 }
@@ -2422,7 +2568,7 @@ static int parse_int_arg(const char *s, int fallback) {
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        printf("CGFREEZER_USAGE commands=check-root,backend-probe,scan-package,freeze-pid,freeze-pid-list,freeze-package,kill-pid-list,kill-package,proc-snapshot,thaw-path,thaw-pid,thaw-uid,binder-info,watch-logd,daemon\n");
+        printf("CGFREEZER_USAGE commands=check-root,backend-probe,scan-package,freeze-pid,freeze-pid-list,freeze-package,kill-pid-list,kill-package,proc-snapshot,proc-wchan,uid-wchan,thaw-path,thaw-pid,thaw-uid,binder-info,watch-logd,daemon\n");
         return 64;
     }
     if (strcmp(argv[1], "check-root") == 0) return cmd_check_root();
@@ -2469,6 +2615,18 @@ int main(int argc, char **argv) {
         if (argc < 4) return 64;
         int user = parse_int_arg(argv[3], 0);
         return cmd_proc_snapshot(argv[2], user);
+    }
+    if (strcmp(argv[1], "proc-wchan") == 0) {
+        if (argc < 4) return 64;
+        int user = parse_int_arg(argv[2], -1);
+        const char *expect = argc >= 5 ? argv[4] : "any";
+        return cmd_wchan_pid_list(user, argv[3], expect);
+    }
+    if (strcmp(argv[1], "uid-wchan") == 0) {
+        if (argc < 3) return 64;
+        int uid = parse_int_arg(argv[2], -1);
+        const char *expect = argc >= 4 ? argv[3] : "any";
+        return cmd_wchan_uid(uid, expect);
     }
     if (strcmp(argv[1], "thaw-path") == 0) {
         if (argc < 5) return 64;

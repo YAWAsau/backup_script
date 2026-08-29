@@ -61,7 +61,7 @@ import dev.rikka.tools.refine.Refine;
 public final class AppStateEngine {
     public static final int SCHEMA_VERSION = 2;
     public static final int DAEMON_PROTOCOL_VERSION = 1;
-    public static final String ENGINE_VERSION = "v1.3.104-r474-facts-prefetch-cleanup";
+    public static final String ENGINE_VERSION = "v1.3.105-r480-pre-restore-pm-state";
 
     static final Gson GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().create();
     static final Gson PRETTY_GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().setPrettyPrinting().create();
@@ -332,6 +332,8 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.storage_volume_facts.v1", true, false, "storageVolumeFacts emits File/StorageManager volume facts; tools collects it during framework facts prefetch");
         addCapability(capabilities, "dex.home_ime_launcher_facts.v1", true, false, "homeImeLauncherFacts emits default HOME/IME plus launcher candidates facts; tools collects it during framework facts prefetch");
         addCapability(capabilities, "dex.app_inventory.package_facts.batch.v1", true, false, "appInventoryPackageFactsBatch emits stable PackageManager/installer/source/split/data-dir TSV facts; tools consumes facts and still owns plans");
+        addCapability(capabilities, "dex.pm.pre_restore_package_state.batch.v1", true, false, "preRestorePackageStateBatch emits installedForUser/installedAnyUser/enabled/hidden/suspended/installer facts; tools still owns restore and trim policy");
+        addCapability(capabilities, "dex.pm.installer_context_facts.v1", true, false, "installerContextFacts emits installer package availability/uid/dataDir/source facts; tools still owns installer strategy");
         addCapability(capabilities, "dex.pm.post_install_facts_batch.v1", true, false, "appInventoryPostInstallFactsBatch refreshes PackageManager facts after APK install; tools still owns restore decisions");
         addCapability(capabilities, "dex.default_role_facts.batch.v1", true, false, "defaultRoleFacts emits HOME/DIALER/SMS/BROWSER/ASSISTANT role holders; tools still owns policy");
         addCapability(capabilities, "dex.storage_media_facts.v1", true, false, "storageMediaFacts emits user data/media/emulated path facts; tools still owns restore decisions");

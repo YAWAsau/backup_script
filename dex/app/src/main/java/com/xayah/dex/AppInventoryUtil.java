@@ -7,6 +7,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManagerHidden;
 import android.os.Build;
+import android.os.UserHandleHidden;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -35,7 +36,7 @@ import dev.rikka.tools.refine.Refine;
  * In a persistent root daemon this class keeps a per-user/per-locale cache for the current run.
  */
 final class AppInventoryUtil {
-    static final String VERSION = "v1.3.13-r469-full-dex-facts";
+    static final String VERSION = "v1.3.14-r480-pre-restore-package-state";
     private static final String XPOSED_METADATA = "xposedminversion";
     private static final Gson GSON = new Gson();
     private static final Map<String, List<Item>> CACHE = new HashMap<>();
@@ -420,6 +421,202 @@ final class AppInventoryUtil {
                 .append(sanitize(label)).append('\t').append(installed ? "true" : "false").append('\t')
                 .append(uid).append('\t').append(enabled ? "true" : "false").append('\t')
                 .append(sanitize(source)).append('\t').append(sanitize(reason)).append('\n');
+    }
+
+
+    static synchronized String preRestorePackageStateBatch(int userId, String[] packageNames, boolean refresh) throws Exception {
+        if (refresh) clearCache();
+        StringBuilder out = new StringBuilder();
+        out.append("#schema\tspeedbackup.pre_restore_package_state.v1\n");
+        out.append("#fields\tstatus\tpackage\tinstalledForUser\tuid\tversionCode\tversionName\tenabled\tsystem\tupdatedSystem\txposed\tcategory\tinstaller\tsourceDir\tpublicSourceDir\tsplitCount\tsplitSourceDirs\tdataDir\tdeDataDir\tuserDataExists\tuserDeDataExists\treason\tinstalledAnyUser\thidden\tsuspended\tinstallerPackage\tinstallSourcePackageName\tinitiatingPackageName\toriginatingPackageName\tfactsSource\n");
+        if (packageNames == null || packageNames.length == 0) {
+            appendPreRestoreMissingFact(out, userId, "", "BAD_ARGS", false);
+            return out.toString();
+        }
+        Context ctx = HiddenApiHelper.getContext();
+        PackageManager pm = PackageManagerUtil.getPackageManager(ctx).packageManager();
+        PackageManagerHidden pmHidden = Refine.unsafeCast(pm);
+        boolean any = false;
+        for (String raw : packageNames) {
+            if (raw == null) continue;
+            String pkgName = raw.trim();
+            if (pkgName.isEmpty() || "refresh".equalsIgnoreCase(pkgName) || "--refresh".equalsIgnoreCase(pkgName)) continue;
+            any = true;
+            boolean anyUser = isInstalledAnyUser(pm, pmHidden, pkgName, userId);
+            try {
+                PackageInfo pkg = pmHidden.getPackageInfoAsUser(pkgName, PackageManager.GET_META_DATA, userId);
+                Item item = toItem(pm, pkg, userId);
+                if (item == null) {
+                    appendPreRestoreMissingFact(out, userId, pkgName, "ITEM_NULL", anyUser);
+                } else {
+                    appendPreRestoreItemFact(out, pm, pmHidden, item, "OK", anyUser);
+                }
+            } catch (Throwable t) {
+                appendPreRestoreMissingFact(out, userId, pkgName, t.getClass().getSimpleName(), anyUser);
+            }
+        }
+        if (!any) appendPreRestoreMissingFact(out, userId, "", "BAD_ARGS", false);
+        return out.toString();
+    }
+
+    static synchronized String installerContextFacts(int userId, String targetPackage, String installerPackage, boolean refresh) throws Exception {
+        if (refresh) clearCache();
+        String target = targetPackage == null ? "" : targetPackage.trim();
+        String installer = installerPackage == null ? "" : installerPackage.trim();
+        StringBuilder out = new StringBuilder();
+        out.append("#schema\tspeedbackup.installer_context_facts.v1\n");
+        out.append("#fields\tstatus\ttargetPackage\tinstallerPackage\tuserId\ttargetInstalled\ttargetInstaller\tinstallerInstalled\tinstallerEnabled\tinstallerUid\tinstallerDataDir\tinstallerDeDataDir\tinstallerVersionCode\tinstallerIsPlay\tusableForPm\tusableForUidHybrid\treason\n");
+        if (target.isEmpty() || installer.isEmpty()) {
+            out.append("MISSING\t").append(sanitize(target)).append('\t').append(sanitize(installer)).append('\t').append(userId)
+                    .append("\tfalse\t\tfalse\tfalse\t-1\t\t\t-1\tfalse\tfalse\tfalse\tBAD_ARGS\n");
+            return out.toString();
+        }
+        Context ctx = HiddenApiHelper.getContext();
+        PackageManager pm = PackageManagerUtil.getPackageManager(ctx).packageManager();
+        PackageManagerHidden pmHidden = Refine.unsafeCast(pm);
+        String targetInstaller = "";
+        boolean targetInstalled = false;
+        try {
+            PackageInfo targetPi = pmHidden.getPackageInfoAsUser(target, PackageManager.GET_META_DATA, userId);
+            targetInstalled = targetPi != null && targetPi.applicationInfo != null;
+            try { targetInstaller = pm.getInstallerPackageName(target); } catch (Throwable ignored) { targetInstaller = ""; }
+        } catch (Throwable ignored) {}
+        try {
+            PackageInfo pi = pmHidden.getPackageInfoAsUser(installer, PackageManager.GET_META_DATA, userId);
+            Item item = toItem(pm, pi, userId);
+            if (item == null) throw new IllegalStateException("ITEM_NULL");
+            String dataDir = "/data/user/" + userId + "/" + installer;
+            String deDataDir = "/data/user_de/" + userId + "/" + installer;
+            boolean dataOk = new File(dataDir).isDirectory();
+            boolean deDataOk = new File(deDataDir).isDirectory();
+            boolean uidOk = item.uid >= 0;
+            boolean usablePm = item.enabled && uidOk;
+            boolean usableHybrid = usablePm && dataOk;
+            out.append("OK\t").append(sanitize(target)).append('\t').append(sanitize(installer)).append('\t').append(userId).append('\t')
+                    .append(targetInstalled ? "true" : "false").append('\t').append(sanitize(targetInstaller)).append('\t')
+                    .append("true\t").append(item.enabled ? "true" : "false").append('\t').append(item.uid).append('\t')
+                    .append(sanitize(dataDir)).append('\t').append(sanitize(deDataDir)).append('\t').append(item.versionCode).append('\t')
+                    .append("com.android.vending".equals(installer) ? "true" : "false").append('\t')
+                    .append(usablePm ? "true" : "false").append('\t').append(usableHybrid ? "true" : "false").append('\t')
+                    .append(dataOk ? "OK" : (deDataOk ? "DATA_DIR_MISSING_DE_EXISTS" : "DATA_DIR_MISSING")).append("\n");
+        } catch (Throwable t) {
+            out.append("MISSING\t").append(sanitize(target)).append('\t').append(sanitize(installer)).append('\t').append(userId)
+                    .append("\t").append(targetInstalled ? "true" : "false").append('\t').append(sanitize(targetInstaller))
+                    .append("\tfalse\tfalse\t-1\t\t\t-1\t")
+                    .append("com.android.vending".equals(installer) ? "true" : "false")
+                    .append("\tfalse\tfalse\t").append(sanitize(t.getClass().getSimpleName())).append("\n");
+        }
+        return out.toString();
+    }
+
+    private static void appendPreRestoreItemFact(StringBuilder out, PackageManager pm, PackageManagerHidden pmHidden, Item item, String reason, boolean installedAnyUser) {
+        String splits = item.splitSourceDirs == null ? "" : String.join("|", item.splitSourceDirs);
+        String userDataDir = item.packageName == null || item.packageName.isEmpty() ? "" : "/data/user/" + item.userId + "/" + item.packageName;
+        String userDeDataDir = item.packageName == null || item.packageName.isEmpty() ? "" : "/data/user_de/" + item.userId + "/" + item.packageName;
+        boolean hidden = isApplicationHidden(pm, item.packageName, item.userId);
+        boolean suspended = isPackageSuspended(pm, item.packageName);
+        String installerPkg = item.installerPackageName == null ? "" : item.installerPackageName;
+        String installSource = installerPkg;
+        String initiating = installerPkg;
+        String originating = "";
+        try {
+            if (Build.VERSION.SDK_INT >= 30) {
+                Object info = pm.getClass().getMethod("getInstallSourceInfo", String.class).invoke(pm, item.packageName);
+                if (info != null) {
+                    try { installSource = String.valueOf(info.getClass().getMethod("getInstallingPackageName").invoke(info)); } catch (Throwable ignored) {}
+                    try { initiating = String.valueOf(info.getClass().getMethod("getInitiatingPackageName").invoke(info)); } catch (Throwable ignored) {}
+                    try { originating = String.valueOf(info.getClass().getMethod("getOriginatingPackageName").invoke(info)); } catch (Throwable ignored) {}
+                }
+            }
+        } catch (Throwable ignored) {}
+        out.append("OK").append('\t')
+                .append(sanitize(item.packageName)).append('\t')
+                .append(item.installed).append('\t')
+                .append(item.uid).append('\t')
+                .append(item.versionCode).append('\t')
+                .append(sanitize(item.versionName)).append('\t')
+                .append(item.enabled).append('\t')
+                .append(item.system).append('\t')
+                .append(item.updatedSystem).append('\t')
+                .append(item.xposed).append('\t')
+                .append(sanitize(item.category)).append('\t')
+                .append(sanitize(installerPkg)).append('\t')
+                .append(sanitize(item.sourceDir)).append('\t')
+                .append(sanitize(item.publicSourceDir)).append('\t')
+                .append(item.splitCount).append('\t')
+                .append(sanitize(splits)).append('\t')
+                .append(sanitize(userDataDir)).append('\t')
+                .append(sanitize(userDeDataDir)).append('\t')
+                .append(!userDataDir.isEmpty() && new File(userDataDir).isDirectory()).append('\t')
+                .append(!userDeDataDir.isEmpty() && new File(userDeDataDir).isDirectory()).append('\t')
+                .append(sanitize(reason)).append('\t')
+                .append(installedAnyUser ? "true" : "false").append('\t')
+                .append(hidden ? "true" : "false").append('\t')
+                .append(suspended ? "true" : "false").append('\t')
+                .append(sanitize(installerPkg)).append('\t')
+                .append(sanitize(installSource)).append('\t')
+                .append(sanitize(initiating)).append('\t')
+                .append(sanitize(originating)).append('\t')
+                .append("PackageManager").append('\n');
+    }
+
+    private static void appendPreRestoreMissingFact(StringBuilder out, int userId, String pkgName, String reason, boolean installedAnyUser) {
+        String pkg = pkgName == null ? "" : pkgName.trim();
+        String userDataDir = pkg.isEmpty() ? "" : "/data/user/" + userId + "/" + pkg;
+        String userDeDataDir = pkg.isEmpty() ? "" : "/data/user_de/" + userId + "/" + pkg;
+        out.append("MISSING").append('\t')
+                .append(sanitize(pkg)).append('\t')
+                .append("false\t-1\t-1\t\tfalse\tfalse\tfalse\tfalse\t\t\t\t\t0\t\t")
+                .append(sanitize(userDataDir)).append('\t')
+                .append(sanitize(userDeDataDir)).append('\t')
+                .append(!userDataDir.isEmpty() && new File(userDataDir).isDirectory()).append('\t')
+                .append(!userDeDataDir.isEmpty() && new File(userDeDataDir).isDirectory()).append('\t')
+                .append(sanitize(reason)).append('\t')
+                .append(installedAnyUser ? "true" : "false")
+                .append("\tfalse\tfalse\t\t\t\t\tPackageManager\n");
+    }
+
+    private static boolean isInstalledAnyUser(PackageManager pm, PackageManagerHidden pmHidden, String pkgName, int preferredUserId) {
+        int[] users = new int[]{preferredUserId, 0, 10, 11, 12, 13, 14, 15, 999};
+        Set<Integer> seen = new HashSet<>();
+        for (int u : users) {
+            if (u < 0 || seen.contains(u)) continue;
+            seen.add(u);
+            try {
+                PackageInfo pi = pmHidden.getPackageInfoAsUser(pkgName, PackageManager.GET_META_DATA, u);
+                if (pi != null && pi.applicationInfo != null) return true;
+            } catch (Throwable ignored) {}
+        }
+        for (int u = 0; u <= 15; u++) {
+            if (seen.contains(u)) continue;
+            try {
+                PackageInfo pi = pmHidden.getPackageInfoAsUser(pkgName, PackageManager.GET_META_DATA, u);
+                if (pi != null && pi.applicationInfo != null) return true;
+            } catch (Throwable ignored) {}
+        }
+        return false;
+    }
+
+    private static boolean isApplicationHidden(PackageManager pm, String packageName, int userId) {
+        if (packageName == null || packageName.length() == 0) return false;
+        try {
+            Method m = pm.getClass().getMethod("getApplicationHiddenSettingAsUser", String.class, android.os.UserHandle.class);
+            Object r = m.invoke(pm, packageName, UserHandleHidden.of(userId));
+            return Boolean.TRUE.equals(r);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static boolean isPackageSuspended(PackageManager pm, String packageName) {
+        if (packageName == null || packageName.length() == 0) return false;
+        try {
+            Method m = pm.getClass().getMethod("isPackageSuspended", String.class);
+            Object r = m.invoke(pm, packageName);
+            return Boolean.TRUE.equals(r);
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     static synchronized String packageFactsBatch(int userId, String[] packageNames, boolean refresh) throws Exception {

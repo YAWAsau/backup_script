@@ -8,11 +8,11 @@ TOOLS_PATH="${TOOLS_PATH:-}"
 TEST_LOG_DIR="${TEST_LOG_DIR:-/data/local/tmp}"
 TEST_LOG_FILE="${TEST_LOG_FILE:-$TEST_LOG_DIR/dex_check.log}"
 TEST_SUMMARY_FILE="${TEST_SUMMARY_FILE:-$TEST_LOG_DIR/dex_full_test.summary}"
-DEX_CHECK_VERSION="v24.20.14-7.66-900-dexcheck-section-log-r477-202607232022"
+DEX_CHECK_VERSION="v24.20.14-7.66-907-update-external-inbox-target-guard-r484-202607232022"
 BACKUP_WIFI_ENABLE="${BACKUP_WIFI_ENABLE:-1}"
 SB_SELFTEST_LEVEL="${SB_SELFTEST_LEVEL:-quick}"
 CHANGELOG_URL="${CHANGELOG_URL:-https://api.github.com/repos/XayahSuSuSu/Android-DataBackup/releases/latest}"
-SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-v24.20.14-7.66-900-dexcheck-section-log-r477-202607232022}"
+SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-v24.20.14-7.66-907-update-external-inbox-target-guard-r484-202607232022}"
 SPEEDBACKUP_PATCH_BUILD="${SPEEDBACKUP_PATCH_BUILD:-}"
 PATH="/data/backup_tools:$(dirname "$CLASSPATH_PATH" 2>/dev/null):$PATH"
 export PATH
@@ -188,6 +188,8 @@ require_caps_json(){
 			"dex.app_inventory.package_filter_batch.v1",
 			"dex.app_inventory.getlist_onecall.v1",
 			"dex.app_inventory.package_facts.batch.v1",
+			"dex.pm.pre_restore_package_state.batch.v1",
+			"dex.pm.installer_context_facts.v1",
 			"dex.hidden_api.bypass_softgate.v1",
 			"appstate.snapshot.batch.v2",
 			"appstate.restore.batch.v4",
@@ -322,6 +324,9 @@ require_text "預設角色資訊" "$_hidden_help" "defaultRoleFacts"
 require_text "媒體儲存資訊" "$_hidden_help" "storageMediaFacts"
 require_text "設備資訊讀取" "$_hidden_help" "deviceFacts"
 
+require_text "恢復前 Package 狀態 facts" "$_hidden_help" "preRestorePackageStateBatch"
+require_text "安裝來源 context facts" "$_hidden_help" "installerContextFacts"
+
 section "恢復能力" "檢查恢復後 Package 可見性與 AppState/SSAID 入口"
 require_text "恢復後 App 可見性資訊" "$_hidden_help" "appInventoryPostInstallFactsBatch"
 require_text "恢復後 Package 可見性入口" "$_hidden_help" "packageVisibleAfterInstall"
@@ -337,6 +342,24 @@ require_text "螢幕亮度/電源模式控制" "$_hidden_help" "setDisplayPowerM
 require_text "cgroup freeze 啟動" "$_hidden_help" "cgroupFreezeStart"
 require_text "cgroup freeze 停止" "$_hidden_help" "cgroupFreezeStop"
 require_text "cgroup daemon 啟動" "$_hidden_help" "cgroupFreezeDaemonEnsure"
+_cg_bin="$(command -v cgfreezer 2>/dev/null)"; [ -n "$_cg_bin" ] || _cg_bin="/data/backup_tools/cgfreezer"
+if [ -x "$_cg_bin" ]; then
+	_cg_usage="$($_cg_bin 2>&1 | head -n 5)"
+	printf '%s\n' "$_cg_usage" | grep -F "proc-wchan" >/dev/null 2>&1 && ok "cgroup WCHAN native 指令" "present" || critical_fail "cgroup WCHAN native 指令" "missing proc-wchan，請重編/替換 cgfreezer"
+	_cg_wchan_out="$($_cg_bin proc-wchan -1 $$ any 2>/dev/null | head -n 80)"; _cg_wchan_rc=$?
+	printf '%s\n' "$_cg_wchan_out" > "$TEST_LOG_DIR/cgfreezer_wchan_smoke.txt" 2>/dev/null
+	if [ "$_cg_wchan_rc" -eq 0 ] && printf '%s\n' "$_cg_wchan_out" | grep -q 'CGFREEZER_WCHAN_DONE ok=true'; then ok "cgroup WCHAN 狀態確認" "rc=0"; else critical_fail "cgroup WCHAN 狀態確認" "rc=$_cg_wchan_rc"; fi
+else
+	critical_fail "cgroup WCHAN native 指令" "cgfreezer_not_found"
+	critical_fail "cgroup WCHAN 狀態確認" "cgfreezer_not_found"
+fi
+_tools_self="${TOOLS_PATH%/}/tools.sh"
+[ -f "$_tools_self" ] || _tools_self="$(dirname "$0" 2>/dev/null)/tools.sh"
+if [ -f "$_tools_self" ] && grep -F "_cgroup_freezer_wchan_corrective_pkg" "$_tools_self" >/dev/null 2>&1 && grep -F "CGROUP_WCHAN_CORRECTIVE_BEGIN" "$_tools_self" >/dev/null 2>&1; then
+	ok "cgroup WCHAN bounded 修正接入" "tools=present"
+else
+	critical_fail "cgroup WCHAN bounded 修正接入" "tools_missing"
+fi
 require_text "ProcessObserver 啟動" "$_hidden_help" "processObserverStart"
 require_text "ProcessObserver 停止" "$_hidden_help" "processObserverStop"
 require_text "ProcessObserver 批量啟動" "$_hidden_help" "processObserverBatchStart"
@@ -388,6 +411,14 @@ if [ "$_device_facts_rc" -eq 0 ] && printf '%s\n' "$_device_facts_out" | jq -e '
 _facts_out="$(run_class_stdout "$HIDDEN_CLASS" appInventoryPackageFactsBatch "$USER_ID" "$PKG" refresh 2>/dev/null)"; _facts_rc=$?
 printf '%s\n' "$_facts_out" > "$TEST_LOG_DIR/appinventory_package_facts.tsv" 2>/dev/null
 if [ "$_facts_rc" -eq 0 ] && printf '%s\n' "$_facts_out" | grep -q '^#schema[[:space:]]speedbackup.pm_facts.v1' && printf '%s\n' "$_facts_out" | grep -q "^OK[[:space:]]$PKG[[:space:]]"; then ok "App 批量資訊讀取" "rc=0"; else warn "App 批量資訊讀取" "rc=$_facts_rc"; fi
+
+_pre_state_out="$(run_class_stdout "$HIDDEN_CLASS" preRestorePackageStateBatch "$USER_ID" "$PKG" refresh 2>/dev/null)"; _pre_state_rc=$?
+printf '%s\n' "$_pre_state_out" > "$TEST_LOG_DIR/pre_restore_package_state.tsv" 2>/dev/null
+if [ "$_pre_state_rc" -eq 0 ] && printf '%s\n' "$_pre_state_out" | grep -q '^#schema[[:space:]]speedbackup.pre_restore_package_state.v1' && printf '%s\n' "$_pre_state_out" | grep -Eq "^(OK|MISSING)[[:space:]]$PKG[[:space:]]"; then ok "恢復前 Package 狀態 facts" "rc=0"; else warn "恢復前 Package 狀態 facts" "rc=$_pre_state_rc"; fi
+
+_inst_ctx_out="$(run_class_stdout "$HIDDEN_CLASS" installerContextFacts "$USER_ID" "$PKG" com.android.vending refresh 2>/dev/null)"; _inst_ctx_rc=$?
+printf '%s\n' "$_inst_ctx_out" > "$TEST_LOG_DIR/installer_context_facts.tsv" 2>/dev/null
+if [ "$_inst_ctx_rc" -eq 0 ] && printf '%s\n' "$_inst_ctx_out" | grep -q '^#schema[[:space:]]speedbackup.installer_context_facts.v1'; then ok "安裝來源 context facts" "rc=0"; else warn "安裝來源 context facts" "rc=$_inst_ctx_rc"; fi
 
 section "恢復能力" "執行恢復相關 smoke"
 _post_facts_out="$(run_class_stdout "$HIDDEN_CLASS" appInventoryPostInstallFactsBatch "$USER_ID" "$PKG" refresh 2>/dev/null)"; _post_facts_rc=$?
