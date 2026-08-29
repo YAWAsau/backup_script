@@ -61,7 +61,7 @@ import dev.rikka.tools.refine.Refine;
 public final class AppStateEngine {
     public static final int SCHEMA_VERSION = 2;
     public static final int DAEMON_PROTOCOL_VERSION = 1;
-    public static final String ENGINE_VERSION = "v1.3.99-r432-dex-restore-session-facts-argv-compilefix";
+    public static final String ENGINE_VERSION = "v1.3.104-r474-facts-prefetch-cleanup";
 
     static final Gson GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().create();
     static final Gson PRETTY_GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().setPrettyPrinting().create();
@@ -326,6 +326,11 @@ public final class AppStateEngine {
         addCapability(capabilities, "appstate.default_ime.v1", true, true, "Default input method resolver exported for tools cgroup-first backup/restore policy");
         addCapability(capabilities, "appstate.default_ime.exec_settings.v1", true, false, "Default IME is resolved by executing settings --user USER_ID get secure default_input_method, then PackageManager enriches label/install state");
         addCapability(capabilities, "dex.settings.exec_shim.v1", true, false, "settingsGet/settingsPut wrap /system/bin/settings --user USER_ID get|put namespace key [value] with NDJSON output; no ContentResolver caller-identity guess");
+        addCapability(capabilities, "dex.pm.facts.single.v1", true, false, "packageFacts emits one-package PackageManager facts TSV; optional diagnostic/single-pkg fallback, not daemon-ready required");
+        addCapability(capabilities, "dex.pm.installed_users_facts.v1", true, false, "packageInstalledUsers emits compact per-user install visibility facts; optional diagnostic, not daemon-ready required");
+        addCapability(capabilities, "dex.pm.visible_after_install.v1", true, false, "packageVisibleAfterInstall emits bounded install visibility facts for restore post-install wait");
+        addCapability(capabilities, "dex.storage_volume_facts.v1", true, false, "storageVolumeFacts emits File/StorageManager volume facts; tools collects it during framework facts prefetch");
+        addCapability(capabilities, "dex.home_ime_launcher_facts.v1", true, false, "homeImeLauncherFacts emits default HOME/IME plus launcher candidates facts; tools collects it during framework facts prefetch");
         addCapability(capabilities, "dex.app_inventory.package_facts.batch.v1", true, false, "appInventoryPackageFactsBatch emits stable PackageManager/installer/source/split/data-dir TSV facts; tools consumes facts and still owns plans");
         addCapability(capabilities, "dex.pm.post_install_facts_batch.v1", true, false, "appInventoryPostInstallFactsBatch refreshes PackageManager facts after APK install; tools still owns restore decisions");
         addCapability(capabilities, "dex.default_role_facts.batch.v1", true, false, "defaultRoleFacts emits HOME/DIALER/SMS/BROWSER/ASSISTANT role holders; tools still owns policy");
@@ -3663,10 +3668,33 @@ public final class AppStateEngine {
             }
         } catch (Throwable ignored) {
         }
+        Process process = null;
         try {
-            Process process = Runtime.getRuntime().exec(new String[]{"sh", "-c", "dumpsys deviceidle whitelist"});
+            ProcessBuilder builder = new ProcessBuilder("sh", "-c", "dumpsys deviceidle whitelist");
+            builder.redirectErrorStream(true);
+            process = builder.start();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
+                while (true) {
+                    while (reader.ready() && (line = reader.readLine()) != null) {
+                        for (String token : line.split("[,\\s]+")) {
+                            String value = token.trim();
+                            if (value.contains(".") && value.matches("[A-Za-z0-9._-]+")) result.add(value);
+                        }
+                    }
+                    if (!process.isAlive()) {
+                        break;
+                    }
+                    if (System.nanoTime() >= deadline) {
+                        process.destroy();
+                        if (!process.waitFor(200, TimeUnit.MILLISECONDS)) {
+                            process.destroyForcibly();
+                        }
+                        break;
+                    }
+                    Thread.sleep(20L);
+                }
                 while ((line = reader.readLine()) != null) {
                     for (String token : line.split("[,\\s]+")) {
                         String value = token.trim();
@@ -3674,8 +3702,14 @@ public final class AppStateEngine {
                     }
                 }
             }
-            process.waitFor();
+            process.waitFor(200, TimeUnit.MILLISECONDS);
         } catch (Throwable ignored) {
+            if (process != null) {
+                try {
+                    process.destroy();
+                } catch (Throwable ignoredDestroy) {
+                }
+            }
         }
         return result;
     }

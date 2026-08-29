@@ -21,7 +21,7 @@ import java.nio.charset.StandardCharsets;
  * streaming/network daemon, and install must run under Play UID.
  */
 public final class SpeedBackupRootDaemon {
-    public static final String VERSION = "v2.6.183-r376-appstate-platform-role-vendor dex=" + HiddenApiUtil.VERSION;
+    public static final String VERSION = "v2.6.202-r474-facts-prefetch-cleanup dex=" + HiddenApiUtil.VERSION;
     private static final int HOT_PROTOCOL_VERSION = 1;
 
     private SpeedBackupRootDaemon() {}
@@ -53,6 +53,11 @@ public final class SpeedBackupRootDaemon {
         System.out.println("  capability: dex.app_inventory.daemon_cache.v1");
         System.out.println("  capability: dex.app_inventory.pkg_uid.single.v1");
         System.out.println("  capability: dex.app_inventory.package_status.single.v1");
+        System.out.println("  capability: dex.pm.facts.single.v1");
+        System.out.println("  capability: dex.pm.installed_users_facts.v1");
+        System.out.println("  capability: dex.pm.visible_after_install.v1");
+        System.out.println("  capability: dex.storage_volume_facts.v1");
+        System.out.println("  capability: dex.home_ime_launcher_facts.v1");
         System.out.println("  capability: dex.app_inventory.default_ime.v1");
         System.out.println("  capability: dex.process_observer.watch.v1");
         System.out.println("  capability: dex.process_observer.guard.v2");

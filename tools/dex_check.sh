@@ -8,11 +8,11 @@ TOOLS_PATH="${TOOLS_PATH:-}"
 TEST_LOG_DIR="${TEST_LOG_DIR:-/data/local/tmp}"
 TEST_LOG_FILE="${TEST_LOG_FILE:-$TEST_LOG_DIR/dex_check.log}"
 TEST_SUMMARY_FILE="${TEST_SUMMARY_FILE:-$TEST_LOG_DIR/dex_full_test.summary}"
-DEX_CHECK_VERSION="v24.20.14-7.66-863-finalpack-timeout-cache-restore-r440-202607232022"
+DEX_CHECK_VERSION="v24.20.14-7.66-900-dexcheck-section-log-r477-202607232022"
 BACKUP_WIFI_ENABLE="${BACKUP_WIFI_ENABLE:-1}"
 SB_SELFTEST_LEVEL="${SB_SELFTEST_LEVEL:-quick}"
 CHANGELOG_URL="${CHANGELOG_URL:-https://api.github.com/repos/XayahSuSuSu/Android-DataBackup/releases/latest}"
-SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-v24.20.14-7.66-863-finalpack-timeout-cache-restore-r440-202607232022}"
+SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-v24.20.14-7.66-900-dexcheck-section-log-r477-202607232022}"
 SPEEDBACKUP_PATCH_BUILD="${SPEEDBACKUP_PATCH_BUILD:-}"
 PATH="/data/backup_tools:$(dirname "$CLASSPATH_PATH" 2>/dev/null):$PATH"
 export PATH
@@ -38,6 +38,12 @@ mkdir -p "$TEST_LOG_DIR" 2>/dev/null
 : > "$TEST_LOG_FILE" 2>/dev/null
 : > "$TEST_SUMMARY_FILE" 2>/dev/null
 log(){ printf '%s\n' "$*" >> "$TEST_LOG_FILE" 2>/dev/null; }
+section(){
+	local _title="$1" _desc="$2"
+	printf "\033[38;5;81m[%s] %s\033[0m\n" "$_title" "$_desc"
+	log "[$_title] $_desc"
+	printf '[SECTION] %s %s\n' "$_title" "$_desc" >> "$TEST_SUMMARY_FILE" 2>/dev/null
+}
 print_line(){
 	local _st="$1" _label="$2" _detail="$3" _icon _color _reset
 	IDX=$((IDX+1))
@@ -109,6 +115,13 @@ run_class_stdout(){
 	rm -f "$_out" "$_err" 2>/dev/null
 	return "$_rc"
 }
+run_class_quiet_stdout(){
+	local _cls="$1"
+	shift
+	CLASSPATH="$CLASSPATH_PATH" app_process /system/bin "$_cls" "$@" 2>/dev/null
+}
+run_dex_quiet_stdout(){ run_class_quiet_stdout "$HIDDEN_CLASS" "$@"; }
+
 run_dex(){ run_class "$HIDDEN_CLASS" "$@"; }
 run_timeout_suppressed(){
 	local _label="$1" _timeout="$2" _tmp="/data/local/tmp/sb_dex_selftest_suppressed_$$" _pid _start _now _rc _bytes
@@ -142,7 +155,7 @@ get_pkg_uid(){
 	' | head -n 1)"
 	case "$_uid" in ''|*[!0-9]*) return 1 ;; *) echo "$_uid"; return 0 ;; esac
 }
-first_user_pkg(){ run_dex getInstalledPackagesAsUser "$USER_ID" user pkgName 2>/dev/null | awk 'NF==1 && $1 ~ /^[A-Za-z0-9_.-]+$/ {print; exit}'; }
+first_user_pkg(){ run_dex_quiet_stdout getInstalledPackagesAsUser "$USER_ID" user pkgName 2>/dev/null | awk 'NF==1 && $1 ~ /^[A-Za-z0-9_.-]+$/ {print; exit}'; }
 find_tools_file(){
 	if [ -f "$TOOLS_PATH" ]; then echo "$TOOLS_PATH"; return 0; fi
 	if [ -n "$TOOLS_PATH" ] && [ -f "$TOOLS_PATH/tools.sh" ]; then echo "$TOOLS_PATH/tools.sh"; return 0; fi
@@ -193,6 +206,8 @@ require_caps_json(){
             "appstate.default_ime.v1",
             "appstate.default_ime.exec_settings.v1",
 			"dex.settings.exec_shim.v1",
+            "dex.pm.visible_after_install.v1",
+            "dex.pm.visible_after_install.v1",
 			"dex.framework_facts.batch.v1",
 			"dex.device_facts.v1",
 			"dex.device_model_name_map.v1",
@@ -237,18 +252,19 @@ require_caps_json(){
 			"notification.daemon.af_unix.v1",
 			"notification.inline_small_icon.v1"
 		] | all(.[]; cap(.)))
-	' "$_file" >/dev/null 2>&1 && ok "$_label" "core_caps_ok" || critical_fail "$_label" "core_caps_missing"
+	' "$_file" >/dev/null 2>&1 && ok "$_label" "核心能力齊全" || critical_fail "$_label" "缺少必要能力，請重編/替換 classes.dex"
 }
 
 log "=================================================="
-log "SpeedBackup dex_check core capability smoke"
+log "SpeedBackup dex_check 使用者可讀分組檢查"
 log "pkg=$PKG user=$USER_ID classpath=$CLASSPATH_PATH tools=$TOOLS_PATH level=$SB_SELFTEST_LEVEL dex_check=$DEX_CHECK_VERSION"
 log "selftest_version=$SELFTEST_SCRIPT_VERSION"
 log "speedbackup_patch_build=$SPEEDBACKUP_PATCH_BUILD"
-log "policy=core_only key_tools dex_capabilities no_historical_tools_regression_grep"
+log "policy=final_user_groups_logged required_core optional_facts reverted_display_timeout_direct"
 log "=================================================="
 
-if [ -f "$CLASSPATH_PATH" ]; then ok "classes.dex 存在" "$(wc -c < "$CLASSPATH_PATH" 2>/dev/null | tr -d ' ') bytes"; else critical_fail "classes.dex 存在" "$CLASSPATH_PATH"; fi
+section "核心環境" "檢查 Dex / native 啟動條件"
+if [ -f "$CLASSPATH_PATH" ]; then ok "Dex 檔案存在" "$(wc -c < "$CLASSPATH_PATH" 2>/dev/null | tr -d ' ') bytes"; else critical_fail "Dex 檔案存在" "$CLASSPATH_PATH"; fi
 if ! get_pkg_uid "$PKG" >/dev/null 2>&1; then
 	_new="$(first_user_pkg)"
 	if [ -n "$_new" ]; then warn "測試包切換" "$PKG -> $_new"; PKG="$_new"; fi
@@ -256,210 +272,139 @@ fi
 _uidexec="$(command -v uidexec 2>/dev/null)"; [ -n "$_uidexec" ] || _uidexec="/data/backup_tools/uidexec"
 if [ -x "$_uidexec" ]; then
 	_out="$(uidexec 0 0 /data "$CLASSPATH_PATH" /system/bin/id 2>&1 | head -n 1)"
-	echo "$_out" | grep -q 'uid=0' && ok "uidexec root 執行環境" "rc=0" || warn "uidexec root 執行環境" "$_out"
+	echo "$_out" | grep -q 'uid=0' && ok "Root 權限執行環境" "rc=0" || warn "Root 權限執行環境" "$_out"
 	_play_uid="$(get_pkg_uid "$PLAY_PKG" 2>/dev/null)"
 	if echo "$_play_uid" | grep -qE '^[0-9]+$'; then
 		_data_dir="/data/user/$USER_ID/$PLAY_PKG"; [ -d "$_data_dir" ] || _data_dir="/data"
 		_out="$(uidexec "$_play_uid" "$_play_uid" "$_data_dir" "$CLASSPATH_PATH" /system/bin/id 2>&1 | head -n 1)"
-		echo "$_out" | grep -q "uid=$_play_uid" && ok "uidexec Play UID 執行環境" "rc=0" || warn "uidexec Play UID 執行環境" "$_out"
+		echo "$_out" | grep -q "uid=$_play_uid" && ok "Play 商店身分模擬環境" "rc=0" || warn "Play 商店身分模擬環境" "$_out"
 	else
-		warn "uidexec Play UID 執行環境" "Play UID不可讀"
+		warn "Play 商店身分模擬環境" "Play UID不可讀"
 	fi
 else
-	warn "uidexec root 執行環境" "uidexec_not_found"
-	warn "uidexec Play UID 執行環境" "uidexec_not_found"
+	warn "Root 權限執行環境" "uidexec_not_found"
+	warn "Play 商店身分模擬環境" "uidexec_not_found"
 fi
 
 _dex_ver_now="$(run_dex --version 2>&1 | head -n 30)"; _dex_ver_rc=$?
 if [ "$_dex_ver_rc" -eq 0 ] && printf '%s\n' "$_dex_ver_now" | grep -q '^v2\.6\.'; then
-	ok "Dex version入口可讀" "rc=0"
+	ok "Dex 主入口可啟動" "rc=0"
 else
-	critical_fail "Dex version入口可讀" "rc=$_dex_ver_rc $_dex_ver_now"
+	critical_fail "Dex 主入口可啟動" "rc=$_dex_ver_rc $_dex_ver_now"
 fi
 _root_ver="$(run_class_stdout "$ROOT_DAEMON_CLASS" version 2>&1 | head -n 20)"; _root_ver_rc=$?
-[ "$_root_ver_rc" -eq 0 ] && [ -n "$_root_ver" ] && ok "SpeedBackupRootDaemon version可讀" "rc=0" || critical_fail "SpeedBackupRootDaemon version可讀" "rc=$_root_ver_rc"
+[ "$_root_ver_rc" -eq 0 ] && [ -n "$_root_ver" ] && ok "Dex RootDaemon 可啟動" "rc=0" || critical_fail "Dex RootDaemon 可啟動" "rc=$_root_ver_rc"
 _bypass="$(run_dex hiddenApiBypassStatus 2>&1 | head -n 40)"; _bypass_rc=$?
 printf '%s\n' "$_bypass" > "$TEST_LOG_DIR/hiddenapi_bypass_status.txt" 2>/dev/null
 if [ "$_bypass_rc" -eq 0 ] && printf '%s\n' "$_bypass" | grep -q 'HIDDEN_API_BYPASS'; then
-	ok "HiddenApiBypass softgate狀態入口" "rc=0 optional=1"
+	ok "Hidden API softgate 狀態" "rc=0 optional=1"
 else
-	warn "HiddenApiBypass softgate狀態入口" "rc=$_bypass_rc optional=1"
+	warn "Hidden API softgate 狀態" "rc=$_bypass_rc optional=1"
 fi
 _probe_out="$(run_dex hiddenApiRuntimeProbe "$USER_ID" "$PKG" 2>/dev/null | head -n 120)"; _probe_rc=$?
 printf '%s\n' "$_probe_out" > "$TEST_LOG_DIR/hiddenapi_runtime_probe.txt" 2>/dev/null
 if [ "$_probe_rc" -eq 0 ] && printf '%s\n' "$_probe_out" | grep -q 'HIDDEN_API_PROBE_DONE'; then
-	ok "HiddenApi runtime功能探測" "rc=0 functional_gate=1"
+	ok "Hidden API 實際功能探測" "rc=0 functional_gate=1"
 else
-	warn "HiddenApi runtime功能探測" "rc=$_probe_rc functional_gate=1"
+	warn "Hidden API 實際功能探測" "rc=$_probe_rc functional_gate=1"
 fi
-_hidden_help="$(run_dex help 2>&1)"; _hidden_help_rc=$?
-[ "$_hidden_help_rc" -eq 0 ] && ok "HiddenApiUtil help可讀" "rc=0" || critical_fail "HiddenApiUtil help可讀" "rc=$_hidden_help_rc"
-for _cmd in getPackageLabel getInstalledPackagesAsUser appInventorySnapshot appInventoryPkgUid appInventoryPackageStatus appInventoryPackageStatusBatch appInventoryPackageFactsBatch appInventoryPostInstallFactsBatch defaultRoleFacts storageMediaFacts deviceFacts forceStopPackageBatch forceStopPackageVerify uidLiveState uidObserverProbe uidObserverWatch packageLiveState setDisplayPowerMode cgroupFreezeStart cgroupFreezeStop cgroupFreezeDaemonEnsure processObserverStart processObserverStop processObserverBatchStart processObserverBatchStop processObserverRestoreSessionStart processObserverStatus processObserverTop processObserverForeground; do
-	require_text "HiddenApiUtil核心入口 $_cmd" "$_hidden_help" "$_cmd"
-done
+_hidden_help="$(run_dex_quiet_stdout help 2>/dev/null)"; _hidden_help_rc=$?
+[ "$_hidden_help_rc" -eq 0 ] && ok "Dex HiddenApiUtil 指令表可讀" "rc=0" || critical_fail "Dex HiddenApiUtil 指令表可讀" "rc=$_hidden_help_rc"
+section "備份能力" "檢查 App 清單、媒體與設備資訊入口"
+require_text "App 名稱讀取" "$_hidden_help" "getPackageLabel"
+require_text "使用者 App 清單" "$_hidden_help" "getInstalledPackagesAsUser"
+require_text "App 清單快照" "$_hidden_help" "appInventorySnapshot"
+require_text "App UID 讀取" "$_hidden_help" "appInventoryPkgUid"
+require_text "App 安裝狀態讀取" "$_hidden_help" "appInventoryPackageStatus"
+require_text "App 批量安裝狀態讀取" "$_hidden_help" "appInventoryPackageStatusBatch"
+require_text "App 批量資訊讀取" "$_hidden_help" "appInventoryPackageFactsBatch"
+require_text "預設角色資訊" "$_hidden_help" "defaultRoleFacts"
+require_text "媒體儲存資訊" "$_hidden_help" "storageMediaFacts"
+require_text "設備資訊讀取" "$_hidden_help" "deviceFacts"
 
+section "恢復能力" "檢查恢復後 Package 可見性與 AppState/SSAID 入口"
+require_text "恢復後 App 可見性資訊" "$_hidden_help" "appInventoryPostInstallFactsBatch"
+require_text "恢復後 Package 可見性入口" "$_hidden_help" "packageVisibleAfterInstall"
+
+section "進程控制" "檢查 force-stop、cgroup freeze、ProcessObserver 入口"
+require_text "批量停止 App" "$_hidden_help" "forceStopPackageBatch"
+require_text "停止 App 後驗證" "$_hidden_help" "forceStopPackageVerify"
+require_text "UID 存活狀態" "$_hidden_help" "uidLiveState"
+require_text "UID observer 探測" "$_hidden_help" "uidObserverProbe"
+require_text "UID observer 監控" "$_hidden_help" "uidObserverWatch"
+require_text "Package 存活狀態" "$_hidden_help" "packageLiveState"
+require_text "螢幕亮度/電源模式控制" "$_hidden_help" "setDisplayPowerMode"
+require_text "cgroup freeze 啟動" "$_hidden_help" "cgroupFreezeStart"
+require_text "cgroup freeze 停止" "$_hidden_help" "cgroupFreezeStop"
+require_text "cgroup daemon 啟動" "$_hidden_help" "cgroupFreezeDaemonEnsure"
+require_text "ProcessObserver 啟動" "$_hidden_help" "processObserverStart"
+require_text "ProcessObserver 停止" "$_hidden_help" "processObserverStop"
+require_text "ProcessObserver 批量啟動" "$_hidden_help" "processObserverBatchStart"
+require_text "ProcessObserver 批量停止" "$_hidden_help" "processObserverBatchStop"
+require_text "恢復 guard session" "$_hidden_help" "processObserverRestoreSessionStart"
+require_text "ProcessObserver 狀態" "$_hidden_help" "processObserverStatus"
+require_text "目前前台 App 判斷" "$_hidden_help" "processObserverTop"
+require_text "前台狀態查詢" "$_hidden_help" "processObserverForeground"
+
+section "可選資訊" "缺少時只略過 speed_debug 輔助 TSV，不阻斷備份/恢復"
+printf '%s\n' "$_hidden_help" | grep -F "storageVolumeFacts" >/dev/null 2>&1 && ok "儲存空間詳細 TSV" "present optional=1" || warn "儲存空間詳細 TSV" "missing optional=1"
+printf '%s\n' "$_hidden_help" | grep -F "homeImeLauncherFacts" >/dev/null 2>&1 && ok "桌面/鍵盤候選 TSV" "present optional=1" || warn "桌面/鍵盤候選 TSV" "missing optional=1"
+
+section "恢復能力" "檢查 AppState / SSAID / Framework facts 契約"
 _app_caps="$(run_class_stdout "$APPSTATE_CLASS" capabilities 2>/dev/null)"; _app_caps_rc=$?
 printf '%s\n' "$_app_caps" > "$TEST_LOG_DIR/appstate_capabilities.json" 2>/dev/null
 if [ "$_app_caps_rc" -eq 0 ] && [ -s "$TEST_LOG_DIR/appstate_capabilities.json" ]; then
-	require_caps_json "$TEST_LOG_DIR/appstate_capabilities.json" "AppState capabilities核心能力"
+	require_caps_json "$TEST_LOG_DIR/appstate_capabilities.json" "Dex 備份/恢復核心能力"
 else
-	critical_fail "AppState capabilities核心能力" "rc=$_app_caps_rc"
+	critical_fail "Dex 備份/恢復核心能力" "rc=$_app_caps_rc"
 fi
-_appstate_help="$(run_class_stdout "$APPSTATE_CLASS" help 2>&1)"; _appstate_help_rc=$?
-[ "$_appstate_help_rc" -eq 0 ] && ok "AppStateUtil help可讀" "rc=0" || critical_fail "AppStateUtil help可讀" "rc=$_appstate_help_rc"
-for _cmd in capabilities snapshotAppStateBatch foregroundStateBatch foregroundStateRunning foregroundTop foregroundListJson restoreAppStateBatch verifyAppStateBatch defaultHome defaultIme settingsGet settingsPut frameworkFacts deviceFacts daemonunix; do
-	require_text "AppStateUtil核心入口 $_cmd" "$_appstate_help" "$_cmd"
-done
+_appstate_help="$(run_class_quiet_stdout "$APPSTATE_CLASS" help 2>/dev/null)"; _appstate_help_rc=$?
+[ "$_appstate_help_rc" -eq 0 ] && ok "Dex AppState 指令表可讀" "rc=0" || critical_fail "Dex AppState 指令表可讀" "rc=$_appstate_help_rc"
+require_text "AppState capability 查詢入口" "$_appstate_help" "capabilities"
+require_text "AppState 備份快照入口" "$_appstate_help" "snapshotAppStateBatch"
+require_text "前台狀態批量入口" "$_appstate_help" "foregroundStateBatch"
+require_text "前台執行狀態入口" "$_appstate_help" "foregroundStateRunning"
+require_text "目前頂層 App 入口" "$_appstate_help" "foregroundTop"
+require_text "前台清單 JSON 入口" "$_appstate_help" "foregroundListJson"
+require_text "AppState 恢復入口" "$_appstate_help" "restoreAppStateBatch"
+require_text "AppState 驗證入口" "$_appstate_help" "verifyAppStateBatch"
+require_text "預設桌面判斷入口" "$_appstate_help" "defaultHome"
+require_text "預設鍵盤判斷入口" "$_appstate_help" "defaultIme"
+require_text "系統設定讀取 fallback 入口" "$_appstate_help" "settingsGet"
+require_text "系統設定寫入 fallback 入口" "$_appstate_help" "settingsPut"
+require_text "Framework facts 入口" "$_appstate_help" "frameworkFacts"
+require_text "設備 facts 入口" "$_appstate_help" "deviceFacts"
+require_text "RootDaemon unix socket 入口" "$_appstate_help" "daemonunix"
 
+section "備份能力" "執行安全 smoke，確認不是只有入口存在"
 _inv_out="$(run_class_stdout "$HIDDEN_CLASS" appInventoryPackageStatus "$USER_ID" "$PKG" refresh 2>/dev/null)"; _inv_rc=$?
 printf '%s\n' "$_inv_out" > "$TEST_LOG_DIR/appinventory_package_status.json" 2>/dev/null
-if [ "$_inv_rc" -eq 0 ] && printf '%s\n' "$_inv_out" | jq -e '.schema=="speedbackup.app_inventory.status.v1" or .schema=="speedbackup.app_inventory.v1" or has("packageName")' >/dev/null 2>&1; then ok "appInventoryPackageStatus smoke" "rc=0"; else warn "appInventoryPackageStatus smoke" "rc=$_inv_rc"; fi
+if [ "$_inv_rc" -eq 0 ] && printf '%s\n' "$_inv_out" | jq -e '.schema=="speedbackup.app_inventory.status.v1" or .schema=="speedbackup.app_inventory.v1" or has("packageName")' >/dev/null 2>&1; then ok "App 安裝狀態讀取" "rc=0"; else warn "App 安裝狀態讀取" "rc=$_inv_rc"; fi
 
 _device_facts_out="$(run_class_stdout "$HIDDEN_CLASS" deviceFacts 2>/dev/null)"; _device_facts_rc=$?
 printf '%s\n' "$_device_facts_out" > "$TEST_LOG_DIR/device_facts.json" 2>/dev/null
-if [ "$_device_facts_rc" -eq 0 ] && printf '%s\n' "$_device_facts_out" | jq -e '.schema=="speedbackup.device_facts.v1" and (.modelNameSource|length>0) and (.marketNameZh|length>0) and (.modelDbEntryCount >= 4000) and (.modelDbSourceLines >= 4000) and ((.modelDbSourceSha256|length)==64)' >/dev/null 2>&1; then ok "deviceFacts Dex全量內建機型表 smoke" "rc=0"; else warn "deviceFacts Dex全量內建機型表 smoke" "rc=$_device_facts_rc"; fi
+if [ "$_device_facts_rc" -eq 0 ] && printf '%s\n' "$_device_facts_out" | jq -e '.schema=="speedbackup.device_facts.v1" and (.modelNameSource|length>0) and (.marketNameZh|length>0) and (.modelDbEntryCount >= 4000) and (.modelDbSourceLines >= 4000) and ((.modelDbSourceSha256|length)==64)' >/dev/null 2>&1; then ok "Dex 內建機型資料庫" "rc=0"; else warn "Dex 內建機型資料庫" "rc=$_device_facts_rc"; fi
 
 _facts_out="$(run_class_stdout "$HIDDEN_CLASS" appInventoryPackageFactsBatch "$USER_ID" "$PKG" refresh 2>/dev/null)"; _facts_rc=$?
 printf '%s\n' "$_facts_out" > "$TEST_LOG_DIR/appinventory_package_facts.tsv" 2>/dev/null
-if [ "$_facts_rc" -eq 0 ] && printf '%s\n' "$_facts_out" | grep -q '^#schema[[:space:]]speedbackup.pm_facts.v1' && printf '%s\n' "$_facts_out" | grep -q "^OK[[:space:]]$PKG[[:space:]]"; then ok "appInventoryPackageFactsBatch smoke" "rc=0"; else warn "appInventoryPackageFactsBatch smoke" "rc=$_facts_rc"; fi
+if [ "$_facts_rc" -eq 0 ] && printf '%s\n' "$_facts_out" | grep -q '^#schema[[:space:]]speedbackup.pm_facts.v1' && printf '%s\n' "$_facts_out" | grep -q "^OK[[:space:]]$PKG[[:space:]]"; then ok "App 批量資訊讀取" "rc=0"; else warn "App 批量資訊讀取" "rc=$_facts_rc"; fi
 
+section "恢復能力" "執行恢復相關 smoke"
 _post_facts_out="$(run_class_stdout "$HIDDEN_CLASS" appInventoryPostInstallFactsBatch "$USER_ID" "$PKG" refresh 2>/dev/null)"; _post_facts_rc=$?
 printf '%s\n' "$_post_facts_out" > "$TEST_LOG_DIR/appinventory_post_install_facts.tsv" 2>/dev/null
-if [ "$_post_facts_rc" -eq 0 ] && printf '%s\n' "$_post_facts_out" | grep -q '^#schema[[:space:]]speedbackup.pm_facts.v1' && printf '%s\n' "$_post_facts_out" | grep -q "^OK[[:space:]]$PKG[[:space:]]"; then ok "appInventoryPostInstallFactsBatch smoke" "rc=0"; else warn "appInventoryPostInstallFactsBatch smoke" "rc=$_post_facts_rc"; fi
+if [ "$_post_facts_rc" -eq 0 ] && printf '%s\n' "$_post_facts_out" | grep -q '^#schema[[:space:]]speedbackup.pm_facts.v1' && printf '%s\n' "$_post_facts_out" | grep -q "^OK[[:space:]]$PKG[[:space:]]"; then ok "恢復後 App 可見性資訊" "rc=0"; else warn "恢復後 App 可見性資訊" "rc=$_post_facts_rc"; fi
 
 _role_facts_out="$(run_class_stdout "$HIDDEN_CLASS" defaultRoleFacts "$USER_ID" 2>/dev/null)"; _role_facts_rc=$?
 printf '%s\n' "$_role_facts_out" > "$TEST_LOG_DIR/default_role_facts.tsv" 2>/dev/null
-if [ "$_role_facts_rc" -eq 0 ] && printf '%s\n' "$_role_facts_out" | grep -q '^#schema[[:space:]]speedbackup.default_role_facts.v1'; then ok "defaultRoleFacts smoke" "rc=0"; else warn "defaultRoleFacts smoke" "rc=$_role_facts_rc"; fi
+if [ "$_role_facts_rc" -eq 0 ] && printf '%s\n' "$_role_facts_out" | grep -q '^#schema[[:space:]]speedbackup.default_role_facts.v1'; then ok "預設角色資訊" "rc=0"; else warn "預設角色資訊" "rc=$_role_facts_rc"; fi
 
 _storage_facts_out="$(run_class_stdout "$HIDDEN_CLASS" storageMediaFacts "$USER_ID" 2>/dev/null)"; _storage_facts_rc=$?
 printf '%s\n' "$_storage_facts_out" > "$TEST_LOG_DIR/storage_media_facts.tsv" 2>/dev/null
-if [ "$_storage_facts_rc" -eq 0 ] && printf '%s\n' "$_storage_facts_out" | grep -q '^#schema[[:space:]]speedbackup.storage_media_facts.v1'; then ok "storageMediaFacts smoke" "rc=0"; else warn "storageMediaFacts smoke" "rc=$_storage_facts_rc"; fi
+if [ "$_storage_facts_rc" -eq 0 ] && printf '%s\n' "$_storage_facts_out" | grep -q '^#schema[[:space:]]speedbackup.storage_media_facts.v1'; then ok "媒體儲存資訊" "rc=0"; else warn "媒體儲存資訊" "rc=$_storage_facts_rc"; fi
+section "已撤回" "顯示已移除的過時檢測與正式 fallback"
 _settings_out="$(run_class_stdout "$APPSTATE_CLASS" settingsGet "$USER_ID" secure default_input_method 2>/dev/null)"; _settings_rc=$?
 printf '%s\n' "$_settings_out" > "$TEST_LOG_DIR/appstate_settings_get_smoke.ndjson" 2>/dev/null
-if [ "$_settings_rc" -eq 0 ] && printf '%s\n' "$_settings_out" | jq -s -e 'any(.[]; .recordType=="settingsGet" and .source=="exec_settings")' >/dev/null 2>&1; then ok "settingsGet exec shim smoke" "rc=0"; else warn "settingsGet exec shim smoke" "rc=$_settings_rc"; fi
-_framework_out="$(run_class_stdout "$APPSTATE_CLASS" frameworkFacts "$USER_ID" "$PKG" 2>/dev/null)"; _framework_rc=$?
-printf '%s\n' "$_framework_out" > "$TEST_LOG_DIR/appstate_framework_facts_smoke.ndjson" 2>/dev/null
-if [ "$_framework_rc" -eq 0 ] && printf '%s\n' "$_framework_out" | jq -s -e --arg p "$PKG" 'any(.[]; .recordType=="frameworkFacts" and .packageName==$p) and any(.[]; .recordType=="summary" and .command=="frameworkFacts")' >/dev/null 2>&1; then ok "frameworkFacts smoke" "rc=0"; else warn "frameworkFacts smoke" "rc=$_framework_rc"; fi
-_snap_out="$(run_class_stdout "$APPSTATE_CLASS" snapshotAppStateBatch "$USER_ID" "$PKG")"; _snap_rc=$?
-printf '%s\n' "$_snap_out" > "$TEST_LOG_DIR/appstate_snapshot_probe.ndjson" 2>/dev/null
-if [ "$_snap_rc" -eq 0 ] && printf '%s\n' "$_snap_out" | jq -s -e --arg p "$PKG" 'any(.[]; .recordType=="snapshot" and .packageName==$p and (.result.name=="OK" or .result.name=="PARTIAL")) and any(.[]; .recordType=="summary" and .command=="snapshotAppStateBatch")' >/dev/null 2>&1; then ok "snapshotAppStateBatch smoke" "rc=0"; else critical_fail "snapshotAppStateBatch smoke" "rc=$_snap_rc"; fi
-_fg_out="$(run_class_stdout "$APPSTATE_CLASS" foregroundStateBatch "$USER_ID" "$PKG")"; _fg_rc=$?
-printf '%s\n' "$_fg_out" > "$TEST_LOG_DIR/appstate_foreground_state_smoke.ndjson" 2>/dev/null
-if [ "$_fg_rc" -eq 0 ] && printf '%s\n' "$_fg_out" | jq -s -e --arg p "$PKG" 'any(.[]; .recordType=="foregroundState" and .packageName==$p and (.active|type)=="boolean") and any(.[]; .recordType=="summary" and .command=="foregroundStateBatch")' >/dev/null 2>&1; then ok "foregroundStateBatch smoke" "rc=0"; else critical_fail "foregroundStateBatch smoke" "rc=$_fg_rc"; fi
-_home_out="$(run_class_stdout "$APPSTATE_CLASS" defaultHome "$USER_ID")"; _home_rc=$?
-printf '%s\n' "$_home_out" > "$TEST_LOG_DIR/appstate_default_home_smoke.ndjson" 2>/dev/null
-if [ "$_home_rc" -eq 0 ] && printf '%s\n' "$_home_out" | jq -s -e 'any(.[]; .recordType=="defaultHome") and any(.[]; .recordType=="summary" and .command=="defaultHome")' >/dev/null 2>&1; then ok "defaultHome smoke" "rc=0"; else critical_fail "defaultHome smoke" "rc=$_home_rc"; fi
+if [ "$_settings_rc" -eq 0 ] && printf '%s\n' "$_settings_out" | jq -s -e 'any(.[]; .recordType=="settingsGet" and .source=="exec_settings")' >/dev/null 2>&1; then ok "系統設定 shell fallback" "rc=0"; else warn "系統設定 shell fallback" "rc=$_settings_rc"; fi
+	# r473: Dex display-timeout/settings direct smoke removed. Settings screen_off_timeout is intentionally handled by bounded shell in tools.
+ok "Dex 直接改螢幕逾時已撤回" "正式路徑=bounded-shell"
 
-_top_out="$(run_dex processObserverTop "$USER_ID" 2>/dev/null)"; _top_rc=$?
-printf '%s\n' "$_top_out" > "$TEST_LOG_DIR/process_observer_top_smoke.txt" 2>/dev/null
-if [ "$_top_rc" -eq 0 ] && printf '%s\n' "$_top_out" | grep -q 'PROCESS_OBSERVER_TOP'; then ok "processObserverTop direct smoke" "rc=0"; else warn "processObserverTop direct smoke" "rc=$_top_rc"; fi
-_pof_out="$(run_dex processObserverForeground "$USER_ID" "$PKG" 2>/dev/null)"; _pof_rc=$?
-printf '%s\n' "$_pof_out" > "$TEST_LOG_DIR/process_observer_foreground_smoke.txt" 2>/dev/null
-if [ "$_pof_rc" -eq 0 ] && printf '%s\n' "$_pof_out" | grep -q 'PROCESS_OBSERVER_FOREGROUND'; then ok "processObserverForeground direct smoke" "rc=0"; else warn "processObserverForeground direct smoke" "rc=$_pof_rc"; fi
-_pls_out="$(run_dex packageLiveState "$USER_ID" "$PKG" 2>/dev/null)"; _pls_rc=$?
-printf '%s\n' "$_pls_out" > "$TEST_LOG_DIR/package_live_state_smoke.txt" 2>/dev/null
-if [ "$_pls_rc" -eq 0 ] && printf '%s\n' "$_pls_out" | grep -q 'PACKAGE_LIVE_STATE'; then ok "packageLiveState direct smoke" "rc=0 hash=0"; else warn "packageLiveState direct smoke" "rc=$_pls_rc"; fi
-_pis_out="$(run_dex packageInstallSnapshot "$USER_ID" "$PKG" 2>/dev/null)"; _pis_rc=$?
-printf '%s\n' "$_pis_out" > "$TEST_LOG_DIR/package_install_snapshot_smoke.txt" 2>/dev/null
-if [ "$_pis_rc" -eq 0 ] && printf '%s\n' "$_pis_out" | grep -q 'PACKAGE_INSTALL_SNAPSHOT' && printf '%s\n' "$_pis_out" | grep -q 'hash=0'; then ok "packageInstallSnapshot direct smoke" "rc=0 hash=0"; else warn "packageInstallSnapshot direct smoke" "rc=$_pis_rc"; fi
-_prs_out="$(run_dex packageRestrictionSnapshot "$USER_ID" "$PKG" 2>/dev/null)"; _prs_rc=$?
-printf '%s\n' "$_prs_out" > "$TEST_LOG_DIR/package_restriction_snapshot_smoke.txt" 2>/dev/null
-if [ "$_prs_rc" -eq 0 ] && printf '%s\n' "$_prs_out" | grep -q 'PACKAGE_RESTRICTION_SNAPSHOT' && printf '%s\n' "$_prs_out" | grep -q 'hash=0'; then ok "packageRestrictionSnapshot direct smoke" "rc=0 hash=0"; else warn "packageRestrictionSnapshot direct smoke" "rc=$_prs_rc"; fi
-_uid_probe_out="$(run_dex uidObserverProbe 2>/dev/null)"; _uid_probe_rc=$?
-printf '%s\n' "$_uid_probe_out" > "$TEST_LOG_DIR/uid_observer_probe_smoke.txt" 2>/dev/null
-if [ "$_uid_probe_rc" -eq 0 ] && printf '%s\n' "$_uid_probe_out" | grep -q 'UID_OBSERVER_PROBE'; then ok "uidObserverProbe direct smoke" "rc=0"; else warn "uidObserverProbe direct smoke" "rc=$_uid_probe_rc"; fi
-_uid_out="$(run_dex uidLiveState "$USER_ID" "$PKG" 2>/dev/null)"; _uid_rc=$?
-printf '%s\n' "$_uid_out" > "$TEST_LOG_DIR/uid_live_state_smoke.txt" 2>/dev/null
-if [ "$_uid_rc" -eq 0 ] && printf '%s\n' "$_uid_out" | grep -q 'UID_LIVE_STATE'; then ok "uidLiveState direct smoke" "rc=0 hash=0"; else warn "uidLiveState direct smoke" "rc=$_uid_rc"; fi
-_uid_watch_out="$(run_dex uidObserverWatch "$USER_ID" "$PKG" 120 2>/dev/null)"; _uid_watch_rc=$?
-printf '%s\n' "$_uid_watch_out" > "$TEST_LOG_DIR/uid_observer_watch_smoke.txt" 2>/dev/null
-if [ "$_uid_watch_rc" -eq 0 ] && printf '%s\n' "$_uid_watch_out" | grep -q 'UID_OBSERVER_WATCH_DONE'; then ok "uidObserverWatch direct smoke" "rc=0"; else warn "uidObserverWatch direct smoke" "rc=$_uid_watch_rc"; fi
-_fsv_out="$(run_dex forceStopPackageVerify "$USER_ID" "$PKG" 100 2>/dev/null)"; _fsv_rc=$?
-printf '%s\n' "$_fsv_out" > "$TEST_LOG_DIR/force_stop_verify_smoke.txt" 2>/dev/null
-if [ "$_fsv_rc" -eq 0 ] && printf '%s\n' "$_fsv_out" | grep -q 'FORCE_STOP_VERIFY'; then ok "forceStopPackageVerify direct smoke" "rc=0"; else warn "forceStopPackageVerify direct smoke" "rc=$_fsv_rc"; fi
-
-_wdav_help="$(run_class "$WEBDAV_CLASS" help 2>&1)"; _wdav_help_rc=$?
-# r208: WebDavUtil help may print complete usage then exit 2 on older command dispatchers.
-# Treat stdout content as the smoke criterion; exit code alone is not a core capability failure.
-if printf '%s\n' "$_wdav_help" | grep -q 'WebDavUtil' && 	printf '%s\n' "$_wdav_help" | grep -q 'daemonunix' && 	printf '%s\n' "$_wdav_help" | grep -q 'putstdinmanagedrel'; then
-	if [ "$_wdav_help_rc" -eq 0 ]; then
-		ok "WebDavUtil help可讀" "rc=0"
-	else
-		ok "WebDavUtil help可讀" "stdout-ok rc=$_wdav_help_rc"
-	fi
-	for _cmd in daemonunix putstdinmanagedrel putmanagedrel managedbatchputrelwithparents managedlistclassifyrel listrel classifylistrel preparedirsplanrel statrel optionspreflightrel ensurebaserel ensuredirsbatchrel; do require_text "WebDavUtil核心入口 $_cmd" "$_wdav_help" "$_cmd"; done
-	# getrel 是 WebDAV 下載路徑使用的 legacy/alias command；部分 Dex help 不再列出，但命令可能仍存在。
-	# dex_check 只做核心 smoke，不再因 help usage 少列 alias 而中止工具。
-	if printf '%s\n' "$_wdav_help" | grep -q 'getrel'; then
-		ok "WebDavUtil可選入口 getrel" "present"
-	else
-		warn "WebDavUtil可選入口 getrel" "not-listed-in-help"
-	fi
-else
-	critical_fail "WebDavUtil help可讀" "missing-core-output rc=$_wdav_help_rc"
-fi
-_smb_help="$(run_class "$SMB_SCAN_CLASS" help 2>&1 | head -n 160)"; _smb_help_rc=$?
-[ "$_smb_help_rc" -eq 0 ] && printf '%s\n' "$_smb_help" | grep -q 'probeTarget' && ok "SmbScanUtil probeTarget入口" "present" || critical_fail "SmbScanUtil probeTarget入口" "rc=$_smb_help_rc"
-_notify_help="$(run_class "$NOTIFICATION_CLASS" help 2>&1 | head -n 160)"; _notify_rc=$?
-[ "$_notify_rc" -eq 0 ] && printf '%s\n' "$_notify_help" | grep -q 'notifyBatch' && ok "NotificationUtil notifyBatch入口" "present" || warn "NotificationUtil notifyBatch入口" "rc=$_notify_rc"
-_cc_help="$(run_class "$CC_CLASS" help 2>&1 | head -n 120)"; _cc_rc=$?
-[ "$_cc_rc" -eq 0 ] && printf '%s\n' "$_cc_help" | grep -q 's2t' && printf '%s\n' "$_cc_help" | grep -q 't2s' && ok "CCUtil s2t/t2s入口" "present" || warn "CCUtil s2t/t2s入口" "rc=$_cc_rc"
-if [ "$BACKUP_WIFI_ENABLE" = "1" ]; then
-	run_timeout_suppressed "NetworkUtil getNetworks smoke" 20 env CLASSPATH="$CLASSPATH_PATH" app_process /system/bin "$NETWORK_CLASS" getNetworks
-else
-	warn "NetworkUtil getNetworks smoke" "backup_wifi_enable=0"
-fi
-
-
-_TOOLS_FILE="$(find_tools_file 2>/dev/null)"
-if [ -n "$_TOOLS_FILE" ] && [ -f "$_TOOLS_FILE" ]; then
-	_shn_out="$(sh -n "$_TOOLS_FILE" 2>&1)"; _shn_rc=$?
-	[ "$_shn_rc" -eq 0 ] && ok "tools.sh 語法檢查" "rc=0" || critical_fail "tools.sh 語法檢查" "rc=$_shn_rc $_shn_out"
-else
-	warn "tools.sh 語法檢查" "TOOLS_PATH不存在"
-fi
-
-key_tool_path(){
-	local _name="$1" _p
-	_p="$(command -v "$_name" 2>/dev/null)"
-	[ -n "$_p" ] && { echo "$_p"; return 0; }
-	[ -x "/data/backup_tools/$_name" ] && { echo "/data/backup_tools/$_name"; return 0; }
-	return 1
-}
-check_key_tool(){
-	local _name="$1" _level="$2" _p
-	_p="$(key_tool_path "$_name" 2>/dev/null)"
-	if [ -n "$_p" ] && [ -x "$_p" ]; then
-		ok "關鍵工具 $_name" "$_p"
-	else
-		case "$_level" in
-			critical) critical_fail "關鍵工具 $_name" "missing" ;;
-			*) warn "關鍵工具 $_name" "missing" ;;
-		esac
-	fi
-}
-check_key_tool app_process critical
-check_key_tool uidexec critical
-check_key_tool jq critical
-check_key_tool tar critical
-check_key_tool zstd critical
-check_key_tool busybox warn
-check_key_tool smbclient warn
-check_key_tool keycheck warn
-check_key_tool procwait warn
-check_key_tool eventwait warn
-check_key_tool speedscan warn
-check_key_tool unixsock warn
-check_key_tool cgfreezerd warn
-ok "dex_check 範圍" "core-only-r299: key tools + Dex capabilities only; live-safe observer default; split-awk WebDAV size fastmap with decimal integer sums"
-
-case "$TOTAL" in
-	''|dynamic|DYNAMIC) TOTAL="$IDX" ;;
-	*[!0-9]*) log "測試項數量提示非數字: TOTAL=$TOTAL IDX=$IDX" ;;
-	*) if [ "$IDX" -ne "$TOTAL" ]; then warn "測試項數量不一致" "IDX=$IDX TOTAL=$TOTAL"; fi ;;
-esac
-printf '\033[38;5;51m -dex core capability測試完成: ✅%s ❌%s ⚠️%s，詳情會打包在 speed_debug tar 內: dex_full_test.log\033[0m\n' "$OK" "$FAIL" "$WARN"
-log "dex core capability測試完成: OK=$OK FAIL=$FAIL WARN=$WARN IDX=$IDX TOTAL=$TOTAL"
-[ "$HAD_CMD_STDERR" = "1" ] && log "WARN unexpected stderr seen"
-[ "$CRITICAL_FAIL" -gt 0 ] && exit 2
-exit 0

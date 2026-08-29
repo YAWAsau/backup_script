@@ -73,8 +73,8 @@
 #define MAX_CACHE_PIDS 256
 #define LOGGER_ENTRY_MAX_LEN 5120
 #define LOG_ID_EVENTS 2
-#define CGFREEZER_VERSION "r253-cgfreezerd-protocol-unify-api28-r28c-relroguard"
-#define CGFREEZER_PROTOCOL "line-v6-plain-lines-r253"
+#define CGFREEZER_VERSION "r461-cgroup-kill-fastpath-api28-r28c"
+#define CGFREEZER_PROTOCOL "line-v7-cgroup-kill-r461"
 #define MAX_UID_PATHS 128
 #define MAX_UID_PIDS 512
 #define MAX_DAEMON_CHILDREN 64
@@ -157,7 +157,7 @@ static char g_daemon_last_command[64] = {0};
 static char g_daemon_last_error[160] = "none";
 
 static const char *cgfreezer_caps(void) {
-    return "check-root,backend-probe,scan,freeze,freeze-package-single-request-v1,kill-package-live-rescan-v1,pidfd-signal-optional-v1,thaw,thaw-uid-emergency-v1,binder-freeze,binder-info,subscribe-logd,pid-cache,uid-cache,cgroup-v2-events,cgroup-v2-uid-root-fallback,cgroup-v1-freezer,daemon-parent-control-v1,daemon-stats-v1,daemon-stats-detail-v1,last-error-v1,daemon-control-plain-lines-v2,kill-report-v2,batch-pid-list-v1,proc-snapshot-v1,pidfd-kill-v1";
+    return "check-root,backend-probe,scan,freeze,freeze-package-single-request-v1,kill-package-live-rescan-v1,pidfd-signal-optional-v1,thaw,thaw-uid-emergency-v1,binder-freeze,binder-info,subscribe-logd,pid-cache,uid-cache,cgroup-v2-events,cgroup-v2-uid-root-fallback,cgroup-v1-freezer,daemon-parent-control-v1,daemon-stats-v1,daemon-stats-detail-v1,last-error-v1,daemon-control-plain-lines-v2,kill-report-v2,batch-pid-list-v1,proc-snapshot-v1,pidfd-kill-v1,cgroup-kill-fastpath-v1";
 }
 
 static void on_signal(int sig) {
@@ -510,7 +510,9 @@ static int cmd_backend_probe(void) {
     printf("CGFREEZER_BACKEND_PROBE ok=true v2Root=%s v2ControllersReadable=%s controllers=", v2_root ? "true" : "false", v2_controllers ? "true" : "false");
     sanitize_print(controllers);
     printf(" v1Freezer=%s v1Mount=", v1_ok ? "true" : "false"); sanitize_print(v1_ok ? v1_mount : "-");
+    bool cgroup_kill_root = access(CGROUP_ROOT "/cgroup.kill", W_OK) == 0;
     printf(" binderDevice=%s binderPath=", binder_ok ? "true" : "false"); sanitize_print(binder_dev ? binder_dev : "-");
+    printf(" cgroupKillRoot=%s cgroupKillFastpath=exact-package-only", cgroup_kill_root ? "true" : "false");
     printf(" elapsedMs=%ld\n", now_ms() - start);
     return 0;
 }
@@ -866,6 +868,170 @@ static int collect_package_targets(const char *pkg, int user_id, struct KillTarg
     return 0;
 }
 
+
+struct CgroupKillProbe {
+    int checked;
+    int accepted;
+    int rejected;
+    int errors;
+    int dirs;
+    bool contains_expected;
+    bool overflow;
+    pid_t reject_pid;
+    int reject_uid;
+    int reject_rc;
+    char reason[96];
+    char reject_process[512];
+};
+
+static void cgroup_kill_probe_reason(struct CgroupKillProbe *probe, const char *reason) {
+    if (!probe || probe->reason[0]) return;
+    snprintf(probe->reason, sizeof(probe->reason), "%s", reason ? reason : "unknown");
+}
+
+static bool safe_unified_cgroup_relpath(const char *cg) {
+    if (!cg || !*cg || cg[0] != '/') return false;
+    if (strstr(cg, "..") != NULL) return false;
+    if (strchr(cg, '\n') || strchr(cg, '\r') || strchr(cg, '\t')) return false;
+    return true;
+}
+
+static int build_cgroup_dir_from_pid(pid_t pid, char *dir_out, size_t cap) {
+    char proc_path[128], raw[MAX_TEXT], cg[1024];
+    if (!dir_out || cap == 0 || pid <= 0) return -1;
+    snprintf(proc_path, sizeof(proc_path), "/proc/%d/cgroup", pid);
+    if (read_file(proc_path, raw, sizeof(raw)) < 0) return -1;
+    if (parse_unified_path(raw, cg, sizeof(cg)) < 0) return -2;
+    if (!safe_unified_cgroup_relpath(cg)) return -3;
+    if (strcmp(cg, "/") == 0) snprintf(dir_out, cap, "%s", CGROUP_ROOT);
+    else snprintf(dir_out, cap, "%s%s", CGROUP_ROOT, cg);
+    return 0;
+}
+
+static int validate_cgroup_procs_exact(const char *dir, const char *pkg, int user_id,
+                                       pid_t expected_pid, struct CgroupKillProbe *probe) {
+    char procs_path[MAX_PATH_LEN];
+    char buf[MAX_TEXT];
+    snprintf(procs_path, sizeof(procs_path), "%s/cgroup.procs", dir);
+    int n = read_file(procs_path, buf, sizeof(buf));
+    if (n < 0) {
+        if (probe) { probe->errors++; cgroup_kill_probe_reason(probe, "read_procs_failed"); }
+        return -1;
+    }
+    if (n >= (int)sizeof(buf) - 2) {
+        if (probe) { probe->overflow = true; cgroup_kill_probe_reason(probe, "procs_too_large"); }
+        return -1;
+    }
+
+    char *save = NULL;
+    char *tok = strtok_r(buf, " \t\r\n", &save);
+    while (tok) {
+        char *end = NULL;
+        long v = strtol(tok, &end, 10);
+        if (end != tok && *end == '\0' && v > 0 && v <= 4194304L) {
+            pid_t pid = (pid_t)v;
+            if (probe) probe->checked++;
+            if (pid == expected_pid && probe) probe->contains_expected = true;
+            struct KillTarget kt;
+            int rc = snapshot_package_target(pid, pkg, user_id, &kt);
+            if (rc != 0) {
+                if (probe) {
+                    probe->rejected++;
+                    probe->reject_pid = pid;
+                    probe->reject_uid = parse_status_uid(pid);
+                    probe->reject_rc = rc;
+                    read_cmdline(pid, probe->reject_process, sizeof(probe->reject_process));
+                    cgroup_kill_probe_reason(probe, "foreign_or_stale_pid");
+                }
+                return -1;
+            }
+            if (probe) probe->accepted++;
+            if (probe && probe->checked > MAX_KILL_TARGETS) {
+                probe->overflow = true;
+                cgroup_kill_probe_reason(probe, "too_many_pids");
+                return -1;
+            }
+        }
+        tok = strtok_r(NULL, " \t\r\n", &save);
+    }
+    return 0;
+}
+
+static int validate_cgroup_tree_exact_recursive(const char *dir, const char *pkg, int user_id,
+                                                pid_t expected_pid, int depth,
+                                                struct CgroupKillProbe *probe) {
+    if (!dir || !*dir || !probe) return -1;
+    if (depth > 16) {
+        probe->errors++;
+        cgroup_kill_probe_reason(probe, "tree_too_deep");
+        return -1;
+    }
+    probe->dirs++;
+    if (probe->dirs > 256) {
+        probe->overflow = true;
+        cgroup_kill_probe_reason(probe, "too_many_cgroups");
+        return -1;
+    }
+    if (validate_cgroup_procs_exact(dir, pkg, user_id, expected_pid, probe) != 0) return -1;
+
+    DIR *dp = opendir(dir);
+    if (!dp) {
+        probe->errors++;
+        cgroup_kill_probe_reason(probe, "opendir_failed");
+        return -1;
+    }
+    struct dirent *de;
+    while ((de = readdir(dp)) != NULL) {
+        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
+        if (strncmp(de->d_name, "cgroup.", 7) == 0) continue;
+        if (strcmp(de->d_name, "cgroup.procs") == 0 || strcmp(de->d_name, "cgroup.threads") == 0) continue;
+        char child[MAX_PATH_LEN];
+        snprintf(child, sizeof(child), "%s/%s", dir, de->d_name);
+        struct stat st;
+        if (stat(child, &st) != 0) continue;
+        if (!S_ISDIR(st.st_mode)) continue;
+        if (validate_cgroup_tree_exact_recursive(child, pkg, user_id, expected_pid, depth + 1, probe) != 0) {
+            closedir(dp);
+            return -1;
+        }
+    }
+    closedir(dp);
+    return 0;
+}
+
+static int try_cgroup_kill_fastpath(const struct KillTarget *expected, const char *pkg, int user_id,
+                                    char *method_out, size_t method_cap) {
+    if (!expected || expected->pid <= 0 || !method_out || method_cap == 0) return -1;
+    method_out[0] = '\0';
+
+    char dir[MAX_PATH_LEN];
+    if (build_cgroup_dir_from_pid(expected->pid, dir, sizeof(dir)) != 0) return -1;
+
+    char kill_path[MAX_PATH_LEN];
+    if (strlen(dir) + sizeof("/cgroup.kill") > sizeof(kill_path)) return -1;
+    snprintf(kill_path, sizeof(kill_path), "%s/cgroup.kill", dir);
+    if (access(kill_path, W_OK) != 0) return -1;
+
+    struct CgroupKillProbe probe;
+    memset(&probe, 0, sizeof(probe));
+    probe.reject_pid = -1;
+    probe.reject_uid = -1;
+    probe.reject_rc = 0;
+
+    if (validate_cgroup_tree_exact_recursive(dir, pkg, user_id, expected->pid, 0, &probe) != 0) return -1;
+    if (!probe.contains_expected || probe.checked <= 0 || probe.rejected || probe.errors || probe.overflow) return -1;
+
+    struct KillTarget before_write;
+    if (snapshot_package_target(expected->pid, pkg, user_id, &before_write) != 0 ||
+            !same_kill_target(expected, &before_write)) {
+        return -1;
+    }
+
+    if (write_file(kill_path, "1\n") != 0) return -1;
+    snprintf(method_out, method_cap, "cgroup.kill");
+    return 0;
+}
+
 static int pidfd_open_compat(pid_t pid) {
 #if defined(SYS_pidfd_open)
     return (int)syscall(SYS_pidfd_open, pid, 0U);
@@ -915,6 +1081,13 @@ static struct KillSignalResult signal_kill_target(const struct KillTarget *expec
     if (!same_kill_target(expected, &current)) {
         result.identity_mismatch = true;
         result.err = ESTALE;
+        return result;
+    }
+
+    char cgkill_method[32];
+    if (try_cgroup_kill_fastpath(expected, pkg, user_id, cgkill_method, sizeof(cgkill_method)) == 0) {
+        result.signaled = true;
+        result.method = "cgroup.kill";
         return result;
     }
 

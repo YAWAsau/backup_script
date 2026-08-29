@@ -44,11 +44,12 @@ import java.util.Set;
 import java.util.zip.ZipFile;
 import java.nio.charset.StandardCharsets;
 import java.lang.reflect.Method;
+import java.util.concurrent.TimeUnit;
 
 import dev.rikka.tools.refine.Refine;
 
 public class HiddenApiUtil {
-    static final String VERSION = "v2.6.197-r432-dex-restore-session-facts-argv-compilefix build=v24.20.14-7.66-855-dex-restore-session-facts-argv-compilefix-r432-202607232022";
+    static final String VERSION = "v2.6.202-r474-facts-prefetch-cleanup build=v24.20.14-7.66-897-facts-prefetch-cleanup-r474-202607232022";
     /**
      * 單 JVM 批量命令期間的輕量快取。只快取系統層級固定資料或同一輪已讀 package metadata；
      * 不跨 JVM、不落檔，避免一致性風險。
@@ -136,9 +137,14 @@ public class HiddenApiUtil {
         System.out.println("  appInventoryPackageStatus USER_ID PACKAGE [refresh]  單包取得 PackageManager 當下 installed/uid/version/source/dataDir 狀態");
         System.out.println("  appInventoryPackageStatusBatch USER_ID PACKAGE [PACKAGE...] [refresh]  批量取得 PackageManager packageStatus NDJSON");
         System.out.println("  appInventoryPackageFactsBatch USER_ID PACKAGE [PACKAGE...] [refresh]  批量取得 PackageManager/installer/source/split/dataDir TSV facts");
+        System.out.println("  packageFacts USER_ID PACKAGE [refresh]  單包 PackageManager facts TSV，給 shell 替代 pm path/list/get uid");
+        System.out.println("  packageInstalledUsers PACKAGE [MAX_USER_ID] [refresh]  掃描 package 已安裝 user facts TSV");
+        System.out.println("  packageVisibleAfterInstall USER_ID PACKAGE [refresh]  安裝後 bounded 可見性 facts TSV");
         System.out.println("  appInventoryPostInstallFactsBatch USER_ID PACKAGE [PACKAGE...] [refresh]  安裝提交後批量重新取得 PackageManager facts TSV");
         System.out.println("  defaultRoleFacts USER_ID  批量輸出 HOME/DIALER/SMS/BROWSER/ASSISTANT role holders facts TSV");
         System.out.println("  storageMediaFacts USER_ID  輸出 emulated/data/media/storage facts TSV");
+        System.out.println("  storageVolumeFacts USER_ID [PATH]  輸出 File/StorageManager volume facts TSV");
+        System.out.println("  homeImeLauncherFacts USER_ID [refresh]  輸出 default HOME/IME 與 launcher candidates facts TSV");
         System.out.println("  uidNetBlockStart USER_ID PACKAGE [netpolicy|auto|netd|none] [LOG_PATH]  daemon 內啟動高風險 App per-UID 網路封鎖；優先 INetworkPolicyManager direct，netd 為手動 hard mode");
         System.out.println("  uidNetBlockStop TOKEN [USER_ID PACKAGE]  停止 per-UID 網路封鎖並驗證還原");
         System.out.println("  uidNetBlockStatus  列出 daemon 內 UID 網路封鎖狀態");
@@ -215,6 +221,15 @@ public class HiddenApiUtil {
             case "appInventoryPackageFactsBatch":
                 appInventoryPackageFactsBatch(args);
                 break;
+            case "packageFacts":
+                packageFacts(args);
+                break;
+            case "packageInstalledUsers":
+                packageInstalledUsers(args);
+                break;
+            case "packageVisibleAfterInstall":
+                packageVisibleAfterInstall(args);
+                break;
             case "appInventoryPostInstallFactsBatch":
                 appInventoryPostInstallFactsBatch(args);
                 break;
@@ -223,6 +238,12 @@ public class HiddenApiUtil {
                 break;
             case "storageMediaFacts":
                 storageMediaFacts(args);
+                break;
+            case "storageVolumeFacts":
+                storageVolumeFacts(args);
+                break;
+            case "homeImeLauncherFacts":
+                homeImeLauncherFacts(args);
                 break;
             case "deviceFacts":
                 deviceFacts();
@@ -499,6 +520,15 @@ public class HiddenApiUtil {
         if ("appInventoryPackageFactsBatch".equals(command)) {
             return appInventoryPackageFactsBatchDaemonCommand(cmdArgs);
         }
+        if ("packageFacts".equals(command)) {
+            return packageFactsDaemonCommand(cmdArgs);
+        }
+        if ("packageInstalledUsers".equals(command)) {
+            return packageInstalledUsersDaemonCommand(cmdArgs);
+        }
+        if ("packageVisibleAfterInstall".equals(command)) {
+            return packageVisibleAfterInstallDaemonCommand(cmdArgs);
+        }
         if ("appInventoryPostInstallFactsBatch".equals(command)) {
             return appInventoryPostInstallFactsBatchDaemonCommand(cmdArgs);
         }
@@ -507,6 +537,12 @@ public class HiddenApiUtil {
         }
         if ("storageMediaFacts".equals(command)) {
             return storageMediaFactsDaemonCommand(cmdArgs);
+        }
+        if ("storageVolumeFacts".equals(command)) {
+            return storageVolumeFactsDaemonCommand(cmdArgs);
+        }
+        if ("homeImeLauncherFacts".equals(command)) {
+            return homeImeLauncherFactsDaemonCommand(cmdArgs);
         }
         if ("processObserverWatch".equals(command)) {
             return processObserverWatchDaemonCommand(cmdArgs);
@@ -2474,6 +2510,69 @@ public class HiddenApiUtil {
         catch (Throwable t) { return new DaemonRunResult(1, "DEFAULT_ROLE_FACTS_FAILED\t" + sanitizeMachineValue(t.getClass().getName()) + "\n"); }
     }
 
+
+
+
+    private static void packageFacts(String[] args) {
+        try {
+            int userId = parseIntArg(args, 1, 0);
+            if (args == null || args.length < 3) throw new IllegalArgumentException("packageFacts USER_ID PACKAGE [refresh]");
+            System.out.print(AppInventoryUtil.packageFactsSingle(userId, args[2], hasRefreshArg(args)));
+            System.exit(0);
+        } catch (Throwable t) {
+            System.err.println("PACKAGE_FACTS_FAILED\texception=" + sanitizeMachineValue(t.getClass().getName())
+                    + "\tmessage=" + sanitizeMachineValue(t.getMessage()));
+            System.exit(1);
+        }
+    }
+
+    private static DaemonRunResult packageFactsDaemonCommand(String[] args) {
+        try {
+            int userId = parseIntArg(args, 1, 0);
+            String pkg = argAt(args, 2);
+            return new DaemonRunResult(0, AppInventoryUtil.packageFactsSingle(userId, pkg, hasRefreshArg(args)));
+        } catch (Throwable t) {
+            return new DaemonRunResult(1, "PACKAGE_FACTS_FAILED\t" + sanitizeMachineValue(t.getClass().getName()) + "\n");
+        }
+    }
+
+    private static void packageInstalledUsers(String[] args) {
+        try {
+            if (args == null || args.length < 2) throw new IllegalArgumentException("packageInstalledUsers PACKAGE [MAX_USER_ID] [refresh]");
+            int maxUser = parseIntArg(args, 2, 15);
+            System.out.print(AppInventoryUtil.packageInstalledUsersFacts(args[1], maxUser, hasRefreshArg(args)));
+            System.exit(0);
+        } catch (Throwable t) {
+            System.err.println("PACKAGE_INSTALLED_USERS_FAILED\texception=" + sanitizeMachineValue(t.getClass().getName())
+                    + "\tmessage=" + sanitizeMachineValue(t.getMessage()));
+            System.exit(1);
+        }
+    }
+
+    private static DaemonRunResult packageInstalledUsersDaemonCommand(String[] args) {
+        try { return new DaemonRunResult(0, AppInventoryUtil.packageInstalledUsersFacts(argAt(args, 1), parseIntArg(args, 2, 15), hasRefreshArg(args))); }
+        catch (Throwable t) { return new DaemonRunResult(1, "PACKAGE_INSTALLED_USERS_FAILED\t" + sanitizeMachineValue(t.getClass().getName()) + "\n"); }
+    }
+
+    private static void packageVisibleAfterInstall(String[] args) {
+        try {
+            int userId = parseIntArg(args, 1, 0);
+            if (args == null || args.length < 3) throw new IllegalArgumentException("packageVisibleAfterInstall USER_ID PACKAGE [refresh]");
+            System.out.print(AppInventoryUtil.packageVisibleAfterInstallFacts(userId, args[2], hasRefreshArg(args)));
+            System.exit(0);
+        } catch (Throwable t) {
+            System.err.println("PACKAGE_VISIBLE_AFTER_INSTALL_FAILED\texception=" + sanitizeMachineValue(t.getClass().getName())
+                    + "\tmessage=" + sanitizeMachineValue(t.getMessage()));
+            System.exit(1);
+        }
+    }
+
+    private static DaemonRunResult packageVisibleAfterInstallDaemonCommand(String[] args) {
+        try { return new DaemonRunResult(0, AppInventoryUtil.packageVisibleAfterInstallFacts(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args))); }
+        catch (Throwable t) { return new DaemonRunResult(1, "PACKAGE_VISIBLE_AFTER_INSTALL_FAILED\t" + sanitizeMachineValue(t.getClass().getName()) + "\n"); }
+    }
+
+
     private static String storageMediaFactsOutput(int userId) {
         StringBuilder out = new StringBuilder();
         out.append("#schema\tspeedbackup.storage_media_facts.v1\n");
@@ -2494,6 +2593,37 @@ public class HiddenApiUtil {
                 .append(f.exists() ? "true" : "false").append('\t').append(f.isDirectory() ? "true" : "false").append('\t')
                 .append(f.canRead() ? "true" : "false").append('\t').append(f.canWrite() ? "true" : "false").append('\t')
                 .append(bytes).append('\t').append(userId).append('\n');
+    }
+
+
+
+    private static void storageVolumeFacts(String[] args) {
+        int userId = parseIntArg(args, 1, 0);
+        String path = argAt(args, 2);
+        System.out.print(AppInventoryUtil.storageVolumeFactsOutput(userId, path));
+        System.exit(0);
+    }
+
+    private static DaemonRunResult storageVolumeFactsDaemonCommand(String[] args) {
+        try { return new DaemonRunResult(0, AppInventoryUtil.storageVolumeFactsOutput(parseIntArg(args, 1, 0), argAt(args, 2))); }
+        catch (Throwable t) { return new DaemonRunResult(1, "STORAGE_VOLUME_FACTS_FAILED\t" + sanitizeMachineValue(t.getClass().getName()) + "\n"); }
+    }
+
+    private static void homeImeLauncherFacts(String[] args) {
+        try {
+            int userId = parseIntArg(args, 1, 0);
+            System.out.print(AppInventoryUtil.homeImeLauncherFactsOutput(userId, hasRefreshArg(args)));
+            System.exit(0);
+        } catch (Throwable t) {
+            System.err.println("HOME_IME_LAUNCHER_FACTS_FAILED\texception=" + sanitizeMachineValue(t.getClass().getName())
+                    + "\tmessage=" + sanitizeMachineValue(t.getMessage()));
+            System.exit(1);
+        }
+    }
+
+    private static DaemonRunResult homeImeLauncherFactsDaemonCommand(String[] args) {
+        try { return new DaemonRunResult(0, AppInventoryUtil.homeImeLauncherFactsOutput(parseIntArg(args, 1, 0), hasRefreshArg(args))); }
+        catch (Throwable t) { return new DaemonRunResult(1, "HOME_IME_LAUNCHER_FACTS_FAILED\t" + sanitizeMachineValue(t.getClass().getName()) + "\n"); }
     }
 
     private static void storageMediaFacts(String[] args) {
@@ -3054,20 +3184,42 @@ public class HiddenApiUtil {
 
     private static String execShellCapture(String command) {
         StringBuilder output = new StringBuilder();
+        Process process = null;
         try {
-            Process process = Runtime.getRuntime().exec(new String[]{"sh", "-c", command});
+            ProcessBuilder builder = new ProcessBuilder("sh", "-c", command);
+            builder.redirectErrorStream(true);
+            process = builder.start();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
             try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream()))) {
                 String line;
+                while (true) {
+                    while (reader.ready() && (line = reader.readLine()) != null) {
+                        output.append(line).append('\n');
+                    }
+                    if (!process.isAlive()) {
+                        break;
+                    }
+                    if (System.nanoTime() >= deadline) {
+                        process.destroy();
+                        if (!process.waitFor(200, TimeUnit.MILLISECONDS)) {
+                            process.destroyForcibly();
+                        }
+                        break;
+                    }
+                    Thread.sleep(20L);
+                }
                 while ((line = reader.readLine()) != null) {
                     output.append(line).append('\n');
                 }
             }
-            try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getErrorStream()))) {
-                while (reader.readLine() != null) {
+            process.waitFor(200, TimeUnit.MILLISECONDS);
+        } catch (Throwable ignored) {
+            if (process != null) {
+                try {
+                    process.destroy();
+                } catch (Throwable ignoredDestroy) {
                 }
             }
-            process.waitFor();
-        } catch (Throwable ignored) {
         }
         return output.toString();
     }

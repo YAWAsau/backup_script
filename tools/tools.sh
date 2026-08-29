@@ -11,14 +11,14 @@ shell_language="zh-TW"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202608262208"
+backup_version="202608291752"
 # 固定用 GitHub release tag 作為線上更新比較基準；不要用每日 rebuild 日期，避免本地開發版被誤判舊版。
 speedbackup_release_tag="202607232022"
-speedbackup_patch_build="v24.20.14-7.66-864-restore-session-selected-scope-r441-202607232022"
+speedbackup_patch_build="v24.20.14-7.66-900-dexcheck-section-log-r477-202607232022"
 # r222: 延續 r217/r219/r220 外科手術線；一次收斂 audit 剩餘低/中風險項目。
 # r222: WebDAV/SMB 只抽 UI/progress/fixed-items/filelist facade，不合併協議核心；JSON 只抽底層 helper，不改 app_details schema。
 # r222: Dex 不接管 JSON / app_details / 備份恢復規劃；C 只吃批量檔案事實操作；cgfreezerd 不動。
-SPEEDBACKUP_CGROUP_FREEZER_REQUIRED_CAPS="cgroup-v2-uid-root-fallback freeze-package-single-request-v1 kill-package-live-rescan-v1 pidfd-signal-optional-v1 thaw-uid-emergency-v1 daemon-parent-control-v1 daemon-stats-v1 batch-pid-list-v1"
+SPEEDBACKUP_CGROUP_FREEZER_REQUIRED_CAPS="cgroup-v2-uid-root-fallback freeze-package-single-request-v1 kill-package-live-rescan-v1 pidfd-signal-optional-v1 cgroup-kill-fastpath-v1 thaw-uid-emergency-v1 daemon-parent-control-v1 daemon-stats-v1 batch-pid-list-v1"
 # mksh/管線/command substitution 情境下，$$ 不一定是目前實際 shell process。
 # WebDAV daemon owner watch 必須綁真正執行 tools.sh 的 process，否則 owner 誤判死亡會讓 daemon 每次 request 後退出。
 _SPEEDBACKUP_SELF_PID=""
@@ -153,16 +153,32 @@ _speedbackup_run_tmpdir_stop_daemons_for_cleanup() {
 }
 
 _speedbackup_run_tmpdir_final_cleanup() {
-	local _run="${SPEEDBACKUP_RUN_TMPDIR:-}" _base="${SPEEDBACKUP_TMP_BASE:-/data/local/tmp}" _rc=0
+	local _run="${SPEEDBACKUP_RUN_TMPDIR:-}" _base="${SPEEDBACKUP_TMP_BASE:-/data/local/tmp}" _rc=0 _owner=""
 	case "$_base" in /data/local/tmp) ;; *) return 0 ;; esac
 	case "$_run" in "$_base"/.speedbackup_run_*) ;; *) return 0 ;; esac
 	[[ -n $_run && -d $_run ]] || { TMPDIR="$_base"; export TMPDIR; return 0; }
 	_speedbackup_run_tmpdir_owner_match "$_run" || { _speedbackup_run_tmpdir_log "TMPDIR_RUN_FINAL_CLEANUP_SKIP path=$_run reason=owner_mismatch mode=r417"; return 0; }
 	_speedbackup_run_tmpdir_stop_daemons_for_cleanup final_tmpdir_cleanup
-	rm -rf "$_run" 2>/dev/null || _rc=$?
-	if [[ -d $_run ]]; then
-		chmod -R u+rwX "$_run" 2>/dev/null || true
+	# r474: collect native run tmpdir facts before cleanup; facts-only, no process sweep.
+	if [[ -n ${SPEEDSCAN_BIN:-} && -x ${SPEEDSCAN_BIN:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]]; then
+		_runfacts="$SPEED_DEBUG_RUN_DIR/native_run_tmpdir_facts.tsv"
+		if "$SPEEDSCAN_BIN" run-tmpdir-facts "$_base" "$_runfacts" .speedbackup_run_ >/dev/null 2>/dev/null; then
+			_speedbackup_run_tmpdir_log "TMPDIR_RUN_FACTS_NATIVE_OK base=$_base out=${_runfacts##*/} backend=speedscan-run-tmpdir-facts mode=r474"
+		else
+			_speedbackup_run_tmpdir_log "TMPDIR_RUN_FACTS_NATIVE_FAIL base=$_base backend=speedscan-run-tmpdir-facts mode=r474 optional=1"
+		fi
+	fi
+	# r470: prefer native bounded cleanup-owned after owner verification; fallback to legacy rm -rf if it skips/fails.
+	_owner="$(cat "$_run/owner.pid" 2>/dev/null)"
+	case $_owner in ''|*[!0-9]*) _owner="${SPEEDBACKUP_MAIN_PID:-$$}" ;; esac
+	if command -v _eventwait_call >/dev/null 2>&1 && _eventwait_call cleanup-owned "$_owner" "$_run" >/dev/null 2>&1 && [[ ! -d $_run ]]; then
+		_speedbackup_run_tmpdir_log "TMPDIR_RUN_FINAL_CLEANUP_NATIVE_OK path=$_run owner=$_owner backend=eventwait-cleanup-owned mode=r470"
+	else
 		rm -rf "$_run" 2>/dev/null || _rc=$?
+		if [[ -d $_run ]]; then
+			chmod -R u+rwX "$_run" 2>/dev/null || true
+			rm -rf "$_run" 2>/dev/null || _rc=$?
+		fi
 	fi
 	TMPDIR="$_base"
 	export TMPDIR
@@ -481,6 +497,10 @@ _SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_ORIG="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_OR
 _SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_REQUESTED="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_REQUESTED:-}"
 _SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_APPLIED="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_APPLIED:-}"
 _SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY:-0}"
+# r464: normal finish already writes final speed_debug package and restores display timeout.
+# The following EXIT trap is only a shell lifecycle callback; do not repeat heavy cleanup synchronously.
+_SPEEDBACKUP_NORMAL_FINISH_EXIT_FAST="${_SPEEDBACKUP_NORMAL_FINISH_EXIT_FAST:-0}"
+_SPEEDBACKUP_NORMAL_FINISH_ASYNC_CLEANUP_PID="${_SPEEDBACKUP_NORMAL_FINISH_ASYNC_CLEANUP_PID:-}"
 
 _speedbackup_display_timeout_cache_capture() {
 	local _scr_save _req_save _applied_save _orig="" _requested="" _applied=""
@@ -509,36 +529,140 @@ _speedbackup_display_timeout_cache_capture() {
 	return 0
 }
 
+_speedbackup_display_settings_trace() {
+	# r463: display timeout restore happens after final debug tar; main.log may already be packed/removed.
+	# Write bounded settings markers to pack.log in that phase, otherwise use normal main.log.
+	if [[ "${SPEED_DEBUG_PACKED:-0}" = 1 || "${SPEED_DEBUG_RUN_DIR_REMOVED:-0}" = 1 ]]; then
+		_speed_debug_pack_log "[speed_debug] $*"
+	else
+		_speed_debug_log "$*"
+	fi
+}
+
+_speedbackup_display_settings_kill_no_wait() {
+	local _pid="$1" _tag="${2:-display_settings_timeout}"
+	case $_pid in ''|*[!0-9]*) return 0 ;; esac
+	if kill -0 "$_pid" 2>/dev/null; then
+		kill -TERM "$_pid" 2>/dev/null || true
+		sleep 0.1
+		kill -0 "$_pid" 2>/dev/null && kill -KILL "$_pid" 2>/dev/null || true
+	fi
+	# Do not call plain wait here: on some Android builds `settings` can stay in a
+	# slow binder/system_server path after TERM/KILL, and wait would recreate the
+	# 30s+ terminal stall that this bounded path is supposed to prevent.
+	_speedbackup_display_settings_trace "DISPLAY_SETTINGS_KILL_NO_WAIT pid=$_pid tag=$_tag mode=r463"
+	return 0
+}
+
+_speedbackup_display_settings_wait_pid_ms() {
+	local _pid="$1" _timeout_ms="${2:-5000}" _tag="${3:-display_settings}" _rc=125 _i=0 _limit
+	case $_pid in ''|*[!0-9]*) return 125 ;; esac
+	case $_timeout_ms in ''|*[!0-9]*) _timeout_ms=5000 ;; esac
+	if command -v _eventwait_pid_exit_ms >/dev/null 2>&1; then
+		_eventwait_pid_exit_ms "$_pid" "$_timeout_ms" "${_tag}_bounded" >/dev/null 2>&1
+		_rc=$?
+		if [[ $_rc = 0 ]]; then
+			wait "$_pid" 2>/dev/null
+			return $?
+		fi
+		if [[ $_rc = 124 ]]; then
+			_speedbackup_display_settings_kill_no_wait "$_pid" "${_tag}_eventwait_timeout"
+			return 124
+		fi
+	fi
+	# fallback: 100ms * N，避免 eventwait 缺失時又退回長時間卡住。
+	_limit=$(((_timeout_ms + 99) / 100))
+	while kill -0 "$_pid" 2>/dev/null; do
+		if [[ $_i -ge $_limit ]]; then
+			_speedbackup_display_settings_kill_no_wait "$_pid" "${_tag}_fallback_timeout"
+			return 124
+		fi
+		sleep 0.1
+		_i=$((_i + 1))
+	done
+	wait "$_pid" 2>/dev/null
+	return $?
+}
+
+_speedbackup_settings_get_system_bounded() {
+	local _key="$1" _timeout_ms="${2:-2000}" _tag="${3:-settings_get}" _tmp _pid _rc
+	[[ -n $_key ]] || return 2
+	case $_timeout_ms in ''|*[!0-9]*) _timeout_ms=2000 ;; esac
+	_tmp="${TMPDIR:-/data/local/tmp}/.speedbackup_settings_get_${$}_$(_rand 6 2>/dev/null)"
+	( settings get system "$_key" > "$_tmp" 2>/dev/null ) &
+	_pid=$!
+	_speedbackup_display_settings_wait_pid_ms "$_pid" "$_timeout_ms" "$_tag"
+	_rc=$?
+	if [[ $_rc = 0 ]]; then
+		cat "$_tmp" 2>/dev/null
+		rm -f "$_tmp" 2>/dev/null
+		_speedbackup_display_settings_trace "DISPLAY_SETTINGS_GET_BOUNDED key=$_key timeoutMs=$_timeout_ms rc=0 tag=$_tag backend=shell mode=r473"
+		return 0
+	fi
+	rm -f "$_tmp" 2>/dev/null
+	_speedbackup_display_settings_trace "DISPLAY_SETTINGS_GET_BOUNDED key=$_key timeoutMs=$_timeout_ms rc=$_rc tag=$_tag backend=shell mode=r473"
+	return $_rc
+}
+
+_speedbackup_settings_put_system_bounded() {
+	local _key="$1" _value="$2" _timeout_ms="${3:-5000}" _tag="${4:-settings_put}" _pid _rc
+	[[ -n $_key ]] || return 2
+	case $_timeout_ms in ''|*[!0-9]*) _timeout_ms=5000 ;; esac
+	( settings put system "$_key" "$_value" >/dev/null 2>&1 ) &
+	_pid=$!
+	_speedbackup_display_settings_wait_pid_ms "$_pid" "$_timeout_ms" "$_tag"
+	_rc=$?
+	_speedbackup_display_settings_trace "DISPLAY_SETTINGS_PUT_BOUNDED key=$_key value=$_value timeoutMs=$_timeout_ms rc=$_rc tag=$_tag backend=shell mode=r473"
+	return $_rc
+}
+
 _speedbackup_display_timeout_restore_from_cache() {
-	local _reason="${1:-cached-final-restore}" _orig="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_ORIG:-}" _requested="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_REQUESTED:-}" _applied="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_APPLIED:-}" _current="" _readback=""
+	local _reason="${1:-cached-final-restore}" _orig="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_ORIG:-}" _requested="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_REQUESTED:-}" _applied="${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_APPLIED:-}" _current="" _readback="" _get_rc=0 _put_rc=0 _rb_rc=0 _get_timeout _put_timeout
 	[[ "${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY:-0}" = 1 ]] || return 1
 	case $_orig in ''|*[!0-9]*) return 1 ;; esac
 	case $_requested in ''|*[!0-9]*) _requested="${_DISPLAY_TIMEOUT_REQUESTED_MS:-2147483647}" ;; esac
 	case $_applied in ''|*[!0-9]*) _applied="$_requested" ;; esac
-	_current="$(settings get system screen_off_timeout 2>/dev/null)"
-	if [[ $_current = "$_orig" ]]; then
+	_get_timeout="${SPEEDBACKUP_DISPLAY_SETTINGS_GET_TIMEOUT_MS:-2000}"
+	_put_timeout="${SPEEDBACKUP_DISPLAY_SETTINGS_PUT_TIMEOUT_MS:-5000}"
+	# r473: Dex display-timeout direct path removed; use bounded shell get/put only.
+	_current="$(_speedbackup_settings_get_system_bounded screen_off_timeout "$_get_timeout" display_timeout_restore_current)"
+	_get_rc=$?
+	if [[ $_get_rc = 0 && $_current = "$_orig" ]]; then
 		rm -f "$(_display_timeout_save_file 2>/dev/null)" "${TMPDIR:-/data/local/tmp}/.screen_timeout_requested" "${TMPDIR:-/data/local/tmp}/.screen_timeout_applied" "${TMPDIR:-/data/local/tmp}/.screen_timeout_session_id" "${TMPDIR:-/data/local/tmp}/.screen_timeout_backend" 2>/dev/null
 		_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY=0
 		_DISPLAY_TIMEOUT_ACTIVE=0
 		Get_dark_screen_seconds=""
-		_speed_debug_log "DISPLAY_TIMEOUT_SHELL_END_CACHE original=$_orig requested=$_requested applied=$_applied readback=$_current restored=already reason=$_reason backend=shell-timeout-stale-guard mode=r440"
+		_speedbackup_display_settings_trace "DISPLAY_TIMEOUT_SHELL_END_CACHE original=$_orig requested=$_requested applied=$_applied readback=$_current restored=already reason=$_reason backend=shell-timeout-stale-guard getRc=$_get_rc mode=r462"
 		return 0
 	fi
-	if [[ $_current != "$_applied" ]]; then
-		_speed_debug_log "DISPLAY_TIMEOUT_SHELL_END_CACHE externalChange=true current=$_current original=$_orig requested=$_requested applied=$_applied restored=false reason=$_reason backend=shell-timeout-stale-guard mode=r440"
+	if [[ $_get_rc = 0 && $_current != "$_applied" ]]; then
+		_speedbackup_display_settings_trace "DISPLAY_TIMEOUT_SHELL_END_CACHE externalChange=true current=$_current original=$_orig requested=$_requested applied=$_applied restored=false reason=$_reason backend=shell-timeout-stale-guard getRc=$_get_rc mode=r462"
 		_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY=0
 		_DISPLAY_TIMEOUT_ACTIVE=0
 		Get_dark_screen_seconds=""
 		return 0
 	fi
-	settings put system screen_off_timeout "$_orig" >/dev/null 2>&1 || return 1
-	_readback="$(settings get system screen_off_timeout 2>/dev/null)"
-	[[ $_readback = "$_orig" ]] || return 1
+	if [[ $_get_rc != 0 ]]; then
+		_speedbackup_display_settings_trace "DISPLAY_TIMEOUT_SHELL_END_CACHE_CURRENT_UNAVAILABLE getRc=$_get_rc original=$_orig requested=$_requested applied=$_applied policy=restore-original-anyway reason=$_reason mode=r462"
+	fi
+	_speedbackup_settings_put_system_bounded screen_off_timeout "$_orig" "$_put_timeout" display_timeout_restore_put
+	_put_rc=$?
+	[[ $_put_rc = 0 ]] || return 1
+	_readback="$(_speedbackup_settings_get_system_bounded screen_off_timeout "$_get_timeout" display_timeout_restore_readback)"
+	_rb_rc=$?
+	if [[ $_rb_rc = 0 && $_readback != "$_orig" ]]; then
+		_speedbackup_display_settings_trace "DISPLAY_TIMEOUT_SHELL_END_CACHE_READBACK_MISMATCH original=$_orig requested=$_requested applied=$_applied readback=$_readback reason=$_reason backend=shell-timeout-stale-guard getRc=$_get_rc putRc=$_put_rc rbRc=$_rb_rc mode=r462"
+		return 1
+	fi
 	rm -f "$(_display_timeout_save_file 2>/dev/null)" "${TMPDIR:-/data/local/tmp}/.screen_timeout_requested" "${TMPDIR:-/data/local/tmp}/.screen_timeout_applied" "${TMPDIR:-/data/local/tmp}/.screen_timeout_session_id" "${TMPDIR:-/data/local/tmp}/.screen_timeout_backend" 2>/dev/null
 	_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY=0
 	_DISPLAY_TIMEOUT_ACTIVE=0
 	Get_dark_screen_seconds=""
-	_speed_debug_log "DISPLAY_TIMEOUT_SHELL_END_CACHE original=$_orig requested=$_requested applied=$_applied readback=$_readback restored=true reason=$_reason backend=shell-timeout-stale-guard mode=r440"
+	if [[ $_rb_rc = 0 ]]; then
+		_speedbackup_display_settings_trace "DISPLAY_TIMEOUT_SHELL_END_CACHE original=$_orig requested=$_requested applied=$_applied readback=$_readback restored=true reason=$_reason backend=shell-timeout-stale-guard getRc=$_get_rc putRc=$_put_rc rbRc=$_rb_rc mode=r462"
+	else
+		_speedbackup_display_settings_trace "DISPLAY_TIMEOUT_SHELL_END_CACHE original=$_orig requested=$_requested applied=$_applied readback=unavailable restored=put-ok reason=$_reason backend=shell-timeout-stale-guard getRc=$_get_rc putRc=$_put_rc rbRc=$_rb_rc mode=r462"
+	fi
 	return 0
 }
 
@@ -589,7 +713,7 @@ _speedbackup_display_timeout_restore_after_debug_pack() {
 	# r440: EXIT 最後一步可能已清掉 run tmpdir/TMPDIR marker；優先使用 r439 捕獲的記憶體 cache 還原 timeout。
 	# 這可避免 _DISPLAY_TIMEOUT_ACTIVE=1 但 .screen_timeout_orig 已被 tmpdir cleanup 刪除時，_display_timeout_shell_end 誤判成功卻沒有真正寫回原值。
 	if [[ "${_SPEEDBACKUP_DISPLAY_TIMEOUT_CACHE_READY:-0}" = 1 ]]; then
-		_speed_debug_pack_log "[speed_debug] EXIT最後螢幕/鎖屏設定還原路徑: path=memory-cache reason=$_reason mode=r440"
+		_speed_debug_pack_log "[speed_debug] EXIT最後螢幕/鎖屏設定還原路徑: path=memory-cache reason=$_reason mode=r463"
 		if _speedbackup_display_timeout_restore_from_cache "$_reason"; then
 			echo_log "由shell還原無操作息屏時間" "" 0
 			_DISPLAY_RESTORE_DONE=1
@@ -599,7 +723,7 @@ _speedbackup_display_timeout_restore_after_debug_pack() {
 			_rc=1
 		fi
 	elif command -v _display_timeout_session_active >/dev/null 2>&1 && _display_timeout_session_active; then
-		_speed_debug_pack_log "[speed_debug] EXIT最後螢幕/鎖屏設定還原路徑: path=session-marker reason=$_reason mode=r440"
+		_speed_debug_pack_log "[speed_debug] EXIT最後螢幕/鎖屏設定還原路徑: path=session-marker reason=$_reason mode=r463"
 		if _display_timeout_shell_end; then
 			echo_log "由shell還原無操作息屏時間" "" 0
 			_DISPLAY_RESTORE_DONE=1
@@ -612,7 +736,7 @@ _speedbackup_display_timeout_restore_after_debug_pack() {
 		echoRgb "還原無操作息屏時間失敗；shell暫存保留供下次啟動修復。" "0"
 		_rc=1
 	fi
-	_speed_debug_pack_log "[speed_debug] EXIT最後螢幕/鎖屏設定還原完成: rc=$_rc reason=$_reason mode=r440"
+	_speed_debug_pack_log "[speed_debug] EXIT最後螢幕/鎖屏設定還原完成: rc=$_rc reason=$_reason mode=r463"
 	return $_rc
 }
 
@@ -686,7 +810,9 @@ _speed_debug_pack_common() {
 	if [[ $_tar_rc = 0 && -s "$SPEED_DEBUG_ARCHIVE" ]]; then
 		case $_pack_start_ms in ''|*[!0-9]*) _pack_elapsed_ms="unknown" ;; *) _pack_elapsed_ms="$(( $(_speed_now_ms 2>/dev/null) - _pack_start_ms ))" ;; esac
 		_archive_size="$(wc -c < "$SPEED_DEBUG_ARCHIVE" 2>/dev/null)"; case $_archive_size in ''|*[!0-9]*) _archive_size="unknown" ;; esac
-		_speed_debug_pack_log "[speed_debug] ${_mode}打包完成: rc=0 elapsedMs=$_pack_elapsed_ms bytes=$_archive_size mode=r440"
+		# r453: final/snapshot tar 完成後用 native eventwait 確認輸出大小穩定；失敗只記錄，不改成功語義。
+		_eventwait_file_size_stable_ms "$SPEED_DEBUG_ARCHIVE" "${SPEEDBACKUP_DEBUG_PACK_STABLE_MS:-250}" "${SPEEDBACKUP_DEBUG_PACK_STABLE_TIMEOUT_MS:-3000}" "speed_debug_${_mode}_archive_stable" >/dev/null 2>&1 || true
+		_speed_debug_pack_log "[speed_debug] ${_mode}打包完成: rc=0 elapsedMs=$_pack_elapsed_ms bytes=$_archive_size mode=r459"
 		rm -f "$_pack_err" 2>/dev/null
 		if [[ $_delete = 1 ]]; then
 			_speed_debug_safe_remove_run_dir "$SPEED_DEBUG_RUN_DIR"
@@ -820,6 +946,38 @@ _speed_debug_dedupe_logs() {
 	return 0
 }
 
+_speedbackup_normal_finish_async_cleanup_start() {
+	local _reason="${1:-normal_finish}" _ec="${2:-0}" _pid="" _run="${SPEEDBACKUP_RUN_TMPDIR:-}" _base="${SPEEDBACKUP_TMP_BASE:-/data/local/tmp}"
+	case "${SPEEDBACKUP_NORMAL_FINISH_ASYNC_CLEANUP:-1}" in 0|false|FALSE|no|NO|off|OFF) return 1 ;; esac
+	case "$_ec" in 0) ;; *) return 1 ;; esac
+	# Final speed_debug tar is already written and display timeout is restored.  Remaining cleanup
+	# is best-effort daemon/tmpdir cleanup; running it synchronously is what made the terminal
+	# sit for 20~40 seconds after success on Android 16.
+	_speed_debug_pack_log "[speed_debug] normal finish 非阻塞收尾啟動: reason=$_reason run=$_run mode=r464"
+	(
+		trap '' HUP INT TERM
+		SPEEDBACKUP_ENTRY_QUIET_TRAP=1
+		SPEED_DEBUG_ERR_LOG="/dev/null"
+		SPEED_DEBUG_PENDING_ERR_LOG="/dev/null"
+		SPEED_DEBUG_MAIN_LOG="/dev/null"
+		SPEED_DEBUG_CMD_LOG="/dev/null"
+		SPEED_DEBUG_INFO_LOG="/dev/null"
+		SPEED_DEBUG_DEX_HUMAN_LOG="/dev/null"
+		SPEED_DEBUG_RUN_READY=0
+		# Do not recreate deleted speed_debug/run_xxx, and do not print terminal lines from child cleanup.
+		_cleanup_tmp_files >/dev/null 2>&1 || true
+		_speedbackup_run_tmpdir_final_cleanup >/dev/null 2>&1 || true
+		case "$_base" in /data/local/tmp) : ;; *) exit 0 ;; esac
+		case "$_run" in "$_base"/.speedbackup_run_*) rm -rf "$_run" >/dev/null 2>&1 || true ;; esac
+	) >/dev/null 2>&1 &
+	_pid=$!
+	_SPEEDBACKUP_NORMAL_FINISH_ASYNC_CLEANUP_PID="$_pid"
+	_SPEEDBACKUP_NORMAL_FINISH_EXIT_FAST=1
+	disown "$_pid" 2>/dev/null || true
+	_speed_debug_pack_log "[speed_debug] normal finish 非阻塞收尾已背景化: pid=$_pid reason=$_reason mode=r464"
+	return 0
+}
+
 _speed_debug_normal_finish_pack() {
 	# 正常流程主動建立 final 包並刪除 run_xxx，避免單獨入口 / pipeline subshell 的 EXIT trap 沒有執行時留下 run 目錄。
 	# r424: 正常成功路徑預設不再做昂貴的 detail consolidation 與 snapshot+final 雙打包；完整分片仍留在 speed_debug tar 內。
@@ -834,7 +992,12 @@ _speed_debug_normal_finish_pack() {
 	fi
 	_speedbackup_run_tmpdir_stop_daemons_for_cleanup normal_finish
 	_speed_debug_pack "${1:-0}"
-	_speedbackup_run_tmpdir_final_cleanup
+	# r455: 保留 r454 timeout/stale 修復；進度條輸出回退 r453 inline_existing。
+# r456: 只修進度列行狀態：保留 r453 label/格式，新增 clear-to-EOL 與普通輸出前清除 active progress，避免進度條與下一條訊息黏在同一行。
+	_speedbackup_display_restore_after_debug_pack "normal-finish-after-final-debug-pack" || true
+	# r464: success path no longer blocks the terminal on the second EXIT cleanup / tmpdir removal.
+	# Heavy cleanup is launched in a detached child, while the following EXIT trap fast-skips duplicate work.
+	_speedbackup_normal_finish_async_cleanup_start "normal-finish-after-final-debug-pack" "${1:-0}" || _speedbackup_run_tmpdir_final_cleanup
 	_speed_debug_disarm_if_run_gone
 }
 
@@ -1607,23 +1770,36 @@ _webdav_daemon_ready_line_ok() {
 # WebDAV daemon readiness：優先 filewatch 阻塞等待；事件遺失或 ROM inotify
 # 行為異常時，才回退 0.1 秒有限輪詢。
 _webdav_daemon_wait_ready() {
-	local _out="$1" _diag="$2" _pid="$3" _fw_pid="" _guard_pid="" _fw_rc=0 _i=0
+	local _out="$1" _diag="$2" _pid="$3" _fw_rc=0 _ew_rc=125 _i=0 _ready_pat=""
 	case $_pid in ''|*[!0-9]*) return 1 ;; esac
 	# 啟動等待只檢查這次剛 fork 出來的明確 PID。
-	# 不在 ready 前重新走 state/owner/target 驗證：command substitution / mksh subshell
-	# 的 shell identity 可能讓完整 validator 暫時失敗，造成 daemon 還活著卻同秒被判死。
+	# r452: 主等待改走 native eventwait file-contains；filewatch/0.1s poll 只作 fallback。
 	_webdav_daemon_ready_line_ok "$_out" && kill -0 "$_pid" 2>/dev/null && return 0
 	kill -0 "$_pid" 2>/dev/null || return 1
-
-	_event_filewatch_once "$_out" 5 webdav_ready "$_diag"
-	_fw_rc=$?
+	case $_WEBDAV_DAEMON_MODE in
+	unix) _ready_pat="DAEMON_READY_UNIX $_WEBDAV_DAEMON_SOCKET" ;;
+	tcp) _ready_pat="DAEMON_READY $_WEBDAV_DAEMON_PORT" ;;
+	*) _ready_pat="DAEMON_READY" ;;
+	esac
+	_eventwait_file_contains "$_out" "$_ready_pat" 5 webdav_ready "$_diag"
+	_ew_rc=$?
 	_webdav_daemon_ready_line_ok "$_out" && kill -0 "$_pid" 2>/dev/null && {
-		echo "$(date '+%H:%M:%S') ready_wait=filewatch rc=$_fw_rc mode=$_WEBDAV_DAEMON_MODE pid=$_pid" >> "$_diag" 2>/dev/null
+		echo "$(date '+%H:%M:%S') ready_wait=eventwait rc=$_ew_rc mode=$_WEBDAV_DAEMON_MODE pid=$_pid" >> "$_diag" 2>/dev/null
 		return 0
 	}
 	kill -0 "$_pid" 2>/dev/null || return 1
-	[[ $_fw_rc != 125 ]] && echo "$(date '+%H:%M:%S') filewatch no ready line rc=$_fw_rc mode=$_WEBDAV_DAEMON_MODE pid=$_pid, fallback bounded poll" >> "$_diag" 2>/dev/null
-
+	if [[ $_ew_rc = 125 ]]; then
+		_event_filewatch_once "$_out" 5 webdav_ready "$_diag"
+		_fw_rc=$?
+		_webdav_daemon_ready_line_ok "$_out" && kill -0 "$_pid" 2>/dev/null && {
+			echo "$(date '+%H:%M:%S') ready_wait=filewatch rc=$_fw_rc mode=$_WEBDAV_DAEMON_MODE pid=$_pid" >> "$_diag" 2>/dev/null
+			return 0
+		}
+		kill -0 "$_pid" 2>/dev/null || return 1
+		[[ $_fw_rc != 125 ]] && echo "$(date '+%H:%M:%S') filewatch no ready line rc=$_fw_rc mode=$_WEBDAV_DAEMON_MODE pid=$_pid, fallback bounded poll" >> "$_diag" 2>/dev/null
+	else
+		echo "$(date '+%H:%M:%S') eventwait no ready line rc=$_ew_rc mode=$_WEBDAV_DAEMON_MODE pid=$_pid, fallback bounded poll" >> "$_diag" 2>/dev/null
+	fi
 	_i=0
 	while [[ $_i -lt 30 ]]; do
 		_webdav_daemon_ready_line_ok "$_out" && kill -0 "$_pid" 2>/dev/null && {
@@ -2253,6 +2429,24 @@ esac
 # ======================================================
 # 基礎工具函數
 # ======================================================
+# r458: 單行進度列狀態。r454 的 label compact 已回退；r456 的黏行修正保留，但不再把 redraw 寫入 stderr.log。
+_SPEEDBACKUP_PROGRESS_LINE_ACTIVE=0
+_speedbackup_progress_term_printf() {
+	# 優先寫控制終端，避免腳本 stderr 被 speed_debug 收集時污染 stderr.log。
+	# 無互動終端時不輸出 ANSI redraw，只保留 main.log marker。
+	[[ -c /dev/tty ]] || return 1
+	printf "$@" 2>/dev/null > /dev/tty
+}
+_speedbackup_progress_line_clear_before_output() {
+	case "${_SPEEDBACKUP_PROGRESS_LINE_ACTIVE:-0}" in
+		1)
+			# 只清掉尚未完成的 transient progress line，避免下一條普通訊息接在同一列後面；不得寫入 stderr.log。
+			_speedbackup_progress_term_printf '\r\033[K' || true
+			_SPEEDBACKUP_PROGRESS_LINE_ACTIVE=0
+			;;
+	esac
+}
+
 # 帶色彩輸出, 用法: echoRgb "訊息" [色碼]
 # 色碼:
 #   0 = 紅色 (197)    - 錯誤/警告
@@ -2263,6 +2457,7 @@ esac
 # rgb_a/b/c 可在 conf 自訂, 全部都是 256 色 ANSI 編號
 echoRgb() {
 	local color
+	_speedbackup_progress_line_clear_before_output
 	case $2 in
 	0) color=197 ;;
 	1) color=121 ;;
@@ -2519,6 +2714,15 @@ _speedscan_cmd() {
 _speedscan_available() {
 	_speedscan_path >/dev/null 2>&1
 }
+
+_speedscan_storage_summary() {
+	local _path="$1" _out=""
+	[[ -n $_path ]] || return 2
+	_out="$(_speedscan_cmd storage-summary "$_path" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})" || return 1
+	printf '%s\n' "$_out" | grep -Fqx '#schema	speedbackup.storage_summary.v1' 2>/dev/null || return 1
+	printf '%s\n' "$_out"
+	return 0
+}
 _speedscan_numeric() {
 	case "$1" in ''|*[!0-9]*) return 1 ;; *) printf '%s\n' "$1"; return 0 ;; esac
 }
@@ -2637,11 +2841,17 @@ _speedscan_batch_stat() {
 	local _list="$1" _out="$2"
 	[[ -s $_list && -n $_out ]] || return 1
 	_speedscan_cmd batch-stat "$_list" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	local _rc=$?
+	[[ $_rc = 0 ]] && _eventwait_output_file_stable_ms "$_out" speedscan_batch_stat_ready 50 1000 >/dev/null 2>&1 || true
+	return $_rc
 }
 _speedscan_batch_exists() {
 	local _list="$1" _out="$2"
 	[[ -s $_list && -n $_out ]] || return 1
 	_speedscan_cmd batch-exists "$_list" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	local _rc=$?
+	[[ $_rc = 0 ]] && _eventwait_output_file_stable_ms "$_out" speedscan_batch_exists_ready 50 1000 >/dev/null 2>&1 || true
+	return $_rc
 }
 _speedscan_batch_chmod() {
 	local _mode="$1" _list="$2" _out
@@ -2671,11 +2881,15 @@ _speedscan_manifest() {
 	[[ -d $_root && -n $_out ]] || return 1
 	_summary="${_out}.summary"
 	if _speedscan_cmd scan-summary "$_root" "$_out" > "$_summary" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+		_eventwait_output_files_stable_ms speedscan_manifest_ready 50 1200 "$_out" "$_summary" >/dev/null 2>&1 || true
 		_speed_debug_log "SPEEDSCAN_SCAN_SUMMARY_OK root=$_root out=${_out##*/} summary=$(tr '\n' '|' < "$_summary" 2>/dev/null | cut -c1-500) hash=0"
 		return 0
 	fi
 	rm -f "$_summary" 2>/dev/null
 	_speedscan_cmd manifest "$_root" "$_out" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	local _rc=$?
+	[[ $_rc = 0 ]] && _eventwait_output_file_stable_ms "$_out" speedscan_manifest_fallback_ready 50 1200 >/dev/null 2>&1 || true
+	return $_rc
 }
 
 _speedscan_path_audit_list() {
@@ -2709,6 +2923,7 @@ _speedscan_scan_summary_probe() {
 		_summary="$TMPDIR/.speedscan_scan_summary_${$}_$RANDOM.txt"
 	fi
 	_speedscan_cmd scan-summary "$_root" "$_manifest" > "$_summary" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { [[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] || rm -f "$_manifest" "$_summary" 2>/dev/null; return 1; }
+	_eventwait_output_files_stable_ms speedscan_scan_summary_probe_ready 50 1200 "$_manifest" "$_summary" >/dev/null 2>&1 || true
 	_speed_debug_log "SPEEDSCAN_SCAN_SUMMARY_DEEP stage=$_stage root=$_root summary=$(tr '\n' '|' < "$_summary" 2>/dev/null | cut -c1-600) manifest=${_manifest##*/} hash=0"
 	[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] || rm -f "$_manifest" "$_summary" 2>/dev/null
 	return 0
@@ -2733,29 +2948,33 @@ _speedscan_facts_probe() {
 }
 
 _speedscan_file_list_abs() {
-	local _root="$1" _out="$2" _skip_appdetails="${3:-0}" _tmp _abs _stage
+	# r451: C native absolute file list + app_details/log prefix filtering. Fallback remains find for safety.
+	local _root="$1" _out="$2" _skip_appdetails="${3:-0}" _tmp _stage _exclude_prefix="-" _summary
 	[[ -d $_root && -n $_out ]] || return 1
-	_tmp="$TMPDIR/.speedscan_file_list_${$}_$RANDOM"
-	_abs="$TMPDIR/.speedscan_file_list_abs_${$}_$RANDOM"
 	_stage="filelist_$(_process_observer_status_safe_name "${_root##*/}" 2>/dev/null || printf root)"
-	_speedscan_scan_summary_probe "$_root" "${_stage}_summary" >/dev/null 2>&1 || true
-	_speedscan_facts_probe "$_root" "${_stage}_facts" >/dev/null 2>&1 || true
-	_speedscan_cmd file-list "$_root" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_tmp" "$_abs" 2>/dev/null; return 1; }
-	awk -F '	' -v root="$_root" -v skip="$_skip_appdetails" '
-		$1=="" { next }
-		skip=="1" && $1 ~ /(^|\/)app_details\.json$/ { next }
-		{ print root "/" $1 }
-	' "$_tmp" > "$_abs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	_speedscan_path_audit_list "$_root" "$_abs" "${_stage}_audit" >/dev/null 2>&1 || _speed_debug_log "SPEEDSCAN_PATH_AUDIT_WARN stage=${_stage}_audit root=$_root action=continue_facts_only"
-	cat "$_abs" >> "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	rm -f "$_tmp" "$_abs" 2>/dev/null
-	return 0
+	case "$_root" in */log|*/log/) _exclude_prefix="-" ;; *) [[ $_root = "$Backup" && -d "$Backup/log" ]] && _exclude_prefix="$Backup/log" ;; esac
+	_tmp="$TMPDIR/.speedscan_file_list_abs_filter_${$}_$RANDOM"
+	_speedscan_cmd file-list-abs-filter "$_root" "$_tmp" "$_skip_appdetails" "$_exclude_prefix" > "$TMPDIR/.speedscan_file_list_abs_filter_summary_${$}_$RANDOM" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	if [[ $? = 0 && -f $_tmp ]]; then
+		_speedscan_path_audit_list "$_root" "$_tmp" "${_stage}_audit" >/dev/null 2>&1 || _speed_debug_log "SPEEDSCAN_PATH_AUDIT_WARN stage=${_stage}_audit root=$_root action=continue_facts_only mode=r459"
+		cat "$_tmp" >> "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		_summary="$(wc -l < "$_tmp" 2>/dev/null | tr -d ' ')"; case $_summary in ''|*[!0-9]*) _summary=0 ;; esac
+		_speed_debug_log "SPEEDSCAN_FILE_LIST_ABS_FILTER_OK root=$_root out=${_out##*/} rows=$_summary skipAppDetails=$_skip_appdetails excludePrefix=$(_speed_debug_kv "$_exclude_prefix") mode=r459"
+		rm -f "$_tmp" "$TMPDIR"/.speedscan_file_list_abs_filter_summary_${$}_* 2>/dev/null
+		return 0
+	fi
+	rm -f "$_tmp" "$TMPDIR"/.speedscan_file_list_abs_filter_summary_${$}_* 2>/dev/null
+	_speed_debug_log "SPEEDSCAN_FILE_LIST_ABS_FILTER_FALLBACK root=$_root skipAppDetails=$_skip_appdetails mode=r459"
+	if [[ $_skip_appdetails = 1 ]]; then
+		find "$_root" -type f ! -name "app_details.json" >> "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	else
+		find "$_root" -type f >> "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	fi
 }
 _speedscan_paths_all_exist() {
 	local _list="$TMPDIR/.speedscan_exists_${$}_$RANDOM" _out="$TMPDIR/.speedscan_exists_out_${$}_$RANDOM" _rc=0 _p
 	: > "$_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
-	for _p in "$@"; do [[ -n $_p ]] && printf '%s
-' "$_p" >> "$_list"; done
+	for _p in "$@"; do [[ -n $_p ]] && printf '%s\n' "$_p" >> "$_list"; done
 	[[ -s $_list ]] || { rm -f "$_list" "$_out" 2>/dev/null; return 1; }
 	if _speedscan_batch_exists "$_list" "$_out"; then
 		awk -F '	' '$2 != 1 { bad=1 } END { exit bad }' "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || _rc=1
@@ -2766,11 +2985,87 @@ _speedscan_paths_all_exist() {
 	rm -f "$_list" "$_out" 2>/dev/null
 	return "$_rc"
 }
+
+_speedscan_appdetails_index() {
+	# r450: C native app_details.json indexer. Facts-only; does not parse or rewrite JSON.
+	local _root="$1" _out="$2" _max="${3:-2}" _min="${4:-0}"
+	[[ -d $_root && -n $_out ]] || return 1
+	_speedscan_cmd appdetails-index "$_root" "$_out" "$_max" "$_min" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+}
+
+_appdetails_index_paths() {
+	# r450: centralized app_details.json path collection. Speedscan first; find remains only as safety fallback.
+	local _root="$1" _out="$2" _max="${3:-2}" _min="${4:-0}" _sort="${5:-1}" _idx _rc _rows _source
+	[[ -d $_root && -n $_out ]] || return 1
+	_idx="${TMPDIR:-/data/local/tmp}/.appdetails_index_${$}_$RANDOM.tsv"
+	rm -f "$_idx" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	if _speedscan_appdetails_index "$_root" "$_idx" "$_max" "$_min" && [[ -f $_idx ]]; then
+		awk -F '\t' 'NF>=2 && $2 != "" {print $2}' "$_idx" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		_rc=$?
+		_source="speedscan-appdetails-index"
+	else
+		_source="find-fallback"
+		if [[ $_min -gt 0 ]]; then
+			find "$_root" -mindepth "$_min" -maxdepth "$_max" -name "app_details.json" -type f > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		else
+			find "$_root" -maxdepth "$_max" -name "app_details.json" -type f > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		fi
+		_rc=$?
+	fi
+	if [[ $_rc = 0 && $_sort = 1 && -s $_out ]]; then
+		sort "$_out" > "$_out.sort.$$" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && cat "$_out.sort.$$" > "$_out"
+		rm -f "$_out.sort.$$" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	fi
+	_rows="$(grep -vc '^[[:space:]]*$' "$_out" 2>/dev/null)"; case $_rows in ''|*[!0-9]*) _rows=0 ;; esac
+	_speed_debug_log "APPDETAILS_INDEX_PATHS root=$_root out=${_out##*/} rows=$_rows maxdepth=$_max mindepth=$_min source=$_source mode=r459"
+	rm -f "$_idx" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	return "$_rc"
+}
+
+_appdetails_index_count() {
+	local _root="$1" _max="${2:-2}" _min="${3:-0}" _tmp _n
+	_tmp="${TMPDIR:-/data/local/tmp}/.appdetails_index_count_${$}_$RANDOM.lst"
+	_appdetails_index_paths "$_root" "$_tmp" "$_max" "$_min" 0 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_tmp" 2>/dev/null; echo 0; return 1; }
+	_n="$(grep -vc '^[[:space:]]*$' "$_tmp" 2>/dev/null)"; case $_n in ''|*[!0-9]*) _n=0 ;; esac
+	rm -f "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	printf '%s\n' "$_n"
+}
+
+_speedscan_backup_root_index() {
+	# r451: backup tree/path facts index. C facts-only; shell only filters small TSV.
+	local _root="$1" _out="$2" _max="${3:-3}"
+	[[ -d $_root && -n $_out ]] || return 1
+	_speedscan_cmd backup-root-index "$_root" "$_out" "$_max" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+}
+
+_speedscan_tar_payloads() {
+	local _root="$1" _out="$2" _max="${3:-1}" _idx
+	[[ -d $_root && -n $_out ]] || return 1
+	_idx="$TMPDIR/.backup_root_index_${$}_$RANDOM.tsv"
+	if _speedscan_backup_root_index "$_root" "$_idx" "$_max" && [[ -f $_idx ]]; then
+		awk -F '\t' '$1=="tar_payload"{print $2}' "$_idx" | sort > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		rm -f "$_idx" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		_speed_debug_log "SPEEDSCAN_TAR_PAYLOADS_READY root=$_root out=${_out##*/} rows=$(wc -l < "$_out" 2>/dev/null | tr -d ' ') maxdepth=$_max mode=r459"
+		return 0
+	fi
+	rm -f "$_idx" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	find "$_root" -maxdepth "$_max" -name "*.tar*" -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort > "$_out"
+}
+
+_speedscan_backup_folder_has_tar_payload() {
+	local _dir="$1" _tmp _n
+	[[ -d $_dir ]] || return 1
+	_tmp="$TMPDIR/.tar_payload_has_${$}_$RANDOM.lst"
+	_speedscan_tar_payloads "$_dir" "$_tmp" 1 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_tmp" 2>/dev/null; return 1; }
+	_n="$(wc -l < "$_tmp" 2>/dev/null | tr -d ' ')"; case $_n in ''|*[!0-9]*) _n=0 ;; esac
+	rm -f "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	[[ $_n -gt 0 ]]
+}
+
 _speedscan_files_nonempty() {
 	local _list="$TMPDIR/.speedscan_stat_${$}_$RANDOM" _out="$TMPDIR/.speedscan_stat_out_${$}_$RANDOM" _rc=0 _p
 	: > "$_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
-	for _p in "$@"; do [[ -n $_p ]] && printf '%s
-' "$_p" >> "$_list"; done
+	for _p in "$@"; do [[ -n $_p ]] && printf '%s\n' "$_p" >> "$_list"; done
 	[[ -s $_list ]] || { rm -f "$_list" "$_out" 2>/dev/null; return 1; }
 	if _speedscan_batch_stat "$_list" "$_out"; then
 		awk -F '	' '($2 != 1 || $3 != "file" || $7 <= 0) { bad=1 } END { exit bad }' "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || _rc=1
@@ -2818,8 +3113,7 @@ _speedscan_restore_payload_precheck() {
 	_out="${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/${_out##*/}"
 	: > "$_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 0
 	for _p in app_details.json app_details apk.tar apk.tar.zst user.tar user.tar.zst user_de.tar user_de.tar.zst data.tar data.tar.zst obb.tar obb.tar.zst; do
-		printf '%s
-' "$_dir/$_p" >> "$_list"
+		printf '%s\n' "$_dir/$_p" >> "$_list"
 	done
 	_speedscan_batch_stat "$_list" "$_out" && _speed_debug_log "SPEEDSCAN_RESTORE_PRECHECK_OK label=${_label:-app} dir=$_dir out=${_out##*/} policy=facts-only"
 	rm -f "$_list" 2>/dev/null
@@ -2898,6 +3192,235 @@ load_dir_size_map() {
 		eval "$_vn=\$_sz"
 	done < "$TMPDIR/.dir_sizes"
 }
+
+# r446: 備份前容量總覽。只讀同輪 native speedscan 預掃與既有 fast-skip map，不改備份判斷語義；summary 階段不另掃大目錄。
+_backup_prescan_size_map_get() {
+	local _p="$1" _t="$2" _vn _v
+	_vn="_sz_${_p//[!a-zA-Z0-9]/_}_${_t//[!a-zA-Z0-9]/_}"
+	case $_vn in *[!a-zA-Z0-9_]*) echo 0; return 0 ;; esac
+	eval "_v=\${$_vn:-0}" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	case $_v in ''|*[!0-9]*) _v=0 ;; esac
+	printf '%s\n' "$_v"
+}
+
+# r450: obsolete r442-r445 per-app shell summary helpers removed. Summary now uses speedscan maps + single reducer; bounded media rescan removed from hot path.
+
+_backup_prescan_custom_media_scan() {
+	# r446: summary 階段不再另行 calc_dir_size。Custom_path / 媒體大小已在 prepare_dir_size_map 的
+	# native speedscan dir-size-map 同輪 manifest 內完成；這裡只彙總 .dir_sizes，應該秒出。
+	_BACKUP_PRESCAN_CUSTOM_MEDIA_TOTAL=0
+	_BACKUP_PRESCAN_CUSTOM_CACHE_TOTAL=0
+	_BACKUP_PRESCAN_CUSTOM_MEDIA_PARTIAL=0
+	[[ ${backup_media:-false} = true && ! -f ${0%/*}/app_details.json ]] || return 0
+	[[ -n ${Custom_path:-} ]] || return 0
+	[[ ${SPEEDBACKUP_BACKUP_PRESCAN_CUSTOM_MEDIA_SCAN:-1} = 1 ]] || { _speed_debug_log "BACKUP_PRESCAN_CUSTOM_MEDIA_SCAN_SKIP reason=disabled mode=r459"; return 0; }
+	local _pk _ty _sz _mapped=0 _cache_mapped=0 _start _now _elapsed
+	_start="$(date +%s 2>/dev/null || echo 0)"
+	_speed_debug_log "BACKUP_PRESCAN_CUSTOM_MEDIA_SCAN_BEGIN mode=r459 source=dir-size-map-only policy=no-extra-scan"
+	if [[ -f $TMPDIR/.dir_sizes ]]; then
+		while IFS=$'	' read -r _pk _ty _sz || [[ -n $_pk || -n $_ty || -n $_sz ]]; do
+			[[ $_pk = __speedbackup_custom_media__ ]] || continue
+			case $_sz in ''|*[!0-9]*) _sz=0 ;; esac
+			case $_ty in
+			media_*_exclude_cache)
+				_BACKUP_PRESCAN_CUSTOM_CACHE_TOTAL="$(_decimal_add_uint "$_BACKUP_PRESCAN_CUSTOM_CACHE_TOTAL" "$_sz")"
+				_cache_mapped=$((_cache_mapped + 1))
+				;;
+			media_*)
+				_BACKUP_PRESCAN_CUSTOM_MEDIA_TOTAL="$(_decimal_add_uint "$_BACKUP_PRESCAN_CUSTOM_MEDIA_TOTAL" "$_sz")"
+				_mapped=$((_mapped + 1))
+				;;
+			esac
+		done < "$TMPDIR/.dir_sizes"
+	fi
+	if [[ $_mapped -eq 0 ]]; then
+		# 不再 fallback shell 掃描，避免摘要阻塞；若需要完整媒體總量，讓 prepare_dir_size_map 的 C manifest 負責。
+		_BACKUP_PRESCAN_CUSTOM_MEDIA_PARTIAL=1
+		_speed_debug_log "BACKUP_PRESCAN_CUSTOM_MEDIA_SCAN_MAP_MISS reason=no-custom-media-rows action=count-zero-no-extra-scan mode=r459"
+	fi
+	_now="$(date +%s 2>/dev/null || echo 0)"; _elapsed=$((_now - _start))
+	_speed_debug_log "BACKUP_PRESCAN_CUSTOM_MEDIA_SCAN_END mediaBytes=${_BACKUP_PRESCAN_CUSTOM_MEDIA_TOTAL:-0} cacheBytes=${_BACKUP_PRESCAN_CUSTOM_CACHE_TOTAL:-0} mapped=$_mapped cacheMapped=$_cache_mapped partial=${_BACKUP_PRESCAN_CUSTOM_MEDIA_PARTIAL:-0} elapsedSec=$_elapsed mode=r459 source=dir-size-map-only"
+}
+
+_backup_prescan_prepare_apk_size_map() {
+	# r451: native speedscan apk-size-map; fallback stat-loop only for old speedscan.
+	local _out="$TMPDIR/.backup_prescan_apk_size_map.tsv" _mpkg _p _rest _sz
+	: > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { printf '%s\n' "$_out"; return 0; }
+	[[ -s $TMPDIR/.pkg_apk_paths ]] || { printf '%s\n' "$_out"; return 0; }
+	if _speedscan_cmd apk-size-map "$TMPDIR/.pkg_apk_paths" "$_out" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && [[ -f $_out ]]; then
+		_speed_debug_log "BACKUP_PRESCAN_APK_SIZE_MAP_READY rows=$(wc -l < "$_out" 2>/dev/null | tr -d ' ') source=speedscan-apk-size-map mode=r459"
+		printf '%s\n' "$_out"
+		return 0
+	fi
+	: > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	while IFS=$'\t' read -r _mpkg _p _rest || [[ -n $_mpkg || -n $_p ]]; do
+		[[ -n $_mpkg && -f $_p ]] || continue
+		case $_p in *.apk) ;; *) continue ;; esac
+		_sz="$(stat -c%s "$_p" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+		case $_sz in ''|*[!0-9]*) _sz=0 ;; esac
+		printf '%s\t%s\n' "$_mpkg" "$_sz" >> "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	done < "$TMPDIR/.pkg_apk_paths"
+	_speed_debug_log "BACKUP_PRESCAN_APK_SIZE_MAP_READY rows=$(wc -l < "$_out" 2>/dev/null | tr -d ' ') source=stat-loop-fallback mode=r459"
+	printf '%s\n' "$_out"
+}
+
+_backup_prescan_emit_selected_list() {
+	# r451: selected-list reducer in C native. Fallback awk stays safety-only.
+	local _out="$1" _list="$2" _in _blk _tmp
+	: > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
+	_in="$TMPDIR/.backup_prescan_selected_input_${$}_$RANDOM.txt"
+	_blk="$TMPDIR/.backup_prescan_blacklist_${$}_$RANDOM.txt"
+	_tmp="$TMPDIR/.backup_prescan_selected_${$}_$RANDOM.tsv"
+	printf '%s\n' "$_list" > "$_in" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	printf '%s\n' "${blacklist:-}" | awk '!/^[[:space:]]*[#＃]/ && NF{print $1}' > "$_blk" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	if _speedscan_cmd selected-list "$_in" "$_blk" "$_tmp" "${blacklist_mode:-0}" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && [[ -f $_tmp ]]; then
+		cat "$_tmp" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		_speed_debug_log "BACKUP_PRESCAN_SELECTED_LIST_READY rows=$(wc -l < "$_out" 2>/dev/null | tr -d ' ') source=speedscan-selected-list mode=r459"
+		rm -f "$_in" "$_blk" "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		return 0
+	fi
+	awk -v bm="${blacklist_mode:-0}" '
+		FNR==NR { if ($0 !~ /^[[:space:]]*[#＃]/ && NF) black[$1]=1; next }
+		function safe_name(n,p,  x){ x=n; gsub(/[\\/:*?"<>|\t\r\n]/,"_",x); if(x=="") x=p; return x }
+		/^[[:space:]]*$/ || /^[#＃]/ { next }
+		{
+			name=$1; pkg=$2; nodata=0;
+			if(name ~ /^!/) { sub(/^!/,"",name); nodata=1; }
+			if(substr(name,1,3)=="！") { name=substr(name,4); nodata=1; }
+			bh=(pkg in black) ? 1 : 0;
+			if (bh && (bm=="true" || bm=="1")) { print "EXCLUDED\t" name "\t" pkg; next; }
+			if (bh) nodata=1;
+			name=safe_name(name, pkg);
+			print "APP\t" name "\t" pkg "\t" nodata;
+		}
+	' "$_blk" "$_in" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && cat "$_tmp" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_speed_debug_log "BACKUP_PRESCAN_SELECTED_LIST_READY rows=$(wc -l < "$_out" 2>/dev/null | tr -d ' ') source=awk-fallback mode=r459"
+	rm -f "$_in" "$_blk" "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	return 0
+}
+
+_backup_prescan_compute_fast_totals() {
+	# r451: C native prescan summary reducer. Fallback awk remains for old speedscan.
+	local _sel="$1" _apkmap="$2" _out="$3" _rs="-" _ls="-" _combined="$TMPDIR/.backup_prescan_summary_combined.tsv"
+	[[ -s $TMPDIR/.remote_fast_skip_ok ]] && _rs="$TMPDIR/.remote_fast_skip_ok"
+	[[ -s $TMPDIR/.local_fast_skip_ok ]] && _ls="$TMPDIR/.local_fast_skip_ok"
+	if _speedscan_cmd backup-prescan-summary "$_sel" "${TMPDIR:-/data/local/tmp}/.dir_sizes" "$_apkmap" "$_rs" "$_ls" "$_out" "${remote_stream:-0}" "${remote_type:--}" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && [[ -s $_out ]]; then
+		_speed_debug_log "BACKUP_PRESCAN_SUMMARY_NATIVE_READY out=${_out##*/} mode=r459 source=speedscan-backup-prescan-summary"
+		return 0
+	fi
+	: > "$_combined" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
+	[[ -s $_sel ]] && sed 's/^/SEL\t/' "$_sel" >> "$_combined" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	[[ -s $TMPDIR/.dir_sizes ]] && sed 's/^/DIR\t/' "$TMPDIR/.dir_sizes" >> "$_combined" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	[[ -s $_apkmap ]] && sed 's/^/APK\t/' "$_apkmap" >> "$_combined" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	[[ -s $TMPDIR/.remote_fast_skip_ok ]] && sed 's/^/RSKIP\t/' "$TMPDIR/.remote_fast_skip_ok" >> "$_combined" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	[[ -s $TMPDIR/.local_fast_skip_ok ]] && sed 's/^/LSKIP\t/' "$TMPDIR/.local_fast_skip_ok" >> "$_combined" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	awk -F '\t' -v remoteStream="${remote_stream:-0}" -v remoteType="${remote_type:-}" '
+	function n(v){ return (v ~ /^[0-9]+$/) ? v + 0 : 0 }
+	function out(k,v){ if (v < 0) v=0; printf "%s\t%.0f\n", k, v }
+	$1=="SEL" && $2=="APP" { name=$3; pkg=$4; nd=$5; if (pkg!="" && !(pkg in selected)) { selected[pkg]=1; selName[pkg]=name; nodata[pkg]=nd; apps++ } next }
+	$1=="SEL" && $2=="EXCLUDED" { excluded++; next }
+	$1=="DIR" { pkg=$2; typ=$3; sz=n($4); if (pkg=="__speedbackup_custom_media__") { if (typ ~ /^media_[0-9]+_exclude_cache$/) { mediaCache += sz; cacheMapped++ } else if (typ ~ /^media_[0-9]+$/) { mediaTotal += sz; mediaMapped++ } next } if (typ=="user" || typ=="user_de") appdata[pkg]+=sz; else if (typ=="data" || typ=="obb" || typ=="media") external[pkg]+=sz; else if (typ=="user_exclude_cache" || typ=="user_exclude_code_cache" || typ=="user_de_exclude_cache" || typ=="user_de_exclude_code_cache" || typ=="data_exclude_cache" || typ=="obb_exclude_cache" || typ=="media_exclude_cache") cache[pkg]+=sz; next }
+	$1=="APK" { apk[$2]+=n($3); next }
+	$1=="RSKIP" { rskip[$2]=1; next }
+	$1=="LSKIP" { lskip[$2]=1; next }
+	END { for (p in selected) { ap=n(apk[p]); ad=n(appdata[p]); ex=n(external[p]); ca=n(cache[p]); if (nodata[p]=="1" || p=="bin.mt.plus") { ad=0; ex=0; ca=0 } raw=ap+ad+ex; eff=raw-ca; if(eff<0) eff=0; apkTotal+=ap; appdataTotal+=ad; externalTotal+=ex; cacheTotal+=ca; total+=eff; if(remoteStream=="1" && remoteType!="" && (selName[p] in rskip)) remoteSkip+=eff; else if(remoteType=="" && remoteStream!="1" && (selName[p] in lskip)) localSkip+=eff } total+=mediaTotal; cacheTotal+=mediaCache; total-=mediaCache; if(total<0) total=0; processSkip=remoteSkip+localSkip; expected=total-processSkip; if(expected<0) expected=0; partialMedia=(mediaMapped>0)?0:1; out("apps",apps); out("excludedApps",excluded); out("apk",apkTotal); out("appData",appdataTotal); out("external",externalTotal); out("mediaCustom",mediaTotal); out("excludedCache",cacheTotal); out("total",total); out("remoteSkip",remoteSkip); out("localSkip",localSkip); out("expected",expected); out("partialMedia",partialMedia); out("mediaMapped",mediaMapped); out("cacheMapped",cacheMapped); }
+	' "$_combined" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	rm -f "$_combined" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_speed_debug_log "BACKUP_PRESCAN_SUMMARY_NATIVE_FALLBACK out=${_out##*/} mode=r459 source=awk-fallback"
+	[[ -s $_out ]]
+}
+
+_backup_prescan_result_get() {
+	local _file="$1" _key="$2" _v
+	_v="$(awk -F '\t' -v k="$_key" '$1==k{print $2; exit}' "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	case $_v in ''|*[!0-9]*) _v=0 ;; esac
+	printf '%s\n' "$_v"
+}
+
+_backup_remote_prescan_progress_step() {
+	# r448: restore a visible remote-prescan progress bar that explicitly includes the
+	# remote-size stage. r447 only had coarse 0/4 phases, so the long remote_dir_size
+	# request looked like the old size prescan progress disappeared.
+	local _cur="$1" _msg="$2"
+	[[ -n ${remote_type:-} || ${remote_stream:-0} = 1 ]] || return 0
+	_speedbackup_progress_step "$_cur" 5 "$_msg" "prepare_remote_prescan_overall" "107"
+}
+
+_backup_remote_size_prescan_progress_begin() {
+	local _path="$1"
+	[[ -n ${remote_type:-} ]] || return 0
+	echoRgb "正在預掃遠端備份大小: ${_path:-$(get_backup_dirname 2>/dev/null)}" "3"
+	_speedbackup_progress_step 0 1 "正在計算遠端備份大小" "prepare_remote_size_before" "107"
+	_speed_debug_log "REMOTE_SIZE_PRESCAN_PROGRESS_BEGIN path=$(_speed_debug_kv "${_path:-}") mode=r448"
+}
+
+_backup_remote_size_prescan_progress_done() {
+	local _path="$1" _bytes="${2:-0}" _label
+	[[ -n ${remote_type:-} ]] || return 0
+	case $_bytes in ''|*[!0-9]*) _bytes=0 ;; esac
+	_label="遠端備份大小預掃完成 $(size_with_bytes "$_bytes" 2>/dev/null)"
+	_speedbackup_progress_step 1 1 "$_label" "prepare_remote_size_before" "107"
+	_speed_debug_log "REMOTE_SIZE_PRESCAN_PROGRESS_DONE path=$(_speed_debug_kv "${_path:-}") bytes=$_bytes mode=r448"
+}
+
+_backup_prescan_skip_name_hit() {
+	local _file="$1" _name="$2"
+	[[ -s $_file && -n $_name ]] || return 1
+	awk -v n="$_name" '$0==n{f=1;exit} END{exit f?0:1}' "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+}
+
+_backup_prescan_show_summary() {
+	[[ ${SPEEDBACKUP_BACKUP_PRESCAN_SIZE_SUMMARY:-1} = 1 ]] || return 0
+	local _summary_start _summary_now _summary_elapsed _media_note=""
+	_summary_start="$(date +%s 2>/dev/null || echo 0)"
+	_speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_BEGIN mode=r459 source=native-speedscan-hotpaths"
+	echoRgb "正在整理本輪備份容量總覽..." "3"
+	local _list _name _pkg _sel _apkmap _res
+	local _apps _excluded _apk_total _appdata_total _external_total _media_total _cache_total _total _remote_skip _local_skip _expected _partial_media _media_mapped _cache_mapped
+	if [[ -f ${0%/*}/app_details.json ]]; then
+		_name="$(_appdetails_get_first_entry_name "${0%/*}/app_details.json")"
+		_pkg="$(_appdetails_get_first_pkg "${0%/*}/app_details.json")"
+		_list="$_name $_pkg"
+	else
+		_list="$txt"
+	fi
+	_sel="$TMPDIR/.backup_prescan_selected.tsv"
+	_res="$TMPDIR/.backup_prescan_size_summary.tsv"
+	_speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_STAGE_BEGIN stage=selected-list mode=r459"
+	_backup_prescan_emit_selected_list "$_sel" "$_list" || return 0
+	_eventwait_output_file_stable_ms "$_sel" backup_prescan_selected_ready 50 1000 >/dev/null 2>&1 || true
+	_speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_STAGE_END stage=selected-list mode=r459"
+	_speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_STAGE_BEGIN stage=apk-size-map mode=r459"
+	_apkmap="$(_backup_prescan_prepare_apk_size_map)"
+	_eventwait_output_file_stable_ms "$_apkmap" backup_prescan_apkmap_ready 50 1000 >/dev/null 2>&1 || true
+	_speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_STAGE_END stage=apk-size-map mode=r459"
+	_speed_debug_log "BACKUP_PRESCAN_CUSTOM_MEDIA_SCAN_BEGIN mode=r459 source=dir-size-map-only policy=no-extra-scan"
+	_speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_STAGE_BEGIN stage=compute-fast mode=r459"
+	_backup_prescan_compute_fast_totals "$_sel" "$_apkmap" "$_res" || { _speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_FAIL stage=compute-fast mode=r459"; return 0; }
+	_eventwait_output_file_stable_ms "$_res" backup_prescan_summary_ready 50 1000 >/dev/null 2>&1 || true
+	_speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_STAGE_END stage=compute-fast mode=r459"
+	_apps="$(_backup_prescan_result_get "$_res" apps)"
+	_excluded="$(_backup_prescan_result_get "$_res" excludedApps)"
+	_apk_total="$(_backup_prescan_result_get "$_res" apk)"
+	_appdata_total="$(_backup_prescan_result_get "$_res" appData)"
+	_external_total="$(_backup_prescan_result_get "$_res" external)"
+	_media_total="$(_backup_prescan_result_get "$_res" mediaCustom)"
+	_cache_total="$(_backup_prescan_result_get "$_res" excludedCache)"
+	_total="$(_backup_prescan_result_get "$_res" total)"
+	_remote_skip="$(_backup_prescan_result_get "$_res" remoteSkip)"
+	_local_skip="$(_backup_prescan_result_get "$_res" localSkip)"
+	_expected="$(_backup_prescan_result_get "$_res" expected)"
+	_partial_media="$(_backup_prescan_result_get "$_res" partialMedia)"
+	_media_mapped="$(_backup_prescan_result_get "$_res" mediaMapped)"
+	_cache_mapped="$(_backup_prescan_result_get "$_res" cacheMapped)"
+	[[ $_partial_media = 1 ]] && _media_note="（媒體/自訂路徑未進入本輪 C 預掃，已略過以避免摘要阻塞）"
+	_summary_now="$(date +%s 2>/dev/null || echo 0)"; _summary_elapsed=$((_summary_now - _summary_start))
+	_speed_debug_log "BACKUP_PRESCAN_CUSTOM_MEDIA_SCAN_END mediaBytes=$_media_total cacheBytes=0 mapped=$_media_mapped cacheMapped=$_cache_mapped partial=$_partial_media elapsedSec=$_summary_elapsed mode=r459 source=dir-size-map-only"
+	_speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY apps=$_apps excludedApps=$_excluded apk=$_apk_total appData=$_appdata_total external=$_external_total mediaCustom=$_media_total excludedCache=$_cache_total total=$_total remoteSkip=$_remote_skip localSkip=$_local_skip expected=$_expected partialMedia=$_partial_media elapsedSec=$_summary_elapsed mode=r459 source=native-speedscan-hotpaths"
+	echoRgb "本輪備份預掃完成\n -App：$_apps 個\n -APK：$(size "$_apk_total")\n -App 資料：$(size "$_appdata_total")\n -外部資料 / OBB：$(size "$_external_total")\n -媒體 / 自訂資料夾：$(size "$_media_total")$_media_note\n -排除快取：$(size "$_cache_total")\n -壓縮前總量：$(size "$_total")\n -遠端可跳過：$(size "$_remote_skip")\n -預計實際處理：$(size "$_expected")" "3"
+	[[ $_local_skip != 0 ]] && echoRgb " -本地無變化可跳過：$(size "$_local_skip")" "2"
+}
+
 # 將 $name1 寫入 .changed_apps (去重, 避免重複記錄)
 _mark_changed() {
 	awk -v n="$name1" 'BEGIN{f=0} $0==n{f=1;exit} END{if(!f)print n}' \
@@ -3520,7 +4043,7 @@ tar_compress_dir() {
 			echoRgb "流式傳輸中 (邊壓邊傳, 不佔本機)..." "3" >/dev/tty 2>/dev/null ||
 				_speed_debug_log "STREAM_TRANSFER_NOTICE out_base=$out_base comp=$_comp dest=$_STREAM_DEST"
 		}
-		local _rb="$_STREAM_DEST/${out_base##*/}" _stream_rel _stream_raw_log _stream_start _stream_rc
+		local _rb="$_STREAM_DEST/${out_base##*/}" _stream_rel _stream_raw_log _stream_start _stream_rc _stream_pid
 		case $_comp in tar|Tar|TAR) _stream_rel="$_rb.tar" ;; *) _stream_rel="$_rb.tar.zst" ;; esac
 		_stream_start="$(date +%s%3N 2>/dev/null)"; case $_stream_start in ''|*[!0-9]*) _stream_start="$(date +%s 2>/dev/null)000" ;; esac
 		_stream_raw_log="$(_local_raw_debug_begin compress "mode=dir-stream comp=$_comp out_base=$out_base cd_to=$cd_to pack=$pack_name extra=$*")"
@@ -3531,14 +4054,15 @@ tar_compress_dir() {
 		case $_comp in
 		tar|Tar|TAR)
 			( set -o pipefail 2>/dev/null; tar --checkpoint-action="ttyout=%T\r" --warning=no-file-ignored \
-				"$@" -cpf - -C "$cd_to" "$pack_name" 2>>"$_stream_raw_log" | _stream_upload "$_stream_rel" )
+				"$@" -cpf - -C "$cd_to" "$pack_name" 2>>"$_stream_raw_log" | _stream_upload "$_stream_rel" ) & _stream_pid=$!
 			;;
 		zstd|Zstd|ZSTD)
 			( set -o pipefail 2>/dev/null; tar --checkpoint-action="ttyout=%T\r" --warning=no-file-ignored \
 				"$@" -cpf - -C "$cd_to" "$pack_name" 2>>"$_stream_raw_log" | \
-				zstd --ultra -3 -T0 -q --priority=rt 2>>"$_stream_raw_log" | _stream_upload "$_stream_rel" )
+				zstd --ultra -3 -T0 -q --priority=rt 2>>"$_stream_raw_log" | _stream_upload "$_stream_rel" ) & _stream_pid=$!
 			;;
 		esac
+			_remote_stream_wait_pid_busy_abortable "$_stream_pid" "正在流式傳輸 ${_stream_rel##*/}" "backup_stream_${_stream_rel##*/}" "" 1 ""
 			result=$?; _stream_rc="$result"
 			case $_stream_rc in ''|*[!0-9]*) _stream_rc=1 ;; esac
 		if [[ $_stream_rc != 0 ]] && _tar_changed_xlog_only "$_stream_raw_log"; then
@@ -3552,14 +4076,15 @@ tar_compress_dir() {
 			case $_comp in
 			tar|Tar|TAR)
 				( set -o pipefail 2>/dev/null; tar --checkpoint-action="ttyout=%T\r" --warning=no-file-ignored \
-					"$@" -cpf - -C "$cd_to" "$pack_name" 2>>"$_stream_raw_log" | _stream_upload "$_rb.tar" )
+					"$@" -cpf - -C "$cd_to" "$pack_name" 2>>"$_stream_raw_log" | _stream_upload "$_rb.tar" ) & _stream_pid=$!
 				;;
 			zstd|Zstd|ZSTD)
 				( set -o pipefail 2>/dev/null; tar --checkpoint-action="ttyout=%T\r" --warning=no-file-ignored \
 					"$@" -cpf - -C "$cd_to" "$pack_name" 2>>"$_stream_raw_log" | \
-					zstd --ultra -3 -T0 -q --priority=rt 2>>"$_stream_raw_log" | _stream_upload "$_rb.tar.zst" )
+					zstd --ultra -3 -T0 -q --priority=rt 2>>"$_stream_raw_log" | _stream_upload "$_rb.tar.zst" ) & _stream_pid=$!
 				;;
 			esac
+				_remote_stream_wait_pid_busy_abortable "$_stream_pid" "正在流式重試傳輸 ${_rb##*/}" "backup_stream_retry_${_rb##*/}" "" 1 ""
 				result=$?; _stream_rc="$result"
 				case $_stream_rc in ''|*[!0-9]*) _stream_rc=1 ;; esac
 			_speed_debug_log "TAR_CHANGED_RETRY_END mode=dir-stream rb=$_rb rc=$_stream_rc"
@@ -3892,13 +4417,13 @@ tar_compress_glob() {
 			echoRgb "流式傳輸中 (邊壓邊傳, 不佔本機)..." "3" >/dev/tty 2>/dev/null ||
 				_speed_debug_log "STREAM_TRANSFER_NOTICE out_base=$out_base comp=$_comp dest=$_STREAM_DEST"
 		}
-		local _rb="$_STREAM_DEST/${out_base##*/}" _stream_rel _stream_raw_log _stream_start _stream_rc
+		local _rb="$_STREAM_DEST/${out_base##*/}" _stream_rel _stream_raw_log _stream_start _stream_rc _stream_pid
 		case $_comp in tar|Tar|TAR) _stream_rel="$_rb.tar" ;; *) _stream_rel="$_rb.tar.zst" ;; esac
 		_stream_start="$(date +%s%3N 2>/dev/null)"; case $_stream_start in ''|*[!0-9]*) _stream_start="$(date +%s 2>/dev/null)000" ;; esac
 		_stream_raw_log="$(_local_raw_debug_begin compress "mode=glob-stream comp=$_comp out_base=$out_base cd_to=$cd_to pattern=$pattern")"
 		[[ ! -d ${out_base%/*} ]] && mkdir -p "${out_base%/*}" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		(
-			cd "$cd_to" || return 1
+			cd "$cd_to" || exit 1
 			# 443: suppress GNU tar ignored-file warnings such as "socket ignored".
 			# 445: stream tar/zstd stderr goes to compress_raw.log, not the main stderr.log.
 			case $_comp in
@@ -3910,7 +4435,8 @@ tar_compress_glob() {
 					zstd --ultra -3 -T0 -q --priority=rt 2>>"$_stream_raw_log" | _stream_upload "$_stream_rel" )
 				;;
 			esac
-		)
+		) & _stream_pid=$!
+		_remote_stream_wait_pid_busy_abortable "$_stream_pid" "正在流式傳輸 ${_stream_rel##*/}" "backup_glob_stream_${_stream_rel##*/}" "" 1 ""
 		result=$?; _stream_rc="$result"
 		case $_stream_rc in ''|*[!0-9]*) _stream_rc=1 ;; esac
 		_tar_stream_finish "$_rb" "$_comp" "$_stream_raw_log" "$_stream_start" glob "$_stream_rc"
@@ -4171,6 +4697,200 @@ _event_filewatch_once() {
 	return $_rc
 }
 
+_eventwait_ms_from_sec() {
+	local _s="${1:-5}"
+	case $_s in ''|*[!0-9]*) _s=5 ;; esac
+	printf '%s\n' "$((_s * 1000))"
+}
+
+_eventwait_call() {
+	local _op="$1" _tag _timeout_ms _out _rc
+	shift
+	_speedbackup_tool_verify_once eventwait 0 >/dev/null 2>&1 || true
+	[[ -x ${EVENT_EVENTWAIT_BIN:-} ]] || return 125
+	_out="$TMPDIR/.eventwait_${_op}_${$}_$RANDOM.out"
+	"$EVENT_EVENTWAIT_BIN" "$_op" "$@" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_rc=$?
+	_EVENTWAIT_LAST_LINE="$(sed -n '1p' "$_out" 2>/dev/null)"
+	rm -f "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	return $_rc
+}
+
+_eventwait_file_contains() {
+	local _path="$1" _pattern="$2" _timeout_sec="${3:-5}" _tag="${4:-file_contains}" _diag="${5:-}" _rc _ms
+	[[ -n $_path && -n $_pattern ]] || return 2
+	_ms="$(_eventwait_ms_from_sec "$_timeout_sec")"
+	_eventwait_call file-contains "$_path" "$_pattern" "$_ms" "$_tag"
+	_rc=$?
+	_speed_debug_log "EVENTWAIT_FILE_CONTAINS tag=$_tag path=$_path timeoutMs=$_ms rc=$_rc line=$(_speed_debug_kv "${_EVENTWAIT_LAST_LINE:-}") mode=r459"
+	[[ -n $_diag ]] && echo "$(date '+%H:%M:%S') eventwait_file_contains tag=$_tag path=$_path timeoutMs=$_ms rc=$_rc line=${_EVENTWAIT_LAST_LINE:-}" >> "$_diag" 2>/dev/null
+	return $_rc
+}
+
+_eventwait_file_nonempty() {
+	local _path="$1" _timeout_sec="${2:-5}" _tag="${3:-file_nonempty}" _diag="${4:-}" _rc _ms
+	[[ -n $_path ]] || return 2
+	_ms="$(_eventwait_ms_from_sec "$_timeout_sec")"
+	_eventwait_call file-nonempty "$_path" "$_ms" "$_tag"
+	_rc=$?
+	_speed_debug_log "EVENTWAIT_FILE_NONEMPTY tag=$_tag path=$_path timeoutMs=$_ms rc=$_rc line=$(_speed_debug_kv "${_EVENTWAIT_LAST_LINE:-}") mode=r459"
+	[[ -n $_diag ]] && echo "$(date '+%H:%M:%S') eventwait_file_nonempty tag=$_tag path=$_path timeoutMs=$_ms rc=$_rc line=${_EVENTWAIT_LAST_LINE:-}" >> "$_diag" 2>/dev/null
+	return $_rc
+}
+
+_eventwait_file_created_ms() {
+	local _path="$1" _timeout_ms="${2:-3000}" _tag="${3:-file_created}" _diag="${4:-}" _rc
+	[[ -n $_path ]] || return 2
+	case $_timeout_ms in ''|*[!0-9]*) _timeout_ms=3000 ;; esac
+	_eventwait_call file-created "$_path" "$_timeout_ms" "$_tag"
+	_rc=$?
+	_speed_debug_log "EVENTWAIT_FILE_CREATED tag=$_tag path=$_path timeoutMs=$_timeout_ms rc=$_rc line=$(_speed_debug_kv "${_EVENTWAIT_LAST_LINE:-}") mode=r459"
+	[[ -n $_diag ]] && echo "$(date '+%H:%M:%S') eventwait_file_created tag=$_tag path=$_path timeoutMs=$_timeout_ms rc=$_rc line=${_EVENTWAIT_LAST_LINE:-}" >> "$_diag" 2>/dev/null
+	return $_rc
+}
+
+_eventwait_socket_ready() {
+	local _path="$1" _timeout_sec="${2:-5}" _tag="${3:-socket_ready}" _diag="${4:-}" _rc _ms
+	[[ -n $_path ]] || return 2
+	_ms="$(_eventwait_ms_from_sec "$_timeout_sec")"
+	_eventwait_call socket-ready "$_path" "$_ms" "$_tag"
+	_rc=$?
+	_speed_debug_log "EVENTWAIT_SOCKET_READY tag=$_tag path=$_path timeoutMs=$_ms rc=$_rc line=$(_speed_debug_kv "${_EVENTWAIT_LAST_LINE:-}") mode=r459"
+	[[ -n $_diag ]] && echo "$(date '+%H:%M:%S') eventwait_socket_ready tag=$_tag path=$_path timeoutMs=$_ms rc=$_rc line=${_EVENTWAIT_LAST_LINE:-}" >> "$_diag" 2>/dev/null
+	return $_rc
+}
+
+_eventwait_pid_exit_ms() {
+	local _pid="$1" _timeout_ms="${2:-3000}" _tag="${3:-pid_exit}" _diag="${4:-}" _rc
+	case $_pid in ''|*[!0-9]*) return 2 ;; esac
+	case $_timeout_ms in ''|*[!0-9]*) _timeout_ms=3000 ;; esac
+	_eventwait_call pid-exit "$_pid" "$_timeout_ms" "$_tag"
+	_rc=$?
+	_speed_debug_log "EVENTWAIT_PID_EXIT tag=$_tag pid=$_pid timeoutMs=$_timeout_ms rc=$_rc line=$(_speed_debug_kv "${_EVENTWAIT_LAST_LINE:-}") mode=r459"
+	[[ -n $_diag ]] && echo "$(date '+%H:%M:%S') eventwait_pid_exit tag=$_tag pid=$_pid timeoutMs=$_timeout_ms rc=$_rc line=${_EVENTWAIT_LAST_LINE:-}" >> "$_diag" 2>/dev/null
+	return $_rc
+}
+
+_eventwait_pid_or_file_ms() {
+	local _pid="$1" _fatal="$2" _timeout_ms="${3:-0}" _tag="${4:-pid_or_file}" _diag="${5:-}" _rc
+	case $_pid in ''|*[!0-9]*) return 2 ;; esac
+	[[ -n $_fatal ]] || _fatal="-"
+	case $_timeout_ms in ''|*[!0-9]*) _timeout_ms=0 ;; esac
+	_eventwait_call pid-or-file "$_pid" "$_fatal" "$_timeout_ms" "$_tag"
+	_rc=$?
+	_speed_debug_log "EVENTWAIT_PID_OR_FILE tag=$_tag pid=$_pid fatal=$_fatal timeoutMs=$_timeout_ms rc=$_rc line=$(_speed_debug_kv "${_EVENTWAIT_LAST_LINE:-}") mode=r459"
+	[[ -n $_diag ]] && echo "$(date '+%H:%M:%S') eventwait_pid_or_file tag=$_tag pid=$_pid fatal=$_fatal timeoutMs=$_timeout_ms rc=$_rc line=${_EVENTWAIT_LAST_LINE:-}" >> "$_diag" 2>/dev/null
+	return $_rc
+}
+
+_eventwait_pipeline_watch_ms() {
+	local _pidfile="$1" _fatal="$2" _progress="$3" _idle_ms="${4:-0}" _timeout_ms="${5:-0}" _tag="${6:-pipeline_watch}" _diag="${7:-}" _rc
+	[[ -n $_pidfile ]] || return 2
+	[[ -n $_fatal ]] || _fatal="-"
+	[[ -n $_progress ]] || _progress="-"
+	case $_idle_ms in ''|*[!0-9]*) _idle_ms=0 ;; esac
+	case $_timeout_ms in ''|*[!0-9]*) _timeout_ms=0 ;; esac
+	local _min_bps="${SPEEDBACKUP_STREAM_PIPELINE_MIN_BPS:-0}" _rate_window="${SPEEDBACKUP_STREAM_PIPELINE_RATE_WINDOW_MS:-30000}" _backend="pipeline-watch"
+	case $_min_bps in ''|*[!0-9]*) _min_bps=0 ;; esac
+	case $_rate_window in ''|*[!0-9]*) _rate_window=30000 ;; esac
+	if [[ $_min_bps -gt 0 && $_progress != "-" ]]; then
+		_eventwait_call pipeline-rate-watch "$_pidfile" "$_fatal" "$_progress" "$_idle_ms" "$_timeout_ms" "$_min_bps" "$_rate_window" "$_tag"
+		_backend="pipeline-rate-watch"
+	else
+		_eventwait_call pipeline-watch "$_pidfile" "$_fatal" "$_progress" "$_idle_ms" "$_timeout_ms" "$_tag"
+	fi
+	_rc=$?
+	_speed_debug_log "EVENTWAIT_PIPELINE_WATCH tag=$_tag pidFile=$_pidfile fatal=$_fatal progress=$_progress idleMs=$_idle_ms timeoutMs=$_timeout_ms minBps=$_min_bps rateWindowMs=$_rate_window rc=$_rc line=$(_speed_debug_kv "${_EVENTWAIT_LAST_LINE:-}") backend=$_backend mode=r470"
+	[[ -n $_diag ]] && echo "$(date '+%H:%M:%S') eventwait_pipeline_watch tag=$_tag pidFile=$_pidfile fatal=$_fatal progress=$_progress idleMs=$_idle_ms timeoutMs=$_timeout_ms rc=$_rc line=${_EVENTWAIT_LAST_LINE:-}" >> "$_diag" 2>/dev/null
+	return $_rc
+}
+
+_eventwait_pipeline_watch_single_pid_ms() {
+	local _pid="$1" _fatal="$2" _progress="$3" _idle_ms="${4:-0}" _timeout_ms="${5:-0}" _tag="${6:-pipeline_watch}" _pf _rc
+	case $_pid in ''|*[!0-9]*) return 2 ;; esac
+	local _safe_tag
+	_safe_tag="$(printf '%s' "$_tag" | tr -c 'A-Za-z0-9_' '_' 2>/dev/null)"
+	[[ -n $_safe_tag ]] || _safe_tag=pipeline_watch
+	_pf="${TMPDIR:-/data/local/tmp}/.speedbackup_pipeline_pids_${_safe_tag}_$$_$RANDOM.tsv"
+	printf 'root\t%s\n' "$_pid" > "$_pf" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 2
+	_eventwait_pipeline_watch_ms "$_pf" "$_fatal" "$_progress" "$_idle_ms" "$_timeout_ms" "$_tag"
+	_rc=$?
+	rm -f "$_pf" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	return $_rc
+}
+
+_speedbackup_stream_pipeline_progress_file() {
+	local _p=""
+	case ${remote_type:-} in
+	webdav)
+		_p="$(_speed_debug_log_path webdav_daemon_info.log 2>/dev/null)"
+		[[ -n $_p && -e $_p ]] && { printf '%s\n' "$_p"; return 0; }
+		;;
+	esac
+	printf '%s\n' "-"
+}
+
+_speedbackup_stream_pipeline_idle_ms() {
+	local _progress="${1:-}" _idle="${SPEEDBACKUP_STREAM_PIPELINE_IDLE_MS:-auto}"
+	case $_idle in
+	''|auto|AUTO)
+		case ${remote_type:-}:$_progress in
+		webdav:/*) printf '%s\n' "${SPEEDBACKUP_STREAM_PIPELINE_WEBDAV_IDLE_MS:-180000}" ;;
+		*) printf '0\n' ;;
+		esac
+		;;
+	*[!0-9]*) printf '0\n' ;;
+	*) printf '%s\n' "$_idle" ;;
+	esac
+}
+
+_eventwait_file_size_stable_ms() {
+	local _path="$1" _stable_ms="${2:-500}" _timeout_ms="${3:-3000}" _tag="${4:-file_size_stable}" _diag="${5:-}" _rc
+	[[ -n $_path ]] || return 2
+	case $_stable_ms in ''|*[!0-9]*) _stable_ms=500 ;; esac
+	case $_timeout_ms in ''|*[!0-9]*) _timeout_ms=3000 ;; esac
+	_eventwait_call file-size-stable "$_path" "$_stable_ms" "$_timeout_ms" "$_tag"
+	_rc=$?
+	_speed_debug_log "EVENTWAIT_FILE_SIZE_STABLE tag=$_tag path=$_path stableMs=$_stable_ms timeoutMs=$_timeout_ms rc=$_rc line=$(_speed_debug_kv "${_EVENTWAIT_LAST_LINE:-}") mode=r459"
+	[[ -n $_diag ]] && echo "$(date '+%H:%M:%S') eventwait_file_size_stable tag=$_tag path=$_path stableMs=$_stable_ms timeoutMs=$_timeout_ms rc=$_rc line=${_EVENTWAIT_LAST_LINE:-}" >> "$_diag" 2>/dev/null
+	return $_rc
+}
+
+# r458: 對本地輸出檔/TSV/map/bundle/manifest 做統一 eventwait 穩定確認。
+# 不改業務判定，只避免 producer 剛退出後 reader 立刻讀到尚未 flush 完的中間檔。
+_eventwait_output_file_stable_ms() {
+	local _path="$1" _tag="${2:-output_file_stable}" _stable_ms="${3:-80}" _timeout_ms="${4:-1200}" _rc
+	[[ -n $_path ]] || return 2
+	case $_stable_ms in ''|*[!0-9]*) _stable_ms=80 ;; esac
+	case $_timeout_ms in ''|*[!0-9]*) _timeout_ms=1200 ;; esac
+	if [[ ! -e $_path ]]; then
+		_eventwait_file_created_ms "$_path" "$_timeout_ms" "${_tag}_created" >/dev/null 2>&1 || true
+	fi
+	if [[ -e $_path ]]; then
+		_eventwait_file_size_stable_ms "$_path" "$_stable_ms" "$_timeout_ms" "$_tag" >/dev/null 2>&1
+		_rc=$?
+	else
+		_rc=2
+	fi
+	_speed_debug_log "EVENTWAIT_OUTPUT_FILE_STABLE tag=$_tag path=$_path stableMs=$_stable_ms timeoutMs=$_timeout_ms rc=$_rc mode=r459"
+	return $_rc
+}
+
+_eventwait_output_files_stable_ms() {
+	local _tag="${1:-output_files_stable}" _stable_ms="${2:-80}" _timeout_ms="${3:-1200}" _path _ok=0 _fail=0
+	shift 3 2>/dev/null || return 2
+	for _path in "$@"; do
+		[[ -n $_path ]] || continue
+		if _eventwait_output_file_stable_ms "$_path" "$_tag" "$_stable_ms" "$_timeout_ms" >/dev/null 2>&1; then
+			_ok=$((_ok + 1))
+		else
+			_fail=$((_fail + 1))
+		fi
+	done
+	_speed_debug_log "EVENTWAIT_OUTPUT_FILES_STABLE tag=$_tag ok=$_ok fail=$_fail stableMs=$_stable_ms timeoutMs=$_timeout_ms mode=r459"
+	[[ $_fail -eq 0 ]]
+}
+
 # 等待指定 PID 清單，避免 wait 參數為空時退化成 bare wait、誤等長駐 daemon。
 _event_wait_pid_list() {
 	local _list="$1" _tag="${2:-pid_list}" _pid _rc=0 _one_rc=0 _count=0
@@ -4225,6 +4945,10 @@ _event_terminate_pid() {
 	case $_pid in ''|*[!0-9]*) return 1 ;; esac
 	kill -0 "$_pid" 2>/dev/null || return 0
 	kill "$_pid" 2>/dev/null
+	if _eventwait_pid_exit_ms "$_pid" 1000 "$_tag.term" >/dev/null 2>&1; then
+		_speed_debug_log "EVENTWAIT_TERMINATE_EXIT tag=$_tag pid=$_pid phase=term mode=r459"
+		return 0
+	fi
 	if _event_wait_pid_exit_procwait "$_pid" 1 "$_tag.term"; then
 		return 0
 	fi
@@ -4479,7 +5203,6 @@ _dex_app_process_abs() {
 	[[ -n $_ap ]] && { printf '%s\n' "$_ap"; return 0; }
 	printf '%s\n' "/system/bin/app_process"
 }
-
 
 # 393: 低記憶體/ROM 背景清理下，daemon 或主 shell 可能被 LMK/SIGKILL。
 # root 可寫時降低 oom_score_adj；失敗只記 log，不阻塞流程。
@@ -5021,11 +5744,11 @@ SPEEDBACKUP_TOOL_SHA_VERIFIED=""
 _speedbackup_tool_sha_table() {
 	cat <<'SB_TOOL_SHA_TABLE'
 busybox 4d60ab3f5a59ebb2ca863f2f514e6924401b581e9b64f602665c008177626651
-cgfreezer 6a4a8f48d9b6144045f34bd2daca8e6c96bca320a7111e69b1472f1750938099
-classes.dex a12cc28868a2c08cee1bf929f4a8aa15f0899adffc33b64a9f7cbb68be28e5f2
+cgfreezer d93dc0b48855b3c6ef59af356c784cafcf4201b10ad06444ca5ebbd33c69e8d0
+classes.dex dfd662c28b1307c6d704562181cbb0ee7b486cd3ff94ee424181fd6cb079375d
 cmd 08da8ac23b6e99788fd3ce6c19c7b5a083b2ad48be35963a48d01d6ee7f3bb6d
-dex_check.sh de60c880d482e26c00b175efbebc5b79f95b2311f77b80f19d2175deacedca3a
-eventwait 0adb6cb832f89a8be1bace1a653536732a9858a9eec544ac6c0796196c430b41
+dex_check.sh 6ac409fec7a1fa0b0a766d488b28e2da20a1a745813fdf1819c444d7b68e633a
+eventwait 259059d2b274eb8c29814ee9900d6ec0f44d70a2cd71ac577a9f05c3a6b1b0c5
 filewatch 5d68e29180c8c791f4e531f8e6a39ef6689dfa2ea1e0c17e837770375588c4e5
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
 jq 6bc62f25981328edd3cfcfe6fe51b073f2d7e7710d7ef7fcdac28d4e384fc3d4
@@ -5033,7 +5756,7 @@ keycheck 50645ee0e0d2a7d64fb4a1286446df7a4445f3d11aefd49eeeb88515b314c363
 netwatch f3d14295853e17a8a8e7f4ae19cdd53609334223db27b6271d4b0290524398b6
 procwait 12606ecee8aea17b7b5572807b07409d267806e50bd7957f767cfd0eb13f2463
 smbclient 1866c6199998dbccfa7e7a3727e51f274cafaa8cd18752d345c62e38f28031e8
-speedscan 1654dddf889a73a3275ec536ae4b49a78c13beb2c4124d4ade544de67ab9b788
+speedscan e0e7ff4e5d7ec75c62a2624a3b4629372a2b5d52d3a42fb24d7ab9534c121bdb
 tar 882639ac310a7eb4052c68c21cea02633307700f9cc8c7c469c2dd18d734a112
 uidexec 2db1792a42e2d7672f08236e1f122be752c3f09d89a0d53c47d843798f2b956d
 unixsock 9ae68885818809f285cc2b630f7e58767ceb81ab77f052e5387b25dcc1d7cf74
@@ -5866,14 +6589,17 @@ echo_log() {
 # r189: 舊備份程序被強制終止時，EXIT trap 可能來不及執行。
 # 此 helper 定義在 kill_Serve 前，直接用已存在的 dex_hiddenapi bridge 還原亮屏與原始 timeout。
 _speedbackup_display_emergency_restore_early() {
-	local _reason="${1:-emergency}" _scr_save="${TMPDIR:-/data/local/tmp}/.screen_timeout_orig" _req_save="${TMPDIR:-/data/local/tmp}/.screen_timeout_requested" _applied_save="${TMPDIR:-/data/local/tmp}/.screen_timeout_applied" _orig="" _current="" _requested="${_DISPLAY_TIMEOUT_REQUESTED_MS:-2147483647}" _applied="" _had_state=0 _force_wake=0
+	local _reason="${1:-emergency}" _scr_save="${TMPDIR:-/data/local/tmp}/.screen_timeout_orig" _req_save="${TMPDIR:-/data/local/tmp}/.screen_timeout_requested" _applied_save="${TMPDIR:-/data/local/tmp}/.screen_timeout_applied" _orig="" _current="" _requested="${_DISPLAY_TIMEOUT_REQUESTED_MS:-2147483647}" _applied="" _had_state=0 _force_wake=0 _get_rc=0 _put_rc=0 _get_timeout _put_timeout
+	_get_timeout="${SPEEDBACKUP_DISPLAY_SETTINGS_GET_TIMEOUT_MS:-2000}"
+	_put_timeout="${SPEEDBACKUP_DISPLAY_SETTINGS_PUT_TIMEOUT_MS:-5000}"
 	[[ -s $_scr_save || -s $_req_save || -s $_applied_save ]] && _had_state=1
 	case $_reason in killed_old_process|stale_lock_dead) _force_wake=1 ;; esac
 	if [[ -s $_scr_save ]]; then
 		_orig="$(cat "$_scr_save" 2>/dev/null)"
 		case $_orig in ''|*[!0-9]*) _orig="" ;; esac
-		_current="$(settings get system screen_off_timeout 2>/dev/null)"
-		# r204: shell-only compare-and-restore.
+		_current="$(_speedbackup_settings_get_system_bounded screen_off_timeout "$_get_timeout" display_timeout_emergency_current)"
+		_get_rc=$?
+		# r468: emergency compare-and-restore remains bounded; Dex direct first, shell fallback.
 		if [[ -n $_orig ]]; then
 			if [[ -s $_req_save ]]; then
 				_requested="$(cat "$_req_save" 2>/dev/null)"
@@ -5884,8 +6610,9 @@ _speedbackup_display_emergency_restore_early() {
 				_applied="$(cat "$_applied_save" 2>/dev/null)"
 				case $_applied in ''|*[!0-9]*) _applied="$_requested" ;; esac
 			fi
-			if [[ $_current = "$_applied" ]]; then
-				settings put system screen_off_timeout "$_orig" >/dev/null 2>&1 || true
+			if [[ $_get_rc = 0 && $_current = "$_applied" ]]; then
+				_speedbackup_settings_put_system_bounded screen_off_timeout "$_orig" "$_put_timeout" display_timeout_emergency_put >/dev/null 2>&1
+				_put_rc=$?
 			fi
 		fi
 	fi
@@ -5895,9 +6622,9 @@ _speedbackup_display_emergency_restore_early() {
 		input keyevent 224 >/dev/null 2>&1 || true
 		rm -f "${TMPDIR:-/data/local/tmp}"/.speedbackup_display_*_watcher* \
 			"${TMPDIR:-/data/local/tmp}"/.speedbackup_display_*_hint_shown 2>/dev/null
-		_speed_debug_log "DISPLAY_EMERGENCY_RESTORE reason=$_reason mode=2 timeout=${_orig:-none} hadState=$_had_state forceWake=$_force_wake backend=shell-timeout-stale-guard"
+		_speed_debug_log "DISPLAY_EMERGENCY_RESTORE reason=$_reason mode=2 timeout=${_orig:-none} hadState=$_had_state forceWake=$_force_wake getRc=$_get_rc putRc=$_put_rc backend=bounded-shell mode=r473"
 	else
-		_speed_debug_log "DISPLAY_EMERGENCY_RESTORE_SKIP reason=$_reason hadState=0 forceWake=0 backend=shell-timeout-stale-guard"
+		_speed_debug_log "DISPLAY_EMERGENCY_RESTORE_SKIP reason=$_reason hadState=0 forceWake=0 backend=bounded-shell mode=r473"
 	fi
 	return 0
 }
@@ -6041,6 +6768,10 @@ kill_Serve() {
     	_speed_debug_disarm_if_run_gone
     	_trap_err="$(_speed_debug_stderr_target)"
     	if [[ "${SPEEDBACKUP_ENTRY_QUIET_TRAP:-0}" = 1 ]]; then _speed_debug_log "trap信號成功接受EXIT，退出腳本(exit=$_ec)"; else echoRgb "trap信號成功接受EXIT，退出腳本(exit=$_ec)" "3"; fi
+	if [[ "${_SPEEDBACKUP_NORMAL_FINISH_EXIT_FAST:-0}" = 1 && "${SPEED_DEBUG_PACKED:-0}" = 1 ]]; then
+		_speed_debug_pack_log "[speed_debug] EXIT快速跳過重複收尾: exit=$_ec asyncPid=${_SPEEDBACKUP_NORMAL_FINISH_ASYNC_CLEANUP_PID:-} reason=normal_finish_already_packed mode=r464"
+		return "$_ec"
+	fi
     	# 預設不在 EXIT 裡做 snapshot，避免同一次退出打包兩次。
     	# 只有 SPEED_DEBUG_SNAPSHOT_ON_EXIT=1 時才先留安全快照。
     	if [[ "${SPEED_DEBUG_SNAPSHOT_ON_EXIT:-0}" = 1 ]]; then
@@ -6685,8 +7416,7 @@ remote_collect_targets() {
 	fi
 	# r419: 功能7上傳當前備份時，metadata 只上傳根層 bundle，不再逐 App JSON。
 	if [[ ${REMOTE_UPLOAD_CURRENT_BUNDLE_ONLY:-0} = 1 && -s "$Backup/$(_appdetails_bundle_rel)" ]]; then
-		printf '%s
-' "$Backup/$(_appdetails_bundle_rel)" >> "$list_file"
+		printf '%s\n' "$Backup/$(_appdetails_bundle_rel)" >> "$list_file"
 	fi
 	# 固定附加: tools/ 資料夾、MT管理器.apk；遠端不再上傳 restore_settings.conf，下載後本地生成。
 	# r170: start.sh/appList.txt/mediaList.txt/per-app backup/recover/upload wrappers 不再上傳；下載後本地重建。
@@ -7842,16 +8572,29 @@ _remote_netwatch_mark_stream_fatal() {
 }
 
 _wait_pid_timeout_basic() {
-	local _pid="$1" _timeout="${2:-30}" _tag="${3:-child}" _i=0 _rc
+	local _pid="$1" _timeout="${2:-30}" _tag="${3:-child}" _i=0 _rc _ew_rc _timeout_ms
 	case $_pid in ''|*[!0-9]*) return 125 ;; esac
 	case $_timeout in ''|*[!0-9]*) _timeout=30 ;; esac
+	_timeout_ms=$((_timeout * 1000))
+	if _eventwait_pid_exit_ms "$_pid" "$_timeout_ms" "${_tag}_basic" >/dev/null 2>&1; then
+		wait "$_pid" 2>/dev/null
+		_rc=$?
+		_speed_debug_log "WAIT_PID_DONE_BASIC tag=$_tag pid=$_pid rc=$_rc waitMode=eventwait timeout=$_timeout mode=r459"
+		return $_rc
+	else
+		_ew_rc=$?
+		if [[ $_ew_rc = 124 ]]; then
+			_event_terminate_pid "$_pid" "${_tag}_timeout_basic" >/dev/null 2>&1 || true
+			wait "$_pid" 2>/dev/null
+			_speed_debug_log "WAIT_PID_TIMEOUT_BASIC tag=$_tag pid=$_pid timeout=$_timeout waitMode=eventwait mode=r459"
+			return 124
+		fi
+	fi
 	while kill -0 "$_pid" 2>/dev/null; do
 		if [[ $_i -ge $_timeout ]]; then
-			kill -TERM "$_pid" 2>/dev/null
-			sleep 1
-			kill -0 "$_pid" 2>/dev/null && kill -KILL "$_pid" 2>/dev/null
+			_event_terminate_pid "$_pid" "${_tag}_timeout_basic_fallback" >/dev/null 2>&1 || true
 			wait "$_pid" 2>/dev/null
-			_speed_debug_log "WAIT_PID_TIMEOUT_BASIC tag=$_tag pid=$_pid timeout=$_timeout"
+			_speed_debug_log "WAIT_PID_TIMEOUT_BASIC tag=$_tag pid=$_pid timeout=$_timeout waitMode=shell-fallback mode=r459"
 			return 124
 		fi
 		sleep 1
@@ -7859,7 +8602,7 @@ _wait_pid_timeout_basic() {
 	done
 	wait "$_pid" 2>/dev/null
 	_rc=$?
-	_speed_debug_log "WAIT_PID_DONE_BASIC tag=$_tag pid=$_pid rc=$_rc elapsed=${_i}s"
+	_speed_debug_log "WAIT_PID_DONE_BASIC tag=$_tag pid=$_pid rc=$_rc elapsed=${_i}s waitMode=shell-fallback mode=r459"
 	return $_rc
 }
 
@@ -8046,7 +8789,7 @@ stream_upload_infra() {
 		_speed_debug_log "WEBDAV_STREAM_INFRA_BATCH_SKIP reason=avoid_large_putbatchrel_broken_pipe fallback=direct_putrel"
 		_remote_filter_sidecar_pair_list "$_list_b"
 		local _infra_total_b=0 _infra_ok_b=0 _infra_fail_b=0
-		while IFS='\t' read -r _rel_b _tf_b; do
+		while IFS=$'\t' read -r _rel_b _tf_b; do
 			[[ -n $_rel_b && -f $_tf_b ]] || continue
 			_infra_total_b=$((_infra_total_b + 1))
 			if _stream_upload_webdav_infra_file_direct "$_rel_b" "$_tf_b"; then
@@ -8057,7 +8800,7 @@ stream_upload_infra() {
 				case $_rel_b in MT管理器.apk) echoRgb "$_rel_b 上傳失敗" "0" ;; esac
 			fi
 		done < "$_list_b"
-		_speed_debug_log "WEBDAV_STREAM_INFRA_DIRECT_SUMMARY total=$_infra_total_b ok=$_infra_ok_b fail=$_infra_fail_b tools_total=0 tools_fail=0"
+		_speed_debug_log "WEBDAV_STREAM_INFRA_DIRECT_SUMMARY total=$_infra_total_b ok=$_infra_ok_b fail=$_infra_fail_b tools_total=0 tools_fail=0 mode=r460"
 		rm -rf "$_stage_b" "$_list_b" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		[[ $_infra_fail_b -eq 0 ]]
 		return $?
@@ -8082,14 +8825,12 @@ _stream_upload_rel_is_metadata() {
 
 _appdetails_bundle_rel() {
 	# r367: canonical filename matches the actual payload: tar | zstd.
-	printf '%s
-' "app_details_bundle.tar.zst"
+	printf '%s\n' "app_details_bundle.tar.zst"
 }
 
 _appdetails_bundle_legacy_rel() {
 	# r367 compatibility: r358-r366 wrote zstd-compressed bytes to app_details_bundle.tar.
-	printf '%s
-' "app_details_bundle.tar"
+	printf '%s\n' "app_details_bundle.tar"
 }
 
 _appdetails_bundle_name_is_bundle() {
@@ -8114,8 +8855,7 @@ _appdetails_bundle_remote_json_path() {
 }
 
 _appdetails_bundle_remote_json_missing_file() {
-	printf '%s
-' "${TMPDIR:-/data/local/tmp}/.appdetails_bundle_remote_missing"
+	printf '%s\n' "${TMPDIR:-/data/local/tmp}/.appdetails_bundle_remote_missing"
 }
 
 _appdetails_bundle_remote_json_ready() {
@@ -8124,7 +8864,11 @@ _appdetails_bundle_remote_json_ready() {
 		_root="$(_appdetails_bundle_stage_root)"
 		[[ -d $_root ]] || return 1
 		[[ -f "$(_appdetails_bundle_remote_json_missing_file)" ]] && return 1
-		_first="$(find "$_root" -mindepth 2 -maxdepth 2 -name app_details.json -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sed -n '1p')"
+		local _idx_list
+		_idx_list="${TMPDIR:-/data/local/tmp}/.appdetails_ready_${$}_$RANDOM.lst"
+		_appdetails_index_paths "$_root" "$_idx_list" 2 2 0 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+		_first="$(sed -n '1p' "$_idx_list" 2>/dev/null)"
+		rm -f "$_idx_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		[[ -n $_first ]]
 		return $?
 	fi
@@ -8132,13 +8876,11 @@ _appdetails_bundle_remote_json_ready() {
 }
 
 _appdetails_bundle_dirty_file() {
-	printf '%s
-' "${TMPDIR:-/data/local/tmp}/.appdetails_bundle_dirty"
+	printf '%s\n' "${TMPDIR:-/data/local/tmp}/.appdetails_bundle_dirty"
 }
 
 _appdetails_bundle_preupload_ok_file() {
-	printf '%s
-' "${TMPDIR:-/data/local/tmp}/.appdetails_bundle_preupload_json_ok"
+	printf '%s\n' "${TMPDIR:-/data/local/tmp}/.appdetails_bundle_preupload_json_ok"
 }
 
 _appdetails_bundle_mark_dirty() {
@@ -8216,8 +8958,8 @@ _appdetails_bundle_build_manifest() {
 		_count=$((_count + 1))
 	done
 	if [[ $_total -gt 0 && $_bad -eq 0 && $_count -eq $_total ]]; then
-		printf '%s
-' "$_count" > "$(_appdetails_bundle_preupload_ok_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+		printf '%s\n' "$_count" > "$(_appdetails_bundle_preupload_ok_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+		_eventwait_output_files_stable_ms appdetails_bundle_manifest_ready 50 1200 "$_manifest" "$(_appdetails_bundle_preupload_ok_file)" >/dev/null 2>&1 || true
 		_speed_debug_log "APPDETAILS_BUNDLE_PREUPLOAD_JSON_CHECK_OK count=$_count total=$_total mode=manifest-onepass-r286"
 		_speed_debug_log "APPDETAILS_BUNDLE_MANIFEST_READY count=$_count file=$_manifest mode=manifest-onepass-r286"
 		echoRgb "app_details bundle JSON 預檢通過 $_count/$_total" "1"
@@ -8382,6 +9124,7 @@ _appdetails_bundle_build_local_for_current_upload() {
 	fi
 	rm -rf "$_stage" "$_list" "$_bundle.part" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	if [[ $_ok = 1 ]]; then
+		_eventwait_output_file_stable_ms "$_bundle" appdetails_current_upload_bundle_ready 150 3000 >/dev/null 2>&1 || true
 		_speed_debug_log "APPDETAILS_BUNDLE_CURRENT_UPLOAD_BUILD_OK rel=$(_appdetails_bundle_rel) file=$_bundle count=$_count total=$_total mode=r419 layout=flat"
 		echoRgb "app_details 已彙總為 $(_appdetails_bundle_rel) ($_count 個 JSON)" "1"
 		return 0
@@ -8401,7 +9144,8 @@ _appdetails_bundle_extract_file() {
 		return 1
 	fi
 	# r283: official release uses flat bundle only. No wrapper compatibility path; older test wrapper is unsupported.
-	_count="$(find "$_dest" -mindepth 2 -maxdepth 2 -name app_details.json -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | wc -l)"
+	[[ -f "$_dest/manifest.tsv" ]] && _eventwait_output_file_stable_ms "$_dest/manifest.tsv" appdetails_bundle_extract_manifest_ready 80 1500 >/dev/null 2>&1 || true
+	_count="$(_appdetails_index_count "$_dest" 2 2)"
 	_speed_debug_log "APPDETAILS_BUNDLE_EXTRACT_OK mode=$_mode count=${_count:-0} file=$_bundle dest=$_dest layout=flat-r286"
 	[[ ${_count:-0} -gt 0 ]]
 }
@@ -8413,6 +9157,7 @@ _appdetails_bundle_remote_rel_resolve() {
 	_files="${TMPDIR:-/data/local/tmp}/.appdetails_bundle_resolve_${$}_$RANDOM"
 	rm -f "$_files" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	remote_list_files "$_subdir" > "$_files" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+	_eventwait_output_file_stable_ms "$_files" appdetails_bundle_resolve_filelist_ready 80 1500 >/dev/null 2>&1 || true
 	_found="$(awk -v b="$_canon" -v lb="$_legacy" '
 		{ rel=$1; base=rel; sub(/^.*\//, "", base); if (base==b) {print b; exit} if (base==lb && old=="") old=lb }
 		END { if (old != "") print old }
@@ -8439,6 +9184,7 @@ _appdetails_bundle_download_extract() {
 		rm -f "$_bundle" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		return 1
 	fi
+	_eventwait_output_file_stable_ms "$_bundle" appdetails_bundle_download_ready 150 3000 >/dev/null 2>&1 || true
 	if [[ ! -s $_bundle ]]; then
 		_speed_debug_log "APPDETAILS_BUNDLE_DOWNLOAD_EMPTY rel=$_rel mode=$_mode resolved=$_try_rel"
 		rm -f "$_bundle" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -9262,8 +10008,7 @@ _decimal_add_uint() {
 	while [[ $_res = 0[0-9]* ]]; do
 		_res=${_res#0}
 	done
-	printf '%s
-' "$_res"
+	printf '%s\n' "$_res"
 }
 
 _decimal_sum_uint_stdin() {
@@ -9294,8 +10039,7 @@ _decimal_norm_uint() {
 		_n=${_n#0}
 	done
 	[[ -n $_n ]] || _n=0
-	printf '%s
-' "$_n"
+	printf '%s\n' "$_n"
 }
 
 _decimal_is_positive() {
@@ -9346,8 +10090,7 @@ _decimal_sub_uint_abs() {
 		_res=${_res#0}
 	done
 	[[ -n $_res ]] || _res=0
-	printf '%s
-' "$_res"
+	printf '%s\n' "$_res"
 }
 
 _decimal_diff_uint() {
@@ -9369,8 +10112,7 @@ _remote_size_map_sum_file() {
 		case $_bytes in ''|*[!0-9]*) continue ;; esac
 		_sum="$(_decimal_add_uint "$_sum" "$_bytes")"
 	done < "$_f"
-	printf '%s
-' "$_sum"
+	printf '%s\n' "$_sum"
 }
 
 _remote_stream_fast_after_size_from_maps() {
@@ -10583,8 +11325,7 @@ remote_list_backups() {
 				[[ -z $_mp ]] && continue
 				_stem="$(_app_network_media_payload_stem "$_mp")"
 				if _app_network_media_json_has_key "$media_json_keys" "$_stem"; then
-					printf '%s
-' "$_mp" >> "$media_payloads" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+					printf '%s\n' "$_mp" >> "$media_payloads" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 					_json_ok_cnt=$((_json_ok_cnt + 1))
 					_speed_debug_log "APP_LIST_NETWORK_MEDIA_PAYLOAD_KEEP payload=$_mp key=$_stem jsonMatch=1"
 				else
@@ -11021,8 +11762,7 @@ _remote_download_smb() {
 			_meta_rc=$?
 			_meta_out="$(smb_filter_noise "$_meta_out")"
 			remote_raw_log "remote_download_raw.log" "SMB_MEDIA_METADATA rc=$_meta_rc base=$base/Media dest=$dest/Media/app_details.json"
-			printf '%s
-' "$_meta_out" >> "${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/remote_download_raw.log" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+			printf '%s\n' "$_meta_out" >> "${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/remote_download_raw.log" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 			if [[ $_meta_rc != 0 || ! -s $dest/Media/app_details.json ]]; then
 				echoRgb "✗ Media/app_details.json（下載失敗）" "0"
 				fail_total=$((fail_total + 1))
@@ -12236,14 +12976,22 @@ _dex_daemon_write_pid() {
 }
 
 _dex_daemon_wait_probe() {
-	local _probe_fn="$1" _out="$2" _pid="$3" _tag="${4:-daemon}" _max="${5:-80}" _diag="${6:-}" _i=0 _fw_rc=0
+	local _probe_fn="$1" _out="$2" _pid="$3" _tag="${4:-daemon}" _max="${5:-80}" _diag="${6:-}" _i=0 _fw_rc=0 _ew_rc=125
 	case $_pid in ''|*[!0-9]*) return 1 ;; esac
 	"$_probe_fn" && kill -0 "$_pid" 2>/dev/null && return 0
 	kill -0 "$_pid" 2>/dev/null || return 1
-	_event_filewatch_once "$_out" 5 "${_tag}_ready" "$_diag" >/dev/null 2>&1
-	_fw_rc=$?
+	# r452: daemon stdout readiness waits use native eventwait; filewatch/poll remain bounded fallback only.
+	_eventwait_file_nonempty "$_out" 5 "${_tag}_ready" "$_diag" >/dev/null 2>&1
+	_ew_rc=$?
 	"$_probe_fn" && kill -0 "$_pid" 2>/dev/null && return 0
-	[[ -n $_diag && $_fw_rc != 125 ]] && echo "$(date '+%H:%M:%S') ${_tag} filewatch no ready rc=$_fw_rc pid=$_pid, fallback bounded poll" >> "$_diag" 2>/dev/null
+	if [[ $_ew_rc = 125 ]]; then
+		_event_filewatch_once "$_out" 5 "${_tag}_ready" "$_diag" >/dev/null 2>&1
+		_fw_rc=$?
+		"$_probe_fn" && kill -0 "$_pid" 2>/dev/null && return 0
+		[[ -n $_diag && $_fw_rc != 125 ]] && echo "$(date '+%H:%M:%S') ${_tag} filewatch no ready rc=$_fw_rc pid=$_pid, fallback bounded poll" >> "$_diag" 2>/dev/null
+	else
+		[[ -n $_diag ]] && echo "$(date '+%H:%M:%S') ${_tag} eventwait no ready rc=$_ew_rc pid=$_pid, fallback bounded poll" >> "$_diag" 2>/dev/null
+	fi
 	_i=0
 	while [[ $_i -lt $_max ]]; do
 		kill -0 "$_pid" 2>/dev/null || return 1
@@ -12458,17 +13206,26 @@ _root_daemon_prewarm_stop() {
 }
 
 _root_daemon_prewarm_wait_ready() {
-	local _max="${1:-30}" _i=0 _pid
+	local _max="${1:-30}" _i=0 _pid _timeout_ms _ew_rc=125
 	case $_max in ''|*[!0-9]*) _max=30 ;; esac
 	if _root_daemon_probe; then
 		_ROOT_DAEMON_READY=1
 		_speed_debug_log "ROOT_DAEMON_PREWARM_READY source=probe immediate=1"
 		return 0
 	fi
+	_timeout_ms=$((_max * 100))
+	# r452: common successful prewarm path waits for OK marker using native eventwait; bounded poll remains safety fallback.
+	_eventwait_file_created_ms "$_ROOT_DAEMON_PREWARM_OK_FILE" "$_timeout_ms" root_daemon_prewarm_ok >/dev/null 2>&1
+	_ew_rc=$?
+	if [[ $_ew_rc = 0 ]] && _root_daemon_probe; then
+		_ROOT_DAEMON_READY=1
+		_speed_debug_log "ROOT_DAEMON_PREWARM_READY source=eventwait rc=$_ew_rc timeoutMs=$_timeout_ms"
+		return 0
+	fi
 	while [[ $_i -lt $_max ]]; do
 		if _root_daemon_probe; then
 			_ROOT_DAEMON_READY=1
-			_speed_debug_log "ROOT_DAEMON_PREWARM_READY source=probe wait=${_i}"
+			_speed_debug_log "ROOT_DAEMON_PREWARM_READY source=probe wait=${_i} eventRc=$_ew_rc"
 			return 0
 		fi
 		[[ -f $_ROOT_DAEMON_PREWARM_FAIL_FILE ]] && break
@@ -12480,7 +13237,7 @@ _root_daemon_prewarm_wait_ready() {
 		sleep 0.1
 		_i=$((_i + 1))
 	done
-	_speed_debug_log "ROOT_DAEMON_PREWARM_NOT_READY wait=${_i} fail=$(test -f "$_ROOT_DAEMON_PREWARM_FAIL_FILE" && echo 1 || echo 0)"
+	_speed_debug_log "ROOT_DAEMON_PREWARM_NOT_READY wait=${_i} fail=$(test -f "$_ROOT_DAEMON_PREWARM_FAIL_FILE" && echo 1 || echo 0) eventRc=$_ew_rc mode=r459"
 	return 1
 }
 _root_daemon_prewarm_before_feature() {
@@ -12686,8 +13443,8 @@ _install_daemon_ensure() {
 	disown "$_pid" 2>/dev/null
 	_speedbackup_protect_pid "$_pid" install_daemon
 	_dex_daemon_write_pid "$_INSTALL_DAEMON_PID_FILE" "$_pid" || { kill "$_pid" 2>/dev/null; _install_daemon_stop; return 1; }
-	_event_filewatch_once "$_out" 5 install_ready >/dev/null 2>&1 || true
-	_install_daemon_probe && { _INSTALL_DAEMON_READY=1; _INSTALL_DAEMON_KEY="$_key"; _speed_debug_log "INSTALL_DAEMON_START_OK pid=$_pid play_uid=$_play_uid wait=filewatch"; return 0; }
+	_eventwait_file_contains "$_out" "HIDDENAPI_DAEMON_READY_UNIX $_INSTALL_DAEMON_SOCKET" 5 install_ready >/dev/null 2>&1 || _event_filewatch_once "$_out" 5 install_ready >/dev/null 2>&1 || true
+	_install_daemon_probe && { _INSTALL_DAEMON_READY=1; _INSTALL_DAEMON_KEY="$_key"; _speed_debug_log "INSTALL_DAEMON_START_OK pid=$_pid play_uid=$_play_uid wait=eventwait"; return 0; }
 	# uidexec may exit before the Play-UID app_process daemon has fully written its
 	# READY/PONG line.  Do not break the readiness loop only because the launcher
 	# pid is gone; keep probing the socket/stdout for the bounded window.
@@ -12792,6 +13549,7 @@ _appstate_capabilities_missing_summary() {
 			"dex.app_inventory.package_facts.batch.v1",
 			"dex.pm.post_install_facts_batch.v1",
 			"dex.settings.exec_shim.v1",
+			"dex.pm.visible_after_install.v1",
 			"dex.framework_facts.batch.v1",
 			"appstate.snapshot.batch.v2",
 			"appstate.restore.batch.v4",
@@ -12900,6 +13658,7 @@ _dex_capabilities_contract_ok() {
 			"dex.app_inventory.package_facts.batch.v1",
 			"dex.pm.post_install_facts_batch.v1",
 			"dex.settings.exec_shim.v1",
+			"dex.pm.visible_after_install.v1",
 			"dex.framework_facts.batch.v1",
 			"appstate.snapshot.batch.v2",
 			"appstate.restore.batch.v4",
@@ -13197,6 +13956,7 @@ _appstate_snapshot_to_maps() {
 
 	mv -f "$_states" "$TMPDIR/.pkg_appstate" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_base"* 2>/dev/null; return 1; }
 	mv -f "$_errors" "$TMPDIR/.appstate_snapshot_errors" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_base"* 2>/dev/null; return 1; }
+	_eventwait_output_files_stable_ms appstate_snapshot_maps_ready 50 1200 "$TMPDIR/.pkg_appstate" "$TMPDIR/.appstate_snapshot_errors" >/dev/null 2>&1 || true
 	return 0
 }
 
@@ -13250,12 +14010,9 @@ _app_inventory_getlist_call() {
 	_body="$(_webdav_tmp_path root_inventory_getlist_args)"
 	_out="$(_webdav_tmp_path root_inventory_getlist_out)"
 	{
-		printf '%s
-' "${USER_ID:-${user:-0}}"
-		printf '%s
-' "$_targets"
-		[[ -n $_refresh ]] && printf '%s
-' "$_refresh"
+		printf '%s\n' "${USER_ID:-${user:-0}}"
+		printf '%s\n' "$_targets"
+		[[ -n $_refresh ]] && printf '%s\n' "$_refresh"
 	} > "$_body"
 	_root_daemon_call_file_hot hiddenapi appInventoryGetlist "$_body" "$_out"
 	_rc=$?
@@ -13494,12 +14251,54 @@ find_tools_path="$(find "$path_hierarchy"/* -maxdepth 1 -name "tools" -type d ! 
 # - 有 pidfd 時：procwait 阻塞 poll(pidfd)，另用一顆一次性 sleep 作 watchdog。
 # - 核心不支援 pidfd / 工具缺失：回傳 125，呼叫端使用原有限輪詢保底。
 # 返回：子程序 rc；124=逾時；125=請使用 fallback。
+_wait_child_timeout_eventwait() {
+	local _pid="$1" _timeout="$2" _tag="${3:-child}" _timeout_ms _ew_rc _child_rc
+	case $_pid in ''|*[!0-9]*) return 125 ;; esac
+	case $_timeout in ''|*[!0-9]*) return 125 ;; esac
+	_timeout_ms=$((_timeout * 1000))
+	_eventwait_pid_exit_ms "$_pid" "$_timeout_ms" "${_tag}_child_exit" >/dev/null 2>&1
+	_ew_rc=$?
+	case $_ew_rc in
+	0)
+		wait "$_pid" 2>/dev/null
+		_child_rc=$?
+		_speed_debug_log "EVENTWAIT_CHILD_DONE tag=$_tag pid=$_pid child_rc=$_child_rc timeout=$_timeout mode=r459"
+		return "$_child_rc"
+		;;
+	124)
+		_event_terminate_pid "$_pid" "${_tag}_eventwait_timeout" >/dev/null 2>&1 || true
+		wait "$_pid" 2>/dev/null
+		_speed_debug_log "EVENTWAIT_CHILD_TIMEOUT tag=$_tag pid=$_pid timeout=$_timeout mode=r459"
+		return 124
+		;;
+	125|127|126)
+		_speed_debug_log "EVENTWAIT_CHILD_FALLBACK tag=$_tag pid=$_pid rc=$_ew_rc reason=eventwait_unavailable mode=r459"
+		return 125
+		;;
+	*)
+		if ! kill -0 "$_pid" 2>/dev/null; then
+			wait "$_pid" 2>/dev/null
+			_child_rc=$?
+			_speed_debug_log "EVENTWAIT_CHILD_DONE tag=$_tag pid=$_pid child_rc=$_child_rc rc=$_ew_rc reason=pid_gone_after_eventwait mode=r459"
+			return "$_child_rc"
+		fi
+		_speed_debug_log "EVENTWAIT_CHILD_FALLBACK tag=$_tag pid=$_pid rc=$_ew_rc reason=eventwait_error mode=r459"
+		return 125
+		;;
+	esac
+}
+
 _wait_child_timeout_procwait() {
 	local _pid="$1" _timeout="$2" _tag="${3:-child}" _watch_rc _child_rc _state _i
 	[[ -x ${EVENT_PROCWAIT_BIN:-} ]] || return 125
 	command -v timeout >/dev/null 2>&1 || return 125
 	case $_pid in ''|*[!0-9]*) return 125 ;; esac
 	case $_timeout in ''|*[!0-9]*) return 125 ;; esac
+
+	# r453: 全面接入 eventwait pid-exit 作為 child wait 主路徑；procwait/shell loop 只作相容 fallback。
+	_wait_child_timeout_eventwait "$_pid" "$_timeout" "$_tag"
+	_child_rc=$?
+	[[ $_child_rc != 125 ]] && return "$_child_rc"
 
 	# 不再建立會繼承主腳本 EXIT trap 的 background watchdog shell。
 	# timeout 只限制 procwait 本身；逾時後由目前主 shell 精準 TERM/KILL 目標 child。
@@ -14819,12 +15618,106 @@ _backup_mount_display_suffix() {
 	fi
 	printf '%s' "$_out"
 }
+
+_backup_df_summary_from_output() {
+	# r465: Android/toybox df may wrap a long Filesystem column onto its own line.
+	# Do not assume NR==2 or fixed columns.  Find the first row that contains
+	# a real Size/Used/Avail/Use% tuple; this also handles the continuation row
+	# after a wrapped filesystem/source line.
+	awk '
+		function header_token(v) {
+			return (v == "Size" || v == "Used" || v == "Avail" || v == "Available" || v == "Use%" || v == "1K-blocks" || v == "1024-blocks")
+		}
+		function metric_token(v) {
+			return (v ~ /^[0-9][0-9.]*([KMGTPE]i?|[KMGTPE])?$/)
+		}
+		{
+			for (i = 1; i <= NF - 3; i++) {
+				if ($(i + 3) ~ /^[0-9]+%$/ && !header_token($i) && metric_token($i) && metric_token($(i + 1)) && metric_token($(i + 2))) {
+					print "總共:" $i "已用:" $(i + 1) "剩餘:" $(i + 2) "使用率:" $(i + 3)
+					exit
+				}
+			}
+		}
+	'
+}
+
+_backup_partition_fs_type_from_mountinfo() {
+	local _target="$1"
+	[[ -n $_target && -r /proc/self/mountinfo ]] || return 1
+	awk -v target="$_target" '
+		function unesc(s) {
+			gsub(/\\040/, " ", s)
+			gsub(/\\011/, "\t", s)
+			gsub(/\\012/, "\n", s)
+			gsub(/\\134/, "\\", s)
+			return s
+		}
+		function is_prefix(path, mp) {
+			if (mp == "/") return 1
+			return (path == mp || index(path, mp "/") == 1)
+		}
+		{
+			sep = 0
+			for (i = 1; i <= NF; i++) {
+				if ($i == "-") { sep = i; break }
+			}
+			if (sep <= 0 || sep + 1 > NF) next
+			mp = unesc($5)
+			fs = $(sep + 1)
+			if (is_prefix(target, mp) && length(mp) >= best_len) {
+				best_len = length(mp)
+				best = fs
+			}
+		}
+		END { if (best != "") print best }
+	' /proc/self/mountinfo 2>/dev/null
+}
+
+_backup_partition_fs_type_from_df() {
+	local _target="$1"
+	# df -T is not stable on every Android build, but when available we parse it
+	# as a fallback without assuming that the filesystem/source column is short.
+	df -T "$_target" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | awk '
+		function metric_token(v) { return (v ~ /^[0-9][0-9.]*([KMGTPE]i?|[KMGTPE])?$/) }
+		{
+			for (i = 2; i <= NF - 3; i++) {
+				if ($(i + 3) ~ /^[0-9]+%$/ && metric_token($i) && metric_token($(i + 1)) && metric_token($(i + 2))) {
+					print $(i - 1)
+					exit
+				}
+			}
+		}
+	'
+}
+
 _backup_partition_summary() {
-	local _target="$1" _summary _fs
-	_summary="$(df -h "$_target" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | awk 'NR==2{print "總共:"$2"已用:"$3"剩餘:"$4"使用率:"$5; exit}')"
-	_fs="$(df -T "$_target" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | awk 'NR==2{print $2; exit}')"
+	local _target="$1" _summary="" _fs="" _df_out="" _ss_out="" _ss_line="" _ss_mount="" _ss_src=""
+	if _ss_out="$(_speedscan_storage_summary "$_target" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"; then
+		_ss_line="$(printf '%s\n' "$_ss_out" | awk -F '\t' '$1=="OK"{print; exit}')"
+		if [[ -n $_ss_line ]]; then
+			_summary="$(printf '%s\n' "$_ss_line" | awk -F '\t' '{printf "總共:%s已用:%s剩餘:%s使用率:%s%%", $11, $12, $13, $7}')"
+			_fs="$(printf '%s\n' "$_ss_line" | awk -F '\t' '{print $8}')"
+			_ss_mount="$(printf '%s\n' "$_ss_line" | awk -F '\t' '{print $9}')"
+			_ss_src="$(printf '%s\n' "$_ss_line" | awk -F '\t' '{print $10}')"
+			[[ -z $_fs || $_fs = unknown ]] && _fs="未知"
+			_speed_debug_log "BACKUP_PARTITION_SUMMARY target=$(_speed_debug_kv "$_target") summary=$(_speed_debug_kv "$_summary") fs=$_fs mount=$(_speed_debug_kv "$_ss_mount") source=$(_speed_debug_kv "$_ss_src") backend=speedscan-storage-summary mode=r470"
+			printf '%s檔案系統:%s\n' "$_summary" "$_fs"
+			return 0
+		fi
+	fi
+	_df_out="$(df -h "$_target" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	_summary="$(printf '%s\n' "$_df_out" | _backup_df_summary_from_output)"
+	if [[ -z $_summary ]]; then
+		_df_out="$(df "$_target" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+		_summary="$(printf '%s\n' "$_df_out" | _backup_df_summary_from_output)"
+	fi
+	_fs="$(_backup_partition_fs_type_from_mountinfo "$_target")"
+	[[ -z $_fs ]] && _fs="$(_backup_partition_fs_type_from_df "$_target")"
 	[[ -z $_summary ]] && _summary="總共:未知已用:未知剩餘:未知使用率:未知"
-	printf '%s檔案系統:%s\n' "$_summary" "${_fs:-未知}"
+	[[ -z $_fs ]] && _fs="未知"
+	_speed_debug_log "BACKUP_PARTITION_SUMMARY target=$(_speed_debug_kv "$_target") summary=$(_speed_debug_kv "$_summary") fs=$_fs backend=df-fallback mode=r470"
+	printf '%s檔案系統:%s\n' "$_summary" "$_fs"
 }
 
 # 計算本地備份目錄路徑
@@ -14952,9 +15845,13 @@ backup_path_remote_finalize() {
 	fi
 	# 快照備份前遠端大小 (結尾算差異，對齊本地備份的整體資料夾差異統計)。
 	if [[ -n $remote_type ]]; then
-		_RTOTAL_BEFORE="$(remote_dir_size "$(get_backup_dirname)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+		_remote_before_subdir="$(get_backup_dirname)"
+		_backup_remote_size_prescan_progress_begin "$_remote_before_subdir"
+		_RTOTAL_BEFORE="$(remote_dir_size "$_remote_before_subdir" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 		[[ -z $_RTOTAL_BEFORE ]] && _RTOTAL_BEFORE=0
-		_speed_debug_log "REMOTE_TOTAL_BEFORE subdir=$(get_backup_dirname) bytes=$_RTOTAL_BEFORE"
+		_backup_remote_size_prescan_progress_done "$_remote_before_subdir" "$_RTOTAL_BEFORE"
+		_speed_debug_log "REMOTE_TOTAL_BEFORE subdir=$_remote_before_subdir bytes=$_RTOTAL_BEFORE mode=r448"
+		unset _remote_before_subdir
 	fi
 	SPEEDBACKUP_REMOTE_SETUP_DEFERRED=0
 }
@@ -15050,6 +15947,7 @@ prepare_app_state_prescan_batch() {
 prepare_pkg_uid_map() {
 	: > "$TMPDIR/.pkg_uid" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	appinventory pkgUidMap all 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} >> "$TMPDIR/.pkg_uid"
+	_eventwait_output_file_stable_ms "$TMPDIR/.pkg_uid" pkg_uid_map_ready 50 1200 >/dev/null 2>&1 || true
 	if [[ -s "$TMPDIR/.pkg_uid" ]]; then
 		_speed_debug_log "APP_INVENTORY_UID_MAP_OK rows=$(wc -l < "$TMPDIR/.pkg_uid" 2>/dev/null | tr -d ' ')"
 		return 0
@@ -15059,18 +15957,15 @@ prepare_pkg_uid_map() {
 }
 
 _restore_package_facts_map_file() {
-	printf '%s
-' "${TMPDIR:-/data/local/tmp}/.restore_package_facts.tsv"
+	printf '%s\n' "${TMPDIR:-/data/local/tmp}/.restore_package_facts.tsv"
 }
 
 _restore_package_compare_map_file() {
-	printf '%s
-' "${TMPDIR:-/data/local/tmp}/.restore_package_compare_map.tsv"
+	printf '%s\n' "${TMPDIR:-/data/local/tmp}/.restore_package_compare_map.tsv"
 }
 
 _restore_package_compare_summary_file() {
-	printf '%s
-' "${TMPDIR:-/data/local/tmp}/.restore_package_compare_summary.txt"
+	printf '%s\n' "${TMPDIR:-/data/local/tmp}/.restore_package_compare_summary.txt"
 }
 
 _restore_package_compare_apk_plan_get() {
@@ -15096,7 +15991,9 @@ _restore_package_compare_build() {
 	_tmp="${TMPDIR:-/data/local/tmp}/.restore_package_compare_${$}_$RANDOM.tsv"
 	_t0="$(_speed_now_ms)"
 	: > "$_meta" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
-	find "$_stage" -mindepth 2 -maxdepth 2 -name app_details.json -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort | while read -r _jf; do
+	_json_list="${TMPDIR:-/data/local/tmp}/.restore_compare_appdetails_${$}_$RANDOM.lst"
+	_appdetails_index_paths "$_stage" "$_json_list" 2 2 1 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+	while read -r _jf; do
 		[[ -s $_jf ]] || continue
 		_app="${_jf%/app_details.json}"; _app="${_app##*/}"
 		_row="$(jq -r "$(_appdetails_jq_common_defs) [ad_first_pkg, ad_first_apk_version, (try (.user.Size // .user.size // null) catch null), (try (.user_de.Size // .user_de.size // null) catch null), (try (.data.Size // .data.size // null) catch null), (try (.obb.Size // .obb.size // null) catch null)] | @tsv" "$_jf" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
@@ -15107,7 +16004,8 @@ _restore_package_compare_build() {
 		# Keep labels single-line TSV-safe; app directory is the display label in restore stage.
 		printf '%s	%s
 ' "$_app" "$_row" | tr '\r' ' ' >> "$_meta" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	done
+	done < "$_json_list"
+	rm -f "$_json_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	[[ -s $_meta ]] || { rm -f "$_meta" "$_remote" "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; return 1; }
 	: > "$_remote" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
 	# r386: compare-map must see the same classified APP_PAYLOAD rows that restore uses.
@@ -15207,6 +16105,7 @@ _restore_package_compare_build() {
 		cp -f "$_summary" "$SPEED_DEBUG_RUN_DIR/restore_package_compare_summary.txt" 2>/dev/null || true
 		cp -f "$_remote" "$SPEED_DEBUG_RUN_DIR/restore_package_compare_remote_map.tsv" 2>/dev/null || true
 	}
+	_eventwait_output_files_stable_ms restore_package_compare_outputs_ready 50 1200 "$_out" "$_summary" >/dev/null 2>&1 || true
 	_speed_debug_log "RESTORE_PACKAGE_COMPARE_MAP_OK total=$_total selected=${_selected:-0} localInstalled=$_installed localMissing=$_missing remoteNewer=$_remote_newer localNewer=$_local_newer payloadMissing=$_payload_missing systemOrUpdated=$_system defaultHomeHints=$_default_home defaultImeHints=$_default_ime elapsedMs=$_elapsed mode=r416 report_only=1"
 	rm -f "$_meta" "$_remote" "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	return 0
@@ -15218,11 +16117,9 @@ _app_inventory_package_facts_batch_call() {
 	_body="$(_webdav_tmp_path root_inventory_pkgfacts_args)"
 	_out="$(_webdav_tmp_path root_inventory_pkgfacts_out)"
 	{
-		printf '%s
-' "${USER_ID:-${user:-0}}"
+		printf '%s\n' "${USER_ID:-${user:-0}}"
 		cat "$_pkgfile" 2>/dev/null
-		[[ -n $_refresh ]] && printf '%s
-' "$_refresh"
+		[[ -n $_refresh ]] && printf '%s\n' "$_refresh"
 	} > "$_body"
 	_root_daemon_call_file_hot hiddenapi appInventoryPackageFactsBatch "$_body" "$_out"
 	_rc=$?
@@ -15242,7 +16139,7 @@ _app_inventory_package_facts_batch_call() {
 }
 
 _restore_framework_facts_prefetch() {
-	local _body _out _rc _role_ok=0 _storage_ok=0 _t0 _elapsed _rows
+	local _body _out _rc _role_ok=0 _storage_ok=0 _volume_ok=0 _homeime_ok=0 _t0 _elapsed _rows _target_path
 	_t0="$(_speed_now_ms)"
 	_body="$(_webdav_tmp_path root_framework_facts_args)"
 	_out="$(_webdav_tmp_path root_framework_facts_out)"
@@ -15275,10 +16172,48 @@ _restore_framework_facts_prefetch() {
 	else
 		_speed_debug_log "STORAGE_MEDIA_FACTS_FAIL rc=$_rc mode=r416"
 	fi
+	# r474: r469 promised these framework facts in speed_debug; actually collect them here.
+	_target_path="${Backup:-${MODDIR:-/storage/emulated/0}}"
+	{
+		printf '%s\n' "${USER_ID:-${user:-0}}"
+		printf '%s\n' "${_target_path:- -}"
+	} > "$_body" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+	_root_daemon_call_file_hot hiddenapi storageVolumeFacts "$_body" "$_out" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_rc=$?
+	if [[ $_rc = 125 ]]; then
+		_dex_raw com.xayah.dex.HiddenApiUtil storageVolumeFacts "${USER_ID:-${user:-0}}" "${_target_path:- -}" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		_rc=$?
+	fi
+	if [[ $_rc = 0 ]] && grep -Fqx '#schema	speedbackup.storage_volume_facts.v1' "$_out" 2>/dev/null; then
+		_volume_ok=1
+		[[ -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f "$_out" "$SPEED_DEBUG_RUN_DIR/storage_volume_facts.tsv" 2>/dev/null || true
+		_rows="$(awk -F '\t' '$1=="OK" || $1=="VOLUME"{n++} END{print n+0}' "$_out" 2>/dev/null)"
+		_speed_debug_log "STORAGE_VOLUME_FACTS_OK user=${USER_ID:-${user:-0}} rows=${_rows:-0} target=$(_speed_debug_kv "${_target_path:-}") mode=r474"
+	else
+		_speed_debug_log "STORAGE_VOLUME_FACTS_FAIL rc=$_rc mode=r474 optional=1"
+	fi
+	{
+		printf '%s\n' "${USER_ID:-${user:-0}}"
+		printf '%s\n' refresh
+	} > "$_body" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+	_root_daemon_call_file_hot hiddenapi homeImeLauncherFacts "$_body" "$_out" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_rc=$?
+	if [[ $_rc = 125 ]]; then
+		_dex_raw com.xayah.dex.HiddenApiUtil homeImeLauncherFacts "${USER_ID:-${user:-0}}" refresh > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		_rc=$?
+	fi
+	if [[ $_rc = 0 ]] && grep -Fqx '#schema	speedbackup.home_ime_launcher_facts.v1' "$_out" 2>/dev/null; then
+		_homeime_ok=1
+		[[ -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f "$_out" "$SPEED_DEBUG_RUN_DIR/home_ime_launcher_facts.tsv" 2>/dev/null || true
+		_rows="$(awk -F '\t' '$1=="OK"{n++} END{print n+0}' "$_out" 2>/dev/null)"
+		_speed_debug_log "HOME_IME_LAUNCHER_FACTS_OK user=${USER_ID:-${user:-0}} rows=${_rows:-0} mode=r474"
+	else
+		_speed_debug_log "HOME_IME_LAUNCHER_FACTS_FAIL rc=$_rc mode=r474 optional=1"
+	fi
 	rm -f "$_body" "$_out" 2>/dev/null
 	_elapsed="$(( $(_speed_now_ms) - _t0 ))"
-	_speed_debug_log "RESTORE_FRAMEWORK_FACTS_PREFETCH_DONE roleOk=$_role_ok storageOk=$_storage_ok elapsedMs=$_elapsed mode=r416"
-	[[ $_role_ok = 1 || $_storage_ok = 1 ]]
+	_speed_debug_log "RESTORE_FRAMEWORK_FACTS_PREFETCH_DONE roleOk=$_role_ok storageOk=$_storage_ok storageVolumeOk=$_volume_ok homeImeLauncherOk=$_homeime_ok elapsedMs=$_elapsed mode=r474"
+	[[ $_role_ok = 1 || $_storage_ok = 1 || $_volume_ok = 1 || $_homeime_ok = 1 ]]
 }
 
 _speedbackup_path_component_strict_safe() {
@@ -15305,11 +16240,9 @@ _restore_post_install_facts_batch_call() {
 	_body="$(_webdav_tmp_path root_post_install_pkgfacts_args)"
 	_out="$(_webdav_tmp_path root_post_install_pkgfacts_out)"
 	{
-		printf '%s
-' "${USER_ID:-${user:-0}}"
+		printf '%s\n' "${USER_ID:-${user:-0}}"
 		cat "$_pkgfile" 2>/dev/null
-		[[ -n $_refresh ]] && printf '%s
-' "$_refresh"
+		[[ -n $_refresh ]] && printf '%s\n' "$_refresh"
 	} > "$_body"
 	_root_daemon_call_file_hot hiddenapi appInventoryPostInstallFactsBatch "$_body" "$_out"
 	_rc=$?
@@ -15333,8 +16266,7 @@ _restore_post_install_facts_refresh_one() {
 	[[ -n $_pkg ]] || return 1
 	_list="$TMPDIR/.restore_post_install_pkg_${$}_$RANDOM.txt"
 	_facts="$TMPDIR/.restore_post_install_facts_${$}_$RANDOM.tsv"
-	printf '%s
-' "$_pkg" > "$_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
+	printf '%s\n' "$_pkg" > "$_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
 	_t0="$(_speed_now_ms)"
 	if _restore_post_install_facts_batch_call "$_list" refresh > "$_facts" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
 		_ok="$(awk -F '\t' -v p="$_pkg" '$1=="OK" && $2==p && $3=="true"{print 1; exit}' "$_facts" 2>/dev/null)"
@@ -15379,15 +16311,19 @@ _restore_package_facts_extract_from_stage() {
 	_tmp="${_out}.stage_${$}_$RANDOM"
 	rm -f "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	: > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
-	find "$_stage" -mindepth 2 -maxdepth 2 -name app_details.json -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | while read -r _jf; do
+	_json_list="${TMPDIR:-/data/local/tmp}/.restore_stage_appdetails_${$}_$RANDOM.lst"
+	_appdetails_index_paths "$_stage" "$_json_list" 2 2 0 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+	while read -r _jf; do
 		[[ -s $_jf ]] || continue
 		_pkg="$(_appdetails_get_first_pkg "$_jf" 2>/dev/null | tr -d ' \t\r\n')"
 		case $_pkg in ''|null) continue ;; esac
 		printf '%s\n' "$_pkg"
-	done | sort -u > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	done < "$_json_list" | sort -u > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	rm -f "$_json_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_count="$(wc -l < "$_tmp" 2>/dev/null | tr -d ' ')"; case $_count in ''|*[!0-9]*) _count=0 ;; esac
 	if [[ $_count -gt 0 ]]; then
 		cat "$_tmp" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		_eventwait_output_file_stable_ms "$_out" restore_package_facts_stage_pkgs_ready 50 1200 >/dev/null 2>&1 || true
 		[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f "$_out" "$SPEED_DEBUG_RUN_DIR/package_facts_prefetch_pkgs_stage.tsv" 2>/dev/null || true
 		_speed_debug_log "RESTORE_PACKAGE_FACTS_EXTRACT_STAGE_OK count=$_count stage=$_stage mode=r386 source=app_details_bundle"
 		rm -f "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -15429,6 +16365,7 @@ _restore_package_facts_extract_list() {
 		' 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort -u > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	fi
 	if [[ -s $_out ]]; then
+		_eventwait_output_file_stable_ms "$_out" restore_package_facts_list_pkgs_ready 50 1200 >/dev/null 2>&1 || true
 		_stage_count="$(wc -l < "$_out" 2>/dev/null | tr -d ' ')"; case $_stage_count in ''|*[!0-9]*) _stage_count=0 ;; esac
 		_speed_debug_log "RESTORE_PACKAGE_FACTS_EXTRACT_LIST_OK count=$_stage_count mode=r386 source=app_list"
 		return 0
@@ -15454,6 +16391,7 @@ _restore_package_facts_prefetch() {
 		awk -F '\t' '$1=="OK" && $3=="true" && $2!="" {print $2}' "$_facts" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort -u > "$TMPDIR/.installed_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 		awk -F '\t' '$1=="OK" && $3=="true" && $2!="" && $4 ~ /^[0-9]+$/ {print $2 "\t" $4}' "$_facts" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort -u > "$TMPDIR/.pkg_uid" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 		awk -F '\t' '$1=="OK" && $3=="true" && $2!="" && $5 ~ /^[0-9]+$/ {print $2 "\t" $5}' "$_facts" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort -u > "$TMPDIR/.pkg_ver" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+		_eventwait_output_files_stable_ms restore_package_facts_maps_ready 50 1200 "$_facts" "$TMPDIR/.installed_pkgs" "$TMPDIR/.pkg_uid" "$TMPDIR/.pkg_ver" >/dev/null 2>&1 || true
 		_elapsed="$(( $(_speed_now_ms) - _t0 ))"
 		[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f "$_facts" "$SPEED_DEBUG_RUN_DIR/package_facts_map.tsv" 2>/dev/null || true
 		_speed_debug_log "RESTORE_PACKAGE_FACTS_PREFETCH_OK requested=$_count factsTotal=${_facts_total:-0} selected=${_selected:-0} installed=${_ok:-0} missing=${_missing:-0} elapsedMs=$_elapsed mode=r386 source=appInventoryPackageFactsBatch"
@@ -15566,11 +16504,69 @@ _restore_package_status_refresh() {
 	return 0
 }
 
+_pm_visible_after_install_direct() {
+	local _pkg="$1" _reason="${2:-after_install}" _body _out _rc _line _vis _uid _ver
+	[[ -n $_pkg ]] || return 1
+	_body="$(_webdav_tmp_path root_pm_visible_args)"
+	_out="$(_webdav_tmp_path root_pm_visible_out)"
+	{
+		printf '%s\n' "${USER_ID:-${user:-0}}"
+		printf '%s\n' "$_pkg"
+		printf '%s\n' refresh
+	} > "$_body" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
+	_root_daemon_call_file_hot hiddenapi packageVisibleAfterInstall "$_body" "$_out" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_rc=$?
+	if [[ $_rc = 125 ]]; then
+		_dex_raw com.xayah.dex.HiddenApiUtil packageVisibleAfterInstall "${USER_ID:-${user:-0}}" "$_pkg" refresh > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		_rc=$?
+	fi
+	if [[ $_rc = 0 ]] && grep -Fqx '#schema	speedbackup.pm_visible_after_install.v1' "$_out" 2>/dev/null; then
+		_line="$(awk -F '\t' '$1=="OK"{print; exit}' "$_out" 2>/dev/null)"
+		if [[ -n $_line ]]; then
+			_vis="$(printf '%s\n' "$_line" | awk -F '\t' '{print $4}')"
+			_uid="$(printf '%s\n' "$_line" | awk -F '\t' '{print $6}')"
+			_ver="$(printf '%s\n' "$_line" | awk -F '\t' '{print $8}')"
+			RESTORE_PKG_INSTALLED=true
+			RESTORE_PKG_UID="$_uid"
+			RESTORE_PKG_VER="$_ver"
+			case $_uid in ''|*[!0-9]*) ;; *) _pkg_uid_map_set_one "$_pkg" "$_uid" || true ;; esac
+			case $_ver in ''|*[!0-9]*) ;; *) _pkg_ver_map_set_one "$_pkg" "$_ver" || true ;; esac
+			_installed_map_set_one "$_pkg" || true
+			_speed_debug_log "RESTORE_PACKAGE_VISIBLE_DIRECT_OK package=$_pkg reason=$_reason uid=${_uid:-unknown} version=${_ver:-unknown} backend=dex-packageVisibleAfterInstall mode=r470"
+			rm -f "$_body" "$_out" 2>/dev/null
+			return 0
+		fi
+	fi
+	_speed_debug_log "RESTORE_PACKAGE_VISIBLE_DIRECT_MISS package=$_pkg reason=$_reason rc=$_rc backend=dex-packageVisibleAfterInstall mode=r470 fallback=post_install_facts"
+	rm -f "$_body" "$_out" 2>/dev/null
+	return 1
+}
+
+_restore_package_visible_wait_after_install() {
+	# r458: 不新增 Dex/ROM 事件來源；PM 安裝命令同步返回後，只做短 bounded visible 確認。
+	local _pkg="$1" _reason="${2:-after_install}" _tries="${SPEEDBACKUP_RESTORE_PACKAGE_VISIBLE_TRIES:-5}" _sleep="${SPEEDBACKUP_RESTORE_PACKAGE_VISIBLE_SLEEP:-0.12}" _i=0
+	[[ -n $_pkg ]] || return 1
+	_pm_visible_after_install_direct "$_pkg" "$_reason" && { _speed_debug_log "RESTORE_PACKAGE_VISIBLE_WAIT_OK package=$_pkg reason=$_reason tries=1 mode=r470 source=dex-visible-direct"; return 0; }
+	case $_tries in ''|*[!0-9]*) _tries=5 ;; esac
+	while [[ $_i -lt $_tries ]]; do
+		_restore_post_install_facts_refresh_one "$_pkg" "${_reason}_visible_wait" || _restore_package_status_refresh "$_pkg" "${_reason}_visible_wait" || true
+		case ${RESTORE_PKG_INSTALLED:-} in true|1)
+			_speed_debug_log "RESTORE_PACKAGE_VISIBLE_WAIT_OK package=$_pkg reason=$_reason tries=$((_i + 1)) mode=r459"
+			return 0
+			;;
+		esac
+		sleep "$_sleep"
+		_i=$((_i + 1))
+	done
+	_speed_debug_log "RESTORE_PACKAGE_VISIBLE_WAIT_FAIL package=$_pkg reason=$_reason tries=$_tries mode=r459"
+	return 1
+}
+
 _pkg_uid_map_refresh_after_install() {
 	local _pkg="$1"
 	[[ -n $_pkg ]] || return 1
-	_restore_post_install_facts_refresh_one "$_pkg" "after_install" || _restore_package_status_refresh "$_pkg" "after_install" || {
-		_speed_debug_log "RESTORE_INSTALLED_UID_REFRESH_FAIL package=$_pkg reason=package_status_failed source=post_install_facts_or_package_status"
+	_restore_package_visible_wait_after_install "$_pkg" after_install || {
+		_speed_debug_log "RESTORE_INSTALLED_UID_REFRESH_FAIL package=$_pkg reason=package_visible_wait_failed source=post_install_facts_or_package_status mode=r459"
 		return 1
 	}
 	case $RESTORE_PKG_INSTALLED in true|1) ;; *)
@@ -15695,27 +16691,75 @@ prepare_dir_size_map() {
 		local _pkg _typ _dp _rows=0
 		while read -r _pkg; do
 			[[ -z $_pkg ]] && continue
-			for _typ in user user_de data obb; do
+			for _typ in user user_de data obb media; do
 				case $_typ in
 				user|user_de) [[ ${Backup_Mode:-false} = true && ${Backup_user_data:-false} = true ]] || continue ;;
-				data|obb) [[ ${Backup_Mode:-false} = true && ${Backup_obb_data:-false} = true ]] || continue ;;
+				data|obb|media) [[ ${Backup_Mode:-false} = true && ${Backup_obb_data:-false} = true ]] || continue ;;
 				esac
 				case $_typ in
 				user)    _dp="$path2/$_pkg" ;;
 				user_de) _dp="$path3/$_pkg" ;;
 				data)    _dp="$path/data/$_pkg" ;;
 				obb)     _dp="$path/obb/$_pkg" ;;
+				media)   _dp="$path/media/$_pkg" ;;
 				esac
 				[[ -d $_dp ]] || continue
 				printf '%s	%s	%s
 ' "$_pkg" "$_typ" "$_dp" >> "$_ss_manifest"
 				_rows=$((_rows+1))
+				# r442: 同一輪 native speedscan 預掃順便掃 cache/code_cache，供備份前容量總覽顯示「排除快取」。
+				case $_typ in
+				user|user_de)
+					for _ex in cache code_cache; do
+						_ex_path="$_dp/$_ex"
+						[[ -d $_ex_path ]] || continue
+						printf '%s	%s	%s
+' "$_pkg" "${_typ}_exclude_${_ex//[!a-zA-Z0-9]/_}" "$_ex_path" >> "$_ss_manifest"
+						_rows=$((_rows+1))
+				done
+					;;
+				data|obb|media)
+					_ex_path="$_dp/cache"
+					if [[ -d $_ex_path ]]; then
+						printf '%s	%s	%s
+' "$_pkg" "${_typ}_exclude_cache" "$_ex_path" >> "$_ss_manifest"
+						_rows=$((_rows+1))
+					fi
+					;;
+				esac
 			done
 		done <<EOF
 $_list
 EOF
+		# r446: Custom_path / Media 也納入同輪 C native speedscan dir-size-map。
+		# summary 階段只讀 .dir_sizes，不再額外 calc_dir_size，因此預掃完成後容量總覽應秒出。
+		if [[ ${backup_media:-false} = true && ! -f ${0%/*}/app_details.json && -n ${Custom_path:-} ]]; then
+			local _custom_tmp="$TMPDIR/.dir_sizes_custom_media_$$" _custom_path _custom_actual _custom_idx=0
+			printf '%s\n' "$Custom_path" | awk '!/[#＃]/ && NF' | sed 's:/*$::' > "$_custom_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+			while IFS= read -r _custom_path || [[ -n $_custom_path ]]; do
+				[[ -n $_custom_path ]] || continue
+				_custom_actual="$(_media_storage_lower_path "$_custom_path" 2>/dev/null)"
+				[[ -n $_custom_actual && -d $_custom_actual ]] || _custom_actual="$_custom_path"
+				if [[ ! -d $_custom_actual ]]; then
+					_speed_debug_log "DIRSIZE_MAP_CUSTOM_MEDIA_SKIP path=$_custom_path actual=$_custom_actual reason=not-dir mode=r459"
+					continue
+				fi
+				_custom_idx=$((_custom_idx + 1))
+				printf '%s	%s	%s
+' "__speedbackup_custom_media__" "media_${_custom_idx}" "$_custom_actual" >> "$_ss_manifest"
+				_rows=$((_rows + 1))
+				if [[ -d $_custom_actual/cache ]]; then
+					printf '%s	%s	%s
+' "__speedbackup_custom_media__" "media_${_custom_idx}_exclude_cache" "$_custom_actual/cache" >> "$_ss_manifest"
+					_rows=$((_rows + 1))
+				fi
+			done < "$_custom_tmp"
+			rm -f "$_custom_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+			_speed_debug_log "DIRSIZE_MAP_CUSTOM_MEDIA_MANIFEST rows=$_custom_idx mode=r446 source=native-speedscan"
+		fi
 		[[ $_rows -gt 0 ]] && _speedbackup_progress_step 0 "$_rows" "正在預掃數據大小" "prepare_dir_size_speedscan" "107"
 		if [[ $_rows -gt 0 ]] && "$_ss_bin" dir-size-map "$_ss_manifest" > "$_map" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+			_eventwait_output_file_stable_ms "$_map" dirsize_map_ready 80 1500 >/dev/null 2>&1 || true
 			_speed_debug_log "DIRSIZE_MAP_SPEEDSCAN_OK rows=$(wc -l < "$_map" 2>/dev/null) manifestRows=$_rows bin=$_ss_bin"
 			_speedbackup_progress_step "$_rows" "$_rows" "數據大小預掃完成" "prepare_dir_size_speedscan" "107"
 			rm -f "$_ss_manifest" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -15735,7 +16779,7 @@ EOF
 		[[ -z $_pkg ]] && continue
 		let _i++
 		printf '\r -預掃數據大小 %d/%d %s' "$_i" "$_total" "$(progress_bar $((_i * 100 / _total)))" >&2
-		for _typ in user user_de data obb; do
+		for _typ in user user_de data obb media; do
 			case $_typ in
 				user|user_de)
 					if [[ ${Backup_Mode:-false} != true || ${Backup_user_data:-false} != true ]]; then
@@ -15743,7 +16787,7 @@ EOF
 						continue
 					fi
 					;;
-				data|obb)
+				data|obb|media)
 					if [[ ${Backup_Mode:-false} != true || ${Backup_obb_data:-false} != true ]]; then
 						_speed_debug_log "DIRSIZE_SKIP pkg=$_pkg type=$_typ reason=obb_data_disabled"
 						continue
@@ -15755,6 +16799,7 @@ EOF
 				user_de) _dp="$path3/$_pkg" ;;
 				data)    _dp="$path/data/$_pkg" ;;
 				obb)     _dp="$path/obb/$_pkg" ;;
+				media)   _dp="$path/media/$_pkg" ;;
 			esac
 			[[ ! -d $_dp ]] && continue
 			# 背景並行算大小, 各寫獨立檔 (無共享寫入, 安全); 背景內再確認 workdir 存在防競態
@@ -15866,7 +16911,7 @@ prepare_remote_json_map() {
 		_speed_debug_log "PROGRESS_ONESHOT_COLLAPSE tag=prepare_remote_bundle_map mode=busy status=done reason=one_step_0_1_hidden_r286"
 		echoRgb "遠端 app_details bundle 預掃完成" "2"
 		local _bundle_got=0
-		_bundle_got="$(find "$_cache" -mindepth 2 -maxdepth 2 -name app_details.json -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | wc -l)"
+		_bundle_got="$(_appdetails_index_count "$_cache" 2 2)"
 		case $_bundle_got in ''|*[!0-9]*) _bundle_got=0 ;; esac
 		echoRgb "遠端 bundle staging: $_bundle_got 個 app 有遠端紀錄" "2"
 		return 0
@@ -16058,6 +17103,7 @@ prepare_remote_filelist() {
 	[[ -z $remote_type ]] && return
 	echoRgb "預掃遠端檔案列表 (單次連線)..." "3"
 	remote_list_files "${_BACKUP_DIRNAME_CACHED:-$(get_backup_dirname)}" > "$TMPDIR/.remote_files" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_eventwait_output_file_stable_ms "$TMPDIR/.remote_files" remote_filelist_ready 80 1500 >/dev/null 2>&1 || true
 	if [[ $remote_type = webdav ]]; then
 		if [[ -f $TMPDIR/.remote_webdav_last_list_ok ]]; then
 			REMOTE_FILELIST_HTTP_CODE=207
@@ -16094,8 +17140,7 @@ _remote_filelist_has_any_rel() {
 }
 
 _remote_payload_missing_map_file() {
-	printf '%s
-' "${TMPDIR:-/data/local/tmp}/.remote_payload_missing_map"
+	printf '%s\n' "${TMPDIR:-/data/local/tmp}/.remote_payload_missing_map"
 }
 
 _remote_payload_missing_note() {
@@ -16115,16 +17160,14 @@ _remote_payload_missing_hit() {
 }
 
 _stream_download_remote_missing_file() {
-	printf '%s
-' "${TMPDIR:-/data/local/tmp}/.stream_download_remote_missing"
+	printf '%s\n' "${TMPDIR:-/data/local/tmp}/.stream_download_remote_missing"
 }
 
 _stream_download_remote_missing_note() {
 	local _rel="$1" _f
 	[[ -n $_rel ]] || return 0
 	_f="$(_stream_download_remote_missing_file)"
-	printf '%s
-' "$_rel" >> "$_f" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+	printf '%s\n' "$_rel" >> "$_f" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 	_speed_debug_log "STREAM_DOWNLOAD_REMOTE_MISSING rel=$_rel http=404 mode=r377"
 }
 
@@ -16196,8 +17239,7 @@ prepare_remote_fast_skip_map() {
 		return 0
 	fi
 	local _line _name _pkg _json _cv _rv _nodata _ok _entry _total _i=0
-	_total="$(printf '%s
-' "$txt" | awk 'NF && $1 !~ /^[#＃]/ {n++} END{print n+0}' 2>/dev/null)"
+	_total="$(printf '%s\n' "$txt" | awk 'NF && $1 !~ /^[#＃]/ {n++} END{print n+0}' 2>/dev/null)"
 	case $_total in ''|*[!0-9]*) _total=0 ;; esac
 	[[ $_total -gt 0 ]] && _speedbackup_progress_step 0 "$_total" "正在比對遠端是否變更" "prepare_remote_fast_skip_map" "107"
 	while IFS= read -r _line; do
@@ -16262,7 +17304,8 @@ prepare_remote_fast_skip_map() {
 	done <<EOF_FAST_SKIP
 $txt
 EOF_FAST_SKIP
-	_speed_debug_log "REMOTE_FAST_SKIP_PRESCAN_OK rows=$(grep -vc '^$' "$_map" 2>/dev/null)"
+	_eventwait_output_files_stable_ms remote_fast_skip_map_ready 50 1200 "$_map" "$(_remote_payload_missing_map_file)" >/dev/null 2>&1 || true
+	_speed_debug_log "REMOTE_FAST_SKIP_PRESCAN_OK rows=$(grep -vc '^$' "$_map" 2>/dev/null) mode=r459"
 }
 
 _remote_app_fast_skip_ok() {
@@ -16463,7 +17506,8 @@ prepare_local_fast_skip_map() {
 	done <<EOF_LOCAL_FAST_SKIP
 $txt
 EOF_LOCAL_FAST_SKIP
-	_speed_debug_log "LOCAL_FAST_SKIP_PRESCAN_OK rows=$(grep -vc '^$' "$_map" 2>/dev/null)"
+	_eventwait_output_file_stable_ms "$_map" local_fast_skip_map_ready 50 1200 >/dev/null 2>&1 || true
+	_speed_debug_log "LOCAL_FAST_SKIP_PRESCAN_OK rows=$(grep -vc '^$' "$_map" 2>/dev/null) mode=r459"
 }
 
 _local_app_fast_skip_ok() {
@@ -16545,7 +17589,7 @@ _backup_orphan_pkg_installed() {
 	local _pkg="$1"
 	[[ -n $_pkg ]] || return 1
 	[[ -s $TMPDIR/.installed_pkgs ]] || prepare_installed_pkgs_map || return 2
-	grep -Fxq "$_pkg" "$TMPDIR/.installed_pkgs" 2>/dev/null
+	awk -v p="$_pkg" '$0==p{f=1} END{exit !f}' "$TMPDIR/.installed_pkgs" 2>/dev/null
 }
 
 # 481/r42: 共用已卸載 App 備份清理引擎。
@@ -16845,7 +17889,7 @@ _remote_orphan_cleanup_stream() {
 		rm -f "$_rfiles" "$_list" "$_pkgs" "$_seen" "$_bundle_jsons" "$_removed_apps" 2>/dev/null
 		return 0
 	fi
-	find "$_bundle_root" -mindepth 2 -maxdepth 2 -name app_details.json -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort > "$_bundle_jsons" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_appdetails_index_paths "$_bundle_root" "$_bundle_jsons" 2 2 1 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 	_scan_total="$(grep -vc '^$' "$_bundle_jsons" 2>/dev/null)"
 	case $_scan_total in ''|*[!0-9]*) _scan_total=0 ;; esac
 	[[ $_scan_total -gt 0 ]] && _speedbackup_progress_step 0 "$_scan_total" "正在掃描遠端已卸載應用" "remote_uninstalled_scan" "107"
@@ -16918,8 +17962,7 @@ _remote_orphan_cleanup_stream() {
 		fi
 		if _remote_orphan_delete_dir "$_app"; then
 			_removed=$((_removed + 1))
-			printf '%s
-' "$_app" >> "$_removed_apps" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+			printf '%s\n' "$_app" >> "$_removed_apps" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 			echoRgb "已刪除遠端孤兒備份: $_app [$_pkg]" "1"
 			_speed_debug_log "REMOTE_ORPHAN_DELETE_OK type=$remote_type app=$_app package=$_pkg"
 		else
@@ -17867,8 +18910,7 @@ _cgroup_freezer_log_key_lines() {
 _cgroup_freezer_kv_from_line() {
 	local _line="$1" _key="$2"
 	[[ -n $_line && -n $_key ]] || return 0
-	printf '%s
-' "$_line" | sed -n "s/.*[[:space:]]${_key}=\([^[:space:]]*\).*/\1/p" | tail -n 1
+	printf '%s\n' "$_line" | sed -n "s/.*[[:space:]]${_key}=\([^[:space:]]*\).*/\1/p" | tail -n 1
 }
 
 _cgroup_freezer_terminal_start_result() {
@@ -18066,8 +19108,7 @@ _restore_fastpath_recheck_ms() {
 	case $_ms in ''|*[!0-9]*) _ms=80 ;; esac
 	[[ $_ms -lt 0 ]] && _ms=0
 	[[ $_ms -gt 180 ]] && _ms=180
-	printf '%s
-' "$_ms"
+	printf '%s\n' "$_ms"
 }
 
 _restore_fastpath_sleep_ms() {
@@ -18172,8 +19213,7 @@ _restore_live_guard_final_kill_recheck_pkg() {
 	_initial="$(_pkg_process_pids "$_pkg" 2>/dev/null | tr '
 ' ',' | sed 's/,$//')"
 	_cnt=0
-	[[ -n $_initial ]] && _cnt="$(printf '%s
-' "$_initial" | awk -F, '{print NF}')"
+	[[ -n $_initial ]] && _cnt="$(printf '%s\n' "$_initial" | awk -F, '{print NF}')"
 	if [[ $_fast = 1 && $_cnt -eq 0 ]]; then
 		_speed_debug_log "RESTORE_LIVE_GUARD_FAST_EMPTY_SKIP pkg=$_pkg label=$_label reason=$_reason forceMode=$_force_mode action=skip-kill-recheck alive=0 mode=r334"
 		_speed_debug_log "RESTORE_LIVE_GUARD_FINAL_DONE pkg=$_pkg label=$_label reason=$_reason alive=0 pids=none mode=r334"
@@ -18198,16 +19238,14 @@ _restore_live_guard_final_kill_recheck_pkg() {
 	_after="$(_pkg_process_pids "$_pkg" 2>/dev/null | tr '
 ' ',' | sed 's/,$//')"
 	_cnt=0
-	[[ -n $_after ]] && _cnt="$(printf '%s
-' "$_after" | awk -F, '{print NF}')"
+	[[ -n $_after ]] && _cnt="$(printf '%s\n' "$_after" | awk -F, '{print NF}')"
 	_speed_debug_log "RESTORE_LIVE_GUARD_RECHECK pkg=$_pkg label=$_label reason=$_reason alive=$_cnt pids=${_after:-none} recheckMs=$_recheck_ms fastPath=$_fast mode=r334"
 	if [[ $_cnt -gt 0 ]]; then
 		_restore_live_guard_kill_process_snapshot "$_pkg" "$_label" "${_reason}_recheck" "$_force_mode" 2 || true
 		_after="$(_pkg_process_pids "$_pkg" 2>/dev/null | tr '
 ' ',' | sed 's/,$//')"
 		_cnt=0
-		[[ -n $_after ]] && _cnt="$(printf '%s
-' "$_after" | awk -F, '{print NF}')"
+		[[ -n $_after ]] && _cnt="$(printf '%s\n' "$_after" | awk -F, '{print NF}')"
 	fi
 	_speed_debug_log "RESTORE_LIVE_GUARD_FINAL_DONE pkg=$_pkg label=$_label reason=$_reason alive=$_cnt pids=${_after:-none} mode=r334"
 	return 0
@@ -18268,8 +19306,7 @@ _restore_post_state_kill_pkg_before_thaw() {
 	fi
 	_after="$(_pkg_process_pids "$_pkg" 2>/dev/null)"
 	if [[ -n $_after ]]; then
-		_event_pid="$(printf '%s
-' "$_after" | awk 'NF && $1 ~ /^[0-9]+$/ {print $1; exit}')"
+		_event_pid="$(printf '%s\n' "$_after" | awk 'NF && $1 ~ /^[0-9]+$/ {print $1; exit}')"
 		if _cgroup_freezer_native_kill_pkg "$_pkg" "restore_post_state_${_reason}" "${_event_pid:--1}" "${SPEEDBACKUP_NATIVE_KILL_TIMEOUT_MS:-700}"; then
 			_native_ok=1
 			_after="$(_pkg_process_pids "$_pkg" 2>/dev/null)"
@@ -18301,8 +19338,7 @@ _restore_post_state_kill_pkg_before_thaw() {
 	_after="$(_pkg_process_pids "$_pkg" 2>/dev/null | tr '
 ' ',' | sed 's/,$//')"
 	_recheck_cnt=0
-	[[ -n $_after ]] && _recheck_cnt="$(printf '%s
-' "$_after" | awk -F, '{print NF}')"
+	[[ -n $_after ]] && _recheck_cnt="$(printf '%s\n' "$_after" | awk -F, '{print NF}')"
 	_speed_debug_log "RESTORE_POST_STATE_KILL_RECHECK pkg=$_pkg label=$_label reason=$_reason alive=$_recheck_cnt pids=${_after:-none} recheckMs=$_recheck_ms fastPath=$_fast mode=r334"
 	if [[ $_recheck_cnt -gt 0 ]]; then
 		if [[ $_fast = 1 && $_default_home_kill = 1 ]]; then
@@ -18581,18 +19617,13 @@ _process_observer_restore_session_action_fast() {
 	# _process_observer_action_for_pkg，避免反覆 ensure default HOME/IME。
 	case $_pkg in
 		com.tencent.mm|com.tencent.mobileqq|com.tencent.tim|com.tencent.wework|com.eg.android.AlipayGphone|com.taobao.taobao|com.ss.android.ugc.aweme|com.baidu.input*)
-			printf '%s
-' "cgroup-freeze"; return 0 ;;
+			printf '%s\n' "cgroup-freeze"; return 0 ;;
 	esac
-	[[ -n $_home && $_pkg = "$_home" ]] && { printf '%s
-' "cgroup-freeze"; return 0; }
-	[[ -n $_ime && $_pkg = "$_ime" ]] && { printf '%s
-' "cgroup-freeze"; return 0; }
-	_process_observer_pkg_in_words "$_pkg" "${SPEEDBACKUP_CGROUP_FAST_SETTLE_PACKAGES:-}" && { printf '%s
-' "cgroup-freeze"; return 0; }
+	[[ -n $_home && $_pkg = "$_home" ]] && { printf '%s\n' "cgroup-freeze"; return 0; }
+	[[ -n $_ime && $_pkg = "$_ime" ]] && { printf '%s\n' "cgroup-freeze"; return 0; }
+	_process_observer_pkg_in_words "$_pkg" "${SPEEDBACKUP_CGROUP_FAST_SETTLE_PACKAGES:-}" && { printf '%s\n' "cgroup-freeze"; return 0; }
 	if _pkg_is_quiesce_never_pause "$_pkg"; then
-		printf '%s
-' "monitor"
+		printf '%s\n' "monitor"
 		return 0
 	fi
 	case $_policy in
@@ -18612,8 +19643,7 @@ _process_observer_restore_session_action_fast() {
 		fi ;;
 	esac
 	[[ -n ${SPEEDBACKUP_PROCESS_OBSERVER_ACTION:-} ]] && _action="$SPEEDBACKUP_PROCESS_OBSERVER_ACTION"
-	printf '%s
-' "$_action"
+	printf '%s\n' "$_action"
 }
 
 # r441: compare-map 可能是整個備份來源的全量表；單選/子集恢復時不能用全量 compare-map 建 restore session，
@@ -18633,8 +19663,7 @@ _process_observer_restore_session_compare_map_scope_ok() {
 		NF >= 3 && $3 ~ /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+$/ {c++}
 		END {print c+0}
 	' "$_cmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
-	_sel_rows="$(printf '%s
-' "${txt:-}" | awk '
+	_sel_rows="$(printf '%s\n' "${txt:-}" | awk '
 		NF != 0 {c++}
 		END {print c+0}
 	' 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
@@ -18800,6 +19829,9 @@ _process_observer_restore_session_direct_start() {
 	_speed_debug_log "RESTORE_GUARD_SESSION_DIRECT_BEGIN user=${USER_ID:-${user:-0}} compare=${_cmp##*/} pkgs=$_pkgs facts=$_facts policy=$_policy policyBuilder=dex-r430 home=dex ime=dex mode=r433"
 	dex_hiddenapi_raw processObserverRestoreSessionStart "${USER_ID:-${user:-0}}" "$_cmp" "$_pkgs" "$_policy" "$_log" "-" "-" "$_facts" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_rc=$?
+	if [[ $_rc = 0 ]]; then
+		_eventwait_file_size_stable_ms "$_facts" 80 1200 restore_session_facts_ready >/dev/null 2>&1 || true
+	fi
 	_flat="$(tr '\n' '|' < "$_out" 2>/dev/null | cut -c1-1600)"
 	_speed_debug_log "RESTORE_GUARD_SESSION_DIRECT_SENT rc=$_rc out=$_flat"
 	tr '|' '\n' < "$_out" > "$_norm" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || cp -f "$_out" "$_norm" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -18915,6 +19947,9 @@ _process_observer_batch_stop() {
 	_speed_debug_log "PROCESS_OBSERVER_BATCH_STOP_BEGIN reason=$_reason requested=$_requested state=$_state summary=$_summary mode=r433"
 	dex_hiddenapi_raw processObserverBatchStop "$_state" "${USER_ID:-${user:-0}}" "$_summary" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_rc=$?
+	if [[ $_rc = 0 ]]; then
+		_eventwait_file_size_stable_ms "$_summary" 80 1200 process_observer_batch_stop_summary_ready >/dev/null 2>&1 || true
+	fi
 	_flat="$(tr '\n' '|' < "$_out" 2>/dev/null | cut -c1-1400)"
 	_requested="$(printf '%s\n' "$_flat" | sed -n 's/.*requested=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
 	_stopped="$(printf '%s\n' "$_flat" | sed -n 's/.*stopped=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
@@ -19052,8 +20087,7 @@ _speedbackup_cgroup_fast_settle_barrier_ms() {
 	local _ms="${SPEEDBACKUP_CGROUP_FAST_SETTLE_BARRIER_MS:-80}"
 	case $_ms in ''|*[!0-9]*) _ms=80 ;; esac
 	[[ $_ms -gt 300 ]] && _ms=300
-	printf '%s
-' "$_ms"
+	printf '%s\n' "$_ms"
 }
 
 _speedbackup_hard_freeze_pkg() {
@@ -19316,11 +20350,9 @@ _process_observer_pkg_alive_pids() {
 	true:*)
 		_pids="${PROCESS_OBSERVER_DIRECT_PIDS:-}"
 		[[ -n $_pids && $_pids != none && $_pids != - ]] || return 0
-		printf '%s
-' "$_pids" | tr ',' '\n' | while read -r _p; do
+		printf '%s\n' "$_pids" | tr ',' '\n' | while read -r _p; do
 			case $_p in ''|*[!0-9]*) continue ;; esac
-			printf '%s
-' "$_p"
+			printf '%s\n' "$_p"
 		done
 		return 0 ;;
 	false:*) return 0 ;;
@@ -19332,8 +20364,7 @@ _process_observer_alive_first_pid() {
 	local _pkg="$1" _stage="${2:-first_pid}" _p
 	_process_observer_pkg_alive_pids "$_pkg" "$_stage" | while read -r _p; do
 		case $_p in ''|*[!0-9]*) continue ;; esac
-		printf '%s
-' "$_p"
+		printf '%s\n' "$_p"
 		break
 	done
 }
@@ -21171,8 +22202,7 @@ _restore_stream_payload_size_from_raw_list() {
 		END { if (!found) exit 1 }
 	' "$_raw" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})" || return 1
 	case $_size in ''|*[!0-9]*) return 1 ;; esac
-	printf '%s
-' "$_size"
+	printf '%s\n' "$_size"
 	return 0
 }
 
@@ -22751,6 +23781,17 @@ Validation_file() {
 	echoRgb "校驗$FILE_NAME"
 	case ${FILE_NAME##*.} in
 	zst)
+		# r470: collect native zst file facts before authoritative zstd -t validation.
+		if [[ -n ${SPEEDSCAN_BIN:-} && -x ${SPEEDSCAN_BIN:-} ]]; then
+			_zstfacts="${TMPDIR:-/data/local/tmp}/.speedbackup_zst_file_facts_${$}_$RANDOM.tsv"
+			if "$SPEEDSCAN_BIN" zst-file-facts "$1" > "$_zstfacts" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+				[[ -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cat "$_zstfacts" >> "$SPEED_DEBUG_RUN_DIR/native_zst_file_facts.tsv" 2>/dev/null || true
+				_speed_debug_log "CHECK_ARCHIVE_NATIVE_ZST_FILE_FACTS_OK file=$(_speed_debug_kv "$1") backend=speedscan-zst-file-facts mode=r470"
+			else
+				_speed_debug_log "CHECK_ARCHIVE_NATIVE_ZST_FILE_FACTS_FAIL file=$(_speed_debug_kv "$1") backend=speedscan-zst-file-facts mode=r470 fallback=zstd_t"
+			fi
+			rm -f "$_zstfacts" 2>/dev/null
+		fi
 		# zstd -t 成功時會把「file.tar.zst: N bytes」寫到 stderr，這是正常資訊，不進全域 stderr.log，但會保存到 checksum raw。
 		zstd -t "$1" 2>>"$_raw_log"
 		_rc=$?
@@ -22768,20 +23809,51 @@ Check_archive() {
 	starttime1="$(date -u "+%s")"
 	error_log="$TMPDIR/error_log"
 	rm -rf "$error_log"
-	FIND_PATH="$(find "$1" -maxdepth 3 -name "*.tar*" -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort)"
+	FIND_PATH_TMP="$TMPDIR/.check_archive_all_tar_${$}_$RANDOM.lst"
+	_speedscan_tar_payloads "$1" "$FIND_PATH_TMP" 3 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	FIND_PATH="$(cat "$FIND_PATH_TMP" 2>/dev/null)"
+	rm -f "$FIND_PATH_TMP" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	i=1
-	r="$(find "$MODDIR" -maxdepth 2 -name "app_details.json" -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | wc -l)"
-	find "$MODDIR" -maxdepth 2 -name "app_details.json" -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort | while read -r; do
+	local _app_jsons
+	_app_jsons="${TMPDIR:-/data/local/tmp}/.check_archive_appdetails_${$}_$RANDOM.lst"
+	_appdetails_index_paths "$MODDIR" "$_app_jsons" 2 0 1 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+	r="$(grep -vc '^[[:space:]]*$' "$_app_jsons" 2>/dev/null)"; case $r in ''|*[!0-9]*) r=0 ;; esac
+	while read -r REPLY; do
+		[[ -n $REPLY ]] || continue
 		REPLY="${REPLY%/*}"
 		echoRgb "校驗第$i/$r個資料夾 剩下$((r - i))個" "3"
 		echoRgb "校驗:${REPLY##*/}"
-		find "$REPLY" -maxdepth 1 -name "*.tar*" -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort | while read -r; do
+		_check_tar_payloads="$TMPDIR/.check_archive_tar_payloads_${$}_$RANDOM.lst"
+		_speedscan_tar_payloads "$REPLY" "$_check_tar_payloads" 1 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		while read -r REPLY; do
+			[[ -n $REPLY ]] || continue
 			Validation_file "$REPLY"
 			[[ $result != 0 ]] && echo "$REPLY">>"$error_log"
-		done
+		done < "$_check_tar_payloads"
+		rm -f "$_check_tar_payloads" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		echoRgb "$(safe_percent "$i" "$r")% $(progress_bar $(safe_percent "$i" "$r"))"
 		let i++ nskg++
-	done
+	done < "$_app_jsons"
+	rm -f "$_app_jsons" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	if [[ -n ${SPEEDSCAN_BIN:-} && -x ${SPEEDSCAN_BIN:-} && -d $MODDIR ]]; then
+		_cksum_out="${TMPDIR:-/data/local/tmp}/.speedbackup_checksum_list_${$}_$RANDOM.tsv"
+		if "$SPEEDSCAN_BIN" checksum-list "$MODDIR" "$_cksum_out" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+			[[ -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f "$_cksum_out" "$SPEED_DEBUG_RUN_DIR/native_checksum_list.tsv" 2>/dev/null || true
+			_speed_debug_log "CHECK_ARCHIVE_NATIVE_CHECKSUM_LIST_OK root=$(_speed_debug_kv "$MODDIR") out=$_cksum_out backend=speedscan-checksum-list mode=r470"
+		else
+			_speed_debug_log "CHECK_ARCHIVE_NATIVE_CHECKSUM_LIST_FAIL root=$(_speed_debug_kv "$MODDIR") backend=speedscan-checksum-list mode=r470 fallback=zstd_tar"
+		fi
+		rm -f "$_cksum_out" 2>/dev/null
+		_manifest_out="${TMPDIR:-/data/local/tmp}/.speedbackup_manifest_verify_manifest_${$}_$RANDOM.tsv"
+		_verify_out="${TMPDIR:-/data/local/tmp}/.speedbackup_manifest_verify_${$}_$RANDOM.tsv"
+		if _speedscan_manifest "$MODDIR" "$_manifest_out" && "$SPEEDSCAN_BIN" manifest-verify "$MODDIR" "$_manifest_out" > "$_verify_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+			[[ -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f "$_verify_out" "$SPEED_DEBUG_RUN_DIR/native_manifest_verify.tsv" 2>/dev/null || true
+			_speed_debug_log "CHECK_ARCHIVE_NATIVE_MANIFEST_VERIFY_OK root=$(_speed_debug_kv "$MODDIR") backend=speedscan-manifest-verify mode=r474"
+		else
+			_speed_debug_log "CHECK_ARCHIVE_NATIVE_MANIFEST_VERIFY_FAIL root=$(_speed_debug_kv "$MODDIR") backend=speedscan-manifest-verify mode=r474 optional=1"
+		fi
+		rm -f "$_manifest_out" "$_manifest_out.summary" "$_verify_out" 2>/dev/null
+	fi
 	endtime 1
 	[[ -f $error_log ]] && echoRgb "以下為失敗的檔案\n $(cat "$error_log")" || echoRgb "恭喜~~全數校驗通過"
 	rm -rf "$error_log"
@@ -22840,14 +23912,12 @@ _speedbackup_progress_notify_should_send() {
 	fi
 	_min="${SPEEDBACKUP_PROGRESS_NOTIFY_MIN_PCT:-10}"
 	case $_min in ''|*[!0-9]*) _min=10 ;; esac
-	_safe="$(printf '%s
-' "$_tag" | tr -c 'A-Za-z0-9_' '_')"
+	_safe="$(printf '%s\n' "$_tag" | tr -c 'A-Za-z0-9_' '_')"
 	_file="${TMPDIR:-/data/local/tmp}/.progress_notify_pct_${_safe}"
 	_last="$(cat "$_file" 2>/dev/null)"
 	case $_last in ''|*[!0-9]*) _last=0 ;; esac
 	if [[ $((_pct - _last)) -ge $_min ]]; then
-		printf '%s
-' "$_pct" > "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+		printf '%s\n' "$_pct" > "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 		return 0
 	fi
 	return 1
@@ -22863,9 +23933,18 @@ _speedbackup_progress_step() {
 	[[ $_cur -gt $_total ]] && _cur="$_total"
 	_pct="$(safe_percent "$_cur" "$_total")"
 	_label="$(_speedbackup_progress_label "$_tag" "$_msg")"
-	printf '\r -%s %d/%d %s' "$_label" "$_cur" "$_total" "$(progress_bar "$_pct")" >&2
-	[[ $_cur -ge $_total ]] && printf '\n' >&2
-	_speed_debug_log "PROGRESS_STEP tag=$_tag current=$_cur total=$_total pct=$_pct msg=$_msg label=$_label mode=inline_existing notify=throttle-r286"
+	# r458: 保留 r453/r456 原格式與 label，不做 compact；redraw 只寫 /dev/tty，避免進 stderr.log。
+	if _speedbackup_progress_term_printf '\r\033[K -%s %d/%d %s' "$_label" "$_cur" "$_total" "$(progress_bar "$_pct")"; then
+		if [[ $_cur -ge $_total ]]; then
+			_speedbackup_progress_term_printf '\033[K\n' || true
+			_SPEEDBACKUP_PROGRESS_LINE_ACTIVE=0
+		else
+			_SPEEDBACKUP_PROGRESS_LINE_ACTIVE=1
+		fi
+	else
+		_SPEEDBACKUP_PROGRESS_LINE_ACTIVE=0
+	fi
+	_speed_debug_log "PROGRESS_STEP tag=$_tag current=$_cur total=$_total pct=$_pct msg=$_msg label=$_label mode=singleline-clear-r459 notify=throttle-r286"
 	if [[ -n $_notify ]]; then
 		if _speedbackup_progress_notify_should_send "$_tag" "$_cur" "$_total" "$_pct"; then
 			notification_progress "$_notify" "$_total" "$_cur" "$_label $_cur/$_total ${_pct}%"
@@ -22903,8 +23982,7 @@ _restore_notify_fixed_progress() {
 		_file="${TMPDIR:-/data/local/tmp}/.restore_appcount_notify_idx"
 		_last="$(cat "$_file" 2>/dev/null)"
 		if [[ $_last != "$_idx/$_total" ]]; then
-			printf '%s
-' "$_idx/$_total" > "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+			printf '%s\n' "$_idx/$_total" > "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 			notification_progress "105" "$_total" "$_idx" "恢復進度 $_idx/$_total ${_pct}%"
 			_speed_debug_log "RESTORE_APPCOUNT_NOTIFY tag=105 idx=$_idx total=$_total sub=$_sub current=$_idx max=$_total pct=$_pct mode=restore-appcount-r292 msg=$_msg"
 		else
@@ -23095,9 +24173,58 @@ _remote_stream_wait_pid_busy_abortable() {
 			;;
 		esac
 	fi
+	# r459: no-fifo path 優先使用 pipeline-watch，監控 root pid + descendants、fatal sidecar 與可用進度檔 idle。
+	local _pipe_rc _pipe_line _fatal_file _progress_file _idle_ms
+	_fatal_file="$(_remote_stream_fatal_file)"
+	_progress_file="$(_speedbackup_stream_pipeline_progress_file 2>/dev/null || echo -)"
+	_idle_ms="$(_speedbackup_stream_pipeline_idle_ms "$_progress_file")"
+	_speed_debug_log "BUSY_STEP tag=$_tag pid=$_pid mode=remote_pipeline_watch waitMode=eventwait reason=no_event_fifo fatal=$_fatal_file progress=$_progress_file idleMs=$_idle_ms msg=$_msg"
+	_eventwait_pipeline_watch_single_pid_ms "$_pid" "$_fatal_file" "$_progress_file" "$_idle_ms" "${SPEEDBACKUP_REMOTE_STREAM_EVENTWAIT_TIMEOUT_MS:-0}" "$_tag" >/dev/null 2>&1
+	_pipe_rc=$?
+	_pipe_line="${_EVENTWAIT_LAST_LINE:-}"
+	case $_pipe_rc in
+	0)
+		wait "$_pid"; _rc=$?
+		if [[ $_rc != 0 ]] && _remote_stream_fatal_active; then
+			_speed_debug_log "BUSY_STEP_DONE tag=$_tag pid=$_pid rc=126 childRc=$_rc mode=remote_pipeline_watch reason=remote_stream_fatal_after_done event=$(_restore_stream_perf_field "$_pipe_line") msg=$_msg"
+			return 126
+		fi
+		_speed_debug_log "BUSY_STEP_DONE tag=$_tag pid=$_pid rc=$_rc mode=remote_pipeline_watch waitMode=eventwait event=$(_restore_stream_perf_field "$_pipe_line") msg=$_msg"
+		return "$_rc"
+		;;
+	126)
+		_speed_debug_log "REMOTE_STREAM_CHILD_ABORT tag=$_tag pid=$_pid app=${name1:-} fatal=1 mode=r459 policy=fast-fail waitMode=eventwait-pipeline-watch"
+		_event_terminate_pid "$_pid" "${_tag}_remote_fastfail_abort" >/dev/null 2>&1 || kill -KILL "$_pid" 2>/dev/null || true
+		wait "$_pid" 2>/dev/null || true
+		_speed_debug_log "BUSY_STEP_DONE tag=$_tag pid=$_pid rc=126 mode=remote_pipeline_watch reason=remote_stream_fatal_event event=$(_restore_stream_perf_field "$_pipe_line") msg=$_msg"
+		return 126
+		;;
+	125)
+		_speed_debug_log "REMOTE_STREAM_CHILD_ABORT tag=$_tag pid=$_pid app=${name1:-} fatal=1 mode=r459 policy=pipeline-idle waitMode=eventwait-pipeline-watch progress=$_progress_file idleMs=$_idle_ms"
+		_remote_stream_mark_fatal "${_tag:-remote_stream_pipeline}" 125 0 "stream pipeline progress idle" >/dev/null 2>&1 || true
+		_event_terminate_pid "$_pid" "${_tag}_pipeline_idle_abort" >/dev/null 2>&1 || kill -KILL "$_pid" 2>/dev/null || true
+		wait "$_pid" 2>/dev/null || true
+		_speed_debug_log "BUSY_STEP_DONE tag=$_tag pid=$_pid rc=126 mode=remote_pipeline_watch reason=progress_idle event=$(_restore_stream_perf_field "$_pipe_line") msg=$_msg"
+		return 126
+		;;
+	124)
+		_speed_debug_log "REMOTE_STREAM_EVENTWAIT_PIPELINE_TIMEOUT_FALLBACK tag=$_tag pid=$_pid mode=r459 reason=timeout"
+		;;
+	*)
+		_speed_debug_log "REMOTE_STREAM_EVENTWAIT_PIPELINE_FALLBACK tag=$_tag pid=$_pid rc=$_pipe_rc mode=r459 reason=eventwait_unavailable_or_error"
+		# r453 fallback: pipeline-watch 不可用時退回 pid-or-file。
+		local _pof_rc _pof_line
+		_eventwait_pid_or_file_ms "$_pid" "$_fatal_file" "${SPEEDBACKUP_REMOTE_STREAM_EVENTWAIT_TIMEOUT_MS:-0}" "$_tag" >/dev/null 2>&1
+		_pof_rc=$?; _pof_line="${_EVENTWAIT_LAST_LINE:-}"
+		case $_pof_rc in
+		0) wait "$_pid"; _rc=$?; _speed_debug_log "BUSY_STEP_DONE tag=$_tag pid=$_pid rc=$_rc mode=remote_fastfail_pid_or_file waitMode=eventwait event=$(_restore_stream_perf_field "$_pof_line") msg=$_msg"; return "$_rc" ;;
+		126) _event_terminate_pid "$_pid" "${_tag}_remote_fastfail_abort" >/dev/null 2>&1 || kill -KILL "$_pid" 2>/dev/null || true; wait "$_pid" 2>/dev/null || true; return 126 ;;
+		esac
+		;;
+	esac
 	_remote_stream_child_abort_watchdog "$_pid" "$_tag" "$_interval" "$_msg" &
 	_watchdog_pid=$!
-	_speed_debug_log "BUSY_STEP tag=$_tag pid=$_pid mode=remote_fastfail_abort_watchdog waitMode=watchdog intervalSec=$_interval reason=no_event_fifo msg=$_msg"
+	_speed_debug_log "BUSY_STEP tag=$_tag pid=$_pid mode=remote_fastfail_abort_watchdog waitMode=watchdog intervalSec=$_interval reason=eventwait_pid_or_file_fallback msg=$_msg"
 	wait "$_pid"
 	_rc=$?
 	if [[ -n $_watchdog_pid ]]; then
@@ -23379,6 +24506,10 @@ _display_power_volume_watcher_stop() {
 }
 
 _DISPLAY_TIMEOUT_REQUESTED_MS="${SPEEDBACKUP_DISPLAY_TIMEOUT_MS:-2147483647}"
+# r455: 保留 r454 stale timeout guard；進度條改動已回退。
+# 預設回復到 15 秒；若使用者確實長期使用永不息屏，可設 SPEEDBACKUP_DISPLAY_TIMEOUT_SAME_AS_REQUESTED_POLICY=keep。
+_DISPLAY_TIMEOUT_FALLBACK_MS="${SPEEDBACKUP_DISPLAY_TIMEOUT_FALLBACK_MS:-15000}"
+_DISPLAY_TIMEOUT_SAME_AS_REQUESTED_POLICY="${SPEEDBACKUP_DISPLAY_TIMEOUT_SAME_AS_REQUESTED_POLICY:-fallback}"
 _DISPLAY_TIMEOUT_ACTIVE="${_DISPLAY_TIMEOUT_ACTIVE:-0}"
 _DISPLAY_RESTORE_DONE="${_DISPLAY_RESTORE_DONE:-0}"
 
@@ -23387,51 +24518,78 @@ _display_timeout_save_file() {
 }
 
 _display_timeout_shell_begin() {
-	local _scr_save _req_save _applied_save _orig _readback _rollback_readback
+	local _scr_save _req_save _applied_save _orig _orig_effective _fallback _policy _readback _rollback_readback _get_rc _put_rc _rb_rc _rollback_put_rc _rollback_get_rc _get_timeout _put_timeout
 	_scr_save="$(_display_timeout_save_file)"
 	_req_save="${TMPDIR:-/data/local/tmp}/.screen_timeout_requested"
 	_applied_save="${TMPDIR:-/data/local/tmp}/.screen_timeout_applied"
-	# r206: shell-only path with Int.MAX_VALUE timeout. Remove stale r201-r203 Dex markers before starting;
-	# preserve enough state to rollback even if put succeeds but readback/verification fails.
+	_get_timeout="${SPEEDBACKUP_DISPLAY_SETTINGS_GET_TIMEOUT_MS:-2000}"
+	_put_timeout="${SPEEDBACKUP_DISPLAY_SETTINGS_PUT_TIMEOUT_MS:-5000}"
+	# r468: begin path uses bounded get/put helpers; Dex direct first, shell fallback.
+	# Preserve the old fail-closed semantics: if begin cannot get/put/verify, do not keep the long timeout as active.
 	rm -f "${TMPDIR:-/data/local/tmp}/.screen_timeout_requested" "${TMPDIR:-/data/local/tmp}/.screen_timeout_applied" "${TMPDIR:-/data/local/tmp}/.screen_timeout_session_id" "${TMPDIR:-/data/local/tmp}/.screen_timeout_backend" 2>/dev/null
-	_orig="$(settings get system screen_off_timeout 2>/dev/null)"
+	_orig="$(_speedbackup_settings_get_system_bounded screen_off_timeout "$_get_timeout" display_timeout_begin_original)"
+	_get_rc=$?
+	[[ $_get_rc = 0 ]] || return 1
 	case $_orig in ''|null|*[!0-9]*) return 1 ;; esac
-	printf '%s\n' "$_orig" > "$_scr_save" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
+	_orig_effective="$_orig"
+	_fallback="${_DISPLAY_TIMEOUT_FALLBACK_MS:-15000}"
+	case $_fallback in ''|*[!0-9]*) _fallback=15000 ;; esac
+	_policy="${_DISPLAY_TIMEOUT_SAME_AS_REQUESTED_POLICY:-fallback}"
+	if [[ $_orig = "$_DISPLAY_TIMEOUT_REQUESTED_MS" ]]; then
+		case $_policy in
+		keep|KEEP|Keep|0|false|FALSE|no|NO)
+			_speed_debug_log "DISPLAY_TIMEOUT_BEGIN_ORIGINAL_EQUALS_REQUESTED policy=keep rawOriginal=$_orig restoreOriginal=$_orig requested=$_DISPLAY_TIMEOUT_REQUESTED_MS mode=r470"
+			;;
+		*)
+			_orig_effective="$_fallback"
+			_speed_debug_log "DISPLAY_TIMEOUT_BEGIN_ORIGINAL_EQUALS_REQUESTED policy=fallback rawOriginal=$_orig restoreOriginal=$_orig_effective requested=$_DISPLAY_TIMEOUT_REQUESTED_MS mode=r470"
+			;;
+		esac
+	fi
+	printf '%s\n' "$_orig_effective" > "$_scr_save" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
 	printf '%s\n' "$_DISPLAY_TIMEOUT_REQUESTED_MS" > "$_req_save" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
-	if ! settings put system screen_off_timeout "$_DISPLAY_TIMEOUT_REQUESTED_MS" >/dev/null 2>&1; then
+	_speedbackup_settings_put_system_bounded screen_off_timeout "$_DISPLAY_TIMEOUT_REQUESTED_MS" "$_put_timeout" display_timeout_begin_put
+	_put_rc=$?
+	if [[ $_put_rc != 0 ]]; then
 		rm -f "$_req_save" "$_applied_save" "${TMPDIR:-/data/local/tmp}/.screen_timeout_session_id" "${TMPDIR:-/data/local/tmp}/.screen_timeout_backend" 2>/dev/null
+		_speed_debug_log "DISPLAY_TIMEOUT_SHELL_BEGIN_FAIL_PUT original=$_orig requested=$_DISPLAY_TIMEOUT_REQUESTED_MS getRc=$_get_rc putRc=$_put_rc backend=bounded-shell mode=r473"
 		return 1
 	fi
-	_readback="$(settings get system screen_off_timeout 2>/dev/null)"
+	_readback="$(_speedbackup_settings_get_system_bounded screen_off_timeout "$_get_timeout" display_timeout_begin_readback)"
+	_rb_rc=$?
 	case $_readback in
 	''|null|*[!0-9]*)
-		settings put system screen_off_timeout "$_orig" >/dev/null 2>&1 || true
-		_rollback_readback="$(settings get system screen_off_timeout 2>/dev/null)"
-		if [[ $_rollback_readback = "$_orig" ]]; then
+		_speedbackup_settings_put_system_bounded screen_off_timeout "$_orig_effective" "$_put_timeout" display_timeout_begin_invalid_rollback_put >/dev/null 2>&1
+		_rollback_put_rc=$?
+		_rollback_readback="$(_speedbackup_settings_get_system_bounded screen_off_timeout "$_get_timeout" display_timeout_begin_invalid_rollback_readback)"
+		_rollback_get_rc=$?
+		if [[ $_rollback_get_rc = 0 && $_rollback_readback = "$_orig_effective" ]]; then
 			rm -f "$_scr_save" "$_req_save" "$_applied_save" "${TMPDIR:-/data/local/tmp}/.screen_timeout_session_id" "${TMPDIR:-/data/local/tmp}/.screen_timeout_backend" 2>/dev/null
 			_DISPLAY_TIMEOUT_ACTIVE=0
 		fi
-		_speed_debug_log "DISPLAY_TIMEOUT_SHELL_BEGIN_FAIL_INVALID_READBACK original=$_orig requested=$_DISPLAY_TIMEOUT_REQUESTED_MS readback=${_readback:-empty} rollbackReadback=${_rollback_readback:-empty} backend=shell-timeout-stale-guard"
+		_speed_debug_log "DISPLAY_TIMEOUT_SHELL_BEGIN_FAIL_INVALID_READBACK original=$_orig requested=$_DISPLAY_TIMEOUT_REQUESTED_MS readback=${_readback:-empty} rollbackReadback=${_rollback_readback:-empty} getRc=$_get_rc putRc=$_put_rc rbRc=$_rb_rc rollbackPutRc=$_rollback_put_rc rollbackGetRc=$_rollback_get_rc backend=bounded-shell mode=r473"
 		return 1
 		;;
 	esac
 	printf '%s\n' "$_readback" > "$_applied_save" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
 	if [[ $_readback != "$_DISPLAY_TIMEOUT_REQUESTED_MS" ]]; then
-		settings put system screen_off_timeout "$_orig" >/dev/null 2>&1 || true
-		_rollback_readback="$(settings get system screen_off_timeout 2>/dev/null)"
-		if [[ $_rollback_readback = "$_orig" ]]; then
+		_speedbackup_settings_put_system_bounded screen_off_timeout "$_orig_effective" "$_put_timeout" display_timeout_begin_mismatch_rollback_put >/dev/null 2>&1
+		_rollback_put_rc=$?
+		_rollback_readback="$(_speedbackup_settings_get_system_bounded screen_off_timeout "$_get_timeout" display_timeout_begin_mismatch_rollback_readback)"
+		_rollback_get_rc=$?
+		if [[ $_rollback_get_rc = 0 && $_rollback_readback = "$_orig_effective" ]]; then
 			rm -f "$_scr_save" "$_req_save" "$_applied_save" "${TMPDIR:-/data/local/tmp}/.screen_timeout_session_id" "${TMPDIR:-/data/local/tmp}/.screen_timeout_backend" 2>/dev/null
 			_DISPLAY_TIMEOUT_ACTIVE=0
 		else
 			# Keep marker for EXIT/startup stale restore. End path compares against the actual applied value.
 			_DISPLAY_TIMEOUT_ACTIVE=1
 		fi
-		_speed_debug_log "DISPLAY_TIMEOUT_SHELL_BEGIN_FAIL_MISMATCH original=$_orig requested=$_DISPLAY_TIMEOUT_REQUESTED_MS applied=$_readback rollbackReadback=${_rollback_readback:-empty} backend=shell-timeout-stale-guard"
+		_speed_debug_log "DISPLAY_TIMEOUT_SHELL_BEGIN_FAIL_MISMATCH original=$_orig requested=$_DISPLAY_TIMEOUT_REQUESTED_MS applied=$_readback rollbackReadback=${_rollback_readback:-empty} getRc=$_get_rc putRc=$_put_rc rbRc=$_rb_rc rollbackPutRc=$_rollback_put_rc rollbackGetRc=$_rollback_get_rc backend=bounded-shell mode=r473"
 		return 1
 	fi
-	Get_dark_screen_seconds="$_orig"
+	Get_dark_screen_seconds="$_orig_effective"
 	_DISPLAY_TIMEOUT_ACTIVE=1
-	_speed_debug_log "DISPLAY_TIMEOUT_SHELL_BEGIN original=$_orig requested=$_DISPLAY_TIMEOUT_REQUESTED_MS applied=$_readback readback=$_readback backend=shell-timeout-stale-guard"
+	_speed_debug_log "DISPLAY_TIMEOUT_SHELL_BEGIN original=$_orig_effective rawOriginal=$_orig requested=$_DISPLAY_TIMEOUT_REQUESTED_MS applied=$_readback readback=$_readback fallbackPolicy=$_policy getRc=$_get_rc putRc=$_put_rc rbRc=$_rb_rc backend=bounded-shell mode=r473"
 	return 0
 }
 
@@ -23450,7 +24608,7 @@ _display_timeout_session_active() {
 }
 
 _display_timeout_shell_end() {
-	local _scr_save _req_save _applied_save _orig _current _readback _requested _applied
+	local _scr_save _req_save _applied_save _orig _current _readback _requested _applied _get_rc _put_rc _rb_rc
 	_scr_save="$(_display_timeout_save_file)"
 	_req_save="${TMPDIR:-/data/local/tmp}/.screen_timeout_requested"
 	_applied_save="${TMPDIR:-/data/local/tmp}/.screen_timeout_applied"
@@ -23472,23 +24630,29 @@ _display_timeout_shell_end() {
 	}
 	_orig="$(cat "$_scr_save" 2>/dev/null)"
 	case $_orig in ''|*[!0-9]*) return 1 ;; esac
-	_current="$(settings get system screen_off_timeout 2>/dev/null)"
+	_current="$(_speedbackup_settings_get_system_bounded screen_off_timeout "${SPEEDBACKUP_DISPLAY_SETTINGS_GET_TIMEOUT_MS:-2000}" display_timeout_session_current)"
+	_get_rc=$?
 	# Compare-and-restore: only restore if current still equals the value that this run actually applied.
 	# If user/system changed timeout after our begin, do not overwrite that external change.
-	if [[ $_current != "$_applied" ]]; then
-		_speed_debug_log "DISPLAY_TIMEOUT_SHELL_END externalChange=true current=$_current original=$_orig requested=$_requested applied=$_applied restored=false backend=shell-timeout-stale-guard"
+	if [[ $_get_rc = 0 && $_current != "$_applied" ]]; then
+		_speed_debug_log "DISPLAY_TIMEOUT_SHELL_END externalChange=true current=$_current original=$_orig requested=$_requested applied=$_applied restored=false backend=shell-timeout-stale-guard mode=r462"
 		rm -f "$_scr_save" "${TMPDIR:-/data/local/tmp}/.screen_timeout_requested" "${TMPDIR:-/data/local/tmp}/.screen_timeout_applied" "${TMPDIR:-/data/local/tmp}/.screen_timeout_session_id" "${TMPDIR:-/data/local/tmp}/.screen_timeout_backend" 2>/dev/null
 		_DISPLAY_TIMEOUT_ACTIVE=0
 		Get_dark_screen_seconds=""
 		return 0
 	fi
-	settings put system screen_off_timeout "$_orig" >/dev/null 2>&1 || return 1
-	_readback="$(settings get system screen_off_timeout 2>/dev/null)"
-	[[ $_readback = "$_orig" ]] || return 1
+	_speedbackup_settings_put_system_bounded screen_off_timeout "$_orig" "${SPEEDBACKUP_DISPLAY_SETTINGS_PUT_TIMEOUT_MS:-5000}" display_timeout_session_put
+	_put_rc=$?
+	[[ $_put_rc = 0 ]] || return 1
+	_readback="$(_speedbackup_settings_get_system_bounded screen_off_timeout "${SPEEDBACKUP_DISPLAY_SETTINGS_GET_TIMEOUT_MS:-2000}" display_timeout_session_readback)"
+	_rb_rc=$?
+	if [[ $_rb_rc = 0 && $_readback != "$_orig" ]]; then
+		return 1
+	fi
 	rm -f "$_scr_save" "${TMPDIR:-/data/local/tmp}/.screen_timeout_requested" "${TMPDIR:-/data/local/tmp}/.screen_timeout_applied" "${TMPDIR:-/data/local/tmp}/.screen_timeout_session_id" "${TMPDIR:-/data/local/tmp}/.screen_timeout_backend" 2>/dev/null
 	_DISPLAY_TIMEOUT_ACTIVE=0
 	Get_dark_screen_seconds=""
-	_speed_debug_log "DISPLAY_TIMEOUT_SHELL_END original=$_orig requested=$_requested applied=$_applied readback=$_readback restored=true backend=shell-timeout-stale-guard"
+	_speed_debug_log "DISPLAY_TIMEOUT_SHELL_END original=$_orig requested=$_requested applied=$_applied readback=${_readback:-unavailable} restored=true backend=shell-timeout-stale-guard getRc=$_get_rc putRc=$_put_rc rbRc=$_rb_rc mode=r462"
 	return 0
 }
 
@@ -23777,8 +24941,7 @@ _appstate_ssaid_report_line() {
 	# r254: 終端 SSAID 顯示只保留「應用名 (包名)」，避免 expected/actual 長 SSAID 值刷屏與換行。
 	# 完整 expected/actual/message 仍保留在 speed_debug/ssaid_restore_report.tsv。
 	_display_line="$_label ($_pkg)"
-	printf '%s
-' "$_display_line" >> "$TMPDIR/.appstate_ssaid_${_bucket}" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	printf '%s\n' "$_display_line" >> "$TMPDIR/.appstate_ssaid_${_bucket}" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	printf '%s	%s	%s	%s	%s	%s
 ' "$_bucket" "$_pkg" "$_label" "$_expected" "$_actual" "$_msg" >> "$TMPDIR/.appstate_ssaid_report" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
@@ -24050,7 +25213,7 @@ _action_foreground_dex_display() {
 		[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f "$_out" "$SPEED_DEBUG_RUN_DIR/foreground_list_${_safe_action}.json" 2>/dev/null
 		if [[ -n $_pkg ]]; then
 			[[ -z $_label ]] && _label="$_pkg"
-			echoRgb "Dex目前前台應用：$_label ($_pkg)" "1"
+			echoRgb "前台應用：$_label ($_pkg)" "1"
 			_speed_debug_log "ACTION_FOREGROUND_DEX_DISPLAY action=$_action pkg=$_pkg label=$_label shown=$_shown elapsedMs=$_ms result=${_APPSTATE_RESULT_CODE:-unknown}/${_APPSTATE_RESULT_NAME:-unknown}"
 		else
 			_speed_debug_log "ACTION_FOREGROUND_DEX_DISPLAY_MISS action=$_action shown=$_shown elapsedMs=$_ms result=${_APPSTATE_RESULT_CODE:-unknown}/${_APPSTATE_RESULT_NAME:-unknown}"
@@ -24501,7 +25664,6 @@ backup() {
 	fi
 		[[ $backup_media = false ]] && echoRgb "當前$MODDIR_NAME/backup_settings.conf的\n -backup_media=0將不備份自定義資料夾" "0"
 		if stream_enabled; then
-			echoRgb "r277 metadata bundle-only：遠端不再保留每 App app_details.json；舊版工具/舊版備份不兼容，請用新版重新備份" "2"
 			_speed_debug_log "APPDETAILS_BUNDLE_ONLY_NOTICE stage=backup_stream mode=no-fallback-r286 rel=$(_appdetails_bundle_rel)"
 			# 真流式不建立本地 Backup_zstd_X；但仍需要一份本輪恢復清單。
 			# 因此 appList.txt / start.sh / restore_settings.conf 只放 TMPDIR staging，
@@ -24568,10 +25730,18 @@ backup() {
 			_speed_debug_normal_finish_pack 2
 			exit 2
 		fi
+		_prepare_timed prepare_dir_size_map "$_single_pkg"
+		load_dir_size_map
+		_backup_remote_prescan_progress_step 0 "正在預掃遠端"
+		_backup_remote_prescan_progress_step 1 "正在預掃遠端備份大小"
 		backup_finalize_remote_setup_if_deferred
+		_backup_remote_prescan_progress_step 2 "遠端連線 / 容量預掃完成"
 		_prepare_timed prepare_remote_filelist
+		_backup_remote_prescan_progress_step 3 "遠端檔案列表預掃完成"
 		_prepare_timed prepare_remote_json_map
+		_backup_remote_prescan_progress_step 4 "遠端 app_details 預掃完成"
 		_prepare_timed prepare_remote_fast_skip_map
+		_backup_remote_prescan_progress_step 5 "遠端預掃完成"
 		_prepare_timed prepare_local_fast_skip_map
 		[[ -s $TMPDIR/.pkg_appstate ]] || { echoRgb "AppState snapshot map缺失" "0"; exit 2; }
 	else
@@ -24584,13 +25754,20 @@ backup() {
 		fi
 		_prepare_timed prepare_dir_size_map
 		load_dir_size_map
+		_backup_remote_prescan_progress_step 0 "正在預掃遠端"
+		_backup_remote_prescan_progress_step 1 "正在預掃遠端備份大小"
 		backup_finalize_remote_setup_if_deferred
+		_backup_remote_prescan_progress_step 2 "遠端連線 / 容量預掃完成"
 		_prepare_timed prepare_remote_filelist
+		_backup_remote_prescan_progress_step 3 "遠端檔案列表預掃完成"
 		_prepare_timed prepare_remote_json_map
+		_backup_remote_prescan_progress_step 4 "遠端 app_details 預掃完成"
 		_prepare_timed prepare_remote_fast_skip_map
+		_backup_remote_prescan_progress_step 5 "遠端預掃完成"
 		_prepare_timed prepare_local_fast_skip_map
 		[[ -s $TMPDIR/.pkg_appstate ]] || { echoRgb "AppState snapshot map缺失" "0"; exit 2; }
 	fi
+	_backup_prescan_show_summary || true
 	starttime1="$(date -u "+%s")"
 	TIME="$starttime1"
 	notification_progress "101" "$r" 0 "開始備份"
@@ -25030,7 +26207,7 @@ backup() {
 								echoRgb "Media 本輪全部資料夾無變化, 跳過json上傳(避免覆蓋遠端正確版本)" "2"
 							fi
 						fi
-					elif [[ -d $Backup_folder ]] && ! find "$Backup_folder" -maxdepth 1 -name "*.tar*" -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | grep -q .; then
+					elif [[ -d $Backup_folder ]] && ! _speedscan_backup_folder_has_tar_payload "$Backup_folder"; then
 						echoRgb "Media 無實際備份內容, 清除空目錄與 mediaList.txt" "0"
 						rm -rf "$Backup_folder"
 						[[ -f $mediatxt ]] && [[ ! -s $mediatxt || $(grep -vc "^#" "$mediatxt" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}) = 0 ]] && rm -f "$mediatxt"
@@ -25160,10 +26337,13 @@ Check_json() {
 	starttime1="$(date -u "+%s")"
 	local error_log="$TMPDIR/json_error_log"
 	rm -rf "$error_log"
-	local r i=1
-	r="$(find "$MODDIR" -maxdepth 2 -name "app_details.json" -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | wc -l)"
-	[[ $r -eq 0 ]] && { echoRgb "找不到任何 app_details.json" "0"; return; }
-	find "$MODDIR" -maxdepth 2 -name "app_details.json" -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort | while read -r; do
+	local r i=1 _json_list
+	_json_list="${TMPDIR:-/data/local/tmp}/.check_json_appdetails_${$}_$RANDOM.lst"
+	_appdetails_index_paths "$MODDIR" "$_json_list" 2 0 1 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+	r="$(grep -vc '^[[:space:]]*$' "$_json_list" 2>/dev/null)"; case $r in ''|*[!0-9]*) r=0 ;; esac
+	[[ $r -eq 0 ]] && { echoRgb "找不到任何 app_details.json" "0"; rm -f "$_json_list" 2>/dev/null; return; }
+	while read -r REPLY; do
+		[[ -n $REPLY ]] || continue
 		local dir="${REPLY%/*}"
 		_speedbackup_progress_step "$i" "$r" "檢查:${dir##*/}" "json_structure_check"
 		if _appdetails_json_parse_ok "$REPLY"; then
@@ -25175,7 +26355,8 @@ Check_json() {
 			echo "$REPLY">>"$error_log"
 		fi
 		let i++
-	done
+	done < "$_json_list"
+	rm -f "$_json_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	endtime 1
 	if [[ -f $error_log ]]; then
 		echoRgb "以下 JSON 檔損壞:\n $(cat "$error_log")" "0"
@@ -25198,7 +26379,13 @@ _appdetails_protected_signature() {
 		def pick_entry($o):
 			reduce ["Size","size","apk_size","data_size","obb_size","media_size","origin_size","path","keystore","apk_version","versionCode"][] as $k
 			({}; if (($o|type)=="object" and ($o|has($k))) then .[$k]=$o[$k] else . end);
-				def backup_entries:
+		def is_payload_entry($o):
+			(($o|type)=="object") and (
+				($o|has("Size")) or ($o|has("size")) or ($o|has("path")) or ($o|has("keystore")) or
+				($o|has("apk_size")) or ($o|has("data_size")) or ($o|has("obb_size")) or
+				($o|has("media_size")) or ($o|has("origin_size"))
+			);
+		def backup_entries:
 			to_entries[] |
 			select(.value|type=="object") |
 			select(.key != "Backup time") |
@@ -25239,13 +26426,17 @@ _appdetails_refresh_scan_root() {
 	printf '%s\n' "$_scan_dir"
 }
 _appdetails_refresh_collect_local_pkgs() {
-	local _root="$1" _tmp="$2" _line _pkg
+	local _root="$1" _tmp="$2" _line _pkg _json_list
 	: > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	find "$_root" -maxdepth 2 -name "app_details.json" -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | while read -r _jf; do
+	_json_list="${TMPDIR:-/data/local/tmp}/.json_refresh_collect_${$}_$RANDOM.lst"
+	_appdetails_index_paths "$_root" "$_json_list" 2 0 0 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+	while read -r _jf; do
+		[[ -n $_jf ]] || continue
 		_line="$(_appdetails_entry_pkg_line "$_jf")"
 		_pkg="$(printf '%s\n' "$_line" | awk -F'\t' '{print $2}')"
 		[[ -n $_pkg ]] && printf '%s\n' "$_pkg"
-	done | sort -u > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	done < "$_json_list" | sort -u > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	rm -f "$_json_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
 _appdetails_refresh_prescan_pkgs() {
 	local _pkg_file="$1" _pkgs
@@ -25310,7 +26501,7 @@ Json_refresh_local() {
 	_root="$(_appdetails_refresh_scan_root)"
 	_jsons="$TMPDIR/.json_regen_files_$$"
 	_pkgs="$TMPDIR/.json_regen_pkgs_$$"
-	find "$_root" -maxdepth 2 -name "app_details.json" -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort > "$_jsons"
+	_appdetails_index_paths "$_root" "$_jsons" 2 0 1 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 	_total="$(grep -vc '^$' "$_jsons" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 	[[ $_total = 0 ]] && { echoRgb "找不到本地 app_details.json (搜尋: $_root)" "0"; rm -f "$_jsons" "$_pkgs"; return 1; }
 	_appdetails_refresh_collect_local_pkgs "$_root" "$_pkgs"
@@ -25339,57 +26530,73 @@ Json_refresh_remote() {
 	show_conf remote
 	remote_enabled || { _remote_type_missing_msg; return 1; }
 	_BACKUP_DIRNAME_CACHED="${_BACKUP_DIRNAME_CACHED:-$(get_backup_dirname)}"
-	local _list="$MODDIR/appList_network.txt" _apps _pkgs _dl _ok=0 _skip=0 _fail=0 _i=0 _total _raw _rk _out _line _pkg _rc
-	[[ -f $_list ]] || { echoRgb "找不到 appList_network.txt，請先執行『列出遠端備份』" "0"; return 1; }
-	_apps="$TMPDIR/.json_regen_remote_apps_$$"
-	_pkgs="$TMPDIR/.json_regen_remote_pkgs_$$"
-	_dl="$TMPDIR/.json_regen_remote_dl_$$"
-	rm -rf "$_dl" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; mkdir -p "$_dl" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	grep -v '^#' "$_list" | sed '/^$/d' | while read -r _raw; do
-		case $_raw in wifi|Media|tools|start.sh|restore_settings.conf|*.tar|*.tar.zst) continue ;; esac
-		printf '%s\n' "$_raw"
-	done > "$_apps"
-	_total="$(grep -vc '^$' "$_apps" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
-	[[ $_total = 0 ]] && { echoRgb "appList_network.txt 內沒有可更新的 app" "0"; rm -rf "$_apps" "$_pkgs" "$_dl"; return 1; }
-	: > "$_pkgs"
-	while read -r _raw; do
-		_rk="${_raw%% *}"; [[ -z $_rk ]] && _rk="$_raw"
-		_out="$_dl/$_rk.json"
-		if _get_remote_appdetails "$_rk" "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && [[ -s $_out ]]; then
-			_line="$(_appdetails_entry_pkg_line "$_out")"
-			_pkg="$(printf '%s\n' "$_line" | awk -F'\t' '{print $2}')"
-			[[ -n $_pkg ]] && printf '%s\n' "$_pkg" >> "$_pkgs"
-		fi
-	done < "$_apps"
+	local _target_dir _stage _jsons _pkgs _total _ok=0 _skip=0 _fail=0 _i=0 _jf _label _line _pkg _rc
+	_target_dir="${_BACKUP_DIRNAME_CACHED:-$(get_backup_dirname)}"
+	_stage="$(_appdetails_bundle_stage_root)"
+	_jsons="$TMPDIR/.json_regen_remote_bundle_jsons_$$"
+	_pkgs="$TMPDIR/.json_regen_remote_bundle_pkgs_$$"
+	rm -rf "$_stage" "$_jsons" "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	mkdir -p "$_stage" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
+	# r457: 遠端已是 app_details_bundle-only；不可再逐 App 下載 app_details.json。
+	# 直接下載 bundle -> 原地重生 -> 重新打包上傳 bundle。
+	_speed_debug_log "JSON_REFRESH_REMOTE_BUNDLE_BEGIN subdir=$_target_dir mode=r459"
+	if ! _appdetails_bundle_download_extract "$_target_dir" "$_stage" "json-refresh-remote-r459"; then
+		echoRgb "遠端缺少或無法解析 app_details_bundle.tar.zst；無法重新生成遠端 JSON" "0"
+		_speed_debug_log "JSON_REFRESH_REMOTE_BUNDLE_FAIL subdir=$_target_dir reason=download_extract_failed mode=r459"
+		rm -rf "$_stage" "$_jsons" "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		return 1
+	fi
+	_appdetails_index_paths "$_stage" "$_jsons" 2 2 1 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+	_total="$(grep -vc '^[[:space:]]*$' "$_jsons" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	case $_total in ''|*[!0-9]*) _total=0 ;; esac
+	if [[ $_total -le 0 ]]; then
+		echoRgb "遠端 app_details bundle 內沒有可更新的 app_details.json" "0"
+		_speed_debug_log "JSON_REFRESH_REMOTE_BUNDLE_EMPTY subdir=$_target_dir mode=r459"
+		rm -rf "$_stage" "$_jsons" "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		return 1
+	fi
+	: > "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	while read -r _jf; do
+		[[ -n $_jf ]] || continue
+		_line="$(_appdetails_entry_pkg_line "$_jf")"
+		_pkg="$(printf '%s\n' "$_line" | awk -F'\t' '{print $2}')"
+		[[ -n $_pkg ]] && printf '%s\n' "$_pkg" >> "$_pkgs"
+	done < "$_jsons"
 	sort -u "$_pkgs" -o "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	_appdetails_refresh_prescan_pkgs "$_pkgs" || { echoRgb "Dex AppState預掃不可用，無法重新生成遠端 JSON" "0"; rm -rf "$_apps" "$_pkgs" "$_dl"; return 1; }
-	while read -r _raw; do
-		[[ -z $_raw ]] && continue
+	_appdetails_refresh_prescan_pkgs "$_pkgs" || { echoRgb "Dex AppState預掃不可用，無法重新生成遠端 JSON" "0"; _speed_debug_log "JSON_REFRESH_REMOTE_PRESCAN_FAIL total=$_total pkgs=$(grep -vc '^[[:space:]]*$' "$_pkgs" 2>/dev/null) mode=r459"; rm -rf "$_stage" "$_jsons" "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; return 1; }
+	rm -f "$(_appdetails_bundle_dirty_file)" "$(_appdetails_bundle_preupload_ok_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	while read -r _jf; do
+		[[ -n $_jf ]] || continue
 		let _i++
-		_rk="${_raw%% *}"; [[ -z $_rk ]] && _rk="$_raw"
-		_out="$_dl/$_rk.json"
-		echoRgb "[$_i/$_total] 遠端 $_rk" "3"
-		if [[ ! -s $_out ]]; then
-			echoRgb "下載失敗或不存在: $_rk/app_details.json" "0"; let _fail++; continue
-		fi
-		_appdetails_refresh_regenerate_one_file "$_out" "$_rk(遠端)"
+		_label="${_jf%/app_details.json}"; _label="${_label##*/}"
+		echoRgb "[$_i/$_total] 遠端 $_label" "3"
+		_appdetails_refresh_regenerate_one_file "$_jf" "$_label(遠端)"
 		_rc=$?
 		if [[ $_rc -eq 0 ]]; then
-			if _stream_upload "$_rk/app_details.json" < "$_out"; then
-				let _ok++
-			else
-				let _fail++
-			fi
+			_line="$(_appdetails_entry_pkg_line "$_jf")"
+			_pkg="$(printf '%s\n' "$_line" | awk -F'\t' '{print $2}')"
+			_appdetails_bundle_mark_dirty "$_label" "$_pkg" "$(stat -c%s "$_jf" 2>/dev/null)"
+			let _ok++
 		elif [[ $_rc -eq 2 ]]; then
 			let _skip++
 		else
 			let _fail++
 		fi
-	done < "$_apps"
-	rm -rf "$_apps" "$_pkgs" "$_dl"
+	done < "$_jsons"
+	if [[ $_ok -gt 0 ]]; then
+		if _appdetails_bundle_upload_stream; then
+			_speed_debug_log "JSON_REFRESH_REMOTE_BUNDLE_UPLOAD_OK ok=$_ok skip=$_skip fail=$_fail total=$_total mode=r459"
+		else
+			_fail=$((_fail + _ok))
+			_ok=0
+			_speed_debug_log "JSON_REFRESH_REMOTE_BUNDLE_UPLOAD_FAIL total=$_total mode=r459"
+		fi
+	fi
+	rm -rf "$_stage" "$_jsons" "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	endtime 1
 	echoRgb "遠端JSON重生完成: 成功=$_ok 跳過=$_skip 失敗=$_fail，所有 Size/apk版本/備份時間/SSAID未更新" "1"
 }
+
 Json_refresh_menu() {
 	echoRgb "此功能會像備份流程一樣重新生成 app_details.json 的目前格式/AppState；但不更新 Size、apk版本、備份時間、SSAID，也不重打包資料" "3"
 	ask_yn_indep "選擇更新目標" "本地JSON" "遠端JSON"
@@ -25420,9 +26627,12 @@ Backup_Stats() {
 		_scan_dir="$MODDIR/$(get_backup_dirname)"
 	fi
 	[[ ! -d $_scan_dir ]] && _scan_dir="$MODDIR"
-	_jsons="$(find "$_scan_dir" -maxdepth 2 -name "app_details.json" -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	_jsons_file="${TMPDIR:-/data/local/tmp}/.backup_stats_appdetails_${$}_$RANDOM.lst"
+	_appdetails_index_paths "$_scan_dir" "$_jsons_file" 2 0 1 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+	_jsons="$(cat "$_jsons_file" 2>/dev/null)"
 	if [[ -z $_jsons ]]; then
 		echoRgb "找不到任何備份 (無 app_details.json, 已搜尋: $_scan_dir)" "0"
+		rm -f "$_jsons_file" 2>/dev/null
 		return
 	fi
 	_total_json="$(echo "$_jsons" | grep -vc '^$')"
@@ -25498,6 +26708,7 @@ Remote_Backup_Stats() {
 	echoRgb "正在掃描遠端檔案列表 (單次連線)..." "3"
 	local _filelist="$TMPDIR/.remote_stats_files"
 	remote_list_files "$target_dir" > "$_filelist" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_eventwait_output_file_stable_ms "$_filelist" remote_stats_filelist_ready 80 1500 >/dev/null 2>&1 || true
 	if [[ ! -s $_filelist ]]; then
 		echoRgb "遠端目錄不存在或無檔案: $target_dir" "0"
 		rm -f "$_filelist"
@@ -25519,7 +26730,9 @@ Remote_Backup_Stats() {
 		_speed_debug_log "REMOTE_STATS_BUNDLE_FIRST_BEGIN subdir=$target_dir rel=$target_dir/${_stats_bundle_found_rel:-$(_appdetails_bundle_rel)} canonical=$(_appdetails_bundle_rel) mode=r370"
 		if _appdetails_bundle_download_extract "$target_dir" "$_bundle_root" "remote-stats-r342"; then
 			_bundle_ok=1
-			find "$_bundle_root" -mindepth 2 -maxdepth 2 -name app_details.json -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sed 's|/app_details\.json$||; s|.*/||' | sort -u > "$_apps"
+			_appdetails_index_paths "$_bundle_root" "${_apps}.jsons" 2 2 1 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+			sed 's|/app_details\.json$||; s|.*/||' "${_apps}.jsons" 2>/dev/null | sort -u > "$_apps"
+			rm -f "${_apps}.jsons" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 			_speed_debug_log "REMOTE_STATS_BUNDLE_READY count=$(grep -vc '^$' "$_apps" 2>/dev/null) root=$_bundle_root mode=r370"
 		else
 			_speed_debug_log "REMOTE_STATS_BUNDLE_FAIL subdir=$target_dir action=no_per_app_fallback mode=r370"
@@ -25683,25 +26896,21 @@ remote_stream_restore() {
 _restore_stream_media_payload_resolve() {
 	local _entry="$1" _remote_list="$2" _tar _zst
 	case "$_entry" in
-	*.tar|*.tar.zst) printf '%s
-' "$_entry"; return 0 ;;
+	*.tar|*.tar.zst) printf '%s\n' "$_entry"; return 0 ;;
 	esac
 	_tar="$_entry.tar"
 	_zst="$_entry.tar.zst"
 	if [[ -s $_remote_list ]]; then
 		if awk -v n="$_tar" '$0==n{f=1;exit} END{exit f?0:1}' "$_remote_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
-			printf '%s
-' "$_tar"
+			printf '%s\n' "$_tar"
 			return 0
 		fi
 		if awk -v n="$_zst" '$0==n{f=1;exit} END{exit f?0:1}' "$_remote_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
-			printf '%s
-' "$_zst"
+			printf '%s\n' "$_zst"
 			return 0
 		fi
 	fi
-	printf '%s
-' "$_tar"
+	printf '%s\n' "$_tar"
 }
 
 _restore_stream_media_list_from_appdetails() {
@@ -25720,8 +26929,7 @@ _restore_stream_media_list_from_appdetails() {
 	' "$_json" > "$_entries" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_entries" "$_tmp"; return 1; }
 	: > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_entries" "$_tmp"; return 1; }
 	while IFS= read -r _entry; do
-		_entry="$(printf '%s
-' "$_entry" | sed -e 's/[[:space:]]*$//')"
+		_entry="$(printf '%s\n' "$_entry" | sed -e 's/[[:space:]]*$//')"
 		case "$_entry" in ''|\#*|＃*) continue ;; esac
 		_payload="$(_restore_stream_media_payload_resolve "$_entry" "$_remote_list")"
 		_key="$(_app_network_media_payload_stem "$_payload")"
@@ -25734,8 +26942,7 @@ _restore_stream_media_list_from_appdetails() {
 			_speed_debug_log "STREAM_RESTORE_MEDIA_LIST_ENTRY_DROP entry=$_entry payload=$_payload key=$_key source=app_details_json reason=remote_file_missing jsonMatch=1 remoteExists=0"
 			continue
 		fi
-		printf '%s
-' "$_payload" >> "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		printf '%s\n' "$_payload" >> "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		_cnt=$((_cnt + 1))
 		_speed_debug_log "STREAM_RESTORE_MEDIA_LIST_ENTRY entry=$_entry payload=$_payload key=$_key source=app_details_json remoteExists=1 jsonMatch=1"
 	done < "$_entries"
@@ -25833,8 +27040,7 @@ _restore_stream_prepare_media() {
 				_speed_debug_log "STREAM_RESTORE_MEDIA_LIST_ENTRY_DROP entry=$_mp payload=$_mp key=$_mstem source=appList_network reason=remote_file_missing jsonMatch=1 remoteExists=0"
 				continue
 			fi
-			printf '%s
-' "$_mp" >> "$_mlist" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+			printf '%s\n' "$_mp" >> "$_mlist" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 			_mcnt=$((_mcnt + 1))
 			_speed_debug_log "STREAM_RESTORE_MEDIA_LIST_ENTRY entry=$_mp payload=$_mp key=$_mstem source=appList_network remoteExists=1 jsonMatch=1"
 		done < "$_mselected"
@@ -26066,7 +27272,7 @@ Restore() {
 			# 用暫存檔取代 ssaid_name 字串拼接 (O(N²) → O(N))
 			local _find_tmp="$TMPDIR/.find_ssaid_$$"
 			local _ssaid_tmp="$TMPDIR/.ssaid_list_$$"
-			find "$MODDIR" -maxdepth 2 -name "app_details.json" -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort > "$_find_tmp"
+			_appdetails_index_paths "$MODDIR" "$_find_tmp" 2 0 1 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 			: > "$_ssaid_tmp"
 			while read -r; do
 				if [[ $(_appdetails_get_first_ssaid "$REPLY") != "" ]]; then
@@ -26260,10 +27466,8 @@ Restore() {
 			_restore_notify_fixed_progress "$i" "$r" 15 "恢復第$i/$r：檢查安裝狀態 $name1"
 			local _apk_plan _apk_plan_action _apk_plan_reason _apk_verify_start _apk_verify_ms _apk_skip_action
 			_apk_plan="$(_restore_package_compare_apk_plan_get "$name2" 2>/dev/null || true)"
-			_apk_plan_action="$(printf '%s
-' "$_apk_plan" | awk -F '\t' '{print $1}')"
-			_apk_plan_reason="$(printf '%s
-' "$_apk_plan" | awk -F '\t' '{print $2}')"
+			_apk_plan_action="$(printf '%s\n' "$_apk_plan" | awk -F '\t' '{print $1}')"
+			_apk_plan_reason="$(printf '%s\n' "$_apk_plan" | awk -F '\t' '{print $2}')"
 			[[ -n $_apk_plan_action ]] && _speed_debug_log "RESTORE_APK_PLAN package=$name2 label=$name1 apkAction=$_apk_plan_action apkReason=${_apk_plan_reason:-} mode=r416 source=compare_map"
 			# 流式: 設定 apk 遠端來源 (installapk 會用)
 			# 流式: 設定 apk 遠端來源 (依壓縮方式決定後綴)
@@ -26507,9 +27711,13 @@ Restore() {
     						continue
     					fi
 					else
-    					find "$Backup_folder" -maxdepth 1 ! -name "apk.*" ! -name "speed_debug_*.tar" ! -name "speed_debug_*.tar.zst" -name "*.tar*" -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort | while read -r; do
+    					_restore_tar_payloads="$TMPDIR/.restore_tar_payloads_${$}_$RANDOM.lst"
+    					_speedscan_tar_payloads "$Backup_folder" "$_restore_tar_payloads" 1 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+    					while read -r REPLY; do
+    						case "${REPLY##*/}" in apk.*|speed_debug_*.tar|speed_debug_*.tar.zst) continue ;; esac
     						Release_data "$REPLY"
-    					done
+    					done < "$_restore_tar_payloads"
+    					rm -f "$_restore_tar_payloads" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 					fi
 					_restore_phase_timing_record "data_payloads" "$_restore_data_phase_t0" "$name1" "$name2" "stream=${_RESTORE_STREAM:-0}" "0"
 					_restore_speedscan_facts_phase "$path2/$user/0/$name2" "$name1" "post_data_user" >/dev/null 2>&1 || true
@@ -26736,7 +27944,7 @@ Restore4() {
 	[[ $ssaid_mode_1 = true ]] || return 0
 	local _list="$TMPDIR/.ssaid_details_list" _record="$TMPDIR/.ssaid_record_$$" _ssaid_only="$TMPDIR/.ssaid_only_$$"
 	: > "$TMPDIR/.batch_appstate_ndjson" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	find "$MODDIR" -maxdepth 2 -name "app_details.json" -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort > "$_list"
+	_appdetails_index_paths "$MODDIR" "$_list" 2 0 1 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 	while read -r app_details; do
 		[[ -s $app_details ]] || continue
 		name1="$(_appdetails_get_first_entry_name "$app_details")"
@@ -26812,30 +28020,21 @@ Getlist() {
 	# 合併在同一個 RootDaemon command 內，避免 r319 仍需 appInventory + defaultHome + target packages 三次 round-trip。
 	local _target_system_pkgs="$TMPDIR/.getlist_target_system_pkgs" _target_filter _getlist_raw _meta _meta_ime _home_label _home_source _ime_label _ime_source Default_ime_pkg
 	: > "$_target_system_pkgs"
-	printf '%s
-' "$system" | awk '{for (i=1; i<=NF; i++) if ($i !~ /^[#＃]/) print $i}' >> "$_target_system_pkgs"
+	printf '%s\n' "$system" | awk '{for (i=1; i<=NF; i++) if ($i !~ /^[#＃]/) print $i}' >> "$_target_system_pkgs"
 	awk 'NF && $0 !~ /[^A-Za-z0-9_.-]/ && $0 !~ /^\./ && $0 !~ /\.\./ {print}' "$_target_system_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort -u > "$_target_system_pkgs.tmp"
 	mv -f "$_target_system_pkgs.tmp" "$_target_system_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_target_filter="$(paste -sd, "$_target_system_pkgs" 2>/dev/null)"
 	# r327: inventory one-call is still logged, but the user-facing "輸出包名" timer
 	# matches legacy scope: output + validation only.
 	_getlist_raw="$(appinventory_getlist "$_target_filter" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
-	_meta="$(printf '%s
-' "$_getlist_raw" | awk -F '\t' '$1=="#META" && $2=="defaultHome"{print; exit}')"
-	_meta_ime="$(printf '%s
-' "$_getlist_raw" | awk -F '\t' '$1=="#META" && $2=="defaultIme"{print; exit}')"
-	Default_home_pkg="$(printf '%s
-' "$_meta" | awk -F '\t' '{print $3}')"
-	_home_label="$(printf '%s
-' "$_meta" | awk -F '\t' '{print $4}')"
-	_home_source="$(printf '%s
-' "$_meta" | awk -F '\t' '{print $5}')"
-	Default_ime_pkg="$(printf '%s
-' "$_meta_ime" | awk -F '\t' '{print $3}')"
-	_ime_label="$(printf '%s
-' "$_meta_ime" | awk -F '\t' '{print $4}')"
-	_ime_source="$(printf '%s
-' "$_meta_ime" | awk -F '\t' '{print $5}')"
+	_meta="$(printf '%s\n' "$_getlist_raw" | awk -F '\t' '$1=="#META" && $2=="defaultHome"{print; exit}')"
+	_meta_ime="$(printf '%s\n' "$_getlist_raw" | awk -F '\t' '$1=="#META" && $2=="defaultIme"{print; exit}')"
+	Default_home_pkg="$(printf '%s\n' "$_meta" | awk -F '\t' '{print $3}')"
+	_home_label="$(printf '%s\n' "$_meta" | awk -F '\t' '{print $4}')"
+	_home_source="$(printf '%s\n' "$_meta" | awk -F '\t' '{print $5}')"
+	Default_ime_pkg="$(printf '%s\n' "$_meta_ime" | awk -F '\t' '{print $3}')"
+	_ime_label="$(printf '%s\n' "$_meta_ime" | awk -F '\t' '{print $4}')"
+	_ime_source="$(printf '%s\n' "$_meta_ime" | awk -F '\t' '{print $5}')"
 	case "$Default_home_pkg" in ''|*[!A-Za-z0-9_.-]*) Default_home_pkg="" ;; esac
 	case "$Default_ime_pkg" in ''|*[!A-Za-z0-9_.-]*) Default_ime_pkg="" ;; esac
 	# r323: appInventoryGetlist 已經在同一個 RootDaemon command 解析 default HOME。
@@ -26858,15 +28057,11 @@ Getlist() {
 		printf '{"recordType":"defaultIme","packageName":"%s","label":"%s","source":"%s","result":{"name":"OK"}}\n' \
 			"$Default_ime_pkg" "${_ime_label:-$Default_ime_pkg}" "${_ime_source:-appInventoryGetlist}" > "$SPEED_DEBUG_RUN_DIR/default_ime_last.json" 2>/dev/null
 	fi
-	Apk_info="$(printf '%s
-' "$_getlist_raw" | awk '$1!="#META" && NF>=3{print}' | grep -Ev 'ice.message|com.topjohnwu.magisk' | tr '/\:' '___' | sed 's/\.\./__/g')"
-	_user_rows="$(printf '%s
-' "$Apk_info" | awk 'NF>=3 && !index("|" $3 "|", "|system|") {n++} END{print n+0}')"
-	_target_rows="$(printf '%s
-' "$Apk_info" | awk 'NF>=3 && index("|" $3 "|", "|system|") {n++} END{print n+0}')"
+	Apk_info="$(printf '%s\n' "$_getlist_raw" | awk '$1!="#META" && NF>=3{print}' | grep -Ev 'ice.message|com.topjohnwu.magisk' | tr '/\:' '___' | sed 's/\.\./__/g')"
+	_user_rows="$(printf '%s\n' "$Apk_info" | awk 'NF>=3 && !index("|" $3 "|", "|system|") {n++} END{print n+0}')"
+	_target_rows="$(printf '%s\n' "$Apk_info" | awk 'NF>=3 && index("|" $3 "|", "|system|") {n++} END{print n+0}')"
 	xposed_name="$(echo "$Apk_info" | awk 'index("|" $3 "|", "|xposed|") {print $2}')"
-	Pre_installed_apps="$(printf '%s
-' "$Apk_info" | awk 'NF>=3 && index("|" $3 "|", "|system|") {print $1, $2}')"
+	Pre_installed_apps="$(printf '%s\n' "$Apk_info" | awk 'NF>=3 && index("|" $3 "|", "|system|") {print $1, $2}')"
 	# r322 預設不建立全系統 allpkg 集合；舊註解行保留，避免為清註解再掃 system。需要完整清理時才開。
 	if [[ ${SPEEDBACKUP_APPLIST_FULL_INSTALLED_CLEANUP:-0} = 1 ]]; then
 		appinfo "all" "pkgName" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sed '/^[[:space:]]*$/d' | sort -u > "$TMPDIR/.getlist_allpkg"
@@ -26874,10 +28069,8 @@ Getlist() {
 	else
 		: > "$TMPDIR/.getlist_allpkg"
 	fi
-	Apk_info="$(printf '%s
-' "$Apk_info" | awk 'NF>=3{print $1, $2}' | sed '/^[[:space:]]*$/d' | sort -u)"
-	_total_rows="$(printf '%s
-' "$Apk_info" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
+	Apk_info="$(printf '%s\n' "$Apk_info" | awk 'NF>=3{print $1, $2}' | sed '/^[[:space:]]*$/d' | sort -u)"
+	_total_rows="$(printf '%s\n' "$Apk_info" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
 	_speed_debug_log "APP_INVENTORY_GETLIST_ONECALL userRows=${_user_rows:-0} targetedSystemRows=${_target_rows:-0} totalRows=${_total_rows:-0} defaultHome=${Default_home_pkg:-none} defaultIme=${Default_ime_pkg:-none} fullCleanup=${SPEEDBACKUP_APPLIST_FULL_INSTALLED_CLEANUP:-0} timelineMsg=${SPEEDBACKUP_DEBUG_TIMELINE_MSG:-0} mode=r349-default-ime-applist-mark-output-timer"
 	# r327: reset visible duration immediately before the legacy output/validation phase.
 	# This avoids counting guide text and the one-call inventory round-trip in "輸出包名" elapsed time.
@@ -27230,9 +28423,11 @@ backup_media() {
 	# 快照備份前遠端大小 (backup() 主函數才有做這個快照, backup_media 是獨立函數需自己補上,
 	# 否則沿用上次殘留的全域變數值, 導致結尾差異統計算出離譜的數字)
 	if [[ -n $remote_type ]]; then
+		_backup_remote_size_prescan_progress_begin "$_BACKUP_DIRNAME_CACHED"
 		_RTOTAL_BEFORE="$(remote_dir_size "$_BACKUP_DIRNAME_CACHED" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 		[[ -z $_RTOTAL_BEFORE ]] && _RTOTAL_BEFORE=0
-		_speed_debug_log "REMOTE_TOTAL_BEFORE subdir=$_BACKUP_DIRNAME_CACHED bytes=$_RTOTAL_BEFORE"
+		_backup_remote_size_prescan_progress_done "$_BACKUP_DIRNAME_CACHED" "$_RTOTAL_BEFORE"
+		_speed_debug_log "REMOTE_TOTAL_BEFORE subdir=$_BACKUP_DIRNAME_CACHED bytes=$_RTOTAL_BEFORE mode=r448"
 	fi
 	echoRgb "假設反悔了要終止腳本請儘速離開此腳本點擊start.sh選擇終止腳本,否則腳本將繼續執行直到結束" "0"
 	A=1
@@ -27325,7 +28520,7 @@ backup_media() {
 					echoRgb "Media 本輪全部資料夾無變化, 跳過json上傳(避免覆蓋遠端正確版本)" "2"
 				fi
 			fi
-		elif [[ -d $Backup_folder ]] && ! find "$Backup_folder" -maxdepth 1 -name "*.tar*" -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | grep -q .; then
+		elif [[ -d $Backup_folder ]] && ! _speedscan_backup_folder_has_tar_payload "$Backup_folder"; then
 			echoRgb "Media 無實際備份內容, 清除空目錄與 mediaList.txt" "0"
 			rm -rf "$Backup_folder"
 			[[ -f $mediatxt ]] && [[ ! -s $mediatxt || $(grep -vc "^#" "$mediatxt" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}) = 0 ]] && rm -f "$mediatxt"

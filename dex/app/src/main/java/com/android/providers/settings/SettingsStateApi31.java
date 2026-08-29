@@ -682,8 +682,9 @@ public class SettingsStateApi31 implements SettingsState {
         }
         if (parseStateFromXmlStreamLocked(in)) {
             // Parsed state from fallback file. Restore original file with fallback file
-            try {
-                FileUtils.copy(new FileInputStream(statePersistFallbackFile), new FileOutputStream(mStatePersistFile));
+            try (FileInputStream fin = new FileInputStream(statePersistFallbackFile);
+                    FileOutputStream fout = new FileOutputStream(mStatePersistFile)) {
+                FileUtils.copy(fin, fout);
             } catch (IOException ignored) {
                 // Failed to copy, but it's okay because we already parsed states from fallback file
             }

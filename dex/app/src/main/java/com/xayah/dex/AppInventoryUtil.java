@@ -1,6 +1,7 @@
 package com.xayah.dex;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -23,6 +24,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.zip.ZipFile;
+import java.lang.reflect.Method;
 
 import dev.rikka.tools.refine.Refine;
 
@@ -33,7 +35,7 @@ import dev.rikka.tools.refine.Refine;
  * In a persistent root daemon this class keeps a per-user/per-locale cache for the current run.
  */
 final class AppInventoryUtil {
-    static final String VERSION = "v1.3.12-r370-framework-facts";
+    static final String VERSION = "v1.3.13-r469-full-dex-facts";
     private static final String XPOSED_METADATA = "xposedminversion";
     private static final Gson GSON = new Gson();
     private static final Map<String, List<Item>> CACHE = new HashMap<>();
@@ -228,6 +230,196 @@ final class AppInventoryUtil {
         }
         if (!any) out.append(statusMissing(userId, "", "BAD_ARGS"));
         return out.toString();
+    }
+
+
+
+    static synchronized String packageFactsSingle(int userId, String packageName, boolean refresh) throws Exception {
+        if (packageName == null || packageName.trim().isEmpty()) {
+            return packageFactsBatch(userId, new String[]{""}, refresh);
+        }
+        return packageFactsBatch(userId, new String[]{packageName.trim()}, refresh);
+    }
+
+    static synchronized String packageInstalledUsersFacts(String packageName, int maxUserId, boolean refresh) throws Exception {
+        if (refresh) clearCache();
+        String pkgName = packageName == null ? "" : packageName.trim();
+        if (maxUserId < 0) maxUserId = 0;
+        if (maxUserId > 99) maxUserId = 99;
+        StringBuilder out = new StringBuilder();
+        out.append("#schema\tspeedbackup.pm_installed_users.v1\n");
+        out.append("#fields\tpackage\tuserId\tinstalled\tuid\tenabled\tversionCode\treason\n");
+        if (pkgName.isEmpty()) {
+            out.append("MISSING\t\t0\tfalse\t-1\tfalse\t-1\tBAD_ARGS\n");
+            return out.toString();
+        }
+        Context ctx = HiddenApiHelper.getContext();
+        PackageManager pm = PackageManagerUtil.getPackageManager(ctx).packageManager();
+        PackageManagerHidden pmHidden = Refine.unsafeCast(pm);
+        boolean any = false;
+        for (int u = 0; u <= maxUserId; u++) {
+            try {
+                PackageInfo pi = pmHidden.getPackageInfoAsUser(pkgName, PackageManager.GET_META_DATA, u);
+                Item item = toItem(pm, pi, u);
+                if (item != null && item.installed) {
+                    any = true;
+                    out.append("OK\t").append(sanitize(pkgName)).append('\t').append(u).append("\ttrue\t")
+                            .append(item.uid).append('\t').append(item.enabled ? "true" : "false").append('\t')
+                            .append(item.versionCode).append("\tOK\n");
+                }
+            } catch (Throwable ignored) {
+                // keep output compact: only installed users are rows; final MISS row below if none.
+            }
+        }
+        if (!any) out.append("MISSING\t").append(sanitize(pkgName)).append("\t-1\tfalse\t-1\tfalse\t-1\tNOT_INSTALLED_0_").append(maxUserId).append('\n');
+        return out.toString();
+    }
+
+    static synchronized String packageVisibleAfterInstallFacts(int userId, String packageName, boolean refresh) throws Exception {
+        if (refresh) clearCache();
+        StringBuilder out = new StringBuilder();
+        out.append("#schema\tspeedbackup.pm_visible_after_install.v1\n");
+        out.append("#fields\tpackage\tuserId\tvisible\tinstalled\tuid\tenabled\tversionCode\tuserDataExists\tuserDeDataExists\treason\n");
+        String pkgName = packageName == null ? "" : packageName.trim();
+        if (pkgName.isEmpty()) {
+            out.append("MISSING\t\t").append(userId).append("\tfalse\tfalse\t-1\tfalse\t-1\tfalse\tfalse\tBAD_ARGS\n");
+            return out.toString();
+        }
+        Context ctx = HiddenApiHelper.getContext();
+        PackageManager pm = PackageManagerUtil.getPackageManager(ctx).packageManager();
+        PackageManagerHidden pmHidden = Refine.unsafeCast(pm);
+        try {
+            PackageInfo pi = pmHidden.getPackageInfoAsUser(pkgName, PackageManager.GET_META_DATA, userId);
+            Item item = toItem(pm, pi, userId);
+            if (item == null) throw new IllegalStateException("ITEM_NULL");
+            String userDataDir = "/data/user/" + userId + "/" + pkgName;
+            String userDeDataDir = "/data/user_de/" + userId + "/" + pkgName;
+            out.append("OK\t").append(sanitize(pkgName)).append('\t').append(userId).append("\ttrue\ttrue\t")
+                    .append(item.uid).append('\t').append(item.enabled ? "true" : "false").append('\t')
+                    .append(item.versionCode).append('\t')
+                    .append(new File(userDataDir).isDirectory() ? "true" : "false").append('\t')
+                    .append(new File(userDeDataDir).isDirectory() ? "true" : "false").append("\tOK\n");
+        } catch (Throwable t) {
+            out.append("MISSING\t").append(sanitize(pkgName)).append('\t').append(userId)
+                    .append("\tfalse\tfalse\t-1\tfalse\t-1\tfalse\tfalse\t")
+                    .append(sanitize(t.getClass().getSimpleName())).append('\n');
+        }
+        return out.toString();
+    }
+
+    static synchronized String storageVolumeFactsOutput(int userId, String extraPath) {
+        StringBuilder out = new StringBuilder();
+        out.append("#schema\tspeedbackup.storage_volume_facts.v1\n");
+        out.append("#fields\tkey\tpath\texists\tisDirectory\tcanRead\tcanWrite\ttotalBytes\tfreeBytes\tusableBytes\tuserId\tsource\n");
+        appendVolumePathFact(out, "data_user", "/data/user/" + userId, userId, "file");
+        appendVolumePathFact(out, "data_user_de", "/data/user_de/" + userId, userId, "file");
+        appendVolumePathFact(out, "media_user", "/data/media/" + userId, userId, "file");
+        appendVolumePathFact(out, "storage_emulated", "/storage/emulated/" + userId, userId, "file");
+        appendVolumePathFact(out, "android_data", "/storage/emulated/" + userId + "/Android/data", userId, "file");
+        appendVolumePathFact(out, "android_obb", "/storage/emulated/" + userId + "/Android/obb", userId, "file");
+        if (extraPath != null && extraPath.trim().length() > 0 && !"-".equals(extraPath.trim())) {
+            appendVolumePathFact(out, "target", extraPath.trim(), userId, "file");
+        }
+        try {
+            Context ctx = HiddenApiHelper.getContext();
+            Object sm = ctx.getSystemService("storage");
+            if (sm != null) {
+                try {
+                    Method m = sm.getClass().getMethod("getStorageVolumes");
+                    Object vols = m.invoke(sm);
+                    if (vols instanceof List) {
+                        int idx = 0;
+                        for (Object v : (List<?>) vols) {
+                            String desc = "volume" + idx;
+                            String state = "";
+                            try { desc = String.valueOf(v.getClass().getMethod("getDescription", Context.class).invoke(v, ctx)); } catch (Throwable ignored) {}
+                            try { state = String.valueOf(v.getClass().getMethod("getState").invoke(v)); } catch (Throwable ignored) {}
+                            out.append("VOLUME\t").append(sanitize(desc)).append('\t').append(sanitize(state))
+                                    .append("\tfalse\tfalse\tfalse\tfalse\t0\t0\t0\t").append(userId).append("\tStorageManager\n");
+                            idx++;
+                        }
+                    }
+                } catch (Throwable t) {
+                    out.append("WARN\tStorageManager\t").append(sanitize(t.getClass().getSimpleName()))
+                            .append("\tfalse\tfalse\tfalse\tfalse\t0\t0\t0\t").append(userId).append("\tStorageManager\n");
+                }
+            }
+        } catch (Throwable ignored) {}
+        return out.toString();
+    }
+
+    private static void appendVolumePathFact(StringBuilder out, String key, String path, int userId, String source) {
+        File f = new File(path);
+        out.append("OK\t").append(key).append('\t').append(sanitize(path)).append('\t')
+                .append(f.exists() ? "true" : "false").append('\t')
+                .append(f.isDirectory() ? "true" : "false").append('\t')
+                .append(f.canRead() ? "true" : "false").append('\t')
+                .append(f.canWrite() ? "true" : "false").append('\t')
+                .append(f.exists() ? f.getTotalSpace() : 0L).append('\t')
+                .append(f.exists() ? f.getFreeSpace() : 0L).append('\t')
+                .append(f.exists() ? f.getUsableSpace() : 0L).append('\t')
+                .append(userId).append('\t').append(source).append('\n');
+    }
+
+    static synchronized String homeImeLauncherFactsOutput(int userId, boolean refresh) throws Exception {
+        if (refresh) clearCache();
+        StringBuilder out = new StringBuilder();
+        out.append("#schema\tspeedbackup.home_ime_launcher_facts.v1\n");
+        out.append("#fields\ttype\tpackage\tlabel\tinstalled\tuid\tenabled\tsource\treason\n");
+        HomeInfo home = defaultHomeInfo(userId);
+        ImeInfo ime = defaultImeInfo(userId);
+        appendPackageRefFact(out, "defaultHome", home.packageName, home.label, home.source, userId);
+        appendPackageRefFact(out, "defaultIme", ime.packageName, ime.label, ime.source, userId);
+        Context ctx = HiddenApiHelper.getContext();
+        PackageManager pm = PackageManagerUtil.getPackageManager(ctx).packageManager();
+        PackageManagerHidden pmHidden = Refine.unsafeCast(pm);
+        Intent intent = new Intent(Intent.ACTION_MAIN);
+        intent.addCategory(Intent.CATEGORY_HOME);
+        try {
+            List<android.content.pm.ResolveInfo> ris = pmHidden.queryIntentActivitiesAsUser(intent, 0, userId);
+            if (ris != null) {
+                for (android.content.pm.ResolveInfo ri : ris) {
+                    String pkg = ri != null && ri.activityInfo != null ? ri.activityInfo.packageName : "";
+                    if (pkg == null || pkg.length() == 0) continue;
+                    String label = "";
+                    try { label = String.valueOf(ri.loadLabel(pm)); } catch (Throwable ignored) {}
+                    appendPackageRefFact(out, "launcherCandidate", pkg, label, "queryIntentActivitiesAsUser", userId);
+                }
+            }
+        } catch (Throwable t) {
+            out.append("ERR\tlauncherCandidate\t\t\tfalse\t-1\tfalse\tqueryIntentActivitiesAsUser\t")
+                    .append(sanitize(t.getClass().getSimpleName())).append('\n');
+        }
+        return out.toString();
+    }
+
+    private static void appendPackageRefFact(StringBuilder out, String type, String pkg, String label, String source, int userId) {
+        String packageName = pkg == null ? "" : pkg.trim();
+        boolean installed = false;
+        int uid = -1;
+        boolean enabled = false;
+        String reason = packageName.isEmpty() ? "EMPTY" : "OK";
+        if (!packageName.isEmpty()) {
+            try {
+                Context ctx = HiddenApiHelper.getContext();
+                PackageManager pm = PackageManagerUtil.getPackageManager(ctx).packageManager();
+                PackageManagerHidden pmHidden = Refine.unsafeCast(pm);
+                PackageInfo pi = pmHidden.getPackageInfoAsUser(packageName, PackageManager.GET_META_DATA, userId);
+                Item item = toItem(pm, pi, userId);
+                if (item != null) {
+                    installed = item.installed;
+                    uid = item.uid;
+                    enabled = item.enabled;
+                    if (label == null || label.length() == 0) label = item.label;
+                }
+            } catch (Throwable t) {
+                reason = t.getClass().getSimpleName();
+            }
+        }
+        out.append("OK\t").append(type).append('\t').append(sanitize(packageName)).append('\t')
+                .append(sanitize(label)).append('\t').append(installed ? "true" : "false").append('\t')
+                .append(uid).append('\t').append(enabled ? "true" : "false").append('\t')
+                .append(sanitize(source)).append('\t').append(sanitize(reason)).append('\n');
     }
 
     static synchronized String packageFactsBatch(int userId, String[] packageNames, boolean refresh) throws Exception {
