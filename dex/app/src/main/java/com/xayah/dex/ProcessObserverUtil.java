@@ -61,7 +61,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * waiting for the requested test duration while Binder callbacks arrive.
  */
 final class ProcessObserverUtil {
-    static final String VERSION = "v3.17-r432-restore-session-facts-argv-compilefix";
+    static final String VERSION = "v3.19-r487-run-tmpdir-state-scope";
     private static final String DESCRIPTOR = "android.app.IProcessObserver";
     private static final String TASK_STACK_DESCRIPTOR = "android.app.ITaskStackListener";
     private static final long ACTION_DEBOUNCE_MS = 900L;
@@ -75,7 +75,7 @@ final class ProcessObserverUtil {
     private static volatile boolean GLOBAL_TASK_STACK_REGISTERED = false;
     private static final AtomicInteger GLOBAL_PROCESS_EVENTS = new AtomicInteger(0);
     private static final AtomicInteger GLOBAL_TASK_EVENTS = new AtomicInteger(0);
-    private static final String BATCH_STATE_DIR = "/data/local/tmp/.speedbackup_process_observer_batch_state";
+    private static final String BATCH_STATE_DIR = scopedPath("SPEEDBACKUP_PROCESS_OBSERVER_BATCH_STATE_DIR", ".speedbackup_process_observer_batch_state");
     private static final long BATCH_STATE_TTL_MS = 24L * 60L * 60L * 1000L;
 
     private static int tokenSeed() {
@@ -84,6 +84,23 @@ final class ProcessObserverUtil {
         if (seed < 1000L) seed += 1000L;
         if (seed > Integer.MAX_VALUE - 10000L) seed = 1000L + Math.abs(android.os.Process.myPid() % 1000);
         return (int) seed;
+    }
+
+
+    private static String scopedTmpDir() {
+        String run = System.getenv("SPEEDBACKUP_RUN_TMPDIR");
+        if (run != null && run.length() > 0) return run;
+        String tmp = System.getenv("TMPDIR");
+        if (tmp != null && tmp.contains(".speedbackup_run_") && tmp.length() > 0) return tmp;
+        return "/data/local/tmp/.speedbackup_run_dex_" + android.os.Process.myPid();
+    }
+
+    private static String scopedPath(String envName, String name) {
+        String env = System.getenv(envName);
+        if (env != null && env.length() > 0) return env;
+        File dir = new File(scopedTmpDir());
+        try { dir.mkdirs(); } catch (Throwable ignored) {}
+        return new File(dir, name).getAbsolutePath();
     }
 
     private ProcessObserverUtil() {}
@@ -853,6 +870,10 @@ final class ProcessObserverUtil {
         return !file.exists() || file.delete() || !file.exists();
     }
 
+    static synchronized String cleanupStalePersistentStates(String reason, long ttlMs) {
+        return cleanupStaleBatchStates(reason, ttlMs);
+    }
+
     private static String cleanupStaleBatchStates(String reason, long ttlMs) {
         StringBuilder out = new StringBuilder();
         File[] files = batchStateDir().listFiles();
@@ -886,12 +907,19 @@ final class ProcessObserverUtil {
                 if (r.restoreOk && r.stateDeleted) restored++; else retained++;
             }
         }
-        if (total > 0 || stale > 0) {
+        boolean dirDeleted = false;
+        try {
+            File dir = batchStateDir();
+            String[] remain = dir.list();
+            if (remain != null && remain.length == 0) dirDeleted = dir.delete() || !dir.exists();
+        } catch (Throwable ignored) {}
+        if (total > 0 || stale > 0 || dirDeleted) {
             out.append("PROCESS_OBSERVER_BATCH_STALE_CLEANUP_DONE total=").append(total)
                     .append(" stale=").append(stale)
                     .append(" restored=").append(restored)
                     .append(" retained=").append(retained)
                     .append(" ttlMs=").append(ttl)
+                    .append(" dirDeleted=").append(dirDeleted)
                     .append(" reason=").append(sanitize(reason)).append('\n');
         }
         return out.toString();

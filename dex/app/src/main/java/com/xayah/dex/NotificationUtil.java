@@ -719,7 +719,17 @@ public class NotificationUtil extends BaseUtil {
 
     private static File stateDir() {
         String env = System.getenv("SPEEDBACKUP_NOTIFY_STATE_DIR");
-        File dir = new File(env != null && env.length() > 0 ? env : "/data/local/tmp/speedbackup_notify_state");
+        String base = env;
+        if (base == null || base.length() == 0) {
+            String run = System.getenv("SPEEDBACKUP_RUN_TMPDIR");
+            if (run == null || run.length() == 0) {
+                String tmp = System.getenv("TMPDIR");
+                if (tmp != null && tmp.contains(".speedbackup_run_")) run = tmp;
+            }
+            if (run == null || run.length() == 0) run = "/data/local/tmp/.speedbackup_run_dex_" + android.os.Process.myPid();
+            base = new File(run, ".speedbackup_notify_state").getAbsolutePath();
+        }
+        File dir = new File(base);
         try { dir.mkdirs(); } catch (Throwable ignored) {}
         return dir;
     }

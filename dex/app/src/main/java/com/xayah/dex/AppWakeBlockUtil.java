@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * tools with launcher/cache side effects and should not be the normal backup path.
  */
 final class AppWakeBlockUtil {
-    static final String VERSION = "v2.1-r147-wakeblock-log-cleanup";
+    static final String VERSION = "v2.2-r487-run-tmpdir-state-scope";
     private static final SimpleDateFormat TS = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US);
     private static final long PROCESS_START_MS = System.currentTimeMillis();
     private static final String PROCESS_SESSION_ID = android.os.Process.myPid() + "-" + PROCESS_START_MS;
@@ -46,8 +46,25 @@ final class AppWakeBlockUtil {
     private static final Map<Integer, WakeBlockSession> SESSIONS = new HashMap<>();
     private static final String OP_RUN_IN_BACKGROUND = "RUN_IN_BACKGROUND";
     private static final String OP_RUN_ANY_IN_BACKGROUND = "RUN_ANY_IN_BACKGROUND";
-    private static final String STATE_DIR = "/data/local/tmp/.speedbackup_wakeblock_state";
+    private static final String STATE_DIR = scopedPath("SPEEDBACKUP_WAKEBLOCK_STATE_DIR", ".speedbackup_wakeblock_state");
     private static final long STATE_TTL_MS = 24L * 60L * 60L * 1000L;
+
+
+    private static String scopedTmpDir() {
+        String run = System.getenv("SPEEDBACKUP_RUN_TMPDIR");
+        if (run != null && run.length() > 0) return run;
+        String tmp = System.getenv("TMPDIR");
+        if (tmp != null && tmp.contains(".speedbackup_run_") && tmp.length() > 0) return tmp;
+        return "/data/local/tmp/.speedbackup_run_dex_" + android.os.Process.myPid();
+    }
+
+    private static String scopedPath(String envName, String name) {
+        String env = System.getenv(envName);
+        if (env != null && env.length() > 0) return env;
+        File dir = new File(scopedTmpDir());
+        try { dir.mkdirs(); } catch (Throwable ignored) {}
+        return new File(dir, name).getAbsolutePath();
+    }
 
     private AppWakeBlockUtil() {}
 

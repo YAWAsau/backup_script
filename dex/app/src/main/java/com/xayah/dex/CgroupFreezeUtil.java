@@ -31,13 +31,13 @@ import java.util.concurrent.atomic.AtomicInteger;
  * scope.  Stop restores the original frozen state and verifies cgroup.events.
  */
 final class CgroupFreezeUtil {
-    static final String VERSION = "v1.22-r228-batch-pid-proc-snapshot";
+    static final String VERSION = "v1.23-r487-run-tmpdir-state-scope";
     private static final String CGROUP_ROOT = "/sys/fs/cgroup";
-    private static final String STATE_FILE = "/data/local/tmp/.speedbackup_cgroup_freezer_state";
+    private static final String STATE_FILE = scopedPath("SPEEDBACKUP_CGROUP_FREEZER_STATE_FILE", ".speedbackup_cgroup_freezer_state");
     private static final int MAX_PIDS = 16;
     private static final long ROOT_CACHE_TTL_MS = 60000L;
     private static final long HELPER_CACHE_TTL_MS = 60000L;
-    private static final String DAEMON_SOCKET = "/data/local/tmp/speedbackup_cgfreezerd.sock";
+    private static final String DAEMON_SOCKET = scopedPath("SPEEDBACKUP_CGROUP_FREEZER_SOCKET", "speedbackup_cgfreezerd.sock");
     private static final String NATIVE_KILL_PACKAGE_CAP = "kill-package-live-rescan-v1";
     private static final long DAEMON_CACHE_TTL_MS = 60000L;
     private static long helperCacheAt = 0L;
@@ -56,6 +56,23 @@ final class CgroupFreezeUtil {
     private static CgroupRootInfo rootCache;
     private static final AtomicInteger NEXT_TOKEN = new AtomicInteger(tokenSeed());
     private static final Map<Integer, FreezeSession> SESSIONS = new HashMap<>();
+
+
+    private static String scopedTmpDir() {
+        String run = System.getenv("SPEEDBACKUP_RUN_TMPDIR");
+        if (run != null && run.length() > 0) return run;
+        String tmp = System.getenv("TMPDIR");
+        if (tmp != null && tmp.contains(".speedbackup_run_") && tmp.length() > 0) return tmp;
+        return "/data/local/tmp/.speedbackup_run_dex_" + android.os.Process.myPid();
+    }
+
+    private static String scopedPath(String envName, String name) {
+        String env = System.getenv(envName);
+        if (env != null && env.length() > 0) return env;
+        File dir = new File(scopedTmpDir());
+        try { dir.mkdirs(); } catch (Throwable ignored) {}
+        return new File(dir, name).getAbsolutePath();
+    }
 
     private CgroupFreezeUtil() {}
 

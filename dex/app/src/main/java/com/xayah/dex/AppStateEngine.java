@@ -61,7 +61,7 @@ import dev.rikka.tools.refine.Refine;
 public final class AppStateEngine {
     public static final int SCHEMA_VERSION = 2;
     public static final int DAEMON_PROTOCOL_VERSION = 1;
-    public static final String ENGINE_VERSION = "v1.3.105-r480-pre-restore-pm-state";
+    public static final String ENGINE_VERSION = "v1.3.107-r487-run-tmpdir-state-scope";
 
     static final Gson GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().create();
     static final Gson PRETTY_GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().setPrettyPrinting().create();
@@ -389,6 +389,8 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.process_observer.restore_session_direct_start.v1", true, true, "ProcessObserver can build and start restore guard session directly from restore_package_compare_map.tsv, avoiding shell per-app spec construction");
         addCapability(capabilities, "dex.process_observer.restore_session_facts_cache.v1", true, true, "ProcessObserver restore session direct start emits restore_session_facts.tsv with HOME/IME/role/package uid installed facts");
         addCapability(capabilities, "dex.process_observer.restore_action_policy_builder.v1", true, true, "ProcessObserver Dex direct start owns restore-session action building from policy flags, HOME/IME and high-risk hints");
+        addCapability(capabilities, "dex.process_observer.batch_cleanup_stale.v1", true, true, "ProcessObserver exposes TTL-bound cleanup for batch persistent safety state; tools uses TTL=0 on controlled exit to leave no root tmp namespace");
+        addCapability(capabilities, "dex.tmp_state.run_tmpdir_scope.v1", true, true, "Dex safety state/socket paths honor SPEEDBACKUP_RUN_TMPDIR and do not create root-level /data/local/tmp namespaces during normal tools runs");
         addCapability(capabilities, "dex.process_observer.batch_stop_summary_tsv.v1", true, true, "ProcessObserver batch stop can write per-package result summary TSV for tools/debug without parsing token detail logs");
         addCapability(capabilities, "dex.process_observer.batch_persistent_safety.v1", true, true, "processObserver batch writes per-token persistent safety state; stale cleanup restores wake-block/cgroup safety nets before deleting state");
         addCapability(capabilities, "dex.app_wake_block.persistent_state.v1", true, true, "wake-block writes atomic disk snapshot after original-state capture and each touched AppOps/standby apply");

@@ -75,8 +75,8 @@
 #define MAX_CACHE_PIDS 256
 #define LOGGER_ENTRY_MAX_LEN 5120
 #define LOG_ID_EVENTS 2
-#define CGFREEZER_VERSION "r482-wchan-confirm-api28-r28c"
-#define CGFREEZER_PROTOCOL "line-v8-wchan-confirm-r482"
+#define CGFREEZER_VERSION "r485-backend-select-cache-api28-r28c"
+#define CGFREEZER_PROTOCOL "line-v9-backend-select-r485"
 #define MAX_UID_PATHS 128
 #define MAX_UID_PIDS 512
 #define MAX_DAEMON_CHILDREN 64
@@ -158,8 +158,21 @@ static unsigned long g_stat_scan = 0;
 static char g_daemon_last_command[64] = {0};
 static char g_daemon_last_error[160] = "none";
 
+typedef enum {
+    CGFB_UNKNOWN = 0,
+    CGFB_V2 = 1,
+    CGFB_V1 = 2,
+    CGFB_NONE = 3
+} CgFreezeBackend;
+
+static CgFreezeBackend g_freeze_backend = CGFB_UNKNOWN;
+static char g_freeze_backend_reason[96] = "unprobed";
+static char g_freeze_backend_v1_mount[MAX_PATH_LEN] = {0};
+static long g_freeze_backend_probe_ms = 0;
+static int g_freeze_backend_logged = 0;
+
 static const char *cgfreezer_caps(void) {
-    return "check-root,backend-probe,scan,freeze,freeze-package-single-request-v1,kill-package-live-rescan-v1,pidfd-signal-optional-v1,thaw,thaw-uid-emergency-v1,binder-freeze,binder-info,subscribe-logd,pid-cache,uid-cache,cgroup-v2-events,cgroup-v2-uid-root-fallback,cgroup-v1-freezer,daemon-parent-control-v1,daemon-stats-v1,daemon-stats-detail-v1,last-error-v1,daemon-control-plain-lines-v2,kill-report-v2,batch-pid-list-v1,proc-snapshot-v1,pidfd-kill-v1,cgroup-kill-fastpath-v1,cgroup-wchan-confirm-v1,proc-wchan-v1,uid-wchan-v1";
+    return "check-root,backend-probe,scan,freeze,freeze-package-single-request-v1,kill-package-live-rescan-v1,pidfd-signal-optional-v1,thaw,thaw-uid-emergency-v1,binder-freeze,binder-info,subscribe-logd,pid-cache,uid-cache,cgroup-v2-events,cgroup-v2-uid-root-fallback,cgroup-v1-freezer,daemon-parent-control-v1,daemon-stats-v1,daemon-stats-detail-v1,last-error-v1,daemon-control-plain-lines-v2,kill-report-v2,batch-pid-list-v1,proc-snapshot-v1,pidfd-kill-v1,cgroup-kill-fastpath-v1,cgroup-wchan-confirm-v1,proc-wchan-v1,uid-wchan-v1,backend-select-cache-v1";
 }
 
 static void on_signal(int sig) {
@@ -497,6 +510,168 @@ static int write_pid_to_procs(const char *procs_path, pid_t pid) {
     return write_file(procs_path, buf);
 }
 
+static const char *cgfb_name(CgFreezeBackend b) {
+    switch (b) {
+        case CGFB_V2: return "v2";
+        case CGFB_V1: return "v1";
+        case CGFB_NONE: return "none";
+        default: return "unknown";
+    }
+}
+
+static bool cgfb_v2_global_available(char *reason, size_t reason_cap) {
+    if (access(CGROUP_ROOT, R_OK) != 0) {
+        if (reason && reason_cap) snprintf(reason, reason_cap, "v2_root_missing_errno_%d", errno);
+        return false;
+    }
+    if (access(CGROUP_ROOT "/cgroup.controllers", R_OK) != 0) {
+        if (reason && reason_cap) snprintf(reason, reason_cap, "v2_controllers_missing_errno_%d", errno);
+        return false;
+    }
+    if (reason && reason_cap) snprintf(reason, reason_cap, "v2_controllers_readable");
+    return true;
+}
+
+static bool cgfb_v2_pid_available(pid_t pid, char *freeze_path, size_t path_cap, char *reason, size_t reason_cap) {
+    char path[MAX_PATH_LEN];
+    int pr = build_freeze_path_from_pid(pid, path, sizeof(path));
+    if (pr != 0) {
+        if (reason && reason_cap) snprintf(reason, reason_cap, "v2_path_resolve_%d", pr);
+        return false;
+    }
+    char events_path[MAX_PATH_LEN];
+    events_path_for_freeze(path, events_path, sizeof(events_path));
+    if (access(path, R_OK|W_OK) != 0) {
+        if (reason && reason_cap) snprintf(reason, reason_cap, "v2_freeze_not_rw_errno_%d", errno);
+        return false;
+    }
+    if (access(events_path, R_OK) != 0) {
+        if (reason && reason_cap) snprintf(reason, reason_cap, "v2_events_not_readable_errno_%d", errno);
+        return false;
+    }
+    if (freeze_path && path_cap) snprintf(freeze_path, path_cap, "%s", path);
+    if (reason && reason_cap) snprintf(reason, reason_cap, "v2_pid_cgroup_freeze_rw");
+    return true;
+}
+
+static bool cgfb_v1_global_available(char *mount_out, size_t mount_cap, char *reason, size_t reason_cap) {
+    char mount[MAX_PATH_LEN] = {0};
+    if (find_v1_freezer_mount(mount, sizeof(mount)) != 0) {
+        if (reason && reason_cap) snprintf(reason, reason_cap, "v1_mount_missing");
+        return false;
+    }
+    char group_dir[MAX_PATH_LEN], group_procs[MAX_PATH_LEN], group_state[MAX_PATH_LEN];
+    snprintf(group_dir, sizeof(group_dir), "%s/speedbackup_frozen", mount);
+    if (mkdir_p(group_dir, 0755) != 0) {
+        if (reason && reason_cap) snprintf(reason, reason_cap, "v1_group_mkdir_errno_%d", errno);
+        return false;
+    }
+    snprintf(group_procs, sizeof(group_procs), "%.*s/cgroup.procs", (int)(sizeof(group_procs) - 32), group_dir);
+    snprintf(group_state, sizeof(group_state), "%.*s/freezer.state", (int)(sizeof(group_state) - 32), group_dir);
+    if (access(group_procs, W_OK) != 0) {
+        if (reason && reason_cap) snprintf(reason, reason_cap, "v1_group_procs_not_writable_errno_%d", errno);
+        return false;
+    }
+    if (access(group_state, W_OK|R_OK) != 0) {
+        if (reason && reason_cap) snprintf(reason, reason_cap, "v1_group_state_not_rw_errno_%d", errno);
+        return false;
+    }
+    if (mount_out && mount_cap) snprintf(mount_out, mount_cap, "%s", mount);
+    if (reason && reason_cap) snprintf(reason, reason_cap, "v1_mount_group_rw");
+    return true;
+}
+
+static bool cgfb_v1_pid_available(pid_t pid, char *mount_out, size_t mount_cap, char *reason, size_t reason_cap) {
+    char mount[MAX_PATH_LEN] = {0};
+    char rel[1024] = {0};
+    char r1[96] = {0};
+    if (!cgfb_v1_global_available(mount, sizeof(mount), r1, sizeof(r1))) {
+        if (reason && reason_cap) snprintf(reason, reason_cap, "%s", r1[0] ? r1 : "v1_unavailable");
+        return false;
+    }
+    if (parse_v1_freezer_relpath(pid, rel, sizeof(rel)) != 0) {
+        if (reason && reason_cap) snprintf(reason, reason_cap, "v1_pid_no_freezer_controller");
+        return false;
+    }
+    if (mount_out && mount_cap) snprintf(mount_out, mount_cap, "%s", mount);
+    if (reason && reason_cap) snprintf(reason, reason_cap, "v1_pid_freezer_controller_rw");
+    return true;
+}
+
+static CgFreezeBackend cgfb_detect_global(char *reason, size_t reason_cap, char *v1_mount, size_t v1_mount_cap) {
+    char r2[96] = {0};
+    char r1[96] = {0};
+    if (v1_mount && v1_mount_cap) v1_mount[0] = '\0';
+    if (cgfb_v2_global_available(r2, sizeof(r2))) {
+        if (reason && reason_cap) snprintf(reason, reason_cap, "%s", r2);
+        return CGFB_V2;
+    }
+    if (cgfb_v1_global_available(v1_mount, v1_mount_cap, r1, sizeof(r1))) {
+        if (reason && reason_cap) snprintf(reason, reason_cap, "v2_unavailable_%s_v1_%s", r2[0] ? r2 : "unknown", r1[0] ? r1 : "ok");
+        return CGFB_V1;
+    }
+    if (reason && reason_cap) snprintf(reason, reason_cap, "no_v2_%s_no_v1_%s", r2[0] ? r2 : "unknown", r1[0] ? r1 : "unknown");
+    return CGFB_NONE;
+}
+
+static CgFreezeBackend cgfb_ensure_global(bool emit_log) {
+    if (g_freeze_backend != CGFB_UNKNOWN) return g_freeze_backend;
+    long start = now_ms();
+    char reason[96] = {0};
+    char v1_mount[MAX_PATH_LEN] = {0};
+    CgFreezeBackend b = cgfb_detect_global(reason, sizeof(reason), v1_mount, sizeof(v1_mount));
+    g_freeze_backend = b;
+    snprintf(g_freeze_backend_reason, sizeof(g_freeze_backend_reason), "%s", reason[0] ? reason : "unknown");
+    snprintf(g_freeze_backend_v1_mount, sizeof(g_freeze_backend_v1_mount), "%s", v1_mount[0] ? v1_mount : "-");
+    g_freeze_backend_probe_ms = now_ms() - start;
+    if (emit_log && !g_freeze_backend_logged) {
+        printf("CGFREEZER_BACKEND_SELECT ok=%s preferred=%s reason=", b != CGFB_NONE ? "true" : "false", cgfb_name(b));
+        sanitize_print(g_freeze_backend_reason);
+        printf(" v1Mount="); sanitize_print(g_freeze_backend_v1_mount[0] ? g_freeze_backend_v1_mount : "-");
+        printf(" elapsedMs=%ld cache=true\n", g_freeze_backend_probe_ms);
+        g_freeze_backend_logged = 1;
+    }
+    return b;
+}
+
+static CgFreezeBackend cgfb_select_for_pid(pid_t pid, bool emit_log) {
+    CgFreezeBackend preferred = cgfb_ensure_global(emit_log);
+    char reason[96] = {0};
+    char path[MAX_PATH_LEN] = {0};
+    char mount[MAX_PATH_LEN] = {0};
+    if (preferred == CGFB_V2) {
+        if (cgfb_v2_pid_available(pid, path, sizeof(path), reason, sizeof(reason))) return CGFB_V2;
+        char v1_reason[96] = {0};
+        if (cgfb_v1_pid_available(pid, mount, sizeof(mount), v1_reason, sizeof(v1_reason))) {
+            if (emit_log) {
+                printf("CGFREEZER_BACKEND_SELECT ok=true preferred=v1 reason=v2_pid_unavailable_v1_fallback pid=%d v2Reason=", pid);
+                sanitize_print(reason[0] ? reason : "unknown");
+                printf(" v1Reason="); sanitize_print(v1_reason[0] ? v1_reason : "ok");
+                printf(" v1Mount="); sanitize_print(mount[0] ? mount : "-");
+                printf(" cacheFallback=pid-local\n");
+            }
+            return CGFB_V1;
+        }
+        if (emit_log) {
+            printf("CGFREEZER_BACKEND_SELECT ok=false preferred=none reason=v2_pid_unavailable_no_v1 pid=%d v2Reason=", pid);
+            sanitize_print(reason[0] ? reason : "unknown");
+            printf(" v1Reason="); sanitize_print(v1_reason[0] ? v1_reason : "unknown");
+            printf("\n");
+        }
+        return CGFB_NONE;
+    }
+    if (preferred == CGFB_V1) {
+        if (cgfb_v1_pid_available(pid, mount, sizeof(mount), reason, sizeof(reason))) return CGFB_V1;
+        if (emit_log) {
+            printf("CGFREEZER_BACKEND_SELECT ok=false preferred=none reason=v1_pid_unavailable pid=%d v1Reason=", pid);
+            sanitize_print(reason[0] ? reason : "unknown");
+            printf("\n");
+        }
+        return CGFB_NONE;
+    }
+    return CGFB_NONE;
+}
+
 static int cmd_backend_probe(void) {
     long start = now_ms();
     bool v2_root = access(CGROUP_ROOT, R_OK) == 0;
@@ -504,12 +679,17 @@ static int cmd_backend_probe(void) {
     char controllers[4096] = {0};
     if (v2_controllers) read_file(CGROUP_ROOT "/cgroup.controllers", controllers, sizeof(controllers));
     char v1_mount[MAX_PATH_LEN] = {0};
-    bool v1_ok = find_v1_freezer_mount(v1_mount, sizeof(v1_mount)) == 0;
+    bool v1_ok = cgfb_v1_global_available(v1_mount, sizeof(v1_mount), NULL, 0);
+    char preferred_reason[96] = {0};
+    char preferred_v1_mount[MAX_PATH_LEN] = {0};
+    CgFreezeBackend preferred = cgfb_detect_global(preferred_reason, sizeof(preferred_reason), preferred_v1_mount, sizeof(preferred_v1_mount));
     const char *binder_dev = NULL;
     int bfd = open_binder_device(&binder_dev);
     bool binder_ok = bfd >= 0;
     if (bfd >= 0) close(bfd);
-    printf("CGFREEZER_BACKEND_PROBE ok=true v2Root=%s v2ControllersReadable=%s controllers=", v2_root ? "true" : "false", v2_controllers ? "true" : "false");
+    printf("CGFREEZER_BACKEND_PROBE ok=true preferred=%s preferredReason=", cgfb_name(preferred));
+    sanitize_print(preferred_reason[0] ? preferred_reason : "unknown");
+    printf(" v2Root=%s v2ControllersReadable=%s controllers=", v2_root ? "true" : "false", v2_controllers ? "true" : "false");
     sanitize_print(controllers);
     printf(" v1Freezer=%s v1Mount=", v1_ok ? "true" : "false"); sanitize_print(v1_ok ? v1_mount : "-");
     bool cgroup_kill_root = access(CGROUP_ROOT "/cgroup.kill", W_OK) == 0;
@@ -518,7 +698,6 @@ static int cmd_backend_probe(void) {
     printf(" elapsedMs=%ld\n", now_ms() - start);
     return 0;
 }
-
 static int cmd_freeze_pid_v1(pid_t pid, int timeout_ms) {
     long start = now_ms();
     int uid = parse_status_uid(pid);
@@ -1357,9 +1536,15 @@ static int cmd_freeze_pid_v2(pid_t pid, int timeout_ms) {
 }
 
 static int cmd_freeze_pid(pid_t pid, int timeout_ms) {
-    int rc = cmd_freeze_pid_v2(pid, timeout_ms);
-    if (rc == 0) return 0;
-    return cmd_freeze_pid_v1(pid, timeout_ms);
+    CgFreezeBackend b = cgfb_select_for_pid(pid, true);
+    if (b == CGFB_V2) return cmd_freeze_pid_v2(pid, timeout_ms);
+    if (b == CGFB_V1) return cmd_freeze_pid_v1(pid, timeout_ms);
+    long start = now_ms();
+    int uid = parse_status_uid(pid);
+    printf("CGFREEZER_FREEZE_DONE ok=false pid=%d uid=%d backend=none reason=no_freezer_backend preferred=%s globalReason=", pid, uid, cgfb_name(g_freeze_backend));
+    sanitize_print(g_freeze_backend_reason[0] ? g_freeze_backend_reason : "unknown");
+    printf(" elapsedMs=%ld\n", now_ms() - start);
+    return 30;
 }
 
 
@@ -2327,7 +2512,7 @@ static int daemon_cmd_class(const char *cmd) {
     if (strcmp(cmd, "KILL_PKG") == 0 || strcmp(cmd, "KILL_PID_LIST") == 0) return 3;
     if (strncmp(cmd, "THAW", 4) == 0) return 4;
     if (strcmp(cmd, "SCAN") == 0 || strcmp(cmd, "PROC_SNAPSHOT") == 0 || strcmp(cmd, "WCHAN_PID_LIST") == 0 || strcmp(cmd, "WCHAN_UID") == 0 || strcmp(cmd, "SUBSCRIBE") == 0) return 5;
-    if (strcmp(cmd, "HELLO") == 0 || strcmp(cmd, "CAPS") == 0 || strcmp(cmd, "PING") == 0 || strcmp(cmd, "STATUS") == 0 || strcmp(cmd, "STATS") == 0 || strcmp(cmd, "STATS_DETAIL") == 0 || strcmp(cmd, "LAST_ERROR") == 0) return 7;
+    if (strcmp(cmd, "HELLO") == 0 || strcmp(cmd, "CAPS") == 0 || strcmp(cmd, "PING") == 0 || strcmp(cmd, "STATUS") == 0 || strcmp(cmd, "STATS") == 0 || strcmp(cmd, "STATS_DETAIL") == 0 || strcmp(cmd, "LAST_ERROR") == 0 || strcmp(cmd, "BACKEND_PROBE") == 0) return 7;
     return 0;
 }
 
@@ -2396,13 +2581,15 @@ static bool handle_daemon_parent_command(int cfd, const char *line, bool *stop_o
         return true;
     }
     if (strcmp(cmd, "STATUS") == 0) {
-        dprintf(cfd, "CGFREEZER_DAEMON_STATUS ok=true version=%s pid=%d protocol=plain-lines-r253 lineProtocol=%s uptimeMs=%ld requests=%lu directRequests=%lu workerRequests=%lu activeChildren=%d socket=%s running=%d freeze=%lu freezePkg=%lu killPkg=%lu thaw=%lu scan=%lu lastCommand=%s lastError=%s hash=0 policy=facts-only\n",
+        dprintf(cfd, "CGFREEZER_DAEMON_STATUS ok=true version=%s pid=%d protocol=plain-lines-r253 lineProtocol=%s uptimeMs=%ld requests=%lu directRequests=%lu workerRequests=%lu activeChildren=%d socket=%s running=%d freeze=%lu freezePkg=%lu killPkg=%lu thaw=%lu scan=%lu lastCommand=%s lastError=%s backendPreferred=%s backendReason=%s backendProbeMs=%ld backendV1Mount=%s hash=0 policy=facts-only\n",
                 CGFREEZER_VERSION, getpid(), CGFREEZER_PROTOCOL,
                 g_daemon_started_ms > 0 ? now_ms() - g_daemon_started_ms : 0L,
                 g_daemon_requests, g_daemon_direct_requests, g_daemon_worker_requests,
                 g_daemon_active_children, g_daemon_socket_path[0] ? g_daemon_socket_path : "-", g_running ? 1 : 0,
                 g_stat_freeze, g_stat_freeze_pkg, g_stat_kill_pkg, g_stat_thaw, g_stat_scan,
-                g_daemon_last_command[0] ? g_daemon_last_command : "none", g_daemon_last_error[0] ? g_daemon_last_error : "none");
+                g_daemon_last_command[0] ? g_daemon_last_command : "none", g_daemon_last_error[0] ? g_daemon_last_error : "none",
+                cgfb_name(g_freeze_backend), g_freeze_backend_reason[0] ? g_freeze_backend_reason : "none",
+                g_freeze_backend_probe_ms, g_freeze_backend_v1_mount[0] ? g_freeze_backend_v1_mount : "-");
         dprintf(cfd, "CGFREEZER_DAEMON_STATUS_END ok=true rows=1\n");
         return true;
     }
@@ -2433,6 +2620,12 @@ static bool handle_daemon_parent_command(int cfd, const char *line, bool *stop_o
                 CGFREEZER_VERSION, getpid(), g_daemon_last_error[0] ? g_daemon_last_error : "none",
                 g_daemon_last_command[0] ? g_daemon_last_command : "none");
         dprintf(cfd, "CGFREEZER_DAEMON_LAST_ERROR_END ok=true rows=1\n");
+        return true;
+    }
+    if (strcmp(cmd, "BACKEND_PROBE") == 0) {
+        dprintf(cfd, "CGFREEZER_BACKEND_PROBE ok=true preferred=%s preferredReason=%s v1Mount=%s cache=true elapsedMs=%ld\n",
+                cgfb_name(g_freeze_backend), g_freeze_backend_reason[0] ? g_freeze_backend_reason : "none",
+                g_freeze_backend_v1_mount[0] ? g_freeze_backend_v1_mount : "-", g_freeze_backend_probe_ms);
         return true;
     }
     if (strcmp(cmd, "STOP") == 0 || strcmp(cmd, "EXIT") == 0) {
@@ -2500,8 +2693,16 @@ static int cmd_daemon(const char *sock_path) {
     memset(g_stat_detail_max_ms, 0, sizeof(g_stat_detail_max_ms));
     memset(g_stat_detail_last_ms, 0, sizeof(g_stat_detail_last_ms));
     snprintf(g_daemon_socket_path, sizeof(g_daemon_socket_path), "%s", sock_path);
+    g_freeze_backend = CGFB_UNKNOWN;
+    snprintf(g_freeze_backend_reason, sizeof(g_freeze_backend_reason), "unprobed");
+    g_freeze_backend_v1_mount[0] = '\0';
+    g_freeze_backend_probe_ms = 0;
+    g_freeze_backend_logged = 0;
+    (void)cgfb_ensure_global(true);
     printf("CGFREEZER_DAEMON_START ok=true version=%s pid=%d socket=", CGFREEZER_VERSION, getpid()); sanitize_print(sock_path);
-    printf(" protocol=%s parentControl=true\n", CGFREEZER_PROTOCOL);
+    printf(" protocol=%s parentControl=true backendPreferred=%s backendReason=", CGFREEZER_PROTOCOL, cgfb_name(g_freeze_backend));
+    sanitize_print(g_freeze_backend_reason[0] ? g_freeze_backend_reason : "none");
+    printf(" backendProbeMs=%ld\n", g_freeze_backend_probe_ms);
     while (g_running) {
         reap_children_nonblock();
         int cfd = accept4(fd, NULL, NULL, SOCK_CLOEXEC);

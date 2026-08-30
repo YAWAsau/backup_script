@@ -5,14 +5,14 @@ PKG="${1:-${PKG:-com.tencent.mobileqq}}"
 USER_ID="${2:-${USER_ID:-0}}"
 CLASSPATH_PATH="${CLASSPATH_PATH:-/data/backup_tools/classes.dex}"
 TOOLS_PATH="${TOOLS_PATH:-}"
-TEST_LOG_DIR="${TEST_LOG_DIR:-/data/local/tmp}"
+TEST_LOG_DIR="${TEST_LOG_DIR:-${PWD:-.}}"
 TEST_LOG_FILE="${TEST_LOG_FILE:-$TEST_LOG_DIR/dex_check.log}"
 TEST_SUMMARY_FILE="${TEST_SUMMARY_FILE:-$TEST_LOG_DIR/dex_full_test.summary}"
-DEX_CHECK_VERSION="v24.20.14-7.66-907-update-external-inbox-target-guard-r484-202607232022"
+DEX_CHECK_VERSION="v24.20.14-7.66-915-conf-template-sync-deadcode-r492-202607232022"
 BACKUP_WIFI_ENABLE="${BACKUP_WIFI_ENABLE:-1}"
 SB_SELFTEST_LEVEL="${SB_SELFTEST_LEVEL:-quick}"
 CHANGELOG_URL="${CHANGELOG_URL:-https://api.github.com/repos/XayahSuSuSu/Android-DataBackup/releases/latest}"
-SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-v24.20.14-7.66-907-update-external-inbox-target-guard-r484-202607232022}"
+SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-v24.20.14-7.66-915-conf-template-sync-deadcode-r492-202607232022}"
 SPEEDBACKUP_PATCH_BUILD="${SPEEDBACKUP_PATCH_BUILD:-}"
 PATH="/data/backup_tools:$(dirname "$CLASSPATH_PATH" 2>/dev/null):$PATH"
 export PATH
@@ -33,8 +33,22 @@ WARN=0
 FAIL=0
 HAD_CMD_STDERR=0
 CRITICAL_FAIL=0
+DEX_CHECK_TMPDIR="${DEX_CHECK_TMPDIR:-/data/local/tmp/.speedbackup_run_dexcheck_${$}}"
+mkdir -p "$DEX_CHECK_TMPDIR" 2>/dev/null || DEX_CHECK_TMPDIR="${TMPDIR:-/data/local/tmp}"
+case "$DEX_CHECK_TMPDIR" in /data/local/tmp/.speedbackup_run_*) DEX_CHECK_TMPDIR_OWN=1 ;; *) DEX_CHECK_TMPDIR_OWN=0 ;; esac
+TMPDIR="$DEX_CHECK_TMPDIR"
+SPEEDBACKUP_RUN_TMPDIR="$DEX_CHECK_TMPDIR"
+SPEEDBACKUP_CGROUP_FREEZER_SOCKET="$DEX_CHECK_TMPDIR/speedbackup_cgfreezerd.sock"
+SPEEDBACKUP_PROCESS_OBSERVER_BATCH_STATE_DIR="$DEX_CHECK_TMPDIR/.speedbackup_process_observer_batch_state"
+SPEEDBACKUP_WAKEBLOCK_STATE_DIR="$DEX_CHECK_TMPDIR/.speedbackup_wakeblock_state"
+SPEEDBACKUP_UID_NETBLOCK_STATE_DIR="$DEX_CHECK_TMPDIR/.speedbackup_uid_netblock_state"
+SPEEDBACKUP_CGROUP_FREEZER_STATE_FILE="$DEX_CHECK_TMPDIR/.speedbackup_cgroup_freezer_state"
+SPEEDBACKUP_NOTIFY_STATE_DIR="$DEX_CHECK_TMPDIR/.speedbackup_notify_state"
+export TMPDIR SPEEDBACKUP_RUN_TMPDIR SPEEDBACKUP_CGROUP_FREEZER_SOCKET SPEEDBACKUP_PROCESS_OBSERVER_BATCH_STATE_DIR SPEEDBACKUP_WAKEBLOCK_STATE_DIR SPEEDBACKUP_UID_NETBLOCK_STATE_DIR SPEEDBACKUP_CGROUP_FREEZER_STATE_FILE SPEEDBACKUP_NOTIFY_STATE_DIR
+cleanup_dexcheck_tmpdir(){ [ "${DEX_CHECK_TMPDIR_OWN:-0}" = 1 ] && rm -rf "$DEX_CHECK_TMPDIR" 2>/dev/null || true; }
+trap cleanup_dexcheck_tmpdir EXIT INT TERM
 mkdir -p "$TEST_LOG_DIR" 2>/dev/null
-: > "$TEST_LOG_FILE" 2>/dev/null || TEST_LOG_FILE="/data/local/tmp/dex_check_$$.log"
+: > "$TEST_LOG_FILE" 2>/dev/null || TEST_LOG_FILE="$DEX_CHECK_TMPDIR/dex_check_$$.log"
 : > "$TEST_LOG_FILE" 2>/dev/null
 : > "$TEST_SUMMARY_FILE" 2>/dev/null
 log(){ printf '%s\n' "$*" >> "$TEST_LOG_FILE" 2>/dev/null; }
@@ -69,7 +83,7 @@ stderr_has_unexpected(){
 	grep -vE '^[[:space:]]*$|(^|[[:space:]])HUMAN([[:space:]]|$)|^WARNING: linker:|^WARNING: linker64:' "$_file" 2>/dev/null | grep -q .
 }
 run_class(){
-	local _cls="$1" _out="/data/local/tmp/sb_dex_selftest_stdout_$$" _err="/data/local/tmp/sb_dex_selftest_stderr_$$" _rc
+	local _cls="$1" _out="${DEX_CHECK_TMPDIR:-/data/local/tmp}/sb_dex_selftest_stdout_$$" _err="${DEX_CHECK_TMPDIR:-/data/local/tmp}/sb_dex_selftest_stderr_$$" _rc
 	shift
 	{
 		echo ""
@@ -93,7 +107,7 @@ run_class(){
 	return "$_rc"
 }
 run_class_stdout(){
-	local _cls="$1" _out="/data/local/tmp/sb_dex_selftest_json_stdout_$$" _err="/data/local/tmp/sb_dex_selftest_json_stderr_$$" _rc
+	local _cls="$1" _out="${DEX_CHECK_TMPDIR:-/data/local/tmp}/sb_dex_selftest_json_stdout_$$" _err="${DEX_CHECK_TMPDIR:-/data/local/tmp}/sb_dex_selftest_json_stderr_$$" _rc
 	shift
 	{
 		echo ""
@@ -124,7 +138,7 @@ run_dex_quiet_stdout(){ run_class_quiet_stdout "$HIDDEN_CLASS" "$@"; }
 
 run_dex(){ run_class "$HIDDEN_CLASS" "$@"; }
 run_timeout_suppressed(){
-	local _label="$1" _timeout="$2" _tmp="/data/local/tmp/sb_dex_selftest_suppressed_$$" _pid _start _now _rc _bytes
+	local _label="$1" _timeout="$2" _tmp="${DEX_CHECK_TMPDIR:-/data/local/tmp}/sb_dex_selftest_suppressed_$$" _pid _start _now _rc _bytes
 	shift 2
 	"$@" >"$_tmp" 2>&1 &
 	_pid=$!
@@ -233,6 +247,8 @@ require_caps_json(){
             "dex.process_observer.restore_session_direct_start.v1",
             "dex.process_observer.restore_session_facts_cache.v1",
             "dex.process_observer.restore_action_policy_builder.v1",
+            "dex.process_observer.batch_cleanup_stale.v1",
+            "dex.tmp_state.run_tmpdir_scope.v1",
             "dex.process_observer.batch_stop_summary_tsv.v1",
 			"dex.app_wake_block.persistent_restore.v1",
 			"dex.uid_net_block.persistent_restore.v1",
@@ -346,6 +362,10 @@ _cg_bin="$(command -v cgfreezer 2>/dev/null)"; [ -n "$_cg_bin" ] || _cg_bin="/da
 if [ -x "$_cg_bin" ]; then
 	_cg_usage="$($_cg_bin 2>&1 | head -n 5)"
 	printf '%s\n' "$_cg_usage" | grep -F "proc-wchan" >/dev/null 2>&1 && ok "cgroup WCHAN native 指令" "present" || critical_fail "cgroup WCHAN native 指令" "missing proc-wchan，請重編/替換 cgfreezer"
+	_cg_backend_out="$($_cg_bin backend-probe 2>/dev/null | head -n 20)"; _cg_backend_rc=$?
+	printf '%s\n' "$_cg_backend_out" > "$TEST_LOG_DIR/cgfreezer_backend_probe.txt" 2>/dev/null
+	if [ "$_cg_backend_rc" -eq 0 ] && printf '%s\n' "$_cg_backend_out" | grep -q 'preferred='; then ok "cgroup backend selector 探測" "rc=0"; else critical_fail "cgroup backend selector 探測" "rc=$_cg_backend_rc"; fi
+	printf '%s\n' "$_cg_usage" | grep -F "backend-select-cache-v1" >/dev/null 2>&1 && ok "cgroup backend 快取 capability" "present" || critical_fail "cgroup backend 快取 capability" "missing backend-select-cache-v1，請重編/替換 cgfreezer"
 	_cg_wchan_out="$($_cg_bin proc-wchan -1 $$ any 2>/dev/null | head -n 80)"; _cg_wchan_rc=$?
 	printf '%s\n' "$_cg_wchan_out" > "$TEST_LOG_DIR/cgfreezer_wchan_smoke.txt" 2>/dev/null
 	if [ "$_cg_wchan_rc" -eq 0 ] && printf '%s\n' "$_cg_wchan_out" | grep -q 'CGFREEZER_WCHAN_DONE ok=true'; then ok "cgroup WCHAN 狀態確認" "rc=0"; else critical_fail "cgroup WCHAN 狀態確認" "rc=$_cg_wchan_rc"; fi

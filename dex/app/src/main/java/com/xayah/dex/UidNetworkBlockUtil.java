@@ -32,14 +32,31 @@ import dev.rikka.tools.refine.Refine;
  * not used by tools by default because it has stronger system firewall side effects.
  */
 final class UidNetworkBlockUtil {
-    static final String VERSION = "v1.0-r121-uid-netblock-direct";
+    static final String VERSION = "v1.1-r487-run-tmpdir-state-scope";
     private static final SimpleDateFormat TS = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US);
     private static final long PROCESS_START_MS = System.currentTimeMillis();
     private static final String PROCESS_SESSION_ID = android.os.Process.myPid() + "-" + PROCESS_START_MS;
     private static final AtomicInteger NEXT_TOKEN = new AtomicInteger(tokenSeed());
     private static final Map<Integer, NetBlockSession> SESSIONS = new HashMap<>();
-    private static final String STATE_DIR = "/data/local/tmp/.speedbackup_uid_netblock_state";
+    private static final String STATE_DIR = scopedPath("SPEEDBACKUP_UID_NETBLOCK_STATE_DIR", ".speedbackup_uid_netblock_state");
     private static final long STATE_TTL_MS = 24L * 60L * 60L * 1000L;
+
+
+    private static String scopedTmpDir() {
+        String run = System.getenv("SPEEDBACKUP_RUN_TMPDIR");
+        if (run != null && run.length() > 0) return run;
+        String tmp = System.getenv("TMPDIR");
+        if (tmp != null && tmp.contains(".speedbackup_run_") && tmp.length() > 0) return tmp;
+        return "/data/local/tmp/.speedbackup_run_dex_" + android.os.Process.myPid();
+    }
+
+    private static String scopedPath(String envName, String name) {
+        String env = System.getenv(envName);
+        if (env != null && env.length() > 0) return env;
+        File dir = new File(scopedTmpDir());
+        try { dir.mkdirs(); } catch (Throwable ignored) {}
+        return new File(dir, name).getAbsolutePath();
+    }
 
     private UidNetworkBlockUtil() {}
 

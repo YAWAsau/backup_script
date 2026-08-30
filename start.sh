@@ -36,14 +36,17 @@ if [ ! -f "$_sb_root/tools/tools.sh" ]; then
 fi
 MODDIR="$_sb_moddir"
 # 入口腳本自己的 log 目錄必須自行建立；不能引用 tools.sh 上一次 run 的 speed_debug 路徑。
-# r366: 全新解壓時 log/ 不存在也不得讓入口報錯；主路徑失敗才退到 /data/local/tmp/speedbackup_log。
+# r487: 入口 wrapper log 只寫入入口旁 log/；不可再 fallback 到 /data/local/tmp 根層。
 _log_dir="$_sb_entry_dir/log"
 if ! mkdir -p "$_log_dir" 2>/dev/null; then
-	_log_dir="/data/local/tmp/speedbackup_log"
-	mkdir -p "$_log_dir" 2>/dev/null || _log_dir="/data/local/tmp"
+	_log_dir=""
 fi
-logfile="$_log_dir/log_$(date +%Y-%m-%d_%H-%M).txt"
-: > "$logfile" 2>/dev/null || logfile="/dev/null"
+if [ -n "$_log_dir" ]; then
+	logfile="$_log_dir/log_$(date +%Y-%m-%d_%H-%M).txt"
+	: > "$logfile" 2>/dev/null || logfile="/dev/null"
+else
+	logfile="/dev/null"
+fi
 # 由入口腳本啟動時，trap 收尾訊息只寫 speed_debug，不刷終端，避免單獨恢復開頭出現 trap 訊息。
 export SPEEDBACKUP_ENTRY_QUIET_TRAP=1
 export SPEEDBACKUP_ENTRY_MODE="0"
