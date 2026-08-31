@@ -49,7 +49,7 @@ import java.util.concurrent.TimeUnit;
 import dev.rikka.tools.refine.Refine;
 
 public class HiddenApiUtil {
-    static final String VERSION = "v2.6.205-r487-run-tmpdir-state-scope build=v24.20.14-7.66-910-run-tmpdir-state-scope-r487-202607232022";
+    static final String VERSION = "v2.6.211-r501-canary-daemon-supervisor-keep build=v24.20.14-7.66-924-canary-daemon-supervisor-keep-r501-202607232022";
     /**
      * 單 JVM 批量命令期間的輕量快取。只快取系統層級固定資料或同一輪已讀 package metadata；
      * 不跨 JVM、不落檔，避免一致性風險。

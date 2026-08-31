@@ -37,6 +37,9 @@
 # SpeedBackup 464 r3: keep unified root daemon CLI entry and all members.
 -keep class com.xayah.dex.SpeedBackupRootDaemon { *; }
 
+# SpeedBackup r501: keep root daemon supervisor CLI entry; R8 may strip it because it is only invoked from tools.sh app_process.
+-keep class com.xayah.dex.DaemonSupervisorUtil { *; }
+
 # SpeedBackup r43: keep inventory helper used by HiddenApiUtil/root daemon.
 -keep class com.xayah.dex.AppInventoryUtil { *; }
 

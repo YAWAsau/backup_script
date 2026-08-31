@@ -21,7 +21,7 @@ import java.nio.charset.StandardCharsets;
  * streaming/network daemon, and install must run under Play UID.
  */
 public final class SpeedBackupRootDaemon {
-    public static final String VERSION = "v2.6.202-r474-facts-prefetch-cleanup dex=" + HiddenApiUtil.VERSION;
+    public static final String VERSION = "v2.6.207-r501-canary-daemon-supervisor-keep dex=" + HiddenApiUtil.VERSION;
     private static final int HOT_PROTOCOL_VERSION = 1;
 
     private SpeedBackupRootDaemon() {}
@@ -37,7 +37,9 @@ public final class SpeedBackupRootDaemon {
             System.exit(0);
         }
         if ("daemonunix".equals(cmd)) {
-            HiddenApiBypassBridge.installExemptionsOnce();
+            // r498: Android Canary can hang before READY while installing hidden-api exemptions
+            // on the long-lived root daemon startup path. Publish the AF_UNIX daemon first and
+            // initialize hidden-api exemptions lazily only for requests that actually need them.
             cmdDaemonUnix(args);
             System.exit(0);
         }
@@ -48,6 +50,9 @@ public final class SpeedBackupRootDaemon {
     private static void printUsage() {
         System.out.println("SpeedBackupRootDaemon " + VERSION);
         System.out.println("  capability: dex.root_unified_daemon.v1");
+        System.out.println("  capability: dex.root_daemon.ready_before_appstate_init.v1");
+        System.out.println("  capability: dex.root_daemon.ready_before_hiddenapi_init.v1");
+        System.out.println("  capability: dex.root_daemon.ready_before_hardening.v1");
         System.out.println("  capability: dex.display_power.root_daemon.v1");
         System.out.println("  capability: dex.app_inventory.snapshot.v1");
         System.out.println("  capability: dex.app_inventory.daemon_cache.v1");
@@ -134,27 +139,11 @@ public final class SpeedBackupRootDaemon {
             try { idleTimeoutMs = Math.max(1L, Long.parseLong(args[2])) * 1000L; } catch (Throwable ignored) {}
         }
         int ownerPid = args.length >= 4 ? parsePositiveInt(args[3], -1) : -1;
-        try {
-            AppStateEngine.initializeRuntime();
-        } catch (Throwable t) {
-            System.err.println("ROOT_DAEMON_APPSTATE_INIT_WARN reason=" + t.getClass().getSimpleName());
-        }
-        try {
-            String cleanup = AppWakeBlockUtil.cleanupStalePersistentStates("root-daemon-start");
-            if (cleanup != null && cleanup.trim().length() > 0 && !cleanup.contains(" stale=0 ")) {
-                System.err.print(cleanup);
-            }
-        } catch (Throwable t) {
-            System.err.println("APP_WAKE_BLOCK_PERSISTENT_CLEANUP_WARN reason=root-daemon-start exception=" + t.getClass().getSimpleName());
-        }
-        try {
-            String cleanup = UidNetworkBlockUtil.cleanupStalePersistentStates("root-daemon-start");
-            if (cleanup != null && cleanup.trim().length() > 0 && !cleanup.contains(" stale=0 ")) {
-                System.err.print(cleanup);
-            }
-        } catch (Throwable t) {
-            System.err.println("UID_NET_BLOCK_PERSISTENT_CLEANUP_WARN reason=root-daemon-start exception=" + t.getClass().getSimpleName());
-        }
+        // r497: Android Canary/SDK37+ may block in early Binder-backed AppState/bootstrap
+        // calls before the AF_UNIX daemon publishes READY. Do not perform optional cleanup or
+        // AppState runtime initialization on the startup path; hiddenapi inventory commands must
+        // be able to use the daemon even when AppState services are slow or unavailable.
+        // AppStateEngine still initializes lazily when appstate commands are actually handled.
         DaemonBootstrap.runUnixDaemon(
                 "SPEEDBACKUP_ROOT",
                 socketPath,
@@ -184,6 +173,7 @@ public final class SpeedBackupRootDaemon {
                 return;
             }
             if ("hiddenapi".equals(namespace)) {
+                HiddenApiBypassBridge.installExemptionsOnce();
                 handleHot(out, in, true);
                 return;
             }
@@ -192,6 +182,8 @@ public final class SpeedBackupRootDaemon {
                 return;
             }
             if ("appstate".equals(namespace)) {
+                // AppStateEngine initializes its Binder-backed services lazily per command.
+                // Keep daemon READY independent of hidden-api/AppState bootstrap on Canary.
                 AppStateUtil.handleRootDaemonConnection(in, out);
                 return;
             }

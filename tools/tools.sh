@@ -11,10 +11,10 @@ shell_language="zh-TW"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202608301500"
+backup_version="202608312000"
 # 固定用 GitHub release tag 作為線上更新比較基準；不要用每日 rebuild 日期，避免本地開發版被誤判舊版。
 speedbackup_release_tag="202607232022"
-speedbackup_patch_build="v24.20.14-7.66-915-conf-template-sync-deadcode-r492-202607232022"
+speedbackup_patch_build="v24.20.14-7.66-924-canary-daemon-supervisor-keep-r501-202607232022"
 # r222: 延續 r217/r219/r220 外科手術線；一次收斂 audit 剩餘低/中風險項目。
 # r222: WebDAV/SMB 只抽 UI/progress/fixed-items/filelist facade，不合併協議核心；JSON 只抽底層 helper，不改 app_details schema。
 # r222: Dex 不接管 JSON / app_details / 備份恢復規劃；C 只吃批量檔案事實操作；cgfreezerd 不動。
@@ -96,6 +96,7 @@ _speedbackup_legacy_tmpdir_prune_base() {
 	[[ $_removed -gt 0 ]] && _speedbackup_run_tmpdir_log "TMPDIR_LEGACY_MARKER_CLEANUP_OK removed=$_removed mode=r417"
 	return 0
 }
+
 
 _speedbackup_root_tmp_state_cleanup() {
 	local _reason="${1:-root-tmp-state-cleanup}" _out _rc _flat _base="${SPEEDBACKUP_TMP_BASE:-/data/local/tmp}"
@@ -5860,9 +5861,9 @@ _speedbackup_tool_sha_table() {
 	cat <<'SB_TOOL_SHA_TABLE'
 busybox 4d60ab3f5a59ebb2ca863f2f514e6924401b581e9b64f602665c008177626651
 cgfreezer 696468f10697dcf9385af307f0f84a68fcf15a52ec433496aa10879c1f2b35b3
-classes.dex b981a6e130e1595bc5d3729a549daa9869b85ee7fde9e98e28bcd7b0cb27eaec
+classes.dex 7a844a4445ff81fd012acaa0b3bbb504de39ef4c1befb622d6a4355c4d3483c1
 cmd 08da8ac23b6e99788fd3ce6c19c7b5a083b2ad48be35963a48d01d6ee7f3bb6d
-dex_check.sh 01392ce530c6505c391ffb368231f59ee6d7cf79cebd08f3d410c41d39b1d7c3
+dex_check.sh 857633531cb62d9f9bfaf7df25f24adaa4823ef4f263c1a8e8e11494038cd938
 eventwait 259059d2b274eb8c29814ee9900d6ec0f44d70a2cd71ac577a9f05c3a6b1b0c5
 filewatch 5d68e29180c8c791f4e531f8e6a39ef6689dfa2ea1e0c17e837770375588c4e5
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
@@ -14152,6 +14153,71 @@ _app_inventory_getlist_call() {
 
 appinventory_getlist() { _app_inventory_getlist_call "$@"; }
 
+
+# r497: Android Canary may return an empty AppInventory through hidden API / RootDaemon even
+# though PackageManager CLI is still usable. This fallback keeps appList generation usable and
+# avoids treating a clean Canary device or hidden-API visibility drift as a hard script failure.
+_applist_inventory_has_rows() {
+	awk '$1!="#META" && NF>=3 {found=1; exit} END{exit found?0:1}' 2>/dev/null
+}
+
+_pm_list_packages_for_user() {
+	local _user_id="${1:-0}" _mode="${2:-all}" _cmd
+	case $_mode in
+	user|third|thirdparty)
+		for _cmd in 			"cmd package list packages --user $_user_id -3" 			"cmd package list packages -3 --user $_user_id" 			"pm list packages --user $_user_id -3" 			"pm list packages -3 --user $_user_id"; do
+			eval "$_cmd" 2>/dev/null | sed -n 's/^package://p' | awk '{print $1}' | sed '/^[[:space:]]*$/d' && return 0
+		done
+		;;
+	*)
+		for _cmd in 			"cmd package list packages --user $_user_id" 			"pm list packages --user $_user_id"; do
+			eval "$_cmd" 2>/dev/null | sed -n 's/^package://p' | awk '{print $1}' | sed '/^[[:space:]]*$/d' && return 0
+		done
+		;;
+	esac
+	return 1
+}
+
+_applist_getlist_pm_fallback() {
+	local _targets="$1" _user_id="${USER_ID:-${user:-0}}" _all _third _out _pkg _rows=0 _oldifs
+	_all="$TMPDIR/.applist_pm_all_${$}_$RANDOM"
+	_third="$TMPDIR/.applist_pm_third_${$}_$RANDOM"
+	_out="$TMPDIR/.applist_pm_getlist_${$}_$RANDOM"
+	_pm_list_packages_for_user "$_user_id" all | awk 'NF && $0 ~ /^[A-Za-z0-9_.-]+$/ {print}' | sort -u > "$_all" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_pm_list_packages_for_user "$_user_id" user | awk 'NF && $0 ~ /^[A-Za-z0-9_.-]+$/ {print}' | sort -u > "$_third" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	{
+		printf '#META	defaultHome			pm-fallback
+'
+		printf '#META	defaultIme			pm-fallback
+'
+		while read -r _pkg; do
+			[[ -n $_pkg ]] || continue
+			printf '%s %s user
+' "$_pkg" "$_pkg"
+			_rows=$((_rows + 1))
+		done < "$_third"
+		_oldifs=$IFS
+		IFS=','
+		for _pkg in $_targets; do
+			IFS=$_oldifs
+			_pkg="$(printf '%s' "$_pkg" | tr -d ' 	
+')"
+			case $_pkg in ''|*[!A-Za-z0-9_.-]*|.*|*..*) IFS=','; continue ;; esac
+			if awk -v p="$_pkg" '$0==p{found=1; exit} END{exit found?0:1}' "$_all" 2>/dev/null; then
+				printf '%s %s system
+' "$_pkg" "$_pkg"
+				_rows=$((_rows + 1))
+			fi
+			IFS=','
+		done
+		IFS=$_oldifs
+	} > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_speed_debug_log "APP_INVENTORY_GETLIST_PM_FALLBACK user=$_user_id rows=$_rows targets=${_targets:-empty} mode=r497"
+	cat "$_out" 2>/dev/null
+	rm -f "$_all" "$_third" "$_out" 2>/dev/null
+	return 0
+}
+
 # r90: 單包 UID 查詢。restore 中只要 install/reinstall touched，就不再相信批量預掃 UID，
 # 直接向 RootDaemon/Dex AppInventory 讀 PackageManager 當下最新 UID。
 _app_inventory_pkg_uid_single_call() {
@@ -14914,6 +14980,7 @@ _sb_update_is_backup_root() {
 	[[ -f $_d/restore_settings.conf && -d $_d/tools ]] && return 0
 	return 1
 }
+
 
 _sb_update_path_is_external_inbox() {
 	# r484: Download/QQ file_recv are update-package inboxes only; never treat them as update targets.
@@ -17349,6 +17416,7 @@ _remote_filelist_has_any_rel() {
 	[[ -f $TMPDIR/.remote_files && -f $TMPDIR/.remote_filelist_ok ]] || return 1
 	awk -v a="$_a" -v b="$_b" '$0==a||$0==b{f=1;exit} END{exit f?0:1}' "$TMPDIR/.remote_files" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
+
 
 # r491: 流式恢復開頭校正 appList_network 與遠端實檔/metadata 的交集。
 # 規則：
@@ -28690,6 +28758,10 @@ Getlist() {
 	# r327: inventory one-call is still logged, but the user-facing "輸出包名" timer
 	# matches legacy scope: output + validation only.
 	_getlist_raw="$(appinventory_getlist "$_target_filter" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	if ! printf '%s\n' "$_getlist_raw" | _applist_inventory_has_rows; then
+		_speed_debug_log "APP_INVENTORY_GETLIST_EMPTY_FALLBACK reason=no_rows targets=${_target_filter:-empty} mode=r497"
+		_getlist_raw="$(_applist_getlist_pm_fallback "$_target_filter" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	fi
 	_meta="$(printf '%s\n' "$_getlist_raw" | awk -F '\t' '$1=="#META" && $2=="defaultHome"{print; exit}')"
 	_meta_ime="$(printf '%s\n' "$_getlist_raw" | awk -F '\t' '$1=="#META" && $2=="defaultIme"{print; exit}')"
 	Default_home_pkg="$(printf '%s\n' "$_meta" | awk -F '\t' '{print $3}')"
@@ -28741,8 +28813,15 @@ Getlist() {
 	_speed_debug_log "APPLIST_TIMER_SCOPE start=output_loop excludes=guide,target_csv,inventory_onecall mode=r327"
 	rm -f "$_target_system_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	[[ $Apk_info = "" ]] && {
-	echoRgb "appinfo輸出失敗,請截圖畫面回報作者" "0"
-	exit 2 ; } || Apk_info2="$(echo "$Apk_info" | cut -d' ' -f2)"
+		_speed_debug_log "APP_INVENTORY_GETLIST_EMPTY_OK user=${USER_ID:-${user:-0}} reason=no_user_or_whitelist_packages mode=r497"
+		echoRgb "未找到可列出的第三方或白名單系統應用，已生成空列表" "2"
+		Apk_info2=""
+		Apk_Quantity=0
+		endtime1="$(date -u "+%s")"
+		echoRgb "輸出包名耗時:$(hms $((endtime1 - starttime1)))" "1"
+		cat "$txt" > "$MODDIR/appList.txt" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		return 0
+	} || Apk_info2="$(echo "$Apk_info" | cut -d' ' -f2)"
 	Apk_Quantity="$(printf "%s\n" "$Apk_info" | awk 'END{print NR}')"
 	echoRgb "列出第三方應用......." "2"
 	i=0; rc=0; rd=0; Q=0; Qc=0; rb=0

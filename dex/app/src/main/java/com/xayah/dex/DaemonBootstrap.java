@@ -39,7 +39,10 @@ final class DaemonBootstrap {
                               boolean concurrentClients,
                               ClientHandler handler) {
         if (handler == null) throw new IllegalArgumentException("handler is null");
-        DaemonHardening.protectSelf(componentName);
+        // r499: Android Canary can stall before READY inside best-effort daemon hardening
+        // (notably Runtime.exec/renice on the root app_process startup path).  Socket bind
+        // and READY publication must be the first observable milestone; survival hardening is
+        // still useful, but must never block readiness.
         if (idleTimeoutMs <= 0L) throw new IllegalArgumentException("idleTimeoutMs must be > 0");
         if (ownerPid > 1 && readProcStarttime(ownerPid) == null) {
             throw new IllegalArgumentException("ownerPid is not alive: " + ownerPid);
@@ -94,6 +97,12 @@ final class DaemonBootstrap {
 
             System.out.println(readyLine);
             System.out.flush();
+
+            Thread hardening = new Thread(() -> {
+                try { DaemonHardening.protectSelf(componentName); } catch (Throwable ignored) {}
+            }, componentName.toLowerCase(java.util.Locale.ROOT) + "-daemon-hardening");
+            hardening.setDaemon(true);
+            try { hardening.start(); } catch (Throwable ignored) {}
 
             while (!closed.get()) {
                 LocalSocket client;

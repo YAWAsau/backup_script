@@ -8,11 +8,11 @@ TOOLS_PATH="${TOOLS_PATH:-}"
 TEST_LOG_DIR="${TEST_LOG_DIR:-${PWD:-.}}"
 TEST_LOG_FILE="${TEST_LOG_FILE:-$TEST_LOG_DIR/dex_check.log}"
 TEST_SUMMARY_FILE="${TEST_SUMMARY_FILE:-$TEST_LOG_DIR/dex_full_test.summary}"
-DEX_CHECK_VERSION="v24.20.14-7.66-915-conf-template-sync-deadcode-r492-202607232022"
+DEX_CHECK_VERSION="v24.20.14-7.66-924-canary-daemon-supervisor-keep-r501-202607232022"
 BACKUP_WIFI_ENABLE="${BACKUP_WIFI_ENABLE:-1}"
 SB_SELFTEST_LEVEL="${SB_SELFTEST_LEVEL:-quick}"
 CHANGELOG_URL="${CHANGELOG_URL:-https://api.github.com/repos/XayahSuSuSu/Android-DataBackup/releases/latest}"
-SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-v24.20.14-7.66-915-conf-template-sync-deadcode-r492-202607232022}"
+SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-v24.20.14-7.66-924-canary-daemon-supervisor-keep-r501-202607232022}"
 SPEEDBACKUP_PATCH_BUILD="${SPEEDBACKUP_PATCH_BUILD:-}"
 PATH="/data/backup_tools:$(dirname "$CLASSPATH_PATH" 2>/dev/null):$PATH"
 export PATH
@@ -194,6 +194,11 @@ require_caps_json(){
 			"dex.label_path_segment_safe.v1",
 			"dex.webdav.relpath_traversal_guard.v1",
 			"dex.root_unified_daemon.v1",
+			"dex.root_daemon.ready_before_appstate_init.v1",
+			"dex.root_daemon.ready_before_hiddenapi_init.v1",
+			"dex.root_daemon.ready_before_hardening.v1",
+			"dex.root_daemon.capability_signature.compilefix.v1",
+			"dex.daemon_supervisor.r8_keep.v1",
 			"hiddenapi.daemon.af_unix.v1",
 			"hiddenapi.force_stop_package_batch.daemon.v1",
 			"dex.app_inventory.snapshot.v1",
@@ -211,6 +216,9 @@ require_caps_json(){
 			"appstate.verify.vendor_classification.dex.v1",
 			"appstate.restore.vendor_classification.dex.v1",
 			"appstate.restore.permission_appop_vendor_classification.dex.v1",
+			"appstate.android17_runtime_permission_appop_package_fallback.v1",
+			"appstate.android17_location_appop_policy_classification.v1",
+			"appstate.verify.android17_platform_permission_policy.dex.v1",
 			"appstate.restore.special_access_vendor_classification.dex.v1",
 			"appstate.verify.default_dialer_vendor_classification.dex.v1",
 			"appstate.daemon.af_unix.v1",
@@ -365,7 +373,15 @@ if [ -x "$_cg_bin" ]; then
 	_cg_backend_out="$($_cg_bin backend-probe 2>/dev/null | head -n 20)"; _cg_backend_rc=$?
 	printf '%s\n' "$_cg_backend_out" > "$TEST_LOG_DIR/cgfreezer_backend_probe.txt" 2>/dev/null
 	if [ "$_cg_backend_rc" -eq 0 ] && printf '%s\n' "$_cg_backend_out" | grep -q 'preferred='; then ok "cgroup backend selector 探測" "rc=0"; else critical_fail "cgroup backend selector 探測" "rc=$_cg_backend_rc"; fi
-	printf '%s\n' "$_cg_usage" | grep -F "backend-select-cache-v1" >/dev/null 2>&1 && ok "cgroup backend 快取 capability" "present" || critical_fail "cgroup backend 快取 capability" "missing backend-select-cache-v1，請重編/替換 cgfreezer"
+		# r493: r485+ cgfreezer keeps backend-select-cache-v1 in the CAPS payload, not in the no-arg usage line.
+		# The no-arg usage is intentionally short, so fall back to checking the binary payload directly.
+		if printf '%s\n' "$_cg_usage" | grep -F "backend-select-cache-v1" >/dev/null 2>&1; then
+			ok "cgroup backend 快取 capability" "present usage"
+		elif grep -F "backend-select-cache-v1" "$_cg_bin" >/dev/null 2>&1; then
+			ok "cgroup backend 快取 capability" "present binary"
+		else
+			critical_fail "cgroup backend 快取 capability" "missing backend-select-cache-v1，請重編/替換 cgfreezer"
+		fi
 	_cg_wchan_out="$($_cg_bin proc-wchan -1 $$ any 2>/dev/null | head -n 80)"; _cg_wchan_rc=$?
 	printf '%s\n' "$_cg_wchan_out" > "$TEST_LOG_DIR/cgfreezer_wchan_smoke.txt" 2>/dev/null
 	if [ "$_cg_wchan_rc" -eq 0 ] && printf '%s\n' "$_cg_wchan_out" | grep -q 'CGFREEZER_WCHAN_DONE ok=true'; then ok "cgroup WCHAN 狀態確認" "rc=0"; else critical_fail "cgroup WCHAN 狀態確認" "rc=$_cg_wchan_rc"; fi

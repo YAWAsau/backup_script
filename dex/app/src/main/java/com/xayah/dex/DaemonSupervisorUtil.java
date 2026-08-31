@@ -19,7 +19,7 @@ public final class DaemonSupervisorUtil {
     public static void main(String[] args) throws Exception {
         if (args.length == 0 || "help".equals(args[0])) { usage(); return; }
         if ("version".equals(args[0]) || "--version".equals(args[0]) || "-v".equals(args[0])) {
-            System.out.println("DaemonSupervisorUtil v1.0 dex=" + HiddenApiUtil.VERSION);
+            System.out.println("DaemonSupervisorUtil v1.1-r501-keep dex=" + HiddenApiUtil.VERSION);
             return;
         }
         if (!"supervise".equals(args[0])) { usage(); System.exit(2); }

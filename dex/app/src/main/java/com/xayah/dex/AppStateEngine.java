@@ -61,7 +61,7 @@ import dev.rikka.tools.refine.Refine;
 public final class AppStateEngine {
     public static final int SCHEMA_VERSION = 2;
     public static final int DAEMON_PROTOCOL_VERSION = 1;
-    public static final String ENGINE_VERSION = "v1.3.107-r487-run-tmpdir-state-scope";
+    public static final String ENGINE_VERSION = "v1.3.115-r501-canary-daemon-supervisor-keep";
 
     static final Gson GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().create();
     static final Gson PRETTY_GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().setPrettyPrinting().create();
@@ -353,6 +353,14 @@ public final class AppStateEngine {
         addCapability(capabilities, "appstate.verify.vendor_classification.dex.v1", true, true, "VERIFY_VENDOR_CONSTRAINED emitted by Dex when all verify mismatches are vendor/platform-constrained AppOps or pruned legacy records");
         addCapability(capabilities, "appstate.restore.vendor_classification.dex.v1", true, true, "restoreAppStateBatch treats known platform/vendor-owned runtime and scoped AppOps as non-partial structured vendor-constrained successes");
         addCapability(capabilities, "appstate.restore.permission_appop_vendor_classification.dex.v1", true, true, "permissionAppOp restore classifies active IME INTERACT_ACROSS_PROFILES op=93 default-to-allowed policy drift as non-partial vendor constrained success");
+        addCapability(capabilities, "appstate.android17_runtime_permission_appop_package_fallback.v1", true, true, "Android 17 runtime location AppOps retry package-scope mode when uid-scope restore leaves effective mode ignored");
+        addCapability(capabilities, "appstate.android17_location_appop_policy_classification.v1", true, true, "Android 17 location AppOps effective ignored rows are classified as platform policy constrained after restore attempts uid+package scopes");
+        addCapability(capabilities, "dex.root_daemon.ready_before_appstate_init.v1", true, true, "Root daemon publishes READY before optional AppState cleanup/bootstrap to avoid Android Canary startup hangs");
+        addCapability(capabilities, "dex.root_daemon.ready_before_hiddenapi_init.v1", true, true, "Root daemon publishes READY before hidden-api exemption/bootstrap on Android Canary; HiddenApi initializes lazily per request");
+        addCapability(capabilities, "dex.root_daemon.ready_before_hardening.v1", true, true, "Root daemon publishes READY before best-effort daemon hardening on Android Canary; hardening runs after socket bind/READY");
+        addCapability(capabilities, "dex.root_daemon.capability_signature.compilefix.v1", true, true, "r500 compilefix: RootDaemon capability rows use the stable addCapability(JsonArray,String,boolean,boolean,String) signature");
+        addCapability(capabilities, "dex.daemon_supervisor.r8_keep.v1", true, true, "r501 keeps DaemonSupervisorUtil in release R8 output so app_process supervisor does not crash with ClassNotFoundException on Android Canary");
+        addCapability(capabilities, "appstate.verify.android17_platform_permission_policy.dex.v1", true, true, "Android 17 platform-retained privileged/system permission drift is classified as vendor/platform constrained during verify");
         addCapability(capabilities, "appstate.restore.special_access_vendor_classification.dex.v1", true, true, "restore specialAccess classifies platform/role-owned MANAGE_EXTERNAL_STORAGE and default dialer full-screen-intent drift as non-partial vendor constrained success");
         addCapability(capabilities, "appstate.verify.default_dialer_vendor_classification.dex.v1", true, true, "verify classifies default/system dialer platform-retained WRITE_SECURE_SETTINGS/INTERACT_ACROSS_USERS/full-screen-intent drift as vendor constrained");
         addCapability(capabilities, "appstate.appops_reset.integrated.v1", true, true, "package-scoped");
@@ -2083,7 +2091,13 @@ public final class AppStateEngine {
             boolean specialAccessOp = isSpecialAccessOp(op);
             boolean changeableGrant = isChangeablePermissionGrant(realPm, name, runtime, development);
             if (!requestedPermissions.contains(name)) {
-                report.note("permission", name, ResultCode.UNSUPPORTED, "permission not requested by installed package");
+                if (runtime || development) {
+                    report.success("permission", name,
+                            "skipped not requested by installed package; manifest drift after APK update");
+                } else {
+                    report.note("permission", name, ResultCode.UNSUPPORTED,
+                            "permission not requested by installed package");
+                }
                 continue;
             }
             // Legacy app_details sometimes marked install-time or special-access permissions
@@ -2221,18 +2235,60 @@ public final class AppStateEngine {
     private static boolean isVendorConstrainedImeCrossProfileAppOp(String packageName, String permissionName,
                                                                    int op, int expectedEffective,
                                                                    int actualEffective) {
-        // Android 16 / vendor frameworks can derive INTERACT_ACROSS_PROFILES for the active/system IME
-        // from profile and input-method policy. In field logs this restore mismatch appears in the
-        // permissionAppOp scoped writer as expectedEffective=MODE_DEFAULT and actualEffective=MODE_ALLOWED
-        // while the explicit package/uid scope is already restored. That matches verify-time vendor
-        // classification and must not make restoreAppStateBatch PARTIAL. Keep the older ignored->allowed
-        // tolerance too, because different ROMs can normalize the same policy-owned bit differently.
+        // Android 16/17 can derive INTERACT_ACROSS_PROFILES for the active/system IME
+        // from profile and input-method policy. Field logs show both default->allowed
+        // and allowed->default normalizations depending on framework build. This bit is
+        // platform-policy owned, not a durable package AppState item.
         if (!"android.permission.INTERACT_ACROSS_PROFILES".equals(permissionName)) return false;
         if (op != 93) return false;
         if (packageName == null || !packageName.contains("inputmethod")) return false;
-        if (actualEffective != AppOpsManagerHidden.MODE_ALLOWED) return false;
+        boolean actualPolicyOwned = actualEffective == AppOpsManagerHidden.MODE_ALLOWED
+                || actualEffective == AppOpsManagerHidden.MODE_DEFAULT;
+        if (!actualPolicyOwned) return false;
         return expectedEffective == AppOpsManagerHidden.MODE_DEFAULT
-                || expectedEffective == AppOpsManagerHidden.MODE_IGNORED;
+                || expectedEffective == AppOpsManagerHidden.MODE_IGNORED
+                || expectedEffective == AppOpsManagerHidden.MODE_ALLOWED;
+    }
+
+    private static boolean isAndroid17RuntimePermissionAppOpPackageFallback(String permissionName, int op,
+                                                                            int expectedEffective,
+                                                                            int actualEffective) {
+        if (Build.VERSION.SDK_INT < 37) return false;
+        if (actualEffective != AppOpsManagerHidden.MODE_IGNORED) return false;
+        if (!(expectedEffective == AppOpsManagerHidden.MODE_ALLOWED
+                || expectedEffective == AppOpsManagerHidden.MODE_FOREGROUND)) return false;
+        return isAndroid17LocationPermissionAppOp(permissionName, op);
+    }
+
+    private static boolean isAndroid17LocationPermissionAppOp(String permissionName, int op) {
+        if (Build.VERSION.SDK_INT < 37) return false;
+        if (!("android.permission.ACCESS_FINE_LOCATION".equals(permissionName)
+                || "android.permission.ACCESS_COARSE_LOCATION".equals(permissionName))) return false;
+        return op == 0 || op == 1;
+    }
+
+    private static boolean isAndroid17LocationEffectivePolicyConstrained(String permissionName, int op,
+                                                                         int expectedEffective,
+                                                                         int actualEffective) {
+        if (!isAndroid17LocationPermissionAppOp(permissionName, op)) return false;
+        if (actualEffective != AppOpsManagerHidden.MODE_IGNORED) return false;
+        return expectedEffective == AppOpsManagerHidden.MODE_ALLOWED
+                || expectedEffective == AppOpsManagerHidden.MODE_FOREGROUND;
+    }
+
+    private static boolean isAndroid17LocationVerifyEffectivePolicyMismatch(String path,
+                                                                            JsonElement expected,
+                                                                            JsonElement actual,
+                                                                            String message) {
+        if (Build.VERSION.SDK_INT < 37) return false;
+        if (!"effective mode mismatch".equals(message)) return false;
+        if (!("permissions.android.permission.ACCESS_FINE_LOCATION.appOp.appOpMode".equals(path)
+                || "permissions.android.permission.ACCESS_COARSE_LOCATION.appOp.appOpMode".equals(path))) {
+            return false;
+        }
+        if (!jsonModeIs(actual, AppOpsManagerHidden.MODE_IGNORED)) return false;
+        return jsonModeIs(expected, AppOpsManagerHidden.MODE_ALLOWED)
+                || jsonModeIs(expected, AppOpsManagerHidden.MODE_FOREGROUND);
     }
 
     private static boolean isDefaultOrSystemDialerPackage(String packageName) {
@@ -2277,13 +2333,40 @@ public final class AppStateEngine {
             if (modeEquivalent(expectedEffective, actualEffective)) {
                 report.success(category, key, "op=" + op + " uidMode=" + expectedEffective
                         + " effective=" + actualEffective);
+            } else if (isAndroid17RuntimePermissionAppOpPackageFallback(key, op, expectedEffective, actualEffective)) {
+                AppOpsCompat.setPackageModeIfNeeded(appOps, op, uid, packageName, expectedEffective);
+                int fallbackEffective = readEffectiveModeWithRetry(appOps, op, uid, packageName, expectedEffective);
+                if (modeEquivalent(expectedEffective, fallbackEffective)) {
+                    report.success(category, key, "op=" + op
+                            + " uidMode=" + expectedEffective
+                            + " packageModeFallback=" + expectedEffective
+                            + " initialEffective=" + actualEffective
+                            + " effective=" + fallbackEffective
+                            + " strategy=runtime_permission_uid_package_fallback"
+                            + " android17=true mode=r494");
+                } else if (isAndroid17LocationEffectivePolicyConstrained(key, op, expectedEffective, fallbackEffective)) {
+                    report.vendorConstrainedSuccess(category, key, "op=" + op
+                            + " expectedEffective=" + expectedEffective
+                            + " actualEffective=" + fallbackEffective
+                            + " initialEffective=" + actualEffective
+                            + " strategy=runtime_permission_uid_package_fallback"
+                            + " android17=true vendorConstrained=true"
+                            + " reason=android17_location_effective_mode_policy mode=r496");
+                } else {
+                    report.mismatch(category, key, "op=" + op
+                            + " expectedEffective=" + expectedEffective
+                            + " actualEffective=" + fallbackEffective
+                            + " initialEffective=" + actualEffective
+                            + " strategy=runtime_permission_uid_package_fallback"
+                            + " android17=true");
+                }
             } else if (isVendorConstrainedImeCrossProfileAppOp(packageName, key, op, expectedEffective, actualEffective)) {
                 report.vendorConstrainedSuccess(category, key,
                         "op=" + op
                                 + " expectedEffective=" + expectedEffective
                                 + " actualEffective=" + actualEffective
                                 + " strategy=runtime_permission_uid"
-                                + " vendorConstrained=true reason=platform_owned_active_ime_profile_appop mode=r373");
+                                + " vendorConstrained=true reason=platform_owned_active_ime_profile_appop mode=r494");
             } else {
                 report.mismatch(category, key, "op=" + op
                         + " expectedEffective=" + expectedEffective
@@ -2547,8 +2630,32 @@ public final class AppStateEngine {
         // This is platform policy owned by profile/input-method services, not a durable
         // package AppState bit that root restore can force across users/ROMs.
         if ("permissions.android.permission.INTERACT_ACROSS_PROFILES.appOp.appOpMode".equals(path)
-                && jsonModeIs(expected, 3) && jsonModeIs(actual, 0)
-                && "effective mode mismatch".equals(message)) return true;
+                && packageName != null && packageName.contains("inputmethod")
+                && "effective mode mismatch".equals(message)) {
+            if ((jsonModeIs(expected, 3) && jsonModeIs(actual, 0))
+                    || (jsonModeIs(expected, 0) && jsonModeIs(actual, 3))) return true;
+        }
+        if (isAndroid17LocationVerifyEffectivePolicyMismatch(path, expected, actual, message)) return true;
+        if (isAndroid17PlatformPermissionPolicyMismatch(packageName, path, expected, actual, message)) return true;
+        return false;
+    }
+
+    private static boolean isAndroid17PlatformPermissionPolicyMismatch(String packageName, String path,
+                                                                       JsonElement expected, JsonElement actual,
+                                                                       String message) {
+        if (Build.VERSION.SDK_INT < 37) return false;
+        if (!"value mismatch".equals(message)) return false;
+        if (!jsonBooleanIs(expected, false) || !jsonBooleanIs(actual, true)) return false;
+        if (packageName == null) return false;
+        if ("com.google.android.verifier".equals(packageName)) {
+            return "permissions.android.permission.INTERACT_ACROSS_USERS.granted".equals(path);
+        }
+        if ("com.google.android.as.oss".equals(packageName)
+                || "com.google.android.as".equals(packageName)
+                || packageName.startsWith("com.google.android.as.")) {
+            return "permissions.android.permission.WRITE_SECURE_SETTINGS.granted".equals(path)
+                    || "permissions.android.permission.MANAGE_VIRTUAL_MACHINE.granted".equals(path);
+        }
         return false;
     }
 
@@ -2600,6 +2707,7 @@ public final class AppStateEngine {
             JsonObject e = entry.getValue();
             int op = intMember(e, "appOp", AppOpsManagerHidden.OP_NONE);
             boolean runtime = booleanMember(e, "runtime", false);
+            boolean development = booleanMember(e, "development", false);
             boolean legacySpecialOrNonSnapshot = isSpecialAccessOp(op)
                     || isNonRestorablePermissionAppOp(name, op)
                     || (runtime && !isSnapshotPermissionName(name));
@@ -2609,6 +2717,13 @@ public final class AppStateEngine {
                     // Old app_details can carry special-access/install-time permissions in
                     // the permissions array. New schema intentionally emits those through
                     // specialAccess/other AppOps or omits non-restorable grant rows.
+                    continue;
+                }
+                if (runtime || development) {
+                    // If a newer installed APK no longer requests a runtime/development
+                    // permission that existed in the backup, Android cannot restore it.
+                    // The restore path already records this as UNSUPPORTED; verify should
+                    // not convert package manifest drift into an AppState mismatch.
                     continue;
                 }
                 addMismatch(mismatches, "permissions." + name, e, null, "missing permission record");
