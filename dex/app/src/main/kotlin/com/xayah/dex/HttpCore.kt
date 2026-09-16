@@ -11,6 +11,8 @@ import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 import java.util.Locale
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -148,6 +150,22 @@ object HttpCore {
         private val keepAlivePool = ConcurrentHashMap<ConnKey, PooledConn>()
         private val pathModeCache = ConcurrentHashMap<ConnKey, PathMode>()
         private val closing = AtomicBoolean(false)
+        // Per-request-thread response pacing hint. WebDavUtil consumes this only after
+        // replay-safe control requests; streaming PUT remains single-shot.
+        private val lastRetryAfterMs = ThreadLocal<Long>()
+        private val lastLocalPolicyReject = ThreadLocal<Boolean>()
+
+        fun consumeLastRetryAfterMs(): Long {
+            val value = lastRetryAfterMs.get() ?: 0L
+            lastRetryAfterMs.set(0L)
+            return value
+        }
+
+        fun consumeLastLocalPolicyReject(): Boolean {
+            val value = lastLocalPolicyReject.get() == true
+            lastLocalPolicyReject.set(false)
+            return value
+        }
 
         fun closeAll() {
             closing.set(true)
@@ -168,23 +186,51 @@ object HttpCore {
             canReplayBody: Boolean = false,
             retryOnConnectionFailure: () -> Boolean = { true },
             closeConnectionOnNon2xx: Boolean = false,
+            responseHeadTimeoutMs: Int = LONG_TRANSFER_TIMEOUT_MS,
+            onRequestBodyComplete: () -> Unit = {},
+            onConnection: (PooledConn) -> Unit = {},
             responseConsumer: (Int, Map<String, List<String>>, InputStream) -> Unit = { code, respHeaders, input ->
                 if (code in 200..299) discardResponseBody(respHeaders, input)
                 else discardErrorResponseBody(respHeaders, input)
             }
         ): Int {
             var currentUrl = url
+            var currentUser = user
+            var currentPass = pass
             var redirects = 0
+            lastRetryAfterMs.set(0L)
+            lastLocalPolicyReject.set(false)
             while (true) {
                 val (code, location) = requestOnce(
-                    method, currentUrl, user, pass, headers, bodyWriter, canReplayBody,
-                    retryOnConnectionFailure, closeConnectionOnNon2xx, responseConsumer
+                    method, currentUrl, currentUser, currentPass, headers, bodyWriter, canReplayBody,
+                    retryOnConnectionFailure, closeConnectionOnNon2xx, responseHeadTimeoutMs, onRequestBodyComplete, onConnection, responseConsumer
                 )
                 if (!followRedirects || code !in intArrayOf(301, 302, 303, 307, 308)) return code
                 if (!canReplayBody && method !in setOf("GET", "HEAD")) return code
                 if (redirects++ >= maxRedirects) return code
                 val loc = location ?: return code
-                currentUrl = URL(URL(currentUrl), loc).toString()
+                val from = URL(currentUrl)
+                val to = URL(from, loc)
+                if (currentUser.isNotEmpty() || currentPass.isNotEmpty()) {
+                    val fromScheme = from.protocol.lowercase(Locale.US)
+                    val toScheme = to.protocol.lowercase(Locale.US)
+                    val fromPort = if (from.port > 0) from.port else if (fromScheme == "https") 443 else 80
+                    val toPort = if (to.port > 0) to.port else if (toScheme == "https") 443 else 80
+                    val sameHost = from.host.equals(to.host, ignoreCase = true)
+                    val samePort = fromPort == toPort
+                    if (fromScheme == "https" && toScheme == "http") {
+                        lastLocalPolicyReject.set(true)
+                        throw IOException("HTTP_REDIRECT_AUTH_DOWNGRADE_REJECT from=${from.protocol}://${from.host}:$fromPort to=${to.protocol}://${to.host}:$toPort")
+                    }
+                    // Preserve authenticated redirects only on the same normalized origin. Cross-host/port
+                    // redirects are rejected rather than forwarding Basic credentials to an
+                    // untrusted origin; HTTPS->HTTP downgrade is rejected explicitly above.
+                    if (!sameHost || !samePort) {
+                        lastLocalPolicyReject.set(true)
+                        throw IOException("HTTP_REDIRECT_AUTH_CROSS_ORIGIN_REJECT from=${from.protocol}://${from.host}:$fromPort to=${to.protocol}://${to.host}:$toPort")
+                    }
+                }
+                currentUrl = to.toString()
             }
         }
 
@@ -198,34 +244,51 @@ object HttpCore {
             canReplayBody: Boolean,
             retryOnConnectionFailure: () -> Boolean,
             closeConnectionOnNon2xx: Boolean,
+            responseHeadTimeoutMs: Int,
+            onRequestBodyComplete: () -> Unit,
+            onConnection: (PooledConn) -> Unit,
             responseConsumer: (Int, Map<String, List<String>>, InputStream) -> Unit
         ): Pair<Int, String?> {
             val seed = Target(url)
             val preferredMode = pathModeCache[seed.connKey] ?: PathMode.ENCODED
             val first = requestOnceWithMode(
                 method, url, preferredMode, user, pass, headers, bodyWriter,
-                retryOnConnectionFailure, closeConnectionOnNon2xx, responseConsumer
+                retryOnConnectionFailure, closeConnectionOnNon2xx, responseHeadTimeoutMs, onRequestBodyComplete, onConnection, responseConsumer
             )
             val code = first.first
-            if (code != 404 || !urlHasNonAscii(url)) return first
+            val pathModeRetryableStatus = code == 400 || code == 404
+            if (!pathModeRetryableStatus || !urlHasNonAscii(url)) return first
             if (method == "PUT" && !canReplayBody) return first
 
             // Adaptive WebDAV base-path compatibility:
             // - standards-compliant servers expect percent-encoded request targets
-            // - some NAS/Windows WebDAV stacks expect raw UTF-8 for CJK base paths
-            // Retry 404 once with the opposite path mode only when the request body is replay-safe,
+            // - some NAS/Windows/AList-mounted cloud-drive stacks expect raw UTF-8 for CJK base paths
+            // Retry HTTP 404/400 once with the opposite path mode only when the request body is replay-safe,
             // then remember the mode that succeeds for the same scheme/host/port. Streaming PUT
             // remains single-shot; small managed-probe payloads opt in with canReplayBody=true.
             val altMode = if (preferredMode == PathMode.ENCODED) PathMode.RAW_UTF8 else PathMode.ENCODED
             val alt = requestOnceWithMode(
                 method, url, altMode, user, pass, headers, bodyWriter,
-                retryOnConnectionFailure, closeConnectionOnNon2xx, responseConsumer
+                retryOnConnectionFailure, closeConnectionOnNon2xx, responseHeadTimeoutMs, onRequestBodyComplete, onConnection, responseConsumer
             )
             if (alt.first in 200..299) {
                 pathModeCache[seed.connKey] = altMode
                 return alt
             }
             return first
+        }
+
+
+        private fun parseRetryAfterMs(raw: String?): Long {
+            val value = raw?.trim().orEmpty()
+            if (value.isEmpty()) return 0L
+            value.toLongOrNull()?.let { seconds ->
+                return seconds.coerceIn(0L, 5L * 60L) * 1000L
+            }
+            return runCatching {
+                val whenMs = ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli()
+                (whenMs - System.currentTimeMillis()).coerceIn(0L, 5L * 60L * 1000L)
+            }.getOrDefault(0L)
         }
 
         private fun requestHasBody(method: String, headers: Map<String, String>): Boolean {
@@ -296,6 +359,9 @@ object HttpCore {
             bodyWriter: (OutputStream) -> Unit,
             retryOnConnectionFailure: () -> Boolean,
             closeConnectionOnNon2xx: Boolean,
+            responseHeadTimeoutMs: Int,
+            onRequestBodyComplete: () -> Unit,
+            onConnection: (PooledConn) -> Unit,
             responseConsumer: (Int, Map<String, List<String>>, InputStream) -> Unit
         ): Pair<Int, String?> {
             val target = Target(url, pathMode)
@@ -303,13 +369,24 @@ object HttpCore {
             while (true) {
                 val conn = acquireConnection(target)
                 try {
+                    onConnection(conn)
                     conn.socket.soTimeout = LONG_TRANSFER_TIMEOUT_MS
                     val input = conn.socket.getInputStream()
                     val output = conn.socket.getOutputStream()
                     writeRequestHead(output, method, target, user, pass, headers)
                     guardedBodyWriter(conn, output, requestHasBody(method, headers), bodyWriter)
                     output.flush()
+                    onRequestBodyComplete()
+                    // The client request body is fully emitted at this point, but remote success is
+                    // still unknown until the server returns an HTTP status. AList/OpenList can do
+                    // synchronous hashing/caching/backing-provider upload inside this interval.
+                    // Bound this post-body/server-processing wait; never infer provider commit from
+                    // body completion and never use an infinite socket timeout.
+                    val postBodyTimeout = responseHeadTimeoutMs.coerceIn(1_000, 15 * 60_000)
+                    conn.socket.soTimeout = postBodyTimeout
                     val response = readResponseHead(input)
+                    conn.socket.soTimeout = LONG_TRANSFER_TIMEOUT_MS
+                    lastRetryAfterMs.set(parseRetryAfterMs(response.headers.firstHeader("retry-after")))
                     val location = response.headers.firstHeader("location")
                     try {
                         responseConsumer(response.code, response.headers, input)
@@ -702,6 +779,11 @@ object HttpCore {
     fun extractCode(e: Throwable): Int {
         if (e is java.io.FileNotFoundException) return 404
         val msg = e.message ?: return 0
+        // r610 redirect-auth guard messages intentionally contain host/port details.
+        // Never misparse an IPv4 octet (for example 127) or destination port (for example
+        // 443/503) as an HTTP response status; this is a local policy rejection, not a server
+        // response.  Keep it as transport/policy code 0 for the callers' normal fail path.
+        if (msg.startsWith("HTTP_REDIRECT_AUTH_")) return 0
         val m = Regex("""\b([1-5][0-9]{2})\b""").find(msg) ?: return 0
         return m.groupValues[1].toIntOrNull() ?: 0
     }

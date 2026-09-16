@@ -30,7 +30,7 @@ import kotlin.system.exitProcess
  *   body bytes
  */
 object AppStateUtil {
-    private const val VERSION = "v1.3.84-r373-restore-permissionappop-vendor"
+    private val VERSION = DexBuildInfo.VERSION
     private const val DEFAULT_IDLE_TIMEOUT_SEC = 1800L
 
     @JvmStatic
@@ -41,7 +41,7 @@ object AppStateUtil {
         }
         when (args[0]) {
             "version", "--version", "-v" -> {
-                println("$VERSION dex=${HiddenApiUtil.VERSION}")
+                println(VERSION)
                 exitProcess(0)
             }
             "help" -> {
@@ -63,6 +63,7 @@ object AppStateUtil {
         val value = command?.trim()?.lowercase(Locale.ROOT) ?: return ""
         return when (value) {
             "snapshotappstatebatch" -> "snapshot"
+            "snapshotappstatebatchfiles" -> "snapshotfiles"
             "foreground", "foregroundstate", "foregroundstatebatch", "processstatebatch" -> "foregroundstate"
             "foregroundrunning", "foregroundrunningbatch", "foregroundstaterunning", "foregroundstaterunningbatch" -> "foregroundrunning"
             "foregroundlist", "foregroundlistjson", "foregroundstatelist", "foregroundstatejson", "foregroundjson" -> "foregroundlist"
@@ -107,6 +108,7 @@ object AppStateUtil {
         val normalized = normalizeCommand(command)
         val body = when (normalized) {
             "snapshot", "foregroundstate" -> packageBody(args, 2)
+            "snapshotfiles" -> packageBody(args, 3)
             "foregroundrunning", "foregroundtop", "foregroundlist", "defaulthome", "defaultime" -> ""
             "settingsget", "settingsput" -> args.drop(2).joinToString("\n")
             "frameworkfacts" -> packageBody(args, 2)
@@ -116,7 +118,8 @@ object AppStateUtil {
             "ping" -> ""
             else -> packageBody(args, 2)
         }
-        val response = AppStateEngine.dispatch(normalized, userId, "ndjson", body)
+        val dispatchExtra = if (normalized == "snapshotfiles") args.getOrNull(2).orEmpty() else "ndjson"
+        val response = AppStateEngine.dispatch(normalized, userId, dispatchExtra, body)
         print(response.body)
         System.out.flush()
         exitProcess(response.processExitCode())
@@ -195,12 +198,12 @@ object AppStateUtil {
     }
 
     private fun handleConnection(input: InputStream, output: OutputStream) {
-        val command = readUtf8Line(input)
-        val userIdRaw = readUtf8Line(input)
-        val format = readUtf8Line(input)
-        val extra = readUtf8Line(input)
-        val protocolRaw = readUtf8Line(input)
-        val bodyLengthRaw = readUtf8Line(input)
+        val command = DaemonBootstrap.readUtf8Line(input)
+        val userIdRaw = DaemonBootstrap.readUtf8Line(input)
+        val format = DaemonBootstrap.readUtf8Line(input)
+        val extra = DaemonBootstrap.readUtf8Line(input)
+        val protocolRaw = DaemonBootstrap.readUtf8Line(input)
+        val bodyLengthRaw = DaemonBootstrap.readUtf8Line(input)
 
         val response = try {
             val userId = userIdRaw.toIntOrNull()
@@ -220,7 +223,7 @@ object AppStateUtil {
                     AppStateEngine.ResultCode.BAD_REQUEST, "invalid bodyLength=$bodyLength"
                 )
                 else -> {
-                    val bodyBytes = if (bodyLength == -1L) readAll(input) else readExactly(input, bodyLength)
+                    val bodyBytes = if (bodyLength == -1L) DaemonBootstrap.readAll(input) else DaemonBootstrap.readExactly(input, bodyLength)
                     val body = bodyBytes.toString(StandardCharsets.UTF_8)
                     AppStateEngine.dispatch(command, userId, extra.ifBlank { format }, body)
                 }
@@ -243,28 +246,6 @@ object AppStateUtil {
         output.flush()
     }
 
-    private fun readUtf8Line(input: InputStream): String {
-        val buffer = ByteArrayOutputStream(128)
-        while (true) {
-            val b = input.read()
-            if (b == -1 || b == '\n'.code) break
-            if (b != '\r'.code) buffer.write(b)
-        }
-        return buffer.toByteArray().toString(StandardCharsets.UTF_8)
-    }
-
-    private fun readExactly(input: InputStream, length: Long): ByteArray {
-        require(length <= Int.MAX_VALUE.toLong()) { "request body too large" }
-        val out = ByteArray(length.toInt())
-        var offset = 0
-        while (offset < out.size) {
-            val n = input.read(out, offset, out.size - offset)
-            if (n < 0) throw IOException("unexpected EOF: expected=${out.size} actual=$offset")
-            offset += n
-        }
-        return out
-    }
-
     private fun readAll(input: InputStream): ByteArray {
         val out = ByteArrayOutputStream()
         val buffer = ByteArray(8192)
@@ -282,6 +263,7 @@ object AppStateUtil {
         println("  capabilities [--pretty]")
         println("  localize USER_ID TYPE KEY")
         println("  snapshotAppStateBatch USER_ID PACKAGE...|--stdin")
+        println("  snapshotAppStateBatchFiles USER_ID OUTPUT_DIR PACKAGE...|--stdin")
         println("  foregroundStateBatch USER_ID PACKAGE...|--stdin")
         println("  foregroundStateRunning USER_ID")
         println("  foregroundListJson USER_ID")

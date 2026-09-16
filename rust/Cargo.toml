@@ -1,0 +1,45 @@
+[package]
+name = "speedbackup-native-rs"
+version = "0.1.686"
+edition = "2021"
+license = "MIT"
+
+# No third-party crates. Android builds do not need network access.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+[[bin]]
+name = "eventwait"
+path = "src/bin/eventwait.rs"
+
+[[bin]]
+name = "filewatch"
+path = "src/bin/filewatch.rs"
+
+[[bin]]
+name = "netwatch"
+path = "src/bin/netwatch.rs"
+
+[[bin]]
+name = "procwait"
+path = "src/bin/procwait.rs"
+
+[[bin]]
+name = "uidexec"
+path = "src/bin/uidexec.rs"
+
+[[bin]]
+name = "unixsock"
+path = "src/bin/unixsock.rs"
+
+[[bin]]
+name = "speedscan"
+path = "src/bin/speedscan.rs"
+
+[[bin]]
+name = "cgfreezer"
+path = "src/bin/cgfreezer.rs"

@@ -8,6 +8,8 @@ import android.system.Os;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -23,12 +25,64 @@ import java.util.concurrent.atomic.AtomicLong;
 final class DaemonBootstrap {
     static final int UNIX_SOCKET_MODE = 0660;
     static final int UNIX_PATH_MAX_BYTES = 100;
+    static final long MAX_DAEMON_BODY_BYTES = 64L * 1024L * 1024L;
 
     interface ClientHandler {
         void handle(LocalSocket client) throws Exception;
     }
 
     private DaemonBootstrap() {
+    }
+
+    static int tokenSeed(int floor) {
+        int safeFloor = Math.max(1, floor);
+        long seed = (Math.abs(System.currentTimeMillis() % 100000L) * 1000L)
+                + Math.abs(android.os.Process.myPid() % 1000);
+        if (seed < safeFloor) seed += safeFloor;
+        if (seed > Integer.MAX_VALUE - 10000L) {
+            seed = safeFloor + Math.abs(android.os.Process.myPid() % 1000);
+        }
+        return (int) seed;
+    }
+
+    static String readUtf8Line(InputStream in) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream(128);
+        while (true) {
+            int b = in.read();
+            if (b < 0 || b == '\n') break;
+            if (b != '\r') out.write(b);
+        }
+        return out.toString("UTF-8");
+    }
+
+    static byte[] readExactly(InputStream in, long length) throws IOException {
+        if (length < 0L) throw new IOException("request body length negative: " + length);
+        if (length > MAX_DAEMON_BODY_BYTES) {
+            throw new IOException("request body too large: " + length + " > " + MAX_DAEMON_BODY_BYTES);
+        }
+        byte[] out = new byte[(int) length];
+        int off = 0;
+        while (off < out.length) {
+            int n = in.read(out, off, out.length - off);
+            if (n < 0) throw new IOException("unexpected EOF: expected=" + out.length + " actual=" + off);
+            off += n;
+        }
+        return out;
+    }
+
+    static byte[] readAll(InputStream in) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        long total = 0L;
+        while ((n = in.read(buf)) >= 0) {
+            total += n;
+            if (total > MAX_DAEMON_BODY_BYTES) {
+                throw new IOException("request body too large: " + total + " > " + MAX_DAEMON_BODY_BYTES);
+            }
+            out.write(buf, 0, n);
+        }
+        return out.toByteArray();
     }
 
     static void runUnixDaemon(String componentName,
@@ -172,6 +226,7 @@ final class DaemonBootstrap {
 
     private static void closeDaemon(AtomicBoolean closed, LocalServerSocket server, LocalSocket bindSocket, File socketFile) {
         if (!closed.compareAndSet(false, true)) return;
+        try { SsaidUtil.shutdownStateCache("daemon-close"); } catch (Throwable ignored) {}
         try { server.close(); } catch (Throwable ignored) {}
         try { bindSocket.close(); } catch (Throwable ignored) {}
         try { socketFile.delete(); } catch (Throwable ignored) {}

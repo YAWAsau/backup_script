@@ -61,12 +61,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * waiting for the requested test duration while Binder callbacks arrive.
  */
 final class ProcessObserverUtil {
-    static final String VERSION = "v3.19-r487-run-tmpdir-state-scope";
+    static final String VERSION = DexBuildInfo.VERSION;
     private static final String DESCRIPTOR = "android.app.IProcessObserver";
     private static final String TASK_STACK_DESCRIPTOR = "android.app.ITaskStackListener";
     private static final long ACTION_DEBOUNCE_MS = 900L;
     private static final SimpleDateFormat TS = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US);
-    private static final AtomicInteger NEXT_TOKEN = new AtomicInteger(tokenSeed());
+    private static final AtomicInteger NEXT_TOKEN = new AtomicInteger(DaemonBootstrap.tokenSeed(1000));
     private static final Map<Integer, WatchSession> SESSIONS = new HashMap<>();
     private static final Object GLOBAL_LOCK = new Object();
     private static volatile Object GLOBAL_PROCESS_OBSERVER;
@@ -78,13 +78,6 @@ final class ProcessObserverUtil {
     private static final String BATCH_STATE_DIR = scopedPath("SPEEDBACKUP_PROCESS_OBSERVER_BATCH_STATE_DIR", ".speedbackup_process_observer_batch_state");
     private static final long BATCH_STATE_TTL_MS = 24L * 60L * 60L * 1000L;
 
-    private static int tokenSeed() {
-        long seed = (System.currentTimeMillis() % 100000L) * 1000L;
-        seed += Math.abs(android.os.Process.myPid() % 1000);
-        if (seed < 1000L) seed += 1000L;
-        if (seed > Integer.MAX_VALUE - 10000L) seed = 1000L + Math.abs(android.os.Process.myPid() % 1000);
-        return (int) seed;
-    }
 
 
     private static String scopedTmpDir() {
@@ -1653,6 +1646,7 @@ final class ProcessObserverUtil {
         volatile Object taskStackListener;
         volatile PrintWriter log;
         volatile long lastFinalOkMs = 0L;
+        volatile long lastPrimaryCgroupRefreshMs = 0L;
         volatile boolean lastTaskStateKnown;
         volatile boolean lastTaskTopTarget;
         volatile boolean lastTaskTargetAlive;
@@ -1815,6 +1809,39 @@ final class ProcessObserverUtil {
             performAction(callback, pid, uid, processName);
         }
 
+
+        private boolean refreshPrimaryCgroupIfActive(String callback, List<PidInfo> alive, String stage) {
+            if (!cgroupFreezerPreferredForAction(packageName, action)) return false;
+            if (!CgroupFreezeUtil.hasActivePrimaryAppScopeSession(userId, packageName, -1)) return false;
+            long nowMs = System.currentTimeMillis();
+            long elapsed = lastPrimaryCgroupRefreshMs <= 0L ? Long.MAX_VALUE : nowMs - lastPrimaryCgroupRefreshMs;
+            if (elapsed >= 0L && elapsed < 250L) {
+                logLine("PROCESS_OBSERVER_PRIMARY_CGROUP_REFRESH_SKIP reason=debounce"
+                        + " stage=" + sanitize(stage)
+                        + " elapsedMs=" + elapsed
+                        + " package=" + packageName
+                        + " alivePids=" + pidCsv(alive)
+                        + " callback=" + sanitize(callback));
+                lastFinalOkMs = nowMs;
+                return true;
+            }
+            String result = CgroupFreezeUtil.refreshPrimaryAppScopePackageFreeze(userId, packageName,
+                    "processObserver-" + safeWord(stage) + "-" + safeWord(callback), 1000);
+            lastPrimaryCgroupRefreshMs = System.currentTimeMillis();
+            boolean ok = result != null && result.contains("CGROUP_FREEZE_PRIMARY_REFRESH_DONE ok=true");
+            logLine("PROCESS_OBSERVER_PRIMARY_CGROUP_REFRESH stage=" + sanitize(stage)
+                    + " ok=" + ok
+                    + " package=" + packageName
+                    + " alivePids=" + pidCsv(alive)
+                    + " callback=" + sanitize(callback)
+                    + " result=" + sanitize(result));
+            if (ok) {
+                lastFinalOkMs = System.currentTimeMillis();
+                return true;
+            }
+            return false;
+        }
+
         private synchronized void performAction(String callback, int pid, int uid, String processName) {
             if ("monitor".equals(action) || "log".equals(action)) {
                 return;
@@ -1824,6 +1851,9 @@ final class ProcessObserverUtil {
             TopSnapshot top = findTopApp(userId);
             List<PidInfo> alive = findAliveProcesses(userId, packageName, targetUid >= 0 ? targetUid : uid);
             boolean targetTop = top != null && packageName.equals(top.packageName);
+            if (refreshPrimaryCgroupIfActive(callback, alive, "action")) {
+                return;
+            }
             long rawElapsed = lastFinalOkMs > 0L ? nowMs - lastFinalOkMs : Long.MAX_VALUE;
             long elapsed = rawElapsed < 0L ? 0L : rawElapsed;
             if (eventPidAlreadyFrozen(pid)) {
@@ -1971,6 +2001,7 @@ final class ProcessObserverUtil {
         private synchronized boolean tryFastCgroupFreezeTopTarget(String callback, List<PidInfo> alive) {
             if (!cgroupFreezerPreferredForAction(packageName, action)) return false;
             if (alive == null || alive.isEmpty()) return false;
+            if (refreshPrimaryCgroupIfActive(callback, alive, "top-fast")) return true;
             pruneStaleCgroupTokens(alive, callback);
             if (allAlivePidsAlreadyFrozen(alive)) {
                 logLine("PROCESS_OBSERVER_CGROUP_FREEZE_REUSE reason=top-target-fast-already-frozen"
@@ -2073,7 +2104,17 @@ final class ProcessObserverUtil {
             }
             int token = wakeBlockToken;
             wakeBlockToken = -1;
-            String result = AppWakeBlockUtil.stop(token);
+            String result;
+            if (CgroupFreezeUtil.hasActivePrimaryAppScopeSession(userId, packageName, -1)) {
+                result = AppWakeBlockUtil.deferStopToPrimaryScope(token, userId, packageName,
+                        "process_observer_stop_defer_primary_cgroup_" + safeWord(reason));
+                logLine("PROCESS_OBSERVER_WAKE_BLOCK_STOP_DEFER integrated=1 mode=" + wakeBlockMode
+                        + " token=" + token
+                        + " reason=" + sanitize(reason)
+                        + " result=" + sanitize(result));
+                return;
+            }
+            result = AppWakeBlockUtil.stop(token);
             logLine("PROCESS_OBSERVER_WAKE_BLOCK_STOP integrated=1 mode=" + wakeBlockMode
                     + " token=" + token
                     + " reason=" + sanitize(reason)
@@ -2090,6 +2131,18 @@ final class ProcessObserverUtil {
             cgroupTokenPids.clear();
             for (Integer token : tokens) {
                 if (token == null || token <= 0) continue;
+                if (CgroupFreezeUtil.hasActivePrimaryAppScopeSession(userId, packageName, token)) {
+                    String result = CgroupFreezeUtil.deferProcessObserverTokenToPrimaryScope(token, userId, packageName, reason);
+                    if (result != null && result.contains("CGROUP_FREEZE_STOP_PROCESS_OBSERVER_DEFER_OK")) {
+                        logLine("PROCESS_OBSERVER_CGROUP_FREEZER_STOP_DEFER integrated=1 token=" + token
+                                + " reason=" + sanitize(reason)
+                                + " result=" + sanitize(result));
+                        continue;
+                    }
+                    logLine("PROCESS_OBSERVER_CGROUP_FREEZER_STOP_DEFER_FALLBACK integrated=1 token=" + token
+                            + " reason=" + sanitize(reason)
+                            + " result=" + sanitize(result));
+                }
                 String result = CgroupFreezeUtil.stop(token, userId, packageName);
                 logLine("PROCESS_OBSERVER_CGROUP_FREEZER_STOP integrated=1 token=" + token
                         + " reason=" + sanitize(reason)
@@ -3299,6 +3352,11 @@ final class ProcessObserverUtil {
 
     private static String now() {
         try { return TS.format(new Date()); } catch (Throwable ignored) { return String.valueOf(System.currentTimeMillis()); }
+    }
+
+    private static String safeWord(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return "-";
+        return raw.trim().replace('\t', '_').replace('\n', '_').replace('\r', '_').replace(' ', '_');
     }
 
     private static String sanitize(String raw) {

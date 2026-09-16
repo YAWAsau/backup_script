@@ -264,6 +264,36 @@ final class SsaidUtil {
         }
     }
 
+    static synchronized void shutdownStateCache(String reason) {
+        int closed = 0;
+        int forced = 0;
+        for (SsaidStateHolder holder : STATE_CACHE.values()) {
+            if (holder == null || holder.thread == null) continue;
+            HandlerThread thread = holder.thread;
+            try {
+                thread.quitSafely();
+            } catch (Throwable t) {
+                try { thread.quit(); forced++; } catch (Throwable ignored) {}
+            }
+            try {
+                thread.join(1000L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (Throwable ignored) {}
+            if (thread.isAlive()) {
+                try { thread.quit(); forced++; } catch (Throwable ignored) {}
+                try { thread.interrupt(); } catch (Throwable ignored) {}
+                try { thread.join(250L); } catch (Throwable ignored) {}
+            }
+            closed++;
+        }
+        STATE_CACHE.clear();
+        if ("1".equals(System.getenv("DEX_DEBUG_SSAID_CACHE"))) {
+            System.err.println("SSAID_STATE_CACHE_SHUTDOWN reason=" + safe(reason)
+                    + " closed=" + closed + " forced=" + forced);
+        }
+    }
+
     private SsaidUtil() {
     }
 

@@ -19,10 +19,10 @@ import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.Icon;
-import android.os.Binder;
 import android.os.RemoteException;
 import android.os.UserHandleHidden;
 import android.net.LocalSocket;
+import android.net.Credentials;
 
 import com.xayah.dex.compat.HiddenApiServices;
 
@@ -47,7 +47,7 @@ import java.util.Locale;
 import java.util.Properties;
 
 public class NotificationUtil extends BaseUtil {
-    public static final String VERSION = "v1.1.6-inline-notification-icon dex=" + HiddenApiUtil.VERSION;
+    public static final String VERSION = DexBuildInfo.VERSION;
     public static final int SHELL_UID = 2000;
     public static final String SHELL_PACKAGE = "com.android.shell";
     public static final int NOTIFICATION_ID = 2020;
@@ -216,9 +216,9 @@ public class NotificationUtil extends BaseUtil {
         try (LocalSocket c = client) {
             InputStream in = c.getInputStream();
             OutputStream out = c.getOutputStream();
-            String command = readUtf8Line(in);
-            String protocolRaw = readUtf8Line(in);
-            String bodyLengthRaw = readUtf8Line(in);
+            String command = DaemonBootstrap.readUtf8Line(in);
+            String protocolRaw = DaemonBootstrap.readUtf8Line(in);
+            String bodyLengthRaw = DaemonBootstrap.readUtf8Line(in);
             int protocol = parsePositiveInt(protocolRaw, -1);
             long bodyLength = parseLongDaemon(bodyLengthRaw, -2L);
             int rc;
@@ -229,11 +229,18 @@ public class NotificationUtil extends BaseUtil {
                 name = "BAD_REQUEST";
                 body = "NOTIFICATION_DAEMON_BAD_REQUEST\n";
             } else {
-                byte[] request = bodyLength == -1L ? readAll(in) : readExactly(in, bodyLength);
-                DaemonRunResult result = runDaemonCommand(command, request);
-                rc = result.rc;
-                name = rc == 0 ? "OK" : "FAIL";
-                body = result.stdout;
+                byte[] request = bodyLength == -1L ? DaemonBootstrap.readAll(in) : DaemonBootstrap.readExactly(in, bodyLength);
+                int callingUid = peerUid(c);
+                if (callingUid < 0) {
+                    rc = 2;
+                    name = "BAD_PEER_UID";
+                    body = "NOTIFICATION_DAEMON_BAD_PEER_UID\n";
+                } else {
+                    DaemonRunResult result = runDaemonCommand(command, request, callingUid);
+                    rc = result.rc;
+                    name = rc == 0 ? "OK" : "FAIL";
+                    body = result.stdout;
+                }
             }
             byte[] response = body.getBytes(StandardCharsets.UTF_8);
             out.write(("RESULT " + rc + " " + name + "\n").getBytes(StandardCharsets.UTF_8));
@@ -246,6 +253,12 @@ public class NotificationUtil extends BaseUtil {
     }
 
     static synchronized DaemonRunResult runDaemonCommand(String command, byte[] request) {
+        // Single notifyBatch CLI entry is removed; keep this overload only for in-process tests.
+        // Never derive AF_UNIX daemon identity from Binder in app_process raw-socket context.
+        return runDaemonCommand(command, request, SHELL_UID);
+    }
+
+    static synchronized DaemonRunResult runDaemonCommand(String command, byte[] request, int callingUid) {
         if (command == null) command = "";
         command = command.trim();
         if ("ping".equals(command)) {
@@ -257,7 +270,7 @@ public class NotificationUtil extends BaseUtil {
         try {
             System.setOut(new PrintStream(baos, true, "UTF-8"));
             if ("notifyBatch".equals(command)) {
-                rc = notifyBatchCommand(new ByteArrayInputStream(request == null ? new byte[0] : request), Binder.getCallingUid(), false);
+                rc = notifyBatchCommand(new ByteArrayInputStream(request == null ? new byte[0] : request), callingUid, false);
             } else {
                 System.out.println("UNKNOWN_COMMAND " + command);
                 rc = 2;
@@ -279,34 +292,12 @@ public class NotificationUtil extends BaseUtil {
         DaemonRunResult(int rc, String stdout) { this.rc = rc; this.stdout = stdout == null ? "" : stdout; }
     }
 
-    private static String readUtf8Line(InputStream in) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream(128);
-        while (true) {
-            int b = in.read();
-            if (b < 0 || b == '\n') break;
-            if (b != '\r') out.write(b);
-        }
-        return out.toString("UTF-8");
-    }
-
-    private static byte[] readExactly(InputStream in, long length) throws IOException {
-        if (length > Integer.MAX_VALUE) throw new IOException("body too large");
-        byte[] out = new byte[(int) length];
-        int off = 0;
-        while (off < out.length) {
-            int n = in.read(out, off, out.length - off);
-            if (n < 0) throw new IOException("unexpected EOF");
-            off += n;
-        }
-        return out;
-    }
-
-    private static byte[] readAll(InputStream in) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buf = new byte[8192];
-        int n;
-        while ((n = in.read(buf)) >= 0) out.write(buf, 0, n);
-        return out.toByteArray();
+    private static int peerUid(LocalSocket socket) {
+        try {
+            Credentials credentials = socket == null ? null : socket.getPeerCredentials();
+            if (credentials != null && credentials.getUid() >= 0) return credentials.getUid();
+        } catch (Throwable ignored) {}
+        return -1;
     }
 
     private static int parsePositiveInt(String raw, int fallback) {

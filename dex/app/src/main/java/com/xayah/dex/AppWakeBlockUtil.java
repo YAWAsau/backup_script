@@ -38,11 +38,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * tools with launcher/cache side effects and should not be the normal backup path.
  */
 final class AppWakeBlockUtil {
-    static final String VERSION = "v2.2-r487-run-tmpdir-state-scope";
+    static final String VERSION = DexBuildInfo.VERSION;
     private static final SimpleDateFormat TS = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US);
     private static final long PROCESS_START_MS = System.currentTimeMillis();
     private static final String PROCESS_SESSION_ID = android.os.Process.myPid() + "-" + PROCESS_START_MS;
-    private static final AtomicInteger NEXT_TOKEN = new AtomicInteger(tokenSeed());
+    private static final AtomicInteger NEXT_TOKEN = new AtomicInteger(DaemonBootstrap.tokenSeed(2000));
     private static final Map<Integer, WakeBlockSession> SESSIONS = new HashMap<>();
     private static final String OP_RUN_IN_BACKGROUND = "RUN_IN_BACKGROUND";
     private static final String OP_RUN_ANY_IN_BACKGROUND = "RUN_ANY_IN_BACKGROUND";
@@ -115,6 +115,37 @@ final class AppWakeBlockUtil {
         return session.restore("stop-token-" + token);
     }
 
+    static synchronized String deferStopToPrimaryScope(int token, int expectedUserId, String expectedPackageName, String reason) {
+        WakeBlockSession session = SESSIONS.remove(token);
+        String expectedPkg = safePackage(expectedPackageName);
+        if (session == null) {
+            return "APP_WAKE_BLOCK_STOP_DEFER_MISSING token=" + token
+                    + " expectedUser=" + expectedUserId
+                    + " expectedPackage=" + expectedPkg
+                    + " reason=" + sanitize(reason) + "\n";
+        }
+        if (expectedUserId >= 0 && session.userId != expectedUserId) {
+            SESSIONS.put(token, session);
+            return "APP_WAKE_BLOCK_STOP_DEFER_REJECTED token=" + token
+                    + " reason=user_mismatch actualUser=" + session.userId
+                    + " expectedUser=" + expectedUserId + "\n";
+        }
+        if (!expectedPkg.isEmpty() && !expectedPkg.equals(session.packageName)) {
+            SESSIONS.put(token, session);
+            return "APP_WAKE_BLOCK_STOP_DEFER_REJECTED token=" + token
+                    + " reason=package_mismatch actualPackage=" + sanitize(session.packageName)
+                    + " expectedPackage=" + expectedPkg + "\n";
+        }
+        return "APP_WAKE_BLOCK_STOP_DEFER_TO_PRIMARY_SCOPE token=" + token
+                + " user=" + session.userId
+                + " package=" + session.packageName
+                + " mode=" + session.mode
+                + " ownerToken=" + session.ownerToken
+                + " ownerKind=" + sanitize(session.ownerKind)
+                + " reason=" + sanitize(reason)
+                + " stateDeferred=true\n";
+    }
+
     static synchronized String restorePersistedWakeBlockToken(int token, String reason) {
         return restorePersistedWakeBlockToken(token, reason, -1, "");
     }
@@ -155,6 +186,10 @@ final class AppWakeBlockUtil {
                     + " reason=" + sanitize(reason) + "\n";
         }
         return restorePersistedFile(file, reason, "package", -1, -1, userId, pkg);
+    }
+
+    static synchronized boolean hasPersistedPackage(int userId, String packageName) {
+        return findStateByPackage(userId, safePackage(packageName)) != null;
     }
 
     static synchronized String restorePersistedAll(String reason) {
@@ -212,13 +247,25 @@ final class AppWakeBlockUtil {
                         .append(" package=").append(sanitize(p.getProperty("package", ""))).append('\n');
                 String r = restorePersistedFile(f, "stale-cleanup-" + sanitize(reason), "stale-cleanup", -1, -1, -1, "");
                 out.append(r);
-                if (restoreDoneAndStateDeleted(r)) restored++;
-                boolean del = !f.exists() || f.delete();
-                if (del) deleted++;
-                out.append("APP_WAKE_BLOCK_PERSISTENT_CLEANUP_DELETE path=").append(sanitize(f.getAbsolutePath()))
-                        .append(" deleted=").append(del)
-                        .append(" restoreDone=").append(restoreDoneAndStateDeleted(r))
-                        .append(" reason=").append(sanitize(reason)).append('\n');
+                boolean restoreOk = restoreDoneAndStateDeleted(r);
+                if (restoreOk) {
+                    restored++;
+                    boolean del = !f.exists() || f.delete();
+                    if (del) deleted++;
+                    out.append("APP_WAKE_BLOCK_PERSISTENT_CLEANUP_DELETE path=").append(sanitize(f.getAbsolutePath()))
+                            .append(" deleted=").append(del)
+                            .append(" restoreDone=true")
+                            .append(" reason=").append(sanitize(reason)).append('\n');
+                } else {
+                    out.append("APP_WAKE_BLOCK_PERSISTENT_CLEANUP_RESTORE_FAILED_RETAIN path=").append(sanitize(f.getAbsolutePath()))
+                            .append(" ageMs=").append(ageMs)
+                            .append(" token=").append(sanitize(p.getProperty("token", "")))
+                            .append(" ownerToken=").append(sanitize(p.getProperty("ownerToken", "")))
+                            .append(" user=").append(sanitize(p.getProperty("user", "")))
+                            .append(" package=").append(sanitize(p.getProperty("package", "")))
+                            .append(" reason=").append(sanitize(reason))
+                            .append(" note=restore_failed_state_retained_needs_manual_review").append('\n');
+                }
             }
         }
         out.append("APP_WAKE_BLOCK_PERSISTENT_CLEANUP_DONE total=").append(total)
@@ -314,6 +361,21 @@ final class AppWakeBlockUtil {
                     + " ownerKind=" + sanitize(ownerKind));
             snapshot();
             persistState("snapshot");
+            if (!snapshotSafe()) {
+                persistState("snapshot-unsafe-before-delete");
+                boolean stateDeleted = deletePersistedState("snapshot-unsafe-not-applied");
+                logLine("APP_WAKE_BLOCK_APPLY_ABORT token=" + token
+                        + " user=" + userId
+                        + " package=" + packageName
+                        + " mode=" + mode
+                        + " reason=snapshot-unsafe-not-applied"
+                        + " runBg=" + originalRunInBackground
+                        + " runAny=" + originalRunAnyInBackground
+                        + " standbyBucket=" + originalStandbyBucket
+                        + " stateDeleted=" + stateDeleted
+                        + " capability=dex.app_wake_block.snapshot_unsafe_refuse_apply.v1");
+                throw new IllegalStateException("app-wake-block-snapshot-unsafe-not-applied");
+            }
             boolean forceStopApplied = false;
             boolean forceStopSkipped = true;
             logLine("APP_WAKE_BLOCK_APPLY stage=force-stop skipped=true ok=true reason=cgroup-first-no-force-stop detail=forceStop=skipped");
@@ -1016,13 +1078,6 @@ final class AppWakeBlockUtil {
         }
     }
 
-    private static int tokenSeed() {
-        long seed = (System.currentTimeMillis() % 100000L) * 1000L;
-        seed += Math.abs(android.os.Process.myPid() % 1000);
-        if (seed < 2000L) seed += 2000L;
-        if (seed > Integer.MAX_VALUE - 10000L) seed = 2000L + Math.abs(android.os.Process.myPid() % 1000);
-        return (int) seed;
-    }
 
     private static String safeFilePart(String raw) {
         if (raw == null || raw.isEmpty()) return "unknown";

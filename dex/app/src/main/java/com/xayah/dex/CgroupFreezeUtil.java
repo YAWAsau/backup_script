@@ -25,13 +25,16 @@ import java.util.concurrent.atomic.AtomicInteger;
  * cgroup freezer tar-scope lifecycle guard with cgroup v2 primary, cgroup v1 native fallback, and persistent fail-safe restore.
  *
  * Official runtime surface is start/stop.  Start performs per-pid capability detection by resolving
- * /proc/<pid>/cgroup, freezes all currently alive target package pids for the whole app tar/restore
- * scope, and only accepts paths whose cgroup.freeze and cgroup.events are actually readable/writable.
- * ProcessObserver may open additional pid-specific sessions for newly awakened pids during the same
- * scope.  Stop restores the original frozen state and verifies cgroup.events.
+ * /proc/<pid>/cgroup.  Primary backup/restore app scopes always select package-scope freeze,
+ * even when the shell provides a first alive pid for logging/barrier facts, so all currently alive
+ * package pids are frozen in one native package request.  ProcessObserver may open additional
+ * pid-specific sessions for newly awakened pids during the same scope.  ProcessObserver cgroup and
+ * wake-block cleanup defer to the primary app-scope token while it is active, so the final release
+ * order is: primary THAW_UID, then deferred wake-block package restore.  Stop restores the original
+ * frozen state and verifies cgroup.events.
  */
 final class CgroupFreezeUtil {
-    static final String VERSION = "v1.23-r487-run-tmpdir-state-scope";
+    static final String VERSION = DexBuildInfo.VERSION;
     private static final String CGROUP_ROOT = "/sys/fs/cgroup";
     private static final String STATE_FILE = scopedPath("SPEEDBACKUP_CGROUP_FREEZER_STATE_FILE", ".speedbackup_cgroup_freezer_state");
     private static final int MAX_PIDS = 16;
@@ -54,7 +57,7 @@ final class CgroupFreezeUtil {
     };
     private static long rootCacheAt = 0L;
     private static CgroupRootInfo rootCache;
-    private static final AtomicInteger NEXT_TOKEN = new AtomicInteger(tokenSeed());
+    private static final AtomicInteger NEXT_TOKEN = new AtomicInteger(DaemonBootstrap.tokenSeed(1000));
     private static final Map<Integer, FreezeSession> SESSIONS = new HashMap<>();
 
 
@@ -76,13 +79,6 @@ final class CgroupFreezeUtil {
 
     private CgroupFreezeUtil() {}
 
-    private static int tokenSeed() {
-        long seed = (System.currentTimeMillis() % 100000L) * 1000L;
-        seed += Math.abs(android.os.Process.myPid() % 1000);
-        if (seed < 1000L) seed += 1000L;
-        if (seed > Integer.MAX_VALUE - 10000L) seed = 1000L + Math.abs(android.os.Process.myPid() % 1000);
-        return (int) seed;
-    }
 
     static synchronized String start(int userId, String packageName, int explicitPid, int timeoutMs, String owner) {
         long startMs = System.currentTimeMillis();
@@ -121,14 +117,23 @@ final class CgroupFreezeUtil {
         }
 
         int packageUid = resolvePackageUid(userId, pkg, out, "CGROUP_FREEZE_START_UID");
+        int selectedPid = selectedPidForStartOwner(explicitPid, safeOwner);
+        if (selectedPid != explicitPid) {
+            out.append("CGROUP_FREEZE_START_SCOPE_POLICY package=").append(sanitize(pkg))
+                    .append(" owner=").append(sanitize(safeOwner))
+                    .append(" explicitPid=").append(explicitPid)
+                    .append(" selectedPid=").append(selectedPid)
+                    .append(" reason=primary_app_scope_package_freeze_all_alive_pids")
+                    .append('\n');
+        }
         List<PidInfo> pids;
-        if (explicitPid > 0) {
-            PidInfo direct = explicitPidInfo(pkg, userId, explicitPid, out);
+        if (selectedPid > 0) {
+            PidInfo direct = explicitPidInfo(pkg, userId, selectedPid, out);
             pids = new ArrayList<>();
             if (direct != null) pids.add(direct);
             if (pids.isEmpty()) {
                 List<PidInfo> scanned = findPackagePids(pkg, userId, out);
-                for (PidInfo p : scanned) if (p != null && p.pid == explicitPid) pids.add(p);
+                for (PidInfo p : scanned) if (p != null && p.pid == selectedPid) pids.add(p);
             }
         } else {
             pids = findPackagePids(pkg, userId, out);
@@ -136,7 +141,8 @@ final class CgroupFreezeUtil {
         out.append("CGROUP_FREEZE_START_PIDS package=").append(sanitize(pkg))
                 .append(" count=").append(pids.size())
                 .append(" packageUid=").append(packageUid)
-                .append(" selectedPid=").append(explicitPid)
+                .append(" selectedPid=").append(selectedPid)
+                .append(" explicitPid=").append(explicitPid)
                 .append(" pids=").append(sanitize(renderPids(pids)))
                 .append('\n');
         if (pids.isEmpty()) {
@@ -157,7 +163,7 @@ final class CgroupFreezeUtil {
         int alreadyFrozen = 0;
         String reason = "no_usable_pid";
 
-        NativePackageFreezeResult packageFreeze = explicitPid > 0 ? null
+        NativePackageFreezeResult packageFreeze = selectedPid > 0 ? null
                 : tryNativeFreezePackage(session, pids, packageUid, safeTimeoutMs, out);
         if (packageFreeze != null && packageFreeze.accepted) {
             checked = packageFreeze.checked;
@@ -248,7 +254,22 @@ final class CgroupFreezeUtil {
                     .append(System.currentTimeMillis() - startMs).append('\n');
             return out.toString();
         }
-        StopStats stats = restoreSession(session, 1500, out, "CGROUP_FREEZE_STOP");
+        boolean restoreDeferredToPrimaryScope = shouldDeferProcessObserverRestoreToPrimaryScope(session);
+        StopStats stats;
+        if (restoreDeferredToPrimaryScope) {
+            stats = new StopStats();
+            out.append("CGROUP_FREEZE_STOP_RESTORE_DEFER_TO_PRIMARY_SCOPE token=").append(token)
+                    .append(" user=").append(session.userId)
+                    .append(" package=").append(sanitize(session.packageName))
+                    .append(" owner=").append(sanitize(session.owner))
+                    .append(" entries=").append(session.entries.size())
+                    .append(" reason=primary_app_scope_still_active")
+                    .append('\n');
+        } else {
+            stats = restoreSession(session, 1500, out, "CGROUP_FREEZE_STOP");
+        }
+        tryNativeStopFinalReleaseThawUid(session, 700, out, "CGROUP_FREEZE_STOP");
+        tryRestoreDeferredWakeBlockAfterPrimaryRelease(session, out, "CGROUP_FREEZE_STOP");
         boolean stateDeleted = removePersistentToken(token);
         boolean ok = stats.failed == 0 && stateDeleted;
         if (!ok) SESSIONS.put(token, session);
@@ -272,6 +293,209 @@ final class CgroupFreezeUtil {
                 .append(" elapsedMs=").append(System.currentTimeMillis() - startMs)
                 .append('\n');
         return out.toString();
+    }
+
+
+    static synchronized String refreshPrimaryAppScopePackageFreeze(int userId, String packageName, String reason, int timeoutMs) {
+        long startMs = System.currentTimeMillis();
+        String pkg = safePackage(packageName);
+        String safeReason = safeWord(reason == null || reason.trim().isEmpty() ? "manual-refresh" : reason.trim());
+        int safeTimeoutMs = clamp(timeoutMs, 100, 5000, 1000);
+        StringBuilder out = new StringBuilder(4096);
+        out.append("CGROUP_FREEZE_PRIMARY_REFRESH_BEGIN version=").append(VERSION)
+                .append(" user=").append(userId)
+                .append(" package=").append(sanitize(pkg))
+                .append(" reason=").append(sanitize(safeReason))
+                .append(" timeoutMs=").append(safeTimeoutMs)
+                .append('\n');
+        if (pkg.isEmpty()) {
+            out.append("CGROUP_FREEZE_PRIMARY_REFRESH_DONE ok=false reason=bad_args elapsedMs=")
+                    .append(System.currentTimeMillis() - startMs).append('\n');
+            return out.toString();
+        }
+        List<FreezeSession> sessions = activePrimaryAppScopeSessions(userId, pkg, -1);
+        if (sessions.isEmpty()) {
+            out.append("CGROUP_FREEZE_PRIMARY_REFRESH_DONE ok=true reason=no_primary_session refreshed=0 added=0 elapsedMs=")
+                    .append(System.currentTimeMillis() - startMs).append('\n');
+            return out.toString();
+        }
+        int packageUid = resolvePackageUid(userId, pkg, out, "CGROUP_FREEZE_PRIMARY_REFRESH_UID");
+        List<PidInfo> pids = findPackagePids(pkg, userId, out);
+        if (pids.isEmpty()) {
+            out.append("CGROUP_FREEZE_PRIMARY_REFRESH_DONE ok=true reason=no_alive_pid refreshed=0 added=0 sessions=")
+                    .append(sessions.size())
+                    .append(" elapsedMs=").append(System.currentTimeMillis() - startMs).append('\n');
+            return out.toString();
+        }
+        int refreshed = 0;
+        int added = 0;
+        int failed = 0;
+        for (FreezeSession session : sessions) {
+            if (session == null) continue;
+            Set<Integer> existing = sessionEntryPidSet(session);
+            FreezeSession probe = new FreezeSession();
+            probe.token = session.token;
+            probe.userId = session.userId;
+            probe.packageName = session.packageName;
+            probe.owner = session.owner;
+            probe.startedAt = session.startedAt;
+            List<FreezeEntry> frozenEntries = nativeFreezePackageNoThaw(probe, pids, packageUid, safeTimeoutMs, out,
+                    "primary-refresh-" + sanitize(safeReason));
+            if (frozenEntries.isEmpty()) {
+                for (PidInfo pidInfo : pids) {
+                    if (pidInfo == null || pidInfo.pid <= 0) continue;
+                    FreezeSession one = new FreezeSession();
+                    one.token = session.token;
+                    one.userId = session.userId;
+                    one.packageName = session.packageName;
+                    one.owner = session.owner;
+                    one.startedAt = session.startedAt;
+                    StartPidResult r = freezePid(one, pidInfo, packageUid, safeTimeoutMs, out);
+                    if (!r.ok || one.entries.isEmpty()) { failed++; continue; }
+                    frozenEntries.addAll(one.entries);
+                }
+            }
+            FreezeSession delta = new FreezeSession();
+            delta.token = session.token;
+            delta.userId = session.userId;
+            delta.packageName = session.packageName;
+            delta.owner = session.owner;
+            delta.startedAt = session.startedAt;
+            for (FreezeEntry e : frozenEntries) {
+                if (e == null || e.pid <= 0) continue;
+                refreshed++;
+                e.token = session.token;
+                e.userId = session.userId;
+                e.packageName = session.packageName;
+                e.owner = session.owner;
+                e.startedAt = session.startedAt;
+                if (!existing.contains(e.pid)) {
+                    session.entries.add(e);
+                    delta.entries.add(e);
+                    existing.add(e.pid);
+                    added++;
+                }
+            }
+            if (!delta.entries.isEmpty()) {
+                writePersistentSession(delta, out);
+                SESSIONS.put(session.token, session);
+            }
+            out.append("CGROUP_FREEZE_PRIMARY_REFRESH_SESSION token=").append(session.token)
+                    .append(" user=").append(session.userId)
+                    .append(" package=").append(sanitize(session.packageName))
+                    .append(" owner=").append(sanitize(session.owner))
+                    .append(" alive=").append(pids.size())
+                    .append(" entries=").append(session.entries.size())
+                    .append(" delta=").append(delta.entries.size())
+                    .append('\n');
+        }
+        boolean ok = refreshed > 0 && failed == 0;
+        out.append("CGROUP_FREEZE_PRIMARY_REFRESH_DONE ok=").append(ok)
+                .append(" reason=").append(ok ? "ok" : "partial_or_no_refresh")
+                .append(" sessions=").append(sessions.size())
+                .append(" alive=").append(pids.size())
+                .append(" refreshed=").append(refreshed)
+                .append(" added=").append(added)
+                .append(" failed=").append(failed)
+                .append(" elapsedMs=").append(System.currentTimeMillis() - startMs)
+                .append('\n');
+        return out.toString();
+    }
+
+    private static List<FreezeSession> activePrimaryAppScopeSessions(int userId, String packageName, int skipToken) {
+        List<FreezeSession> result = new ArrayList<>();
+        if (packageName == null || packageName.length() == 0) return result;
+        Set<Integer> seen = new LinkedHashSet<>();
+        for (FreezeSession s : SESSIONS.values()) {
+            if (s == null || s.token == skipToken) continue;
+            if (s.userId == userId && packageName.equals(s.packageName) && isPrimaryAppScopeOwner(s.owner)) {
+                result.add(s);
+                seen.add(s.token);
+            }
+        }
+        for (FreezeSession s : readAllPersistentSessions()) {
+            if (s == null || s.token == skipToken || seen.contains(s.token)) continue;
+            if (s.userId == userId && packageName.equals(s.packageName) && isPrimaryAppScopeOwner(s.owner)) result.add(s);
+        }
+        return result;
+    }
+
+    private static Set<Integer> sessionEntryPidSet(FreezeSession session) {
+        Set<Integer> set = new LinkedHashSet<>();
+        if (session == null) return set;
+        for (FreezeEntry e : session.entries) {
+            if (e != null && e.pid > 0) set.add(e.pid);
+        }
+        return set;
+    }
+
+    private static List<FreezeEntry> nativeFreezePackageNoThaw(FreezeSession session, List<PidInfo> pids,
+                                                                int packageUid, int timeoutMs,
+                                                                StringBuilder out, String tag) {
+        List<FreezeEntry> entries = new ArrayList<>();
+        String helper = findNativeHelper();
+        if (helper == null || helper.isEmpty() || session == null || pids == null || pids.isEmpty()) return entries;
+        long startMs = System.currentTimeMillis();
+        int commandTimeoutMs = Math.min(30000, Math.max(3000, pids.size() * (timeoutMs + 500) + 1500));
+        try {
+            NativeRun run = runNativeCommand(helper,
+                    new String[] {"freeze-package", session.packageName, String.valueOf(session.userId), String.valueOf(timeoutMs)},
+                    "FREEZE_PKG_REFRESH " + session.packageName + " " + session.userId + " " + timeoutMs,
+                    commandTimeoutMs);
+            out.append("CGROUP_FREEZE_PRIMARY_REFRESH_NATIVE_PACKAGE tag=").append(sanitize(tag))
+                    .append(" helper=").append(sanitize(helper))
+                    .append(" package=").append(sanitize(session.packageName))
+                    .append(" user=").append(session.userId)
+                    .append(" viaDaemon=").append(run.viaDaemon)
+                    .append(" exit=").append(run.exitCode)
+                    .append(" timedOut=").append(run.timedOut)
+                    .append(" commandTimeoutMs=").append(commandTimeoutMs)
+                    .append(" elapsedMs=").append(System.currentTimeMillis() - startMs)
+                    .append(" output=").append(sanitize(run.output))
+                    .append('\n');
+            String doneLine = "";
+            String raw = run.output == null ? "" : run.output;
+            for (String line : raw.split("\\n")) {
+                if (line == null) continue;
+                String trimmed = line.trim();
+                if (trimmed.startsWith("CGFREEZER_FREEZE_PKG_DONE ")) doneLine = trimmed;
+                if (!trimmed.startsWith("CGFREEZER_FREEZE_PKG_ENTRY ") || !containsToken(trimmed, "ok=true")) continue;
+                int pid = parseInt(valueOfKey(trimmed, "pid"), -1);
+                int uid = parseInt(valueOfKey(trimmed, "uid"), -1);
+                String path = valueOfKey(trimmed, "path");
+                String process = valueOfKey(trimmed, "process");
+                String beforeFreeze = normalizeFreezeValue(valueOfKey(trimmed, "beforeFreeze"));
+                String beforeFrozen = normalizeFreezeValue(valueOfKey(trimmed, "beforeFrozen"));
+                if (pid <= 0 || path.isEmpty() || "-".equals(path)) continue;
+                if (uid < 0) {
+                    for (PidInfo info : pids) if (info != null && info.pid == pid) { uid = info.uid; break; }
+                }
+                if (process.isEmpty() || "-".equals(process)) {
+                    for (PidInfo info : pids) if (info != null && info.pid == pid) { process = info.cmdline; break; }
+                }
+                boolean originallyFrozen = "1".equals(beforeFreeze) || "1".equals(beforeFrozen);
+                FreezeEntry e = new FreezeEntry();
+                e.token = session.token;
+                e.userId = session.userId;
+                e.packageName = session.packageName;
+                e.pid = pid;
+                e.uid = uid >= 0 ? uid : packageUid;
+                e.processName = process;
+                e.path = path;
+                e.originalFreeze = "1".equals(beforeFreeze) ? "1" : "0";
+                e.originalFrozen = originallyFrozen ? "1" : "0";
+                e.startedAt = session.startedAt;
+                e.owner = session.owner;
+                entries.add(e);
+            }
+            boolean accepted = !run.timedOut && run.exitCode == 0 && containsToken(doneLine, "ok=true") && !entries.isEmpty();
+            if (!accepted) entries.clear();
+        } catch (Throwable t) {
+            out.append("CGROUP_FREEZE_PRIMARY_REFRESH_NATIVE_PACKAGE_ERROR tag=").append(sanitize(tag))
+                    .append(" error=").append(sanitize(t.getClass().getSimpleName() + ":" + t.getMessage()))
+                    .append('\n');
+        }
+        return entries;
     }
 
     static synchronized String status() {
@@ -577,6 +801,159 @@ final class CgroupFreezeUtil {
                     .append(" error=").append(sanitize(t.getClass().getSimpleName() + ":" + t.getMessage()))
                     .append('\n');
         }
+    }
+
+    private static void tryNativeStopFinalReleaseThawUid(FreezeSession session, int timeoutMs, StringBuilder out, String tagPrefix) {
+        if (!shouldFinalReleaseThawUid(session)) return;
+        int uid = firstAppUid(session);
+        if (uid < 10000) {
+            out.append(tagPrefix).append("_FINAL_RELEASE_THAW_UID_SKIP reason=uid_missing_or_non_app user=")
+                    .append(session == null ? -1 : session.userId)
+                    .append(" package=").append(session == null ? "-" : sanitize(session.packageName))
+                    .append(" owner=").append(session == null ? "-" : sanitize(session.owner))
+                    .append('\n');
+            return;
+        }
+        tryNativeEmergencyThawUid(uid, clamp(timeoutMs, 100, 5000, 700), out,
+                "stop_final_release_" + safeWord(session.owner));
+    }
+
+    private static void tryRestoreDeferredWakeBlockAfterPrimaryRelease(FreezeSession session, StringBuilder out, String tagPrefix) {
+        if (session == null || !isPrimaryAppScopeOwner(session.owner)) return;
+        if (!AppWakeBlockUtil.hasPersistedPackage(session.userId, session.packageName)) {
+            out.append(tagPrefix).append("_PRIMARY_WAKE_BLOCK_RESTORE_SKIP user=")
+                    .append(session.userId)
+                    .append(" package=").append(sanitize(session.packageName))
+                    .append(" owner=").append(sanitize(session.owner))
+                    .append(" reason=no_deferred_wakeblock")
+                    .append('\n');
+            return;
+        }
+        try {
+            String result = AppWakeBlockUtil.restorePersistedPackage(session.userId, session.packageName,
+                    "cgroup-primary-final-release-" + safeWord(session.owner));
+            out.append(tagPrefix).append("_PRIMARY_WAKE_BLOCK_RESTORE user=")
+                    .append(session.userId)
+                    .append(" package=").append(sanitize(session.packageName))
+                    .append(" owner=").append(sanitize(session.owner))
+                    .append(" result=").append(sanitize(result))
+                    .append('\n');
+        } catch (Throwable t) {
+            out.append(tagPrefix).append("_PRIMARY_WAKE_BLOCK_RESTORE_ERROR user=")
+                    .append(session.userId)
+                    .append(" package=").append(sanitize(session.packageName))
+                    .append(" owner=").append(sanitize(session.owner))
+                    .append(" error=").append(sanitize(t.getClass().getSimpleName() + ":" + t.getMessage()))
+                    .append('\n');
+        }
+    }
+
+    private static boolean shouldFinalReleaseThawUid(FreezeSession session) {
+        return session != null && !session.entries.isEmpty() && isPrimaryAppScopeOwner(session.owner);
+    }
+
+    private static boolean shouldDeferProcessObserverRestoreToPrimaryScope(FreezeSession session) {
+        if (session == null || session.entries.isEmpty()) return false;
+        String owner = session.owner == null ? "" : session.owner.trim();
+        if (!owner.startsWith("processObserver")) return false;
+        return hasActivePrimaryAppScopeSession(session.userId, session.packageName, session.token);
+    }
+
+    static synchronized String deferProcessObserverTokenToPrimaryScope(int token, int expectedUserId, String expectedPackageName, String reason) {
+        long startMs = System.currentTimeMillis();
+        String expectedPkg = safePackage(expectedPackageName);
+        String safeReason = safeWord(reason);
+        StringBuilder out = new StringBuilder(1024);
+        out.append("CGROUP_FREEZE_STOP_PROCESS_OBSERVER_DEFER_BEGIN version=").append(VERSION)
+                .append(" token=").append(token)
+                .append(" expectedUser=").append(expectedUserId)
+                .append(" expectedPackage=").append(sanitize(expectedPkg))
+                .append(" reason=").append(sanitize(safeReason))
+                .append('\n');
+        FreezeSession session = SESSIONS.remove(token);
+        if (session == null) {
+            session = readPersistentSession(token);
+        }
+        if (session == null) {
+            removePersistentToken(token);
+            out.append("CGROUP_FREEZE_STOP_PROCESS_OBSERVER_DEFER_OK token=").append(token)
+                    .append(" reason=missing stateDeleted=true elapsedMs=")
+                    .append(System.currentTimeMillis() - startMs).append('\n');
+            return out.toString();
+        }
+        if (expectedUserId >= 0 && session.userId != expectedUserId) {
+            SESSIONS.put(token, session);
+            out.append("CGROUP_FREEZE_STOP_PROCESS_OBSERVER_DEFER_REJECTED token=").append(token)
+                    .append(" reason=user_mismatch actualUser=").append(session.userId)
+                    .append(" elapsedMs=").append(System.currentTimeMillis() - startMs).append('\n');
+            return out.toString();
+        }
+        if (!expectedPkg.isEmpty() && !expectedPkg.equals(session.packageName)) {
+            SESSIONS.put(token, session);
+            out.append("CGROUP_FREEZE_STOP_PROCESS_OBSERVER_DEFER_REJECTED token=").append(token)
+                    .append(" reason=package_mismatch actualPackage=").append(sanitize(session.packageName))
+                    .append(" elapsedMs=").append(System.currentTimeMillis() - startMs).append('\n');
+            return out.toString();
+        }
+        if (!isProcessObserverOwner(session.owner)) {
+            SESSIONS.put(token, session);
+            out.append("CGROUP_FREEZE_STOP_PROCESS_OBSERVER_DEFER_REJECTED token=").append(token)
+                    .append(" reason=owner_not_process_observer owner=").append(sanitize(session.owner))
+                    .append(" elapsedMs=").append(System.currentTimeMillis() - startMs).append('\n');
+            return out.toString();
+        }
+        if (!hasActivePrimaryAppScopeSession(session.userId, session.packageName, session.token)) {
+            SESSIONS.put(token, session);
+            out.append("CGROUP_FREEZE_STOP_PROCESS_OBSERVER_DEFER_REJECTED token=").append(token)
+                    .append(" reason=primary_app_scope_not_active owner=").append(sanitize(session.owner))
+                    .append(" elapsedMs=").append(System.currentTimeMillis() - startMs).append('\n');
+            return out.toString();
+        }
+        boolean stateDeleted = removePersistentToken(token);
+        if (!stateDeleted) SESSIONS.put(token, session);
+        out.append("CGROUP_FREEZE_STOP_RESTORE_DEFER_TO_PRIMARY_SCOPE token=").append(token)
+                .append(" user=").append(session.userId)
+                .append(" package=").append(sanitize(session.packageName))
+                .append(" owner=").append(sanitize(session.owner))
+                .append(" entries=").append(session.entries.size())
+                .append(" reason=primary_app_scope_still_active")
+                .append(" mode=process_observer_state_only")
+                .append('\n');
+        out.append(stateDeleted ? "CGROUP_FREEZE_STOP_PROCESS_OBSERVER_DEFER_OK" : "CGROUP_FREEZE_STOP_PROCESS_OBSERVER_DEFER_FAILED")
+                .append(" token=").append(token)
+                .append(" user=").append(session.userId)
+                .append(" package=").append(sanitize(session.packageName))
+                .append(" stateDeleted=").append(stateDeleted)
+                .append(" restored=0 missingPath=0 failed=0")
+                .append(" elapsedMs=").append(System.currentTimeMillis() - startMs)
+                .append('\n');
+        return out.toString();
+    }
+
+    static synchronized boolean hasActivePrimaryAppScopeSession(int userId, String packageName, int skipToken) {
+        return !activePrimaryAppScopeSessions(userId, packageName, skipToken).isEmpty();
+    }
+
+    private static boolean isPrimaryAppScopeOwner(String owner) {
+        String safeOwner = owner == null ? "" : owner.trim();
+        return "backup_app_scope".equals(safeOwner) || "restore_app_scope".equals(safeOwner);
+    }
+
+    private static boolean isProcessObserverOwner(String owner) {
+        String safeOwner = owner == null ? "" : owner.trim();
+        return safeOwner.startsWith("processObserver");
+    }
+
+    private static int selectedPidForStartOwner(int explicitPid, String owner) {
+        return explicitPid > 0 && isPrimaryAppScopeOwner(owner) ? -1 : explicitPid;
+    }
+
+    private static int firstAppUid(FreezeSession session) {
+        if (session == null || session.entries.isEmpty()) return -1;
+        for (FreezeEntry e : session.entries) {
+            if (e != null && e.uid >= 10000) return e.uid;
+        }
+        return -1;
     }
 
     private static StartPidResult tryNativeFreezePid(FreezeSession session, PidInfo p, int timeoutMs, StringBuilder out) {

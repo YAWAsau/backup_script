@@ -15,7 +15,7 @@ import java.util.Map;
  * - unknown keys fall back to the original raw key.
  */
 public final class AppStateLocalization {
-    public static final String VERSION = "v1.0.0-appstate-localization-dex";
+    public static final String VERSION = DexBuildInfo.VERSION;
 
     private static final Map<String, String> BUILTIN = new LinkedHashMap<>();
     private static final Map<String, String> PERMISSIONS = new LinkedHashMap<>();

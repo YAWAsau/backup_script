@@ -1,0 +1,5 @@
+layer	input	output	purpose
+compile-db	c/*.c + Android NDK r28c/API28	rust/parity/c2rust_android_compile_db/compile_commands.json	Give c2rust exact Android compile commands; keep -O0 to avoid optimizer builtins.
+transpile	compile_commands.json	rust/parity/c2rust_baseline/<tool>/	Generate unsafe Rust oracle from C reference; not a runtime replacement.
+smoke-1	C reference bin + handwritten Rust bin	manual_rust.log	Validate actual Rust helpers used by SpeedBackup.
+smoke-2	C reference bin + c2rust baseline bin	c2rust_baseline.log	Validate that the generated oracle behaves like C before using it as a diff reference.

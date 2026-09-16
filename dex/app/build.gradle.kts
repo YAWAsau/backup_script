@@ -18,8 +18,8 @@ android {
         applicationId = "com.xayah.dex"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2719
-        versionName = "2.6.151-display-timeout-daemon-session"
+        versionCode = 2740
+        versionName = "2.6.239-qq-primary-freeze-hold"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         multiDexEnabled = false

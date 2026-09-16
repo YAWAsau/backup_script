@@ -32,11 +32,11 @@ import dev.rikka.tools.refine.Refine;
  * not used by tools by default because it has stronger system firewall side effects.
  */
 final class UidNetworkBlockUtil {
-    static final String VERSION = "v1.1-r487-run-tmpdir-state-scope";
+    static final String VERSION = DexBuildInfo.VERSION;
     private static final SimpleDateFormat TS = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US);
     private static final long PROCESS_START_MS = System.currentTimeMillis();
     private static final String PROCESS_SESSION_ID = android.os.Process.myPid() + "-" + PROCESS_START_MS;
-    private static final AtomicInteger NEXT_TOKEN = new AtomicInteger(tokenSeed());
+    private static final AtomicInteger NEXT_TOKEN = new AtomicInteger(DaemonBootstrap.tokenSeed(3000));
     private static final Map<Integer, NetBlockSession> SESSIONS = new HashMap<>();
     private static final String STATE_DIR = scopedPath("SPEEDBACKUP_UID_NETBLOCK_STATE_DIR", ".speedbackup_uid_netblock_state");
     private static final long STATE_TTL_MS = 24L * 60L * 60L * 1000L;
@@ -201,13 +201,25 @@ final class UidNetworkBlockUtil {
                         .append(" uid=").append(sanitize(p.getProperty("uid", ""))).append('\n');
                 String r = restorePersistedFile(f, "stale-cleanup-" + sanitize(reason), "stale-cleanup", -1, -1, "");
                 out.append(r);
-                if (restoreDoneAndStateDeleted(r)) restored++;
-                boolean del = !f.exists() || f.delete();
-                if (del) deleted++;
-                out.append("UID_NET_BLOCK_PERSISTENT_CLEANUP_DELETE path=").append(sanitize(f.getAbsolutePath()))
-                        .append(" deleted=").append(del)
-                        .append(" restoreDone=").append(restoreDoneAndStateDeleted(r))
-                        .append(" reason=").append(sanitize(reason)).append('\n');
+                boolean restoreOk = restoreDoneAndStateDeleted(r);
+                if (restoreOk) {
+                    restored++;
+                    boolean del = !f.exists() || f.delete();
+                    if (del) deleted++;
+                    out.append("UID_NET_BLOCK_PERSISTENT_CLEANUP_DELETE path=").append(sanitize(f.getAbsolutePath()))
+                            .append(" deleted=").append(del)
+                            .append(" restoreDone=true")
+                            .append(" reason=").append(sanitize(reason)).append('\n');
+                } else {
+                    out.append("UID_NET_BLOCK_PERSISTENT_CLEANUP_RESTORE_FAILED_RETAIN path=").append(sanitize(f.getAbsolutePath()))
+                            .append(" ageMs=").append(ageMs)
+                            .append(" token=").append(sanitize(p.getProperty("token", "")))
+                            .append(" user=").append(sanitize(p.getProperty("user", "")))
+                            .append(" package=").append(sanitize(p.getProperty("package", "")))
+                            .append(" uid=").append(sanitize(p.getProperty("uid", "")))
+                            .append(" reason=").append(sanitize(reason))
+                            .append(" note=restore_failed_state_retained_needs_manual_review").append('\n');
+                }
             }
         }
         out.append("UID_NET_BLOCK_PERSISTENT_CLEANUP_DONE total=").append(total)
@@ -811,13 +823,6 @@ final class UidNetworkBlockUtil {
         try { return Long.parseLong(raw == null ? "" : raw.trim()); } catch (Throwable ignored) { return fallback; }
     }
 
-    private static int tokenSeed() {
-        long now = System.currentTimeMillis();
-        int pid = android.os.Process.myPid() & 0x3FF;
-        long seed = (Math.abs(now % 100000L) * 1000L) + pid;
-        if (seed > Integer.MAX_VALUE - 100000L) seed = seed % 1000000000L;
-        return (int) Math.max(3000L, seed);
-    }
 
     private static String now() {
         try { return TS.format(new Date()); } catch (Throwable ignored) { return String.valueOf(System.currentTimeMillis()); }

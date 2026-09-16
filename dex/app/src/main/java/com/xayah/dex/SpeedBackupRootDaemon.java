@@ -1,8 +1,8 @@
 package com.xayah.dex;
 
 import android.net.LocalSocket;
+import android.net.Credentials;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -21,7 +21,7 @@ import java.nio.charset.StandardCharsets;
  * streaming/network daemon, and install must run under Play UID.
  */
 public final class SpeedBackupRootDaemon {
-    public static final String VERSION = "v2.6.207-r501-canary-daemon-supervisor-keep dex=" + HiddenApiUtil.VERSION;
+    public static final String VERSION = DexBuildInfo.VERSION;
     private static final int HOT_PROTOCOL_VERSION = 1;
 
     private SpeedBackupRootDaemon() {}
@@ -51,6 +51,8 @@ public final class SpeedBackupRootDaemon {
         System.out.println("SpeedBackupRootDaemon " + VERSION);
         System.out.println("  capability: dex.root_unified_daemon.v1");
         System.out.println("  capability: dex.root_daemon.ready_before_appstate_init.v1");
+        System.out.println("  capability: appstate.snapshot.direct_files.v1");
+        System.out.println("  capability: appstate.snapshot.direct_files.single_pass.v1");
         System.out.println("  capability: dex.root_daemon.ready_before_hiddenapi_init.v1");
         System.out.println("  capability: dex.root_daemon.ready_before_hardening.v1");
         System.out.println("  capability: dex.display_power.root_daemon.v1");
@@ -93,6 +95,15 @@ public final class SpeedBackupRootDaemon {
         System.out.println("  capability: dex.app_wake_block.persistent_cleanup.v1");
         System.out.println("  capability: dex.app_wake_block.state_delete_verify.v1");
         System.out.println("  capability: dex.app_wake_block.cleanup_force_zero_ttl.v1");
+        System.out.println("  capability: dex.app_wake_block.cleanup_restore_failed_retain_state.v1");
+        System.out.println("  capability: dex.app_wake_block.snapshot_unsafe_refuse_apply.v1");
+        System.out.println("  capability: dex.daemon.read_exactly.body_limit.v1");
+        System.out.println("  capability: dex.daemon.token_seed_shared.v1");
+        System.out.println("  capability: dex.notification.peer_credentials_uid.v1");
+        System.out.println("  capability: dex.ssaid.state_cache_shutdown.v1");
+        System.out.println("  capability: dex.daemon_supervisor.pid_starttime.v1");
+        System.out.println("  capability: dex.cchelper.table_hardening.v1");
+        System.out.println("  capability: dex.device_model_db.entry_count_runtime.v1");
         System.out.println("  capability: dex.app_wake_block.exempted_restore_alias.v1");
         System.out.println("  capability: dex.app_wake_block.deviceidle_whitelist_restore.v1");
         System.out.println("  capability: dex.app_wake_block.direct_appops.v1");
@@ -102,6 +113,7 @@ public final class SpeedBackupRootDaemon {
         System.out.println("  capability: dex.uid_net_block.netpolicy_direct.v1");
         System.out.println("  capability: dex.uid_net_block.netd_direct_probe.v1");
         System.out.println("  capability: dex.uid_net_block.persistent_restore.v1");
+        System.out.println("  capability: dex.uid_net_block.cleanup_restore_failed_retain_state.v1");
         System.out.println("  capability: dex.uid_net_block.smart_policy.v1");
         System.out.println("  capability: dex.cgroup_freezer.lifecycle.v1");
         System.out.println("  capability: dex.process_observer.cgroup_freezer_guard.v1");
@@ -113,6 +125,12 @@ public final class SpeedBackupRootDaemon {
         System.out.println("  capability: dex.cgroup_freezer.batch_daemon_prewarm.v1");
         System.out.println("  capability: dex.cgroup_freezer.native_package_atomic.v1");
         System.out.println("  capability: dex.cgroup_freezer.native_thaw_uid_emergency.v1");
+        System.out.println("  capability: dex.cgroup_freezer.stop_final_release_thaw_uid.v1");
+        System.out.println("  capability: dex.cgroup_freezer.process_observer_stop_defer_to_app_scope.v1");
+        System.out.println("  capability: dex.cgroup_freezer.primary_app_scope_package_freeze.v1");
+        System.out.println("  capability: dex.cgroup_freezer.primary_app_scope_refresh.v1");
+        System.out.println("  capability: dex.process_observer.primary_cgroup_refresh.v1");
+        System.out.println("  capability: dex.process_observer.wake_block_stop_defer_to_app_scope.v1");
         System.out.println("  capability: dex.cgroup_freezer.daemon_parent_control.v1");
         System.out.println("  capability: dex.cgroup_freezer.binder_freeze_optional.v1");
         System.out.println("  capability: dex.cgroup_freezer.native_scan_package_optional.v1");
@@ -128,6 +146,12 @@ public final class SpeedBackupRootDaemon {
         System.out.println("  capability: dex.hidden_api.bootstrap.v2");
         System.out.println("  capability: dex.hidden_api.bypass_softgate.v1");
         System.out.println("  capability: dex.hidden_api.runtime_probe.v1");
+        System.out.println("  capability: webdav.direct_children_manifest.dex.v1");
+        System.out.println("  capability: webdav.download_manifest.dex.v1");
+        System.out.println("  capability: webdav.orphan_roots_manifest.dex.v1");
+        System.out.println("  capability: dex.daemon.common_framed_reader.v1");
+        System.out.println("  capability: rust.native_primitives.convergence_source.v1");
+        System.out.println("  capability: rust.native_replacement_rc.v1");
         System.out.println("  daemonunix <socketPath> [idleTimeoutSec] [ownerPid]");
     }
 
@@ -167,18 +191,18 @@ public final class SpeedBackupRootDaemon {
         try (LocalSocket c = client) {
             InputStream in = c.getInputStream();
             OutputStream out = c.getOutputStream();
-            String namespace = readUtf8Line(in).trim();
+            String namespace = DaemonBootstrap.readUtf8Line(in).trim();
             if ("ping".equals(namespace)) {
                 writeResult(out, 0, "OK", "PONG\n");
                 return;
             }
             if ("hiddenapi".equals(namespace)) {
                 HiddenApiBypassBridge.installExemptionsOnce();
-                handleHot(out, in, true);
+                handleHot(out, in, true, peerUid(c, 0));
                 return;
             }
             if ("notify".equals(namespace) || "notification".equals(namespace)) {
-                handleHot(out, in, false);
+                handleHot(out, in, false, peerUid(c, 0));
                 return;
             }
             if ("appstate".equals(namespace)) {
@@ -191,24 +215,32 @@ public final class SpeedBackupRootDaemon {
         }
     }
 
-    private static void handleHot(OutputStream out, InputStream in, boolean hiddenApi) throws IOException {
-        String command = readUtf8Line(in);
-        String protocolRaw = readUtf8Line(in);
-        String bodyLengthRaw = readUtf8Line(in);
+    private static void handleHot(OutputStream out, InputStream in, boolean hiddenApi, int peerUid) throws IOException {
+        String command = DaemonBootstrap.readUtf8Line(in);
+        String protocolRaw = DaemonBootstrap.readUtf8Line(in);
+        String bodyLengthRaw = DaemonBootstrap.readUtf8Line(in);
         int protocol = parsePositiveInt(protocolRaw, -1);
         long bodyLength = parseLong(bodyLengthRaw, -2L);
         if (protocol != HOT_PROTOCOL_VERSION || bodyLength < -1L) {
             writeResult(out, 2, "BAD_REQUEST", "ROOT_DAEMON_BAD_HOT_REQUEST\n");
             return;
         }
-        byte[] bodyBytes = bodyLength == -1L ? readAll(in) : readExactly(in, bodyLength);
+        byte[] bodyBytes = bodyLength == -1L ? DaemonBootstrap.readAll(in) : DaemonBootstrap.readExactly(in, bodyLength);
         if (hiddenApi) {
             HiddenApiUtil.DaemonRunResult result = HiddenApiUtil.runDaemonCommand(command, bodyBytes);
             writeResult(out, result.rc, result.rc == 0 ? "OK" : "FAIL", result.stdout);
         } else {
-            NotificationUtil.DaemonRunResult result = NotificationUtil.runDaemonCommand(command, bodyBytes);
+            NotificationUtil.DaemonRunResult result = NotificationUtil.runDaemonCommand(command, bodyBytes, peerUid);
             writeResult(out, result.rc, result.rc == 0 ? "OK" : "FAIL", result.stdout);
         }
+    }
+
+    private static int peerUid(LocalSocket socket, int fallback) {
+        try {
+            Credentials credentials = socket == null ? null : socket.getPeerCredentials();
+            if (credentials != null && credentials.getUid() >= 0) return credentials.getUid();
+        } catch (Throwable ignored) {}
+        return fallback;
     }
 
     private static void writeResult(OutputStream out, int rc, String name, String body) throws IOException {
@@ -217,36 +249,6 @@ public final class SpeedBackupRootDaemon {
         out.write((String.valueOf(payload.length) + "\n").getBytes(StandardCharsets.UTF_8));
         out.write(payload);
         out.flush();
-    }
-
-    private static String readUtf8Line(InputStream in) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream(128);
-        while (true) {
-            int b = in.read();
-            if (b < 0 || b == '\n') break;
-            if (b != '\r') out.write(b);
-        }
-        return out.toString("UTF-8");
-    }
-
-    private static byte[] readExactly(InputStream in, long length) throws IOException {
-        if (length > Integer.MAX_VALUE) throw new IOException("request body too large");
-        byte[] out = new byte[(int) length];
-        int off = 0;
-        while (off < out.length) {
-            int n = in.read(out, off, out.length - off);
-            if (n < 0) throw new IOException("unexpected EOF: expected=" + out.length + " actual=" + off);
-            off += n;
-        }
-        return out;
-    }
-
-    private static byte[] readAll(InputStream in) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buf = new byte[8192];
-        int n;
-        while ((n = in.read(buf)) >= 0) out.write(buf, 0, n);
-        return out.toByteArray();
     }
 
     private static long parseLong(String raw, long fallback) {

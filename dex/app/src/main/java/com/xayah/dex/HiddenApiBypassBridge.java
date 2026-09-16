@@ -15,7 +15,7 @@ import java.util.Locale;
  * underlying failure reason to stderr.
  */
 public final class HiddenApiBypassBridge {
-    public static final String VERSION = "lsposed-hiddenapibypass-6.1-softgate-r322";
+    public static final String VERSION = DexBuildInfo.VERSION;
 
     private static final Object LOCK = new Object();
     private static volatile boolean attempted;

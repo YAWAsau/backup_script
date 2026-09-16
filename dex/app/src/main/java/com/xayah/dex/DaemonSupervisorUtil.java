@@ -19,7 +19,7 @@ public final class DaemonSupervisorUtil {
     public static void main(String[] args) throws Exception {
         if (args.length == 0 || "help".equals(args[0])) { usage(); return; }
         if ("version".equals(args[0]) || "--version".equals(args[0]) || "-v".equals(args[0])) {
-            System.out.println("DaemonSupervisorUtil v1.1-r501-keep dex=" + HiddenApiUtil.VERSION);
+            System.out.println(DexBuildInfo.VERSION);
             return;
         }
         if (!"supervise".equals(args[0])) { usage(); System.exit(2); }
@@ -38,12 +38,23 @@ public final class DaemonSupervisorUtil {
         DaemonHardening.protectSelf("supervisor-" + component);
         int restartCount = 0;
         long lastRestart = 0L;
+        int expectedDaemonPid = -1;
+        Long expectedDaemonStart = null;
         while (true) {
             Thread.sleep(intervalMs);
             Long curOwnerStart = DaemonBootstrap.readProcStarttime(ownerPid);
             if (ownerStart == null || curOwnerStart == null || !ownerStart.equals(curOwnerStart)) System.exit(0);
             int daemonPid = readPid(pidFile);
-            boolean alive = daemonPid > 1 && DaemonBootstrap.readProcStarttime(daemonPid) != null;
+            Long daemonStart = daemonPid > 1 ? DaemonBootstrap.readProcStarttime(daemonPid) : null;
+            boolean identityOk = daemonPid > 1 && daemonStart != null
+                    && daemonIdentityMatches(daemonPid, command, socketPath);
+            if (identityOk && daemonPid != expectedDaemonPid) {
+                expectedDaemonPid = daemonPid;
+                expectedDaemonStart = daemonStart;
+            }
+            boolean alive = identityOk
+                    && expectedDaemonStart != null
+                    && daemonStart.equals(expectedDaemonStart);
             boolean socketOk = socketPath == null || "-".equals(socketPath) || new File(socketPath).exists();
             if (alive && socketOk) {
                 DaemonHardening.protectPid(daemonPid, component);
@@ -53,11 +64,13 @@ public final class DaemonSupervisorUtil {
             if (now - lastRestart < Math.max(1000L, intervalMs)) continue;
             lastRestart = now;
             restartCount++;
-            startDaemon(command, pidFile, component, restartCount);
+            int startedPid = startDaemon(command, pidFile, component, restartCount);
+            expectedDaemonPid = startedPid;
+            expectedDaemonStart = startedPid > 1 ? DaemonBootstrap.readProcStarttime(startedPid) : null;
         }
     }
 
-    private static void startDaemon(List<String> command, File pidFile, String component, int restartCount) {
+    private static int startDaemon(List<String> command, File pidFile, String component, int restartCount) {
         try {
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectErrorStream(true);
@@ -67,8 +80,10 @@ public final class DaemonSupervisorUtil {
             if (pid > 1) {
                 writePid(pidFile, pid);
                 DaemonHardening.protectPid(pid, component);
+                return pid;
             }
         } catch (Throwable ignored) {}
+        return -1;
     }
 
     private static int bestEffortPid(Process p) {
@@ -80,6 +95,52 @@ public final class DaemonSupervisorUtil {
             if (v instanceof Number) return ((Number) v).intValue();
         } catch (Throwable ignored) {}
         return -1;
+    }
+
+    private static boolean daemonIdentityMatches(int pid, List<String> command, String socketPath) {
+        String cmdline = readProcCmdline(pid);
+        if (cmdline.length() == 0) return false;
+        String expectedClass = expectedDexClass(command);
+        if (expectedClass.length() > 0 && !cmdline.contains(expectedClass)) return false;
+        String expectedMode = expectedDaemonMode(command);
+        if (expectedMode.length() > 0 && !containsArg(cmdline, expectedMode)) return false;
+        if (socketPath != null && !"-".equals(socketPath) && socketPath.length() > 0 && !cmdline.contains(socketPath)) return false;
+        return true;
+    }
+
+    private static String expectedDexClass(List<String> command) {
+        if (command == null) return "";
+        for (String arg : command) {
+            if (arg != null && arg.startsWith("com.xayah.dex.")) return arg;
+        }
+        return "";
+    }
+
+    private static String expectedDaemonMode(List<String> command) {
+        if (command == null) return "";
+        for (String arg : command) {
+            if ("daemonunix".equals(arg) || "daemon".equals(arg)) return arg;
+        }
+        return "";
+    }
+
+    private static boolean containsArg(String text, String arg) {
+        if (text == null || arg == null || arg.length() == 0) return false;
+        return (" " + text + " ").contains(" " + arg + " ");
+    }
+
+    private static String readProcCmdline(int pid) {
+        try {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            try (java.io.FileInputStream input = new java.io.FileInputStream(new File("/proc/" + pid + "/cmdline"))) {
+                byte[] buf = new byte[1024];
+                int n;
+                while ((n = input.read(buf)) >= 0) out.write(buf, 0, n);
+            }
+            return out.toString("UTF-8").replace('\0', ' ').trim();
+        } catch (Throwable ignored) {
+            return "";
+        }
     }
 
     private static void writePid(File f, int pid) {

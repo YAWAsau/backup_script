@@ -8166,8 +8166,8 @@ public class CCHelper {
         initializeMap(TS_CHARACTERS, ts);
     }
 
-    private HashMap<String, String> st = new HashMap<>();
-    private HashMap<String, String> ts = new HashMap<>();
+    private HashMap<Integer, String> st = new HashMap<>();
+    private HashMap<Integer, String> ts = new HashMap<>();
 
     /**
      * SpeedBackup UI glossary.
@@ -8322,24 +8322,29 @@ public class CCHelper {
             {"设定", "配置"}
     };
 
-    void initializeMap(String dict, HashMap<String, String> map, String... revision) {
+    void initializeMap(String dict, HashMap<Integer, String> map, String... revision) {
+        if (dict == null) return;
         for (String r : revision) {
             if (r != null) {
                 String[] lines = r.trim().split("\n");
                 for (String line : lines) {
-                    String[] set = line.split("\t");
+                    String[] set = line.split("\t", 2);
+                    if (set.length < 2 || set[0].isEmpty()) continue;
                     String key = set[0];
                     String value = set[1];
-                    dict = dict.replaceAll("\t" + key, "\t" + value);
+                    dict = dict.replace("\t" + key, "\t" + value);
                 }
             }
         }
         String[] lines = dict.trim().split("\n");
         for (String line : lines) {
-            String[] set = line.split("\t");
+            String[] set = line.split("\t", 2);
+            if (set.length < 2 || set[0].isEmpty()) continue;
             String key = set[0];
-            String[] values = set[1].split(" ");
-            map.put(key, values[0]);
+            String valuesRaw = set[1].trim();
+            if (valuesRaw.isEmpty()) continue;
+            String[] values = valuesRaw.split(" ");
+            map.put(key.codePointAt(0), values[0]);
         }
     }
 
@@ -8347,15 +8352,14 @@ public class CCHelper {
      * Simplified Chinese to Traditional Chinese (Taiwan standard)
      */
     String s2t(String text) {
+        if (text == null || text.isEmpty()) return text == null ? "" : text;
         StringBuilder out = new StringBuilder();
-        char[] charArray = text.toCharArray();
-        for (char c : charArray) {
-            String converted = st.get(String.valueOf(c));
-            if (converted == null) {
-                out.append(c);
-            } else {
-                out.append(converted);
-            }
+        for (int i = 0; i < text.length(); ) {
+            int cp = text.codePointAt(i);
+            String converted = st.get(cp);
+            if (converted == null) out.appendCodePoint(cp);
+            else out.append(converted);
+            i += Character.charCount(cp);
         }
         return twPolish(applyPhraseMap(out.toString(), S2T_PHRASES));
     }
@@ -8371,22 +8375,31 @@ public class CCHelper {
      * Traditional Chinese to Simplified Chinese
      */
     String t2s(String text) {
+        if (text == null || text.isEmpty()) return text == null ? "" : text;
         StringBuilder out = new StringBuilder();
-        char[] charArray = text.toCharArray();
-        for (char c : charArray) {
-            String converted = ts.get(String.valueOf(c));
-            if (converted == null) {
-                out.append(c);
-            } else {
-                out.append(converted);
-            }
+        for (int i = 0; i < text.length(); ) {
+            int cp = text.codePointAt(i);
+            String converted = ts.get(cp);
+            if (converted == null) out.appendCodePoint(cp);
+            else out.append(converted);
+            i += Character.charCount(cp);
         }
         return applyPhraseMap(out.toString(), T2S_PHRASES);
     }
 
     private static String applyPhraseMap(String text, String[][] phrases) {
+        if (text == null || text.isEmpty() || phrases == null || phrases.length == 0) return text == null ? "" : text;
+        String[][] sorted = java.util.Arrays.copyOf(phrases, phrases.length);
+        java.util.Arrays.sort(sorted, new java.util.Comparator<String[]>() {
+            @Override public int compare(String[] a, String[] b) {
+                int al = a == null || a.length == 0 || a[0] == null ? 0 : a[0].length();
+                int bl = b == null || b.length == 0 || b[0] == null ? 0 : b[0].length();
+                return Integer.compare(bl, al);
+            }
+        });
         String out = text;
-        for (String[] pair : phrases) {
+        for (String[] pair : sorted) {
+            if (pair == null || pair.length < 2 || pair[0] == null || pair[1] == null || pair[0].isEmpty()) continue;
             out = out.replace(pair[0], pair[1]);
         }
         return out;

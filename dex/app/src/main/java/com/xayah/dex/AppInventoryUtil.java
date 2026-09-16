@@ -36,7 +36,7 @@ import dev.rikka.tools.refine.Refine;
  * In a persistent root daemon this class keeps a per-user/per-locale cache for the current run.
  */
 final class AppInventoryUtil {
-    static final String VERSION = "v1.3.14-r480-pre-restore-package-state";
+    static final String VERSION = DexBuildInfo.VERSION;
     private static final String XPOSED_METADATA = "xposedminversion";
     private static final Gson GSON = new Gson();
     private static final Map<String, List<Item>> CACHE = new HashMap<>();
@@ -508,6 +508,83 @@ final class AppInventoryUtil {
         }
         return out.toString();
     }
+
+
+    static synchronized String restoreInstallPlan(int userId, String targetPackage, String apkKind, String backupInstaller, String policy, boolean refresh) throws Exception {
+        if (refresh) clearCache();
+        String target = targetPackage == null ? "" : targetPackage.trim();
+        String kind = apkKind == null ? "" : apkKind.trim().toLowerCase(Locale.US);
+        String installer = backupInstaller == null ? "" : backupInstaller.trim();
+        String reqPolicy = policy == null || policy.trim().isEmpty() ? "auto" : policy.trim();
+        StringBuilder out = new StringBuilder();
+        out.append("#schema\tspeedbackup.restore_install_plan.v1\n");
+        out.append("#fields\tstatus\tpackage\tuserId\tapkKind\tbackupInstaller\tinstallRoute\tlegacyPmInstall\tinstallCreate\tinstallWrite\tinstallCommit\tbypassLowTargetSdkBlock\ttestFlag\tinstallerArg\tinstallerUid\tusableForUidHybrid\texistingInstalled\texistingVersionCode\treason\n");
+        if (target.isEmpty()) {
+            out.append("MISSING\t\t").append(userId).append('\t').append(sanitize(kind)).append('\t').append(sanitize(installer))
+                    .append("\tsession\tfalse\ttrue\ttrue\ttrue\ttrue\ttrue\t\t-1\tfalse\tfalse\t-1\tBAD_ARGS\n");
+            return out.toString();
+        }
+        Context ctx = HiddenApiHelper.getContext();
+        PackageManager pm = PackageManagerUtil.getPackageManager(ctx).packageManager();
+        PackageManagerHidden pmHidden = Refine.unsafeCast(pm);
+        boolean existingInstalled = false;
+        long existingVersion = -1L;
+        try {
+            PackageInfo pi = pmHidden.getPackageInfoAsUser(target, PackageManager.GET_META_DATA, userId);
+            Item item = toItem(pm, pi, userId);
+            if (item != null) {
+                existingInstalled = item.installed;
+                existingVersion = item.versionCode;
+            }
+        } catch (Throwable ignored) {}
+        String installerArg = "";
+        int installerUid = -1;
+        boolean usableHybrid = false;
+        String reason = "session_all_sdk";
+        if (!installer.isEmpty() && !"null".equalsIgnoreCase(installer) && "com.android.vending".equals(installer)) {
+            try {
+                PackageInfo ipi = pmHidden.getPackageInfoAsUser(installer, PackageManager.GET_META_DATA, userId);
+                Item i = toItem(pm, ipi, userId);
+                if (i != null && i.enabled && i.uid >= 0) {
+                    installerArg = installer;
+                    installerUid = i.uid;
+                    usableHybrid = new File("/data/user/" + userId + "/" + installer).isDirectory();
+                    reason = usableHybrid ? "session_hybrid_installer_available" : "session_installer_pm_only";
+                }
+            } catch (Throwable t) {
+                reason = "session_installer_unavailable_" + t.getClass().getSimpleName();
+            }
+        }
+        String route = "split".equals(kind) || "multi".equals(kind) ? "session-split" : "session-single";
+        out.append("OK\t").append(sanitize(target)).append('\t').append(userId).append('\t').append(sanitize(kind.isEmpty() ? "unknown" : kind)).append('\t')
+                .append(sanitize(installer)).append('\t').append(route).append("\tfalse\ttrue\ttrue\ttrue\ttrue\ttrue\t")
+                .append(sanitize(installerArg)).append('\t').append(installerUid).append('\t').append(usableHybrid ? "true" : "false").append('\t')
+                .append(existingInstalled ? "true" : "false").append('\t').append(existingVersion).append('\t').append(sanitize(reason)).append('\n');
+        return out.toString();
+    }
+
+    static synchronized String restoreInstallPlanBatch(int userId, String[] specs, String policy, boolean refresh) throws Exception {
+        if (refresh) clearCache();
+        StringBuilder out = new StringBuilder();
+        out.append("#schema\tspeedbackup.restore_install_plan_batch.v1\n");
+        out.append("#fields\tstatus\tpackage\tuserId\tapkKind\tbackupInstaller\tinstallRoute\tlegacyPmInstall\tinstallCreate\tinstallWrite\tinstallCommit\tbypassLowTargetSdkBlock\ttestFlag\tinstallerArg\tinstallerUid\tusableForUidHybrid\texistingInstalled\texistingVersionCode\treason\n");
+        if (specs == null || specs.length == 0) {
+            out.append("MISSING\t\t").append(userId).append("\tunknown\t\tsession-single\tfalse\ttrue\ttrue\ttrue\ttrue\ttrue\t\t-1\tfalse\tfalse\t-1\tBAD_ARGS\n");
+            return out.toString();
+        }
+        for (int i = 0; i < specs.length; i += 3) {
+            String pkg = specs[i] == null ? "" : specs[i].trim();
+            String kind = (i + 1) < specs.length && specs[i + 1] != null ? specs[i + 1].trim() : "single";
+            String installer = (i + 2) < specs.length && specs[i + 2] != null ? specs[i + 2].trim() : "null";
+            String one = restoreInstallPlan(userId, pkg, kind, installer, policy, false);
+            for (String line : one.split("\\r?\\n")) {
+                if (line == null || line.length() == 0 || line.startsWith("#")) continue;
+                out.append(line).append('\n');
+            }
+        }
+        return out.toString();
+    }
+
 
     private static void appendPreRestoreItemFact(StringBuilder out, PackageManager pm, PackageManagerHidden pmHidden, Item item, String reason, boolean installedAnyUser) {
         String splits = item.splitSourceDirs == null ? "" : String.join("|", item.splitSourceDirs);

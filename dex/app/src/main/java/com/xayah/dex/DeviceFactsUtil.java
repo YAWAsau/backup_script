@@ -64,6 +64,8 @@ final class DeviceFactsUtil {
         add(b, "dexVersion", HiddenApiUtil.VERSION).append(',');
         add(b, "modelDbVersion", DeviceModelDb.DB_VERSION).append(',');
         add(b, "modelDbEntryCount", DeviceModelDb.entryCount()).append(',');
+        add(b, "modelDbEntryCountExpected", DeviceModelDb.ENTRY_COUNT).append(',');
+        add(b, "modelDbEntryCountOk", DeviceModelDb.entryCountSelfCheckOk()).append(',');
         add(b, "modelDbSourceLines", DeviceModelDb.sourceLineCount()).append(',');
         add(b, "modelDbSourceSha256", DeviceModelDb.SOURCE_SHA256).append(',');
         add(b, "sdk", Build.VERSION.SDK_INT).append(',');

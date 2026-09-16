@@ -8,11 +8,11 @@ TOOLS_PATH="${TOOLS_PATH:-}"
 TEST_LOG_DIR="${TEST_LOG_DIR:-${PWD:-.}}"
 TEST_LOG_FILE="${TEST_LOG_FILE:-$TEST_LOG_DIR/dex_check.log}"
 TEST_SUMMARY_FILE="${TEST_SUMMARY_FILE:-$TEST_LOG_DIR/dex_full_test.summary}"
-DEX_CHECK_VERSION="v24.20.14-7.66-924-canary-daemon-supervisor-keep-r501-202607232022"
+DEX_CHECK_VERSION="v24.20.14-7.66-1110-remote-firstfull-presize-r687-202607232022"
 BACKUP_WIFI_ENABLE="${BACKUP_WIFI_ENABLE:-1}"
 SB_SELFTEST_LEVEL="${SB_SELFTEST_LEVEL:-quick}"
 CHANGELOG_URL="${CHANGELOG_URL:-https://api.github.com/repos/XayahSuSuSu/Android-DataBackup/releases/latest}"
-SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-v24.20.14-7.66-924-canary-daemon-supervisor-keep-r501-202607232022}"
+SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-v24.20.14-7.66-1110-remote-firstfull-presize-r687-202607232022}"
 SPEEDBACKUP_PATCH_BUILD="${SPEEDBACKUP_PATCH_BUILD:-}"
 PATH="/data/backup_tools:$(dirname "$CLASSPATH_PATH" 2>/dev/null):$PATH"
 export PATH
@@ -187,7 +187,6 @@ require_caps_json(){
 		def cap($n): any($root.capabilities[]?; .name == $n and .enabled == true);
 		($root.schemaVersion == 2) and
 		((($root.daemonProtocolVersion // 0)) >= 1) and
-		((($root.dexVersion // "")) | startswith("v2.6.")) and
 		([
 			"dex.capabilities.v1",
 			"dex.machine_stdout.v1",
@@ -209,8 +208,18 @@ require_caps_json(){
 			"dex.app_inventory.package_facts.batch.v1",
 			"dex.pm.pre_restore_package_state.batch.v1",
 			"dex.pm.installer_context_facts.v1",
+			"dex.pm.restore_install_plan.v1",
+			"dex.pm.restore_install_plan_batch.v1",
+			"webdav.profile_contract.dex.v1",
+			"webdav.profile_contract_full.dex.v1",
+				"webdav.profile_contract_authoritative.dex.v1",
+				"dex.appstate.android16_17_policy_contract.v1",
 			"dex.hidden_api.bypass_softgate.v1",
 			"appstate.snapshot.batch.v2",
+			"appstate.snapshot.batch.parallel.v1",
+			"appstate.snapshot.direct_files.v1",
+			"appstate.snapshot.direct_files.single_pass.v1",
+			"appstate.snapshot.direct_files.telemetry_v2.v1",
 			"appstate.restore.batch.v4",
 			"appstate.verify.batch.v4",
 			"appstate.verify.vendor_classification.dex.v1",
@@ -235,6 +244,18 @@ require_caps_json(){
 			"dex.framework_facts.batch.v1",
 			"dex.device_facts.v1",
 			"dex.device_model_name_map.v1",
+			"dex.build_info.unified_version.v1",
+			"dex.daemon.read_exactly.body_limit.v1",
+			"dex.daemon.token_seed_shared.v1",
+			"dex.notification.peer_credentials_uid.v1",
+			"dex.notification.peer_uid_fail_closed.v1",
+			"dex.ssaid.state_cache_shutdown.v1",
+			"dex.ssaid.state_cache_shutdown_bounded.v1",
+			"dex.daemon_supervisor.pid_starttime.v1",
+			"dex.daemon_supervisor.pid_starttime_cmdline.v1",
+			"dex.cchelper.table_hardening.v1",
+			"dex.device_model_db.entry_count_runtime.v1",
+			"dex.device_model_db.entry_count_selfcheck.v1",
 			"appstate.foreground_state.batch.v1",
 			"appstate.foreground_list.json.v1",
 			"dex.process_observer.global_daemon.v1",
@@ -259,10 +280,17 @@ require_caps_json(){
             "dex.tmp_state.run_tmpdir_scope.v1",
             "dex.process_observer.batch_stop_summary_tsv.v1",
 			"dex.app_wake_block.persistent_restore.v1",
+			"dex.app_wake_block.cleanup_restore_failed_retain_state.v1",
+			"dex.app_wake_block.snapshot_unsafe_refuse_apply.v1",
 			"dex.uid_net_block.persistent_restore.v1",
+			"dex.uid_net_block.cleanup_restore_failed_retain_state.v1",
 			"dex.cgroup_freezer.lifecycle.v1",
 			"dex.cgroup_freezer.persistent_batch_session.v1",
 			"dex.cgroup_freezer.native_package_atomic.v1",
+			"dex.cgroup_freezer.primary_app_scope_package_freeze.v1",
+			"dex.cgroup_freezer.primary_app_scope_refresh.v1",
+			"dex.process_observer.primary_cgroup_refresh.v1",
+			"dex.process_observer.wake_block_stop_defer_to_app_scope.v1",
 			"dex.cgroup_freezer.native_package_kill_live_rescan.v1",
 			"dex.cgroup_freezer.native_thaw_uid_emergency.v1",
 			"dex.cgroup_freezer.daemon_parent_control.v1",
@@ -271,9 +299,61 @@ require_caps_json(){
 			"webdav.managed_put.v1",
             "webdav.putstdin.skip_parent_mkdir.v1",
 			"webdav.managed_list_classify.v1",
+			"webdav.classify_depth1_walk_fallback.dex.v1",
 			"webdav.managed_batch_put_with_parents.v1",
 			"webdav.propfind.no_cache.v1",
 			"webdav.stream_heartbeat_error_kind.dex.v1",
+			"webdav.daemon.read_body_limit.v1",
+			"webdav.tsv_output.control_guard.v1",
+			"webdav.direct_children_manifest.dex.v1",
+			"webdav.prepare_dirs_created_only_progress.dex.v1",
+			"webdav.prepare_dirs_parallel_mkcol.dex.v1",
+			"webdav.classify_parallel_depth1.dex.v1",
+			"webdav.profile_visible_compact.dex.v1",
+			"webdav.download_manifest.dex.v1",
+			"webdav.orphan_roots_manifest.dex.v1",
+			"dex.daemon.common_framed_reader.v1",
+			"rust.native_replacement_rc.v1",
+			"webdav.stream_stall_watchdog.dex.v1",
+			"webdav.stream_stall_socket_abort.dex.v1",
+			"webdav.stream_post_body_response_timeout.dex.v1",
+			"webdav.stream_post_body_phase_guard.dex.v1",
+			"webdav.alist_new_payload_direct.dex.v1",
+			"webdav.known_missing_direct_by_fact.dex.v1",
+			"webdav.alist_openlist_sync_put_semantics.dex.v1",
+			"webdav.pathmode_retry_http400.dex.v1",
+			"webdav.backend_profile.dex.v1",
+			"webdav.server_provider_profile.dex.v1",
+			"webdav.redirect_auth_guard.dex.v1",
+			"webdav.feature_profile.dex.v1",
+			"webdav.feature_profile_complete.dex.v1",
+			"webdav.backend_contract_probe.dex.v1",
+			"webdav.list_strategy_by_fact.dex.v1",
+			"webdav.fixed_put_chunked_fallback.dex.v1",
+			"webdav.nas_identity_profile.dex.v1",
+			"webdav.sftpgo_identity.dex.v1",
+			"webdav.zspace_identity.dex.v1",
+			"webdav.nas_identity_extended.dex.v1",
+			"webdav.generic_nas_dav5005_identity.dex.v1",
+			"webdav.replayable_put_paths_fact_driven.dex.v1",
+			"webdav.atomic_policy_fact_priority.dex.v1",
+			"webdav.managed_probe_chunked.dex.v1",
+			"webdav.backend_support_tier.dex.v1",
+			"webdav.pacer_retry_after_jitter.dex.v1",
+			"webdav.move_copy_verify_after_ambiguous.dex.v1",
+			"webdav.put_verify_after_ambiguous.dex.v1",
+			"webdav.put_405_ambiguous_stat.dex.v1",
+			"webdav.direct_put_verify_before_cleanup.dex.v1",
+			"webdav.put_2xx_body_semantic_guard.dex.v1",
+			"webdav.put_2xx_stat_verify.dex.v1",
+			"webdav.cloudreve_identity.dex.v1",
+			"webdav.alist_version_security_advisory.dex.v1",
+			"webdav.quota_probe.dex.v1",
+			"webdav.upload_size_verify_batch.dex.v1",
+			"webdav.locked_cleanup_deferred.dex.v1",
+			"webdav.jianguoyun_500m_guard.dex.v1",
+			"webdav.backend_decision_log.dex.v1",
+			"rust.native_primitives.convergence_source.v1",
 			"dex.smb.target_probe.v1",
 			"notification.daemon.af_unix.v1",
 			"notification.inline_small_icon.v1"
@@ -286,7 +366,7 @@ log "SpeedBackup dex_check 使用者可讀分組檢查"
 log "pkg=$PKG user=$USER_ID classpath=$CLASSPATH_PATH tools=$TOOLS_PATH level=$SB_SELFTEST_LEVEL dex_check=$DEX_CHECK_VERSION"
 log "selftest_version=$SELFTEST_SCRIPT_VERSION"
 log "speedbackup_patch_build=$SPEEDBACKUP_PATCH_BUILD"
-log "policy=final_user_groups_logged required_core optional_facts reverted_display_timeout_direct"
+log "policy=final_user_groups_logged required_core optional_facts reverted_display_timeout_direct native_pack_plan_facts webdav_stream_stall_watchdog webdav_stream_stall_socket_abort webdav_stream_post_body_response_timeout webdav_stream_post_body_phase_guard webdav_alist_new_payload_direct webdav_pathmode_retry_http400 speedscan_nonblocking_timeout speedscan_prescan_singlepass speedscan_tsv_decimal_sum webdav_backend_profile webdav_server_provider_profile speedscan_entryfacts_fastskip_join stream_entry_perf_child_elapsed rust_capability_only tools_runtime_capability_only eventwait_capability_only webdav_known_missing_direct_by_fact webdav_alist_openlist_sync_put_semantics stream_entry_post_body_semantics remote_stream_local_read_release webdav_compact_profile_created_only_dirs appdetails_bundle_no_shrink_guard appdetails_bundle_payload_set_cover_guard single_apk_parse_session_fallback single_apk_sdk36_session_first installer_context_facts_direct_parse single_apk_session_all_sdk_no_legacy single_apk_session_log_dedupe dex_webdav_profile_contract install_plan_diagnostic speedscan_appdetails_bundle_audit speedscan_appdetails_bundle_manifest speedscan_remote_manifest_plan speedscan_restore_payload_plan speedscan_manifest_diff_cache_index speedscan_full_convergence_stage3 speedscan_manifest_diff_cache_index_v2 speedscan_selected_apps_map speedscan_appdetails_summary_map speedscan_appstate_match_map speedscan_remote_orphan_candidates speedscan_full_convergence_stage4 speedscan_full_convergence_stage5 webdav_profile_contract_authoritative dex_appstate_android16_17_policy_contract play_installer_exact_source_hybrid shell_pm_install_restore_r634 dex_install_deadcode_clean_r635 dex_hygiene_stage2_r636 rust_appdetails_manifest_r637 appstate_match_canonical_r638 restore_guard_safe_appstate_v3_r640 restore_home_ime_cgroup_scope_r641 appstate_ssaid_preserve_v4_r642 webdav_generic_nas_dav5005_identity_r643 appdetails_seedless_stage_cover_r643 appdetails_scoped_cover_r644 rust_speedscan_compilefix_r645 restore_guard_filtered_wide_r646 appdetails_seedless_taint_r647 appdetails_seed_count_fix_r648 prepare_finish_convergence_r649 remote_stream_local_read_plan_v2_r650 restore_finalize_terminal_r650 appdetails_audit_mode_tag_r651 appdetails_health_batch_r652 remote_bundle_health_fastpath_r653 deadcode_hygiene_r654 install_unzip_fastskip_clean_r655 dirsize_map_v2_r656 dirsize_profiler_timeout_r657 cgfreezer_startup_nosocket_skip_r658"
 log "=================================================="
 
 section "核心環境" "檢查 Dex / native 啟動條件"
@@ -313,13 +393,23 @@ else
 fi
 
 _dex_ver_now="$(run_dex --version 2>&1 | head -n 30)"; _dex_ver_rc=$?
-if [ "$_dex_ver_rc" -eq 0 ] && printf '%s\n' "$_dex_ver_now" | grep -q '^v2\.6\.'; then
-	ok "Dex 主入口可啟動" "rc=0"
+if [ "$_dex_ver_rc" -eq 0 ] && [ -n "$_dex_ver_now" ]; then
+	ok "Dex 主入口可啟動" "rc=0 diagnostic_version_only"
 else
 	critical_fail "Dex 主入口可啟動" "rc=$_dex_ver_rc $_dex_ver_now"
 fi
 _root_ver="$(run_class_stdout "$ROOT_DAEMON_CLASS" version 2>&1 | head -n 20)"; _root_ver_rc=$?
 [ "$_root_ver_rc" -eq 0 ] && [ -n "$_root_ver" ] && ok "Dex RootDaemon 可啟動" "rc=0" || critical_fail "Dex RootDaemon 可啟動" "rc=$_root_ver_rc"
+_dex_ver_line="$(printf '%s\n' "$_dex_ver_now" | sed -n '1p')"
+_webdav_ver="$(run_class_stdout "$WEBDAV_CLASS" version 2>&1 | head -n 1)"; _webdav_ver_rc=$?
+_notify_ver="$(run_class_stdout "$NOTIFICATION_CLASS" version 2>&1 | head -n 1)"; _notify_ver_rc=$?
+_appstate_ver="$(run_class_stdout "$APPSTATE_CLASS" version 2>&1 | head -n 1)"; _appstate_ver_rc=$?
+_supervisor_ver="$(run_class_stdout com.xayah.dex.DaemonSupervisorUtil version 2>&1 | head -n 1)"; _supervisor_ver_rc=$?
+if [ "$_root_ver_rc" -eq 0 ] && [ "$_webdav_ver_rc" -eq 0 ] && [ "$_notify_ver_rc" -eq 0 ] && [ "$_appstate_ver_rc" -eq 0 ] && [ "$_supervisor_ver_rc" -eq 0 ]     && [ "$_root_ver" = "$_dex_ver_line" ] && [ "$_webdav_ver" = "$_dex_ver_line" ] && [ "$_notify_ver" = "$_dex_ver_line" ] && [ "$_appstate_ver" = "$_dex_ver_line" ] && [ "$_supervisor_ver" = "$_dex_ver_line" ]; then
+	ok "Dex 全域版本資訊" "consistent version=$_dex_ver_line diagnostic-only"
+else
+	warn "Dex 全域版本資訊" "diagnostic-only capability-gated HiddenApi=$_dex_ver_line RootDaemon=$_root_ver WebDav=$_webdav_ver Notification=$_notify_ver AppState=$_appstate_ver DaemonSupervisor=$_supervisor_ver"
+fi
 _bypass="$(run_dex hiddenApiBypassStatus 2>&1 | head -n 40)"; _bypass_rc=$?
 printf '%s\n' "$_bypass" > "$TEST_LOG_DIR/hiddenapi_bypass_status.txt" 2>/dev/null
 if [ "$_bypass_rc" -eq 0 ] && printf '%s\n' "$_bypass" | grep -q 'HIDDEN_API_BYPASS'; then
@@ -366,6 +456,26 @@ require_text "螢幕亮度/電源模式控制" "$_hidden_help" "setDisplayPowerM
 require_text "cgroup freeze 啟動" "$_hidden_help" "cgroupFreezeStart"
 require_text "cgroup freeze 停止" "$_hidden_help" "cgroupFreezeStop"
 require_text "cgroup daemon 啟動" "$_hidden_help" "cgroupFreezeDaemonEnsure"
+_ew_bin="$(command -v eventwait 2>/dev/null)"; [ -n "$_ew_bin" ] || _ew_bin="/data/backup_tools/eventwait"
+if [ -x "$_ew_bin" ]; then
+	_ew_ver="$($_ew_bin --version 2>/dev/null | head -n 1)"; _ew_ver_rc=$?
+	printf '%s\n' "$_ew_ver" > "$TEST_LOG_DIR/eventwait_version.txt" 2>/dev/null
+	if [ "$_ew_ver_rc" -eq 0 ] && [ -n "$_ew_ver" ]; then
+		ok "eventwait 版本資訊" "diagnostic-only capability-gated version=$_ew_ver"
+	else
+		warn "eventwait 版本資訊" "diagnostic-only rc=$_ew_ver_rc version=$_ew_ver"
+	fi
+	_ew_caps="$($_ew_bin capabilities 2>/dev/null | head -n 3)"; _ew_caps_rc=$?
+	printf '%s\n' "$_ew_caps" > "$TEST_LOG_DIR/eventwait_capabilities.txt" 2>/dev/null
+	if [ "$_ew_caps_rc" -eq 0 ] && printf '%s\n' "$_ew_caps" | grep -F "eventwait.pidfd_open.v1" >/dev/null 2>&1 && printf '%s\n' "$_ew_caps" | grep -F "eventwait.pid_exit_pidfd.v1" >/dev/null 2>&1; then ok "eventwait pidfd capability" "present"; else critical_fail "eventwait pidfd capability" "rc=$_ew_caps_rc $_ew_caps，請重編/替換 eventwait"; fi
+	_ew_probe="$($_ew_bin pidfd-probe $$ 2>/dev/null | head -n 3)"; _ew_probe_rc=$?
+	printf '%s\n' "$_ew_probe" > "$TEST_LOG_DIR/eventwait_pidfd_probe.txt" 2>/dev/null
+	if [ "$_ew_probe_rc" -eq 0 ] && printf '%s\n' "$_ew_probe" | grep -F "pidfd-probe" >/dev/null 2>&1 && printf '%s\n' "$_ew_probe" | grep -F "backend=pidfd_open" >/dev/null 2>&1; then ok "eventwait pidfd runtime" "rc=0"; else warn "eventwait pidfd runtime" "rc=$_ew_probe_rc $_ew_probe；舊核心會回退 poll-no-block"; fi
+else
+	warn "eventwait 版本資訊" "diagnostic-only eventwait_not_found"
+	critical_fail "eventwait pidfd capability" "eventwait_not_found"
+fi
+
 _cg_bin="$(command -v cgfreezer 2>/dev/null)"; [ -n "$_cg_bin" ] || _cg_bin="/data/backup_tools/cgfreezer"
 if [ -x "$_cg_bin" ]; then
 	_cg_usage="$($_cg_bin 2>&1 | head -n 5)"
@@ -389,12 +499,190 @@ else
 	critical_fail "cgroup WCHAN native 指令" "cgfreezer_not_found"
 	critical_fail "cgroup WCHAN 狀態確認" "cgfreezer_not_found"
 fi
+
+_ss_bin="$(command -v speedscan 2>/dev/null)"; [ -n "$_ss_bin" ] || _ss_bin="/data/backup_tools/speedscan"
+if [ -x "$_ss_bin" ]; then
+		# r596: speedscan contract is capability-only. Do not grep usage/help text or exact --version;
+		# help wording and VERSION are diagnostic-only and may legitimately lag behind capabilities.
+		_ss_usage="$($_ss_bin 2>&1 | head -n 120)"
+		printf '%s\n' "$_ss_usage" > "$TEST_LOG_DIR/speedscan_usage.txt" 2>/dev/null
+		ok "speedscan help/version contract" "diagnostic-only capability-gated"
+	_ss_caps="$($_ss_bin capabilities 2>/dev/null | head -n 5)"; _ss_caps_rc=$?
+	printf '%s\n' "$_ss_caps" > "$TEST_LOG_DIR/speedscan_capabilities.txt" 2>/dev/null
+	if [ "$_ss_caps_rc" -eq 0 ] && printf '%s\n' "$_ss_caps" | grep -F "speedscan.tree_pack_plan.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.restore_tree_verify.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.app_media_index.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.dir_size_map_nested_singlepass.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.dir_size_map_v2.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.dir_size_map_profiler.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.dir_size_map_workers8_cap.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.dir_size_map_workers24_cap.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.tsv_decimal_sum.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.entry_size_facts.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.changed_entry_facts.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.local_fastskip_join.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.local_fastskip_join_stats_v2.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.local_fastskip_presize_plan_v3.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.local_fastskip_presize_plan_v4.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.local_fastskip_presize_bundle_v1.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.remote_fastskip_presize_bundle_v1.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.backup_entry_presence_map.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.payload_archive_set.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.dir_size_manifest.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.dir_size_worker_scanroots.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.dir_size_map_route_trie.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.dir_size_map_hint_schedule.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.remote_stream_local_read_plan.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.remote_stream_local_read_plan.v2" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.remote_stream_local_read_final_plan.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.stream_entry_perf_resolver.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.stream_entry_perf_child_elapsed.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.stream_entry_post_body_semantics.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.argv_non_utf8_clean_fail.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.appdetails_bundle_audit.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.appdetails_bundle_audit_seedless_stage_cover.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.appdetails_bundle_audit_scoped_cover.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.appdetails_bundle_audit_seedless_taint.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.appdetails_bundle_manifest.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.appdetails_health_batch.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.remote_manifest_plan.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.restore_payload_plan.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.restore_payload_plan_full.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.manifest_diff_cache_index.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.manifest_diff_cache_index.v2" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.selected_apps_map.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.appdetails_summary_map.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.appstate_match_map.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.appstate_match_canonical_v2.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.appstate_match_canonical_v3.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.appstate_match_canonical_v4.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.remote_orphan_candidates.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.full_convergence_stage3.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.full_convergence_stage4.v1" >/dev/null 2>&1 && printf '%s\n' "$_ss_caps" | grep -F "speedscan.full_convergence_stage5.v1" >/dev/null 2>&1; then
+		ok "speedscan capabilities" "capability-only required-set-present"
+	else
+		critical_fail "speedscan capabilities" "missing_required_capability rc=$_ss_caps_rc $_ss_caps"
+	fi
+
+	_ss_ad_root="$DEX_CHECK_TMPDIR/appdetails_manifest_root"
+	_ss_ad_prefix="$DEX_CHECK_TMPDIR/appdetails_manifest_probe"
+	rm -rf "$_ss_ad_root" 2>/dev/null
+	mkdir -p "$_ss_ad_root/TestApp" 2>/dev/null
+	cat > "$_ss_ad_root/TestApp/app_details.json" 2>/dev/null <<'EOF_SPEEDSCAN_APPDETAILS_MANIFEST'
+{"TestApp":{"PackageName":"com.speedbackup.test","apk_version":"1"}}
+EOF_SPEEDSCAN_APPDETAILS_MANIFEST
+	_ss_ad_msg="$($_ss_bin appdetails-bundle-manifest "$_ss_ad_root" "$_ss_ad_prefix" 2>&1 | head -n 20)"; _ss_ad_rc=$?
+	printf '%s
+' "$_ss_ad_msg" > "$TEST_LOG_DIR/speedscan_appdetails_bundle_manifest.summary.txt" 2>/dev/null
+	if [ "$_ss_ad_rc" -eq 0 ] && [ -s "$_ss_ad_root/manifest.tsv" ] && awk -F '\t' '$1=="TestApp" && $2=="com.speedbackup.test" && $3 ~ /^[0-9]+$/ && length($4)==64 {ok=1} END{exit ok?0:1}' "$_ss_ad_root/manifest.tsv" 2>/dev/null; then
+		ok "speedscan app_details manifest Rust 化" "rc=0 schema=appdetails_bundle_manifest.v1"
+	else
+		critical_fail "speedscan app_details manifest Rust 化" "rc=$_ss_ad_rc $_ss_ad_msg"
+	fi
+	_ss_audit_root="$DEX_CHECK_TMPDIR/appdetails_audit_seedless_root"
+	_ss_audit_remote="$DEX_CHECK_TMPDIR/appdetails_audit_seedless_remote.lst"
+	_ss_audit_prefix="$DEX_CHECK_TMPDIR/appdetails_audit_seedless_probe"
+	rm -rf "$_ss_audit_root" 2>/dev/null
+	mkdir -p "$_ss_audit_root/AppA" "$_ss_audit_root/AppB" 2>/dev/null
+	cat > "$_ss_audit_root/AppA/app_details.json" 2>/dev/null <<'EOF_SPEEDSCAN_AUDIT_A'
+{"PackageName":"com.speedbackup.audit.a","apk_version":"1"}
+EOF_SPEEDSCAN_AUDIT_A
+	cat > "$_ss_audit_root/AppB/app_details.json" 2>/dev/null <<'EOF_SPEEDSCAN_AUDIT_B'
+{"PackageName":"com.speedbackup.audit.b","apk_version":"1"}
+EOF_SPEEDSCAN_AUDIT_B
+	printf 'AppA/user.tar.zst
+AppB/apk.tar.zst
+' > "$_ss_audit_remote" 2>/dev/null
+	_ss_audit_msg="$($_ss_bin appdetails-bundle-audit "$_ss_audit_root" "$_ss_audit_remote" - missing 0 "$_ss_audit_prefix" 0 2>&1 | head -n 20)"; _ss_audit_rc=$?
+	printf '%s
+' "$_ss_audit_msg" > "$TEST_LOG_DIR/speedscan_appdetails_audit_seedless.summary.txt" 2>/dev/null
+	if [ "$_ss_audit_rc" -eq 0 ] && printf '%s
+' "$_ss_audit_msg" | grep -F 'APPDETAILS_BUNDLE_AUDIT' >/dev/null 2>&1 && printf '%s
+' "$_ss_audit_msg" | grep -F 'seedlessRepair=1' >/dev/null 2>&1 && printf '%s
+' "$_ss_audit_msg" | grep -F 'missingStage=0' >/dev/null 2>&1; then
+		ok "speedscan app_details seedless stage-cover 修復" "rc=0 seedlessRepair=1"
+	else
+		critical_fail "speedscan app_details seedless stage-cover 修復" "rc=$_ss_audit_rc $_ss_audit_msg"
+	fi
+	_ss_lr_sel="$DEX_CHECK_TMPDIR/speedscan_lr_selected.tsv"
+	_ss_lr_dirs="$DEX_CHECK_TMPDIR/speedscan_lr_dirs.tsv"
+	_ss_lr_out="$DEX_CHECK_TMPDIR/speedscan_lr_plan.tsv"
+	_ss_lr_android="$DEX_CHECK_TMPDIR/speedscan_lr_android"
+	_ss_lr_user="$DEX_CHECK_TMPDIR/speedscan_lr_user"
+	_ss_lr_userde="$DEX_CHECK_TMPDIR/speedscan_lr_userde"
+	mkdir -p "$_ss_lr_android/data/com.speedbackup.test" "$_ss_lr_userde/com.speedbackup.test" 2>/dev/null
+	printf 'TestApp\tcom.speedbackup.test\t0\t1\n' > "$_ss_lr_sel" 2>/dev/null
+	printf 'com.speedbackup.test\tdata\t1234\ncom.speedbackup.test\tuser_de\t999\n' > "$_ss_lr_dirs" 2>/dev/null
+	_ss_lr_msg="$($_ss_bin remote-stream-local-read-plan "$_ss_lr_sel" "$_ss_lr_dirs" "$_ss_lr_out" true true true "$_ss_lr_android" "$_ss_lr_user" "$_ss_lr_userde" 2>&1 | head -n 20)"; _ss_lr_rc=$?
+	printf '%s\n' "$_ss_lr_msg" > "$TEST_LOG_DIR/speedscan_local_read_plan.summary.txt" 2>/dev/null
+	if [ "$_ss_lr_rc" -eq 0 ] && [ "$(awk -F '\t' '$2=="com.speedbackup.test" && $3=="data"{n++} END{print n+0}' "$_ss_lr_out" 2>/dev/null)" -eq 1 ] && [ "$(awk -F '\t' '$2=="com.speedbackup.test" && $3=="user_de"{n++} END{print n+0}' "$_ss_lr_out" 2>/dev/null)" -eq 0 ]; then
+		ok "speedscan local-read release plan" "rc=0 conservative-small-skip"
+	else
+		critical_fail "speedscan local-read release plan" "rc=$_ss_lr_rc $_ss_lr_msg"
+	fi
+	_ss_plan="$TEST_LOG_DIR/speedscan_tree_pack_plan.tsv"
+	_ss_plan_summary="$($_ss_bin tree-pack-plan "$TEST_LOG_DIR" "$_ss_plan" - 256 2>&1 | head -n 20)"; _ss_plan_rc=$?
+	printf '%s\n' "$_ss_plan_summary" > "$TEST_LOG_DIR/speedscan_tree_pack_plan.summary.txt" 2>/dev/null
+	if [ "$_ss_plan_rc" -eq 0 ] && [ -s "$_ss_plan" ] && grep -F "speedbackup.tree_pack_plan.v1" "$_ss_plan" >/dev/null 2>&1; then
+		ok "speedscan tree pack-plan facts" "rc=0"
+	else
+		critical_fail "speedscan tree pack-plan facts" "rc=$_ss_plan_rc $_ss_plan_summary"
+	fi
+	_ss_media="$TEST_LOG_DIR/speedscan_app_media_index.tsv"
+	_ss_media_summary="$($_ss_bin app-media-index "$TEST_LOG_DIR" "$_ss_media" 4 256 - 2>&1 | head -n 20)"; _ss_media_rc=$?
+	printf '%s\n' "$_ss_media_summary" > "$TEST_LOG_DIR/speedscan_app_media_index.summary.txt" 2>/dev/null
+	if [ "$_ss_media_rc" -eq 0 ] && [ -s "$_ss_media" ] && grep -F "speedbackup.app_media_index.v1" "$_ss_media" >/dev/null 2>&1; then
+		ok "speedscan app media index facts" "rc=0"
+	else
+		critical_fail "speedscan app media index facts" "rc=$_ss_media_rc $_ss_media_summary"
+	fi
+	_ss_restore_manifest="$TEST_LOG_DIR/speedscan_restore_verify_manifest.tsv"
+	_ss_restore_out="$($_ss_bin manifest "$TEST_LOG_DIR" "$_ss_restore_manifest" 2>&1 | head -n 20)"; _ss_restore_manifest_rc=$?
+	_ss_restore_summary="$($_ss_bin restore-tree-verify "$TEST_LOG_DIR" "$_ss_restore_manifest" 2>&1 | head -n 40)"; _ss_restore_rc=$?
+	printf '%s\n' "$_ss_restore_summary" > "$TEST_LOG_DIR/speedscan_restore_tree_verify.summary.txt" 2>/dev/null
+	if [ "$_ss_restore_manifest_rc" -eq 0 ] && [ "$_ss_restore_rc" -eq 0 ] && printf '%s\n' "$_ss_restore_summary" | grep -F "restore_tree_verify" >/dev/null 2>&1; then
+		ok "speedscan restore tree verify facts" "rc=0"
+	else
+		critical_fail "speedscan restore tree verify facts" "manifest_rc=$_ss_restore_manifest_rc rc=$_ss_restore_rc $_ss_restore_summary"
+	fi
+else
+	critical_fail "speedscan pack-plan 指令" "speedscan_not_found"
+	critical_fail "speedscan local-read release plan" "speedscan_not_found"
+	critical_fail "speedscan tree pack-plan facts" "speedscan_not_found"
+	critical_fail "speedscan app media index facts" "speedscan_not_found"
+	critical_fail "speedscan restore tree verify facts" "speedscan_not_found"
+fi
 _tools_self="${TOOLS_PATH%/}/tools.sh"
 [ -f "$_tools_self" ] || _tools_self="$(dirname "$0" 2>/dev/null)/tools.sh"
 if [ -f "$_tools_self" ] && grep -F "_cgroup_freezer_wchan_corrective_pkg" "$_tools_self" >/dev/null 2>&1 && grep -F "CGROUP_WCHAN_CORRECTIVE_BEGIN" "$_tools_self" >/dev/null 2>&1; then
 	ok "cgroup WCHAN bounded 修正接入" "tools=present"
 else
 	critical_fail "cgroup WCHAN bounded 修正接入" "tools_missing"
+fi
+if [ -f "$_tools_self" ] \
+	&& grep -F '[[ $_ROOT_DAEMON_READY = 1 ]] && [[ -S $_ROOT_DAEMON_SOCKET ]]' "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F 'APPSTATE_ROOT_PROTOCOL_TIMING' "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F 'requestBodyBytes=$_snapshot_body_len' "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F 'speedbackup.appstate_root_protocol_timing.v1' "$_tools_self" >/dev/null 2>&1 \
+	&& ! grep -F 'if [[ $_ROOT_DAEMON_READY = 1 ]] && _root_daemon_probe' "$_tools_self" >/dev/null 2>&1; then
+	ok "RootDaemon healthy hot-path no-preprobe" "r684 trusted-ready+protocol-telemetry"
+else
+	critical_fail "RootDaemon healthy hot-path no-preprobe" "r684 tools integration missing"
+fi
+if [ -f "$_tools_self" ] \
+	&& grep -F 'SPEEDSCAN_DIRSIZE_HINTS_FILE=' "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F 'DIRSIZE_MAP_STATS_SINGLEPASS' "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F 'speedscan.dir_size_map_route_trie.v1' "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F 'speedscan.dir_size_map_hint_schedule.v1' "$_tools_self" >/dev/null 2>&1 \
+	&& ! grep -F 'dirsize_map_ready 80 1500' "$_tools_self" >/dev/null 2>&1; then
+	ok "dir-size route/schedule hot-path" "r685 trie+hints+singlepass-stats"
+	if grep -q "speedscan.remote_fastskip_presize_bundle_v1.v1" "$_tools_self" 2>/dev/null && grep -q "remote-fastskip-presize-bundle-v1" "$_tools_self" 2>/dev/null; then
+		ok "remote presize convergence" "r686 bundle+tiny+singlepass"
+	else
+		critical_fail "remote presize convergence" "r686 tools integration missing"
+	fi
+	if grep -q "REMOTE_FIRST_FULL_PRESIZE_PLAN_OK" "$_tools_self" 2>/dev/null && grep -q "rust-local-firstfull-bundle-v1" "$_tools_self" 2>/dev/null && grep -q "REMOTE_FIRST_FULL_PRESIZE_FACTS_REUSE_DISABLED" "$_tools_self" 2>/dev/null; then
+		ok "remote first-full presize" "r687 local-existence-prune no-remote-facts"
+	else
+		critical_fail "remote first-full presize" "r687 tools integration missing"
+	fi
+else
+	critical_fail "dir-size route/schedule hot-path" "r685 tools integration missing"
+fi
+if [ -f "$_tools_self" ] && grep -F "_speedscan_cmd_bounded_to_file" "$_tools_self" >/dev/null 2>&1 && grep -F "SPEEDBACKUP_NATIVE_PACK_PLAN_TIMEOUT_MS" "$_tools_self" >/dev/null 2>&1 && grep -F "SPEEDBACKUP_NATIVE_APP_MEDIA_INDEX_TIMEOUT_MS" "$_tools_self" >/dev/null 2>&1 && grep -F "SPEEDBACKUP_NATIVE_RESTORE_TREE_VERIFY_TIMEOUT_MS" "$_tools_self" >/dev/null 2>&1; then
+	ok "speedscan native facts timeout bound" "tools=present"
+else
+	critical_fail "speedscan native facts timeout bound" "tools_missing"
+fi
+if [ -f "$_tools_self" ] \
+	&& grep -F "SPEEDBACKUP_SPEEDSCAN_REQUIRED_CAPS" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F "_speedscan_require_main_capabilities" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F "SPEEDSCAN_CAPABILITIES_OK stage=runtime_contract" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F "no_exact_version=1 mode=r597" "$_tools_self" >/dev/null 2>&1 \
+	&& ! grep -F 'startswith("v2.6.")' "$_tools_self" >/dev/null 2>&1; then
+	ok "tools runtime Rust capability gate" "capability-only version-debug-only"
+else
+	critical_fail "tools runtime Rust capability gate" "tools_missing_or_version_gate_present"
+fi
+if [ -f "$_tools_self" ] \
+	&& grep -F "speedscan.remote_stream_local_read_plan.v1" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F "speedscan.remote_stream_local_read_plan.v2" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F "speedscan.remote_stream_local_read_final_plan.v1" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F "speedscan.argv_non_utf8_clean_fail.v1" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F "remote-stream-local-read-plan-v2" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F "APP_LOCAL_READ_RELEASE_ARM" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F "APP_LOCAL_READ_RELEASE_DONE" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F "APP_LOCAL_READ_RELEASE_PARENT_SYNC" "$_tools_self" >/dev/null 2>&1; then
+	ok "WebDAV 最後本地讀取提前釋放" "r602 plan+producer+parent-sync"
+else
+	critical_fail "WebDAV 最後本地讀取提前釋放" "missing r602 local-read release integration"
+fi
+if [ -f "$_tools_self" ] \
+	&& grep -F "_sb_println()" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F "print -r --" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F "timelineMode=builtin-print-r521" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F "printMode=\${SPEEDBACKUP_PRINT_MODE:-unresolved}" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F 'SPEEDBACKUP_PRINT_MODE="print-builtin"' "$_tools_self" >/dev/null 2>&1 \
+	&& ! grep -F "printMode=\${SPEEDBACKUP_PRINT_MODE:-auto}" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F '_sb_println "[${SPEEDBACKUP_NOW_HMS:-unknown}] $*"' "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F '_sb_println "${_ts}${SB_TAB}${_phase}' "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F "_sb_file_has_exact_line()" "$_tools_self" >/dev/null 2>&1 \
+	&& ! grep -F "grep -Fqx" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F "RESTORE_STREAM_PERF_STAGES" "$_tools_self" >/dev/null 2>&1; then
+	ok "speed_debug print builtin/resolved 熱路徑 + r521 cleanup" "timelineMode=builtin-print-r521"
+else
+	critical_fail "speed_debug print builtin/resolved 熱路徑 + r521 cleanup" "tools_missing_or_hotpath_regression"
 fi
 require_text "ProcessObserver 啟動" "$_hidden_help" "processObserverStart"
 require_text "ProcessObserver 停止" "$_hidden_help" "processObserverStop"
@@ -421,6 +709,7 @@ _appstate_help="$(run_class_quiet_stdout "$APPSTATE_CLASS" help 2>/dev/null)"; _
 [ "$_appstate_help_rc" -eq 0 ] && ok "Dex AppState 指令表可讀" "rc=0" || critical_fail "Dex AppState 指令表可讀" "rc=$_appstate_help_rc"
 require_text "AppState capability 查詢入口" "$_appstate_help" "capabilities"
 require_text "AppState 備份快照入口" "$_appstate_help" "snapshotAppStateBatch"
+require_text "AppState direct-file 備份快照入口" "$_appstate_help" "snapshotAppStateBatchFiles"
 require_text "前台狀態批量入口" "$_appstate_help" "foregroundStateBatch"
 require_text "前台執行狀態入口" "$_appstate_help" "foregroundStateRunning"
 require_text "目前頂層 App 入口" "$_appstate_help" "foregroundTop"
@@ -455,6 +744,10 @@ if [ "$_pre_state_rc" -eq 0 ] && printf '%s\n' "$_pre_state_out" | grep -q '^#sc
 _inst_ctx_out="$(run_class_stdout "$HIDDEN_CLASS" installerContextFacts "$USER_ID" "$PKG" com.android.vending refresh 2>/dev/null)"; _inst_ctx_rc=$?
 printf '%s\n' "$_inst_ctx_out" > "$TEST_LOG_DIR/installer_context_facts.tsv" 2>/dev/null
 if [ "$_inst_ctx_rc" -eq 0 ] && printf '%s\n' "$_inst_ctx_out" | grep -q '^#schema[[:space:]]speedbackup.installer_context_facts.v1'; then ok "安裝來源 context facts" "rc=0"; else warn "安裝來源 context facts" "rc=$_inst_ctx_rc"; fi
+
+_install_plan_out="$(run_class_stdout "$HIDDEN_CLASS" restoreInstallPlan "$USER_ID" "$PKG" single com.android.vending auto refresh 2>/dev/null)"; _install_plan_rc=$?
+printf '%s\n' "$_install_plan_out" > "$TEST_LOG_DIR/restore_install_plan.tsv" 2>/dev/null
+if [ "$_install_plan_rc" -eq 0 ] && printf '%s\n' "$_install_plan_out" | grep -q '^#schema[[:space:]]speedbackup.restore_install_plan.v1'; then ok "Dex install plan facts" "rc=0 route=session"; else warn "Dex install plan facts" "rc=$_install_plan_rc"; fi
 
 section "恢復能力" "執行恢復相關 smoke"
 _post_facts_out="$(run_class_stdout "$HIDDEN_CLASS" appInventoryPostInstallFactsBatch "$USER_ID" "$PKG" refresh 2>/dev/null)"; _post_facts_rc=$?

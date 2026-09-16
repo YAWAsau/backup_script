@@ -31,7 +31,12 @@ import com.xayah.dex.compat.HiddenApiServices;
 import com.xayah.dex.compat.PermissionCompat;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -47,6 +52,10 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import dev.rikka.tools.refine.Refine;
 
@@ -61,7 +70,7 @@ import dev.rikka.tools.refine.Refine;
 public final class AppStateEngine {
     public static final int SCHEMA_VERSION = 2;
     public static final int DAEMON_PROTOCOL_VERSION = 1;
-    public static final String ENGINE_VERSION = "v1.3.115-r501-canary-daemon-supervisor-keep";
+    public static final String ENGINE_VERSION = DexBuildInfo.VERSION;
 
     static final Gson GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().create();
     static final Gson PRETTY_GSON = new GsonBuilder().serializeNulls().disableHtmlEscaping().setPrettyPrinting().create();
@@ -131,8 +140,8 @@ public final class AppStateEngine {
     ));
 
     private static final Map<String, SpecialAccessDescriptor> SPECIAL_ACCESS_BY_KEY = buildSpecialAccessMap();
-    private static final Map<String, Integer> OP_CACHE = new HashMap<>();
-    private static final Map<String, int[]> PERMISSION_PROTECTION_CACHE = new HashMap<>();
+    private static final Map<String, Integer> OP_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, int[]> PERMISSION_PROTECTION_CACHE = new ConcurrentHashMap<>();
     private static final Object RUNTIME_LOCK = new Object();
     private static volatile RuntimeServices RUNTIME_SERVICES;
 
@@ -249,6 +258,8 @@ public final class AppStateEngine {
                     return new EngineResponse(ResultCode.OK, AppStateLocalization.localizeRequest(body));
                 case "snapshot":
                     return snapshot(userId, parsePackageLines(body));
+                case "snapshotfiles":
+                    return snapshotToFiles(userId, parsePackageLines(body), extra);
                 case "foregroundstate":
                     return foregroundState(userId, parsePackageLines(body));
                 case "foregroundrunning":
@@ -314,6 +325,10 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.cchelper.zh_tw_polish.v1", true, false, "CCHelper can polish already-Traditional SpeedBackup wording without script self-rewrite");
         addCapability(capabilities, "dex.cchelper.repeat_merge_fix.v1", true, false, "CCHelper maps 重复/合并 to 重複/合併 in zh-TW and back to 简中 correctly");
         addCapability(capabilities, "appstate.snapshot.batch.v2", true, true, "canonical-ndjson");
+        addCapability(capabilities, "appstate.snapshot.batch.parallel.v1", true, true, "bounded-fixed-pool-1-2-4;input-order-stable;max4");
+        addCapability(capabilities, "appstate.snapshot.direct_files.v1", true, true, "snapshotAppStateBatchFiles writes run-scoped staging NDJSON/state/error files and returns compact TSV summary; shell publishes canonical maps; legacy relay/reducer remains fallback");
+        addCapability(capabilities, "appstate.snapshot.direct_files.single_pass.v1", true, true, "direct-file snapshot consumes shared canonical batch records and serialized rows once; no response-body split or JsonParser reparse");
+        addCapability(capabilities, "appstate.snapshot.direct_files.telemetry_v2.v1", true, true, "shared snapshot core/serialize plus direct snapshot/state/error write/publish/total timing fields");
         addCapability(capabilities, "appstate.snapshot.compact_persist.v1", true, true, "drop-non-restorable-display-fields");
         addCapability(capabilities, "appstate.foreground_state.batch.v1", true, false, "canonical-ndjson;simple-label+packageName+active");
         addCapability(capabilities, "appstate.foreground_state.simple_batch.v1", true, false, "app-items-only-label+packageName+active-boolean;no-uid-no-process-no-importance");
@@ -334,12 +349,32 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.app_inventory.package_facts.batch.v1", true, false, "appInventoryPackageFactsBatch emits stable PackageManager/installer/source/split/data-dir TSV facts; tools consumes facts and still owns plans");
         addCapability(capabilities, "dex.pm.pre_restore_package_state.batch.v1", true, false, "preRestorePackageStateBatch emits installedForUser/installedAnyUser/enabled/hidden/suspended/installer facts; tools still owns restore and trim policy");
         addCapability(capabilities, "dex.pm.installer_context_facts.v1", true, false, "installerContextFacts emits installer package availability/uid/dataDir/source facts; tools still owns installer strategy");
+        addCapability(capabilities, "dex.pm.restore_install_plan.v1", true, false, "restoreInstallPlan emits session-only PackageManager install route facts for single/split APK restore; tools consumes as contract field");
+        addCapability(capabilities, "dex.pm.restore_install_plan_batch.v1", true, false, "restoreInstallPlanBatch emits batched session-only PackageManager install route facts for restore planning");
+        addCapability(capabilities, "dex.pm.restore_install_plan_shell_pm.v1", true, false, "r634 restore APK installation uses shell pm session execution; Dex remains responsible for installer/plan facts only");
+        addCapability(capabilities, "webdav.profile_contract.dex.v1", true, false, "backendprofilerel emits machine-readable put/list/publish/verify/cleanup/security contract fields; tools consumes policy fields instead of re-deriving server quirks");
+        addCapability(capabilities, "webdav.profile_contract_full.dex.v1", true, false, "WebDAV backend profile carries server identity, support tier, strategy, cleanup and security advisory as a complete machine-readable contract");
+        addCapability(capabilities, "webdav.profile_contract_authoritative.dex.v1", true, false, "r631 WebDAV strategy display and policy fields are consumed as a Dex-owned contract instead of shell-side server-name heuristics");
+        addCapability(capabilities, "dex.appstate.android16_17_policy_contract.v1", true, false, "AppState Android 16/17 permission/AppOps/special-access behavior is declared through Dex capability policy and batch facts rather than ad-hoc shell dumpsys parsing");
         addCapability(capabilities, "dex.pm.post_install_facts_batch.v1", true, false, "appInventoryPostInstallFactsBatch refreshes PackageManager facts after APK install; tools still owns restore decisions");
         addCapability(capabilities, "dex.default_role_facts.batch.v1", true, false, "defaultRoleFacts emits HOME/DIALER/SMS/BROWSER/ASSISTANT role holders; tools still owns policy");
         addCapability(capabilities, "dex.storage_media_facts.v1", true, false, "storageMediaFacts emits user data/media/emulated path facts; tools still owns restore decisions");
         addCapability(capabilities, "dex.framework_facts.batch.v1", true, false, "frameworkFacts emits compact per-package PM/AppState/AppOps restriction facts for diagnostics; tools still owns plans");
         addCapability(capabilities, "dex.device_facts.v1", true, false, "deviceFacts emits raw Build/SystemProperties facts and ROM hints; tools still owns decisions");
         addCapability(capabilities, "dex.device_model_name_map.v1", true, false, "Device_List is Dex-builtin only; external tools/Device_List override is intentionally removed");
+        addCapability(capabilities, "dex.build_info.unified_version.v1", true, true, "DexBuildInfo is the single source of truth for public classes.dex version output");
+        addCapability(capabilities, "dex.daemon.read_exactly.body_limit.v1", true, true, "daemon framed readExactly rejects negative and oversized bodies above 64 MiB before allocation");
+        addCapability(capabilities, "dex.daemon.token_seed_shared.v1", true, true, "shared DaemonBootstrap tokenSeed is used by wake-block, cgroup-freeze, process-observer and uid-net-block token spaces");
+        addCapability(capabilities, "dex.notification.peer_credentials_uid.v1", true, true, "notification daemon resolves AF_UNIX peer uid with LocalSocket.getPeerCredentials without Binder-derived fallback in raw socket context");
+        addCapability(capabilities, "dex.notification.peer_uid_fail_closed.v1", true, true, "notification daemon rejects a client when LocalSocket peer uid is unavailable instead of using Binder fallback in raw socket context");
+        addCapability(capabilities, "dex.ssaid.state_cache_shutdown.v1", true, true, "daemon shutdown closes cached SSAID SettingsState HandlerThreads and clears STATE_CACHE");
+        addCapability(capabilities, "dex.ssaid.state_cache_shutdown_bounded.v1", true, true, "SSAID SettingsState HandlerThreads are quitSafely, bounded-joined, force-quit if needed, and then removed from STATE_CACHE");
+        addCapability(capabilities, "dex.daemon_supervisor.pid_starttime.v1", true, true, "daemon supervisor validates supervised daemon identity by pid plus /proc starttime to avoid pid reuse false-alive");
+        addCapability(capabilities, "dex.daemon_supervisor.pid_starttime_cmdline.v1", true, true, "daemon supervisor also verifies /proc cmdline class/mode/socket before treating a pidfile process as the supervised daemon");
+        addCapability(capabilities, "dex.cchelper.table_hardening.v1", true, true, "CCHelper conversion tables skip malformed lines, use codepoint maps, and sort phrase replacements longest-first at runtime");
+        addCapability(capabilities, "dex.device_model_db.entry_count_runtime.v1", true, true, "DeviceModelDb.entryCount returns BY_KEY.size so model count reflects actual normalized map entries");
+        addCapability(capabilities, "dex.device_model_db.entry_count_selfcheck.v1", true, true, "deviceFacts reports expected/runtime DeviceModelDb entry-count equality so generated table shrink/duplication is visible in dex_check");
+        addCapability(capabilities, "dex.convergence.boundary_100_reviewed.v1", true, true, "r637 records that APK live install stays shell pm/hybrid while Dex/Rust own stable facts, profiles, audits and manifest/planner producers");
         addCapability(capabilities, "appstate.default_home.role_fallback.v1", true, false, "RoleManager HOME holder fallback when resolveActivity returns android/empty");
         addCapability(capabilities, "appstate.default_home.get_home_activities.v1", true, false, "PackageManager getHomeActivities default ComponentName fallback before role/single-candidate fallback");
         addCapability(capabilities, "appstate.default_home.get_home_activities.reflect.v1", true, false, "Compile-safe reflection bridge for getHomeActivities on SDK stubs that hide the method");
@@ -404,9 +439,11 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.app_wake_block.persistent_state.v1", true, true, "wake-block writes atomic disk snapshot after original-state capture and each touched AppOps/standby apply");
         addCapability(capabilities, "dex.app_wake_block.persistent_restore.v1", true, true, "wake-block can restore by wake token, process-observer owner token, package, or all stale snapshots after daemon restart");
         addCapability(capabilities, "dex.app_wake_block.restore_verify.v1", true, true, "wake-block restore aggregates AppOps/standby shell rc; failed restore keeps persistent state and reports failure");
-        addCapability(capabilities, "dex.app_wake_block.persistent_cleanup.v1", true, true, "wake-block persistent state cleanup restores stale snapshots once and deletes files older than the TTL to prevent unbounded accumulation");
+        addCapability(capabilities, "dex.app_wake_block.persistent_cleanup.v1", true, true, "wake-block persistent state cleanup restores stale snapshots and deletes only after restore confirms stateDeleted=true");
         addCapability(capabilities, "dex.app_wake_block.state_delete_verify.v1", true, true, "wake-block restore success requires persisted state deletion; delete failure reports STOP_FAILED and retains state");
         addCapability(capabilities, "dex.app_wake_block.cleanup_force_zero_ttl.v1", true, true, "appWakeBlockCleanupStale TTL_MS=0 treats all persistent states as stale for manual/post-restore cleanup");
+        addCapability(capabilities, "dex.app_wake_block.cleanup_restore_failed_retain_state.v1", true, true, "TTL cleanup retains stale wake-block state files when restore fails, preserving audit trail and retry ability");
+        addCapability(capabilities, "dex.app_wake_block.snapshot_unsafe_refuse_apply.v1", true, true, "wake-block refuses to apply AppOps/standby restrictions when the original-state snapshot is unsafe, avoiding unrecoverable residual restrictions");
         addCapability(capabilities, "dex.app_wake_block.exempted_restore_alias.v1", true, true, "legacy compatibility marker; superseded by deviceidle whitelist restore");
         addCapability(capabilities, "dex.app_wake_block.deviceidle_whitelist_restore.v1", true, true, "exempted standby bucket is restored through deviceidle whitelist instead of unsupported am set-standby-bucket exempted");
         addCapability(capabilities, "dex.app_wake_block.direct_appops.v1", true, true, "wake-block AppOps get/set prefers AppOpsManager hidden API before shell fallback");
@@ -425,6 +462,7 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.uid_net_block.netpolicy_direct.v1", true, true, "per-UID network block prefers INetworkPolicyManager Binder policy before any shell route");
         addCapability(capabilities, "dex.uid_net_block.netd_direct_probe.v1", true, true, "diagnostic direct INetd bandwidth naughty-app Binder provider is available as optional hard mode/probe");
         addCapability(capabilities, "dex.uid_net_block.persistent_restore.v1", true, true, "UID network block writes persistent state and restores stale/missing tokens with expected user/package guard");
+        addCapability(capabilities, "dex.uid_net_block.cleanup_restore_failed_retain_state.v1", true, true, "TTL cleanup retains stale UID network block state files when restore fails, preserving audit trail and retry ability");
         addCapability(capabilities, "dex.uid_net_block.smart_policy.v1", true, true, "tools can enable per-UID network block only for high-risk packages to avoid broad overhead");
         addCapability(capabilities, "dex.cgroup_freezer.lifecycle.v1", true, true, "cgroup freezer tar-scope guard with start/stop tokens, freeze-all-current-pids, per-pid /proc cgroup path resolution, cgroup.events verification, persistent restore cleanup, and process-observer new-pid sessions");
         addCapability(capabilities, "dex.process_observer.cgroup_freezer_guard.v1", true, true, "process observer freezes newly awakened high-risk package pids during tar-scope guard and falls back to event-driven force-stop when unavailable");
@@ -438,6 +476,12 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.cgroup_freezer.native_package_atomic.v1", true, true, "native cgfreezerd FREEZE_PKG performs one live C-side package scan and freezes all current package pids in one daemon request while Dex retains token and persistent restore ownership");
         addCapability(capabilities, "dex.cgroup_freezer.native_package_kill_live_rescan.v1", true, true, "when FREEZE_PKG fails, Dex orders native KILL_PKG live /proc scan+identity-verified SIGKILL, AMS force-stop, then native post-force-stop rescan before legacy Dex escalation");
         addCapability(capabilities, "dex.cgroup_freezer.native_thaw_uid_emergency.v1", true, true, "native THAW_UID is reserved for uncertain native package-freeze cleanup and thaws app-UID cgroup and Binder freezer state");
+        addCapability(capabilities, "dex.cgroup_freezer.stop_final_release_thaw_uid.v1", true, true, "cgroupFreezeStop performs a final app-scope THAW_UID release before persistent-state deletion so backup/restore app scopes end thawed even if original Android freezer state was frozen");
+        addCapability(capabilities, "dex.cgroup_freezer.process_observer_stop_defer_to_app_scope.v1", true, true, "processObserver cgroup token stop defers thaw/restore while a primary backup/restore app-scope freeze token for the same package is still active; final app-scope THAW_UID performs the release");
+        addCapability(capabilities, "dex.cgroup_freezer.primary_app_scope_package_freeze.v1", true, true, "primary backup/restore app-scope freeze ignores shell-supplied firstPid for selection and always starts package-scope freeze so all currently alive package pids are captured before tar/restore payload work");
+        addCapability(capabilities, "dex.cgroup_freezer.primary_app_scope_refresh.v1", true, true, "primary backup/restore app-scope freeze can be refreshed by tools and ProcessObserver to re-freeze all currently alive package pids and absorb new pids without opening a separate observer token");
+        addCapability(capabilities, "dex.process_observer.primary_cgroup_refresh.v1", true, true, "ProcessObserver refreshes the active primary app-scope cgroup token instead of opening/stopping a separate cgroup token while backup/restore payload work is still running");
+        addCapability(capabilities, "dex.process_observer.wake_block_stop_defer_to_app_scope.v1", true, true, "processObserver wake-block restore is deferred while a primary backup/restore cgroup app-scope token is still active; the primary cgroup final release restores deferred wake-block package state after THAW_UID");
         addCapability(capabilities, "dex.cgroup_freezer.daemon_parent_control.v1", true, true, "cgfreezerd parent handles HELLO/CAPS/PING/STATUS/STOP directly without forking, ensuring complete STOP responses and daemon health counters");
         addCapability(capabilities, "dex.process_observer.dead_event_noop.v1", true, true, "ProcessObserver ignores onProcessDied callbacks when no target process remains alive, avoiding unnecessary cgroup fallback force-stop during restore cleanup");
         addCapability(capabilities, "dex.cgroup_freezer.binder_freeze_optional.v1", true, true, "optional native Binder freezer ioctl barrier before cgroup.freeze, with unsupported/EAGAIN fallback to cgroup freezer");
@@ -497,8 +541,13 @@ public final class AppStateEngine {
         addCapability(capabilities, "webdav.managed_put.v1", true, true, "Dex-managed direct/atomic rel upload policy");
         addCapability(capabilities, "webdav.putstdin.skip_parent_mkdir.v1", true, true, "putstdinmanagedrel accepts parent mkdir mode from tools; batch-ensured parents can skip per-payload MKCOL while non-cached paths are ensured inside WebDavUtil");
         addCapability(capabilities, "webdav.list_classify.dex.v1", true, true, "WebDavUtil classifylistrel emits kind/rel/size/mtime/name TSV for app payload, app metadata, media payload and reserved payload classification");
+        addCapability(capabilities, "webdav.classify_depth1_walk_fallback.dex.v1", true, true, "classifylistrel falls back to recursive Depth:1 walk when Depth:infinity PROPFIND is rejected by the server");
         addCapability(capabilities, "webdav.remote_list.deep_facts.dex.v1", true, true, "remote depth listing facts are classified inside Dex; tools consumes TSV facts and keeps app_details/restore planning in shell");
         addCapability(capabilities, "webdav.prepare_dirs_plan.dex.v1", true, true, "WebDavUtil preparedirsplanrel owns WebDAV directory list/exists/create transaction while tools passes desired app-dir manifest and seeds cache from TSV facts");
+        addCapability(capabilities, "webdav.prepare_dirs_created_only_progress.dex.v1", true, true, "WebDavUtil preparedirsplanrel reports progress against directories that actually need creation so existing remote app directories stay out of user-facing progress");
+        addCapability(capabilities, "webdav.prepare_dirs_parallel_mkcol.dex.v1", true, true, "WebDavUtil preparedirsplanrel uses a bounded four-worker direct-MKCOL fast path for direct children proven missing by the root Depth:1 listing, with conservative ensureDirRel fallback");
+        addCapability(capabilities, "webdav.classify_parallel_depth1.dex.v1", true, true, "WebDavUtil classifylistrel parallelizes verified Depth:1 recursive listing across top-level subtrees with a bounded four-worker pool and serial fallback");
+        addCapability(capabilities, "webdav.profile_visible_compact.dex.v1", true, true, "tools displays a compact WebDAV capability summary once while full feature facts stay in debug logs");
         addCapability(capabilities, "webdav.managed_list_classify.v1", true, true, "managedlistclassifyrel exposes transport-owned WebDAV classified TSV facts without shell-side file type guessing");
         addCapability(capabilities, "webdav.managed_batch_put_with_parents.v1", true, true, "managedbatchputrelwithparents accepts rel/local manifest and performs parent prepare plus managed PUT as a transport transaction; tools still owns backup plan");
         addCapability(capabilities, "webdav.propfind.no_cache.v1", true, true, "WebDavUtil PROPFIND sends no-cache headers to reduce stale directory listings from rclone/proxies");
@@ -507,6 +556,14 @@ public final class AppStateEngine {
         addCapability(capabilities, "webdav.managed_probe.nodot_temp.v1", true, true, "managed probe uses non-dot temp names because some Android/NAS WebDAV roots reject hidden dotfiles with HTTP 404");
         addCapability(capabilities, "webdav.stream_probe.subdir.v1", true, true, "remote_stream managed probe runs inside Backup_zstd_X after MKCOL instead of PUT-ing directly under remote_url root");
         addCapability(capabilities, "webdav.daemon.normal_diagnostics_log.v1", true, true, "normal WebDAV managed upload diagnostics are written to webdav_daemon_info.log instead of daemon stderr");
+        addCapability(capabilities, "webdav.daemon.read_body_limit.v1", true, true, "WebDAV daemon manifest/control request bodies reject oversized allocations above 64 MiB while stream uploads remain direct InputStream paths");
+        addCapability(capabilities, "webdav.tsv_output.control_guard.v1", true, true, "WebDAV listrel/classifylistrel skip remote href entries containing TAB/CR/LF/control characters before emitting tools TSV");
+        addCapability(capabilities, "webdav.direct_children_manifest.dex.v1", true, true, "WebDavUtil emits one-level safe D/N child listings for tools remote restore menus");
+        addCapability(capabilities, "webdav.download_manifest.dex.v1", true, true, "WebDavUtil recursively generates safe rel-to-local download manifests so tools does not parse remote href TSV hotpaths");
+        addCapability(capabilities, "webdav.orphan_roots_manifest.dex.v1", true, true, "WebDavUtil emits safe top-level BUNDLE/DIR/FILE manifest rows for remote orphan cleanup without shell parsing WebDAV href trees");
+        addCapability(capabilities, "dex.daemon.common_framed_reader.v1", true, true, "HiddenApi/Notification/AppState/RootDaemon framed socket readers call the shared DaemonBootstrap bounded read helpers");
+        addCapability(capabilities, "rust.native_primitives.convergence_source.v1", true, false, "Rust source tree is the convergence target for speedscan/eventwait/cgfreezer/unixsock/uidexec native primitives; rebuild native helpers to activate");
+        addCapability(capabilities, "rust.native_replacement_rc.v1", true, false, "Rust helper tree includes an all-helper replacement RC parity harness; Android native binaries must be rebuilt and smoke-tested to activate");
         addCapability(capabilities, "webdav.rclone_json_direct_put.dex.v1", true, true, "rclone app_details.json direct PUT handled inside WebDavUtil");
         addCapability(capabilities, "webdav.rclone_direct_all.dex.v1", true, true, "rclone managed WebDAV uploads use direct PUT to avoid MOVE stat noise");
         addCapability(capabilities, "webdav.pan123_managed_direct.dex.v1", true, true, "123pan official WebDAV managed uploads use direct PUT to avoid .part MOVE HTTP 500");
@@ -532,6 +589,48 @@ public final class AppStateEngine {
         addCapability(capabilities, "webdav.managed_batch_put_with_parents.v1", true, true, "WebDAV batch managed PUT with parent prepare is available as Dex transport transaction");
         addCapability(capabilities, "webdav.propfind.no_cache.v1", true, true, "WebDAV PROPFIND requests include no-cache headers");
         addCapability(capabilities, "webdav.stream_heartbeat_error_kind.dex.v1", true, true, "WebDavUtil managed stream logs low-noise heartbeat/progress/idle/fail kind with sent bytes");
+        addCapability(capabilities, "webdav.stream_stall_watchdog.dex.v1", true, true, "WebDavUtil aborts managed stream uploads when source bytes stop advancing for a bounded interval");
+        addCapability(capabilities, "webdav.stream_stall_socket_abort.dex.v1", true, true, "WebDavUtil closes the active WebDAV socket from the stall watchdog to interrupt blocking socket writes");
+        addCapability(capabilities, "webdav.stream_finalize_response_timeout.dex.v1", true, true, "legacy capability alias: managed streaming PUT has a bounded post-body response wait");
+        addCapability(capabilities, "webdav.stream_post_body_response_timeout.dex.v1", true, true, "managed streaming PUT bounds server processing/response wait after client request-body emission without treating body completion as remote success");
+        addCapability(capabilities, "webdav.stream_finalize_phase_guard.dex.v1", true, true, "legacy capability alias: source-byte stall watchdog is disabled after request-body EOF");
+        addCapability(capabilities, "webdav.stream_post_body_phase_guard.dex.v1", true, true, "source-byte stall watchdog is disabled after client request-body EOF while waiting for synchronous server/provider processing and HTTP response");
+        addCapability(capabilities, "webdav.alist_new_payload_direct.dex.v1", true, true, "AList default :5244 /dav profile can use direct-new-known-missing for filelist-confirmed new payloads while existing payloads keep atomic replacement");
+        addCapability(capabilities, "webdav.known_missing_direct_by_fact.dex.v1", true, true, "filelist-confirmed missing streaming payloads use the final path directly even when vendor detection is generic; existing payloads still keep the backend auto/atomic replacement policy");
+        addCapability(capabilities, "webdav.alist_long_finalize.dex.v1", true, true, "legacy capability alias: AList-family post-body server-processing wait may use a longer bound");
+        addCapability(capabilities, "webdav.alist_openlist_sync_put_semantics.dex.v1", true, true, "official AList, OpenList/AListLiteAndroid, and :5244/dav fallback share synchronous WebDAV PUT semantics: client body completion is not remote success; 2xx response is required");
+        addCapability(capabilities, "webdav.pathmode_retry_http400.dex.v1", true, true, "Replay-safe WebDAV requests retry HTTP 400 as well as 404 with alternate encoded/raw UTF-8 path mode for CJK AList/cloud-drive mounts");
+        addCapability(capabilities, "webdav.backend_profile.dex.v1", true, true, "Dex owns WebDAV backend profile detection and direct/atomic/post-body/path-mode policy selection; tools only passes relPath and known-missing hints");
+        addCapability(capabilities, "webdav.server_provider_profile.dex.v1", true, true, "OPTIONS preflight exposes server family/display plus presentation-only backing-provider hints covering major China/global cloud drives without using unverified hints to select transport policy");
+        addCapability(capabilities, "webdav.redirect_auth_guard.dex.v1", true, true, "authenticated redirects reject HTTPS-to-HTTP downgrade and cross-host/port credential forwarding");
+        addCapability(capabilities, "webdav.feature_profile.dex.v1", true, true, "runtime managed/compat probe facts constrain WebDAV atomic publish policy instead of relying only on server names");
+        addCapability(capabilities, "webdav.feature_profile_complete.dex.v1", true, true, "full runtime feature facts cover stream/fixed PUT, GET, MKCOL, DELETE, Depth0/1/infinity, recursive fallback, MOVE/COPY/STAT/remote-size/atomic/quota/body/cleanup");
+        addCapability(capabilities, "webdav.backend_contract_probe.dex.v1", true, true, "backup preflight runs a disposable full WebDAV contract probe after the minimal stream gate; optional feature failures are profiled without blindly disabling direct streaming");
+        addCapability(capabilities, "webdav.list_strategy_by_fact.dex.v1", true, true, "remote recursive listing skips known-bad Depth: infinity and uses verified Depth:1 recursive walk when capability facts require it");
+        addCapability(capabilities, "webdav.fixed_put_chunked_fallback.dex.v1", true, true, "replayable local-file PUT switches to chunked transfer when runtime facts prove fixed Content-Length PUT unsupported but stream PUT works");
+        addCapability(capabilities, "webdav.nas_identity_profile.dex.v1", true, true, "presentation-only NAS identity hints recognize Synology DSM, QNAP QTS/QuTS, UGREEN UGOS Pro, fnOS, ZSpace, TrueNAS, ASUSTOR ADM, TerraMaster TOS, OpenMediaVault, and Unraid without granting unprobed transport capabilities");
+        addCapability(capabilities, "webdav.sftpgo_identity.dex.v1", true, true, "presentation-only SFTPGo WebDAV identity is recognized from the Server header while all transport capabilities remain probe-driven");
+        addCapability(capabilities, "webdav.zspace_identity.dex.v1", true, true, "presentation-only 极空间/ZSpace NAS WebDAV identity is recognized from Server hints or the observed SabreDAV volume-root URL shape while all transport capabilities remain probe-driven");
+        addCapability(capabilities, "webdav.nas_identity_extended.dex.v1", true, true, "presentation-only NAS identity hints recognize TrueNAS, ASUSTOR ADM, TerraMaster TOS, OpenMediaVault, and Unraid from explicit host/path/server tokens while all transport capabilities remain probe-driven");
+        addCapability(capabilities, "webdav.generic_nas_dav5005_identity.dex.v1", true, true, "presentation-only local NAS WebDAV identity recognizes private-IP :5005/:5006 /Dav-style endpoints with empty Server headers without granting unprobed transport capabilities");
+        addCapability(capabilities, "webdav.replayable_put_paths_fact_driven.dex.v1", true, true, "all production replayable local-file WebDAV PUT paths consume measured fixed-vs-chunked facts instead of assuming Content-Length support");
+        addCapability(capabilities, "webdav.atomic_policy_fact_priority.dex.v1", true, true, "when runtime atomic-publish facts are known they override legacy vendor direct-all defaults; vendor identity remains fallback/semantic context only");
+        addCapability(capabilities, "webdav.managed_probe_chunked.dex.v1", true, true, "managed stream probe uses a replayable tiny Transfer-Encoding: chunked PUT so production stream support is proven without replaying archive data");
+        addCapability(capabilities, "webdav.backend_support_tier.dex.v1", true, true, "WebDAV backend profile exposes VERIFIED/COMPATIBLE/GENERIC/EXPERIMENTAL support tier and feature source");
+        addCapability(capabilities, "webdav.pacer_retry_after_jitter.dex.v1", true, true, "replay-safe control requests use bounded exponential backoff with jitter and Retry-After hints; streaming PUT remains non-replayable");
+        addCapability(capabilities, "webdav.move_copy_verify_after_ambiguous.dex.v1", true, true, "ambiguous MOVE/COPY transport results are verified against destination/source facts instead of blind mutation retry");
+        addCapability(capabilities, "webdav.put_verify_after_ambiguous.dex.v1", true, true, "ambiguous PUT terminal results are verified with remote STAT before atomic publish or direct-known-missing cleanup decisions");
+        addCapability(capabilities, "webdav.put_405_ambiguous_stat.dex.v1", true, true, "PUT-specific 405 responses from WebDAV bridge providers are treated as verify-eligible but never blindly retried");
+        addCapability(capabilities, "webdav.direct_put_verify_before_cleanup.dex.v1", true, true, "direct known-missing PUT failures verify the final path before any failed-upload cleanup can delete a provider-committed object");
+        addCapability(capabilities, "webdav.put_2xx_body_semantic_guard.dex.v1", true, true, "PUT 2xx responses with conservative JSON error schemas are reclassified and must pass independent remote verification before success is trusted");
+        addCapability(capabilities, "webdav.put_2xx_stat_verify.dex.v1", true, true, "PUT 2xx success is independently verified with remote STAT size checks, with GET body compare where replayable local data is available");
+        addCapability(capabilities, "webdav.cloudreve_identity.dex.v1", true, true, "WebDAV OPTIONS profile can identify Cloudreve so tools can block high-risk remote orphan DELETE paths");
+        addCapability(capabilities, "webdav.alist_version_security_advisory.dex.v1", true, true, "WebDAV OPTIONS/backend profiles report AList version security advisory state for CVE-2026-25161 without blocking clean SpeedBackup paths");
+        addCapability(capabilities, "webdav.quota_probe.dex.v1", true, true, "OPTIONS preflight performs advisory DAV quota-available-bytes/quota-used-bytes probe");
+        addCapability(capabilities, "webdav.upload_size_verify_batch.dex.v1", true, true, "final streaming upload verification batch-compares sentBytes against one remote classified size map");
+        addCapability(capabilities, "webdav.locked_cleanup_deferred.dex.v1", true, true, "HTTP 423 cleanup uses bounded delayed retries and explicitly defers stubborn orphan cleanup without changing upload success semantics");
+        addCapability(capabilities, "webdav.jianguoyun_500m_guard.dex.v1", true, true, "public Jianguoyun WebDAV known-size uploads fail early and streams abort at the documented default 500M single-file bound");
+        addCapability(capabilities, "webdav.backend_decision_log.dex.v1", true, true, "WebDavUtil emits machine-readable WEBDAV_BACKEND_PROFILE and WEBDAV_BACKEND_DECISION records for managed upload policy decisions");
         addCapability(capabilities, "dex.source.libsardine_removed.v1", true, false, "unused non-included libsardine source tree removed from release source package");
         addCapability(capabilities, "webdav.atomic_probe.v2", true, true, "PUT part + MOVE publish + GET byte compare + COPY + overwrite regression");
         addCapability(capabilities, "webdav.vendor_quirks.v1", true, true, "auto/rclone/nextcloud/jianguoyun/123pan/generic WebDAV quirk profile");
@@ -572,6 +671,121 @@ public final class AppStateEngine {
         return new EngineResponse(ResultCode.OK, (pretty ? PRETTY_GSON : GSON).toJson(root) + "\n");
     }
 
+    private static final class SnapshotBatchCoreResult {
+        final List<String> packages;
+        final List<JsonObject> records;
+        final List<String> serializedRecords;
+        final int ok;
+        final int partial;
+        final int failed;
+        final int batchWorkers;
+        final String batchWorkerPolicy;
+        final long batchElapsedMs;
+        final long snapshotCoreMs;
+        final long snapshotSerializeMs;
+        final ResultCode overall;
+
+        SnapshotBatchCoreResult(List<String> packages, List<JsonObject> records, List<String> serializedRecords,
+                                int ok, int partial, int failed, int batchWorkers,
+                                String batchWorkerPolicy, long batchElapsedMs,
+                                long snapshotCoreMs, long snapshotSerializeMs, ResultCode overall) {
+            this.packages = packages;
+            this.records = records;
+            this.serializedRecords = serializedRecords;
+            this.ok = ok;
+            this.partial = partial;
+            this.failed = failed;
+            this.batchWorkers = batchWorkers;
+            this.batchWorkerPolicy = batchWorkerPolicy;
+            this.batchElapsedMs = batchElapsedMs;
+            this.snapshotCoreMs = snapshotCoreMs;
+            this.snapshotSerializeMs = snapshotSerializeMs;
+            this.overall = overall;
+        }
+
+        JsonObject summaryRecord() {
+            JsonObject summary = AppStateEngine.summaryRecord(
+                    "snapshotAppStateBatch", overall, packages.size(), ok, partial, failed, null);
+            summary.addProperty("batchWorkers", batchWorkers);
+            summary.addProperty("batchElapsedMs", batchElapsedMs);
+            summary.addProperty("snapshotCoreMs", snapshotCoreMs);
+            summary.addProperty("snapshotSerializeMs", snapshotSerializeMs);
+            summary.addProperty("batchWorkerPolicy", batchWorkerPolicy);
+            summary.addProperty("batchOrder", "input");
+            return summary;
+        }
+    }
+
+    /**
+     * r683 shared snapshot core.  Package state is captured once and each canonical record is
+     * serialized exactly once.  Legacy relay and direct-file persistence consume the same
+     * JsonObject/String pairs, so direct mode cannot drift into a second snapshot schema.
+     */
+    @SuppressLint("ServiceCast")
+    private static SnapshotBatchCoreResult snapshotBatchCore(int userId, List<String> packages) throws Exception {
+        final long batchStartNs = System.nanoTime();
+        RuntimeServices runtime = runtimeServices();
+        PackageManager realPm = runtime.packageManager;
+        PackageManagerHidden pmHidden = runtime.packageManagerHidden;
+        AppOpsManagerHidden appOps = runtime.appOpsManager;
+        Set<String> idleWhitelist = getDeviceIdleWhitelist();
+        UserHandle user = UserHandleHidden.of(userId);
+        GooglePackageSnapshot playStore = googlePackageSnapshot(
+                realPm, pmHidden, appOps, idleWhitelist, userId, "com.android.vending");
+        GooglePackageSnapshot playServices = googlePackageSnapshot(
+                realPm, pmHidden, appOps, idleWhitelist, userId, "com.google.android.gms");
+
+        final int batchWorkers = snapshotBatchWorkerCount(packages.size());
+        final String batchWorkerPolicy = snapshotBatchWorkerPolicy(packages.size(), batchWorkers);
+        List<JsonObject> records = new ArrayList<>(Collections.nCopies(packages.size(), (JsonObject) null));
+        if (batchWorkers <= 1) {
+            for (int i = 0; i < packages.size(); i++) {
+                String packageName = packages.get(i);
+                records.set(i, snapshotPackageSafe(realPm, pmHidden, appOps, idleWhitelist, user, userId, packageName,
+                        playStore, playServices));
+            }
+        } else {
+            ExecutorService executor = Executors.newFixedThreadPool(batchWorkers);
+            List<Future<JsonObject>> futures = new ArrayList<>(packages.size());
+            try {
+                for (String packageName : packages) {
+                    futures.add(executor.submit(() -> snapshotPackageSafe(realPm, pmHidden, appOps, idleWhitelist, user, userId, packageName,
+                            playStore, playServices)));
+                }
+                for (int i = 0; i < futures.size(); i++) {
+                    try {
+                        records.set(i, futures.get(i).get());
+                    } catch (Throwable e) {
+                        records.set(i, packageErrorRecord("snapshot", userId, packages.get(i), ResultCode.INTERNAL_ERROR, failureMessage(e)));
+                    }
+                }
+            } finally {
+                executor.shutdownNow();
+            }
+        }
+
+        final long snapshotCoreEndNs = System.nanoTime();
+        final long snapshotCoreMs = TimeUnit.NANOSECONDS.toMillis(snapshotCoreEndNs - batchStartNs);
+        final long serializeStartNs = snapshotCoreEndNs;
+        int ok = 0;
+        int partial = 0;
+        int failed = 0;
+        List<String> serializedRecords = new ArrayList<>(records.size());
+        for (JsonObject record : records) {
+            ResultCode code = resultCodeFromRecord(record);
+            if (code == ResultCode.OK) ok++;
+            else if (code == ResultCode.PARTIAL) partial++;
+            else failed++;
+            serializedRecords.add(GSON.toJson(record));
+        }
+        final long serializeEndNs = System.nanoTime();
+        final long snapshotSerializeMs = TimeUnit.NANOSECONDS.toMillis(serializeEndNs - serializeStartNs);
+        long batchElapsedMs = TimeUnit.NANOSECONDS.toMillis(serializeEndNs - batchStartNs);
+        ResultCode overall = failed > 0 || partial > 0 ? ResultCode.PARTIAL : ResultCode.OK;
+        return new SnapshotBatchCoreResult(packages, records, serializedRecords, ok, partial, failed,
+                batchWorkers, batchWorkerPolicy, batchElapsedMs, snapshotCoreMs, snapshotSerializeMs, overall);
+    }
+
     @SuppressLint("ServiceCast")
     static EngineResponse snapshot(int userId, List<String> packageNames) {
         List<String> packages = dedupePackages(packageNames);
@@ -580,51 +794,257 @@ public final class AppStateEngine {
                     "no packages");
         }
 
-        StringBuilder out = new StringBuilder();
-        int ok = 0;
-        int partial = 0;
-        int vendorPartial = 0;
-        int failed = 0;
         try {
-            RuntimeServices runtime = runtimeServices();
-            PackageManager realPm = runtime.packageManager;
-            PackageManagerHidden pmHidden = runtime.packageManagerHidden;
-            AppOpsManagerHidden appOps = runtime.appOpsManager;
-            Set<String> idleWhitelist = getDeviceIdleWhitelist();
-            UserHandle user = UserHandleHidden.of(userId);
-            GooglePackageSnapshot playStore = googlePackageSnapshot(
-                    realPm, pmHidden, appOps, idleWhitelist, userId, "com.android.vending");
-            GooglePackageSnapshot playServices = googlePackageSnapshot(
-                    realPm, pmHidden, appOps, idleWhitelist, userId, "com.google.android.gms");
-
-            for (String packageName : packages) {
-                JsonObject record;
-                try {
-                    record = snapshotPackage(realPm, pmHidden, appOps, idleWhitelist, user, userId, packageName,
-                            playStore, playServices);
-                } catch (PackageManager.NameNotFoundException e) {
-                    record = packageErrorRecord("snapshot", userId, packageName, ResultCode.PACKAGE_NOT_FOUND, failureMessage(e));
-                } catch (SecurityException e) {
-                    record = packageErrorRecord("snapshot", userId, packageName, ResultCode.PERMISSION_DENIED, failureMessage(e));
-                } catch (Throwable e) {
-                    record = packageErrorRecord("snapshot", userId, packageName, ResultCode.INTERNAL_ERROR, failureMessage(e));
-                }
-                ResultCode code = resultCodeFromRecord(record);
-                if (code == ResultCode.OK) ok++;
-                else if (code == ResultCode.PARTIAL) partial++;
-                else failed++;
-                out.append(GSON.toJson(record)).append('\n');
+            SnapshotBatchCoreResult batch = snapshotBatchCore(userId, packages);
+            StringBuilder out = new StringBuilder();
+            for (String rawLine : batch.serializedRecords) {
+                out.append(rawLine).append('\n');
             }
+            out.append(GSON.toJson(batch.summaryRecord())).append('\n');
+            return new EngineResponse(batch.overall, out.toString());
         } catch (SecurityException e) {
             return errorResponse(ResultCode.PERMISSION_DENIED, "snapshotAppStateBatch", null, failureMessage(e));
         } catch (Throwable e) {
             return errorResponse(ResultCode.INTERNAL_ERROR, "snapshotAppStateBatch", null, failureMessage(e));
         }
+    }
 
-        ResultCode overall = failed > 0 || partial > 0 ? ResultCode.PARTIAL : ResultCode.OK;
-        out.append(GSON.toJson(summaryRecord("snapshotAppStateBatch", overall, packages.size(), ok, partial, failed, null))).append('\n');
 
-        return new EngineResponse(overall, out.toString());
+    /**
+     * r683 direct-file snapshot path.  It consumes the same canonical JsonObject/String pairs
+     * produced by snapshotBatchCore(), writes snapshot/state/error staging files in one pass,
+     * and returns only a compact TSV summary.  There is no 1 MiB response-body construction,
+     * line split, or JsonParser reparse in the direct path.
+     *
+     * Safety boundary: callers may only target the per-run SpeedBackup directory directly
+     * below /data/local/tmp.  Files are first written to private temp names and renamed to
+     * fixed staging names.  The shell publishes .pkg_appstate last, so legacy maps remain
+     * untouched if this command fails.
+     */
+    static EngineResponse snapshotToFiles(int userId, List<String> packageNames, String outputDirRaw) {
+        List<String> packages = dedupePackages(packageNames);
+        if (packages.isEmpty()) {
+            return batchSummaryOnly("snapshotAppStateBatchFiles", ResultCode.BAD_REQUEST, 0, 0, 0, 0,
+                    "no packages");
+        }
+        File dir;
+        try {
+            dir = validateSnapshotOutputDir(outputDirRaw);
+        } catch (Throwable e) {
+            return errorResponse(ResultCode.BAD_REQUEST, "snapshotAppStateBatchFiles", null, failureMessage(e));
+        }
+
+        File snapshotTarget = new File(dir, ".appstate_direct_snapshot.ndjson");
+        File statesTarget = new File(dir, ".appstate_direct_states.tsv");
+        File errorsTarget = new File(dir, ".appstate_direct_errors.tsv");
+        String suffix = ".tmp." + android.os.Process.myPid() + "." + Thread.currentThread().getId() + "." + System.nanoTime();
+        File snapshotTmp = new File(dir, snapshotTarget.getName() + suffix);
+        File statesTmp = new File(dir, statesTarget.getName() + suffix);
+        File errorsTmp = new File(dir, errorsTarget.getName() + suffix);
+
+        deleteQuietly(snapshotTmp);
+        deleteQuietly(statesTmp);
+        deleteQuietly(errorsTmp);
+        deleteQuietly(snapshotTarget);
+        deleteQuietly(statesTarget);
+        deleteQuietly(errorsTarget);
+
+        final long directStartNs = System.nanoTime();
+        try {
+            SnapshotBatchCoreResult batch = snapshotBatchCore(userId, packages);
+            int stateRows = 0;
+            int errorRows = 0;
+            long directSnapshotWriteNs = 0L;
+            long directStateWriteNs = 0L;
+            long directErrorWriteNs = 0L;
+            final long persistStartNs = System.nanoTime();
+            try (BufferedWriter snapshotOut = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(snapshotTmp), StandardCharsets.UTF_8));
+                 BufferedWriter statesOut = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(statesTmp), StandardCharsets.UTF_8));
+                 BufferedWriter errorsOut = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(errorsTmp), StandardCharsets.UTF_8))) {
+                for (int i = 0; i < batch.records.size(); i++) {
+                    JsonObject record = batch.records.get(i);
+                    String rawLine = batch.serializedRecords.get(i);
+                    long writeStartNs = System.nanoTime();
+                    snapshotOut.write(rawLine);
+                    snapshotOut.write('\n');
+                    directSnapshotWriteNs += System.nanoTime() - writeStartNs;
+
+                    String recordType = stringMember(record, "recordType");
+                    JsonObject result = objectMember(record, "result");
+                    String resultName = jsonStringOr(result, "name", "UNKNOWN");
+                    String resultMessage = jsonStringOr(result, "message", "");
+                    boolean packageIsNull = !record.has("packageName") || record.get("packageName").isJsonNull();
+                    String packageName = packageIsNull ? "" : jsonStringOr(record, "packageName", "");
+
+                    if ("snapshot".equals(recordType)
+                            && ("OK".equals(resultName) || "PARTIAL".equals(resultName))
+                            && !packageName.isEmpty()) {
+                        writeStartNs = System.nanoTime();
+                        statesOut.write(tsvEscape(packageName));
+                        statesOut.write('\t');
+                        // Legacy jq emits [.packageName,(.|tojson)]|@tsv, so the JSON
+                        // string itself must receive TSV escaping (not merely raw JSON output).
+                        statesOut.write(tsvEscape(rawLine));
+                        statesOut.write('\n');
+                        directStateWriteNs += System.nanoTime() - writeStartNs;
+                        stateRows++;
+                    }
+
+                    if (("snapshot".equals(recordType) && !"OK".equals(resultName)) || "error".equals(recordType)) {
+                        writeStartNs = System.nanoTime();
+                        String errorPackage = packageIsNull ? "-" : packageName;
+                        JsonElement errors = record.get("errors");
+                        String errorsJson = (errors == null || errors.isJsonNull()) ? "[]" : GSON.toJson(errors);
+                        errorsOut.write(tsvEscape(errorPackage));
+                        errorsOut.write('\t');
+                        errorsOut.write(tsvEscape(resultName));
+                        errorsOut.write('\t');
+                        errorsOut.write(tsvEscape(resultMessage));
+                        errorsOut.write('\t');
+                        errorsOut.write(tsvEscape(errorsJson));
+                        errorsOut.write('\n');
+                        directErrorWriteNs += System.nanoTime() - writeStartNs;
+                        errorRows++;
+                    }
+                }
+                long writeStartNs = System.nanoTime();
+                snapshotOut.write(GSON.toJson(batch.summaryRecord()));
+                snapshotOut.write('\n');
+                directSnapshotWriteNs += System.nanoTime() - writeStartNs;
+            }
+            long directPersistMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - persistStartNs);
+
+            if (stateRows <= 0) {
+                throw new IllegalStateException("snapshot direct missing valid state rows");
+            }
+
+            final long publishStartNs = System.nanoTime();
+            atomicReplace(snapshotTmp, snapshotTarget);
+            atomicReplace(errorsTmp, errorsTarget);
+            atomicReplace(statesTmp, statesTarget);
+            long directPublishMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - publishStartNs);
+            long directTotalMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - directStartNs);
+            long directSnapshotWriteMs = TimeUnit.NANOSECONDS.toMillis(directSnapshotWriteNs);
+            long directStateWriteMs = TimeUnit.NANOSECONDS.toMillis(directStateWriteNs);
+            long directErrorWriteMs = TimeUnit.NANOSECONDS.toMillis(directErrorWriteNs);
+            long snapshotBytes = snapshotTarget.length();
+
+            String directSummary = "APPSTATE_DIRECT_SUMMARY\t" + batch.batchWorkers + "\t" + batch.batchElapsedMs
+                    + "\t" + batch.batchWorkerPolicy + "\tinput"
+                    + "\t" + packages.size() + "\t" + batch.ok + "\t" + batch.partial + "\t" + batch.failed
+                    + "\t" + snapshotBytes + "\t" + stateRows + "\t" + errorRows
+                    + "\t" + directPersistMs + "\t" + directPublishMs + "\t" + directTotalMs
+                    + "\t" + batch.snapshotCoreMs + "\t" + batch.snapshotSerializeMs
+                    + "\t" + directSnapshotWriteMs + "\t" + directStateWriteMs + "\t" + directErrorWriteMs + "\n";
+            return new EngineResponse(batch.overall, directSummary);
+        } catch (SecurityException e) {
+            cleanupSnapshotDirectFiles(snapshotTmp, statesTmp, errorsTmp, snapshotTarget, statesTarget, errorsTarget);
+            return errorResponse(ResultCode.PERMISSION_DENIED, "snapshotAppStateBatchFiles", null, failureMessage(e));
+        } catch (Throwable e) {
+            cleanupSnapshotDirectFiles(snapshotTmp, statesTmp, errorsTmp, snapshotTarget, statesTarget, errorsTarget);
+            return errorResponse(ResultCode.INTERNAL_ERROR, "snapshotAppStateBatchFiles", null, failureMessage(e));
+        }
+    }
+
+    private static File validateSnapshotOutputDir(String raw) throws Exception {
+        if (raw == null || raw.trim().isEmpty()) throw new IllegalArgumentException("output dir missing");
+        File dir = new File(raw.trim()).getCanonicalFile();
+        String path = dir.getPath();
+        if (!dir.isDirectory()) throw new IllegalArgumentException("output dir not directory");
+        File parent = dir.getParentFile() == null ? null : dir.getParentFile().getCanonicalFile();
+        if (parent == null || !"/data/local/tmp".equals(parent.getPath())
+                || !dir.getName().startsWith(".speedbackup_run_")) {
+            throw new SecurityException("output dir outside SpeedBackup run tmpdir");
+        }
+        if (path.indexOf('\n') >= 0 || path.indexOf('\r') >= 0 || path.indexOf('\t') >= 0) {
+            throw new IllegalArgumentException("invalid output dir");
+        }
+        return dir;
+    }
+
+    private static String jsonStringOr(JsonObject object, String name, String fallback) {
+        try {
+            if (object == null || !object.has(name) || object.get(name).isJsonNull()) return fallback;
+            return object.get(name).getAsString();
+        } catch (Throwable ignored) {
+            return fallback;
+        }
+    }
+
+    /** Mirrors jq @tsv escaping for one field: backslash, TAB, LF and CR. */
+    private static String tsvEscape(String value) {
+        if (value == null || value.isEmpty()) return value == null ? "" : value;
+        StringBuilder out = new StringBuilder(value.length() + 16);
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '\\': out.append("\\\\"); break;
+                case '\t': out.append("\\t"); break;
+                case '\n': out.append("\\n"); break;
+                case '\r': out.append("\\r"); break;
+                case '\0': out.append("\\0"); break;
+                default: out.append(c); break;
+            }
+        }
+        return out.toString();
+    }
+
+    private static void atomicReplace(File from, File to) throws Exception {
+        if (from == null || to == null || !from.isFile()) throw new IllegalStateException("staging file missing");
+        if (to.exists() && !to.delete()) throw new IllegalStateException("cannot replace staging target: " + to.getName());
+        if (!from.renameTo(to)) throw new IllegalStateException("staging rename failed: " + to.getName());
+    }
+
+    private static void cleanupSnapshotDirectFiles(File... files) {
+        if (files == null) return;
+        for (File file : files) deleteQuietly(file);
+    }
+
+    private static void deleteQuietly(File file) {
+        try {
+            if (file != null && file.exists()) file.delete();
+        } catch (Throwable ignored) {}
+    }
+
+    private static JsonObject snapshotPackageSafe(
+            PackageManager realPm, PackageManagerHidden pmHidden, AppOpsManagerHidden appOps,
+            Set<String> idleWhitelist, UserHandle user, int userId, String packageName,
+            GooglePackageSnapshot playStore, GooglePackageSnapshot playServices) {
+        try {
+            return snapshotPackage(realPm, pmHidden, appOps, idleWhitelist, user, userId, packageName, playStore, playServices);
+        } catch (PackageManager.NameNotFoundException e) {
+            return packageErrorRecord("snapshot", userId, packageName, ResultCode.PACKAGE_NOT_FOUND, failureMessage(e));
+        } catch (SecurityException e) {
+            return packageErrorRecord("snapshot", userId, packageName, ResultCode.PERMISSION_DENIED, failureMessage(e));
+        } catch (Throwable e) {
+            return packageErrorRecord("snapshot", userId, packageName, ResultCode.INTERNAL_ERROR, failureMessage(e));
+        }
+    }
+
+    private static int snapshotBatchWorkerCount(int total) {
+        String raw = System.getenv("SPEEDBACKUP_APPSTATE_SNAPSHOT_WORKERS");
+        if (raw != null && !raw.trim().isEmpty()) {
+            try {
+                int requested = Integer.parseInt(raw.trim());
+                if (requested > 0) return Math.max(1, Math.min(4, Math.min(requested, Math.max(1, total))));
+            } catch (NumberFormatException ignored) {
+                // Fall through to bounded auto policy.
+            }
+        }
+        int auto = total <= 16 ? 1 : (total <= 63 ? 2 : 4);
+        return Math.max(1, Math.min(auto, Math.max(1, total)));
+    }
+
+    private static String snapshotBatchWorkerPolicy(int total, int workers) {
+        String raw = System.getenv("SPEEDBACKUP_APPSTATE_SNAPSHOT_WORKERS");
+        if (raw != null && !raw.trim().isEmpty()) {
+            try {
+                if (Integer.parseInt(raw.trim()) > 0) return "env-max4";
+            } catch (NumberFormatException ignored) {
+                // Auto policy below.
+            }
+        }
+        return total <= 16 ? "auto-1" : (total <= 63 ? "auto-2" : "auto-4");
     }
 
     @SuppressLint("ServiceCast")
@@ -4244,6 +4664,7 @@ public final class AppStateEngine {
         String value = command.trim().toLowerCase(Locale.ROOT);
         switch (value) {
             case "snapshotappstatebatch": return "snapshot";
+            case "snapshotappstatebatchfiles": return "snapshotfiles";
             case "foreground":
             case "foregroundstate":
             case "foregroundstatebatch":

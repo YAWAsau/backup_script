@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
 
 /** Runtime hidden/non-SDK API probe for SpeedBackup capability diagnostics. */
 final class HiddenApiRuntimeProbe {
-    static final String VERSION = "v1.4-r334-observer-version-procsnap-runtime-probe";
+    static final String VERSION = DexBuildInfo.VERSION;
 
     private HiddenApiRuntimeProbe() {}
 
