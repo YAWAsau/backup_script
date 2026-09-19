@@ -204,12 +204,6 @@ public class KXmlSerializer implements XmlSerializer {
     }
     // END Android-added
 
-    /*
-        private final void writeIndent() throws IOException {
-            writer.write("\r\n");
-            for (int i = 0; i < depth; i++)
-                writer.write(' ');
-        }*/
 
     public void docdecl(String dd) throws IOException {
         append("<!DOCTYPE");

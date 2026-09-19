@@ -10,7 +10,7 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_ulong};
 use std::os::unix::ffi::OsStrExt;
 
-const VERSION: &str = "1.0.1-android28-r28c-native-convergence-r572-rust-r572";
+const VERSION: &str = "1.0.1-android28-r29-native-convergence-r572-rust-r572";
 
 extern "C" {
     fn setgroups(size: usize, list: *const u32) -> c_int;
@@ -19,7 +19,7 @@ extern "C" {
     fn getresgid(rgid: *mut u32, egid: *mut u32, sgid: *mut u32) -> c_int;
     fn getresuid(ruid: *mut u32, euid: *mut u32, suid: *mut u32) -> c_int;
     fn umask(mask: u32) -> u32;
-    fn prctl(option: c_ulong, arg2: c_ulong, arg3: c_ulong, arg4: c_ulong, arg5: c_ulong) -> c_int;
+    fn prctl(option: c_int, arg2: c_ulong, arg3: c_ulong, arg4: c_ulong, arg5: c_ulong) -> c_int;
     fn mkdir(path: *const c_char, mode: u32) -> c_int;
     fn chown(path: *const c_char, owner: u32, group: u32) -> c_int;
     fn chmod(path: *const c_char, mode: u32) -> c_int;
@@ -29,7 +29,7 @@ extern "C" {
     fn unsetenv(name: *const c_char) -> c_int;
 }
 
-const PR_SET_DUMPABLE: c_ulong = 4;
+const PR_SET_DUMPABLE: c_int = 4;
 const EEXIST: i32 = 17;
 
 /// Matches C's debug_enabled(): any value that is non-null, non-empty, and
@@ -181,8 +181,8 @@ fn exec_command(cmd: &[String]) -> ! {
     die("execvp")
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+pub(crate) fn run() {
+    let args: Vec<String> = crate::multicall::args().collect();
     let prog = args.get(0).map(|s| s.as_str()).unwrap_or("uidexec");
 
     if args.len() == 2 && (args[1] == "--version" || args[1] == "version") {

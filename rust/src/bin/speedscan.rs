@@ -1,5 +1,17 @@
+#[path = "../tar_source.rs"]
+mod tar_source;
+#[path = "../backup_run.rs"]
+mod backup_run;
+#[path = "../payload_stats.rs"]
+mod payload_stats;
 use speedbackup_native_rs::*;
-use std::collections::{HashMap, HashSet};
+#[path = "../tar_input.rs"]
+mod tar_input;
+#[path = "../restore_manifest.rs"]
+mod restore_manifest;
+#[path = "../orphan_plan.rs"]
+mod orphan_plan;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::env;
 use std::ffi::CString;
 use std::fs::{self, File, OpenOptions};
@@ -13,7 +25,199 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Instant;
 
-const VERSION: &str = "r686-api28-r28c-remote-presize-bundle-r686";
+const VERSION: &str = "r713-api28-r29-symlink-owner-202607232022";
+
+struct DirTar {
+    idx: usize,
+    root: PathBuf,
+    external: bool,
+    math: tar_input::Accumulator,
+    valid: bool,
+}
+impl DirTar {
+    fn add(&mut self, path: &Path, meta: &fs::Metadata) {
+        let rel = match path.strip_prefix(&self.root) { Ok(p) => p, Err(_) => return };
+        self.add_relative(rel, None, meta);
+    }
+    fn add_file(&mut self, dir: &Path, name: &[u8], meta: &fs::Metadata) {
+        if self.root.parent() == Some(dir) && self.root.file_name().map(|n| n.as_bytes()) == Some(name) {
+            self.add_relative(Path::new(""), None, meta);
+        } else if let Ok(rel) = dir.strip_prefix(&self.root) {
+            self.add_relative(rel, Some(name), meta);
+        }
+    }
+    fn add_relative(&mut self, rel: &Path, leaf: Option<&[u8]>, meta: &fs::Metadata) {
+        use std::os::unix::fs::FileTypeExt;
+        let root = match self.root.file_name() { Some(n) => n.as_bytes(), None => { self.valid = false; return; } };
+        let mut member = root.to_vec();
+        if !rel.as_os_str().is_empty() { member.push(b'/'); member.extend_from_slice(rel.as_os_str().as_bytes()); }
+        if let Some(name) = leaf { member.push(b'/'); member.extend_from_slice(name); }
+        if tar_input::excluded(&member, root, self.external) { return; }
+        let ft = meta.file_type();
+        if ft.is_socket() { return; }
+        if ft.is_dir() { member.push(b'/'); }
+        let kind = if ft.is_file() { b'f' } else if ft.is_dir() { b'd' } else if ft.is_symlink() { b'l' } else { b'p' };
+        self.math.add(&member, kind, meta.len(), meta.dev(), meta.ino(), meta.nlink());
+    }
+}
+
+fn dir_tar_add(accs: &mut [DirTar], path: &Path, meta: &fs::Metadata) {
+    for acc in accs { acc.add(path, meta); }
+}
+
+fn dir_tar_error(accs: &mut [DirTar], path: &Path) {
+    for acc in accs { if path.starts_with(&acc.root) || acc.root.starts_with(path) { acc.valid = false; } }
+}
+
+#[cfg(test)]
+mod fused_traversal_tests {
+    use super::*;
+    #[test]
+    fn gross_cache_and_tar_share_the_walk() {
+        let root = env::temp_dir().join(format!("r694-fused-{}", std::process::id()));
+        fs::create_dir_all(root.join("cache")).unwrap();
+        fs::create_dir_all(root.join("sub")).unwrap();
+        fs::write(root.join("normal"), vec![0; 10001]).unwrap();
+        fs::write(root.join("cache/skip"), vec![0; 5000]).unwrap();
+        fs::write(root.join("sub/file"), vec![0; 513]).unwrap();
+        fs::hard_link(root.join("normal"), root.join("hard")).unwrap();
+        std::os::unix::fs::symlink("normal", root.join("sym")).unwrap();
+        let targets = vec![(0, root.clone()), (1, root.join("cache"))];
+        let mut tar = vec![DirTar {
+            idx: 0,
+            root: root.clone(),
+            external: false,
+            math: tar_input::Accumulator::default(),
+            valid: true,
+        }];
+        let (values, stats) = scan_root_for_targets(&root, &targets, &mut tar);
+        assert_eq!(values, vec![(0, 25515), (1, 5000)]);
+        assert_eq!(stats.files, 4);
+        assert_eq!(stats.file_metadata_calls, 4);
+        assert_eq!(stats.legacy_fallback_roots, 0);
+        assert!(tar[0].valid);
+        assert_eq!(tar_input::finish(tar[0].math.bytes), 20480);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn appdetails_seed_index_required_meta_matches_bundle_contract() {
+        assert!(appdetails_required_meta_ok(
+            r#"{"Meta":{"PackageName":"com.example","apk_version":7}}"#
+        ));
+        assert!(appdetails_required_meta_ok(
+            r#"{"App":{"PackageName":"com.example","apk_version":"7","app_state":{}}}"#
+        ));
+        assert!(!appdetails_required_meta_ok(
+            r#"{"PackageName":"com.example","apk_version":7}"#
+        ));
+        assert!(!appdetails_required_meta_ok(
+            r#"{"Meta":{"PackageName":"com.example"}}"#
+        ));
+        assert!(!appdetails_required_meta_ok(
+            r#"{"Meta":{"apk_version":7}}"#
+        ));
+        assert!(!appdetails_required_meta_ok(
+            r#"{"A":{"PackageName":"com.example"},"B":{"apk_version":7}}"#
+        ));
+        // jq's contract checks non-null, not truthiness, type or nonempty text.
+        assert!(appdetails_required_meta_ok(
+            r#"{"Meta":{"PackageName":"","apk_version":false}}"#
+        ));
+        assert!(appdetails_required_meta_ok(
+            r#"{"Meta":{"PackageName":{},"apk_version":[]}}"#
+        ));
+    }
+
+    #[test]
+    fn appdetails_seed_index_rejects_invalid_document_and_nested_fragments() {
+        assert!(!appdetails_required_meta_ok(
+            "\u{00a0}{\"Meta\":{\"PackageName\":\"p\",\"apk_version\":7}}"
+        ));
+        for body in [
+            r#"{"Meta":{"PackageName":"p","apk_version":7}"#,
+            r#"{"Meta":{"PackageName":"p","apk_version":7}} GARBAGE"#,
+            r#"{"Meta":{"PackageName":"p","apk_version":7},}"#,
+            r#"{"Meta":{"PackageName":"p","apk_version":7},"bad":[1,]}"#,
+            r#"{"Meta":{"A":{"PackageName":"p"},"B":{"apk_version":7}}}"#,
+            r#"{"Meta":{"PackageName":null,"apk_version":null,"nested":{"PackageName":"p","apk_version":7}}}"#,
+        ] {
+            assert!(
+                !appdetails_required_meta_ok(body),
+                "accepted invalid metadata: {body}"
+            );
+        }
+    }
+
+    #[test]
+    fn appdetails_seed_index_decodes_keys_and_uses_last_duplicate() {
+        assert!(appdetails_required_meta_ok(
+            r#"{"Meta":{"Package\u004eame":"p","apk_version":7}}"#
+        ));
+        assert!(!appdetails_required_meta_ok(
+            r#"{"Meta":{"PackageName":"p","Package\u004eame":null,"apk_version":7}}"#
+        ));
+        assert!(appdetails_required_meta_ok(
+            r#"{"Meta":{"PackageName":null,"PackageName":"p","apk_version":7}}"#
+        ));
+        assert!(!appdetails_required_meta_ok(
+            r#"{"Meta":{"PackageName":"p","apk_version":7},"Meta":null}"#
+        ));
+        assert!(!appdetails_required_meta_ok(
+            r#"{"應用":{"PackageName":"p","apk_version":7},"\u61c9\u7528":null}"#
+        ));
+    }
+
+    #[test]
+    fn appdetails_seed_index_drops_invalid_files_and_preserves_valid_seed() {
+        let root = env::temp_dir().join(format!("r698-meta-{}", std::process::id()));
+        for (app, body) in [
+            ("Valid", r#"{"Meta":{"PackageName":"p","apk_version":7}}"#),
+            (
+                "Truncated",
+                r#"{"Meta":{"PackageName":"p","apk_version":7}"#,
+            ),
+            (
+                "Nested",
+                r#"{"Meta":{"A":{"PackageName":"p"},"B":{"apk_version":7}}}"#,
+            ),
+        ] {
+            fs::create_dir_all(root.join(app)).unwrap();
+            fs::write(root.join(app).join("app_details.json"), body).unwrap();
+        }
+        let seed = root.join("seed.lst");
+        let prefix = root.join("index");
+        let args = vec![
+            "speedscan".into(),
+            "appdetails-seed-index".into(),
+            root.to_string_lossy().into_owned(),
+            seed.to_string_lossy().into_owned(),
+            prefix.to_string_lossy().into_owned(),
+        ];
+        assert_eq!(cmd_appdetails_seed_index(&args), 0);
+        assert_eq!(fs::read_to_string(&seed).unwrap(), "Valid\n");
+        assert!(root.join("Valid/app_details.json").is_file());
+        assert!(!root.join("Truncated/app_details.json").exists());
+        assert!(!root.join("Nested/app_details.json").exists());
+        assert!(fs::read_to_string(root.join("index.stats"))
+            .unwrap()
+            .starts_with("3\t1\t2\t3\t"));
+        fs::remove_file(root.join("Valid/app_details.json")).unwrap();
+        assert_eq!(cmd_appdetails_seed_index(&args), 5);
+        assert_eq!(fs::read_to_string(&seed).unwrap(), "");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn appdetails_seed_expansion_allows_only_complete_payload_growth() {
+        assert!(appdetails_seed_expansion_allowed(119, 119, 9, 0, 0, 0));
+        assert!(!appdetails_seed_expansion_allowed(118, 119, 9, 0, 0, 0));
+        assert!(!appdetails_seed_expansion_allowed(119, 119, 9, 1, 0, 0));
+        assert!(!appdetails_seed_expansion_allowed(119, 119, 9, 0, 1, 0));
+        assert!(!appdetails_seed_expansion_allowed(119, 119, 9, 0, 0, 1));
+        assert!(!appdetails_seed_expansion_allowed(119, 119, 0, 0, 0, 0));
+    }
+}
 
 fn usage() {
     eprintln!("speedscan {}", VERSION);
@@ -41,6 +245,7 @@ fn usage() {
     eprintln!("  speedscan file-list-abs-filter ROOT OUT SKIP_APPDETAILS [EXCLUDE_PREFIX]");
     eprintln!("  speedscan selected-list APPLIST BLACKLIST OUT BLACKLIST_MODE");
     eprintln!("  speedscan apk-size-map PKG_APK_PATHS OUT");
+    eprintln!("  speedscan backup-prescan-exact-input EXACT_ROWS DIR_TAR_MAP PKG_APK_PATHS DETAILS_OUT STATS_OUT");
     eprintln!("  speedscan backup-prescan-summary SELECTED DIRSIZES APKMAP RSKIP LSKIP OUT REMOTE_STREAM REMOTE_TYPE");
     eprintln!("  speedscan backup-root-index ROOT OUT [MAXDEPTH]");
     eprintln!("  speedscan storage-summary PATH");
@@ -65,10 +270,13 @@ fn usage() {
     eprintln!("  speedscan stream-entry-perf-stage PERF PENDING REMOTE_TYPE RB COMP RC ORIGIN SOURCE_PATH PKG LABEL ENTRY");
     eprintln!("  speedscan stream-entry-perf-finalize PENDING WEBDAV_INFO");
     eprintln!("  speedscan restore-tree-verify ROOT MANIFEST");
+    eprintln!("  speedscan restore-tree-manifest-bytes ROOT MANIFEST");
+    eprintln!("  speedscan restore-tree-verify-bytes ROOT MANIFEST");
     eprintln!("  speedscan app-media-index ROOT OUT [MAXDEPTH|-] [MAX_ROWS|-] [EXCLUDE_FILE|-]");
     eprintln!("  speedscan appdetails-bundle-audit ROOT REMOTE_FILES|- SEED_APPS|- SEED_STATE SEED_COUNT OUT_PREFIX [ALLOW_SHRINK]");
     eprintln!("  speedscan appdetails-health-batch APP_LIST ROOT OUT_PREFIX [LABEL_SUFFIX]");
     eprintln!("  speedscan appdetails-bundle-manifest ROOT OUT_PREFIX");
+    eprintln!("  speedscan appdetails-seed-index ROOT SEED_OUT OUT_PREFIX");
     eprintln!("  speedscan remote-manifest-plan REMOTE_FILES|- BUNDLE_ROOT|- INSTALLED_PACKAGES|- OUT_PREFIX");
     eprintln!("  speedscan restore-payload-plan APP_DIR APP_DETAILS|- OUT_PREFIX");
     eprintln!("  speedscan manifest-diff-cache-index SELECTED REMOTE_SUMMARY DIRSIZES PAYLOAD_SET CHANGED OUT_PREFIX BACKUP_MODE BACKUP_OBB BACKUP_USER");
@@ -200,21 +408,27 @@ fn scan_dirsize_tree_r685(
     target_files: &HashMap<PathBuf, HashMap<Vec<u8>, Vec<usize>>>,
     totals: &mut [u64],
     stats: &mut DirSizeScanStats,
+    tar: &mut [DirTar],
 ) {
-    let rd = match fs::read_dir(dir) { Ok(v) => v, Err(_) => return };
+    let rd = match fs::read_dir(dir) { Ok(v) => v, Err(_) => { dir_tar_error(tar, dir); return; } };
     let dir_len = dir.as_os_str().as_bytes().len();
     for item in rd {
-        let entry = match item { Ok(v) => v, Err(_) => continue };
+        let entry = match item { Ok(v) => v, Err(_) => { dir_tar_error(tar, dir); continue; } };
         stats.dir_entries = stats.dir_entries.wrapping_add(1);
         let name = entry.file_name();
-        if dir_len + 1 + name.as_os_str().as_bytes().len() + 1 > PATH_MAX_SAFE { continue; }
-        let ft = match entry.file_type() { Ok(v) => v, Err(_) => continue };
+        if dir_len + 1 + name.as_os_str().as_bytes().len() + 1 > PATH_MAX_SAFE { dir_tar_error(tar, dir); continue; }
+        let ft = match entry.file_type() { Ok(v) => v, Err(_) => { dir_tar_error(tar, dir); continue; } };
+        if !ft.is_file() {
+            let child = entry.path();
+            match entry.metadata() { Ok(m) => dir_tar_add(tar, &child, &m), Err(_) => dir_tar_error(tar, &child) }
+        }
         if ft.is_symlink() { continue; }
         if ft.is_file() {
             // DirEntry::metadata() is no-follow for a symlink DirEntry on Unix; file_type()
             // above also rejects symlinks before this call.  Avoid constructing a full
             // PathBuf for the common file case: 318k files on the r684 reference run.
-            let meta = match entry.metadata() { Ok(v) => v, Err(_) => continue };
+            let meta = match entry.metadata() { Ok(v) => v, Err(_) => { dir_tar_error(tar, dir); continue; } };
+            for acc in tar.iter_mut() { acc.add_file(dir, name.as_os_str().as_bytes(), &meta); }
             let len = meta.len();
             stats.files = stats.files.wrapping_add(1);
             stats.bytes = stats.bytes.wrapping_add(len);
@@ -245,14 +459,14 @@ fn scan_dirsize_tree_r685(
                 if !next_active.contains(slot) { next_active.push(*slot); }
             }
             stats.nested_target_activations = stats.nested_target_activations.wrapping_add(add.len() as u64);
-            scan_dirsize_tree_r685(&child, &next_active, target_dirs, target_files, totals, stats);
+            scan_dirsize_tree_r685(&child, &next_active, target_dirs, target_files, totals, stats, tar);
         } else {
-            scan_dirsize_tree_r685(&child, active_slots, target_dirs, target_files, totals, stats);
+            scan_dirsize_tree_r685(&child, active_slots, target_dirs, target_files, totals, stats, tar);
         }
     }
 }
 
-fn scan_root_for_targets(root: &Path, targets: &[(usize, PathBuf)]) -> (Vec<(usize, u64)>, DirSizeScanStats) {
+fn scan_root_for_targets(root: &Path, targets: &[(usize, PathBuf)], tar: &mut [DirTar]) -> (Vec<(usize, u64)>, DirSizeScanStats) {
     // r685: route nested targets when entering directories instead of testing every
     // file path against every cache/code_cache target.  The direct root slot stays
     // active for the whole walk; a nested slot becomes active exactly when its
@@ -279,14 +493,15 @@ fn scan_root_for_targets(root: &Path, targets: &[(usize, PathBuf)]) -> (Vec<(usi
     }
     // Every collapsed root is itself a manifest target. Keep a conservative parity
     // fallback for malformed/legacy manifests rather than changing output semantics.
-    if direct_root_slots.is_empty() { return scan_root_for_targets_legacy(root, targets); }
+    if direct_root_slots.is_empty() { dir_tar_error(tar, root); return scan_root_for_targets_legacy(root, targets); }
     let mut stats = DirSizeScanStats::default();
     stats.direct_root_targets = direct_root_slots.len() as u64;
     stats.nested_targets = targets.len().saturating_sub(direct_root_slots.len()) as u64;
     let root_meta = match fs::symlink_metadata(root) {
         Ok(v) => v,
-        Err(_) => return (targets.iter().map(|(idx, _)| (*idx, 0)).collect(), stats),
+        Err(_) => { dir_tar_error(tar, root); return (targets.iter().map(|(idx, _)| (*idx, 0)).collect(), stats); }
     };
+    dir_tar_add(tar, root, &root_meta);
     if root_meta.file_type().is_symlink() {
         return (targets.iter().map(|(idx, _)| (*idx, 0)).collect(), stats);
     }
@@ -297,7 +512,7 @@ fn scan_root_for_targets(root: &Path, targets: &[(usize, PathBuf)]) -> (Vec<(usi
         stats.file_metadata_calls = 1;
         for slot in &direct_root_slots { totals[*slot] = totals[*slot].wrapping_add(len); }
     } else if root_meta.is_dir() {
-        scan_dirsize_tree_r685(root, &direct_root_slots, &target_dirs, &target_files, &mut totals, &mut stats);
+        scan_dirsize_tree_r685(root, &direct_root_slots, &target_dirs, &target_files, &mut totals, &mut stats, tar);
     }
     (targets.iter().enumerate().map(|(slot, (idx, _))| (*idx, totals[slot])).collect(), stats)
 }
@@ -417,6 +632,8 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
     let shared_groups = Arc::new(root_groups);
     let next = Arc::new(AtomicUsize::new(0));
     let results = Arc::new(Mutex::new(vec![0u64; rows.len()]));
+    let tar_results = Arc::new(Mutex::new(vec![None; rows.len()]));
+    let shared_rows = Arc::new(rows.clone());
     let scan_stats = Arc::new(Mutex::new(DirSizeScanStats::default()));
     let root_stats = Arc::new(Mutex::new(Vec::<DirSizeRootStat>::new()));
     let scan_start = Instant::now();
@@ -425,6 +642,8 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
         let groups_ref = Arc::clone(&shared_groups);
         let next_ref = Arc::clone(&next);
         let results_ref = Arc::clone(&results);
+        let tar_results_ref = Arc::clone(&tar_results);
+        let rows_ref = Arc::clone(&shared_rows);
         let stats_ref = Arc::clone(&scan_stats);
         let root_stats_ref = Arc::clone(&root_stats);
         handles.push(thread::spawn(move || {
@@ -433,7 +652,15 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
                 if gidx >= groups_ref.len() { break; }
                 let group = &groups_ref[gidx];
                 let root_start = Instant::now();
-                let (vals, stats) = scan_root_for_targets(&group.root, &group.targets);
+                let mut tar: Vec<DirTar> = group.targets.iter().filter_map(|(idx, root)| {
+                    let entry = rows_ref[*idx].1.as_str();
+                    if !matches!(entry, "user" | "user_de" | "data" | "obb" | "media") { return None; }
+                    Some(DirTar { idx: *idx, root: root.clone(), external: matches!(entry, "data" | "obb" | "media"), math: tar_input::Accumulator::default(), valid: true })
+                }).collect();
+                let (vals, stats) = scan_root_for_targets(&group.root, &group.targets, &mut tar);
+                if let Ok(mut out) = tar_results_ref.lock() {
+                    for acc in tar { if acc.valid && acc.math.bytes > 0 { out[acc.idx] = Some(tar_input::finish(acc.math.bytes)); } }
+                }
                 let root_elapsed_ms = root_start.elapsed().as_millis();
                 if let Ok(mut out) = results_ref.lock() { for (idx, bytes) in vals { out[idx] = bytes; } }
                 if let Ok(mut total) = stats_ref.lock() {
@@ -474,6 +701,20 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
         }
     }
     let output_start = Instant::now();
+    if let Ok(path) = env::var("SPEEDSCAN_DIRSIZE_TAR_INPUT_MAP_FILE") {
+        let publish = || -> io::Result<()> {
+            let tmp = format!("{}.part", path);
+            let mut out = BufWriter::new(File::create(&tmp)?);
+            let values = tar_results.lock().map_err(|_| io::Error::other("tar results poisoned"))?;
+            for (idx, row) in rows.iter().enumerate() {
+                if let Some(bytes) = values[idx] { writeln!(out, "{}\t{}\t{}\t{}", row.0, row.1, row.2, bytes)?; }
+            }
+            out.flush()?;
+            drop(out);
+            fs::rename(tmp, &path)
+        };
+        if publish().is_err() { return 6; }
+    }
     {
         let stdout = io::stdout();
         let mut bw = BufWriter::new(stdout.lock());
@@ -876,6 +1117,8 @@ struct FixupResultRs {
     chmod_skipped: u64,
     type_skipped: u64,
     symlink_skipped: u64,
+    symlink_owner_changed: u64,
+    symlink_owner_skipped: u64,
     errors: u64,
     chown_ms: u128,
     chmod_ms: u128,
@@ -889,16 +1132,26 @@ fn tree_fixup_walk_rs(path: &Path, uid: u32, gid: u32, do_dir_mode: bool, dir_mo
     };
     let mut rc = 0;
     res.visited += 1;
-    if meta.file_type().is_symlink() {
-        res.symlink_skipped += 1;
-        return 0;
-    }
+    let is_symlink = meta.file_type().is_symlink();
     if meta.uid() != uid || meta.gid() != gid {
         let op_start = Instant::now();
-        if lchown_direct(path, uid, gid).is_err() { res.errors += 1; rc = 1; } else { res.chown_changed += 1; }
+        if lchown_direct(path, uid, gid).is_err() {
+            res.errors += 1;
+            rc = 1;
+        } else {
+            res.chown_changed += 1;
+            if is_symlink { res.symlink_owner_changed += 1; }
+        }
         res.chown_ms += op_start.elapsed().as_millis();
     } else {
         res.chown_skipped += 1;
+        if is_symlink { res.symlink_owner_skipped += 1; }
+    }
+    // r713: lchown updates the link inode itself, including dangling links.
+    // Still skip chmod and traversal: never follow the link to its target.
+    if is_symlink {
+        res.symlink_skipped += 1;
+        return rc;
     }
     let cur_mode = meta.permissions().mode() & 0o7777;
     if meta.file_type().is_dir() && do_dir_mode {
@@ -944,11 +1197,11 @@ fn cmd_tree_fixup(uid_s: &str, gid_s: &str, root_s: &str, dir_mode_s: &str, file
     let mut res = FixupResultRs::default();
     let rc = tree_fixup_walk_rs(Path::new(root_s), uid, gid, dm.is_some(), dm.unwrap_or(0), fm.is_some(), fm.unwrap_or(0), &mut res);
     println!(
-        "TREE_FIXUP_SUMMARY visited={}\tchownChanged={}\tchownSkipped={}\tchmodChanged={}\tchmodSkipped={}\ttypeSkipped={}\tsymlinkSkipped={}\tmetadataNoop={}\tskipped={}\terrors={}\tchownMs={}\tchmodMs={}\tdirMode={}\tfileMode={}\thash=0\tpolicy=no-symlink-follow\telapsedMs={}",
+        "TREE_FIXUP_SUMMARY visited={}\tchownChanged={}\tchownSkipped={}\tchmodChanged={}\tchmodSkipped={}\ttypeSkipped={}\tsymlinkSkipped={}\tmetadataNoop={}\tskipped={}\terrors={}\tchownMs={}\tchmodMs={}\tdirMode={}\tfileMode={}\thash=0\tpolicy=no-symlink-follow\telapsedMs={}\tsymlinkOwnerChanged={}\tsymlinkOwnerSkipped={}\tsymlinkPolicy=lchown-link-only",
         res.visited, res.chown_changed, res.chown_skipped, res.chmod_changed, res.chmod_skipped, res.type_skipped, res.symlink_skipped,
         res.chown_skipped + res.chmod_skipped, res.symlink_skipped, res.errors, res.chown_ms, res.chmod_ms,
         if dm.is_some() { dir_mode_s } else { "-" }, if fm.is_some() { file_mode_s } else { "-" },
-        start.elapsed().as_millis()
+        start.elapsed().as_millis(), res.symlink_owner_changed, res.symlink_owner_skipped
     );
     rc
 }
@@ -1301,6 +1554,158 @@ fn cmd_apk_size_map(input:&str,out_s:&str)->i32{
     }
     println!("APK_SIZE_MAP ok=true in={} out={} rows={} ok={} elapsedMs={} policy=facts-only",input,out_s,rows,ok,start.elapsed().as_millis());0
 }
+#[derive(Clone)]
+struct PrescanApkTarMember {
+    name: Vec<u8>,
+    size: u64,
+    dev: u64,
+    ino: u64,
+    nlink: u64,
+}
+
+fn prescan_apk_tar_input_bytes(members: &mut Vec<PrescanApkTarMember>) -> Option<u64> {
+    if members.is_empty() { return None; }
+    members.sort_by(|a,b| a.name.cmp(&b.name));
+    members.dedup_by(|a,b| a.name == b.name);
+    let mut acc = tar_input::Accumulator::default();
+    for m in members.iter() {
+        acc.add(&m.name, b'f', m.size, m.dev, m.ino, m.nlink);
+    }
+    Some(tar_input::finish(acc.bytes))
+}
+
+// r696: single-process exact-input reducer.  The shell still decides WHICH archive
+// entries are changed; Rust performs all lookup/stat/math in one pass so the hot
+// path has no per-entry awk/stat/decimal helper forks.
+// exact_rows: KIND<TAB>app<TAB>pkg<TAB>entry<TAB>currentSize
+// dir_tar_map: pkg<TAB>entry<TAB>path<TAB>tarInputBytes
+// pkg_apk_paths: pkg<TAB>absolute.apk
+fn cmd_backup_prescan_exact_input(exact_rows_s:&str, dir_tar_map_s:&str, pkg_apk_paths_s:&str, details_s:&str, stats_s:&str) -> i32 {
+    let start = Instant::now();
+    if exact_rows_s.is_empty() || dir_tar_map_s.is_empty() || details_s.is_empty() || stats_s.is_empty() { return 2; }
+
+    #[derive(Clone)]
+    struct ExactRow { kind:String, app:String, pkg:String, entry:String }
+    let mut rows = Vec::<ExactRow>::new();
+    let mut need_apk = HashSet::<String>::new();
+    let rf = match File::open(exact_rows_s) { Ok(v)=>v, Err(e)=>{eprintln!("speedscan: exact-input rows open failed: {}: {}", exact_rows_s, c_strerror(&e)); return 3;} };
+    let mut br = BufReader::new(rf);
+    let mut buf = Vec::<u8>::new();
+    while let Some(line)=next_c_line_lossy(&mut br,&mut buf) {
+        if line.is_empty(){continue;}
+        let mut c=line.splitn(5,'\t');
+        let kind=match c.next(){Some(v)=>v,None=>continue};
+        let app=match c.next(){Some(v)=>v,None=>continue};
+        let pkg=match c.next(){Some(v)=>v,None=>continue};
+        let entry=match c.next(){Some(v)=>v,None=>continue};
+        let _cur=c.next();
+        if kind!="APK" && kind!="DIR" { continue; }
+        if kind=="APK" { need_apk.insert(pkg.to_string()); }
+        rows.push(ExactRow{kind:kind.to_string(),app:app.to_string(),pkg:pkg.to_string(),entry:entry.to_string()});
+    }
+
+    let mut dir_map = HashMap::<(String,String),u64>::new();
+    if rows.iter().any(|r| r.kind=="DIR") {
+        let df=match File::open(dir_tar_map_s){Ok(v)=>v,Err(e)=>{eprintln!("speedscan: exact-input dir map open failed: {}: {}",dir_tar_map_s,c_strerror(&e));return 4;}};
+        let mut br=BufReader::new(df); let mut buf=Vec::<u8>::new();
+        while let Some(line)=next_c_line_lossy(&mut br,&mut buf){
+            if line.is_empty(){continue;}
+            let mut c=line.splitn(4,'\t');
+            let pkg=match c.next(){Some(v)=>v,None=>continue};
+            let entry=match c.next(){Some(v)=>v,None=>continue};
+            let _path=match c.next(){Some(v)=>v,None=>continue};
+            let bytes=match c.next().and_then(|v|v.parse::<u64>().ok()){Some(v)=>v,None=>continue};
+            dir_map.insert((pkg.to_string(),entry.to_string()),bytes);
+        }
+    }
+
+    let mut apk_groups = HashMap::<String,Vec<PrescanApkTarMember>>::new();
+    let mut apk_files=0usize;
+    if !need_apk.is_empty() {
+        let af=match File::open(pkg_apk_paths_s){Ok(v)=>v,Err(e)=>{eprintln!("speedscan: exact-input apk map open failed: {}: {}",pkg_apk_paths_s,c_strerror(&e));return 5;}};
+        let mut br=BufReader::new(af); let mut buf=Vec::<u8>::new();
+        while let Some(line)=next_c_line_lossy(&mut br,&mut buf){
+            if line.is_empty(){continue;}
+            let mut c=line.splitn(3,'\t');
+            let pkg=match c.next(){Some(v)=>v,None=>continue};
+            let path=match c.next(){Some(v)=>v,None=>continue};
+            if !need_apk.contains(pkg) || !path.ends_with(".apk") { continue; }
+            let meta=match fs::metadata(path){Ok(v)=>v,Err(_)=>continue};
+            if !meta.is_file(){continue;}
+            let name=match Path::new(path).file_name(){Some(v)=>v.as_bytes().to_vec(),None=>continue};
+            apk_groups.entry(pkg.to_string()).or_default().push(PrescanApkTarMember{name,size:meta.len(),dev:meta.dev(),ino:meta.ino(),nlink:meta.nlink()});
+            apk_files+=1;
+        }
+    }
+    let mut apk_tar = HashMap::<String,u64>::new();
+    for pkg in need_apk.iter(){
+        let members=match apk_groups.get_mut(pkg){Some(v)=>v,None=>{eprintln!("speedscan: exact-input apk package has no files: {}",pkg);return 6;}};
+        let bytes=match prescan_apk_tar_input_bytes(members){Some(v)=>v,None=>return 6};
+        apk_tar.insert(pkg.clone(),bytes);
+    }
+
+    let details_f=match File::create(details_s){Ok(v)=>v,Err(e)=>{eprintln!("speedscan: exact-input details create failed: {}: {}",details_s,c_strerror(&e));return 10;}};
+    let mut details=BufWriter::new(details_f);
+    let mut total:u64=0;
+    let mut cache_keys=String::from("|");
+    let mut dir_rows=0usize;
+    let mut apk_rows=0usize;
+    for r in rows.iter(){
+        let bytes=if r.kind=="APK" {
+            apk_rows+=1;
+            match apk_tar.get(&r.pkg){Some(v)=>*v,None=>{eprintln!("speedscan: exact-input missing apk bytes: {}",r.pkg);return 7;}}
+        } else {
+            dir_rows+=1;
+            match dir_map.get(&(r.pkg.clone(),r.entry.clone())){Some(v)=>*v,None=>{eprintln!("speedscan: exact-input missing dir bytes: {} {}",r.pkg,r.entry);return 8;}}
+        };
+        total=match total.checked_add(bytes){Some(v)=>v,None=>{eprintln!("speedscan: exact-input total overflow");return 9;}};
+        // Preserve r694 cache semantics for every exact entry (APK and DIR):
+        // once exact-input accounting has already covered it, the optional pre-pack
+        // debug tree-plan must not re-scan the same entry.
+        cache_keys.push_str(&r.pkg);
+        cache_keys.push(':');
+        cache_keys.push_str(&r.entry);
+        cache_keys.push('|');
+        if writeln!(details,"{}\t{}\t{}\t{}\t{}",r.kind,tsv_sanitize(&r.app),tsv_sanitize(&r.pkg),tsv_sanitize(&r.entry),bytes).is_err(){return 10;}
+    }
+    if details.flush().is_err(){return 10;}
+    let elapsed=start.elapsed().as_millis();
+    let stats_f=match File::create(stats_s){Ok(v)=>v,Err(e)=>{eprintln!("speedscan: exact-input stats create failed: {}: {}",stats_s,c_strerror(&e));return 10;}};
+    let mut stats=BufWriter::new(stats_f);
+    let _=writeln!(stats,"bytes\t{}",total);
+    let _=writeln!(stats,"archives\t{}",rows.len());
+    let _=writeln!(stats,"apkRows\t{}",apk_rows);
+    let _=writeln!(stats,"apkPackages\t{}",need_apk.len());
+    let _=writeln!(stats,"apkFiles\t{}",apk_files);
+    let _=writeln!(stats,"dirRows\t{}",dir_rows);
+    let _=writeln!(stats,"cacheKeys\t{}",cache_keys);
+    let _=writeln!(stats,"elapsedMs\t{}",elapsed);
+    if stats.flush().is_err(){return 10;}
+    println!("BACKUP_PRESCAN_EXACT_INPUT_BATCH ok=true bytes={} archives={} apkRows={} apkPackages={} apkFiles={} dirRows={} elapsedMs={} mode=r696 schema=speedscan.backup_prescan_exact_input_batch.v1",total,rows.len(),apk_rows,need_apk.len(),apk_files,dir_rows,elapsed);
+    0
+}
+
+#[cfg(test)]
+mod exact_input_batch_tests {
+    use super::*;
+    #[test]
+    fn apk_tar_math_matches_gnu_record_rounding() {
+        let mut members=vec![
+            PrescanApkTarMember{name:b"base.apk".to_vec(),size:513,dev:1,ino:1,nlink:1},
+            PrescanApkTarMember{name:b"split_config.arm64_v8a.apk".to_vec(),size:1,dev:1,ino:2,nlink:1},
+        ];
+        assert_eq!(prescan_apk_tar_input_bytes(&mut members),Some(10240));
+    }
+    #[test]
+    fn apk_hardlink_is_counted_once_like_gnu_tar() {
+        let mut members=vec![
+            PrescanApkTarMember{name:b"base.apk".to_vec(),size:513,dev:7,ino:9,nlink:2},
+            PrescanApkTarMember{name:b"split.apk".to_vec(),size:513,dev:7,ino:9,nlink:2},
+        ];
+        assert_eq!(prescan_apk_tar_input_bytes(&mut members),Some(10240));
+    }
+}
+
 #[derive(Default)]
 struct AppSumEntry { name: String, nodata: bool, apk: u64, appdata: u64, external: u64, cache: u64 }
 
@@ -3014,45 +3419,7 @@ fn json_string_value(body: &str, keys: &[&str]) -> Option<String> {
 }
 
 
-fn json_scalar_value(body: &str, key: &str) -> Option<String> {
-    let needle = format!("\"{}\"", key);
-    let bytes = body.as_bytes();
-    let mut pos = 0usize;
-    while let Some(rel) = body[pos..].find(&needle) {
-        let kpos = pos + rel + needle.len();
-        let rest = &body[kpos..];
-        let cpos = match rest.find(':') { Some(v) => v, None => return None };
-        let mut i = kpos + cpos + 1;
-        while i < bytes.len() && matches!(bytes[i], b' ' | b'\t' | b'\r' | b'\n') { i += 1; }
-        if i >= bytes.len() { return None; }
-        if bytes[i] == b'\"' {
-            i += 1;
-            let start = i;
-            let mut esc = false;
-            while i < bytes.len() {
-                if esc { esc = false; i += 1; continue; }
-                if bytes[i] == b'\\' { esc = true; i += 1; continue; }
-                if bytes[i] == b'\"' { return Some(body[start..i].to_string()); }
-                i += 1;
-            }
-            return None;
-        }
-        let start = i;
-        while i < bytes.len() && !matches!(bytes[i], b',' | b'}' | b']' | b' ' | b'\t' | b'\r' | b'\n') { i += 1; }
-        if i > start { return Some(body[start..i].trim().to_string()); }
-        pos = kpos;
-    }
-    None
-}
 
-fn json_first_scalar_value(body: &str, keys: &[&str]) -> Option<String> {
-    for key in keys {
-        if let Some(v) = json_scalar_value(body, key) {
-            if !v.is_empty() && v != "null" { return Some(v); }
-        }
-    }
-    None
-}
 
 fn json_find_object_after_key(body: &str, key: &str) -> Option<(usize, usize)> {
     let needle = format!("\"{}\"", key);
@@ -3895,9 +4262,151 @@ fn sha256_file_hex(path: &Path) -> std::io::Result<String> {
     Ok(h.iter().map(|v| format!("{:08x}", v)).collect::<String>())
 }
 
+fn appdetails_meta_key(raw: &str) -> Vec<u16> {
+    // Called only after document validation. UTF-16 also preserves escaped
+    // surrogate code units, and normalizes literal/escaped duplicate JSON keys.
+    let mut out = Vec::new();
+    let mut chars = raw[1..raw.len() - 1].chars();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            out.extend(ch.encode_utf16(&mut [0; 2]).iter().copied());
+            continue;
+        }
+        match chars.next().unwrap() {
+            'u' => {
+                let hex: String = chars.by_ref().take(4).collect();
+                out.push(u16::from_str_radix(&hex, 16).unwrap());
+            }
+            'b' => out.push(8),
+            'f' => out.push(12),
+            'n' => out.push(10),
+            'r' => out.push(13),
+            't' => out.push(9),
+            c => out.push(c as u16),
+        }
+    }
+    out
+}
+
 fn appdetails_required_meta_ok(body: &str) -> bool {
-    json_string_value(body, &["PackageName", "packageName", "package", "pkg"]).map(|s| !s.is_empty()).unwrap_or(false)
-        && json_first_scalar_value(body, &["apk_version", "apkVersion", "versionCode", "version_code"]).map(|s| !s.is_empty()).unwrap_or(false)
+    // Match the historical jq contract used by _remote_appdetails_json_ok:
+    //   type=="object" and ([.[] | objects | select(.PackageName != null and .apk_version != null)] | length > 0)
+    if !json_document_parse_ok(body) {
+        return false;
+    }
+    let body = body.trim_start();
+    if !body.starts_with('{') {
+        return false;
+    }
+    let children: BTreeMap<_, _> = json_object_entries_raw(body)
+        .into_iter()
+        .map(|(k, v)| (appdetails_meta_key(&k), v))
+        .collect();
+    let package: Vec<u16> = "PackageName".encode_utf16().collect();
+    let version: Vec<u16> = "apk_version".encode_utf16().collect();
+    children.values().filter(|v| v.starts_with('{')).any(|obj| {
+        let fields: BTreeMap<_, _> = json_object_entries_raw(obj)
+            .into_iter()
+            .map(|(k, v)| (appdetails_meta_key(&k), v))
+            .collect();
+        fields.get(&package).map(|v| v != "null").unwrap_or(false)
+            && fields.get(&version).map(|v| v != "null").unwrap_or(false)
+    })
+}
+
+fn cmd_appdetails_seed_index(args: &[String]) -> i32 {
+    if args.len() < 5 {
+        return 2;
+    }
+    let start = Instant::now();
+    let root = Path::new(&args[2]);
+    let seed_out = Path::new(&args[3]);
+    let out_prefix = &args[4];
+    if !root.is_dir() {
+        return 3;
+    }
+    let diag_file = format!("{}.diag", out_prefix);
+    let stats_file = format!("{}.stats", out_prefix);
+    let mut dirs: Vec<(String, PathBuf)> = Vec::new();
+    if let Ok(rd) = fs::read_dir(root) {
+        for e in rd.flatten() {
+            let dir = e.path();
+            if !dir.is_dir() {
+                continue;
+            }
+            let app = match dir.file_name() {
+                Some(v) => v.to_string_lossy().into_owned(),
+                None => continue,
+            };
+            let jf = dir.join("app_details.json");
+            if jf.is_file() && fs::metadata(&jf).map(|m| m.len() > 0).unwrap_or(false) {
+                dirs.push((app, jf));
+            }
+        }
+    }
+    dirs.sort_by(|a, b| a.0.cmp(&b.0));
+    let seed_file = match File::create(seed_out) {
+        Ok(v) => v,
+        Err(_) => return 4,
+    };
+    let mut seed = BufWriter::new(seed_file);
+    let mut diag = match File::create(&diag_file) {
+        Ok(v) => BufWriter::new(v),
+        Err(_) => return 4,
+    };
+    let mut total = 0u64;
+    let mut ok = 0u64;
+    let mut bad = 0u64;
+    for (app, jf) in dirs.iter() {
+        total = total.wrapping_add(1);
+        let body = match fs::read_to_string(jf) {
+            Ok(v) => v,
+            Err(e) => {
+                bad = bad.wrapping_add(1);
+                let _ = writeln!(
+                    diag,
+                    "{}\tjson_unreadable\t{}\t{}",
+                    tsv_sanitize(app),
+                    tsv_sanitize(&jf.to_string_lossy()),
+                    tsv_sanitize(&c_strerror(&e))
+                );
+                let _ = fs::remove_file(jf);
+                continue;
+            }
+        };
+        if appdetails_required_meta_ok(&body) {
+            if writeln!(seed, "{}", app).is_err() {
+                return 4;
+            }
+            ok = ok.wrapping_add(1);
+        } else {
+            bad = bad.wrapping_add(1);
+            let _ = writeln!(
+                diag,
+                "{}\tmetadata_invalid\t{}",
+                tsv_sanitize(app),
+                tsv_sanitize(&jf.to_string_lossy())
+            );
+            let _ = fs::remove_file(jf);
+        }
+    }
+    if seed.flush().is_err() || diag.flush().is_err() {
+        return 4;
+    }
+    let elapsed = start.elapsed().as_millis();
+    if let Ok(mut st) = File::create(&stats_file) {
+        let _ = writeln!(
+            st,
+            "{}\t{}\t{}\t{}\t{}\t{}",
+            total, ok, bad, total, elapsed, "speedbackup.appdetails_seed_index.v1"
+        );
+    }
+    if ok == 0 {
+        println!("APPDETAILS_SEED_INDEX\tEMPTY\ttotal={}\tok=0\tbad={}\telapsedMs={}\tmode=r698\tschema=speedbackup.appdetails_seed_index.v1", total, bad, elapsed);
+        return 5;
+    }
+    println!("APPDETAILS_SEED_INDEX\tOK\ttotal={}\tok={}\tbad={}\telapsedMs={}\tmode=r698\tschema=speedbackup.appdetails_seed_index.v1", total, ok, bad, elapsed);
+    0
 }
 
 fn cmd_appdetails_bundle_manifest(args: &[String]) -> i32 {
@@ -3972,6 +4481,21 @@ fn cmd_appdetails_bundle_manifest(args: &[String]) -> i32 {
     0
 }
 
+fn appdetails_seed_expansion_allowed(
+    stage_len: usize,
+    scoped_payload_len: usize,
+    missing_seed_len: usize,
+    missing_stage_len: usize,
+    ignored_remote_count: usize,
+    bad: u64,
+) -> bool {
+    missing_seed_len > 0
+        && stage_len == scoped_payload_len
+        && missing_stage_len == 0
+        && ignored_remote_count == 0
+        && bad == 0
+}
+
 fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
     if args.len() < 8 { return 2; }
     let start = Instant::now();
@@ -4024,6 +4548,7 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
     let mut missing_seed: Vec<String> = Vec::new();
     let mut missing_stage: Vec<String> = Vec::new();
     let mut seedless_repair = false;
+    let mut seed_expansion_candidate = false;
     if !allow_shrink {
         match payload_opt.as_ref() {
             Some(payload) if payload.is_empty() => {},
@@ -4051,7 +4576,14 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
                     let mut required_stage: HashSet<String> = scoped_payload.clone();
                     for app in seed.iter() { required_stage.insert(app.clone()); }
                     missing_stage = set_missing(&required_stage, &stage);
-                    if !missing_seed.is_empty() { reason = "scoped_payload_not_covered_by_seed".to_string(); }
+                    // r695: a previous bundle seed is allowed to grow when the current staging set
+                    // exactly covers the scoped remote payload, no remote payload was ignored, and
+                    // every previously seeded/payload app is present in staging. Payload consistency
+                    // is checked below before seedExpansion becomes final.
+                    seed_expansion_candidate = appdetails_seed_expansion_allowed(
+                        stage.len(), scoped_payload.len(), missing_seed.len(), missing_stage.len(), ignored_remote_count, 0
+                    );
+                    if !missing_seed.is_empty() && !seed_expansion_candidate { reason = "scoped_payload_not_covered_by_seed".to_string(); }
                     else if (stage.len() as u64) < seed_count { reason = "stage_count_lt_seed".to_string(); }
                     else if !missing_stage.is_empty() { reason = "seed_or_scoped_payload_not_covered_by_stage".to_string(); }
                 }
@@ -4089,15 +4621,18 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
         }
     }
     if bad > 0 && reason == "ok" { reason = "payload_consistency_failed".to_string(); }
+    let seed_expansion = seed_expansion_candidate && appdetails_seed_expansion_allowed(
+        stage.len(), scoped_payload.len(), missing_seed.len(), missing_stage.len(), ignored_remote_count, bad
+    );
     let seedless_tainted = seedless_repair && ignored_remote_count > 0;
     let status = if reason == "ok" { "OK" } else { "BLOCK" };
     let first_missing = missing_seed.first().or_else(|| missing_stage.first()).cloned().unwrap_or_default();
     if let Ok(mut st) = File::create(&stats_file) {
-        let _ = writeln!(st, "stage\tseed\tremotePayloadApps\tremotePayloadTotal\tignoredRemotePayloadApps\tmissingSeed\tmissingStage\tchecked\tbad\treason\tfirstMissing\tallowShrink\tseedlessRepair\tseedlessTainted\tignoredRemotePayloadSample\telapsedMs");
-        let _ = writeln!(st, "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}", stage.len(), seed_count, payload_count_i, remote_payload_total_i, ignored_remote_count, missing_seed.len(), missing_stage.len(), checked, bad, reason, tsv_sanitize(&first_missing), if allow_shrink {1}else{0}, if seedless_repair {1}else{0}, if seedless_tainted {1}else{0}, tsv_sanitize(&ignored_remote_sample), start.elapsed().as_millis());
+        let _ = writeln!(st, "stage\tseed\tremotePayloadApps\tremotePayloadTotal\tignoredRemotePayloadApps\tmissingSeed\tmissingStage\tchecked\tbad\treason\tfirstMissing\tallowShrink\tseedlessRepair\tseedlessTainted\tseedExpansion\tignoredRemotePayloadSample\telapsedMs");
+        let _ = writeln!(st, "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}", stage.len(), seed_count, payload_count_i, remote_payload_total_i, ignored_remote_count, missing_seed.len(), missing_stage.len(), checked, bad, reason, tsv_sanitize(&first_missing), if allow_shrink {1}else{0}, if seedless_repair {1}else{0}, if seedless_tainted {1}else{0}, if seed_expansion {1}else{0}, tsv_sanitize(&ignored_remote_sample), start.elapsed().as_millis());
     }
-    println!("APPDETAILS_BUNDLE_AUDIT\t{}\tstage={}\tseed={}\tremotePayloadApps={}\tremotePayloadTotal={}\tignoredRemotePayloadApps={}\tignoredRemotePayloadList={}.ignored_remote_payload_apps.lst\tignoredRemotePayloadSample={}\tmissingSeed={}\tmissingStage={}\tchecked={}\tbad={}\treason={}\tfirstMissing={}\tallowShrink={}\tseedlessRepair={}\tseedlessTainted={}\telapsedMs={}\tmode=r660\tschema=speedbackup.appdetails_bundle_audit.v4",
-        status, stage.len(), seed_count, payload_count_i, remote_payload_total_i, ignored_remote_count, tsv_sanitize(out_prefix), tsv_sanitize(&ignored_remote_sample), missing_seed.len(), missing_stage.len(), checked, bad, tsv_sanitize(&reason), tsv_sanitize(&first_missing), if allow_shrink {1}else{0}, if seedless_repair {1}else{0}, if seedless_tainted {1}else{0}, start.elapsed().as_millis());
+    println!("APPDETAILS_BUNDLE_AUDIT\t{}\tstage={}\tseed={}\tremotePayloadApps={}\tremotePayloadTotal={}\tignoredRemotePayloadApps={}\tignoredRemotePayloadList={}.ignored_remote_payload_apps.lst\tignoredRemotePayloadSample={}\tmissingSeed={}\tmissingStage={}\tchecked={}\tbad={}\treason={}\tfirstMissing={}\tallowShrink={}\tseedlessRepair={}\tseedlessTainted={}\tseedExpansion={}\telapsedMs={}\tmode=r695\tschema=speedbackup.appdetails_bundle_audit.v5",
+        status, stage.len(), seed_count, payload_count_i, remote_payload_total_i, ignored_remote_count, tsv_sanitize(out_prefix), tsv_sanitize(&ignored_remote_sample), missing_seed.len(), missing_stage.len(), checked, bad, tsv_sanitize(&reason), tsv_sanitize(&first_missing), if allow_shrink {1}else{0}, if seedless_repair {1}else{0}, if seedless_tainted {1}else{0}, if seed_expansion {1}else{0}, start.elapsed().as_millis());
     if reason == "ok" { 0 } else { 5 }
 }
 
@@ -4503,6 +5038,32 @@ fn cmd_remote_fastskip_presize_bundle_v1(args: &[String]) -> i32 {
     0
 }
 
+fn orphan_metadata_package(body: &str) -> Option<String> {
+    if !appdetails_required_meta_ok(body) { return None; }
+    let children: BTreeMap<_, _> = json_object_entries_raw(body.trim_start()).into_iter()
+        .map(|(k, v)| (appdetails_meta_key(&k), v)).collect();
+    let mut packages = HashSet::new();
+    for child in children.values().filter(|v| v.starts_with('{')) {
+        let fields: BTreeMap<_, _> = json_object_entries_raw(child).into_iter()
+            .map(|(k, v)| (appdetails_meta_key(&k), v)).collect();
+        if let Some(raw) = fields.get(&"PackageName".encode_utf16().collect::<Vec<_>>()) {
+            let pkg = json_unquote_simple(raw)?;
+            if !orphan_plan::package(&pkg) { return None; }
+            packages.insert(pkg);
+        }
+    }
+    if packages.len() == 1 { packages.into_iter().next() } else { None }
+}
+
+fn cmd_remote_orphan_plan(args: &[String]) -> i32 {
+    if args.len() != 8 { return 2; }
+    match orphan_plan::run(Path::new(&args[2]), &args[3], &args[4], Path::new(&args[5]),
+        Path::new(&args[6]), &args[7], orphan_metadata_package) {
+        Ok(summary) => { println!("{}", summary); 0 }
+        Err(error) => { eprintln!("REMOTE_ORPHAN_PLAN\tFAIL\t{}", error); 4 }
+    }
+}
+
 fn cmd_remote_manifest_plan(args: &[String]) -> i32 {
     if args.len() < 6 { return 2; }
     let start = Instant::now();
@@ -4695,7 +5256,7 @@ fn cmd_manifest_diff_cache_index(args: &[String]) -> i32 {
 
 fn argv_utf8_or_exit() -> Vec<String> {
     let mut out = Vec::new();
-    for (idx, arg) in env::args_os().enumerate() {
+    for (idx, arg) in crate::multicall::args_os().enumerate() {
         match arg.into_string() {
             Ok(s) => out.push(s),
             Err(_) => {
@@ -4707,9 +5268,12 @@ fn argv_utf8_or_exit() -> Vec<String> {
     out
 }
 
-fn main(){let args:Vec<String>=argv_utf8_or_exit();let rc=match args.get(1).map(|s|s.as_str()){
+pub(crate) fn run(){let args:Vec<String>=argv_utf8_or_exit();let rc=match args.get(1).map(|s|s.as_str()){
 Some("--version")|Some("version")=>{println!("speedscan {}",VERSION);0}
-Some("--capabilities")|Some("capabilities")=>{println!("speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.posix_recursive_scan.v1 speedscan.dir_size_map_workers.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan.v1 speedscan.local_fastskip_presize_plan_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.rust_convergence_source.v1 speedscan.full_convergence_stage3.v1");0}
+        Some("--capabilities") | Some("capabilities") => {
+            println!("speedscan.backup_run_model.v1 speedscan.backup_plan_coverage.v1 speedscan.tree_fixup_symlink_owner.v1 speedscan.tar_source_manifest.v1 speedscan.restore_source_verify.v1 speedscan.payload_stats.v1 speedscan.restore_tree_audit_bytes.v1 speedscan.result_contract.v1 speedscan.remote_orphan_plan.v1 speedscan.restore_tree_manifest_bytes.v1 speedscan.appdetails_seed_index_strict_meta.v1 speedscan.appdetails_seed_index.v1 speedscan.backup_prescan_exact_input_batch.v1 speedscan.tar_input_hardlink_type_safe.v1 speedscan.dir_size_tar_input_map.v1 speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.posix_recursive_scan.v1 speedscan.dir_size_map_workers.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan.v1 speedscan.local_fastskip_presize_plan_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_audit_seed_expansion.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.rust_convergence_source.v1 speedscan.full_convergence_stage3.v1");
+            0
+        }
 Some("dir-size") if args.len()>=3=>cmd_dir_size(&args[2]),
 Some("dir-size-map") if args.len()>=3=>cmd_dir_size_map(&args[2]),
 Some("dir-size-manifest") if args.len()>=11=>cmd_dir_size_manifest(&args),
@@ -4733,6 +5297,7 @@ Some("appdetails-index") if args.len()>=4=>cmd_appdetails_index(&args[2],&args[3
 Some("file-list-abs-filter") if args.len()>=5=>cmd_file_list_abs_filter(&args[2],&args[3],&args[4],args.get(5).map(|s|s.as_str())),
 Some("selected-list") if args.len()>=6=>cmd_selected_list(&args[2],&args[3],&args[4],&args[5]),
 Some("apk-size-map") if args.len()>=4=>cmd_apk_size_map(&args[2],&args[3]),
+Some("backup-prescan-exact-input") if args.len()>=7=>cmd_backup_prescan_exact_input(&args[2],&args[3],&args[4],&args[5],&args[6]),
 Some("backup-prescan-summary") if args.len()>=10=>cmd_backup_prescan_summary(&args[2],&args[3],&args[4],&args[5],&args[6],&args[7],&args[8],&args[9]),
 Some("backup-root-index") if args.len()>=4=>cmd_backup_root_index(&args[2],&args[3],args.get(4).map(|s|s.as_str())),
 Some("storage-summary") if args.len()>=3=>cmd_storage_summary(&args[2]),
@@ -4756,6 +5321,8 @@ Some("remote-stream-local-read-final-plan") if args.len()>=12=>cmd_remote_stream
 Some("stream-entry-perf-stage") if args.len()>=13=>cmd_stream_entry_perf_stage(&args),
 Some("stream-entry-perf-finalize") if args.len()>=4=>cmd_stream_entry_perf_finalize(&args),
 Some("restore-tree-verify") if args.len()>=4=>cmd_manifest_verify(&args[2],&args[3],true),
+Some("restore-tree-manifest-bytes") if args.len()>=4=>restore_manifest::unix::command(&args[2],&args[3],false),
+Some("restore-tree-verify-bytes") if args.len()>=4=>restore_manifest::unix::command(&args[2],&args[3],true),
 Some("app-media-index") if args.len()>=4=>cmd_app_media_index(&args[2],&args[3],args.get(4).map(|s|s.as_str()),args.get(5).map(|s|s.as_str()),args.get(6).map(|s|s.as_str()).unwrap_or("-")),
 Some("selected-apps-map") if args.len()>=5=>cmd_selected_apps_map(&args),
 Some("appdetails-summary-map") if args.len()>=4=>cmd_appdetails_summary_map(&args),
@@ -4763,6 +5330,13 @@ Some("appdetails-summary-map") if args.len()>=4=>cmd_appdetails_summary_map(&arg
 Some("appdetails-bundle-audit") if args.len()>=8=>cmd_appdetails_bundle_audit(&args),
 Some("appdetails-health-batch") if args.len()>=5=>cmd_appdetails_health_batch(&args),
 Some("appdetails-bundle-manifest") if args.len()>=4=>cmd_appdetails_bundle_manifest(&args),
+Some("appdetails-seed-index") if args.len()>=5=>cmd_appdetails_seed_index(&args),
+Some("tar-source-manifest") if args.len() == 3 => tar_source::capture_command(&args[2]),
+Some("restore-source-verify") if args.len() == 7 => tar_source::verify_command(&args[2], &args[3], &args[4], &args[5], &args[6]),
+Some("backup-run-summary") => backup_run::command(&args),
+Some("payload-stats" | "payload-metrics") => payload_stats::command(&args),
+Some("restore-tree-audit-bytes") if args.len() == 4 => restore_manifest::unix::audit(&args[2], &args[3]),
+Some("remote-orphan-plan") => cmd_remote_orphan_plan(&args),
 Some("remote-manifest-plan") if args.len()>=6=>cmd_remote_manifest_plan(&args),
 Some("restore-payload-plan") if args.len()>=5=>cmd_restore_payload_plan(&args),
 Some("manifest-diff-cache-index") if args.len()>=11=>cmd_manifest_diff_cache_index(&args),

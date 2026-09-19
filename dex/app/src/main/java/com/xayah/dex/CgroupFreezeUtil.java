@@ -80,7 +80,12 @@ final class CgroupFreezeUtil {
     private CgroupFreezeUtil() {}
 
 
-    static synchronized String start(int userId, String packageName, int explicitPid, int timeoutMs, String owner) {
+    static String start(int userId, String packageName, int explicitPid, int timeoutMs, String owner) {
+        return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "start",
+                () -> startLocked(userId, packageName, explicitPid, timeoutMs, owner));
+    }
+
+    private static String startLocked(int userId, String packageName, int explicitPid, int timeoutMs, String owner) {
         long startMs = System.currentTimeMillis();
         String pkg = safePackage(packageName);
         int safeTimeoutMs = clamp(timeoutMs, 100, 5000, 1500);
@@ -215,7 +220,12 @@ final class CgroupFreezeUtil {
         return out.toString();
     }
 
-    static synchronized String stop(int token, int expectedUserId, String expectedPackageName) {
+    static String stop(int token, int expectedUserId, String expectedPackageName) {
+        return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "stop",
+                () -> stopLocked(token, expectedUserId, expectedPackageName));
+    }
+
+    private static String stopLocked(int token, int expectedUserId, String expectedPackageName) {
         long startMs = System.currentTimeMillis();
         String expectedPkg = safePackage(expectedPackageName);
         StringBuilder out = new StringBuilder(4096);
@@ -229,12 +239,12 @@ final class CgroupFreezeUtil {
             session = readPersistentSession(token);
         }
         if (session == null) {
-            removePersistentToken(token);
-            out.append("CGROUP_FREEZE_STOP_MISSING token=").append(token).append(" stateDeleted=true\n");
-            out.append("CGROUP_FREEZE_STOP_DONE ok=true token=").append(token)
-                    .append(" restored=0 missingPath=0 failed=0 stateDeleted=true reason=missing elapsedMs=")
+            boolean deleted = removePersistentToken(token);
+            out.append("CGROUP_FREEZE_STOP_MISSING token=").append(token).append(" stateDeleted=").append(deleted).append("\n");
+            out.append("CGROUP_FREEZE_STOP_DONE ok=").append(deleted).append(" token=").append(token)
+                    .append(" restored=0 missingPath=0 failed=0 stateDeleted=").append(deleted).append(" reason=missing elapsedMs=")
                     .append(System.currentTimeMillis() - startMs).append('\n');
-            return out.toString();
+            return new OperationResult("cgroup-stop", deleted).token(token).restoration(true, deleted).appendTo(out.toString());
         }
         if (expectedUserId >= 0 && session.userId != expectedUserId) {
             SESSIONS.put(token, session);
@@ -243,7 +253,7 @@ final class CgroupFreezeUtil {
             out.append("CGROUP_FREEZE_STOP_DONE ok=false token=").append(token)
                     .append(" restored=0 missingPath=0 failed=0 stateDeleted=false reason=user_mismatch elapsedMs=")
                     .append(System.currentTimeMillis() - startMs).append('\n');
-            return out.toString();
+            return new OperationResult("cgroup-stop", false).token(token).restoration(false, false).appendTo(out.toString());
         }
         if (!expectedPkg.isEmpty() && !expectedPkg.equals(session.packageName)) {
             SESSIONS.put(token, session);
@@ -252,7 +262,7 @@ final class CgroupFreezeUtil {
             out.append("CGROUP_FREEZE_STOP_DONE ok=false token=").append(token)
                     .append(" restored=0 missingPath=0 failed=0 stateDeleted=false reason=package_mismatch elapsedMs=")
                     .append(System.currentTimeMillis() - startMs).append('\n');
-            return out.toString();
+            return new OperationResult("cgroup-stop", false).token(token).restoration(false, false).appendTo(out.toString());
         }
         boolean restoreDeferredToPrimaryScope = shouldDeferProcessObserverRestoreToPrimaryScope(session);
         StopStats stats;
@@ -270,7 +280,7 @@ final class CgroupFreezeUtil {
         }
         tryNativeStopFinalReleaseThawUid(session, 700, out, "CGROUP_FREEZE_STOP");
         tryRestoreDeferredWakeBlockAfterPrimaryRelease(session, out, "CGROUP_FREEZE_STOP");
-        boolean stateDeleted = removePersistentToken(token);
+        boolean stateDeleted = stats.failed == 0 && removePersistentToken(token);
         boolean ok = stats.failed == 0 && stateDeleted;
         if (!ok) SESSIONS.put(token, session);
         out.append(ok ? "CGROUP_FREEZE_STOP_OK" : "CGROUP_FREEZE_STOP_FAILED")
@@ -292,11 +302,16 @@ final class CgroupFreezeUtil {
                 .append(" reason=").append(ok ? "ok" : "restore_or_delete_failed")
                 .append(" elapsedMs=").append(System.currentTimeMillis() - startMs)
                 .append('\n');
-        return out.toString();
+        return new OperationResult("cgroup-stop", ok).token(token).counts(session.entries.size(), stats.restored, 0, stats.failed, stats.missingPath).restoration(stats.failed == 0, stateDeleted).appendTo(out.toString());
     }
 
 
-    static synchronized String refreshPrimaryAppScopePackageFreeze(int userId, String packageName, String reason, int timeoutMs) {
+    static String refreshPrimaryAppScopePackageFreeze(int userId, String packageName, String reason, int timeoutMs) {
+        return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "refreshPrimaryAppScopePackageFreeze",
+                () -> refreshPrimaryAppScopePackageFreezeLocked(userId, packageName, reason, timeoutMs));
+    }
+
+    private static String refreshPrimaryAppScopePackageFreezeLocked(int userId, String packageName, String reason, int timeoutMs) {
         long startMs = System.currentTimeMillis();
         String pkg = safePackage(packageName);
         String safeReason = safeWord(reason == null || reason.trim().isEmpty() ? "manual-refresh" : reason.trim());
@@ -311,13 +326,13 @@ final class CgroupFreezeUtil {
         if (pkg.isEmpty()) {
             out.append("CGROUP_FREEZE_PRIMARY_REFRESH_DONE ok=false reason=bad_args elapsedMs=")
                     .append(System.currentTimeMillis() - startMs).append('\n');
-            return out.toString();
+            return new OperationResult("cgroup-refresh", false).appendTo(out.toString());
         }
         List<FreezeSession> sessions = activePrimaryAppScopeSessions(userId, pkg, -1);
         if (sessions.isEmpty()) {
             out.append("CGROUP_FREEZE_PRIMARY_REFRESH_DONE ok=true reason=no_primary_session refreshed=0 added=0 elapsedMs=")
                     .append(System.currentTimeMillis() - startMs).append('\n');
-            return out.toString();
+            return new OperationResult("cgroup-refresh", true).appendTo(out.toString());
         }
         int packageUid = resolvePackageUid(userId, pkg, out, "CGROUP_FREEZE_PRIMARY_REFRESH_UID");
         List<PidInfo> pids = findPackagePids(pkg, userId, out);
@@ -325,7 +340,7 @@ final class CgroupFreezeUtil {
             out.append("CGROUP_FREEZE_PRIMARY_REFRESH_DONE ok=true reason=no_alive_pid refreshed=0 added=0 sessions=")
                     .append(sessions.size())
                     .append(" elapsedMs=").append(System.currentTimeMillis() - startMs).append('\n');
-            return out.toString();
+            return new OperationResult("cgroup-refresh", true).appendTo(out.toString());
         }
         int refreshed = 0;
         int added = 0;
@@ -399,7 +414,7 @@ final class CgroupFreezeUtil {
                 .append(" failed=").append(failed)
                 .append(" elapsedMs=").append(System.currentTimeMillis() - startMs)
                 .append('\n');
-        return out.toString();
+        return new OperationResult("cgroup-refresh", ok).counts(-1, refreshed, 0, failed, -1).appendTo(out.toString());
     }
 
     private static List<FreezeSession> activePrimaryAppScopeSessions(int userId, String packageName, int skipToken) {
@@ -498,7 +513,12 @@ final class CgroupFreezeUtil {
         return entries;
     }
 
-    static synchronized String status() {
+    static String status() {
+        return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "status",
+                () -> statusLocked()) + CgroupLockMetrics.summary();
+    }
+
+    private static String statusLocked() {
         StringBuilder out = new StringBuilder();
         out.append("CGROUP_FREEZE_STATUS version=").append(VERSION)
                 .append(" active=").append(SESSIONS.size())
@@ -517,7 +537,12 @@ final class CgroupFreezeUtil {
         return out.toString();
     }
 
-    static synchronized String restorePersistedPackage(int userId, String packageName, String reason) {
+    static String restorePersistedPackage(int userId, String packageName, String reason) {
+        return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "restorePersistedPackage",
+                () -> restorePersistedPackageLocked(userId, packageName, reason));
+    }
+
+    private static String restorePersistedPackageLocked(int userId, String packageName, String reason) {
         String pkg = safePackage(packageName);
         StringBuilder out = new StringBuilder();
         out.append("CGROUP_FREEZE_PERSISTENT_RESTORE_PACKAGE_BEGIN user=").append(userId)
@@ -529,7 +554,7 @@ final class CgroupFreezeUtil {
         for (Integer token : tokens) {
             String r = stop(token, userId, pkg);
             out.append(sanitizeMultiLine(r)).append('\n');
-            if (r.contains("CGROUP_FREEZE_STOP_DONE ok=true")) ok++; else fail++;
+            if (OperationResult.isOk(r, "cgroup-stop")) ok++; else fail++;
         }
         out.append("CGROUP_FREEZE_PERSISTENT_RESTORE_PACKAGE_DONE user=").append(userId)
                 .append(" package=").append(sanitize(pkg))
@@ -538,10 +563,15 @@ final class CgroupFreezeUtil {
                 .append(" fail=").append(fail)
                 .append(" stateDeleted=").append(fail == 0)
                 .append('\n');
-        return out.toString();
+        return new OperationResult("cgroup-restore-package", fail == 0).counts(tokens.size(), ok, 0, fail, 0).restoration(fail == 0, fail == 0).identity(userId, pkg).appendTo(out.toString());
     }
 
-    static synchronized String restorePersistedAll(String reason) {
+    static String restorePersistedAll(String reason) {
+        return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "restorePersistedAll",
+                () -> restorePersistedAllLocked(reason));
+    }
+
+    private static String restorePersistedAllLocked(String reason) {
         StringBuilder out = new StringBuilder();
         out.append("CGROUP_FREEZE_PERSISTENT_RESTORE_ALL_BEGIN reason=").append(sanitize(reason)).append('\n');
         List<Integer> tokens = readAllPersistentTokens();
@@ -550,7 +580,7 @@ final class CgroupFreezeUtil {
         for (Integer token : tokens) {
             String r = stop(token, -1, "");
             out.append(sanitizeMultiLine(r)).append('\n');
-            if (r.contains("CGROUP_FREEZE_STOP_DONE ok=true")) ok++; else fail++;
+            if (OperationResult.isOk(r, "cgroup-stop")) ok++; else fail++;
         }
         out.append("CGROUP_FREEZE_PERSISTENT_RESTORE_ALL_DONE tokens=").append(tokens.size())
                 .append(" ok=").append(ok)
@@ -560,7 +590,12 @@ final class CgroupFreezeUtil {
         return out.toString();
     }
 
-    static synchronized String cleanupStalePersistentStates(String reason, long ttlMs) {
+    static String cleanupStalePersistentStates(String reason, long ttlMs) {
+        return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "cleanupStalePersistentStates",
+                () -> cleanupStalePersistentStatesLocked(reason, ttlMs)) + CgroupLockMetrics.summary();
+    }
+
+    private static String cleanupStalePersistentStatesLocked(String reason, long ttlMs) {
         long now = System.currentTimeMillis();
         long ttl = ttlMs < 0 ? 0 : ttlMs;
         StringBuilder out = new StringBuilder();
@@ -575,7 +610,7 @@ final class CgroupFreezeUtil {
             stale++;
             String r = stop(s.token, -1, "");
             out.append(sanitizeMultiLine(r)).append('\n');
-            if (r.contains("CGROUP_FREEZE_STOP_DONE ok=true")) ok++; else fail++;
+            if (OperationResult.isOk(r, "cgroup-stop")) ok++; else fail++;
         }
         out.append("CGROUP_FREEZE_CLEANUP_STALE_DONE scanned=").append(sessions.size())
                 .append(" stale=").append(stale)
@@ -586,17 +621,11 @@ final class CgroupFreezeUtil {
     }
 
     static boolean isStartOk(String result) {
-        return result != null && result.contains("CGROUP_FREEZE_START_OK");
+        return OperationResult.isOk(result, "cgroup-start");
     }
 
     static int parseToken(String result) {
-        if (result == null) return -1;
-        int idx = result.indexOf("token=");
-        if (idx < 0) return -1;
-        idx += 6;
-        int end = idx;
-        while (end < result.length() && Character.isDigit(result.charAt(end))) end++;
-        try { return Integer.parseInt(result.substring(idx, end)); } catch (Throwable ignored) { return -1; }
+        return OperationResult.token(result, "cgroup-start");
     }
 
     private static StartPidResult freezePid(FreezeSession session, PidInfo p, int packageUid, int timeoutMs, StringBuilder out) {
@@ -859,7 +888,12 @@ final class CgroupFreezeUtil {
         return hasActivePrimaryAppScopeSession(session.userId, session.packageName, session.token);
     }
 
-    static synchronized String deferProcessObserverTokenToPrimaryScope(int token, int expectedUserId, String expectedPackageName, String reason) {
+    static String deferProcessObserverTokenToPrimaryScope(int token, int expectedUserId, String expectedPackageName, String reason) {
+        return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "deferProcessObserverTokenToPrimaryScope",
+                () -> deferProcessObserverTokenToPrimaryScopeLocked(token, expectedUserId, expectedPackageName, reason));
+    }
+
+    private static String deferProcessObserverTokenToPrimaryScopeLocked(int token, int expectedUserId, String expectedPackageName, String reason) {
         long startMs = System.currentTimeMillis();
         String expectedPkg = safePackage(expectedPackageName);
         String safeReason = safeWord(reason);
@@ -1039,7 +1073,12 @@ final class CgroupFreezeUtil {
 
 
 
-    static synchronized String ensureNativeDaemonForBatch(String reason) {
+    static String ensureNativeDaemonForBatch(String reason) {
+        return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "ensureNativeDaemonForBatch",
+                () -> ensureNativeDaemonForBatchLocked(reason));
+    }
+
+    private static String ensureNativeDaemonForBatchLocked(String reason) {
         long startMs = System.currentTimeMillis();
         batchDaemonPinned = true;
         batchDaemonPinnedAt = startMs;
@@ -1090,10 +1129,16 @@ final class CgroupFreezeUtil {
                 .append(" hello=").append(sanitize(helloBeforeOutput))
                 .append(" caps=").append(sanitize(caps))
                 .append('\n');
-        return out.toString();
+        return new OperationResult("cgroup-daemon-ensure", ok).appendTo(out.toString());
     }
 
-    static synchronized String killPackage(int userId, String packageName, int eventPid,
+    static String killPackage(int userId, String packageName, int eventPid,
+                                           int timeoutMs, String owner) {
+        return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "killPackage",
+                () -> killPackageLocked(userId, packageName, eventPid, timeoutMs, owner));
+    }
+
+    private static String killPackageLocked(int userId, String packageName, int eventPid,
                                            int timeoutMs, String owner) {
         long startMs = System.currentTimeMillis();
         String pkg = safePackage(packageName);
@@ -1486,13 +1531,13 @@ final class CgroupFreezeUtil {
     }
 
     private static String doneLine(String stage, boolean ok, int token, int checked, int frozen, int skipped, String reason, long startMs) {
-        return "CGROUP_FREEZE_" + stage + "_DONE ok=" + ok
+        return new OperationResult("cgroup-start", ok).token(token).counts(checked, frozen, 0, -1, -1).appendTo("CGROUP_FREEZE_" + stage + "_DONE ok=" + ok
                 + " token=" + token
                 + " checked=" + checked
                 + " frozenCount=" + frozen
                 + " skipped=" + skipped
                 + " reason=" + sanitize(reason)
-                + " elapsedMs=" + (System.currentTimeMillis() - startMs) + "\n";
+                + " elapsedMs=" + (System.currentTimeMillis() - startMs) + "\n");
     }
 
     private static int resolvePackageUid(int userId, String pkg, StringBuilder out, String tag) {

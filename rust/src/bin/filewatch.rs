@@ -4,13 +4,12 @@
 // formats, same event mask sets, same parent-disappeared detection.
 
 use speedbackup_native_rs::{access, close, c_strerror, F_OK};
-use std::env;
 use std::os::raw::{c_char, c_int, c_void};
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-const VERSION: &str = "1.0.1-android28-r28c-native-convergence-r572-rust-r572";
+const VERSION: &str = "1.0.1-android28-r29-native-convergence-r572-rust-r572";
 const EVENT_BUFFER_SIZE: usize = 64 * 1024;
 
 // inotify mask bits (Linux uapi/linux/inotify.h) - stable ABI, safe to hardcode.
@@ -333,12 +332,12 @@ fn print_help(program: &str) {
     println!("無選項：持續輸出指定檔案或目錄的事件。");
 }
 
-fn main() {
+pub(crate) fn run() {
     if !install_signals() {
         eprintln!("filewatch: sigaction: {}", c_strerror(&std::io::Error::last_os_error()));
         std::process::exit(1);
     }
-    let args: Vec<String> = env::args().collect();
+    let args: Vec<String> = crate::multicall::args().collect();
     let argv0 = args.get(0).map(|s| s.as_str()).unwrap_or("filewatch");
 
     let rc = if args.len() == 2 && args[1] == "--version" {

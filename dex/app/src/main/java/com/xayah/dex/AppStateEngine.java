@@ -280,10 +280,12 @@ public final class AppStateEngine {
                     return frameworkFacts(userId, parsePackageLines(body));
                 case "devicefacts":
                     return new EngineResponse(ResultCode.OK, DeviceFactsUtil.json());
+                case "runresults":
+                    return new EngineResponse(ResultCode.OK, RunResultFiles.reduce(body, extra));
                 case "restore":
-                    return restoreAppState(userId, body);
+                    return processCanonicalBatch("restoreAppStateBatch", userId, body, false, extra);
                 case "verify":
-                    return verifyAppState(userId, body);
+                    return processCanonicalBatch("verifyAppStateBatch", userId, body, true, extra);
                 default:
                     return errorResponse(ResultCode.BAD_REQUEST, "dispatch", null,
                             "unknown command: " + safe(command));
@@ -326,6 +328,13 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.cchelper.repeat_merge_fix.v1", true, false, "CCHelper maps 重复/合并 to 重複/合併 in zh-TW and back to 简中 correctly");
         addCapability(capabilities, "appstate.snapshot.batch.v2", true, true, "canonical-ndjson");
         addCapability(capabilities, "appstate.snapshot.batch.parallel.v1", true, true, "bounded-fixed-pool-1-2-4;input-order-stable;max4");
+        addCapability(capabilities, "appstate.run_results.v1", true, true, "r705 run-local retry-aware package summaries");
+        addCapability(capabilities, "appstate.result_files.v1", true, true, "r704 typed results and bounded streaming");
+        addCapability(capabilities, "dex.control_results.v1", true, true, "r708 typed control completion");
+        addCapability(capabilities, "appstate.ssaid.typed_result.v1", true, true, "r704 typed results and bounded streaming");
+        addCapability(capabilities, "webdav.stream_result.v1", true, true, "r704 typed results and bounded streaming");
+        addCapability(capabilities, "webdav.chunk_write_coalesced.v1", true, true, "r704 typed results and bounded streaming");
+        addCapability(capabilities, "dex.result_contract.v1", true, true, "r704 typed results and bounded streaming");
         addCapability(capabilities, "appstate.snapshot.direct_files.v1", true, true, "snapshotAppStateBatchFiles writes run-scoped staging NDJSON/state/error files and returns compact TSV summary; shell publishes canonical maps; legacy relay/reducer remains fallback");
         addCapability(capabilities, "appstate.snapshot.direct_files.single_pass.v1", true, true, "direct-file snapshot consumes shared canonical batch records and serialized rows once; no response-body split or JsonParser reparse");
         addCapability(capabilities, "appstate.snapshot.direct_files.telemetry_v2.v1", true, true, "shared snapshot core/serialize plus direct snapshot/state/error write/publish/total timing fields");
@@ -406,7 +415,11 @@ public final class AppStateEngine {
         addCapability(capabilities, "appstate.other_appops.unknown_skip.v1", true, true, "skip framework-rejected unknown/private otherAppOps such as op154/op155 instead of poisoning AppState restore/verify");
         addCapability(capabilities, "dex.app_inventory.package_status.single.v1", true, true, "single-package PackageManager status facade for restore-time installed/version/uid decisions");
         addCapability(capabilities, "dex.app_inventory.package_filter_batch.v1", true, true, "appInventorySnapshot supports packages:<csv> batch filtering from one cached inventory scan");
+        addCapability(capabilities, "dex.app_inventory.display_label_facts.v1", true, true, "Separate raw display label/source from stable backup directory label; resource fallbacks");
+        addCapability(capabilities, "dex.cgroup.lock_metrics.v1", true, true, "Measure current global monitor wait/hold time without changing lock ownership; status and cleanup summaries");
         addCapability(capabilities, "dex.app_inventory.getlist_onecall.v1", true, true, "appInventoryGetlist combines user/xposed inventory, targeted system packages and default HOME metadata in one daemon command");
+        addCapability(capabilities, "dex.app_inventory.xposed_module_facts.v1", true, true, "AppInventory uses one canonical detector for legacy assets/xposed_init plus modern java/native entrypoints and exposes additive module-format facts");
+        addCapability(capabilities, "dex.app_inventory.xposed_runtime_facts.v1", true, true, "appInventoryGetlist emits positive-evidence-only Xposed framework/manager facts; missing evidence remains unknown, never absent");
         addCapability(capabilities, "dex.process_observer.watch.v1", true, true, "IActivityManager.registerProcessObserver event-driven per-package process watch; no polling");
         addCapability(capabilities, "dex.process_observer.guard.v2", true, true, "observer action uses force-stop + verify + killUid/process-group escalation; success requires final alive=false");
         addCapability(capabilities, "dex.process_observer.pre_guard.v3", true, true, "observer start immediately runs pre-guard/top-check before waiting for callbacks");
@@ -546,6 +559,7 @@ public final class AppStateEngine {
         addCapability(capabilities, "webdav.prepare_dirs_plan.dex.v1", true, true, "WebDavUtil preparedirsplanrel owns WebDAV directory list/exists/create transaction while tools passes desired app-dir manifest and seeds cache from TSV facts");
         addCapability(capabilities, "webdav.prepare_dirs_created_only_progress.dex.v1", true, true, "WebDavUtil preparedirsplanrel reports progress against directories that actually need creation so existing remote app directories stay out of user-facing progress");
         addCapability(capabilities, "webdav.prepare_dirs_parallel_mkcol.dex.v1", true, true, "WebDavUtil preparedirsplanrel uses a bounded four-worker direct-MKCOL fast path for direct children proven missing by the root Depth:1 listing, with conservative ensureDirRel fallback");
+        addCapability(capabilities, "webdav.prepare_dirs_full_timing.dex.v1", true, true, "Directory preparation reports full-call, root listing, parsing and creation times on every branch");
         addCapability(capabilities, "webdav.classify_parallel_depth1.dex.v1", true, true, "WebDavUtil classifylistrel parallelizes verified Depth:1 recursive listing across top-level subtrees with a bounded four-worker pool and serial fallback");
         addCapability(capabilities, "webdav.profile_visible_compact.dex.v1", true, true, "tools displays a compact WebDAV capability summary once while full feature facts stay in debug logs");
         addCapability(capabilities, "webdav.managed_list_classify.v1", true, true, "managedlistclassifyrel exposes transport-owned WebDAV classified TSV facts without shell-side file type guessing");
@@ -2268,16 +2282,22 @@ public final class AppStateEngine {
         return "not_running";
     }
 
-    static EngineResponse restoreAppState(int userId, String body) {
-        return processCanonicalBatch("restoreAppStateBatch", userId, body, false);
-    }
-
-    static EngineResponse verifyAppState(int userId, String body) {
-        return processCanonicalBatch("verifyAppStateBatch", userId, body, true);
-    }
-
     @SuppressLint("ServiceCast")
-    private static EngineResponse processCanonicalBatch(String command, int userId, String body, boolean verifyOnly) {
+    private static EngineResponse processCanonicalBatch(String command, int userId, String body, boolean verifyOnly, String resultPrefix) {
+        // The one-shot CLI historically passes its output format in extra.
+        if ("ndjson".equals(resultPrefix) || "json".equals(resultPrefix)) resultPrefix = "";
+        if (resultPrefix != null && !resultPrefix.isEmpty()) {
+            File prefix = new File(resultPrefix);
+            if (!prefix.isAbsolute() || prefix.getParentFile() == null || !prefix.getParentFile().isDirectory()) {
+                return errorResponse(ResultCode.BAD_REQUEST, command, null, "invalid result prefix");
+            }
+            // Invalidate a previous completion marker before any Android mutation.
+            try {
+                java.nio.file.Files.deleteIfExists(new File(resultPrefix + ".summary").toPath());
+            } catch (java.io.IOException e) {
+                return errorResponse(ResultCode.INTERNAL_ERROR, command, null, "cannot invalidate result marker");
+            }
+        }
         final List<JsonObject> records;
         try {
             records = parseJsonRecords(body);
@@ -2307,6 +2327,7 @@ public final class AppStateEngine {
         int partial = 0;
         int vendorPartial = 0;
         int failed = 0;
+        BatchResultFiles resultFiles = new BatchResultFiles(verifyOnly);
         ResultCode uniformFailure = null;
         boolean mixedFailures = false;
         try {
@@ -2355,6 +2376,7 @@ public final class AppStateEngine {
                     if (uniformFailure == null) uniformFailure = code;
                     else if (uniformFailure != code) mixedFailures = true;
                 }
+                resultFiles.accept(result);
                 out.append(GSON.toJson(result)).append('\n');
             }
         } catch (SecurityException e) {
@@ -2376,6 +2398,11 @@ public final class AppStateEngine {
                     : ResultCode.PARTIAL;
         } else {
             overall = ResultCode.OK;
+        }
+        try {
+            resultFiles.publish(resultPrefix, overall.code);
+        } catch (java.io.IOException e) {
+            return errorResponse(ResultCode.INTERNAL_ERROR, command, null, "result files: " + failureMessage(e));
         }
         out.append(GSON.toJson(summaryRecord(command, overall, records.size(), ok, partial, failed, null))).append('\n');
         return new EngineResponse(overall, out.toString());
@@ -2628,6 +2655,12 @@ public final class AppStateEngine {
                     } else {
                         report.mismatch("ssaid", packageName, "write/readback mismatch; " + result.compactDetails());
                     }
+                    JsonObject item = report.items.get(report.items.size() - 1).getAsJsonObject();
+                    item.addProperty("action", !result.readbackMatched() ? "failed"
+                            : result.metadataRestore.attempted || !result.beforeMeta.ownerModeSame(result.afterWriteMeta)
+                            ? "restored" : "already-matches".equals(result.metadataRestore.reason) ? "same" : "checked");
+                    item.addProperty("expected", result.expected);
+                    item.addProperty("actual", result.readBack);
                 } catch (IllegalArgumentException e) {
                     report.note("ssaid", packageName, ResultCode.BAD_REQUEST,
                             "skip invalid SSAID; " + failureMessage(e) + " value=" + safe(ssaid));
@@ -2952,6 +2985,17 @@ public final class AppStateEngine {
         compareOtherAppOpsState(desired, current, mismatches);
         compareBatteryState(desired, current, mismatches);
         compareSsaidState(desired, current, mismatches);
+        if (desired.has("ssaid") && !desired.get("ssaid").isJsonNull()) {
+            JsonObject ssaidResult = new JsonObject();
+            ssaidResult.add("expected", desired.get("ssaid"));
+            ssaidResult.add("actual", current.get("ssaid"));
+            boolean matched = true;
+            for (JsonElement e : mismatches) {
+                if ("ssaid".equals(stringMember(e.getAsJsonObject(), "path"))) matched = false;
+            }
+            ssaidResult.addProperty("status", matched ? "ok" : "failed");
+            root.add("ssaidVerification", ssaidResult);
+        }
 
         root.addProperty("uid", packageInfo.applicationInfo.uid);
         root.add("mismatches", mismatches);
@@ -4684,6 +4728,7 @@ public final class AppStateEngine {
             case "defaultlauncher":
             case "homeactivity":
             case "launcherhome": return "defaulthome";
+            case "appstaterunresults": return "runresults";
             case "restoreappstatebatch": return "restore";
             case "verifyappstatebatch": return "verify";
             default: return value;

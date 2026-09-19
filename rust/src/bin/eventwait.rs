@@ -1,5 +1,4 @@
 use speedbackup_native_rs::*;
-use std::env;
 use std::ffi::CString;
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -8,7 +7,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-const VERSION: &str = "1.6.1-r572-pidfd-pipeline-convergence-api28-r28c-rust-r572";
+const VERSION: &str = "1.6.1-r572-pidfd-pipeline-convergence-api28-r29-rust-r572";
 
 fn usage(argv0: &str) {
     eprintln!("usage:");
@@ -642,8 +641,8 @@ fn cleanup_owned(run_id: &str, tmpdir: &str) -> i32 {
     }
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+pub(crate) fn run() {
+    let args: Vec<String> = crate::multicall::args().collect();
     let argv0 = args.get(0).map(|s| s.as_str()).unwrap_or("eventwait");
     let rc = match args.get(1).map(|s| s.as_str()) {
         Some("--version") if args.len() == 2 => { println!("eventwait {}", VERSION); 0 }

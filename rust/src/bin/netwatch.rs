@@ -5,13 +5,12 @@
 // which is exactly what this file must NOT do).
 
 use speedbackup_native_rs::c_strerror;
-use std::env;
 use std::ffi::CString;
 use std::io::Write;
 use std::os::raw::{c_char, c_int, c_void};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-const VERSION: &str = "1.2.1-android28-r28c-native-convergence-r572-rust-r572";
+const VERSION: &str = "1.2.1-android28-r29-native-convergence-r572-rust-r572";
 const RECEIVE_BUFFER_SIZE: usize = 64 * 1024;
 
 const AF_NETLINK: i32 = 16;
@@ -340,10 +339,10 @@ fn print_help(program_name: &str) {
     println!("閒置時阻塞在 recv()，不使用定時器、輪詢或 WakeLock。");
 }
 
-fn main() {
+pub(crate) fn run() {
     let _ = CString::new(""); // keep std::ffi::CString import used across builds
 
-    let args: Vec<String> = env::args().collect();
+    let args: Vec<String> = crate::multicall::args().collect();
     let argv0 = args.get(0).map(|s| s.as_str()).unwrap_or("netwatch");
 
     if args.len() > 2 {

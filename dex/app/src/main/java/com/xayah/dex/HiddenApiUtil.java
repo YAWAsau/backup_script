@@ -42,7 +42,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.zip.ZipFile;
 import java.nio.charset.StandardCharsets;
 import java.lang.reflect.Method;
 import java.util.concurrent.TimeUnit;
@@ -60,7 +59,6 @@ public class HiddenApiUtil {
     private static final Map<String, String> sPackageLabelCache = new HashMap<>();
 
     private static boolean sHumanLog = false;
-    private static final String XPOSED_METADATA = "xposedminversion";
     private static final String FLAG_USER = "user";
     private static final String FLAG_SYSTEM = "system";
     private static final String FLAG_XPOSED = "xposed";
@@ -133,8 +131,8 @@ public class HiddenApiUtil {
         System.out.println("    上述熱路徑只能透過 HiddenApi daemon socket 呼叫，不再提供單次 app_process CLI fallback");
         System.out.println();
         System.out.println("  getInstalledPackagesAsUser USER_ID FILTER_FLAG(user|system|xposed) FORMAT(label|pkgName|flag)  取得安裝清單");
-        System.out.println("  appInventorySnapshot USER_ID [jsonl|appinfo|pkgName|pkgVerMap|pkgUidMap] [user|system|xposed|all] [refresh]  一次取得 package/label/uid/version/source/flag inventory");
-        System.out.println("  appInventoryGetlist USER_ID [targetPackageCsv] [refresh]  單次輸出 appList 所需 user/xposed + 白名單/system HOME/IME 與 HOME/IME metadata");
+        System.out.println("  appInventorySnapshot USER_ID [jsonl|appinfo|pkgName|pkgVerMap|pkgUidMap] [user|system|xposed|all] [refresh]  一次取得 package/label/uid/version/source/flag 與 Xposed module facts inventory");
+        System.out.println("  appInventoryGetlist USER_ID [targetPackageCsv] [refresh]  單次輸出 appList 所需 user/xposed + 白名單/system HOME/IME + Xposed framework/module metadata");
         System.out.println("  appInventoryPkgUid USER_ID PACKAGE [refresh]  單包取得 PackageManager 當下 UID，供 restore install 後 chown refresh");
         System.out.println("  appInventoryPackageStatus USER_ID PACKAGE [refresh]  單包取得 PackageManager 當下 installed/uid/version/source/dataDir 狀態");
         System.out.println("  appInventoryPackageStatusBatch USER_ID PACKAGE [PACKAGE...] [refresh]  批量取得 PackageManager packageStatus NDJSON");
@@ -694,7 +692,8 @@ public class HiddenApiUtil {
         }
         if ("cgroupFreezeDaemonEnsure".equals(command)) {
             String reason = cmdArgs != null && cmdArgs.length > 1 ? argAt(cmdArgs, 1) : "daemon-batch";
-            return new DaemonRunResult(0, CgroupFreezeUtil.ensureNativeDaemonForBatch(reason));
+            String out = CgroupFreezeUtil.ensureNativeDaemonForBatch(reason);
+        return new DaemonRunResult(OperationResult.exitCode(out, "cgroup-daemon-ensure"), out);
         }
         if ("cgroupFreezeRestorePackage".equals(command)) {
             return cgroupFreezeRestorePackageDaemonCommand(cmdArgs);
@@ -822,8 +821,6 @@ public class HiddenApiUtil {
             System.exit(1);
         }
     }
-
-
 
 
     // r634: Dex APK install executor removed from public/daemon dispatch.
@@ -967,9 +964,6 @@ public class HiddenApiUtil {
             return 1;
         }
     }
-
-
-
 
 
     private static class InstallSessionOptions {
@@ -1429,61 +1423,6 @@ public class HiddenApiUtil {
     }
 
 
-
-
-
-
-
-    private static List<String> dedupeFilePaths(List<String> paths) {
-        List<String> out = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
-        for (String path : paths) {
-            if (path == null || path.trim().isEmpty()) {
-                continue;
-            }
-            String key;
-            try {
-                key = new File(path).getCanonicalPath();
-            } catch (Throwable ignored) {
-                key = new File(path).getAbsolutePath();
-            }
-            if (seen.add(key)) {
-                out.add(path);
-            }
-        }
-        return out;
-    }
-
-    private static String uniqueSessionFileName(String originalName, Set<String> usedNames) {
-        String base = sanitizeSessionFileName(originalName);
-        String name = base;
-        int index = 1;
-        while (usedNames.contains(name)) {
-            String stem = base;
-            String ext = "";
-            int dot = base.lastIndexOf('.');
-            if (dot > 0) {
-                stem = base.substring(0, dot);
-                ext = base.substring(dot);
-            }
-            name = stem + "_" + index + ext;
-            index++;
-        }
-        usedNames.add(name);
-        return name;
-    }
-
-    private static String sanitizeSessionFileName(String name) {
-        if (name == null || name.isEmpty()) {
-            return "base.apk";
-        }
-        String n = name.replaceAll("[^A-Za-z0-9._-]", "_");
-        if (!n.endsWith(".apk")) {
-            n = n + ".apk";
-        }
-        return n;
-    }
-
     private static int getSessionParamsConstant(String fieldName, int fallback) {
         try {
             java.lang.reflect.Field field = PackageInstaller.SessionParams.class.getField(fieldName);
@@ -1811,7 +1750,6 @@ public class HiddenApiUtil {
     }
 
 
-
     private static void hiddenApiRuntimeProbe(String[] args) {
         int userId = parseIntArg(args, 1, 0);
         String pkg = args != null && args.length > 2 ? argAt(args, 2) : "";
@@ -1953,16 +1891,18 @@ public class HiddenApiUtil {
         String pkg = argAt(args, 2);
         String mode = args != null && args.length > 3 ? argAt(args, 3) : "netpolicy";
         String logPath = args != null && args.length > 4 ? argAt(args, 4) : "-";
-        System.out.print(UidNetworkBlockUtil.start(userId, pkg, mode, logPath));
-        System.exit(0);
+        String out = UidNetworkBlockUtil.start(userId, pkg, mode, logPath);
+        System.out.print(out);
+        System.exit(OperationResult.exitCode(out, "uidnet-start"));
     }
 
     private static void uidNetBlockStop(String[] args) {
         int token = parseIntArg(args, 1, -1);
         int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
         String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
-        System.out.print(UidNetworkBlockUtil.stop(token, expectedUser, expectedPkg));
-        System.exit(0);
+        String out = UidNetworkBlockUtil.stop(token, expectedUser, expectedPkg);
+        System.out.print(out);
+        System.exit(OperationResult.exitCode(out, "uidnet-stop"));
     }
 
     private static void uidNetBlockStatus() {
@@ -2002,14 +1942,16 @@ public class HiddenApiUtil {
         String pkg = argAt(args, 2);
         String mode = args != null && args.length > 3 ? argAt(args, 3) : "netpolicy";
         String logPath = args != null && args.length > 4 ? argAt(args, 4) : "-";
-        return new DaemonRunResult(0, UidNetworkBlockUtil.start(userId, pkg, mode, logPath));
+        String out = UidNetworkBlockUtil.start(userId, pkg, mode, logPath);
+        return new DaemonRunResult(OperationResult.exitCode(out, "uidnet-start"), out);
     }
 
     private static DaemonRunResult uidNetBlockStopDaemonCommand(String[] args) {
         int token = parseIntArg(args, 1, -1);
         int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
         String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
-        return new DaemonRunResult(0, UidNetworkBlockUtil.stop(token, expectedUser, expectedPkg));
+        String out = UidNetworkBlockUtil.stop(token, expectedUser, expectedPkg);
+        return new DaemonRunResult(OperationResult.exitCode(out, "uidnet-stop"), out);
     }
 
     private static DaemonRunResult uidNetBlockRestorePackageDaemonCommand(String[] args) {
@@ -2041,8 +1983,9 @@ public class HiddenApiUtil {
         int pid = parseIntArg(args, 3, -1);
         int timeoutMs = parseIntArg(args, 4, 1500);
         String owner = args != null && args.length > 5 ? argAt(args, 5) : "manual";
-        System.out.print(CgroupFreezeUtil.start(userId, pkg, pid, timeoutMs, owner));
-        System.exit(0);
+        String out = CgroupFreezeUtil.start(userId, pkg, pid, timeoutMs, owner);
+        System.out.print(out);
+        System.exit(OperationResult.exitCode(out, "cgroup-start"));
     }
 
     private static void cgroupFreezeRefreshPrimary(String[] args) {
@@ -2050,16 +1993,18 @@ public class HiddenApiUtil {
         String pkg = argAt(args, 2);
         String reason = args != null && args.length > 3 ? argAt(args, 3) : "cli-refresh";
         int timeoutMs = parseIntArg(args, 4, 1000);
-        System.out.print(CgroupFreezeUtil.refreshPrimaryAppScopePackageFreeze(userId, pkg, reason, timeoutMs));
-        System.exit(0);
+        String out = CgroupFreezeUtil.refreshPrimaryAppScopePackageFreeze(userId, pkg, reason, timeoutMs);
+        System.out.print(out);
+        System.exit(OperationResult.exitCode(out, "cgroup-refresh"));
     }
 
     private static void cgroupFreezeStop(String[] args) {
         int token = parseIntArg(args, 1, -1);
         int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
         String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
-        System.out.print(CgroupFreezeUtil.stop(token, expectedUser, expectedPkg));
-        System.exit(0);
+        String out = CgroupFreezeUtil.stop(token, expectedUser, expectedPkg);
+        System.out.print(out);
+        System.exit(OperationResult.exitCode(out, "cgroup-stop"));
     }
 
     private static void cgroupFreezeStatus() {
@@ -2069,15 +2014,17 @@ public class HiddenApiUtil {
 
     private static void cgroupFreezeDaemonEnsure(String[] args) {
         String reason = args != null && args.length > 1 ? argAt(args, 1) : "cli-batch";
-        System.out.print(CgroupFreezeUtil.ensureNativeDaemonForBatch(reason));
-        System.exit(0);
+        String out = CgroupFreezeUtil.ensureNativeDaemonForBatch(reason);
+        System.out.print(out);
+        System.exit(OperationResult.exitCode(out, "cgroup-daemon-ensure"));
     }
 
     private static void cgroupFreezeRestorePackage(String[] args) {
         int userId = parseIntArg(args, 1, 0);
         String pkg = argAt(args, 2);
-        System.out.print(CgroupFreezeUtil.restorePersistedPackage(userId, pkg, "cli-package"));
-        System.exit(0);
+        String out = CgroupFreezeUtil.restorePersistedPackage(userId, pkg, "cli-package");
+        System.out.print(out);
+        System.exit(OperationResult.exitCode(out, "cgroup-restore-package"));
     }
 
     private static void cgroupFreezeRestoreAll(String[] args) {
@@ -2099,7 +2046,8 @@ public class HiddenApiUtil {
         int pid = parseIntArg(args, 3, -1);
         int timeoutMs = parseIntArg(args, 4, 1500);
         String owner = args != null && args.length > 5 ? argAt(args, 5) : "daemon";
-        return new DaemonRunResult(0, CgroupFreezeUtil.start(userId, pkg, pid, timeoutMs, owner));
+        String out = CgroupFreezeUtil.start(userId, pkg, pid, timeoutMs, owner);
+        return new DaemonRunResult(OperationResult.exitCode(out, "cgroup-start"), out);
     }
 
     private static DaemonRunResult cgroupFreezeRefreshPrimaryDaemonCommand(String[] args) {
@@ -2107,20 +2055,23 @@ public class HiddenApiUtil {
         String pkg = argAt(args, 2);
         String reason = args != null && args.length > 3 ? argAt(args, 3) : "daemon-refresh";
         int timeoutMs = parseIntArg(args, 4, 1000);
-        return new DaemonRunResult(0, CgroupFreezeUtil.refreshPrimaryAppScopePackageFreeze(userId, pkg, reason, timeoutMs));
+        String out = CgroupFreezeUtil.refreshPrimaryAppScopePackageFreeze(userId, pkg, reason, timeoutMs);
+        return new DaemonRunResult(OperationResult.exitCode(out, "cgroup-refresh"), out);
     }
 
     private static DaemonRunResult cgroupFreezeStopDaemonCommand(String[] args) {
         int token = parseIntArg(args, 1, -1);
         int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
         String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
-        return new DaemonRunResult(0, CgroupFreezeUtil.stop(token, expectedUser, expectedPkg));
+        String out = CgroupFreezeUtil.stop(token, expectedUser, expectedPkg);
+        return new DaemonRunResult(OperationResult.exitCode(out, "cgroup-stop"), out);
     }
 
     private static DaemonRunResult cgroupFreezeRestorePackageDaemonCommand(String[] args) {
         int userId = parseIntArg(args, 1, 0);
         String pkg = argAt(args, 2);
-        return new DaemonRunResult(0, CgroupFreezeUtil.restorePersistedPackage(userId, pkg, "daemon-package"));
+        String out = CgroupFreezeUtil.restorePersistedPackage(userId, pkg, "daemon-package");
+        return new DaemonRunResult(OperationResult.exitCode(out, "cgroup-restore-package"), out);
     }
 
     private static DaemonRunResult cgroupFreezeRestoreAllDaemonCommand(String[] args) {
@@ -2139,8 +2090,9 @@ public class HiddenApiUtil {
         String pkg = argAt(args, 2);
         String action = args != null && args.length > 3 ? argAt(args, 3) : "monitor";
         String logPath = args != null && args.length > 4 ? argAt(args, 4) : "-";
-        System.out.print(ProcessObserverUtil.startAsync(userId, pkg, action, logPath));
-        System.exit(0);
+        String out = ProcessObserverUtil.startAsync(userId, pkg, action, logPath);
+        System.out.print(out);
+        System.exit(OperationResult.exitCode(out, "observer-start"));
     }
 
     private static void processObserverStop(String[] args) {
@@ -2155,16 +2107,18 @@ public class HiddenApiUtil {
     private static void processObserverBatchStart(String[] args) {
         int userId = parseIntArg(args, 1, 0);
         String specPath = argAt(args, 2);
-        System.out.print(ProcessObserverUtil.startBatchAsync(userId, specPath));
-        System.exit(0);
+        String out = ProcessObserverUtil.startBatchAsync(userId, specPath);
+        System.out.print(out);
+        System.exit(OperationResult.exitCode(out, "observer-batch-start"));
     }
 
     private static void processObserverBatchStop(String[] args) {
         String statePath = argAt(args, 1);
         int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
         String summaryPath = args != null && args.length > 3 ? argAt(args, 3) : "";
-        System.out.print(ProcessObserverUtil.stopBatchAsync(statePath, expectedUser, summaryPath));
-        System.exit(0);
+        String out = ProcessObserverUtil.stopBatchAsync(statePath, expectedUser, summaryPath);
+        System.out.print(out);
+        System.exit(OperationResult.exitCode(out, "observer-batch-stop"));
     }
 
 
@@ -2185,8 +2139,9 @@ public class HiddenApiUtil {
         String homePkg = args != null && args.length > 6 ? argAt(args, 6) : "";
         String imePkg = args != null && args.length > 7 ? argAt(args, 7) : "";
         String factsOut = args != null && args.length > 8 ? argAt(args, 8) : "";
-        System.out.print(ProcessObserverUtil.startRestoreSessionFromCompareMap(userId, compareMap, pkgsOut, policy, logPath, homePkg, imePkg, factsOut));
-        System.exit(0);
+        String out = ProcessObserverUtil.startRestoreSessionFromCompareMap(userId, compareMap, pkgsOut, policy, logPath, homePkg, imePkg, factsOut);
+        System.out.print(out);
+        System.exit(OperationResult.exitCode(out, "observer-restore-start"));
     }
 
     private static void processObserverStatus() {
@@ -2292,7 +2247,8 @@ public class HiddenApiUtil {
         String pkg = argAt(args, 2);
         String action = args != null && args.length > 3 ? argAt(args, 3) : "monitor";
         String logPath = args != null && args.length > 4 ? argAt(args, 4) : "-";
-        return new DaemonRunResult(0, ProcessObserverUtil.startAsync(userId, pkg, action, logPath));
+        String out = ProcessObserverUtil.startAsync(userId, pkg, action, logPath);
+        return new DaemonRunResult(OperationResult.exitCode(out, "observer-start"), out);
     }
 
     private static DaemonRunResult processObserverStopDaemonCommand(String[] args) {
@@ -2306,7 +2262,8 @@ public class HiddenApiUtil {
     private static DaemonRunResult processObserverBatchStartDaemonCommand(String[] args) {
         int userId = parseIntArg(args, 1, 0);
         String specPath = argAt(args, 2);
-        return new DaemonRunResult(0, ProcessObserverUtil.startBatchAsync(userId, specPath));
+        String out = ProcessObserverUtil.startBatchAsync(userId, specPath);
+        return new DaemonRunResult(OperationResult.exitCode(out, "observer-batch-start"), out);
     }
 
     private static DaemonRunResult processObserverBatchStopDaemonCommand(String[] args) {
@@ -2314,7 +2271,7 @@ public class HiddenApiUtil {
         int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
         String summaryPath = args != null && args.length > 3 ? argAt(args, 3) : "";
         String out = ProcessObserverUtil.stopBatchAsync(statePath, expectedUser, summaryPath);
-        int rc = (out.contains("PROCESS_OBSERVER_BATCH_STOP_OK") && out.contains("ok=true") && out.contains("restoreOk=true") && out.contains("stateDeleted=true")) ? 0 : 1;
+        int rc = OperationResult.exitCode(out, "observer-batch-stop");
         return new DaemonRunResult(rc, out);
     }
 
@@ -2336,7 +2293,7 @@ public class HiddenApiUtil {
         String imePkg = args != null && args.length > 7 ? argAt(args, 7) : "";
         String factsOut = args != null && args.length > 8 ? argAt(args, 8) : "";
         String out = ProcessObserverUtil.startRestoreSessionFromCompareMap(userId, compareMap, pkgsOut, policy, logPath, homePkg, imePkg, factsOut);
-        int rc = out.contains("PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_START_OK") ? 0 : 1;
+        int rc = OperationResult.exitCode(out, "observer-restore-start");
         return new DaemonRunResult(rc, out);
     }
 
@@ -2448,7 +2405,6 @@ public class HiddenApiUtil {
     }
 
 
-
     private static void preRestorePackageStateBatch(String[] args) {
         try {
             int userId = parseIntArg(args, 1, 0);
@@ -2493,7 +2449,6 @@ public class HiddenApiUtil {
             return new DaemonRunResult(1, "INSTALLER_CONTEXT_FACTS_FAILED\t" + sanitizeMachineValue(t.getClass().getName()) + "\n");
         }
     }
-
 
 
     private static void restoreInstallPlan(String[] args) {
@@ -2671,8 +2626,6 @@ public class HiddenApiUtil {
     }
 
 
-
-
     private static void packageFacts(String[] args) {
         try {
             int userId = parseIntArg(args, 1, 0);
@@ -2754,7 +2707,6 @@ public class HiddenApiUtil {
                 .append(f.canRead() ? "true" : "false").append('\t').append(f.canWrite() ? "true" : "false").append('\t')
                 .append(bytes).append('\t').append(userId).append('\n');
     }
-
 
 
     private static void storageVolumeFacts(String[] args) {
@@ -2900,8 +2852,7 @@ public class HiddenApiUtil {
             for (PackageInfo pkg : packages) {
                 boolean isSystemApp = (pkg.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
                 boolean isUserApp = !isSystemApp;
-                boolean isXposedApp = ((pkg.applicationInfo.metaData != null && pkg.applicationInfo.metaData.containsKey(XPOSED_METADATA))
-                        || isModernModules(pkg.applicationInfo));
+                boolean isXposedApp = AppInventoryUtil.xposedFacts(pkg.applicationInfo).module;
                 if ((userFlag && isUserApp) || (systemFlag && isSystemApp) || (xposedFlag && isXposedApp)) {
                     StringBuilder out = new StringBuilder();
                     for (String format : formatList) {
@@ -3076,11 +3027,6 @@ public class HiddenApiUtil {
     }
 
 
-    private static Object getPackageManagerService() throws Exception {
-        return HiddenApiServices.interfaceService(HiddenApiServices.SERVICE_PACKAGE,
-                "android.content.pm.IPackageManager$Stub");
-    }
-
     private static void forceStopPackage(String[] args) {
         try {
             int userId = Integer.parseInt(args[1]);
@@ -3132,13 +3078,14 @@ public class HiddenApiUtil {
             }
             if (packages.isEmpty()) {
                 out.append("FORCE_STOP_EMPTY user=").append(userId).append('\n');
-                return new DaemonRunResult(2, out.toString());
+                return new DaemonRunResult(2, new OperationResult("force-stop", false).counts(0, 0, 0, 0, 0).appendTo(out));
             }
-            return new DaemonRunResult(failed == 0 ? 0 : 1, out.toString());
+            return new DaemonRunResult(failed == 0 ? 0 : 1, new OperationResult("force-stop", failed == 0)
+                    .counts(packages.size(), packages.size() - failed, 0, failed, 0).identity(userId, packages.size() == 1 ? packages.get(0) : "-").appendTo(out));
         } catch (Throwable e) {
             out.append("FORCE_STOP_DAEMON_FAILED exception=").append(e.getClass().getName())
                     .append(" message=").append(sanitizeDiagValue(e.getMessage())).append('\n');
-            return new DaemonRunResult(1, out.toString());
+            return new DaemonRunResult(1, new OperationResult("force-stop", false).appendTo(out));
         }
     }
 
@@ -3168,9 +3115,14 @@ public class HiddenApiUtil {
                     failed++;
                 }
             }
-            return failed == 0 ? 0 : 1;
+            boolean ok = !packages.isEmpty() && failed == 0;
+            System.out.print(new OperationResult("force-stop", ok)
+                    .counts(packages.size(), packages.size() - failed, 0, failed, 0)
+                    .identity(userId, packages.size() == 1 ? packages.get(0) : "-").line());
+            return ok ? 0 : 1;
         } catch (Exception e) {
             e.printStackTrace(System.err);
+            System.out.print(new OperationResult("force-stop", false).line());
             return 1;
         }
     }
@@ -3242,26 +3194,6 @@ public class HiddenApiUtil {
         }
         if (value.isEmpty() || ".".equals(value) || "..".equals(value)) value = "app";
         return value;
-    }
-
-    /**
-     * @see <a href="https://github.com/LSPosed/LSPosed/blob/df74d83eb03a44cc6ad268841ac2ada28d077c77/daemon/src/main/java/org/lsposed/lspd/service/LSPosedService.java#L69">LSPosedService.java#L69</a>
-     */
-    private static boolean isModernModules(ApplicationInfo info) {
-        String[] apks;
-        if (info.splitSourceDirs != null) {
-            apks = Arrays.copyOf(info.splitSourceDirs, info.splitSourceDirs.length + 1);
-            apks[info.splitSourceDirs.length] = info.sourceDir;
-        } else apks = new String[]{info.sourceDir};
-        for (var apk : apks) {
-            try (var zip = new ZipFile(apk)) {
-                if (zip.getEntry("META-INF/xposed/java_init.list") != null) {
-                    return true;
-                }
-            } catch (IOException ignored) {
-            }
-        }
-        return false;
     }
 
     private static List<String> collectPackageNames(String[] args, int start) {

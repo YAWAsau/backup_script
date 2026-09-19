@@ -14,6 +14,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use std::cell::RefCell;
 
+#[path = "../subscription_watch.rs"]
+mod subscription_watch;
+
 #[derive(Clone, Copy)]
 struct CgfreezerPrintSink {
     ptr: *mut (),
@@ -95,7 +98,7 @@ fn with_cgfreezer_output<T, W: Write, F: FnOnce() -> T>(out: &mut W, f: F) -> T 
     })
 }
 
-const VERSION: &str = "r485-backend-select-cache-api28-r28c-rust-r572";
+const VERSION: &str = "r712-subscription-cleanup-api28-r29-202607232022";
 const PROTOCOL: &str = "line-v9-backend-select-r485";
 const MAX_TEXT: usize = 16384;
 const MAX_PATH_LEN: usize = 2048;
@@ -106,7 +109,7 @@ const MAX_UID_PIDS: usize = 512;
 const MAX_DAEMON_CHILDREN: usize = 64;
 const WNOHANG: c_int = 1;
 const SIGTERM_DAEMON: c_int = 15;
-const CAPS: &str = "check-root,backend-probe,scan,freeze,freeze-package-single-request-v1,kill-package-live-rescan-v1 rust-convergence-source-v1,pidfd-signal-optional-v1,thaw,thaw-uid-emergency-v1,binder-freeze,binder-info,subscribe-logd,pid-cache,uid-cache,cgroup-v2-events,cgroup-v2-uid-root-fallback,cgroup-v1-freezer,daemon-parent-control-v1,daemon-stats-v1,daemon-stats-detail-v1,last-error-v1,daemon-control-plain-lines-v2,kill-report-v2,batch-pid-list-v1,proc-snapshot-v1,pidfd-kill-v1,cgroup-kill-fastpath-v1,cgroup-wchan-confirm-v1,proc-wchan-v1,uid-wchan-v1,backend-select-cache-v1";
+const CAPS: &str = "check-root,backend-probe,scan,freeze,freeze-package-single-request-v1,freeze-package-refresh-v1,daemon-worker-error-detail-v1,subscribe-peer-close-v1,daemon-worker-admission-v1,daemon-stop-reaped-v1,kill-package-live-rescan-v1 rust-convergence-source-v1,pidfd-signal-optional-v1,thaw,thaw-uid-emergency-v1,binder-freeze,binder-info,subscribe-logd,pid-cache,uid-cache,cgroup-v2-events,cgroup-v2-uid-root-fallback,cgroup-v1-freezer,daemon-parent-control-v1,daemon-diagnostics-batch-v1,daemon-stats-v1,daemon-stats-detail-v1,last-error-v1,daemon-control-plain-lines-v2,kill-report-v2,batch-pid-list-v1,proc-snapshot-v1,pidfd-kill-v1,cgroup-kill-fastpath-v1,cgroup-wchan-confirm-v1,proc-wchan-v1,uid-wchan-v1,backend-select-cache-v1";
 
 extern "C" { fn _exit(status: c_int) -> !; }
 #[repr(C)]
@@ -116,7 +119,7 @@ struct SockAddrUn {
 }
 
 extern "C" {
-    fn open(path: *const c_char, flags: c_int, mode: c_int) -> c_int;
+    fn open(path: *const c_char, flags: c_int, mode: u32) -> c_int;
     fn close(fd: c_int) -> c_int;
     fn write(fd: c_int, buf: *const c_void, count: usize) -> isize;
     fn ioctl(fd: c_int, request: c_ulong, argp: *mut c_void) -> c_int;
@@ -2177,8 +2180,8 @@ fn cmd_watch_logd(pkg: &str, user_id: i32, duration_ms: i64) -> i32 {
     let logger_free: FnLoggerListFree = unsafe { std::mem::transmute(logger_free_ptr) };
 
     unsafe {
-        signal(SIGTERM_LOGD, on_signal_logd as usize);
-        signal(SIGINT_LOGD, on_signal_logd as usize);
+        signal(SIGTERM_LOGD, on_signal_logd as *const () as usize);
+        signal(SIGINT_LOGD, on_signal_logd as *const () as usize);
     }
 
     println!("CGFREEZER_LOGD_WATCH_START ok=true package={} user={} durationMs={} initialPids={} pids={}",
@@ -2269,11 +2272,12 @@ const CGSTAT_NAMES: [&str; CGSTAT_CLASSES] = ["other","freeze","freezePkg","kill
 struct StatClass { count: u64, completed: u64, failed: u64, min_ms: i64, max_ms: i64, last_ms: i64, total_ms: i64 }
 
 #[derive(Clone)]
-struct DaemonChild { pid: i32, class: usize, start: Instant }
+struct DaemonChild { pid: i32, class: usize, start: Instant, command: String }
 
 struct DaemonStats {
     started: Instant, requests: u64, direct: u64, worker: u64,
     last_command: String, last_error: String,
+    last_failed_command: String, last_worker_pid: i32, last_worker_exit: i32, last_worker_signal: i32,
     stat_freeze: u64, stat_freeze_pkg: u64, stat_kill_pkg: u64, stat_thaw: u64, stat_scan: u64,
     classes: [StatClass; CGSTAT_CLASSES],
     children: Vec<DaemonChild>,
@@ -2286,6 +2290,7 @@ impl DaemonStats {
 impl Default for DaemonStats {
     fn default() -> Self { Self {
         started: Instant::now(), requests: 0, direct: 0, worker: 0, last_command: "none".into(), last_error: "none".into(),
+        last_failed_command: "none".into(), last_worker_pid: 0, last_worker_exit: -1, last_worker_signal: 0,
         stat_freeze: 0, stat_freeze_pkg: 0, stat_thaw: 0, stat_scan: 0, stat_kill_pkg: 0,
         classes: Default::default(),
         children: Vec::new(),
@@ -2298,20 +2303,30 @@ impl Default for DaemonStats {
 /// to class 7 "control" - the previous implementation only classified
 /// worker commands and left every parent-direct command uncounted in
 /// STATS_DETAIL's "control" row entirely.
-fn daemon_cmd_class(cmd: &str) -> usize {
+// Dex refresh uses the same non-thawing package freeze operation. Keep its wire
+// name for error diagnostics while sharing dispatch and stats classification.
+fn canonical_daemon_command(cmd: &str) -> &str {
     match cmd {
+        "FREEZE_PKG_REFRESH" => "FREEZE_PKG",
+        _ => cmd,
+    }
+}
+
+fn daemon_cmd_class(cmd: &str) -> usize {
+    match canonical_daemon_command(cmd) {
         "FREEZE" | "FREEZE_PID_LIST" => 1,
         "FREEZE_PKG" => 2,
         "KILL_PKG" | "KILL_PID_LIST" => 3,
         c if c.starts_with("THAW") => 4,
         "SCAN" | "PROC_SNAPSHOT" | "WCHAN_PID_LIST" | "WCHAN_UID" | "SUBSCRIBE" => 5,
-        "HELLO" | "CAPS" | "PING" | "STATUS" | "STATS" | "STATS_DETAIL" | "LAST_ERROR" | "BACKEND_PROBE" => 7,
+        "HELLO" | "CAPS" | "PING" | "STATUS" | "STATS" | "STATS_DETAIL" | "LAST_ERROR"
+        | "DIAGNOSTICS" | "BACKEND_PROBE" => 7,
         _ => 0,
     }
 }
 
 fn daemon_note_command(stats: &mut DaemonStats, cmd: &str) {
-    match cmd {
+    match canonical_daemon_command(cmd) {
         "FREEZE" | "FREEZE_PID_LIST" => stats.stat_freeze += 1,
         "FREEZE_PKG" => stats.stat_freeze_pkg += 1,
         "KILL_PKG" | "KILL_PID_LIST" => stats.stat_kill_pkg += 1,
@@ -2343,9 +2358,11 @@ fn daemon_stat_note_done(stats: &mut DaemonStats, class: usize, elapsed_ms: i64,
     if elapsed_ms > c.max_ms { c.max_ms = elapsed_ms; }
 }
 
-fn daemon_child_add(stats: &mut DaemonStats, pid: i32, class: usize, start: Instant) {
-    if pid <= 0 || stats.children.len() >= MAX_DAEMON_CHILDREN { return; }
-    stats.children.push(DaemonChild { pid, class, start });
+fn daemon_child_add(stats: &mut DaemonStats, pid: i32, class: usize, start: Instant, command: &str) {
+    // Admission is checked before fork. Never silently lose a successfully forked PID.
+    if pid <= 0 { return; }
+    let command = command.chars().take(63).map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' }).collect();
+    stats.children.push(DaemonChild { pid, class, start, command });
 }
 
 fn wifexited(status: c_int) -> bool { (status & 0x7f) == 0 }
@@ -2357,6 +2374,13 @@ fn daemon_child_remove(stats: &mut DaemonStats, pid: i32, status: c_int) {
         let child = stats.children.remove(pos);
         let failed = !(wifexited(status) && wexitstatus(status) == 0);
         daemon_stat_note_done(stats, child.class, child.start.elapsed().as_millis() as i64, failed);
+        if failed {
+            stats.last_failed_command = child.command;
+            stats.last_worker_pid = pid;
+            stats.last_worker_exit = if wifexited(status) { wexitstatus(status) } else { -1 };
+            stats.last_worker_signal = if wifexited(status) { 0 } else { status & 0x7f };
+            stats.last_error = format!("worker_failed_{}_exit_{}_signal_{}", stats.last_failed_command, stats.last_worker_exit, stats.last_worker_signal);
+        }
     }
 }
 
@@ -2370,6 +2394,7 @@ fn reap_children_nonblock(stats: &mut DaemonStats) {
 }
 
 fn daemon_stop_children_bounded(stats: &mut DaemonStats) {
+    reap_children_nonblock(stats);
     for child in &stats.children { unsafe { kill(child.pid, SIGTERM_DAEMON); } }
     let deadline = Instant::now() + Duration::from_millis(500);
     while stats.active_children() > 0 && Instant::now() < deadline {
@@ -2385,6 +2410,13 @@ fn daemon_stop_children_bounded(stats: &mut DaemonStats) {
     reap_children_nonblock(stats);
 }
 
+fn daemon_stop_receipt(stats: &DaemonStats, before: usize, elapsed: u128) -> String {
+    let remaining = stats.active_children();
+    format!("CGFREEZER_DAEMON_EXIT ok={} version={} pid={} protocol={} parentDirect=true activeChildren={} childrenBefore={} childrenReaped={} cleanupVerified={} cleanupMs={}\n",
+        remaining == 0, VERSION, std::process::id(), PROTOCOL, remaining,
+        before, before.saturating_sub(remaining), remaining == 0, elapsed)
+}
+
 // r534: daemon worker commands share the same CLI cmd_* logic through
 // with_cgfreezer_output(), an in-process writer sink. This deliberately avoids
 // the rejected stdout-capture/dup2 pipe design while removing the previous
@@ -2396,7 +2428,7 @@ fn handle_worker_to<W: Write>(args: &[String], out: &mut W) -> i32 {
             println!("CGFREEZER_DAEMON_RESULT ok=false reason=empty");
             return 64;
         }
-        match args.get(0).map(|s| s.as_str()) {
+        match args.get(0).map(|s| canonical_daemon_command(s)) {
             Some("HELLO") => {
                 println!("CGFREEZER_DAEMON_HELLO ok=true version={} pid={} protocol={} parentDirect=false", VERSION, std::process::id(), PROTOCOL);
                 0
@@ -2597,6 +2629,18 @@ fn handle_parent(line: &str, stats: &DaemonStats, socket: &str) -> Option<(bool,
         "HELLO" => Some((false, format!("CGFREEZER_DAEMON_HELLO ok=true version={} pid={} protocol={} parentDirect=true\n", VERSION, std::process::id(), PROTOCOL))),
         "CAPS" => Some((false, format!("CGFREEZER_DAEMON_CAPS ok=true version={} protocol={} caps={} parentDirect=true\n", VERSION, PROTOCOL, CAPS))),
         "PING" => Some((false, format!("CGFREEZER_DAEMON_PONG ok=true version={} pid={} uptimeMs={} activeChildren={}\n", VERSION, std::process::id(), uptime, stats.active_children()))),
+        "DIAGNOSTICS" => {
+            let mut body = String::new();
+            // One parent-direct request; all four sections use the same stats snapshot.
+            // Render through the existing handlers, without inventing extra requests.
+            for section in ["STATUS", "STATS", "STATS_DETAIL", "LAST_ERROR"] {
+                let (_, response) = handle_parent(section, stats, socket)?;
+                body.push_str(&format!("CGFREEZER_DAEMON_DIAGNOSTICS_BEGIN section={}\n", section));
+                body.push_str(&response);
+                body.push_str(&format!("CGFREEZER_DAEMON_DIAGNOSTICS_END section={}\n", section));
+            }
+            Some((false, body))
+        }
         "STATUS" => {
             let (pb, pr) = preferred_backend();
             let mut body = format!(
@@ -2619,7 +2663,7 @@ fn handle_parent(line: &str, stats: &DaemonStats, socket: &str) -> Option<(bool,
             Some((false, body))
         }
         "STATS_DETAIL" => {
-            let mut body = format!("CGFREEZER_DAEMON_STATS_DETAIL ok=true version={} pid={} uptimeMs={} protocol=plain-lines-r253 hash=0 policy=facts-only\n", VERSION, std::process::id(), uptime);
+            let mut body = format!("CGFREEZER_DAEMON_STATS_DETAIL ok=true version={} pid={} uptimeMs={} protocol=plain-lines-r253 hash=0 policy=facts-only timingScope=parent-reap p95Semantics=legacy-max\n", VERSION, std::process::id(), uptime);
             for i in 0..CGSTAT_CLASSES {
                 let c = &stats.classes[i];
                 let avg = if c.completed > 0 { c.total_ms / c.completed as i64 } else { 0 };
@@ -2636,7 +2680,9 @@ fn handle_parent(line: &str, stats: &DaemonStats, socket: &str) -> Option<(bool,
         }
         "LAST_ERROR" => {
             let mut body = format!("CGFREEZER_DAEMON_LAST_ERROR ok=true version={} pid={} protocol=plain-lines-r253 lastError={} lastCommand={} hash=0 policy=facts-only\n", VERSION, std::process::id(), stats.last_error, stats.last_command);
-            body.push_str("CGFREEZER_DAEMON_LAST_ERROR_END ok=true rows=1\n");
+            body.push_str(&format!("CGFREEZER_DAEMON_LAST_WORKER_ERROR command={} pid={} exitCode={} signal={} scope=last-failed-worker\n",
+                stats.last_failed_command, stats.last_worker_pid, stats.last_worker_exit, stats.last_worker_signal));
+            body.push_str("CGFREEZER_DAEMON_LAST_ERROR_END ok=true rows=2\n");
             Some((false, body))
         }
         "BACKEND_PROBE" => {
@@ -2658,8 +2704,8 @@ fn cmd_daemon(socket_path: &str) -> i32 {
     }
     G_RUNNING.store(true, Ordering::Relaxed);
     unsafe {
-        signal(SIGTERM_LOGD, on_signal_logd as usize);
-        signal(SIGINT_LOGD, on_signal_logd as usize);
+        signal(SIGTERM_LOGD, on_signal_logd as *const () as usize);
+        signal(SIGINT_LOGD, on_signal_logd as *const () as usize);
         signal(13 /* SIGPIPE */, 1usize /* SIG_IGN */);
     }
 
@@ -2723,6 +2769,8 @@ fn cmd_daemon(socket_path: &str) -> i32 {
         if n == 0 { continue; }
         let used = raw[..n].iter().position(|&b| b == 0).unwrap_or(n);
         let line = String::from_utf8_lossy(&raw[..used]).into_owned();
+        // Children may have exited while accept/read was blocked.
+        reap_children_nonblock(&mut stats);
         stats.requests += 1;
         let cmd_name = daemon_ascii_fields(&line, 1).into_iter().next().unwrap_or("").to_string();
         if !cmd_name.is_empty() { stats.last_command = c_truncate_bytes(&cmd_name, 63); }
@@ -2730,9 +2778,16 @@ fn cmd_daemon(socket_path: &str) -> i32 {
         daemon_stat_note_start(&mut stats, class);
         let cmd_start = Instant::now();
         if !cmd_name.is_empty() { daemon_note_command(&mut stats, &cmd_name); }
-        if let Some((stop, resp)) = handle_parent(&line, &stats, socket_path) {
+        if let Some((stop, mut resp)) = handle_parent(&line, &stats, socket_path) {
             stats.direct += 1;
-            daemon_stat_note_done(&mut stats, class, monotonic_ms(&cmd_start) as i64, false);
+            if stop {
+                let before = stats.active_children();
+                let started = Instant::now();
+                daemon_stop_children_bounded(&mut stats);
+                resp = daemon_stop_receipt(&stats, before, started.elapsed().as_millis());
+            }
+            let stop_failed = stop && stats.active_children() != 0;
+            daemon_stat_note_done(&mut stats, class, monotonic_ms(&cmd_start) as i64, stop_failed);
             let _ = stream.write_all(resp.as_bytes());
             let _ = stream.flush();
             let _ = stream.shutdown(Shutdown::Write);
@@ -2740,15 +2795,32 @@ fn cmd_daemon(socket_path: &str) -> i32 {
             continue;
         }
         let args: Vec<String> = daemon_ascii_fields(&line, 8).into_iter().map(str::to_owned).collect();
+        // Keep the resource bound without ever forking an untracked worker.
+        if stats.active_children() >= MAX_DAEMON_CHILDREN {
+            stats.last_error = "worker_limit".into();
+            daemon_stat_note_done(&mut stats, class, monotonic_ms(&cmd_start) as i64, true);
+            let _ = writeln!(stream, "CGFREEZER_DAEMON_RESULT ok=false reason=worker_limit activeChildren={}", stats.active_children());
+            continue;
+        }
         let child = unsafe { fork() };
         if child == 0 {
             unsafe { close(listen_fd); }
+            let _subscription_watch = if cmd_name == "SUBSCRIBE" {
+                let duration = parse_ms(args.get(3), 0).max(0) as u64;
+                match subscription_watch::SubscriptionWatch::start(&stream, &G_RUNNING, duration) {
+                    Ok(watch) => Some(watch),
+                    Err(e) => {
+                        let _ = writeln!(stream, "CGFREEZER_LOGD_WATCH_DONE ok=false reason=cancel_monitor_failed error={}", shell_sanitize(&e.to_string()));
+                        unsafe { _exit(74); }
+                    }
+                }
+            } else { None };
             let rc = handle_worker_to(&args, &mut stream);
             let _ = stream.flush();
             unsafe { _exit(if rc == 0 { 0 } else { rc & 0xff }); }
         } else if child > 0 {
             stats.worker += 1;
-            daemon_child_add(&mut stats, child, class, cmd_start);
+            daemon_child_add(&mut stats, child, class, cmd_start, &cmd_name);
             // Faithful port of the C daemon's unconditional close(cfd) at the
             // end of the accept loop body: after forking, the PARENT must
             // drop its own copy of the connection fd immediately, not wait
@@ -2765,6 +2837,7 @@ fn cmd_daemon(socket_path: &str) -> i32 {
         } else {
             let e = errno_now();
             stats.last_error = format!("fork_errno_{} cmd={}", e, stats.last_command);
+            daemon_stat_note_done(&mut stats, class, monotonic_ms(&cmd_start) as i64, true);
             let _ = writeln!(stream, "CGFREEZER_DAEMON_RESULT ok=false reason=fork_errno_{}", e);
             let _ = stream.flush();
             drop(stream);
@@ -2773,89 +2846,246 @@ fn cmd_daemon(socket_path: &str) -> i32 {
     unsafe { close(listen_fd); }
     let _ = fs::remove_file(socket_path);
     daemon_stop_children_bounded(&mut stats);
-    println!("CGFREEZER_DAEMON_DONE ok=true version={} socket={} requests={} directRequests={} workerRequests={} activeChildren={}", VERSION, shell_sanitize(socket_path), stats.requests, stats.direct, stats.worker, stats.active_children());
-    0
+    let clean = stats.active_children() == 0;
+    println!("CGFREEZER_DAEMON_DONE ok={} version={} socket={} requests={} directRequests={} workerRequests={} activeChildren={} cleanupVerified={}", clean, VERSION, shell_sanitize(socket_path), stats.requests, stats.direct, stats.worker, stats.active_children(), clean);
+    if clean { 0 } else { 1 }
 }
 
 fn main_rc(args: &[String]) -> i32 {
-    if args.len() < 2 { return usage(); }
+    if args.len() < 2 {
+        return usage();
+    }
     if args.len() == 2 && (args[1] == "--version" || args[1] == "version") {
         println!("cgfreezer {}", VERSION);
         return 0;
     }
     match args[1].as_str() {
+        "capabilities" => {
+            println!("{}", CAPS);
+            0
+        }
         "check-root" => cmd_check_root(),
         "backend-probe" => cmd_backend_probe(),
         "scan-package" => {
-            if args.len() < 4 { return 64; }
+            if args.len() < 4 {
+                return 64;
+            }
             cmd_scan_package(args[2].as_str(), parse_i(args.get(3), 0))
         }
         "freeze-pid" => {
-            if args.len() < 4 { return 64; }
+            if args.len() < 4 {
+                return 64;
+            }
             let pid = parse_i(args.get(2), -1);
-            if pid <= 0 { return 64; }
+            if pid <= 0 {
+                return 64;
+            }
             cmd_freeze_pid(pid, bounded_timeout_ms(parse_ms(args.get(3), 1500), 1500))
         }
         "freeze-package" => {
-            if args.len() < 5 { return 64; }
-            cmd_freeze_package(args[2].as_str(), parse_i(args.get(3), 0), parse_ms(args.get(4), 1500))
+            if args.len() < 5 {
+                return 64;
+            }
+            cmd_freeze_package(
+                args[2].as_str(),
+                parse_i(args.get(3), 0),
+                parse_ms(args.get(4), 1500),
+            )
         }
         "freeze-pid-list" => {
-            if args.len() < 5 { return 64; }
-            cmd_freeze_pid_list(parse_i(args.get(2), 0), args[3].as_str(), parse_ms(args.get(4), 1500))
+            if args.len() < 5 {
+                return 64;
+            }
+            cmd_freeze_pid_list(
+                parse_i(args.get(2), 0),
+                args[3].as_str(),
+                parse_ms(args.get(4), 1500),
+            )
         }
         "kill-package" => {
-            if args.len() < 6 { return 64; }
-            cmd_kill_package(args[2].as_str(), parse_i(args.get(3), 0), parse_i(args.get(4), -1), parse_ms(args.get(5), 800))
+            if args.len() < 6 {
+                return 64;
+            }
+            cmd_kill_package(
+                args[2].as_str(),
+                parse_i(args.get(3), 0),
+                parse_i(args.get(4), -1),
+                parse_ms(args.get(5), 800),
+            )
         }
         "kill-pid-list" => {
-            if args.len() < 5 { return 64; }
-            cmd_kill_pid_list(parse_i(args.get(2), 0), args[3].as_str(), parse_i(args.get(4), SIGKILL))
+            if args.len() < 5 {
+                return 64;
+            }
+            cmd_kill_pid_list(
+                parse_i(args.get(2), 0),
+                args[3].as_str(),
+                parse_i(args.get(4), SIGKILL),
+            )
         }
         "proc-snapshot" => {
-            if args.len() < 4 { return 64; }
+            if args.len() < 4 {
+                return 64;
+            }
             cmd_proc_snapshot(args[2].as_str(), parse_i(args.get(3), 0))
         }
         "proc-wchan" => {
-            if args.len() < 4 { return 64; }
-            cmd_proc_wchan(parse_i(args.get(2), -1), args[3].as_str(), args.get(4).map(String::as_str).unwrap_or("any"))
+            if args.len() < 4 {
+                return 64;
+            }
+            cmd_proc_wchan(
+                parse_i(args.get(2), -1),
+                args[3].as_str(),
+                args.get(4).map(String::as_str).unwrap_or("any"),
+            )
         }
         "uid-wchan" => {
-            if args.len() < 3 { return 64; }
-            cmd_uid_wchan(parse_i(args.get(2), -1), args.get(3).map(String::as_str).unwrap_or("any"))
+            if args.len() < 3 {
+                return 64;
+            }
+            cmd_uid_wchan(
+                parse_i(args.get(2), -1),
+                args.get(3).map(String::as_str).unwrap_or("any"),
+            )
         }
         "thaw-path" => {
-            if args.len() < 5 { return 64; }
-            cmd_thaw_path(args[2].as_str(), args[3].as_str(), bounded_timeout_ms(parse_ms(args.get(4), 1500), 1500))
+            if args.len() < 5 {
+                return 64;
+            }
+            cmd_thaw_path(
+                args[2].as_str(),
+                args[3].as_str(),
+                bounded_timeout_ms(parse_ms(args.get(4), 1500), 1500),
+            )
         }
         "thaw-pid" => {
-            if args.len() < 6 { return 64; }
+            if args.len() < 6 {
+                return 64;
+            }
             let pid = parse_i(args.get(2), -1);
-            if pid <= 0 { return 64; }
-            cmd_thaw_pid(pid, args[3].as_str(), args[4].as_str(), bounded_timeout_ms(parse_ms(args.get(5), 1500), 1500))
+            if pid <= 0 {
+                return 64;
+            }
+            cmd_thaw_pid(
+                pid,
+                args[3].as_str(),
+                args[4].as_str(),
+                bounded_timeout_ms(parse_ms(args.get(5), 1500), 1500),
+            )
         }
         "thaw-uid" => {
-            if args.len() < 4 { return 64; }
+            if args.len() < 4 {
+                return 64;
+            }
             let uid = parse_i(args.get(2), -1);
             cmd_thaw_uid(uid as u32, parse_ms(args.get(3), 1500))
         }
         "binder-info" => {
-            if args.len() < 3 { return 64; }
+            if args.len() < 3 {
+                return 64;
+            }
             let pid = parse_i(args.get(2), -1);
-            if pid <= 0 { return 64; }
+            if pid <= 0 {
+                return 64;
+            }
             cmd_binder_info(pid)
         }
         "watch-logd" => {
-            if args.len() < 5 { return 64; }
+            if args.len() < 5 {
+                return 64;
+            }
             let duration = parse_ms(args.get(4), 0).max(0);
             cmd_watch_logd(args[2].as_str(), parse_i(args.get(3), 0), duration)
         }
         "daemon" => {
-            if args.len() < 3 { return 64; }
+            if args.len() < 3 {
+                return 64;
+            }
             cmd_daemon(args[2].as_str())
         }
         other => unknown_usage(other),
     }
 }
 
-fn main() { std::process::exit(main_rc(&std::env::args().collect::<Vec<_>>())); }
+pub(crate) fn run() { std::process::exit(main_rc(&crate::multicall::args().collect::<Vec<_>>())); }
+
+#[cfg(test)]
+mod daemon_control_tests {
+    use super::*;
+    #[test]
+    fn batch_is_one_parent_control_request_and_never_stops() {
+        let mut stats = DaemonStats::default();
+        stats.requests = 9;
+        stats.direct = 8;
+        stats.worker = 1;
+        stats.last_command = "DIAGNOSTICS".into();
+        stats.last_error = "test_error".into();
+        stats.classes[7].count = 8;
+        stats.classes[7].completed = 7;
+        let (stop, response) = handle_parent("DIAGNOSTICS ignored", &stats, "/socket").unwrap();
+        assert!(!stop);
+        assert_eq!(daemon_cmd_class("DIAGNOSTICS"), 7);
+        assert_eq!(stats.requests, 9);
+        assert_eq!(stats.direct, 8);
+        assert_eq!(
+            response
+                .matches("requests=9 directRequests=8 workerRequests=1")
+                .count(),
+            2
+        );
+        assert!(response.contains("class=control count=8 completed=7"));
+        assert!(response.contains("lastError=test_error lastCommand=DIAGNOSTICS"));
+        let mut previous = 0;
+        for section in ["STATUS", "STATS", "STATS_DETAIL", "LAST_ERROR"] {
+            let begin = format!("CGFREEZER_DAEMON_DIAGNOSTICS_BEGIN section={}\n", section);
+            let end = format!("CGFREEZER_DAEMON_DIAGNOSTICS_END section={}\n", section);
+            let index = response.find(&begin).unwrap();
+            assert!(index >= previous);
+            previous = response.find(&end).unwrap() + end.len();
+            let content = &response[index + begin.len()..previous - end.len()];
+            assert!(content.starts_with(&format!("CGFREEZER_DAEMON_{} ", section)));
+            assert!(content.contains(&format!("CGFREEZER_DAEMON_{}_END ok=true", section)));
+        }
+        assert_eq!(previous, response.len());
+    }
+    #[test]
+    fn capability_contract_and_unknown_command() {
+        assert!(CAPS.split(',').any(|s| s == "daemon-diagnostics-batch-v1"));
+        let stats = DaemonStats::default();
+        assert!(handle_parent("DIAGNOSTICS_BAD", &stats, "socket").is_none());
+        assert!(handle_parent("", &stats, "socket").is_none());
+        assert!(handle_parent("CAPS", &stats, "socket")
+            .unwrap()
+            .1
+            .contains("daemon-diagnostics-batch-v1"));
+    }
+}
+
+#[cfg(test)]
+mod r712_tests {
+    use super::*;
+    #[test]
+    fn every_spawned_pid_is_tracked_even_at_the_admission_boundary() {
+        let mut stats = DaemonStats::default();
+        for pid in 1..=65 { daemon_child_add(&mut stats, pid, 5, Instant::now(), "SUBSCRIBE"); }
+        assert_eq!(stats.active_children(), 65);
+        for pid in 1..=65 { daemon_child_remove(&mut stats, pid, 0); }
+        assert_eq!(stats.active_children(), 0);
+        assert_eq!(stats.classes[5].completed, 65);
+        assert_eq!(stats.classes[5].failed, 0);
+    }
+    #[test]
+    fn stop_receipt_cannot_claim_cleanup_with_children_remaining() {
+        let mut stats = DaemonStats::default();
+        daemon_child_add(&mut stats, 1234, 5, Instant::now(), "SUBSCRIBE");
+        let incomplete = daemon_stop_receipt(&stats, 2, 700);
+        assert!(incomplete.contains("ok=false"));
+        assert!(incomplete.contains("activeChildren=1"));
+        assert!(incomplete.contains("cleanupVerified=false"));
+        daemon_child_remove(&mut stats, 1234, 0);
+        let complete = daemon_stop_receipt(&stats, 2, 701);
+        assert!(complete.contains("ok=true"));
+        assert!(complete.contains("childrenReaped=2"));
+        assert!(complete.contains("cleanupVerified=true"));
+    }
+}

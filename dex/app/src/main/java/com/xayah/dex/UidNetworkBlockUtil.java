@@ -72,7 +72,7 @@ final class UidNetworkBlockUtil {
         try {
             session.apply();
             SESSIONS.put(token, session);
-            return "UID_NET_BLOCK_START_OK token=" + token
+            return new OperationResult("uidnet-start", true).token(token).identity(userId, session.packageName).appendTo("UID_NET_BLOCK_START_OK token=" + token
                     + " user=" + userId
                     + " package=" + session.packageName
                     + " uid=" + session.uid
@@ -80,17 +80,17 @@ final class UidNetworkBlockUtil {
                     + " provider=" + sanitize(session.provider)
                     + " ownerToken=" + ownerToken
                     + " ownerKind=" + sanitize(session.ownerKind)
-                    + " log=" + sanitize(logPath) + "\n";
+                    + " log=" + sanitize(logPath) + "\n");
         } catch (Throwable t) {
             try { session.restore("start-failed"); } catch (Throwable ignored) {}
-            return "UID_NET_BLOCK_START_FAILED token=" + token
+            return new OperationResult("uidnet-start", false).token(token).appendTo("UID_NET_BLOCK_START_FAILED token=" + token
                     + " user=" + userId
                     + " package=" + session.packageName
                     + " mode=" + session.mode
                     + " ownerToken=" + ownerToken
                     + " ownerKind=" + sanitize(session.ownerKind)
                     + " exception=" + sanitize(t.getClass().getName())
-                    + " message=" + sanitize(t.getMessage()) + "\n";
+                    + " message=" + sanitize(t.getMessage()) + "\n");
         }
     }
 
@@ -106,7 +106,15 @@ final class UidNetworkBlockUtil {
                     + " expectedPackage=" + safePackage(expectedPackageName) + "\n"
                     + restorePersistedToken(token, "stop-missing-" + token, expectedUserId, expectedPackageName);
         }
-        return session.restore("stop-token-" + token);
+        String mismatch = expectedMismatch(session, expectedUserId, safePackage(expectedPackageName));
+        if (!mismatch.isEmpty()) {
+            SESSIONS.put(token, session);
+            return new OperationResult("uidnet-stop", false).token(token).restoration(false, false)
+                    .appendTo("UID_NET_BLOCK_STOP_REJECTED reason=" + sanitize(mismatch));
+        }
+        String result = session.restore("stop-token-" + token);
+        if (!OperationResult.isOk(result, "uidnet-stop")) SESSIONS.put(token, session);
+        return result;
     }
 
     static synchronized String status() {
@@ -130,10 +138,11 @@ final class UidNetworkBlockUtil {
     static synchronized String restorePersistedToken(int token, String reason, int expectedUserId, String expectedPackageName) {
         File file = findStateByToken(token, expectedUserId, expectedPackageName);
         if (file == null) {
-            return "UID_NET_BLOCK_PERSISTENT_RESTORE_MISSING token=" + token
+            return new OperationResult("uidnet-stop", false).token(token).restoration(false, false)
+                    .appendTo("UID_NET_BLOCK_PERSISTENT_RESTORE_MISSING token=" + token
                     + " expectedUser=" + expectedUserId
                     + " expectedPackage=" + safePackage(expectedPackageName)
-                    + " reason=" + sanitize(reason) + "\n";
+                    + " reason=" + sanitize(reason) + "\n");
         }
         return restorePersistedFile(file, reason, "token", token, expectedUserId, safePackage(expectedPackageName));
     }
@@ -142,9 +151,10 @@ final class UidNetworkBlockUtil {
         String pkg = safePackage(packageName);
         File file = findStateByPackage(userId, pkg);
         if (file == null) {
-            return "UID_NET_BLOCK_PERSISTENT_RESTORE_MISSING user=" + userId
+            return new OperationResult("uidnet-stop", false).restoration(false, false)
+                    .appendTo("UID_NET_BLOCK_PERSISTENT_RESTORE_MISSING user=" + userId
                     + " package=" + pkg
-                    + " reason=" + sanitize(reason) + "\n";
+                    + " reason=" + sanitize(reason) + "\n");
         }
         return restorePersistedFile(file, reason, "package", -1, userId, pkg);
     }
@@ -450,7 +460,7 @@ final class UidNetworkBlockUtil {
                         .append(" stateRetained=true\n");
             }
             closeLog();
-            return out.toString();
+            return new OperationResult("uidnet-stop", restored).token(token).restoration(restoreOk, stateDeleted).identity(userId, packageName).appendTo(out.toString());
         }
 
         private int snapshotUidPolicy() throws Exception {
@@ -554,15 +564,15 @@ final class UidNetworkBlockUtil {
         StringBuilder out = new StringBuilder();
         Properties p = readProperties(file);
         if (p.isEmpty()) {
-            return "UID_NET_BLOCK_PERSISTENT_RESTORE_FAILED source=" + sanitize(source)
+            return new OperationResult("uidnet-stop", false).restoration(false, false).appendTo("UID_NET_BLOCK_PERSISTENT_RESTORE_FAILED source=" + sanitize(source)
                     + " reason=" + sanitize(reason)
                     + " path=" + sanitize(file == null ? "" : file.getAbsolutePath())
-                    + " message=empty-state\n";
+                    + " message=empty-state\n");
         }
         NetBlockSession s = sessionFromProperties(p);
         String mismatch = expectedMismatch(s, userId, packageName);
         if (!mismatch.isEmpty()) {
-            return "UID_NET_BLOCK_PERSISTENT_RESTORE_REJECTED source=" + sanitize(source)
+            return new OperationResult("uidnet-stop", false).restoration(false, false).appendTo("UID_NET_BLOCK_PERSISTENT_RESTORE_REJECTED source=" + sanitize(source)
                     + " reason=" + sanitize(reason)
                     + " token=" + s.token
                     + " stateUser=" + s.userId
@@ -571,7 +581,7 @@ final class UidNetworkBlockUtil {
                     + " expectedPackage=" + sanitize(packageName)
                     + " mismatch=" + sanitize(mismatch)
                     + " stateRetained=true"
-                    + " path=" + sanitize(file.getAbsolutePath()) + "\n";
+                    + " path=" + sanitize(file.getAbsolutePath()) + "\n");
         }
         out.append("UID_NET_BLOCK_PERSISTENT_RESTORE_BEGIN source=").append(sanitize(source))
                 .append(" reason=").append(sanitize(reason))
@@ -601,6 +611,7 @@ final class UidNetworkBlockUtil {
                         .append(" message=restore-step-failed stateRetained=true").append('\n');
             }
         } catch (Throwable t) {
+            out.append(new OperationResult("uidnet-stop", false).restoration(false, false).line());
             out.append("UID_NET_BLOCK_PERSISTENT_RESTORE_FAILED source=").append(sanitize(source))
                     .append(" token=").append(s.token)
                     .append(" exception=").append(sanitize(t.getClass().getName()))
@@ -611,7 +622,7 @@ final class UidNetworkBlockUtil {
     }
 
     private static boolean restoreDoneAndStateDeleted(String raw) {
-        return raw != null && raw.contains("UID_NET_BLOCK_STOP_OK") && raw.contains("stateDeleted=true");
+        return OperationResult.isOk(raw, "uidnet-stop");
     }
 
     private static NetBlockSession sessionFromProperties(Properties p) {

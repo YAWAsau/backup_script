@@ -754,7 +754,7 @@ object WebDavUtil {
                 put(user, pass, relUrl(), input, contentLength = null, chunked = true).also { if (it in 200..299) invalidateListCache() }
             }
             "putstdinmanagedrel" -> if (expectExtra(3, "relPath<TAB>mode<TAB>parentMode")) httpCode = safe {
-                putStdinManagedRel(user, pass, url, extra1(), extra2(), extra3(), input)
+                putStdinManagedRel(user, pass, url, extra1(), extra2(), extra3(), input) { receipt -> respBody = receipt.toByteArray(StandardCharsets.UTF_8) }
             }
             "putmanagedrel" -> if (expectExtra(3, "relPath<TAB>localFile<TAB>mode")) httpCode = safe {
                 putFileManagedRel(user, pass, url, extra1(), extra2(), extra3(), "ensureParentMkdir")
@@ -1680,6 +1680,19 @@ object WebDavUtil {
      * already exist, create only missing parents, and return TSV facts for tools cache seeding.
      */
     private fun prepareDirsPlanRel(user: String, pass: String, baseUrl: String, rootRelRaw: String, modeRaw: String, body: String, progressFile: String = ""): Pair<Int, String> {
+        // r699: elapsedMs historically timed only creation; totalMs covers every branch.
+        val callStartedNs = System.nanoTime()
+        var rootListMs = 0L
+        var rootParseMs = 0L
+        var createMs = 0L
+        fun finish(code: Int, payload: String): Pair<Int, String> {
+            val totalMs = ((System.nanoTime() - callStartedNs) / 1_000_000L).coerceAtLeast(0L)
+            val fields = "\trootListMs=$rootListMs\trootParseMs=$rootParseMs\tcreateMs=$createMs\ttotalMs=$totalMs\ttimingScope=full"
+            infoLog("WEBDAV_PREPARE_DIRS_FULL_TIMING totalMs=$totalMs rootListMs=$rootListMs rootParseMs=$rootParseMs createMs=$createMs mode=r699")
+            return code to payload.lineSequence().joinToString("\n") { line ->
+                if (line.startsWith("SUMMARY\t")) line + fields else line
+            }
+        }
         val rootRel = sanitizeRelPath(rootRelRaw).trim('/').takeIf { it.isNotEmpty() && it != "." }.orEmpty()
         val createMissing = when (modeRaw.trim().lowercase(java.util.Locale.US)) {
             "0", "false", "no", "check", "checkonly", "dryrun" -> false
@@ -1692,17 +1705,27 @@ object WebDavUtil {
             .toList()
         if (desired.isEmpty()) {
             writePrepareDirsProgress(progressFile, 0, 0, 0, 0, 0, "EMPTY", "")
-            return 200 to "SUMMARY\ttotal=0\texisting=0\tcreated=0\tok=0\tfailed=0\trootStatus=0\tcreateTotal=0\tmode=${if (createMissing) "create" else "check"}\n"
+            return finish(200, "SUMMARY\ttotal=0\texisting=0\tcreated=0\tok=0\tfailed=0\trootStatus=0\tcreateTotal=0\tmode=${if (createMissing) "create" else "check"}\n")
         }
 
         val existing = HashSet<String>()
         var rootStatus = 0
         val rootUrl = buildRelUrl(baseUrl, rootRel)
-        runCatching { propfindRaw(user, pass, rootUrl, 1) }
+        runCatching {
+            val requestStartedNs = System.nanoTime()
+            try {
+                propfindRaw(user, pass, rootUrl, 1)
+            } finally {
+                rootListMs = ((System.nanoTime() - requestStartedNs) / 1_000_000L).coerceAtLeast(0L)
+            }
+        }
             .onSuccess { (status, respBody) ->
                 rootStatus = status
                 if (status in 200..299) {
-                    for (entry in parseDavEntries(respBody)) {
+                    val parseStartedNs = System.nanoTime()
+                    val entries = parseDavEntries(respBody)
+                    rootParseMs = ((System.nanoTime() - parseStartedNs) / 1_000_000L).coerceAtLeast(0L)
+                    for (entry in entries) {
                         if (!entry.isDirectory) continue
                         val childRel = davEntryRelativePath(entry.href, rootRel)
                         if (childRel.isEmpty() || childRel.contains('/')) continue
@@ -1726,7 +1749,7 @@ object WebDavUtil {
                 .append("\tmode=").append(if (createMissing) "create" else "check")
                 .append('\n')
             writePrepareDirsProgress(progressFile, 0, 0, 0, 0, desired.size, "ROOT_LIST_FAILED", rootRel)
-            return rootStatus to out.toString()
+            return finish(rootStatus, out.toString())
         }
 
         val out = StringBuilder(desired.size * 48)
@@ -1755,7 +1778,7 @@ object WebDavUtil {
                 .append("\tmode=check")
                 .append('\n')
             writePrepareDirsProgress(progressFile, desired.size, desired.size, existingCount, 0, failedCount, "CHECK_DONE", rootRel)
-            return (if (failedCount == 0) 200 else 404) to out.toString()
+            return finish(if (failedCount == 0) 200 else 404, out.toString())
         }
 
         val createTotal = missing.size
@@ -1769,12 +1792,12 @@ object WebDavUtil {
                 .append("\tcreateTotal=0\tworkers=0\telapsedMs=0")
                 .append("\tstrategy=list-only-existing\tmode=create\n")
             infoLog("WEBDAV_PREPARE_DIRS_PARALLEL_DONE root=$rootRel total=${desired.size} createTotal=0 workers=0 existing=$existingCount created=0 failed=0 elapsedMs=0 mode=r671")
-            return 200 to out.toString()
+            return finish(200, out.toString())
         }
         writePrepareDirsProgress(progressFile, createTotal, 0, existingCount, 0, 0, "CREATE_BEGIN", rootRel)
 
         data class CreateResult(val rel: String, val code: Int, val state: String)
-        val startedMs = System.currentTimeMillis()
+        val startedNs = System.nanoTime()
         val workers = minOf(4, createTotal).coerceAtLeast(1)
         val executor = Executors.newFixedThreadPool(workers)
         val completion = ExecutorCompletionService<CreateResult>(executor)
@@ -1820,7 +1843,8 @@ object WebDavUtil {
         } finally {
             executor.shutdownNow()
         }
-        val elapsedMs = (System.currentTimeMillis() - startedMs).coerceAtLeast(0L)
+        val elapsedMs = ((System.nanoTime() - startedNs) / 1_000_000L).coerceAtLeast(0L)
+        createMs = elapsedMs
         out.append("SUMMARY\ttotal=").append(desired.size)
             .append("\texisting=").append(existingCount)
             .append("\tcreated=").append(createdCount)
@@ -1835,7 +1859,7 @@ object WebDavUtil {
             .append('\n')
         infoLog("WEBDAV_PREPARE_DIRS_PARALLEL_DONE root=$rootRel total=${desired.size} createTotal=$createTotal workers=$workers existing=$existingCount created=$createdCount failed=$failedCount elapsedMs=$elapsedMs mode=r671")
         if (createdCount > 0) invalidateListCache()
-        return finalCode to out.toString()
+        return finish(finalCode, out.toString())
     }
 
 
@@ -3579,7 +3603,7 @@ object WebDavUtil {
         }
     }
 
-    private fun putStdinManagedRel(user: String, pass: String, baseUrl: String, relPath: String, mode: String?, parentMode: String?, input: InputStream): Int {
+    private fun putStdinManagedRel(user: String, pass: String, baseUrl: String, relPath: String, mode: String?, parentMode: String?, input: InputStream, receipt: ((String) -> Unit)? = null): Int {
         val parentCode = ensureManagedPutParent(user, pass, baseUrl, relPath, parentMode)
         if (parentCode !in 200..299) return parentCode
         val decision = managedDecision(user, pass, baseUrl, relPath, mode)
@@ -3640,6 +3664,7 @@ object WebDavUtil {
                 infoLog("MANAGED_PUT_DIRECT_NEW_MISSING_CLEANUP rel=$relPath mode=${decision.modeName} code=$cleanupCode afterHttp=$code")
             }
         }
+        receipt?.invoke("SBRESULT\t1\twebdav-stream\t${if (code in 200..299) "ok" else "failed"}\t$code\t${meter.sentBytes()}\t$relPath\n")
         return code
     }
 
@@ -4652,6 +4677,7 @@ object WebDavUtil {
         println("  putmanagedrel <user> <pass> <baseUrl> <relPath> <localFile> [auto|atomic|direct|direct-json|known-missing|direct-new-known-missing] [ensureParentMkdir|skipParentMkdir]")
         println("  managedbatchputrelwithparents <user> <pass> <baseUrl> [mode] [ensureParentMkdir|skipParentMkdir]  (stdin: rel<TAB>localFile; Dex prepares parents then managed PUTs files)")
         println("  managedlistclassifyrel <user> <pass> <baseUrl> <relPath> [depth]  (alias of classifylistrel; transport-owned classified facts)")
+        println("  r699 capabilities: webdav.prepare_dirs_full_timing.dex.v1")
         println("  managed manifest capabilities: webdav.direct_children_manifest.dex.v1 / webdav.download_manifest.dex.v1 / webdav.orphan_roots_manifest.dex.v1")
         println("  directchildrenrel <user> <pass> <baseUrl> <relPath>  (safe one-level D/N names for tools remote menu)")
         println("  downloadmanifestrel <user> <pass> <baseUrl> <baseRel> <destDir>  (stdin: safe item lines; stdout: rel<TAB>localFile)")

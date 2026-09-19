@@ -14,7 +14,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
 import java.io.File;
-import java.io.IOException;
 import java.text.Collator;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -24,7 +23,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.zip.ZipFile;
 import java.lang.reflect.Method;
 
 import dev.rikka.tools.refine.Refine;
@@ -37,7 +35,8 @@ import dev.rikka.tools.refine.Refine;
  */
 final class AppInventoryUtil {
     static final String VERSION = DexBuildInfo.VERSION;
-    private static final String XPOSED_METADATA = "xposedminversion";
+    private static final String XPOSED_MODULE_METADATA = "xposedmodule";
+    private static final String XPOSED_MIN_VERSION_METADATA = "xposedminversion";
     private static final Gson GSON = new Gson();
     private static final Map<String, List<Item>> CACHE = new HashMap<>();
 
@@ -88,6 +87,36 @@ final class AppInventoryUtil {
                 .append(sanitize(ime.packageName)).append('\t')
                 .append(sanitize(ime.label)).append('\t')
                 .append(sanitize(ime.source)).append('\n');
+        XposedRuntimeFactsUtil.Facts runtimeFacts = XposedRuntimeFactsUtil.inspect(userId);
+        out.append("#META\txposedFramework\t").append(runtimeFacts.toTsv()).append('\n');
+        int xposedTotal = 0, xposedLegacy = 0, xposedModernJava = 0, xposedModernNative = 0, xposedHybrid = 0;
+        for (Item item : items) {
+            if (item == null || !item.xposed) continue;
+            xposedTotal++;
+            if (item.xposedLegacyMetadata || item.xposedLegacyEntry) xposedLegacy++;
+            if (item.xposedModernJavaEntry) xposedModernJava++;
+            if (item.xposedModernNativeEntry) xposedModernNative++;
+            if ("hybrid".equals(item.xposedModuleFormat)) xposedHybrid++;
+        }
+        out.append("#META\txposedModules\t")
+                .append(xposedTotal).append('\t')
+                .append(xposedLegacy).append('\t')
+                .append(xposedModernJava).append('\t')
+                .append(xposedModernNative).append('\t')
+                .append(xposedHybrid).append('\n');
+        for (Item item : items) {
+            if (item == null || !item.xposed) continue;
+            out.append("#META\txposedModule\t")
+                    .append(sanitize(item.packageName)).append('\t')
+                    .append(sanitize(item.xposedModuleFormat)).append('\t')
+                    .append(item.xposedLegacyMetadata ? "true" : "false").append('\t')
+                    .append(item.xposedLegacyEntry ? "true" : "false").append('\t')
+                    .append(item.xposedModernJavaEntry ? "true" : "false").append('\t')
+                    .append(item.xposedModernNativeEntry ? "true" : "false").append('\t')
+                    .append(item.xposedModuleProp ? "true" : "false").append('\t')
+                    .append(item.xposedScopeList ? "true" : "false").append('\t')
+                    .append(sanitize(item.xposedEvidence)).append('\n');
+        }
         for (Item item : items) {
             if (item == null || item.packageName == null || item.packageName.isEmpty()) continue;
             boolean include = !item.system || item.xposed || targets.contains(item.packageName);
@@ -844,7 +873,17 @@ final class AppInventoryUtil {
             Item item = new Item();
             item.userId = userId;
             item.packageName = pkg.packageName;
-            item.label = safeLabel(pm, ai, pkg.packageName);
+            AppLabelResolver.Result resolvedLabel = AppLabelResolver.resolve(new AppLabelResolver.Source() {
+                public CharSequence primary() { return ai.loadLabel(pm); }
+                public CharSequence nonLocalized() { return ai.nonLocalizedLabel; }
+                public CharSequence resource() throws Exception {
+                    return ai.labelRes == 0 ? null : pm.getResourcesForApplication(ai).getText(ai.labelRes);
+                }
+            }, pkg.packageName);
+            // Keep directory keys stable; the display label can improve independently.
+            item.label = safePathLabel(resolvedLabel.legacyLabel, pkg.packageName);
+            item.displayLabel = resolvedLabel.displayLabel;
+            item.labelSource = resolvedLabel.source;
             item.uid = ai.uid;
             item.versionCode = longVersionCode(pkg);
             item.versionName = pkg.versionName == null ? "" : pkg.versionName;
@@ -852,7 +891,18 @@ final class AppInventoryUtil {
             item.installed = true;
             item.system = (ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
             item.updatedSystem = (ai.flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0;
-            item.xposed = isXposed(ai);
+            XposedModuleScanner.Facts xposedFacts = xposedFacts(ai);
+            item.xposed = xposedFacts.module;
+            item.xposedModuleFormat = xposedFacts.moduleFormat;
+            item.xposedLegacyMetadata = xposedFacts.legacyMetadata;
+            item.xposedLegacyEntry = xposedFacts.legacyEntry;
+            item.xposedModernJavaEntry = xposedFacts.modernJavaEntry;
+            item.xposedModernNativeEntry = xposedFacts.modernNativeEntry;
+            item.xposedModuleProp = xposedFacts.moduleProp;
+            item.xposedScopeList = xposedFacts.scopeList;
+            item.xposedApkScanned = xposedFacts.apkScanned;
+            item.xposedApkErrors = xposedFacts.apkErrors;
+            item.xposedEvidence = xposedFacts.evidence;
             item.sourceDir = ai.sourceDir == null ? "" : ai.sourceDir;
             item.publicSourceDir = ai.publicSourceDir == null ? "" : ai.publicSourceDir;
             try { item.installerPackageName = pm.getInstallerPackageName(pkg.packageName); } catch (Throwable ignored) { item.installerPackageName = ""; }
@@ -890,18 +940,6 @@ final class AppInventoryUtil {
                 || (fs.contains("xposed") && item.xposed);
     }
 
-    private static String safeLabel(PackageManager pm, ApplicationInfo ai, String fallback) {
-        try {
-            CharSequence label = ai.loadLabel(pm);
-            if (label != null) {
-                String value = safePathLabel(label.toString(), fallback);
-                if (!value.isEmpty()) return value;
-            }
-        } catch (Throwable ignored) {
-        }
-        return safePathLabel(fallback, "app");
-    }
-
     private static long longVersionCode(PackageInfo pkg) {
         try {
             if (Build.VERSION.SDK_INT >= 28) return pkg.getLongVersionCode();
@@ -932,32 +970,16 @@ final class AppInventoryUtil {
         return value.replace('\n', '_').replace('\r', '_').replace('\t', '_').replace(' ', '_');
     }
 
-    private static boolean isXposed(ApplicationInfo info) {
-        if (info == null) return false;
+    static XposedModuleScanner.Facts xposedFacts(ApplicationInfo info) {
+        if (info == null) return XposedModuleScanner.inspect(false, null, null);
+        boolean legacyMetadata = false;
         try {
-            if (info.metaData != null && info.metaData.containsKey(XPOSED_METADATA)) return true;
-        } catch (Throwable ignored) {
-        }
-        return isModernModules(info);
-    }
-
-    private static boolean isModernModules(ApplicationInfo info) {
-        String[] apks;
-        if (info == null || info.sourceDir == null) return false;
-        if (info.splitSourceDirs != null) {
-            apks = Arrays.copyOf(info.splitSourceDirs, info.splitSourceDirs.length + 1);
-            apks[info.splitSourceDirs.length] = info.sourceDir;
-        } else {
-            apks = new String[]{info.sourceDir};
-        }
-        for (String apk : apks) {
-            if (apk == null || apk.isEmpty()) continue;
-            try (ZipFile zip = new ZipFile(apk)) {
-                if (zip.getEntry("META-INF/xposed/java_init.list") != null) return true;
-            } catch (IOException ignored) {
+            if (info.metaData != null) {
+                legacyMetadata = info.metaData.containsKey(XPOSED_MODULE_METADATA)
+                        || info.metaData.containsKey(XPOSED_MIN_VERSION_METADATA);
             }
-        }
-        return false;
+        } catch (Throwable ignored) {}
+        return XposedModuleScanner.inspect(legacyMetadata, info.sourceDir, info.splitSourceDirs);
     }
 
     private static int parseInt(String raw, int fallback) {
@@ -1058,6 +1080,8 @@ final class AppInventoryUtil {
         int userId;
         String packageName;
         String label;
+        String displayLabel;
+        String labelSource;
         int uid;
         long versionCode;
         String versionName;
@@ -1066,6 +1090,16 @@ final class AppInventoryUtil {
         boolean system;
         boolean updatedSystem;
         boolean xposed;
+        String xposedModuleFormat = "none";
+        boolean xposedLegacyMetadata;
+        boolean xposedLegacyEntry;
+        boolean xposedModernJavaEntry;
+        boolean xposedModernNativeEntry;
+        boolean xposedModuleProp;
+        boolean xposedScopeList;
+        int xposedApkScanned;
+        int xposedApkErrors;
+        String xposedEvidence = "";
         String flag;
         String category;
         String sourceDir;
@@ -1080,6 +1114,8 @@ final class AppInventoryUtil {
             o.addProperty("userId", userId);
             o.addProperty("packageName", packageName == null ? "" : packageName);
             o.addProperty("label", label == null ? "" : label);
+            o.addProperty("displayLabel", displayLabel == null ? "" : displayLabel);
+            o.addProperty("labelSource", labelSource == null ? "unknown" : labelSource);
             o.addProperty("uid", uid);
             o.addProperty("versionCode", versionCode);
             o.addProperty("versionName", versionName == null ? "" : versionName);
@@ -1088,6 +1124,16 @@ final class AppInventoryUtil {
             o.addProperty("system", system);
             o.addProperty("updatedSystem", updatedSystem);
             o.addProperty("xposed", xposed);
+            o.addProperty("xposedModuleFormat", xposedModuleFormat == null ? "none" : xposedModuleFormat);
+            o.addProperty("xposedLegacyMetadata", xposedLegacyMetadata);
+            o.addProperty("xposedLegacyEntry", xposedLegacyEntry);
+            o.addProperty("xposedModernJavaEntry", xposedModernJavaEntry);
+            o.addProperty("xposedModernNativeEntry", xposedModernNativeEntry);
+            o.addProperty("xposedModuleProp", xposedModuleProp);
+            o.addProperty("xposedScopeList", xposedScopeList);
+            o.addProperty("xposedApkScanned", xposedApkScanned);
+            o.addProperty("xposedApkErrors", xposedApkErrors);
+            o.addProperty("xposedEvidence", xposedEvidence == null ? "" : xposedEvidence);
             o.addProperty("flag", flag == null ? "" : flag);
             o.addProperty("category", category == null ? "" : category);
             o.addProperty("sourceDir", sourceDir == null ? "" : sourceDir);

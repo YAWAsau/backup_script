@@ -788,16 +788,6 @@ public class SettingsStateApi31 implements SettingsState {
         }
     }
 
-    private static Map<String, String> removeNullValueOldStyle(Map<String, String> keyValues) {
-        Iterator<Map.Entry<String, String>> it = keyValues.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<String, String> keyValueEntry = it.next();
-            if (NULL_VALUE_OLD_STYLE.equals(keyValueEntry.getValue())) {
-                keyValueEntry.setValue(null);
-            }
-        }
-        return keyValues;
-    }
 
     private final class MyHandler extends Handler {
         public static final int MSG_PERSIST_SETTINGS = 1;

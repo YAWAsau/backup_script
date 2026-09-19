@@ -634,16 +634,7 @@ object HttpCore {
     }
 
     fun writeChunked(input: InputStream, out: OutputStream) {
-        val buf = ByteArray(COPY_BUF_SIZE)
-        while (true) {
-            val n = input.read(buf)
-            if (n <= 0) break
-            out.write(Integer.toHexString(n).toByteArray(StandardCharsets.ISO_8859_1))
-            out.write("\r\n".toByteArray(StandardCharsets.ISO_8859_1))
-            out.write(buf, 0, n)
-            out.write("\r\n".toByteArray(StandardCharsets.ISO_8859_1))
-        }
-        out.write("0\r\n\r\n".toByteArray(StandardCharsets.ISO_8859_1))
+        ChunkedBodyWriter.write(input, out, COPY_BUF_SIZE)
     }
 
     fun readResponseBody(headers: Map<String, List<String>>, input: InputStream, out: OutputStream, decodeContent: Boolean = false) {

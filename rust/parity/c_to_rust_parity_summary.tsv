@@ -1,9 +1,0 @@
-tool	c_lines	rs_lines	c_bytes	rs_bytes	missing_cmds	missing_markers	missing_funcs	empty_stubs
-cgfreezer	2874	2858	126231	138941	0	0	41	0
-eventwait	1036	702	39137	33640	0	0	22	0
-filewatch	205	362	7973	13498	0	0	1	0
-netwatch	367	373	10261	13468	0	0	3	0
-procwait	348	386	10740	14086	0	0	3	0
-speedscan	2182	1440	90641	75396	0	0	49	0
-uidexec	242	257	6273	9347	0	0	0	0
-unixsock	479	611	15677	23544	0	0	9	0

@@ -4,7 +4,6 @@
 // Every exit-code decision and the EPIPE-on-stdout "consumer closed early is
 // not an error" behavior is reproduced exactly against c/unixsock.c.
 
-use std::env;
 use speedbackup_native_rs::c_strerror;
 use std::ffi::{CStr, CString};
 use std::io::{self, BufReader, ErrorKind, Read, Write};
@@ -12,7 +11,7 @@ use std::net::{Shutdown, TcpStream};
 use std::os::fd::FromRawFd;
 use std::os::unix::net::UnixStream;
 
-const VERSION: &str = "unixsock 2.3.1-plain-lines-single-eof-api28-r28c-convergence-r572-rust-r572";
+const VERSION: &str = "unixsock 2.3.1-plain-lines-single-eof-api28-r29-convergence-r572-rust-r572";
 const HEADER_LINE_MAX: usize = 4096;
 const COPY_BUFFER_SIZE: usize = 128 * 1024;
 const UNIX_SUN_PATH_MAX: usize = 108;
@@ -558,8 +557,8 @@ fn describe_err(e: &io::Error) -> String {
     if is_protocol_eof(e) { "Protocol error".to_string() } else { c_strerror(e) }
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+pub(crate) fn run() {
+    let args: Vec<String> = crate::multicall::args().collect();
     if args.len() == 2 && (args[1] == "--version" || args[1] == "version") {
         println!("{}", VERSION);
         return;

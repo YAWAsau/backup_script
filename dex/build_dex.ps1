@@ -6,14 +6,25 @@
 
 param(
     [string]$JavaHome = "",
-    [string]$SdkRoot = ""
+    [string]$SdkRoot = "",
+    [switch]$Offline
 )
 
 $ErrorActionPreference = "Stop"
 
 # ---- 1. Set JAVA_HOME (Android Studio bundled JDK) ----
 if ([string]::IsNullOrWhiteSpace($JavaHome)) {
-    $JavaHome = "C:\Program Files\Android\Android Studio\jbr"
+    # Gradle 8.2: prefer an installed JDK17; Studio's current JBR may be newer.
+    $jdk17Home = Get-ChildItem -LiteralPath (Join-Path $env:USERPROFILE ".jdks") -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match "17([.-]|$)" -and (Test-Path -LiteralPath (Join-Path $_.FullName "bin/java.exe")) } |
+        Select-Object -First 1
+    if ($jdk17Home) {
+        $JavaHome = $jdk17Home.FullName
+    } elseif (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
+        $JavaHome = $env:JAVA_HOME
+    } else {
+        $JavaHome = "C:\Program Files\Android\Android Studio\jbr"
+    }
 }
 $javaHome = $JavaHome
 if (-not (Test-Path -LiteralPath $javaHome)) {
@@ -43,8 +54,16 @@ Write-Host "Wrote local.properties: $localPropsContent" -ForegroundColor Green
 # ---- 3. Run Gradle build ----
 Write-Host "Building :app:assembleRelease ..." -ForegroundColor Cyan
 $gradlewPath = Join-Path $PSScriptRoot "gradlew.bat"
-& $gradlewPath ":app:assembleRelease"
-if ($LASTEXITCODE -ne 0) {
+Push-Location -LiteralPath $PSScriptRoot
+try {
+    $gradleBuildArgs = @(":app:assembleRelease", "--console=plain")
+    if ($Offline) { $gradleBuildArgs += "--offline" }
+    & $gradlewPath @gradleBuildArgs
+    $gradleExitCode = $LASTEXITCODE
+} finally {
+    Pop-Location
+}
+if ($gradleExitCode -ne 0) {
     Write-Host "Build failed, see errors above" -ForegroundColor Red
     exit 1
 }
@@ -57,42 +76,51 @@ if (-not $releaseApk) {
     exit 1
 }
 
-$zipPath = Join-Path $PSScriptRoot "app-release.zip"
-$extractPath = Join-Path $PSScriptRoot "extracted"
-
-Copy-Item -LiteralPath $releaseApk.FullName -Destination $zipPath -Force
-if (Test-Path -LiteralPath $extractPath) {
-    Remove-Item -LiteralPath $extractPath -Recurse -Force
-}
-Expand-Archive -LiteralPath $zipPath -DestinationPath $extractPath -Force
-
-$dexFile = Get-ChildItem -LiteralPath $extractPath -Recurse -Filter "classes.dex" -File -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not $dexFile) {
-    $dexFile = Get-ChildItem -LiteralPath $extractPath -Recurse -Filter "*.dex" -File -ErrorAction SilentlyContinue | Select-Object -First 1
-}
-if (-not $dexFile) {
-    Write-Host "No .dex file found after extraction" -ForegroundColor Red
-    exit 1
-}
-
+# Read only the single CLI Dex entry; preserve prior extraction/build outputs.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
 $outputDex = Join-Path $PSScriptRoot "classes.dex"
-Copy-Item -LiteralPath $dexFile.FullName -Destination $outputDex -Force
-Remove-Item -LiteralPath $zipPath -Force
+$releaseArchive = [System.IO.Compression.ZipFile]::OpenRead($releaseApk.FullName)
+try {
+    $dexEntries = @($releaseArchive.Entries | Where-Object { $_.FullName -match "^classes[0-9]*[.]dex$" })
+    if ($dexEntries.Count -ne 1 -or $dexEntries[0].FullName -ne "classes.dex") {
+        throw "Expected a single classes.dex CLI artifact; found $($dexEntries.Count) entries"
+    }
+    $dexInputStream = $dexEntries[0].Open()
+    try {
+        $dexOutputStream = [System.IO.File]::Create($outputDex)
+        try {
+            $dexInputStream.CopyTo($dexOutputStream)
+        } finally {
+            $dexOutputStream.Dispose()
+        }
+    } finally {
+        $dexInputStream.Dispose()
+    }
+} finally {
+    $releaseArchive.Dispose()
+}
 
-# ---- 4b. Verify required classes survived R8/shrinker ----
+# ---- 4b. Verify Dex-owned classes/capabilities survived R8; native caps are checked by dex_check ----
 $dexBytes = [System.IO.File]::ReadAllBytes($outputDex)
 $dexLatin1 = [System.Text.Encoding]::GetEncoding("ISO-8859-1").GetString($dexBytes)
 $requiredDexStrings = @(
+    "appstate.run_results.v1",
+    "appstate.result_files.v1",
+    "appstate.ssaid.typed_result.v1",
+    "dex.control_results.v1",
+    "webdav.stream_result.v1",
+    "webdav.chunk_write_coalesced.v1",
+    "dex.result_contract.v1",
     "com/xayah/dex/AppStateLocalization",
     "appstate.localization.dex.v1",
     "appstate.localization.raw_plus_cn.v1",
     "webdav.cjk_put_replay_probe.v1",
-    "v2.6.94-single-tools-unified-root-webdav-deep-hiddenapi-sync-webdav-eof-quiet",
     "webdav.managed_probe.nodot_temp.v1",
     "webdav.stream_probe.subdir.v1",
     "webdav.base_preflight.dex.v1",
     "webdav.directory_ensure.dex.v1",
     "webdav.options_preflight.dex.v1",
+    "webdav.prepare_dirs_full_timing.dex.v1",
     "dex.root_unified_daemon.v1",
     "webdav.deep_policy_table.dex.v1",
     "com/xayah/dex/SpeedBackupRootDaemon",
@@ -104,13 +132,8 @@ $requiredDexStrings = @(
     "dex.cchelper.zh_tw_polish.v1",
     "dex.cchelper.repeat_merge_fix.v1",
     "CCUTIL_SELFTEST_OK cchelper.table_refresh.v1 zh_tw_polish.v1 repeat_merge_fix.v1",
-    "v2.6.151-display-timeout-daemon-session-native-package-kill-live-rescan-taskstack-package-guard-native-package-freeze-parent-control",
-    "v24.20.14-7.66-630-display-timeout-daemon-session-r201-202607232022",
     "dex.process_observer.taskstack_package_guard.v1",
     "PACKAGE_SCOPE_TRIGGER reason=taskstack-top-target",
-    "freeze-package-single-request-v1",
-    "thaw-uid-emergency-v1",
-    "daemon-parent-control-v1",
     "kill-package-live-rescan-v1",
     "dex.cgroup_freezer.native_package_kill_live_rescan.v1",
     "native-kill-package-pre-force-stop",
@@ -123,7 +146,7 @@ foreach ($needle in $requiredDexStrings) {
         exit 1
     }
 }
-Write-Host "Dex verify: required SpeedBackup r201 display-timeout daemon session classes/capabilities present" -ForegroundColor Green
+Write-Host "Dex verify: required CLI classes and Dex capabilities present (version strings diagnostic only)" -ForegroundColor Green
 
 # ---- 5. No companion APK / no UI output in zero-UI build ----
 Write-Host ""

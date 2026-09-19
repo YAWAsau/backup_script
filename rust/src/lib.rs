@@ -1,4 +1,3 @@
-pub mod parity_contract;
 use std::collections::HashSet;
 use std::ffi::CString;
 use std::fs::{self, File};

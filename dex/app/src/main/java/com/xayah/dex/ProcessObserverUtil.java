@@ -134,20 +134,20 @@ final class ProcessObserverUtil {
             session.token = token;
             SESSIONS.put(token, session);
             session.startTarget();
-            return "PROCESS_OBSERVER_START_OK token=" + token
+            return new OperationResult("observer-start", true).token(token).identity(userId, safePackage(packageName)).appendTo("PROCESS_OBSERVER_START_OK token=" + token
                     + " user=" + userId
                     + " package=" + safePackage(packageName)
                     + " action=" + normalizeAction(action)
                     + " wakeBlockMode=" + wakeBlockModeFromAction(action)
                     + " lifecycle=global-target"
-                    + " log=" + sanitize(logPath) + "\n";
+                    + " log=" + sanitize(logPath) + "\n");
         } catch (Throwable t) {
             SESSIONS.remove(token);
             if (session != null) {
                 try { session.finish("start-failed:" + t.getClass().getSimpleName()); } catch (Throwable ignored) {}
             }
-            return "PROCESS_OBSERVER_START_FAILED exception=" + sanitize(t.getClass().getName())
-                    + " message=" + sanitize(t.getMessage()) + "\n";
+            return new OperationResult("observer-start", false).token(token).appendTo("PROCESS_OBSERVER_START_FAILED exception=" + sanitize(t.getClass().getName())
+                    + " message=" + sanitize(t.getMessage()) + "\n");
         }
     }
 
@@ -176,8 +176,8 @@ final class ProcessObserverUtil {
         out.append(cleanupStaleBatchStates("restore-session-direct-start", BATCH_STATE_TTL_MS));
         File cmp = new File(compareMapPath == null ? "" : compareMapPath);
         if (!cmp.isFile()) {
-            return "PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_START_FAILED reason=compare_map_missing path="
-                    + sanitize(compareMapPath) + "\n" + out;
+            return new OperationResult("observer-restore-start", false).appendTo("PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_START_FAILED reason=compare_map_missing path="
+                    + sanitize(compareMapPath) + "\n" + out);
         }
         int requested = 0;
         int started = 0;
@@ -294,8 +294,8 @@ final class ProcessObserverUtil {
                 }
             }
         } catch (Throwable t) {
-            return "PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_START_FAILED exception=" + sanitize(t.getClass().getName())
-                    + " message=" + sanitize(t.getMessage()) + "\n" + out;
+            return new OperationResult("observer-restore-start", false).counts(requested, started, 0, failed, 0).appendTo("PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_START_FAILED exception=" + sanitize(t.getClass().getName())
+                    + " message=" + sanitize(t.getMessage()) + "\n" + out);
         } finally {
             if (pkgsOut != null) {
                 try { pkgsOut.flush(); pkgsOut.close(); } catch (Throwable ignored) {}
@@ -328,7 +328,7 @@ final class ProcessObserverUtil {
                     + " source=" + sanitize(cmp.getName()) + " factsOut=" + sanitize(factsOutPath)
                     + " factsRows=" + factsRows + " elapsedMs=" + elapsed + "\n");
         }
-        return out.toString();
+        return new OperationResult("observer-restore-start", started > 0).counts(requested, started, 0, failed, 0).identity(userId, "-").appendTo(out.toString());
     }
 
     private static final class RestoreSessionPolicyOptions {
@@ -578,7 +578,7 @@ final class ProcessObserverUtil {
         out.append(cleanupStaleBatchStates("batch-start", BATCH_STATE_TTL_MS));
         File spec = new File(specPath == null ? "" : specPath);
         if (!spec.isFile()) {
-            return "PROCESS_OBSERVER_BATCH_START_FAILED reason=spec_missing path=" + sanitize(specPath) + "\n" + out;
+            return new OperationResult("observer-batch-start", false).appendTo("PROCESS_OBSERVER_BATCH_START_FAILED reason=spec_missing path=" + sanitize(specPath) + "\n" + out);
         }
         int requested = 0;
         int started = 0;
@@ -638,13 +638,13 @@ final class ProcessObserverUtil {
                     + " failed=" + failed
                     + " lifecycle=batch-watchset persistentSafety=r296\n");
         } catch (Throwable t) {
-            return "PROCESS_OBSERVER_BATCH_START_FAILED exception=" + sanitize(t.getClass().getName())
+            return new OperationResult("observer-batch-start", false).counts(requested, started, 0, failed, 0).appendTo("PROCESS_OBSERVER_BATCH_START_FAILED exception=" + sanitize(t.getClass().getName())
                     + " message=" + sanitize(t.getMessage())
                     + " requested=" + requested
                     + " started=" + started
-                    + " failed=" + failed + "\n" + out;
+                    + " failed=" + failed + "\n" + out);
         }
-        return out.toString();
+        return new OperationResult("observer-batch-start", started > 0).counts(requested, started, 0, failed, 0).identity(userId, "-").appendTo(out.toString());
     }
 
     static synchronized String stopBatchAsync(String statePath, int expectedUserId) {
@@ -661,7 +661,7 @@ final class ProcessObserverUtil {
         File state = new File(statePath == null ? "" : statePath);
         if (!state.isFile()) {
             writeBatchStopSummaryIfRequested(summaryPath, summaryTsv, 0, out);
-            return "PROCESS_OBSERVER_BATCH_STOP_MISSING path=" + sanitize(statePath) + " expectedUser=" + expectedUserId + " stateRetained=false\n" + out;
+            return new OperationResult("observer-batch-stop", false).restoration(false, false).appendTo("PROCESS_OBSERVER_BATCH_STOP_MISSING path=" + sanitize(statePath) + " expectedUser=" + expectedUserId + " stateRetained=false\n" + out);
         }
         int requested = 0;
         int stopped = 0;
@@ -669,6 +669,7 @@ final class ProcessObserverUtil {
         int missing = 0;
         int failed = 0;
         int stateDeleteFailed = 0;
+        boolean complete = false;
         try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(state), StandardCharsets.UTF_8))) {
             String line;
             while ((line = br.readLine()) != null) {
@@ -746,7 +747,7 @@ final class ProcessObserverUtil {
                     summaryRows++;
                 }
             }
-            boolean complete = requested > 0 && requested == (stopped + recovered) && missing == 0 && failed == 0 && stateDeleteFailed == 0;
+            complete = requested > 0 && requested == (stopped + recovered) && missing == 0 && failed == 0 && stateDeleteFailed == 0;
             String header = complete ? "PROCESS_OBSERVER_BATCH_STOP_OK" : "PROCESS_OBSERVER_BATCH_STOP_INCOMPLETE";
             writeBatchStopSummaryIfRequested(summaryPath, summaryTsv, summaryRows, out);
             out.insert(0, header + " version=" + VERSION
@@ -766,16 +767,16 @@ final class ProcessObserverUtil {
                     + " lifecycle=batch-watchset safeStop=r430 summaryTsv=true persistentSafety=true\n");
         } catch (Throwable t) {
             writeBatchStopSummaryIfRequested(summaryPath, summaryTsv, summaryRows, out);
-            return "PROCESS_OBSERVER_BATCH_STOP_FAILED exception=" + sanitize(t.getClass().getName())
+            return new OperationResult("observer-batch-stop", false).counts(requested, stopped, recovered, failed, missing).restoration(false, false).appendTo("PROCESS_OBSERVER_BATCH_STOP_FAILED exception=" + sanitize(t.getClass().getName())
                     + " message=" + sanitize(t.getMessage())
                     + " requested=" + requested
                     + " stopped=" + stopped
                     + " recovered=" + recovered
                     + " missing=" + missing
                     + " failed=" + failed
-                    + " summaryRows=" + summaryRows + "\n" + out;
+                    + " summaryRows=" + summaryRows + "\n" + out);
         }
-        return out.toString();
+        return new OperationResult("observer-batch-stop", complete).counts(requested, stopped, recovered, failed, missing).restoration(complete, complete).identity(expectedUserId, "-").appendTo(out.toString());
     }
 
     private static void appendBatchStopSummaryRow(StringBuilder sb, int token, String pkg, String label, String result,
@@ -2163,9 +2164,6 @@ final class ProcessObserverUtil {
                     + " action=" + normalizeAction(action));
         }
 
-        private void registerTaskStackListenerBestEffort() {
-            // r111: task stack listener is registered once globally by ensureGlobalListeners().
-        }
 
         void onTaskStackEvent(String callback, int code) {
             if (!running.get()) return;

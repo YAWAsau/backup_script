@@ -11,48 +11,12 @@ shell_language="zh-TW"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202608312000"
+backup_version="202609192032"
 # 固定用 GitHub release tag 作為線上更新比較基準；不要用每日 rebuild 日期，避免本地開發版被誤判舊版。
 speedbackup_release_tag="202607232022"
-speedbackup_patch_build="v24.20.14-7.66-1110-remote-firstfull-presize-r687-202607232022"
-# r222: 延續 r217/r219/r220 外科手術線；一次收斂 audit 剩餘低/中風險項目。
-# r222: WebDAV/SMB 只抽 UI/progress/fixed-items/filelist facade，不合併協議核心；JSON 只抽底層 helper，不改 app_details schema。
-# r222: Dex 不接管 JSON / app_details / 備份恢復規劃；C 只吃批量檔案事實操作；cgfreezerd 不動。
-# r640: 恢復批量守護預設關閉，避免桌面/系統 UI 被長時間批量凍結。
-# r641: HOME/IME 不進 wide session，但在「自身 App 恢復資料」短生命週期內仍允許 cgroup freeze；只禁止 force-stop/final kill。
-# r642: AppState fast-skip canonical v4；current SSAID 讀不到時沿用舊備份值，不再反覆 appstate_mismatch。
-# r643: WebDAV 5005/Dav NAS 顯示補強；app_details bundle 舊 seed 缺失但本輪 staging 完整覆蓋遠端 payload 時允許安全重建。
-# r644: app_details bundle audit 改為 scoped cover；遠端多出的非匹配資料夾只列診斷，不再阻擋 app 列表重建。
-# r645: Rust speedscan 編譯修正；修正 appdetails audit cast comparison 優先序，並清理同段 unused_mut warning。
-# r646: restore-session wide guard 預設恢復啟用，但過濾 HOME/IME/critical/system candidates；HOME/IME 自身恢復仍走 per-app scoped cgroup。
-# r649: prepare pipeline/restore metadata/finish cleanup convergence；WebDAV facts 與本機 prescan facts 單次共用；dir-size 8 併發刻意保持不變。
-# r650: remote-stream local read plan v2 + remote_stream_restore terminal final-pack owner；SFTPGo WebDAV 實測通過。
-# r651: app_details bundle audit/taint/orphan cleanup 診斷 mode tag 收斂，功能策略不變。
-# r652: JSON_HEALTH_BATCH_OK 改由 Rust speedscan appdetails-health-batch 批次讀欄位；本地備份後與遠端 bundle 健全度檢查同路徑。
-# r653: 遠端清單「順手檢查 app_details」直接下載根層 app_details_bundle.tar.zst，不再為 health resolve 觸發深度 classifylistrel。
-# r655: 清理 remote_fastskip_join Rust dead CLI/capability；工具替換改成 temp+rename，避免 netwatch 等執行中二進制 Text file busy；更新 zip 探測不再把 unzip short read 轉正式 stderr。
-# r656: dir-size-map v2；Rust 熱路徑減少 per-file target prefix checks，掃描 root 優先排程，tools 預設 workers 自適應 8/12/16。
-# r658: cgfreezer startup replace no-socket 時直接跳過 /proc sweep，避免 timeoutMs=1200 被 /proc cmdline 掃描放大到十幾秒。
-# r660: 修正 r659 two-phase；baseline 不足/first-full 不再 lazy per-entry，改把將備份 entries 納入同輪 Rust dir-size-map，避免退化成逐 App 同步掃描。
-# r662: 修 local remote_type=none two-phase 偵測、dirsize manifest row guard、cgfreezer exit direct-pid stop。
-# r663: 修 local remote_type=none/local 但 remote_stream=1 殘留時誤判非本地；remote_stream 只有 remote_type=webdav 時才有語義。
-# r664: 捕捉 local-fastskip-presize-plan native stdout，避免 Rust 內部摘要直接漏到前台終端。
-# r665: 遠端流式批量備份先取得 remote app_details/payload facts，再共用 r660 planner + r656/r657 dir-size-map v2 做 two-phase local dirsize filter。
-# r657: dir-size-map workerPolicy telemetry 修正、per-root timing profiler；cgfreezer startup stop 不再因 fractional sleep fallback 放大 timeout。
-# r640: AppState fast-skip equality 升級 canonical v3，忽略 installer/source attribution 這類恢復後可變診斷欄位。
-# r639: 中斷/EXIT 收尾時 cgroup freezer daemon 兜底掃描加時間上限，並過濾 socket 已消失的預期 unixsock stderr。
-# r668: prescan Rust 收斂：presize v3 直接產 cache auxiliary targets、dir-size worker 以 Rust scanRoots 決策、missApps stats/entry presence/payload archive-set 全移 Rust；清理對應 shell dead helpers。
-# r669: remote_stream local-read plan 收斂：Rust 直接產 final entry/app，移除 refine live path 與 per-row shell command-substitution cache rebuild。
-# r671: WebDAV preparedirs bounded parallel direct-MKCOL、classify Depth:1 top-level parallel；stream 完成直接顯示 WebDAV sentBytes 壓縮後實傳大小。
-# r672: preparedirs tools wrapper 收斂：batch reduce/cache seed + pidfd eventwait completion，移除逐列 awk/mkdir 與 1 秒 polling。
-# r674: full dir-size manifest/presence 改由 Rust 一次生成，移除 healthy full path 逐 App shell -d/printf；WebDAV sentBytes 大數改用 decimal-string positive 判斷。
-# r675: local presize v4 tiny-probe + AppState batch 1/2/4 bounded parallel；115 Apps 實機 correctness 通過。
-# r676: 修 speedscan capability cache 因 command substitution 子 shell 無法持久化的問題；presize wrapper 增加細分 telemetry。
-# r677: local presize bundle 單 process + stats 單 pass，移除重複 native 啟動與 18 次 awk；保留 r676 split fallback。
-# r679: AppState prescan 單次 jq reducer + 單一 awk route；移除 r678 逐行 shell split 的 246ms 固定成本；保留原子 publish/零 stable-wait/fallback。
-# r680: AppState/prepare telemetry 計時改 direct _speed_time_refresh，移除 hot path 14+2 次 $(_speed_now_ms) 子 shell；補 progress/cache/reduce/cleanup 分段。
-SPEEDBACKUP_CGROUP_FREEZER_REQUIRED_CAPS="cgroup-v2-uid-root-fallback freeze-package-single-request-v1 kill-package-live-rescan-v1 pidfd-signal-optional-v1 cgroup-kill-fastpath-v1 thaw-uid-emergency-v1 daemon-parent-control-v1 daemon-stats-v1 batch-pid-list-v1 cgroup-wchan-confirm-v1 backend-select-cache-v1"
-SPEEDBACKUP_SPEEDSCAN_REQUIRED_CAPS="speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.full_convergence_stage3.v1"
+speedbackup_patch_build="v24.20.14-7.67-1135-selftest-fuse-sync-r718-202607232022"
+SPEEDBACKUP_CGROUP_FREEZER_REQUIRED_CAPS="cgroup-v2-uid-root-fallback freeze-package-single-request-v1 freeze-package-refresh-v1 daemon-worker-error-detail-v1 subscribe-peer-close-v1 daemon-worker-admission-v1 daemon-stop-reaped-v1 kill-package-live-rescan-v1 pidfd-signal-optional-v1 cgroup-kill-fastpath-v1 thaw-uid-emergency-v1 daemon-parent-control-v1 daemon-diagnostics-batch-v1 daemon-stats-v1 batch-pid-list-v1 cgroup-wchan-confirm-v1 backend-select-cache-v1"
+SPEEDBACKUP_SPEEDSCAN_REQUIRED_CAPS="speedscan.backup_run_model.v1 speedscan.backup_plan_coverage.v1 speedscan.tree_fixup_symlink_owner.v1 speedscan.tar_source_manifest.v1 speedscan.restore_source_verify.v1 speedscan.payload_stats.v1 speedscan.restore_tree_audit_bytes.v1 speedscan.result_contract.v1 speedscan.remote_orphan_plan.v1 speedscan.restore_tree_manifest_bytes.v1 speedscan.appdetails_seed_index_strict_meta.v1 speedscan.appdetails_seed_index.v1 speedscan.backup_prescan_exact_input_batch.v1 speedscan.tar_input_hardlink_type_safe.v1 speedscan.dir_size_tar_input_map.v1 speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_audit_seed_expansion.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.full_convergence_stage3.v1"
 # mksh/管線/command substitution 情境下，$$ 不一定是目前實際 shell process。
 # WebDAV daemon owner watch 必須綁真正執行 tools.sh 的 process，否則 owner 誤判死亡會讓 daemon 每次 request 後退出。
 _SPEEDBACKUP_SELF_PID=""
@@ -131,7 +95,6 @@ _speedbackup_legacy_tmpdir_prune_base() {
 	return 0
 }
 
-
 _speedbackup_root_tmp_state_cleanup() {
 	local _reason="${1:-root-tmp-state-cleanup}" _out _rc _flat _base="${SPEEDBACKUP_TMP_BASE:-/data/local/tmp}"
 	case "$_base" in /data/local/tmp) ;; *) return 0 ;; esac
@@ -149,6 +112,9 @@ _speedbackup_root_tmp_state_cleanup() {
 		_rc=$?
 		_flat="$(tr '\n' '|' < "$_out" 2>/dev/null | cut -c1-900)"
 		_speed_debug_log "TMPDIR_ROOT_STATE_CLEANUP_CMD cmd=$_cmd reason=$_reason rc=$_rc out=$_flat" 2>/dev/null || true
+		if [[ $_cmd = cgroupFreezeCleanupStale && -d ${SPEED_DEBUG_RUN_DIR:-} ]]; then
+			cp "$_out" "$SPEED_DEBUG_RUN_DIR/cgroup_lock_metrics.log" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+		fi
 		rm -f "$_out" 2>/dev/null
 	done
 	_speedbackup_root_tmp_prune_namespaces "$_reason"
@@ -1399,6 +1365,16 @@ com.android.chrome}"\"
 #zstd 在壓縮率與速度之間較均衡
 Compression_method=${Compression_method:-zstd}
 
+#zstd 壓縮等級 1~22；20~22 會啟用 ultra，耗時與記憶體需求較高
+Zstd_level=${Zstd_level:-6}
+#一般壓縮執行緒 0~64；0=使用可用核心，預設0
+Zstd_threads=${Zstd_threads:-0}
+#已知 tar 輸入不超過下列 bytes 時採用較少執行緒（不是 --single-thread）
+Zstd_small_max_bytes=${Zstd_small_max_bytes:-1048576}
+Zstd_small_threads=${Zstd_small_threads:-1}
+#復用既有 tar-input 計畫提供 size-hint；不重新掃描，不承諾固定 stream-size
+Zstd_size_hint=${Zstd_size_hint:-1}
+
 #色彩設定 (256 色 ANSI 編號)
 #常用值: 39藍 51青 82綠 196紅 208橘 213粉 220黃 165紫
 #主色 (一般資訊, 預設亮黃)
@@ -1697,6 +1673,11 @@ _patch_conf_missing_fields() {
 		_conf_sanitize_legacy_comment_noise "$conf_path"
 		# 只補缺失項，補固定值，不再把 ${var:-default} fallback 寫入使用者 conf。
 		_conf_insert_after_key background_execution notification_enable 'notification_enable=1'
+		_conf_insert_after_key Compression_method Zstd_level 'Zstd_level=6'
+		_conf_insert_after_key Zstd_level Zstd_threads 'Zstd_threads=4'
+		_conf_insert_after_key Zstd_threads Zstd_small_max_bytes 'Zstd_small_max_bytes=1048576'
+		_conf_insert_after_key Zstd_small_max_bytes Zstd_small_threads 'Zstd_small_threads=1'
+		_conf_insert_after_key Zstd_small_threads Zstd_size_hint 'Zstd_size_hint=1'
 		_conf_insert_after_key Compression_method rgb_a 'rgb_a=220'
 		_conf_insert_after_key rgb_a rgb_b 'rgb_b=51'
 		_conf_insert_after_key rgb_b rgb_c 'rgb_c=213'
@@ -1823,8 +1804,8 @@ _webdav_status_sidecar_store() {
 _webdav_status_sidecar_load() {
 	local _code _len
 	[[ -s ${_WEBDAV_LAST_STATUS_FILE:-} ]] || return 1
-	_code="$(sed -n '1p' "$_WEBDAV_LAST_STATUS_FILE" 2>/dev/null)"
-	_len="$(sed -n '2p' "$_WEBDAV_LAST_STATUS_FILE" 2>/dev/null)"
+	_code=""; _len=""
+	{ IFS= read -r _code; IFS= read -r _len; } < "$_WEBDAV_LAST_STATUS_FILE" 2>/dev/null
 	case $_code in ''|*[!0-9]*) return 1 ;; esac
 	case $_len in -1|-2|*[!0-9]*|'') _len=0 ;; esac
 	_WEBDAV_HTTP_CODE="$_code"
@@ -1833,10 +1814,16 @@ _webdav_status_sidecar_load() {
 	return 0
 }
 
+_webdav_tmp_path_set() {
+	local _prefix="${1:-webdav_tmp}"
+	_WEBDAV_TMP_PATH_RET="$(mktemp "$TMPDIR/.${_prefix}_XXXXXX" 2>/dev/null)" && return 0
+	_speed_time_refresh
+	_WEBDAV_TMP_PATH_RET="$TMPDIR/.${_prefix}_$$_${RANDOM:-0}_${SPEEDBACKUP_NOW_SEC:-0}"
+}
+
 _webdav_tmp_path() {
-	local _prefix="${1:-webdav_tmp}" _f
-	_f="$(mktemp "$TMPDIR/.${_prefix}_XXXXXX" 2>/dev/null)" && { echo "$_f"; return 0; }
-	printf '%s/.%s_%s_%s_%s\n' "$TMPDIR" "$_prefix" "$$" "$RANDOM" "$(date +%s 2>/dev/null)"
+	_webdav_tmp_path_set "${1:-webdav_tmp}"
+	_sb_println "$_WEBDAV_TMP_PATH_RET"
 }
 
 _webdav_unixsock_relay_ready() {
@@ -1870,46 +1857,88 @@ _webdav_proc_cmdline() {
 	tr '\000' ' ' < "/proc/$_pid/cmdline" 2>/dev/null
 }
 
+_webdav_read_first_line_set() {
+	_WEBDAV_READ_LINE_RET=""
+	{ IFS= read -r _WEBDAV_READ_LINE_RET || [[ -n $_WEBDAV_READ_LINE_RET ]]; } 2>/dev/null < "$1"
+}
+
+_webdav_read_pid_set() {
+	local _line
+	_WEBDAV_READ_PID_RET=""
+	{
+		IFS= read -r _WEBDAV_READ_PID_RET || [[ -n $_WEBDAV_READ_PID_RET ]] || return 1
+		while IFS= read -r _line || [[ -n $_line ]]; do
+			[[ -z $_line ]] || return 1
+		done
+	} 2>/dev/null < "$1" || return 1
+	case $_WEBDAV_READ_PID_RET in ''|*[!0-9]*) return 1 ;; esac
+	return 0
+}
+
+_webdav_proc_starttime_set() {
+	local _pid="$1" _line _tail _skip _start _rest
+	_WEBDAV_PROC_STARTTIME_RET=""
+	case $_pid in ''|*[!0-9]*) return 1 ;; esac
+	{ IFS= read -r _line || [[ -n $_line ]]; } 2>/dev/null < "/proc/$_pid/stat" || return 1
+	# comm may contain spaces and ')': fields start after the LAST ') '.
+	case $_line in *') '*) _tail="${_line##*) }" ;; *) return 1 ;; esac
+	IFS=$' \t' read -r _skip _skip _skip _skip _skip _skip _skip _skip _skip _skip _skip _skip _skip _skip _skip _skip _skip _skip _skip _start _rest <<EOF_WEBDAV_PROC_STAT
+$_tail
+EOF_WEBDAV_PROC_STAT
+	case $_start in ''|*[!0-9]*) return 1 ;; esac
+	_WEBDAV_PROC_STARTTIME_RET="$_start"
+	return 0
+}
+
 _webdav_proc_starttime() {
-	local _pid="$1"
-	[[ -r /proc/$_pid/stat ]] || return 1
-	sed 's/^[^)]*) //' "/proc/$_pid/stat" 2>/dev/null | awk '{print $20; exit}'
+	_webdav_proc_starttime_set "$1" || return 1
+	_sb_println "$_WEBDAV_PROC_STARTTIME_RET"
+}
+
+_webdav_ready_reject() {
+	_WEBDAV_READY_REJECT_REASON="$1"
+	return 1
 }
 
 _webdav_daemon_write_state() {
 	local _pid="$1" _mode="$2" _target="$3" _start _tmp
-	_start="$(_webdav_proc_starttime "$_pid")"
+	_webdav_proc_starttime_set "$_pid" || return 1
+	_start="$_WEBDAV_PROC_STARTTIME_RET"
 	case $_pid in ''|*[!0-9]*) return 1 ;; esac
 	case $_start in ''|*[!0-9]*) return 1 ;; esac
 	_tmp="${_WEBDAV_DAEMON_STATE_FILE}.tmp.$$.$RANDOM"
-	printf '%s|%s|%s|%s|%s\n' "$_mode" "$_target" "$SPEEDBACKUP_MAIN_PID" "$_pid" "$_start" > "$_tmp" 2>/dev/null || return 1
+	_sb_println "${_mode}|${_target}|${SPEEDBACKUP_MAIN_PID}|${_pid}|${_start}" > "$_tmp" 2>/dev/null || return 1
 	chmod 0600 "$_tmp" 2>/dev/null
 	mv -f "$_tmp" "$_WEBDAV_DAEMON_STATE_FILE" 2>/dev/null || { rm -f "$_tmp" 2>/dev/null; return 1; }
 	_dex_daemon_write_pid "$_WEBDAV_DAEMON_PID_FILE" "$_pid"
 }
 
+# r701: literal pipe must be escaped in mksh parameter-removal patterns.
 _webdav_daemon_load_state() {
 	local _line _mode _target _owner _pid _start _current
-	[[ -s $_WEBDAV_DAEMON_STATE_FILE && -s $_WEBDAV_DAEMON_PID_FILE ]] || return 1
-	_line="$(sed -n '1p' "$_WEBDAV_DAEMON_STATE_FILE" 2>/dev/null)"
-	_mode="${_line%%|*}"; _line="${_line#*|}"
-	_target="${_line%%|*}"; _line="${_line#*|}"
-	_owner="${_line%%|*}"; _line="${_line#*|}"
-	_pid="${_line%%|*}"; _start="${_line#*|}"
-	case $_pid in ''|*[!0-9]*) return 1 ;; esac
-	case $_start in ''|*[!0-9]*) return 1 ;; esac
-	[[ $_owner = "$SPEEDBACKUP_MAIN_PID" ]] || return 1
-	[[ "$(cat "$_WEBDAV_DAEMON_PID_FILE" 2>/dev/null)" = "$_pid" ]] || return 1
-	kill -0 "$_pid" 2>/dev/null || return 1
-	_current="$(_webdav_proc_starttime "$_pid")"
-	[[ $_current = "$_start" ]] || return 1
+	[[ -s $_WEBDAV_DAEMON_STATE_FILE && -s $_WEBDAV_DAEMON_PID_FILE ]] || { _webdav_ready_reject state-missing; return 1; }
+	_webdav_read_first_line_set "$_WEBDAV_DAEMON_STATE_FILE" || { _webdav_ready_reject state-read; return 1; }
+	_line="$_WEBDAV_READ_LINE_RET"
+	_mode="${_line%%\|*}"; _line="${_line#*\|}"
+	_target="${_line%%\|*}"; _line="${_line#*\|}"
+	_owner="${_line%%\|*}"; _line="${_line#*\|}"
+	_pid="${_line%%\|*}"; _start="${_line#*\|}"
+	case $_pid in ''|*[!0-9]*) _webdav_ready_reject pid-invalid; return 1 ;; esac
+	case $_start in ''|*[!0-9]*) _webdav_ready_reject start-invalid; return 1 ;; esac
+	[[ $_owner = "$SPEEDBACKUP_MAIN_PID" ]] || { _webdav_ready_reject owner-mismatch; return 1; }
+	_webdav_read_pid_set "$_WEBDAV_DAEMON_PID_FILE" || { _webdav_ready_reject pidfile-read; return 1; }
+	[[ $_WEBDAV_READ_PID_RET = "$_pid" ]] || { _webdav_ready_reject pidfile-mismatch; return 1; }
+	kill -0 "$_pid" 2>/dev/null || { _webdav_ready_reject pid-dead; return 1; }
+	_webdav_proc_starttime_set "$_pid" || { _webdav_ready_reject proc-stat-read; return 1; }
+	_current="$_WEBDAV_PROC_STARTTIME_RET"
+	[[ $_current = "$_start" ]] || { _webdav_ready_reject pid-reused; return 1; }
 	# 不在 daemon fork 後立即用 /proc/<pid>/cmdline 驗證 Java 參數：
 	# child 在 exec app_process 前存在極短競態窗口，會暫時仍顯示父 shell/nohup cmdline，
 	# 導致正常 daemon 被誤判並立刻 TERM。PID + /proc starttime + owner + target 已足以防 PID reuse。
 	case $_mode in
-	unix) [[ $_target = "$_WEBDAV_DAEMON_SOCKET" ]] || return 1 ;;
-	tcp) [[ $_target = "$_WEBDAV_DAEMON_PORT" ]] || return 1 ;;
-	*) return 1 ;;
+	unix) [[ $_target = "$_WEBDAV_DAEMON_SOCKET" ]] || { _webdav_ready_reject target-mismatch; return 1; } ;;
+	tcp) [[ $_target = "$_WEBDAV_DAEMON_PORT" ]] || { _webdav_ready_reject target-mismatch; return 1; } ;;
+	*) _webdav_ready_reject mode-invalid; return 1 ;;
 	esac
 	_WEBDAV_DAEMON_MODE="$_mode"
 	_WEBDAV_DAEMON_TARGET="$_target"
@@ -1926,15 +1955,18 @@ _webdav_daemon_fast_ready_mark() {
 	[[ -n ${_WEBDAV_DAEMON_MODE:-} && -n ${_WEBDAV_DAEMON_TARGET:-} ]] || return 0
 	[[ -n ${_WEBDAV_DAEMON_PID_FILE:-} ]] || _WEBDAV_DAEMON_PID_FILE="${TMPDIR:-/data/local/tmp}/.webdav_daemon.pid"
 	[[ -n ${_WEBDAV_DAEMON_STATE_FILE:-} ]] || _WEBDAV_DAEMON_STATE_FILE="${TMPDIR:-/data/local/tmp}/.webdav_daemon.state"
-	_pid="$(cat "$_WEBDAV_DAEMON_PID_FILE" 2>/dev/null)"
+	_webdav_read_pid_set "$_WEBDAV_DAEMON_PID_FILE" || return 0
+	_pid="$_WEBDAV_READ_PID_RET"
 	case $_pid in ''|*[!0-9]*) return 0 ;; esac
-	_start="$(_webdav_proc_starttime "$_pid")"
+	_webdav_proc_starttime_set "$_pid" || return 0
+	_start="$_WEBDAV_PROC_STARTTIME_RET"
 	case $_start in ''|*[!0-9]*) return 0 ;; esac
-	_now="$(_speed_now_ms 2>/dev/null)"
+	_speed_time_refresh
+	_now="${SPEEDBACKUP_NOW_MS:-0}"
 	case $_now in ''|*[!0-9]*) return 0 ;; esac
-	_file="$(_webdav_daemon_fast_ready_cache_file)"
+	_file="${TMPDIR:-/data/local/tmp}/.webdav_daemon.ready_fast"
 	_tmp="$_file.tmp.$$.$RANDOM"
-	printf '%s|%s|%s|%s|%s\n' "$_now" "$_WEBDAV_DAEMON_MODE" "$_WEBDAV_DAEMON_TARGET" "$_pid" "$_start" > "$_tmp" 2>/dev/null || return 0
+	_sb_println "${_now}|${_WEBDAV_DAEMON_MODE}|${_WEBDAV_DAEMON_TARGET}|${_pid}|${_start}" > "$_tmp" 2>/dev/null || return 0
 	chmod 0600 "$_tmp" 2>/dev/null
 	if mv -f "$_tmp" "$_file" 2>/dev/null; then
 		_WEBDAV_DAEMON_FAST_READY_HOT=1
@@ -1948,30 +1980,34 @@ _webdav_daemon_fast_ready_ok() {
 	[[ ${SPEEDBACKUP_WEBDAV_DAEMON_READY_FAST_CACHE:-1} = 1 ]] || return 1
 	[[ -n ${_WEBDAV_DAEMON_PID_FILE:-} ]] || _WEBDAV_DAEMON_PID_FILE="${TMPDIR:-/data/local/tmp}/.webdav_daemon.pid"
 	[[ -n ${_WEBDAV_DAEMON_STATE_FILE:-} ]] || _WEBDAV_DAEMON_STATE_FILE="${TMPDIR:-/data/local/tmp}/.webdav_daemon.state"
-	_file="$(_webdav_daemon_fast_ready_cache_file)"
-	[[ -s $_file ]] || return 1
-	_line="$(sed -n '1p' "$_file" 2>/dev/null)"
-	_ts="${_line%%|*}"; _line="${_line#*|}"
-	_mode="${_line%%|*}"; _line="${_line#*|}"
-	_target="${_line%%|*}"; _line="${_line#*|}"
-	_pid="${_line%%|*}"; _start="${_line#*|}"
-	case $_ts in ''|*[!0-9]*) return 1 ;; esac
-	case $_pid in ''|*[!0-9]*) return 1 ;; esac
-	case $_start in ''|*[!0-9]*) return 1 ;; esac
+	_file="${TMPDIR:-/data/local/tmp}/.webdav_daemon.ready_fast"
+	[[ -s $_file ]] || { _webdav_ready_reject cache-missing; return 1; }
+	_webdav_read_first_line_set "$_file" || { _webdav_ready_reject cache-read; return 1; }
+	_line="$_WEBDAV_READ_LINE_RET"
+	_ts="${_line%%\|*}"; _line="${_line#*\|}"
+	_mode="${_line%%\|*}"; _line="${_line#*\|}"
+	_target="${_line%%\|*}"; _line="${_line#*\|}"
+	_pid="${_line%%\|*}"; _start="${_line#*\|}"
+	case $_ts in ''|*[!0-9]*) _webdav_ready_reject timestamp-invalid; return 1 ;; esac
+	case $_pid in ''|*[!0-9]*) _webdav_ready_reject pid-invalid; return 1 ;; esac
+	case $_start in ''|*[!0-9]*) _webdav_ready_reject start-invalid; return 1 ;; esac
 	_ttl="${SPEEDBACKUP_WEBDAV_DAEMON_READY_FAST_TTL_MS:-10000}"
 	case $_ttl in ''|*[!0-9]*|0) _ttl=10000 ;; esac
-	_now="$(_speed_now_ms 2>/dev/null)"
-	case $_now in ''|*[!0-9]*) return 1 ;; esac
+	_speed_time_refresh
+	_now="${SPEEDBACKUP_NOW_MS:-0}"
+	case $_now in ''|*[!0-9]*) _webdav_ready_reject clock-invalid; return 1 ;; esac
 	_age=$((_now - _ts))
-	[[ $_age -ge 0 && $_age -le $_ttl ]] || return 1
-	[[ "$(cat "$_WEBDAV_DAEMON_PID_FILE" 2>/dev/null)" = "$_pid" ]] || return 1
-	kill -0 "$_pid" 2>/dev/null || return 1
-	_current="$(_webdav_proc_starttime "$_pid")"
-	[[ $_current = "$_start" ]] || return 1
+	[[ $_age -ge 0 && $_age -le $_ttl ]] || { _webdav_ready_reject ttl-expired; return 1; }
+	_webdav_read_pid_set "$_WEBDAV_DAEMON_PID_FILE" || { _webdav_ready_reject pidfile-read; return 1; }
+	[[ $_WEBDAV_READ_PID_RET = "$_pid" ]] || { _webdav_ready_reject pidfile-mismatch; return 1; }
+	kill -0 "$_pid" 2>/dev/null || { _webdav_ready_reject pid-dead; return 1; }
+	_webdav_proc_starttime_set "$_pid" || { _webdav_ready_reject proc-stat-read; return 1; }
+	_current="$_WEBDAV_PROC_STARTTIME_RET"
+	[[ $_current = "$_start" ]] || { _webdav_ready_reject pid-reused; return 1; }
 	case $_mode in
-	unix) [[ $_target = "$_WEBDAV_DAEMON_SOCKET" && -S $_target ]] || return 1 ;;
-	tcp) [[ $_target = "$_WEBDAV_DAEMON_PORT" ]] || return 1 ;;
-	*) return 1 ;;
+	unix) [[ $_target = "$_WEBDAV_DAEMON_SOCKET" && -S $_target ]] || { _webdav_ready_reject socket-mismatch-or-missing; return 1; } ;;
+	tcp) [[ $_target = "$_WEBDAV_DAEMON_PORT" ]] || { _webdav_ready_reject target-mismatch; return 1; } ;;
+	*) _webdav_ready_reject mode-invalid; return 1 ;;
 	esac
 	_WEBDAV_DAEMON_MODE="$_mode"
 	_WEBDAV_DAEMON_TARGET="$_target"
@@ -2014,7 +2050,8 @@ _webdav_daemon_cmdline_fast_ready_ok() {
 	fi
 	[[ -n ${_WEBDAV_DAEMON_PID_FILE:-} ]] || _WEBDAV_DAEMON_PID_FILE="${TMPDIR:-/data/local/tmp}/.webdav_daemon.pid"
 	[[ -n ${_WEBDAV_DAEMON_STATE_FILE:-} ]] || _WEBDAV_DAEMON_STATE_FILE="${TMPDIR:-/data/local/tmp}/.webdav_daemon.state"
-	_pid="$(cat "$_WEBDAV_DAEMON_PID_FILE" 2>/dev/null)"
+	_webdav_read_pid_set "$_WEBDAV_DAEMON_PID_FILE" || return 1
+	_pid="$_WEBDAV_READ_PID_RET"
 	case $_pid in ''|*[!0-9]*) return 1 ;; esac
 	kill -0 "$_pid" 2>/dev/null || return 1
 	_cmdline="$(_webdav_proc_cmdline "$_pid")"
@@ -2072,7 +2109,6 @@ _webdav_daemon_transport_alive() {
 	local _pid _line _mode _target
 	[[ -n $_WEBDAV_DAEMON_PID_FILE ]] || _WEBDAV_DAEMON_PID_FILE="$TMPDIR/.webdav_daemon.pid"
 	[[ -n $_WEBDAV_DAEMON_STATE_FILE ]] || _WEBDAV_DAEMON_STATE_FILE="$TMPDIR/.webdav_daemon.state"
-
 	# AF_UNIX endpoint 存在時優先直接 probe；即使 state owner/starttime 因 shell identity
 	# 驗證失敗，只要 socket 真能完成 daemon protocol，就視為可 reuse。
 	if [[ -S $_WEBDAV_DAEMON_SOCKET ]]; then
@@ -2080,13 +2116,12 @@ _webdav_daemon_transport_alive() {
 		_WEBDAV_DAEMON_TARGET="$_WEBDAV_DAEMON_SOCKET"
 		_webdav_daemon_transport_probe && return 0
 	fi
-
 	# 沒有可用 Unix endpoint 時，從 state 還原 TCP mode 再做實際 probe。
 	if [[ -s $_WEBDAV_DAEMON_STATE_FILE ]]; then
 		_line="$(sed -n '1p' "$_WEBDAV_DAEMON_STATE_FILE" 2>/dev/null)"
-		_mode="${_line%%|*}"
-		_line="${_line#*|}"
-		_target="${_line%%|*}"
+		_mode="${_line%%\|*}"
+		_line="${_line#*\|}"
+		_target="${_line%%\|*}"
 		case $_mode in
 		tcp)
 			[[ $_target = "$_WEBDAV_DAEMON_PORT" ]] || return 1
@@ -2096,7 +2131,6 @@ _webdav_daemon_transport_alive() {
 			;;
 		esac
 	fi
-
 	# probe 不可用/失敗時只作保守失敗，不把未知 PID 當成可重用 daemon。
 	return 1
 }
@@ -2161,7 +2195,6 @@ _webdav_daemon_stop() {
 	local _pid="" _i=0 _can_kill=0 _cmdline=""
 	[[ -n $_WEBDAV_DAEMON_PID_FILE ]] || _WEBDAV_DAEMON_PID_FILE="$TMPDIR/.webdav_daemon.pid"
 	[[ -n $_WEBDAV_DAEMON_STATE_FILE ]] || _WEBDAV_DAEMON_STATE_FILE="$TMPDIR/.webdav_daemon.state"
-
 	# 優先使用嚴格 state 驗證，避免 stale pid file 遇到 PID reuse 時誤殺其他程序。
 	if _webdav_daemon_load_state; then
 		_pid="$(cat "$_WEBDAV_DAEMON_PID_FILE" 2>/dev/null)"
@@ -2178,7 +2211,6 @@ _webdav_daemon_stop() {
 			esac
 		fi
 	fi
-
 	if [[ $_can_kill = 1 && -n $_pid ]] && kill -0 "$_pid" 2>/dev/null; then
 		_event_terminate_pid "$_pid" webdav_daemon_stop
 	fi
@@ -2260,6 +2292,40 @@ _webdav_daemon_start_mode() {
 	return 1
 }
 
+_backup_phase_timed() {
+	local _sb_phase="$1" _sb_phase_begin _sb_phase_end _sb_phase_rc
+	shift
+	_backup_perf_clock; _sb_phase_begin="$_BACKUP_PERF_MS"
+	"$@"
+	_sb_phase_rc=$?
+	_backup_perf_clock; _sb_phase_end="$_BACKUP_PERF_MS"
+	_speed_debug_log "BACKUP_PHASE_TIMING phase=$_sb_phase rc=$_sb_phase_rc elapsedMs=$((_sb_phase_end - _sb_phase_begin)) clock=$_BACKUP_PERF_CLOCK mode=r700"
+	return "$_sb_phase_rc"
+}
+
+_webdav_daemon_fast_ready_select() {
+	local _begin _phase _end _cache_ms=0 _state_ms=0 _cmdline_ms=0 _cache_reason=untried _state_reason=untried _cmdline_reason=untried _source=none _rc=1
+	_backup_perf_clock; _begin="$_BACKUP_PERF_MS"; _phase="$_begin"
+	_WEBDAV_READY_REJECT_REASON=cache-disabled
+	if _webdav_daemon_fast_ready_ok; then _source=pid-starttime-cache; _rc=0; else _cache_reason="$_WEBDAV_READY_REJECT_REASON"; fi
+	_backup_perf_clock; _end="$_BACKUP_PERF_MS"; _cache_ms=$((_end - _phase)); _phase="$_end"
+	if [[ $_rc != 0 ]]; then
+		_WEBDAV_READY_REJECT_REASON=state-disabled-or-socket-missing
+		if _webdav_daemon_state_fast_ready_ok; then _source=strict-state-pid-starttime; _rc=0; else _state_reason="$_WEBDAV_READY_REJECT_REASON"; fi
+		_backup_perf_clock; _end="$_BACKUP_PERF_MS"; _state_ms=$((_end - _phase)); _phase="$_end"
+	fi
+	if [[ $_rc != 0 ]]; then
+		_WEBDAV_READY_REJECT_REASON=cmdline-mismatch-or-socket-missing
+		if _webdav_daemon_cmdline_fast_ready_ok; then _source=cmdline-pid-socket; _rc=0; else _cmdline_reason="$_WEBDAV_READY_REJECT_REASON"; fi
+		_backup_perf_clock; _end="$_BACKUP_PERF_MS"; _cmdline_ms=$((_end - _phase))
+	fi
+	_speed_debug_log "WEBDAV_DAEMON_READY_SELECT rc=$_rc source=$_source cacheMs=$_cache_ms stateMs=$_state_ms cmdlineMs=$_cmdline_ms totalMs=$((_end - _begin)) cacheMiss=$_cache_reason stateMiss=$_state_reason cmdlineMiss=$_cmdline_reason clock=$_BACKUP_PERF_CLOCK mode=r700"
+	if [[ $_rc = 0 ]]; then
+		_speed_debug_log "WEBDAV_DAEMON_FAST_READY_HIT ageMs=${_WEBDAV_DAEMON_FAST_READY_AGE_MS:-0} mode=$_WEBDAV_DAEMON_MODE target=$_WEBDAV_DAEMON_TARGET source=$_source-r700"
+	fi
+	return "$_rc"
+}
+
 _webdav_daemon_ensure() {
 	_WEBDAV_DAEMON_FAST_READY_HOT=0
 	_WEBDAV_DAEMON_PID_FILE="$TMPDIR/.webdav_daemon.pid"
@@ -2272,27 +2338,14 @@ _webdav_daemon_ensure() {
 		return 1
 	fi
 	local _diag="${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/webdav_daemon_ensure.log" _have_lock=0
-	if _webdav_daemon_fast_ready_ok; then
-		_speed_debug_log "WEBDAV_DAEMON_FAST_READY_HIT ageMs=${_WEBDAV_DAEMON_FAST_READY_AGE_MS:-0} ttlMs=${_WEBDAV_DAEMON_FAST_READY_TTL_MS:-0} mode=$_WEBDAV_DAEMON_MODE target=$_WEBDAV_DAEMON_TARGET source=pid-starttime-cache-r286"
-		return 0
-	fi
-	if _webdav_daemon_state_fast_ready_ok; then
-		_speed_debug_log "WEBDAV_DAEMON_FAST_READY_HIT ageMs=state ttlMs=${SPEEDBACKUP_WEBDAV_DAEMON_READY_FAST_TTL_MS:-10000} mode=$_WEBDAV_DAEMON_MODE target=$_WEBDAV_DAEMON_TARGET source=strict-state-pid-starttime-r286"
-		return 0
-	fi
-	if _webdav_daemon_cmdline_fast_ready_ok; then
-		_speed_debug_log "WEBDAV_DAEMON_FAST_READY_HIT ageMs=cmdline ttlMs=${SPEEDBACKUP_WEBDAV_DAEMON_READY_FAST_TTL_MS:-10000} mode=$_WEBDAV_DAEMON_MODE target=$_WEBDAV_DAEMON_TARGET source=cmdline-pid-socket-r286"
-		return 0
-	fi
+	_webdav_daemon_fast_ready_select && return 0
 	_WEBDAV_DAEMON_READY=0
-
 	if _webdav_daemon_transport_alive; then
 		_WEBDAV_DAEMON_READY=1
 		_webdav_daemon_fast_ready_mark
 		echo "$(date '+%H:%M:%S') reuse pid=$(cat "$_WEBDAV_DAEMON_PID_FILE" 2>/dev/null) owner=$SPEEDBACKUP_MAIN_PID mode=$_WEBDAV_DAEMON_MODE target=$_WEBDAV_DAEMON_TARGET" >> "$_diag" 2>/dev/null
 		return 0
 	fi
-
 	# 多個 command substitution / 並行遠端預掃可能同時第一次呼叫 _webdav_dex。
 	# 467/r18: start-lock 競態處理改走共用 helper；WebDAV 自己的 transport/state/probe 仍保留。
 	if _dex_daemon_acquire_start_lock "$_WEBDAV_DAEMON_START_LOCK" _webdav_daemon_transport_alive webdav 80; then
@@ -2306,7 +2359,6 @@ _webdav_daemon_ensure() {
 		echo "$(date '+%H:%M:%S') FAIL cannot acquire daemon start lock" >> "$_diag" 2>/dev/null
 		return 1
 	fi
-
 	# 拿到鎖後再次確認，避免上一個 starter 已經在鎖交接前完成。
 	if _webdav_daemon_transport_alive; then
 		_WEBDAV_DAEMON_READY=1
@@ -2315,9 +2367,7 @@ _webdav_daemon_ensure() {
 		echo "$(date '+%H:%M:%S') reuse_after_lock pid=$(cat "$_WEBDAV_DAEMON_PID_FILE" 2>/dev/null) mode=$_WEBDAV_DAEMON_MODE target=$_WEBDAV_DAEMON_TARGET" >> "$_diag" 2>/dev/null
 		return 0
 	fi
-
 	_webdav_daemon_stop
-
 	# 只有 unixsock v2 stream relay 可用時才嘗試 AF_UNIX；舊單行 unixsock 不相容。
 	if _webdav_unixsock_relay_ready; then
 		if _webdav_daemon_start_mode unix "$_diag"; then
@@ -2327,7 +2377,6 @@ _webdav_daemon_ensure() {
 		fi
 		echo "$(date '+%H:%M:%S') WARN unix daemon unavailable, fallback tcp" >> "$_diag" 2>/dev/null
 	fi
-
 	if _webdav_unixsock_relay_ready; then
 		if _webdav_daemon_start_mode tcp "$_diag"; then
 			_webdav_daemon_fast_ready_mark
@@ -2343,8 +2392,8 @@ _webdav_daemon_ensure() {
 _webdav_parse_daemon_status() {
 	local _status="$1" _code_line _len_line
 	[[ -s $_status ]] || return 1
-	_code_line="$(sed -n '1p' "$_status" 2>/dev/null)"
-	_len_line="$(sed -n '2p' "$_status" 2>/dev/null)"
+	_code_line=""; _len_line=""
+	{ IFS= read -r _code_line; IFS= read -r _len_line; } < "$_status" 2>/dev/null
 	_WEBDAV_HTTP_CODE="${_code_line#HTTP }"
 	case $_WEBDAV_HTTP_CODE in *[!0-9]*|'') _WEBDAV_HTTP_CODE=0 ;; esac
 	case $_len_line in
@@ -2418,21 +2467,26 @@ _webdav_daemon_call() {
 	case $_cmd in putstdinmanagedrel|putstdinchunkedrel|putbatchrel|managedbatchputrelwithparents|ensuredirsbatchrel|preparedirsplanrel|downloadmanifestrel|verifyuploadmaprel|getstdoutrel) _max_try=1 ;; esac
 	_diag="${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/webdav_daemon_call.log"
 	while [[ $_try -lt $_max_try ]]; do
-		_status="$(_webdav_tmp_path webdav_daemon_status)"
-		_relay_err="$(_webdav_tmp_path webdav_relay_err)"
+		_webdav_tmp_path_set webdav_daemon_status; _status="$_WEBDAV_TMP_PATH_RET"
+		_webdav_tmp_path_set webdav_relay_err; _relay_err="$_WEBDAV_TMP_PATH_RET"
 		rm -f "$_status" "$_relay_err" 2>/dev/null
 		{
-			printf '%s\n%s\n%s\n%s\n%s\n%s\n' "$_cmd" "$_user" "$_pass" "$_url" "$_extra" "$_body_len"
+			_sb_println "$_cmd"
+			_sb_println "$_user"
+			_sb_println "$_pass"
+			_sb_println "$_url"
+			_sb_println "$_extra"
+			_sb_println "$_body_len"
 			if [[ $_body_len = -1 ]]; then cat; fi
 		} | _webdav_transport_relay "$_status" 2>"$_relay_err"
 		_relay_rc=$?
 		_status_rc=1
 		if [[ $_relay_rc = 0 ]]; then
 			if [[ ${_WEBDAV_STATUS_DIRECT_ONLY:-0} = 1 ]]; then
-				_status_started_ms="$(_speed_now_ms 2>/dev/null)"; case $_status_started_ms in ''|*[!0-9]*) _status_started_ms=0 ;; esac
+				_speed_time_refresh; _status_started_ms="${SPEEDBACKUP_NOW_MS:-0}"; case $_status_started_ms in ''|*[!0-9]*) _status_started_ms=0 ;; esac
 				_webdav_parse_daemon_status "$_status"
 				_status_rc=$?
-				_status_ended_ms="$(_speed_now_ms 2>/dev/null)"; case $_status_ended_ms in ''|*[!0-9]*) _status_ended_ms=$_status_started_ms ;; esac
+				_speed_time_refresh; _status_ended_ms="${SPEEDBACKUP_NOW_MS:-0}"; case $_status_ended_ms in ''|*[!0-9]*) _status_ended_ms=$_status_started_ms ;; esac
 				_WEBDAV_LAST_STATUS_PARSE_MS=$((_status_ended_ms - _status_started_ms)); [[ $_WEBDAV_LAST_STATUS_PARSE_MS -lt 0 ]] && _WEBDAV_LAST_STATUS_PARSE_MS=0
 			else
 				_webdav_parse_daemon_status "$_status"
@@ -2450,7 +2504,8 @@ _webdav_daemon_call() {
 				fi
 				;;
 			esac
-			echo "$(date '+%H:%M:%S') cmd=$_cmd mode=$_WEBDAV_DAEMON_MODE relay_rc=$_relay_rc http=$_WEBDAV_HTTP_CODE body_len=${_WEBDAV_BODY_LENGTH:-0} try=$_try" >> "$_diag" 2>/dev/null
+			_speed_time_refresh
+			_sb_println "$SPEEDBACKUP_NOW_HMS cmd=$_cmd mode=$_WEBDAV_DAEMON_MODE relay_rc=$_relay_rc http=$_WEBDAV_HTTP_CODE body_len=${_WEBDAV_BODY_LENGTH:-0} try=$_try" >> "$_diag" 2>/dev/null
 			rm -f "$_status" "$_relay_err" 2>/dev/null
 			case $_WEBDAV_HTTP_CODE in 2[0-9][0-9]) return 0 ;; *) return 1 ;; esac
 		fi
@@ -2511,11 +2566,11 @@ _webdav_dex() {
 		return 126
 	fi
 	if [[ $_trace_timing = 1 ]]; then
-		_ensure_started_ms="$(_speed_now_ms 2>/dev/null)"; case $_ensure_started_ms in ''|*[!0-9]*) _ensure_started_ms=0 ;; esac
+		_speed_time_refresh; _ensure_started_ms="${SPEEDBACKUP_NOW_MS:-0}"; case $_ensure_started_ms in ''|*[!0-9]*) _ensure_started_ms=0 ;; esac
 	fi
 	if ! _webdav_daemon_ensure; then
 		if [[ $_trace_timing = 1 ]]; then
-			_ensure_ended_ms="$(_speed_now_ms 2>/dev/null)"; case $_ensure_ended_ms in ''|*[!0-9]*) _ensure_ended_ms=$_ensure_started_ms ;; esac
+			_speed_time_refresh; _ensure_ended_ms="${SPEEDBACKUP_NOW_MS:-0}"; case $_ensure_ended_ms in ''|*[!0-9]*) _ensure_ended_ms=$_ensure_started_ms ;; esac
 			_WEBDAV_LAST_DAEMON_ENSURE_MS=$((_ensure_ended_ms - _ensure_started_ms)); [[ $_WEBDAV_LAST_DAEMON_ENSURE_MS -lt 0 ]] && _WEBDAV_LAST_DAEMON_ENSURE_MS=0
 		fi
 		_WEBDAV_HTTP_CODE=0
@@ -2524,14 +2579,14 @@ _webdav_dex() {
 		return 1
 	fi
 	if [[ $_trace_timing = 1 ]]; then
-		_ensure_ended_ms="$(_speed_now_ms 2>/dev/null)"; case $_ensure_ended_ms in ''|*[!0-9]*) _ensure_ended_ms=$_ensure_started_ms ;; esac
+		_speed_time_refresh; _ensure_ended_ms="${SPEEDBACKUP_NOW_MS:-0}"; case $_ensure_ended_ms in ''|*[!0-9]*) _ensure_ended_ms=$_ensure_started_ms ;; esac
 		_WEBDAV_LAST_DAEMON_ENSURE_MS=$((_ensure_ended_ms - _ensure_started_ms)); [[ $_WEBDAV_LAST_DAEMON_ENSURE_MS -lt 0 ]] && _WEBDAV_LAST_DAEMON_ENSURE_MS=0
-		_relay_started_ms="$(_speed_now_ms 2>/dev/null)"; case $_relay_started_ms in ''|*[!0-9]*) _relay_started_ms=0 ;; esac
+		_speed_time_refresh; _relay_started_ms="${SPEEDBACKUP_NOW_MS:-0}"; case $_relay_started_ms in ''|*[!0-9]*) _relay_started_ms=0 ;; esac
 	fi
 	_webdav_daemon_call "$@"
 	local _daemon_rc=$?
 	if [[ $_trace_timing = 1 ]]; then
-		_relay_ended_ms="$(_speed_now_ms 2>/dev/null)"; case $_relay_ended_ms in ''|*[!0-9]*) _relay_ended_ms=$_relay_started_ms ;; esac
+		_speed_time_refresh; _relay_ended_ms="${SPEEDBACKUP_NOW_MS:-0}"; case $_relay_ended_ms in ''|*[!0-9]*) _relay_ended_ms=$_relay_started_ms ;; esac
 		_WEBDAV_LAST_RELAY_CALL_MS=$((_relay_ended_ms - _relay_started_ms)); [[ $_WEBDAV_LAST_RELAY_CALL_MS -lt 0 ]] && _WEBDAV_LAST_RELAY_CALL_MS=0
 	fi
 	if [[ $_daemon_rc = 125 ]]; then
@@ -2581,7 +2636,7 @@ _webdav_prepare_dirs_result_reduce() {
 	: > "$_meta"
 	: > "$_summary_file"
 	awk -F '\t' -v base="$_base" -v cache="$_WEBDAV_MKCOL_CACHE_FILE" -v meta="$_meta" -v summaryFile="$_summary_file" '
-		BEGIN { existing=0; created=0; ok=0; failed=0; workers=0; dexElapsed=0; cacheRows=0; summary="" }
+		BEGIN { existing=0; created=0; ok=0; failed=0; workers=0; dexElapsed=0; cacheRows=0; rootList=0; rootParse=0; createMs=0; timingScope="legacy-create-only"; summary="" }
 		$1=="EXISTING" || $1=="CREATED" || $1=="OK" {
 			rel=$2
 			if (rel != "") { print base "\t" rel >> cache; cacheRows++ }
@@ -2596,10 +2651,14 @@ _webdav_prepare_dirs_result_reduce() {
 			for (i=2; i<=NF; i++) {
 				if ($i ~ /^workers=[0-9]+$/) { split($i,a,"="); workers=a[2]+0 }
 				else if ($i ~ /^elapsedMs=[0-9]+$/) { split($i,a,"="); dexElapsed=a[2]+0 }
+				else if ($i ~ /^totalMs=[0-9]+$/) { split($i,a,"="); dexElapsed=a[2]+0; timingScope="full" }
+				else if ($i ~ /^rootListMs=[0-9]+$/) { split($i,a,"="); rootList=a[2]+0 }
+				else if ($i ~ /^rootParseMs=[0-9]+$/) { split($i,a,"="); rootParse=a[2]+0 }
+				else if ($i ~ /^createMs=[0-9]+$/) { split($i,a,"="); createMs=a[2]+0 }
 			}
 		}
 		END {
-			print existing "\t" created "\t" ok "\t" failed "\t" workers "\t" dexElapsed "\t" cacheRows > meta
+			print existing "\t" created "\t" ok "\t" failed "\t" workers "\t" dexElapsed "\t" cacheRows "\t" rootList "\t" rootParse "\t" createMs "\t" timingScope > meta
 			if (summary != "") print summary > summaryFile
 		}
 	' "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -2680,9 +2739,12 @@ _webdav_stream_prepare_app_dirs_from_txt() {
 	local _started_ms _ended_ms _elapsed_ms _workers=0 _dex_elapsed_ms=0 _worker_elapsed_ms=0 _wrapper_overhead_ms=0 _wait_started_ms _wait_elapsed_ms=0 _reduce_started_ms _reduce_elapsed_ms=0 _cache_rows=0
 	local _daemon_ensure_ms=0 _relay_call_ms=0 _status_ms=0 _debug_flush_ms=0 _relay_transport_overhead_ms=0
 	local _reduce_meta _summary_file _slice_ms _slice_rc _wait_mode _now_ms _elapsed_wait_ms _remain_ms _worker_started_ms _worker_ended_ms _exit_event_seen=0
+	local _full_started_ms _manifest_ended_ms _manifest_build_ms _full_elapsed_ms _root_list_ms=0 _root_parse_ms=0 _create_ms=0 _dex_timing_scope=legacy-create-only
+	_backup_perf_clock; _full_started_ms="$_BACKUP_PERF_MS"
 	_subdir="${_BACKUP_DIRNAME_CACHED:-$(get_backup_dirname)}"
 	_base="${remote_url%/}"
 	: > "$_manifest"
+	_total=0
 	while IFS= read -r _line; do
 		case $_line in ''|\#*|＃*) continue ;; esac
 		_name="${_line%% *}"
@@ -2692,14 +2754,17 @@ _webdav_stream_prepare_app_dirs_from_txt() {
 		\!*) _name="${_name#!}" ;;
 		！*) _name="${_name#！}" ;;
 		esac
-		_name="$(_backup_path_safe_name "$_name" "$_pkg")"
+		_backup_path_safe_name_set "$_name" "$_pkg"
+		_name="$_BACKUP_PATH_SAFE_NAME_RET"
 		[[ -n $_name ]] || continue
 		_rel="$_subdir/$_name"
-		printf '%s\n' "$_rel" >> "$_manifest"
+		_sb_println "$_rel" >> "$_manifest"
+		_total=$((_total + 1))
 	done <<EOF_WEBDAV_STREAM_APP_DIRS
 $txt
 EOF_WEBDAV_STREAM_APP_DIRS
-	_total="$(awk 'NF{n++} END{print n+0}' "$_manifest" 2>/dev/null)"
+	_backup_perf_clock; _manifest_ended_ms="$_BACKUP_PERF_MS"
+	_manifest_build_ms=$((_manifest_ended_ms - _full_started_ms))
 	case $_total in ''|*[!0-9]*) _total=0 ;; esac
 	[[ $_total -gt 0 ]] || { _speed_debug_log "WEBDAV_STREAM_APP_DIR_PRECREATE_SKIP reason=empty mode=r370"; rm -f "$_manifest" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; return 0; }
 	_out="$TMPDIR/.webdav_prepare_app_dirs_out_$$_$RANDOM.tsv"
@@ -2826,7 +2891,7 @@ EOF_WEBDAV_STREAM_APP_DIRS
 			_rc=1
 			_speed_debug_log "WEBDAV_STREAM_APP_DIR_PRECREATE_REDUCE_FAIL total=$_total action=fatal-no-partial-cache mode=r673"
 		else
-			IFS=$'\t' read -r _existing _created _ok _failed _workers _dex_elapsed_ms _cache_rows < "$_reduce_meta" 2>/dev/null || true
+			IFS=$'\t' read -r _existing _created _ok _failed _workers _dex_elapsed_ms _cache_rows _root_list_ms _root_parse_ms _create_ms _dex_timing_scope < "$_reduce_meta" 2>/dev/null || true
 			IFS= read -r _summary < "$_summary_file" 2>/dev/null || true
 		fi
 		_now_ms="$(_speed_now_ms)"; case $_now_ms in ''|*[!0-9]*) _now_ms=$_reduce_started_ms ;; esac
@@ -2852,7 +2917,8 @@ EOF_WEBDAV_STREAM_APP_DIRS
 		fi
 		_ended_ms="$(_speed_now_ms)"; case $_ended_ms in ''|*[!0-9]*) _ended_ms=$_started_ms ;; esac
 		_elapsed_ms=$((_ended_ms - _started_ms)); [[ $_elapsed_ms -lt 0 ]] && _elapsed_ms=0
-		_speed_debug_log "WEBDAV_STREAM_APP_DIR_PRECREATE_OK policy=dex-prepare-dirs-plan-parallel total=$_total existing=$_existing created=$_created ok=$_ok failed=$_failed workers=$_workers dexElapsedMs=$_dex_elapsed_ms workerElapsedMs=$_worker_elapsed_ms wrapperOverheadMs=$_wrapper_overhead_ms daemonEnsureMs=$_daemon_ensure_ms relayCallMs=$_relay_call_ms statusMs=$_status_ms relayTransportOverheadMs=$_relay_transport_overhead_ms debugFlushMs=$_debug_flush_ms waitElapsedMs=$_wait_elapsed_ms reduceElapsedMs=$_reduce_elapsed_ms cacheRows=$_cache_rows totalElapsedMs=$_elapsed_ms waitMode=$_wait_mode exitEventSeen=$_exit_event_seen sliceMs=$_slice_ms visible=$_visible_started http=${_WEBDAV_HTTP_CODE:-0} summary=$(_speed_debug_kv "$(_speed_debug_safe "$_summary")") mode=r673"
+		_backup_perf_clock; _full_elapsed_ms=$((_BACKUP_PERF_MS - _full_started_ms))
+		_speed_debug_log "WEBDAV_STREAM_APP_DIR_PRECREATE_OK policy=dex-prepare-dirs-plan-parallel total=$_total existing=$_existing created=$_created ok=$_ok failed=$_failed workers=$_workers dexElapsedMs=$_dex_elapsed_ms dexTimingScope=$_dex_timing_scope rootListMs=$_root_list_ms rootParseMs=$_root_parse_ms createMs=$_create_ms manifestBuildMs=$_manifest_build_ms fullElapsedMs=$_full_elapsed_ms workerElapsedMs=$_worker_elapsed_ms workerNonDexMs=$_wrapper_overhead_ms daemonEnsureMs=$_daemon_ensure_ms relayCallMs=$_relay_call_ms statusMs=$_status_ms relayUnattributedMs=$_relay_transport_overhead_ms debugFlushMs=$_debug_flush_ms waitElapsedMs=$_wait_elapsed_ms reduceElapsedMs=$_reduce_elapsed_ms cacheRows=$_cache_rows totalElapsedMs=$_elapsed_ms waitMode=$_wait_mode exitEventSeen=$_exit_event_seen sliceMs=$_slice_ms visible=$_visible_started http=${_WEBDAV_HTTP_CODE:-0} summary=$(_speed_debug_kv "$(_speed_debug_safe "$_summary")") mode=r673"
 		if [[ $_existing -gt 0 && $_created = 0 ]]; then
 			_speed_debug_log "WEBDAV_SERVER_DIR_CACHE_NOTE root=$_subdir total=$_total existing=$_existing created=$_created source=dex-propfind hint=rclone_serve_webdav_dir_cache_if_deleted_outside_webdav recommended=server_dir_cache_time_or_vfs_forget mode=r370"
 		fi
@@ -2863,6 +2929,27 @@ EOF_WEBDAV_STREAM_APP_DIRS
 	_speed_debug_log "WEBDAV_STREAM_APP_DIR_PRECREATE_FAIL policy=dex-prepare-dirs-plan-inline rc=$_rc http=${_WEBDAV_HTTP_CODE:-0} total=$_total waitMode=$_wait_mode waitElapsedMs=$_wait_elapsed_ms reduceElapsedMs=$_reduce_elapsed_ms action=fatal-no-shell-dir-plan-fallback mode=r673"
 	rm -f "$_manifest" "$_out" "$_err" "$_progress" "$_done" "$_reduce_meta" "$_summary_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	return "$_rc"
+}
+
+_webdav_base_url_has_configured_path() {
+	# r697: root-only WebDAV URLs do not need an ensurebaserel daemon round-trip.
+	# Nested configured bases (/dav/user, /webdav/root, ...) still use the Dex
+	# ensureBaseRel state machine so parent-chain MKCOL and verification remain intact.
+	local _u="$1" _rest _path
+	case $_u in
+	http://*) _rest="${_u#http://}" ;;
+	https://*) _rest="${_u#https://}" ;;
+	*) return 1 ;;
+	esac
+	case $_rest in
+	*/*) _path="${_rest#*/}" ;;
+	*) return 1 ;;
+	esac
+	_path="${_path%%\?*}"
+	_path="${_path%%\#*}"
+	while [[ ${_path#/} != "$_path" ]]; do _path="${_path#/}"; done
+	while [[ ${_path%/} != "$_path" ]]; do _path="${_path%/}"; done
+	[[ -n $_path ]]
 }
 
 _webdav_base_path_preflight_autocreate() {
@@ -3011,6 +3098,14 @@ _webdav_profile_display_once() {
 	esac
 	_server_kv="$(_speed_debug_kv "$(_speed_debug_safe "$_server")")"
 	_provider_kv="$(_speed_debug_kv "$(_speed_debug_safe "$_provider")")"
+	if [[ ${_WEBDAV_PROFILE_KIND:-} = rclone ]]; then
+		case ";${_WEBDAV_PROFILE_FEATURE_SUMMARY:-};" in
+		*"move=1"*|*"atomic=1"*)
+			echoRgb "rclone WebDAV 提示: atomic MOVE 可正常使用；伺服器可能在 MOVE 成功後記錄 Failed to stat node（來源已被移走），此為 server-log 雜訊" "3"
+			_speed_debug_log "WEBDAV_KNOWN_SERVER_QUIRK vendor=rclone quirk=move-source-post-stat-enoent impact=server-log-only action=keep-atomic-publish featureSource=${_WEBDAV_PROFILE_FEATURE_SOURCE:-unknown} features=$(_speed_debug_kv "${_WEBDAV_PROFILE_FEATURE_SUMMARY:-unknown}") mode=r695"
+			;;
+		esac
+	fi
 	_speed_debug_log "WEBDAV_SERVER_PROFILE_VISIBLE context=$_context kind=${_WEBDAV_PROFILE_KIND:-generic} serverFamily=$_family server=$_server_kv providerId=${_WEBDAV_PROFILE_PROVIDER_ID:-none} provider=$_provider_kv providerRegion=${_WEBDAV_PROFILE_PROVIDER_REGION:-none} providerClass=${_WEBDAV_PROFILE_PROVIDER_CLASS:-none} providerHintSource=$_source providerHintConfidence=$_confidence behavior=$_behavior alistVersion=${_WEBDAV_PROFILE_ALIST_VERSION:-unknown} alistPathTraversalRisk=${_WEBDAV_PROFILE_ALIST_PATH_TRAVERSAL_RISK:-not_applicable} mode=r613"
 	_WEBDAV_PROFILE_DISPLAYED=1
 	_WEBDAV_PROFILE_DISPLAY_KEY="$_key"
@@ -3026,30 +3121,67 @@ _webdav_options_preflight() {
 	_rc=$?
 	_webdav_status_sidecar_load || true
 	_http="${_WEBDAV_HTTP_CODE:-0}"
-	_state="$(printf '%s\n' "$_out" | awk -F= '$1=="state"{print substr($0,index($0,"=")+1); exit}')"
-	_missing="$(printf '%s\n' "$_out" | awk -F= '$1=="missing"{print substr($0,index($0,"=")+1); exit}')"
-	_kind="$(printf '%s\n' "$_out" | awk -F= '$1=="backendKind"{print substr($0,index($0,"=")+1); exit}')"
-	_family="$(printf '%s\n' "$_out" | awk -F= '$1=="serverFamily"{print substr($0,index($0,"=")+1); exit}')"
-	_display="$(printf '%s\n' "$_out" | awk -F= '$1=="serverDisplay"{print substr($0,index($0,"=")+1); exit}')"
-	_behavior="$(printf '%s\n' "$_out" | awk -F= '$1=="behaviorProfile"{print substr($0,index($0,"=")+1); exit}')"
-	_tier="$(printf '%s\n' "$_out" | awk -F= '$1=="supportTier"{print substr($0,index($0,"=")+1); exit}')"
-	_fsrc="$(printf '%s\n' "$_out" | awk -F= '$1=="featureSource"{print substr($0,index($0,"=")+1); exit}')"
+	# r699: parse once; first duplicate key wins, matching the former awk readers.
 	local _fsummary
-	_fsummary="$(printf '%s\n' "$_out" | awk -F= '$1=="featureSummary"{print substr($0,index($0,"=")+1); exit}')"
-	_pid="$(printf '%s\n' "$_out" | awk -F= '$1=="providerId"{print substr($0,index($0,"=")+1); exit}')"
-	_pdisplay="$(printf '%s\n' "$_out" | awk -F= '$1=="providerDisplay"{print substr($0,index($0,"=")+1); exit}')"
-	_pregion="$(printf '%s\n' "$_out" | awk -F= '$1=="providerRegion"{print substr($0,index($0,"=")+1); exit}')"
-	_pclass="$(printf '%s\n' "$_out" | awk -F= '$1=="providerClass"{print substr($0,index($0,"=")+1); exit}')"
-	_psource="$(printf '%s\n' "$_out" | awk -F= '$1=="providerHintSource"{print substr($0,index($0,"=")+1); exit}')"
-	_pconfidence="$(printf '%s\n' "$_out" | awk -F= '$1=="providerHintConfidence"{print substr($0,index($0,"=")+1); exit}')"
-	_qstate="$(printf '%s\n' "$_out" | awk -F= '$1=="quotaState"{print substr($0,index($0,"=")+1); exit}')"
-	_qavail="$(printf '%s\n' "$_out" | awk -F= '$1=="quotaAvailableBytes"{print substr($0,index($0,"=")+1); exit}')"
-	_qused="$(printf '%s\n' "$_out" | awk -F= '$1=="quotaUsedBytes"{print substr($0,index($0,"=")+1); exit}')"
-	_alist_ver="$(printf '%s\n' "$_out" | awk -F= '$1=="alistVersion"{print substr($0,index($0,"=")+1); exit}')"
-	_alist_adv="$(printf '%s\n' "$_out" | awk -F= '$1=="alistSecurityAdvisory"{print substr($0,index($0,"=")+1); exit}')"
-	_alist_risk="$(printf '%s\n' "$_out" | awk -F= '$1=="alistPathTraversalRisk"{print substr($0,index($0,"=")+1); exit}')"
-	_alist_min="$(printf '%s\n' "$_out" | awk -F= '$1=="alistMinSafeVersion"{print substr($0,index($0,"=")+1); exit}')"
-	_alist_action="$(printf '%s\n' "$_out" | awk -F= '$1=="alistSecurityAction"{print substr($0,index($0,"=")+1); exit}')"
+	local _line _key _value _seen='|'
+	_state=""
+	_missing=""
+	_kind=""
+	_family=""
+	_display=""
+	_behavior=""
+	_tier=""
+	_fsrc=""
+	_fsummary=""
+	_pid=""
+	_pdisplay=""
+	_pregion=""
+	_pclass=""
+	_psource=""
+	_pconfidence=""
+	_qstate=""
+	_qavail=""
+	_qused=""
+	_alist_ver=""
+	_alist_adv=""
+	_alist_risk=""
+	_alist_min=""
+	_alist_action=""
+	while IFS= read -r _line || [[ -n $_line ]]; do
+		case $_line in *=*) ;; *) continue ;; esac
+		_key="${_line%%=*}"
+		_value="${_line#*=}"
+		case $_seen in *"|$_key|"*) continue ;; esac
+		case $_key in
+			state) _state="$_value" ;;
+			missing) _missing="$_value" ;;
+			backendKind) _kind="$_value" ;;
+			serverFamily) _family="$_value" ;;
+			serverDisplay) _display="$_value" ;;
+			behaviorProfile) _behavior="$_value" ;;
+			supportTier) _tier="$_value" ;;
+			featureSource) _fsrc="$_value" ;;
+			featureSummary) _fsummary="$_value" ;;
+			providerId) _pid="$_value" ;;
+			providerDisplay) _pdisplay="$_value" ;;
+			providerRegion) _pregion="$_value" ;;
+			providerClass) _pclass="$_value" ;;
+			providerHintSource) _psource="$_value" ;;
+			providerHintConfidence) _pconfidence="$_value" ;;
+			quotaState) _qstate="$_value" ;;
+			quotaAvailableBytes) _qavail="$_value" ;;
+			quotaUsedBytes) _qused="$_value" ;;
+			alistVersion) _alist_ver="$_value" ;;
+			alistSecurityAdvisory) _alist_adv="$_value" ;;
+			alistPathTraversalRisk) _alist_risk="$_value" ;;
+			alistMinSafeVersion) _alist_min="$_value" ;;
+			alistSecurityAction) _alist_action="$_value" ;;
+			*) continue ;;
+		esac
+		_seen="${_seen}${_key}|"
+	done <<EOF_WEBDAV_OPTIONS_FIELDS
+$_out
+EOF_WEBDAV_OPTIONS_FIELDS
 	_WEBDAV_PROFILE_KIND="${_kind:-generic}"
 	_WEBDAV_PROFILE_SERVER_FAMILY="${_family:-generic_webdav}"
 	_WEBDAV_PROFILE_SERVER_DISPLAY="${_display:-一般 WebDAV／未知伺服端}"
@@ -3099,6 +3231,28 @@ _WEBDAV_FEATURE_CONTRACT_RELBASE=""
 _WEBDAV_FEATURE_CONTRACT_RC=1
 _WEBDAV_FEATURE_CONTRACT_HTTP=0
 
+_webdav_feature_support_tier() {
+	# Same boolean facts/ordering as Dex WebDavUtil.supportTier().
+	local _stream="$1" _fixed="$2" _get="$3" _mkcol="$4" _delete="$5"
+	local _depth_inf="$6" _depth1="$7" _walk="$8" _stat="$9"
+	shift 9
+	local _size="$1" _body="$2" _cleanup="$3"
+	if { [[ $_stream = 0 ]] && [[ $_fixed = 0 ]]; } || \
+		[[ $_get = 0 || $_mkcol = 0 || $_delete = 0 || $_cleanup = 0 ]]; then
+		_WEBDAV_PROFILE_SUPPORT_TIER=EXPERIMENTAL
+	elif [[ $_stream = 1 || $_fixed = 1 ]] && \
+		[[ $_get = 1 && $_mkcol = 1 && $_delete = 1 ]] && \
+		{ [[ $_depth_inf = 1 ]] || [[ $_depth1 = 1 && $_walk = 1 ]]; }; then
+		if [[ $_stat = 1 && $_size = 1 && $_body = 1 && $_cleanup = 1 ]]; then
+			_WEBDAV_PROFILE_SUPPORT_TIER=VERIFIED
+		else
+			_WEBDAV_PROFILE_SUPPORT_TIER=COMPATIBLE
+		fi
+	else
+		_WEBDAV_PROFILE_SUPPORT_TIER=EXPERIMENTAL
+	fi
+}
+
 _webdav_feature_contract_probe() {
 	local _base="$1" _relbase="${2:-}" _context="${3:-runtime}" _saved_http="${_WEBDAV_HTTP_CODE:-0}"
 	local _feature_rel _compat_out _compat_err _compat_rc _compat_http
@@ -3124,45 +3278,156 @@ _webdav_feature_contract_probe() {
 	remote_raw_log "remote_webdav_stream_probe_raw.log" "FEATURE_CONTRACT_PROBE context=$_context rc=$_compat_rc http=$_compat_http rel=$_feature_rel advisory=1"
 	remote_raw_cat "remote_webdav_stream_probe_raw.log" "$_compat_out" "[feature contract probe detail context=$_context http=$_compat_http]"
 	remote_raw_cat "remote_webdav_stream_probe_raw.log" "$_compat_err" "[feature contract probe stderr context=$_context http=$_compat_http]"
-	# Refresh the presentation/policy fields from the facts just measured. Server/vendor identity is
-	# only a hint; support tier and operation policy are derived from measured capabilities.
-	local _profile_out _tier _fsrc _fsummary _alist_ver _alist_adv _alist_risk _alist_min _alist_action _old_tier="${_WEBDAV_PROFILE_SUPPORT_TIER:-}" _old_fsrc="${_WEBDAV_PROFILE_FEATURE_SOURCE:-}"
-	local _put_strategy _list_strategy _publish_strategy _verify_strategy _cleanup_policy _security_advisory
-	_profile_out="$(_webdav_dex backendprofilerel "$remote_user" "$remote_pass" "$_base" "feature-contract" 2>/dev/null)" || true
-	_tier="$(printf '%s\n' "$_profile_out" | awk -F '\t' '$1=="supportTier"{print $2;exit}')"
-	_fsrc="$(printf '%s\n' "$_profile_out" | awk -F '\t' '$1=="featureSource"{print $2;exit}')"
-	_fsummary="$(printf '%s\n' "$_profile_out" | awk -F '\t' '$1=="featureSummary"{print $2;exit}')"
-	_put_strategy="$(printf '%s\n' "$_profile_out" | awk -F '\t' '$1=="putStrategy"{print $2;exit}')"
-	_list_strategy="$(printf '%s\n' "$_profile_out" | awk -F '\t' '$1=="listStrategy"{print $2;exit}')"
-	_publish_strategy="$(printf '%s\n' "$_profile_out" | awk -F '\t' '$1=="publishStrategy"{print $2;exit}')"
-	_verify_strategy="$(printf '%s\n' "$_profile_out" | awk -F '\t' '$1=="verifyStrategy"{print $2;exit}')"
-	_cleanup_policy="$(printf '%s\n' "$_profile_out" | awk -F '\t' '$1=="cleanupPolicy"{print $2;exit}')"
-	_security_advisory="$(printf '%s\n' "$_profile_out" | awk -F '\t' '$1=="securityAdvisory"{print $2;exit}')"
-	_alist_ver="$(printf '%s\n' "$_profile_out" | awk -F '\t' '$1=="alistVersion"{print $2;exit}')"
-	_alist_adv="$(printf '%s\n' "$_profile_out" | awk -F '\t' '$1=="alistSecurityAdvisory"{print $2;exit}')"
-	_alist_risk="$(printf '%s\n' "$_profile_out" | awk -F '\t' '$1=="alistPathTraversalRisk"{print $2;exit}')"
-	_alist_min="$(printf '%s\n' "$_profile_out" | awk -F '\t' '$1=="alistMinSafeVersion"{print $2;exit}')"
-	_alist_action="$(printf '%s\n' "$_profile_out" | awk -F '\t' '$1=="alistSecurityAction"{print $2;exit}')"
-	[[ -n $_tier ]] && _WEBDAV_PROFILE_SUPPORT_TIER="$_tier"
-	[[ -n $_fsrc ]] && _WEBDAV_PROFILE_FEATURE_SOURCE="$_fsrc"
-	[[ -n $_fsummary ]] && _WEBDAV_PROFILE_FEATURE_SUMMARY="$_fsummary"
-	[[ -n $_put_strategy ]] && _WEBDAV_PROFILE_PUT_STRATEGY="$_put_strategy"
-	[[ -n $_list_strategy ]] && _WEBDAV_PROFILE_LIST_STRATEGY="$_list_strategy"
-	[[ -n $_publish_strategy ]] && _WEBDAV_PROFILE_PUBLISH_STRATEGY="$_publish_strategy"
-	[[ -n $_verify_strategy ]] && _WEBDAV_PROFILE_VERIFY_STRATEGY="$_verify_strategy"
-	[[ -n $_cleanup_policy ]] && _WEBDAV_PROFILE_CLEANUP_POLICY="$_cleanup_policy"
-	[[ -n $_security_advisory ]] && _WEBDAV_PROFILE_SECURITY_ADVISORY="$_security_advisory"
-	[[ -n $_alist_ver ]] && _WEBDAV_PROFILE_ALIST_VERSION="$_alist_ver"
-	[[ -n $_alist_adv ]] && _WEBDAV_PROFILE_ALIST_SECURITY_ADVISORY="$_alist_adv"
-	[[ -n $_alist_risk ]] && _WEBDAV_PROFILE_ALIST_PATH_TRAVERSAL_RISK="$_alist_risk"
-	[[ -n $_alist_min ]] && _WEBDAV_PROFILE_ALIST_MIN_SAFE_VERSION="$_alist_min"
-	[[ -n $_alist_action ]] && _WEBDAV_PROFILE_ALIST_SECURITY_ACTION="$_alist_action"
+	# r697: compatProbeRel already measured the complete capability contract.  Do not
+	# spend another daemon relay on backendprofilerel merely to re-read the facts that
+	# compatProbeRel just cached.  Parse the tiny JSON once and refresh the measured
+	# fields in shell; identity/security fields from the earlier OPTIONS preflight are
+	# preserved.  If this function is reached as a rare stream-gate fallback, seed the
+	# basic vendor display from compat's serverProfile.
+	local _compat_row _profile _stream _fixed _get _move _copy _stat _size _atomic
+	local _overwrite _mkcol _delete _depth_inf _depth1 _walk _quota _pacer _dircache
+	local _body _copy_stat _cleanup
+	local _list_strategy _put_strategy _publish_strategy _verify_strategy _cleanup_policy
+	local _old_tier="${_WEBDAV_PROFILE_SUPPORT_TIER:-}" _old_fsrc="${_WEBDAV_PROFILE_FEATURE_SOURCE:-}"
+	_compat_row="$(jq -r '[.serverProfile,
+		(.supportsChunkedPut|if . then 1 else 0 end),
+		(.supportsFixedPut|if . then 1 else 0 end),
+		(.supportsGetStream|if . then 1 else 0 end),
+		(.supportsMove|if . then 1 else 0 end),
+		(.supportsCopy|if . then 1 else 0 end),
+		(.supportsStat|if . then 1 else 0 end),
+		(.supportsRemoteSize|if . then 1 else 0 end),
+		(.supportsAtomicPublish|if . then 1 else 0 end),
+		(.supportsOverwriteMove|if . then 1 else 0 end),
+		(.supportsMkcol|if . then 1 else 0 end),
+		(.supportsDelete|if . then 1 else 0 end),
+		(.supportsDepthInfinity|if . then 1 else 0 end),
+		(.supportsDepth1|if . then 1 else 0 end),
+		(.supportsRecursiveWalkFallback|if . then 1 else 0 end),
+		(.supportsQuota|if . then 1 else 0 end),
+		(.supportsPacerRetryBackoff|if . then 1 else 0 end),
+		(.supportsDirectoryCache|if . then 1 else 0 end),
+		(.bodyCompareOk|if . then 1 else 0 end),
+		(.copyStatOk|if . then 1 else 0 end),
+		(.cleanupOk|if . then 1 else 0 end)] | map(tostring) | join(" ")' "$_compat_out" 2>/dev/null)"
+	set -- $_compat_row
+	if [[ $# -eq 21 ]]; then
+		_profile="$1"
+		_stream="$2"
+		_fixed="$3"
+		_get="$4"
+		_move="$5"
+		_copy="$6"
+		_stat="$7"
+		_size="$8"
+		_atomic="$9"
+		shift 9
+		_overwrite="$1"
+		_mkcol="$2"
+		_delete="$3"
+		_depth_inf="$4"
+		_depth1="$5"
+		_walk="$6"
+		_quota="$7"
+		_pacer="$8"
+		_dircache="$9"
+		shift 9
+		_body="$1"
+		_copy_stat="$2"
+		_cleanup="$3"
+		if [[ $_depth_inf = 1 ]]; then
+			_list_strategy=infinity
+		elif [[ $_depth1 = 1 && $_walk = 1 ]]; then
+			_list_strategy=depth1-walk
+		else
+			_list_strategy=none
+		fi
+		if [[ $_stream = 1 ]]; then
+			_put_strategy=chunked
+		elif [[ $_fixed = 1 ]]; then
+			_put_strategy=fixed
+		else
+			_put_strategy=none
+		fi
+		if [[ $_atomic = 1 ]]; then
+			_publish_strategy=atomic
+		else
+			_publish_strategy=direct
+		fi
+		if [[ $_body = 1 && $_size = 1 ]]; then
+			_verify_strategy=size-body
+		elif [[ $_body = 1 ]]; then
+			_verify_strategy=body
+		elif [[ $_size = 1 || $_stat = 1 ]]; then
+			_verify_strategy=size
+		else
+			_verify_strategy=basic
+		fi
+		if [[ $_delete = 1 && $_cleanup = 1 ]]; then
+			_cleanup_policy=delete-verified
+		elif [[ $_delete = 1 ]]; then
+			_cleanup_policy=delete-best-effort
+		else
+			_cleanup_policy=no-delete
+		fi
+		_webdav_feature_support_tier "$_stream" "$_fixed" "$_get" "$_mkcol" \
+			"$_delete" "$_depth_inf" "$_depth1" "$_walk" "$_stat" "$_size" \
+			"$_body" "$_cleanup"
+		_WEBDAV_PROFILE_FEATURE_SOURCE="compat-probe-r613"
+		_WEBDAV_PROFILE_FEATURE_SUMMARY="streamPut=$_stream;fixedPut=$_fixed;getStream=$_get;list=$_list_strategy;move=$_move;copy=$_copy;stat=$_stat;size=$_size;atomic=$_atomic;overwriteMove=$_overwrite;mkcol=$_mkcol;delete=$_delete;quota=$_quota;pacer=$_pacer;dirCache=$_dircache;body=$_body;copyStat=$_copy_stat;cleanup=$_cleanup"
+		_WEBDAV_PROFILE_PUT_STRATEGY="$_put_strategy"
+		_WEBDAV_PROFILE_LIST_STRATEGY="$_list_strategy"
+		_WEBDAV_PROFILE_PUBLISH_STRATEGY="$_publish_strategy"
+		_WEBDAV_PROFILE_VERIFY_STRATEGY="$_verify_strategy"
+		_WEBDAV_PROFILE_CLEANUP_POLICY="$_cleanup_policy"
+		# OPTIONS preflight normally populated richer identity/provider/security facts.
+		# Seed only the basic identity when feature-contract is invoked standalone.
+		if [[ -z ${_WEBDAV_PROFILE_KIND:-} || ${_WEBDAV_PROFILE_KIND:-generic} = generic ]]; then
+			case $_profile in
+				rclone)
+					_WEBDAV_PROFILE_KIND=rclone
+					_WEBDAV_PROFILE_SERVER_FAMILY=rclone
+					_WEBDAV_PROFILE_SERVER_DISPLAY="rclone WebDAV"
+					_WEBDAV_PROFILE_BEHAVIOR=direct_put_managed
+					;;
+				nextcloud)
+					_WEBDAV_PROFILE_KIND=nextcloud_compatible
+					_WEBDAV_PROFILE_SERVER_FAMILY=nextcloud_owncloud
+					_WEBDAV_PROFILE_SERVER_DISPLAY="Nextcloud/ownCloud 相容端"
+					_WEBDAV_PROFILE_BEHAVIOR=capability_driven_webdav
+					;;
+				123pan)
+					_WEBDAV_PROFILE_KIND=123pan
+					_WEBDAV_PROFILE_SERVER_FAMILY=123pan
+					_WEBDAV_PROFILE_SERVER_DISPLAY="123雲盤 WebDAV"
+					_WEBDAV_PROFILE_BEHAVIOR=direct_put_managed
+					;;
+				jianguoyun)
+					_WEBDAV_PROFILE_KIND=jianguoyun
+					_WEBDAV_PROFILE_SERVER_FAMILY=jianguoyun
+					_WEBDAV_PROFILE_SERVER_DISPLAY="堅果雲 WebDAV"
+					_WEBDAV_PROFILE_BEHAVIOR=capability_driven_webdav
+					;;
+			esac
+		fi
+		_speed_debug_log "WEBDAV_FEATURE_PROFILE_READY context=$_context contractRc=$_compat_rc contractHttp=$_compat_http tier=${_WEBDAV_PROFILE_SUPPORT_TIER:-unknown} source=${_WEBDAV_PROFILE_FEATURE_SOURCE:-unknown} features=$(_speed_debug_kv "${_WEBDAV_PROFILE_FEATURE_SUMMARY:-unknown}") previousTier=${_old_tier:-none} previousSource=${_old_fsrc:-none} mode=r698 profileRefresh=compat-json-single-jq backendProfileRelay=0 putStrategy=${_WEBDAV_PROFILE_PUT_STRATEGY:-unknown} listStrategy=${_WEBDAV_PROFILE_LIST_STRATEGY:-unknown} publishStrategy=${_WEBDAV_PROFILE_PUBLISH_STRATEGY:-unknown} verifyStrategy=${_WEBDAV_PROFILE_VERIFY_STRATEGY:-unknown} cleanupPolicy=${_WEBDAV_PROFILE_CLEANUP_POLICY:-unknown} securityAdvisory=${_WEBDAV_PROFILE_SECURITY_ADVISORY:-none}"
+	else
+		# Missing/malformed probe facts cannot retain an earlier VERIFIED display.
+		_WEBDAV_PROFILE_SUPPORT_TIER="EXPERIMENTAL"
+		_WEBDAV_PROFILE_FEATURE_SOURCE="compat-probe-unavailable"
+		_WEBDAV_PROFILE_FEATURE_SUMMARY="unknown"
+		_WEBDAV_PROFILE_PUT_STRATEGY=none
+		_WEBDAV_PROFILE_LIST_STRATEGY=none
+		_WEBDAV_PROFILE_PUBLISH_STRATEGY=direct
+		_WEBDAV_PROFILE_VERIFY_STRATEGY=basic
+		_WEBDAV_PROFILE_CLEANUP_POLICY=no-delete
+		_speed_debug_log "WEBDAV_FEATURE_PROFILE_PARSE_FALLBACK context=$_context rc=$_compat_rc http=$_compat_http reason=compat_json_parse mode=r698 backendProfileRelay=0"
+	fi
 	_WEBDAV_FEATURE_CONTRACT_DONE=1
 	_WEBDAV_FEATURE_CONTRACT_BASE="$_base"
 	_WEBDAV_FEATURE_CONTRACT_RELBASE="$_relbase"
 	_WEBDAV_FEATURE_CONTRACT_RC="$_compat_rc"
 	_WEBDAV_FEATURE_CONTRACT_HTTP="$_compat_http"
-	_speed_debug_log "WEBDAV_FEATURE_PROFILE_READY context=$_context contractRc=$_compat_rc contractHttp=$_compat_http tier=${_tier:-unknown} source=${_fsrc:-unknown} features=$(_speed_debug_kv "${_fsummary:-unknown}") previousTier=${_old_tier:-none} previousSource=${_old_fsrc:-none} mode=r631 visible=profile_display_once_compact putStrategy=${_WEBDAV_PROFILE_PUT_STRATEGY:-unknown} listStrategy=${_WEBDAV_PROFILE_LIST_STRATEGY:-unknown} publishStrategy=${_WEBDAV_PROFILE_PUBLISH_STRATEGY:-unknown} verifyStrategy=${_WEBDAV_PROFILE_VERIFY_STRATEGY:-unknown} cleanupPolicy=${_WEBDAV_PROFILE_CLEANUP_POLICY:-unknown} securityAdvisory=${_WEBDAV_PROFILE_SECURITY_ADVISORY:-none}"
 	# Capability probing is advisory to the surrounding operation. Never leak its last HTTP code
 	# into the caller's production status channel.
 	_webdav_status_sidecar_reset
@@ -4085,15 +4350,6 @@ _appdetails_index_paths() {
 	return "$_rc"
 }
 
-_appdetails_index_count() {
-	local _root="$1" _max="${2:-2}" _min="${3:-0}" _tmp _n
-	_tmp="${TMPDIR:-/data/local/tmp}/.appdetails_index_count_${$}_$RANDOM.lst"
-	_appdetails_index_paths "$_root" "$_tmp" "$_max" "$_min" 0 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_tmp" 2>/dev/null; echo 0; return 1; }
-	_n="$(grep -vc '^[[:space:]]*$' "$_tmp" 2>/dev/null)"; case $_n in ''|*[!0-9]*) _n=0 ;; esac
-	rm -f "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	printf '%s\n' "$_n"
-}
-
 _speedscan_backup_root_index() {
 	# r451: backup tree/path facts index. C facts-only; shell only filters small TSV.
 	local _root="$1" _out="$2" _max="${3:-3}"
@@ -4275,6 +4531,14 @@ _speedscan_tree_pack_plan_root_debug() {
 	esac
 	_max="${SPEEDBACKUP_NATIVE_PACK_PLAN_MAX_ROWS:-20000}"
 	case "$_max" in ''|*[!0-9]*) _max=20000 ;; esac
+	case "$_reason" in
+	pre|pre-*|backup-pre*)
+		if [[ -n ${BACKUP_TAR_CONTEXT_PKG:-} && -n ${BACKUP_TAR_CONTEXT_ENTRY:-} ]] && _backup_prescan_packplan_cache_has "$BACKUP_TAR_CONTEXT_PKG" "$BACKUP_TAR_CONTEXT_ENTRY"; then
+			_speed_debug_log "SPEEDSCAN_TREE_PACK_PLAN_REUSE_PRE package=$BACKUP_TAR_CONTEXT_PKG entry=$BACKUP_TAR_CONTEXT_ENTRY root=$(_speed_debug_kv "$_root") action=skip-duplicate-scan mode=r692"
+			return 0
+		fi
+		;;
+	esac
 	_safe="$(_process_observer_status_safe_name "${BACKUP_TAR_CONTEXT_PKG:-${_out_base##*/}}_${_label:-root}_${_reason}" 2>/dev/null || printf packplan)"
 	_tmpbase="speedscan_tree_pack_plan_${_safe}_${$}_$RANDOM"
 	if _speedscan_native_detail_keep; then
@@ -4337,6 +4601,14 @@ _speedscan_tree_pack_plan_debug() {
 	esac
 	_max="${SPEEDBACKUP_NATIVE_PACK_PLAN_MAX_ROWS:-20000}"
 	case "$_max" in ''|*[!0-9]*) _max=20000 ;; esac
+	case "$_reason" in
+	pre|pre-*|backup-pre*)
+		if [[ -n ${BACKUP_TAR_CONTEXT_PKG:-} && -n ${BACKUP_TAR_CONTEXT_ENTRY:-} ]] && _backup_prescan_packplan_cache_has "$BACKUP_TAR_CONTEXT_PKG" "$BACKUP_TAR_CONTEXT_ENTRY"; then
+			_speed_debug_log "SPEEDSCAN_TREE_PACK_PLAN_REUSE_PRE package=$BACKUP_TAR_CONTEXT_PKG entry=$BACKUP_TAR_CONTEXT_ENTRY root=$(_speed_debug_kv "$_root") action=skip-duplicate-scan mode=r692"
+			return 0
+		fi
+		;;
+	esac
 	_safe="$(_process_observer_status_safe_name "${BACKUP_TAR_CONTEXT_PKG:-${_out_base##*/}}_${_pack_name}_${_reason}" 2>/dev/null || printf packplan)"
 	_tmpbase="speedscan_tree_pack_plan_${_safe}_${$}_$RANDOM"
 	if _speedscan_native_detail_keep; then
@@ -4443,54 +4715,48 @@ _speedscan_app_media_index_debug() {
 	return 0
 }
 
-_speedscan_restore_tree_verify_debug() {
-	# r505: 每個成功解壓 payload 後接 native restore-tree-verify；成功細節預設 summary-only。
-	local _root="$1" _label="$2" _payload="$3" _reason="${4:-post_extract}" _path_key="${5:-}" _safe _manifest _out _summary _mrc _vrc _tmpbase _detail _kept_manifest _kept_out _status _summary_log
-	[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] || return 0
-	_speedscan_available || return 0
-	_speedscan_native_facts_enabled "${SPEEDBACKUP_NATIVE_RESTORE_TREE_VERIFY:-1}" || return 0
-	[[ -n $_root && -d $_root ]] || return 0
-	if [[ -n $_path_key ]]; then
-		_safe="${_path_key//[!a-zA-Z0-9._-]/_}_${_payload//[!a-zA-Z0-9._-]/_}_${_reason//[!a-zA-Z0-9._-]/_}"
+# r705: source facts are archive headers captured on the actual extraction stream.
+_restore_source_prefix() {
+	_RESTORE_SOURCE_SEQ=$((${_RESTORE_SOURCE_SEQ:-0} + 1))
+	_RESTORE_SOURCE_PREFIX="${SPEED_DEBUG_RUN_DIR:-$TMPDIR}/restore_source_$$_$_RESTORE_SOURCE_SEQ"
+}
+# r711: only a completed, fully successful verification may discard its large
+# source manifest. Keep receipts/diffs and all failed, limited or unfinished facts.
+_restore_source_success_detail_cleanup() {
+	local _prefix="$1" _root="$2" _base="${SPEED_DEBUG_RUN_DIR:-$TMPDIR}" _suffix
+	_speedscan_native_detail_keep && return 0
+	[[ -n $_base && ${_prefix%/*} = "$_base" ]] || return 0
+	_suffix="${_prefix##*/}"
+	case $_suffix in restore_source_$$_*) _suffix="${_suffix#restore_source_$$_}" ;; *) return 0 ;; esac
+	case $_suffix in ''|*[!0-9]*) return 0 ;; esac
+	[[ -f $_prefix.manifest && ! -L $_prefix.manifest && -s $_prefix.source && -s $_prefix.verify && -f $_prefix.diff.tsv && ! -s $_prefix.diff.tsv ]] || return 0
+	if rm -f -- "$_prefix.manifest" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+		_speed_debug_log "RESTORE_SOURCE_DETAIL_RETENTION source=$_prefix root=$_root manifest=removed policy=verified-ok-summary-only mode=r711"
 	else
-		_safe="restoreverify_${_payload//[!a-zA-Z0-9._-]/_}_${_reason//[!a-zA-Z0-9._-]/_}"
+		_speed_debug_log "RESTORE_SOURCE_DETAIL_RETENTION source=$_prefix root=$_root manifest=kept reason=cleanup-failed mode=r711"
 	fi
-	_tmpbase="speedscan_restore_tree_verify_${_safe}_${$}_$RANDOM"
-	if _speedscan_native_detail_keep; then
-		_manifest="$SPEED_DEBUG_RUN_DIR/${_tmpbase}.manifest.tsv"
-		_out="$SPEED_DEBUG_RUN_DIR/${_tmpbase}.summary.txt"
-	else
-		_manifest="$(_speedscan_native_tmp_path ".${_tmpbase}.manifest.tsv")"
-		_out="$(_speedscan_native_tmp_path ".${_tmpbase}.summary.txt")"
+	return 0
+}
+_restore_source_verify() {
+	local _root="$1" _prefix="$2" _mode="$3" _owner="$4" _mtime="$5" _receipt _rc _magic _schema _op _state
+	local _count _changed _limited _mode_field _owner_field _mtime_field _scope _extra _n _valid=1
+	_receipt="$(_speedscan_cmd restore-source-verify "$_root" "$_prefix" "$_mode" "$_owner" "$_mtime" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	_rc=$?
+	IFS="$SB_TAB" read -r _magic _schema _op _state _count _changed _limited _mode_field _owner_field _mtime_field _scope _extra <<EOF
+$_receipt
+EOF
+	for _n in "$_count" "$_changed" "$_limited"; do case $_n in ''|*[!0-9]*) _valid=0 ;; esac; done
+	[[ $_changed = 0 && $_mode_field = "mode=$_mode" && $_owner_field = "owner=$_owner" && $_mtime_field = "mtime=$_mtime" && $_scope = scope=archive-members-no-content-hash && -z $_extra ]] || _valid=0
+	[[ $_state != ok || $_limited = 0 ]] || _valid=0
+	[[ $_state != limited || $_limited != 0 ]] || _valid=0
+	_speed_debug_log "RESTORE_SOURCE_VERIFY rc=$_rc receipt=$_receipt source=$_prefix mode=r705"
+	if [[ $_valid != 1 || $_rc != 0 || $_magic != SBRESULT || $_schema != 1 || $_op != restore-source ]] || \
+		[[ $_state != ok && $_state != limited ]]; then
+		echoRgb "恢復來源比對失敗，請查看 speed_debug 的 restore_source 記錄" 0
+		return 1
 	fi
-	_speedscan_cmd_bounded_to_file "$(_speedscan_timeout_ms "${SPEEDBACKUP_NATIVE_RESTORE_TREE_VERIFY_TIMEOUT_MS:-}" 5000)" "restore_tree_manifest_${_reason}" /dev/null manifest "$_root" "$_manifest"
-	_mrc=$?
-	if [[ $_mrc = 0 && -s $_manifest ]]; then
-		_speedscan_cmd_bounded_to_file "$(_speedscan_timeout_ms "${SPEEDBACKUP_NATIVE_RESTORE_TREE_VERIFY_TIMEOUT_MS:-}" 5000)" "restore_tree_verify_${_reason}" "$_out" restore-tree-verify "$_root" "$_manifest"
-		_vrc=$?
-	else
-		_vrc=1
-	fi
-	_summary="$(tr '\n' '|' < "$_out" 2>/dev/null | cut -c1-900)"
-	_summary_log="$(_speedscan_native_summary_log_name)"
-	if [[ $_mrc = 0 && $_vrc = 0 ]]; then
-		_status="ok"
-		_detail="summary-only"
-		if _speedscan_native_detail_keep; then _detail="kept:${_manifest##*/},${_out##*/}"; else rm -f "$_manifest" "$_out" 2>/dev/null; fi
-		_speedscan_native_summary_append "type=restore-tree-verify status=$_status reason=$(_speed_debug_kv "$_reason") root=$(_speed_debug_kv "$_root") label=$(_speed_debug_kv "$_label") payload=$(_speed_debug_kv "$_payload") manifestRc=$_mrc verifyRc=$_vrc detail=$(_speed_debug_kv "$_detail") summary=$(_speed_debug_kv "$_summary") mode=r512"
-		_speed_debug_log "SPEEDSCAN_RESTORE_TREE_VERIFY_OK reason=$_reason root=$(_speed_debug_kv "$_root") label=$(_speed_debug_kv "$_label") payload=$(_speed_debug_kv "$_payload") detail=$(_speed_debug_kv "$_detail") summaryLog=$_summary_log summary=$(_speed_debug_kv "$_summary") mode=r505 policy=facts-integrated"
-	else
-		_status="fail"
-		_detail="none"
-		if _speedscan_native_error_detail_keep; then
-			_kept_manifest="$(_speedscan_native_keep_error_file "$_manifest" "${_tmpbase}.error.manifest.tsv" 2>/dev/null || true)"
-			_kept_out="$(_speedscan_native_keep_error_file "$_out" "${_tmpbase}.error.summary.txt" 2>/dev/null || true)"
-			[[ -n $_kept_manifest || -n $_kept_out ]] && _detail="error:${_kept_manifest:-none},${_kept_out:-none}"
-		fi
-		rm -f "$_manifest" "$_out" 2>/dev/null
-		_speedscan_native_summary_append "type=restore-tree-verify status=$_status reason=$(_speed_debug_kv "$_reason") root=$(_speed_debug_kv "$_root") label=$(_speed_debug_kv "$_label") payload=$(_speed_debug_kv "$_payload") manifestRc=$_mrc verifyRc=$_vrc detail=$(_speed_debug_kv "$_detail") summary=$(_speed_debug_kv "$_summary") optional=1 mode=r512"
-		_speed_debug_log "SPEEDSCAN_RESTORE_TREE_VERIFY_FAIL reason=$_reason root=$(_speed_debug_kv "$_root") label=$(_speed_debug_kv "$_label") payload=$(_speed_debug_kv "$_payload") manifestRc=$_mrc verifyRc=$_vrc detail=$(_speed_debug_kv "$_detail") summaryLog=$_summary_log optional=1 mode=r505 policy=facts-integrated"
-	fi
+	[[ $_state != limited ]] || echoRgb "恢復檔案已比對；備份中部分擴充屬性未納入驗證" 2
+	[[ $_state != ok ]] || _restore_source_success_detail_cleanup "$_prefix" "$_root"
 	return 0
 }
 
@@ -4649,11 +4915,148 @@ _backup_prescan_compute_fast_totals() {
 	[[ -s $_out ]]
 }
 
-_backup_prescan_result_get() {
-	local _file="$1" _key="$2" _v
-	_v="$(awk -F '\t' -v k="$_key" '$1==k{print $2; exit}' "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
-	case $_v in ''|*[!0-9]*) _v=0 ;; esac
-	printf '%s\n' "$_v"
+# r692: 在既有 speedscan tree-pack-plan metadata traversal 上計算 GNU tar 真正輸入 bytes。
+# 不讀取檔案內容、不 dry-run tar；成功後把同一 entry 記入 cache，正式 tar 前既有 debug tree-plan 直接復用，
+# 因此正常 changed-entry 路徑不增加第二次 metadata traversal。
+_backup_prescan_packplan_cache_has() {
+	local _key="|${1:-}:${2:-}|"
+	case "${SPEEDBACKUP_PRESCAN_PACKPLAN_KEYS:-|}" in *"$_key"*) return 0 ;; *) return 1 ;; esac
+}
+# 依 local-fastskip 使用的同一組 facts 產生「本輪真的會重新打包」rows。
+# APK 版本未變且 archive 已存在時不列入；data entry 僅在 size 改變 / archive 缺失時列入。
+_backup_prescan_exact_local_rows() {
+	local _out="$1" _sel="$TMPDIR/.local_selected_apps.tsv" _sum="$TMPDIR/.local_appdetails_summary.tsv" _sizes="$TMPDIR/.dir_sizes" _exists="$TMPDIR/.local_dir_exists.tsv" _archives="$TMPDIR/.local_archive_set.tsv" _fast="$TMPDIR/.local_fast_skip_ok"
+	[[ -s $_sel && -f $_sum && -s $_sizes && -f $_exists && -f $_archives && -f $_fast ]] || return 1
+	awk -F '\t' -v backupMode="${Backup_Mode:-false}" -v backupObb="${Backup_obb_data:-false}" -v backupUser="${Backup_user_data:-false}" '
+	BEGIN{OFS="\t"}
+	FILENAME==ARGV[1] { if(NF>=4){app[++n]=$1; pkg[$1]=$2; nodata[$1]=$3; cv[$1]=$4} next }
+	FILENAME==ARGV[2] { if(NF>=9){meta[$1]=1; ov[$1]=$3; old[$1 SUBSEP "user"]=$4; old[$1 SUBSEP "user_de"]=$5; old[$1 SUBSEP "data"]=$6; old[$1 SUBSEP "obb"]=$7; old[$1 SUBSEP "media"]=$8} next }
+	FILENAME==ARGV[3] { if(NF>=3) cur[$1 SUBSEP $2]=$3; next }
+	FILENAME==ARGV[4] { if(NF>=2) dex[$1 SUBSEP $2]=1; next }
+	FILENAME==ARGV[5] { if(NF>=2) arc[$1 SUBSEP $2]=1; next }
+	FILENAME==ARGV[6] { if(NF>=1) fast[$1]=1; next }
+	function emit_entry(a,p,e,  c,o,k){
+		k=p SUBSEP e; if(!(k in dex)) return
+		c=cur[k]; if(c !~ /^[0-9]+$/ || length(c)<4) return
+		o=old[a SUBSEP e]
+		if(!(a SUBSEP e in arc) || !(a in meta) || o=="" || o=="null" || o!=c) print "DIR",a,p,e,c
+	}
+	END{
+		for(i=1;i<=n;i++){
+			a=app[i]; p=pkg[a]; if(a in fast) continue
+			if(!(a in meta) || !(a SUBSEP "apk" in arc) || ov[a]=="" || cv[a]=="" || ov[a]!=cv[a]) print "APK",a,p,"apk",0
+			if(backupMode!="true" || nodata[a]=="1" || p=="bin.mt.plus") continue
+			if(backupUser=="true"){emit_entry(a,p,"user"); emit_entry(a,p,"user_de")}
+			if(backupObb=="true"){emit_entry(a,p,"data"); emit_entry(a,p,"obb"); emit_entry(a,p,"media")}
+		}
+	}' "$_sel" "$_sum" "$_sizes" "$_exists" "$_archives" "$_fast" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	return $?
+}
+
+# r692 remote-stream parity：使用既有 remote summary / payload-set / local dir-size facts，
+# 只列出實際需要重新 tar+stream 的 APK/data entries；不發網路請求、不新增 remote traversal。
+_backup_prescan_exact_remote_rows() {
+	local _out="$1" _sel="$TMPDIR/.selected_apps.tsv" _sum="$TMPDIR/.remote_appdetails_summary.tsv" _sizes="$TMPDIR/.local_dir_sizes.tsv" _exists="$TMPDIR/.local_dir_exists.tsv" _payload="$TMPDIR/.remote_payload_set.tsv" _fast="$TMPDIR/.remote_fast_skip_ok" _changed="$TMPDIR/.listver_changed"
+	# r707: a successfully listed empty remote needs no old metadata for first-full
+	# accounting. Keep these empty inputs private: never mark remote comparison
+	# caches ready or treat unavailable/nonempty listings as an empty backup.
+	if [[ -f $TMPDIR/.remote_firstfull_presize_active && -f $TMPDIR/.remote_filelist_ok \
+		&& -f $TMPDIR/.remote_files && ! -s $TMPDIR/.remote_files ]]; then
+		_sum=/dev/null
+		_payload=/dev/null
+		_fast=/dev/null
+		_speed_debug_log "BACKUP_PRESCAN_EXACT_FIRST_FULL source=verified-empty-remote compareCache=unchanged mode=r707"
+	fi
+	[[ -s $_sel && -r $_sum && -s $_sizes && -f $_exists && -r $_payload && -r $_fast ]] || return 1
+	[[ -f $_changed ]] || : > "$_changed" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	awk -F '\t' -v backupMode="${Backup_Mode:-false}" -v backupObb="${Backup_obb_data:-false}" -v backupUser="${Backup_user_data:-false}" '
+	BEGIN{OFS="\t"}
+	FILENAME==ARGV[1] { if(NF>=4){app[++n]=$1; pkg[$1]=$2; nodata[$1]=$3; cv[$1]=$4} next }
+	FILENAME==ARGV[2] { if(NF>=8){meta[$1]=1; ov[$1]=$3; old[$1 SUBSEP "user"]=$4; old[$1 SUBSEP "user_de"]=$5; old[$1 SUBSEP "data"]=$6; old[$1 SUBSEP "obb"]=$7; old[$1 SUBSEP "media"]=$8} next }
+	FILENAME==ARGV[3] { if(NF>=3) cur[$1 SUBSEP $2]=$3; next }
+	FILENAME==ARGV[4] { if(NF>=2) dex[$1 SUBSEP $2]=1; next }
+	FILENAME==ARGV[5] { if(NF>=1) pay[$1]=1; next }
+	FILENAME==ARGV[6] { if(NF>=1) fast[$1]=1; next }
+	FILENAME==ARGV[7] { if(NF>=1) changed[$1]=1; next }
+	function haspay(a,e){ return ((a "/" e ".tar.zst") in pay) || ((a "/" e ".tar") in pay) }
+	function emit_entry(a,p,e,  c,o,k){
+		k=p SUBSEP e; if(!(k in dex)) return
+		c=cur[k]; if(c !~ /^[0-9]+$/ || length(c)<4) return
+		o=old[a SUBSEP e]
+		if(!(a in meta) || o=="" || o=="null" || o!=c || !haspay(a,e)) print "DIR",a,p,e,c
+	}
+	END{
+		for(i=1;i<=n;i++){
+			a=app[i]; p=pkg[a]; if(a in fast) continue
+			if(!(a in meta) || (a in changed) || (p in changed) || ov[a]=="" || cv[a]=="" || ov[a]!=cv[a] || !haspay(a,"apk")) print "APK",a,p,"apk",0
+			if(backupMode!="true" || nodata[a]=="1" || p=="bin.mt.plus") continue
+			if(backupUser=="true"){emit_entry(a,p,"user"); emit_entry(a,p,"user_de")}
+			if(backupObb=="true"){emit_entry(a,p,"data"); emit_entry(a,p,"obb"); emit_entry(a,p,"media")}
+		}
+	}' "$_sel" "$_sum" "$_sizes" "$_exists" "$_payload" "$_fast" "$_changed" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	return $?
+}
+
+_backup_prescan_exact_payload_plan() {
+	local _rows _details _stats _native_out _out_dir _keep_debug=0 _key _val _cache_keys="|" _total="" _count="" _start _end _elapsed _rc
+	local _rust_ms=0 _apk_rows=0 _apk_packages=0 _apk_files=0 _dir_rows=0
+	SPEEDBACKUP_PRESCAN_EXACT_INPUT_BYTES=""
+	SPEEDBACKUP_PRESCAN_EXACT_ARCHIVES="0"
+	SPEEDBACKUP_PRESCAN_PACKPLAN_KEYS='|'
+	# 支援兩條已具備完整 prescan facts 的 data-plane：純本地、遠端流式。
+	# r696: exact bytes lookup/stat/sum 全部一次交給 speedscan，shell 只產生 changed rows 與接回 cache keys。
+	[[ ! -f ${0%/*}/app_details.json ]] || return 1
+	_speedscan_available || return 1
+	_speedscan_have_capability speedscan.dir_size_tar_input_map.v1 || return 1
+	_speedscan_have_capability speedscan.backup_prescan_exact_input_batch.v1 || return 1
+	_rows="$TMPDIR/.backup_prescan_exact_rows.tsv"
+	_out_dir="$TMPDIR"
+	if [[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]]; then _out_dir="$SPEED_DEBUG_RUN_DIR"; _keep_debug=1; fi
+	_details="$_out_dir/backup_prescan_exact_details.tsv"
+	_stats="$_out_dir/backup_prescan_exact_stats.tsv"
+	_native_out="$_out_dir/backup_prescan_exact_native.log"
+	if [[ ${remote_stream:-0} = 1 && -n ${remote_type:-} ]]; then
+		_backup_prescan_exact_remote_rows "$_rows" || return 1
+	elif _speedbackup_local_backup_context_ok && [[ ${remote_stream:-0} != 1 ]]; then
+		_backup_prescan_exact_local_rows "$_rows" || return 1
+	else
+		return 1
+	fi
+	_start="$(_speed_now_ms)"; case $_start in ''|*[!0-9]*) _start=0 ;; esac
+	: > "$_native_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
+	_speedscan_cmd backup-prescan-exact-input \
+		"$_rows" "$TMPDIR/.dir_size_tar_input_map.tsv" "$TMPDIR/.pkg_apk_paths" "$_details" "$_stats" \
+		> "$_native_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_rc=$?
+	if [[ $_rc != 0 || ! -s $_stats || ! -f $_details ]]; then
+		_speed_debug_log "BACKUP_PRESCAN_EXACT_BATCH_FAIL rc=$_rc rows=${_rows##*/} statsPresent=$([[ -s $_stats ]] && echo 1 || echo 0) detailsPresent=$([[ -f $_details ]] && echo 1 || echo 0) mode=r696"
+		rm -f "$_rows" "$_details" "$_stats" "$_native_out" 2>/dev/null
+		return 1
+	fi
+	while IFS="$SB_TAB" read -r _key _val; do
+		case $_key in
+		bytes) _total="$_val" ;;
+		archives) _count="$_val" ;;
+		apkRows) _apk_rows="$_val" ;;
+		apkPackages) _apk_packages="$_val" ;;
+		apkFiles) _apk_files="$_val" ;;
+		dirRows) _dir_rows="$_val" ;;
+		cacheKeys) _cache_keys="$_val" ;;
+		elapsedMs) _rust_ms="$_val" ;;
+		esac
+	done < "$_stats"
+	case $_total in ''|*[!0-9]*) _speed_debug_log "BACKUP_PRESCAN_EXACT_BATCH_FAIL rc=0 reason=bad-total mode=r696"; rm -f "$_rows" "$_details" "$_stats" "$_native_out" 2>/dev/null; return 1 ;; esac
+	case $_count in ''|*[!0-9]*) _speed_debug_log "BACKUP_PRESCAN_EXACT_BATCH_FAIL rc=0 reason=bad-count mode=r696"; rm -f "$_rows" "$_details" "$_stats" "$_native_out" 2>/dev/null; return 1 ;; esac
+	case $_rust_ms in ''|*[!0-9]*) _rust_ms=0 ;; esac
+	cp -f "$_details" "$TMPDIR/.backup_run.plan" || return 1
+	SPEEDBACKUP_PRESCAN_PACKPLAN_KEYS="${_cache_keys:-|}"
+	rm -f "$_rows" 2>/dev/null
+	if [[ $_keep_debug != 1 ]]; then rm -f "$_details" "$_stats" "$_native_out" 2>/dev/null; fi
+	_end="$(_speed_now_ms)"; case $_end in ''|*[!0-9]*) _end=$_start ;; esac; _elapsed=$((_end - _start))
+	SPEEDBACKUP_PRESCAN_EXACT_INPUT_BYTES="$_total"
+	SPEEDBACKUP_PRESCAN_EXACT_ARCHIVES="$_count"
+	_speed_debug_log "BACKUP_PRESCAN_EXACT_INPUT_READY bytes=$_total archives=$_count elapsedMs=$_elapsed rustCoreMs=$_rust_ms apkRows=$_apk_rows apkPackages=$_apk_packages apkFiles=$_apk_files dirRows=$_dir_rows cacheKeysCount=$_count mode=r696 source=speedscan-batch+dir-size-map-fused no-content-read perEntryForks=0"
+	return 0
 }
 
 _backup_remote_prescan_progress_step() {
@@ -4696,8 +5099,56 @@ _backup_remote_size_prescan_progress_done() {
 	_speed_debug_log "REMOTE_SIZE_PRESCAN_PROGRESS_DONE path=$(_speed_debug_kv "${_path:-}") bytes=$_bytes mode=r448"
 }
 
+# r699: assign the summary caller's local fields once, without eval or per-key awk.
+_backup_prescan_result_load() {
+	local _file="$1" _line _key _value _tail _seen='|'
+	[[ -s $_file ]] || return 1
+	_apps=0
+	_excluded=0
+	_apk_total=0
+	_appdata_total=0
+	_external_total=0
+	_media_total=0
+	_cache_total=0
+	_total=0
+	_remote_skip=0
+	_local_skip=0
+	_expected=0
+	_partial_media=0
+	_media_mapped=0
+	_cache_mapped=0
+	while IFS= read -r _line || [[ -n $_line ]]; do
+		case $_line in *"$SB_TAB"*) ;; *) continue ;; esac
+		_key="${_line%%"$SB_TAB"*}"
+		_tail="${_line#*"$SB_TAB"}"
+		_value="${_tail%%"$SB_TAB"*}"
+		case $_seen in *"|$_key|"*) continue ;; esac
+		case $_value in ''|*[!0-9]*) _value=0 ;; esac
+		case $_key in
+			apps) _apps="$_value" ;;
+			excludedApps) _excluded="$_value" ;;
+			apk) _apk_total="$_value" ;;
+			appData) _appdata_total="$_value" ;;
+			external) _external_total="$_value" ;;
+			mediaCustom) _media_total="$_value" ;;
+			excludedCache) _cache_total="$_value" ;;
+			total) _total="$_value" ;;
+			remoteSkip) _remote_skip="$_value" ;;
+			localSkip) _local_skip="$_value" ;;
+			expected) _expected="$_value" ;;
+			partialMedia) _partial_media="$_value" ;;
+			mediaMapped) _media_mapped="$_value" ;;
+			cacheMapped) _cache_mapped="$_value" ;;
+			*) continue ;;
+		esac
+		_seen="${_seen}${_key}|"
+	done < "$_file"
+}
+
 _backup_prescan_show_summary() {
 	[[ ${SPEEDBACKUP_BACKUP_PRESCAN_SIZE_SUMMARY:-1} = 1 ]] || return 0
+	local _phase_start _phase_end _formatted _actual _h_apk _h_appdata _h_external _h_media _h_cache _h_total _h_remote _h_actual _h_local
+	_backup_perf_clock; _phase_start="$_BACKUP_PERF_MS"
 	local _summary_start _summary_now _summary_elapsed _media_note=""
 	_speed_time_refresh; _summary_start="${SPEEDBACKUP_NOW_SEC:-0}"
 	_speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_BEGIN mode=r459 source=native-speedscan-hotpaths"
@@ -4715,37 +5166,56 @@ _backup_prescan_show_summary() {
 	_res="$TMPDIR/.backup_prescan_size_summary.tsv"
 	_speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_STAGE_BEGIN stage=selected-list mode=r459"
 	_backup_prescan_emit_selected_list "$_sel" "$_list" || return 0
-	_eventwait_output_file_stable_ms "$_sel" backup_prescan_selected_ready 50 1000 >/dev/null 2>&1 || true
+	# The synchronous writer has returned and closed this output.
+	[[ -f "$_sel" ]] || { _speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_FAIL stage=selected reason=missing-sync-output mode=r699"; return 0; }
 	_speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_STAGE_END stage=selected-list mode=r459"
 	_speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_STAGE_BEGIN stage=apk-size-map mode=r459"
 	_apkmap="$(_backup_prescan_prepare_apk_size_map)"
-	_eventwait_output_file_stable_ms "$_apkmap" backup_prescan_apkmap_ready 50 1000 >/dev/null 2>&1 || true
+	# The synchronous writer has returned and closed this output.
+	[[ -f "$_apkmap" ]] || { _speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_FAIL stage=apkmap reason=missing-sync-output mode=r699"; return 0; }
 	_speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_STAGE_END stage=apk-size-map mode=r459"
 	_speed_debug_log "BACKUP_PRESCAN_CUSTOM_MEDIA_SCAN_BEGIN mode=r459 source=dir-size-map-only policy=no-extra-scan"
 	_speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_STAGE_BEGIN stage=compute-fast mode=r459"
 	_backup_prescan_compute_fast_totals "$_sel" "$_apkmap" "$_res" || { _speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_FAIL stage=compute-fast mode=r459"; return 0; }
-	_eventwait_output_file_stable_ms "$_res" backup_prescan_summary_ready 50 1000 >/dev/null 2>&1 || true
+	# The synchronous writer has returned and closed this output.
+	[[ -s "$_res" ]] || { _speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_FAIL stage=summary reason=missing-sync-output mode=r699"; return 0; }
 	_speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY_STAGE_END stage=compute-fast mode=r459"
-	_apps="$(_backup_prescan_result_get "$_res" apps)"
-	_excluded="$(_backup_prescan_result_get "$_res" excludedApps)"
-	_apk_total="$(_backup_prescan_result_get "$_res" apk)"
-	_appdata_total="$(_backup_prescan_result_get "$_res" appData)"
-	_external_total="$(_backup_prescan_result_get "$_res" external)"
-	_media_total="$(_backup_prescan_result_get "$_res" mediaCustom)"
-	_cache_total="$(_backup_prescan_result_get "$_res" excludedCache)"
-	_total="$(_backup_prescan_result_get "$_res" total)"
-	_remote_skip="$(_backup_prescan_result_get "$_res" remoteSkip)"
-	_local_skip="$(_backup_prescan_result_get "$_res" localSkip)"
-	_expected="$(_backup_prescan_result_get "$_res" expected)"
-	_partial_media="$(_backup_prescan_result_get "$_res" partialMedia)"
-	_media_mapped="$(_backup_prescan_result_get "$_res" mediaMapped)"
-	_cache_mapped="$(_backup_prescan_result_get "$_res" cacheMapped)"
+	_backup_prescan_result_load "$_res" || return 0
+	SPEEDBACKUP_PRESCAN_EXPECTED_BYTES="$_expected"
+	SPEEDBACKUP_PRESCAN_EXACT_INPUT_BYTES=""
+	SPEEDBACKUP_PRESCAN_EXACT_ARCHIVES="0"
 	[[ $_partial_media = 1 ]] && _media_note="（媒體/自訂路徑未進入本輪 C 預掃，已略過以避免摘要阻塞）"
 	_speed_time_refresh; _summary_now="${SPEEDBACKUP_NOW_SEC:-0}"; _summary_elapsed=$((_summary_now - _summary_start))
 	_speed_debug_log "BACKUP_PRESCAN_CUSTOM_MEDIA_SCAN_END mediaBytes=$_media_total cacheBytes=0 mapped=$_media_mapped cacheMapped=$_cache_mapped partial=$_partial_media elapsedSec=$_summary_elapsed mode=r459 source=dir-size-map-only"
 	_speed_debug_log "BACKUP_PRESCAN_SIZE_SUMMARY apps=$_apps excludedApps=$_excluded apk=$_apk_total appData=$_appdata_total external=$_external_total mediaCustom=$_media_total excludedCache=$_cache_total total=$_total remoteSkip=$_remote_skip localSkip=$_local_skip expected=$_expected partialMedia=$_partial_media elapsedSec=$_summary_elapsed mode=r459 source=native-speedscan-hotpaths"
-	echoRgb "本輪備份預掃完成\n -App：$_apps 個\n -APK：$(size "$_apk_total")\n -App 資料：$(size "$_appdata_total")\n -外部資料 / OBB：$(size "$_external_total")\n -媒體 / 自訂資料夾：$(size "$_media_total")$_media_note\n -排除快取：$(size "$_cache_total")\n -壓縮前總量：$(size "$_total")\n -遠端可跳過：$(size "$_remote_skip")\n -預計實際處理：$(size "$_expected")" "3"
-	[[ $_local_skip != 0 ]] && echoRgb "本地無變化可跳過：$(size "$_local_skip")" "2"
+	local _exact_input="" _exact_ok=0
+	# r712: always build App keys/hints; only the whole-run exact total depends on
+	# complete Media coverage. The Rust reducer separately reconciles planned keys.
+	if _backup_prescan_exact_payload_plan; then
+		_exact_input="${SPEEDBACKUP_PRESCAN_EXACT_INPUT_BYTES:-0}"
+		case $_exact_input in ''|*[!0-9]*) _exact_input="" ;; *) _exact_ok=1 ;; esac
+		if [[ $_media_total != 0 || $_partial_media != 0 ]]; then
+			_speed_debug_log "BACKUP_PRESCAN_EXACT_INPUT_SCOPE scope=app-payload appBytes=$_exact_input mediaBytes=$_media_total partialMedia=$_partial_media globalExact=unknown plan=retained mode=r712"
+			SPEEDBACKUP_PRESCAN_EXACT_INPUT_BYTES=""
+			_exact_ok=0
+		fi
+	fi
+	_actual="$_expected"
+	[[ $_exact_ok = 1 ]] && _actual="$_exact_input"
+	_formatted="$(_size_format_batch "$_apk_total" "$_appdata_total" "$_external_total" "$_media_total" "$_cache_total" "$_total" "$_remote_skip" "$_actual" "$_local_skip")"
+	IFS=$'\t' read -r _h_apk _h_appdata _h_external _h_media _h_cache _h_total _h_remote _h_actual _h_local <<EOF_BACKUP_SUMMARY_HUMAN
+$_formatted
+EOF_BACKUP_SUMMARY_HUMAN
+	if [[ $_exact_ok = 1 ]]; then
+		SPEEDBACKUP_PRESCAN_EXPECTED_BYTES="$_exact_input"
+		echoRgb "本輪備份預掃完成\n -App：$_apps 個\n -APK：$_h_apk\n -App 資料：$_h_appdata\n -外部資料 / OBB：$_h_external\n -媒體 / 自訂資料夾：$_h_media$_media_note\n -排除快取：$_h_cache\n -壓縮前總量：$_h_total\n -遠端可跳過：$_h_remote\n -實際處理：$_h_actual" "3"
+	else
+		echoRgb "本輪備份預掃完成\n -App：$_apps 個\n -APK：$_h_apk\n -App 資料：$_h_appdata\n -外部資料 / OBB：$_h_external\n -媒體 / 自訂資料夾：$_h_media$_media_note\n -排除快取：$_h_cache\n -壓縮前總量：$_h_total\n -遠端可跳過：$_h_remote\n -預計實際處理：$_h_actual" "3"
+		_speed_debug_log "BACKUP_PRESCAN_EXACT_INPUT_FALLBACK expected=$_expected appPlannedBytes=${_exact_input:--} reason=global-coverage-incomplete-or-plan-fail mode=r712"
+	fi
+	[[ $_local_skip != 0 ]] && echoRgb "本地無變化可跳過：$_h_local" "2"
+	_backup_perf_clock; _phase_end="$_BACKUP_PERF_MS"
+	_speed_debug_log "BACKUP_PRESCAN_SUMMARY_FULL_TIMING elapsedMs=$((_phase_end - _phase_start)) stableWaitMs=0 resultParsers=1 sizeFormatters=1 clock=$_BACKUP_PERF_CLOCK mode=r699"
 }
 
 # 將 $name1 寫入 .changed_apps (去重, 避免重複記錄)
@@ -4865,6 +5335,23 @@ _local_file_size_debug() {
 		;;
 	esac
 	echo "$_s"
+}
+
+# r699: direct monotonic clock for phase timings; no command substitution/fork.
+_backup_perf_clock() {
+	local _up _rest _sec _frac
+	if IFS=' ' read -r _up _rest 2>/dev/null < /proc/uptime; then
+		_sec="${_up%%.*}"
+		_frac="${_up#*.}000"
+		_frac="${_frac%${_frac#???}}"
+		case $_sec$_frac in
+			''|*[!0-9]*) ;;
+			*) _BACKUP_PERF_MS=$((10#$_sec * 1000 + 10#$_frac)); _BACKUP_PERF_CLOCK=proc-uptime; return 0 ;;
+		esac
+	fi
+	_speed_time_refresh
+	_BACKUP_PERF_MS="${SPEEDBACKUP_NOW_MS:-0}"
+	_BACKUP_PERF_CLOCK=wall-fallback
 }
 
 _speed_now_ms() {
@@ -5024,13 +5511,238 @@ _archive_output_path() {
 	esac
 }
 _archive_print_ratio() {
-	local _base="$1" _origin_size="$2" _comp="${3:-$Compression_method}" _out _out_size _rate
+	local _base="$1" _origin_size="$2" _comp="${3:-$Compression_method}" _known_out_size="${4:-}" _out _out_size _rate
 	case $_origin_size in ''|*[!0-9]*|0) return 0 ;; esac
-	_out="$(_archive_output_path "$_base" "$_comp")"
-	_out_size="$(_local_file_size_debug "$_out")"
+	case $_known_out_size in
+	''|*[!0-9]*)
+		_out="$(_archive_output_path "$_base" "$_comp")"
+		_out_size="$(_local_file_size_debug "$_out")"
+		;;
+	*) _out_size="$_known_out_size" ;;
+	esac
 	case $_out_size in ''|*[!0-9]*) _out_size=0 ;; esac
-	_rate="$(awk -v s="$_out_size" -v f="$_origin_size" 'BEGIN{ if (f>0) printf "%.2f", (1-(s/f))*100; else printf "0.00" }')"
+	_rate="$(_speedscan_cmd payload-metrics "$_origin_size" "$_out_size" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})" || return 1
+	_rate=${_rate%%"$SB_TAB"*}
 	echoRgb "壓縮率${_rate}% 大小$(size "$_out_size")"
+}
+
+# r692: capability=tools.payload_prescan_exact_tar_input.v1；本地/遠端流式預掃 exact tar-input plan + final zstd reconcile，正常 changed-entry 不增加重複 tree traversal。
+# r691: capability=tools.zstd_input_log_aligned_space.v1；從同一次 zstd 壓縮的 verbose raw log 取得真正送入壓縮器的 tar stream bytes。
+# zstd -q -vvv 會在 stderr 輸出 `(NNN B => ...`；這裡全程 shell builtin 解析，不增加第二次讀檔/解壓/掃描。
+# 若格式不可辨識就 fail closed，讓最終統計降級 partial，絕不回退使用 gross root size 冒充 exact。
+_zstd_input_bytes_from_raw_log() {
+	local _raw="$1" _line _tok _prev _candidate _seen_open
+	SPEEDBACKUP_ZSTD_INPUT_BYTES_RET=""
+	[[ -s "$_raw" ]] || return 1
+	while IFS= read -r _line || [[ -n "$_line" ]]; do
+		case "$_line" in
+		*" B =>"*)
+			_prev=""
+			_seen_open=0
+			for _tok in $_line; do
+				case "$_tok" in
+				\() _seen_open=1 ;;
+				\(*) _seen_open=1 ;;
+				esac
+				if [[ "$_tok" = B ]]; then
+					_candidate=""
+					case "$_prev" in
+					\(*) _candidate="${_prev#?}" ;;
+					*) [[ "$_seen_open" = 1 ]] && _candidate="$_prev" ;;
+					esac
+					case "$_candidate" in ''|*[!0-9]*) ;; *) SPEEDBACKUP_ZSTD_INPUT_BYTES_RET="$_candidate" ;; esac
+					break
+				fi
+				_prev="$_tok"
+			done
+			;;
+		esac
+	done < "$_raw"
+	[[ -n "$SPEEDBACKUP_ZSTD_INPUT_BYTES_RET" ]]
+}
+
+# r690: 本輪成功 App payload 的 exact tar-stream input / final bytes 統計。
+# 熱路徑只 append 一行 TSV，不做 stat/awk/sort；storedBytes 直接復用既有 local out_size / WebDAV sentBytes。
+# SMB stream 不新增每檔 stat：先記 pending，收尾復用既有 remote_dir_size() 那一次 recurse size-map 批次回填。
+_backup_payload_stats_smb_post_map_file() {
+	printf '%s\n' "${TMPDIR:-/data/local/tmp}/.backup_payload_smb_post_size_map.tsv"
+}
+# r705: append-only run events; Rust owns state transitions, retry dedup and totals.
+_backup_entry_event() {
+	local _state="$1" _input="${2:--}" _output="${3:--}" _rc="${4:--}" _reason="${5:-none}" _source=local
+	[[ -f $TMPDIR/.backup_run.events && -n ${_SBB_KEY:-} ]] || return 0
+	[[ ${remote_stream:-0} = 1 ]] && _source="${remote_type:-unknown}"
+	_speed_time_refresh
+	printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$_SBB_KEY" "${_SBB_KEY%/*}" "${_SBB_KEY##*/}" "${_SBB_ATTEMPT:-0}" "$_state" "$_input" "$_output" "${_comp_override:-${Compression_method:-zstd}}" "$_source" "${SPEEDBACKUP_NOW_MS:-0}" "$_rc" "$_reason" >> "$TMPDIR/.backup_run.events"
+}
+_backup_entry_begin() {
+	local _base="$1"
+	if [[ ${remote_stream:-0} = 1 && -n ${_STREAM_DEST:-} ]]; then _SBB_KEY="$_STREAM_DEST/${_base##*/}"; else _SBB_KEY="${_base#$Backup/}"; fi
+	_SBB_STARTED=1; _SBB_TERMINAL=0
+	_SBB_SEQUENCE=$((${_SBB_SEQUENCE:-0} + 1)); _SBB_ATTEMPT=$_SBB_SEQUENCE
+	_backup_entry_event begin - - - packing
+}
+_backup_entry_fail() {
+	[[ ${_SBB_STARTED:-0} = 1 && ${_SBB_TERMINAL:-0} != 1 ]] || return 0
+	local _failure_rc="${1:-1}"
+	[[ $_failure_rc != 0 ]] || _failure_rc=1
+	_backup_entry_event failed - - "$_failure_rc" "${2:-packing_failed}"
+	_SBB_TERMINAL=1
+}
+_backup_entry_call() {
+	local _call="$2" _rc _SBB_KEY="${Backup_folder##*/}/$1" _SBB_ATTEMPT=0 _SBB_STARTED=0 _SBB_TERMINAL=0
+	local _SBB_SKIP_REASON=not_repacked
+	shift 2
+	_backup_entry_event consider - - - selected
+	"$_call" "$@"; _rc=$?
+	if [[ $_SBB_STARTED = 0 ]]; then
+		if [[ $_rc = 0 ]]; then _backup_entry_event skipped - - 0 "$_SBB_SKIP_REASON";
+		else _backup_entry_begin "$Backup/$_SBB_KEY"; _backup_entry_fail "$_rc" entry_failed; fi
+	elif [[ $_SBB_TERMINAL != 1 ]]; then
+		_backup_entry_fail "${result:-1}" validation_or_record_missing
+	fi
+	return "$_rc"
+}
+Backup_data() { _backup_entry_call "$1" _backup_data_impl "$@"; }
+Backup_apk() { _backup_entry_call apk _backup_apk_impl "$@"; }
+
+_backup_entry_fast_app() {
+	local _rel _kind _rest _SBB_KEY _SBB_ATTEMPT=0 _SBB_STARTED=0 _SBB_TERMINAL=0 _seen='|'
+	[[ -f $TMPDIR/.remote_payload_set.tsv ]] || return 1
+	while IFS="$SB_TAB" read -r _rel _rest; do
+		case $_rel in "$name1/"*.tar.zst) _kind=${_rel#"$name1/"}; _kind=${_kind%.tar.zst} ;; "$name1/"*.tar) _kind=${_rel#"$name1/"}; _kind=${_kind%.tar} ;; *) continue ;; esac
+		case $_kind in
+		apk) ;;
+		user|user_de) [[ $Backup_Mode = true && $Backup_user_data = true && ${No_backupdata:-0} != 1 ]] || continue ;;
+		data|obb|media) [[ $Backup_Mode = true && $Backup_obb_data = true && ${No_backupdata:-0} != 1 ]] || continue ;;
+		*) continue ;;
+		esac
+		case $_seen in *"|$_kind|"*) continue ;; esac
+		_seen="$_seen$_kind|"; _SBB_KEY="$name1/$_kind"
+		_backup_entry_event skipped - - 0 whole_app_fastskip
+	done < "$TMPDIR/.remote_payload_set.tsv"
+}
+
+# r706: serialize collapsed selections once; no per-app payload-map rereads.
+_backup_entry_fast_batch() {
+	local _skipped="$1" _selected="$2" _black="$3" _source=local
+	[[ -f $TMPDIR/.backup_run.events && -s $_skipped && -s $_selected ]] || return 0
+	[[ -f $_black ]] || _black=/dev/null
+	[[ ${remote_stream:-0} = 1 ]] && _source="${remote_type:-unknown}"
+	_speed_time_refresh
+	awk -F '\t' -v OFS='\t' -v mode="${Backup_Mode:-false}" -v users="${Backup_user_data:-false}" \
+		-v external="${Backup_obb_data:-false}" -v blackmode="${blacklist_mode:-false}" \
+		-v codec="${Compression_method:-zstd}" -v source="$_source" -v now="${SPEEDBACKUP_NOW_MS:-0}" '
+		function emit(app, kind) {
+			key=app "/" kind
+			if (!seen[key]++) print key, app, kind, 0, "skipped", "-", "-", codec, source, now, 0, "whole_app_fastskip"
+		}
+		FILENAME==ARGV[1] { if ($1!="" && $2!="") skipped[$2]=$1; next }
+		FILENAME==ARGV[2] { if ($1!="") black[$1]=1; next }
+		FILENAME==ARGV[3] && NF>=4 && ($2 in skipped) && skipped[$2]==$1 {
+			if (mode=="true" && ($2 in black) && blackmode=="true") next
+			emit($1,"apk")
+			if (mode!="true" || $3=="1" || $2=="bin.mt.plus" || ($2 in black)) next
+			if (users=="true") { emit($1,"user"); emit($1,"user_de") }
+			if (external=="true") { emit($1,"data"); emit($1,"obb"); emit($1,"media") }
+		}
+	' "$_skipped" "$_black" "$_selected" >> "$TMPDIR/.backup_run.events" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+}
+
+_backup_payload_stats_init() {
+	: > "$TMPDIR/.backup_run.events" || return 1
+	: > "$TMPDIR/.backup_run.plan" || return 1
+	_SBB_SEQUENCE=0
+	rm -f "${TMPDIR:-/data/local/tmp}/.backup_payload_smb_post_size_map.tsv" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+	SPEEDBACKUP_PRESCAN_EXPECTED_BYTES=""
+	SPEEDBACKUP_PRESCAN_EXACT_INPUT_BYTES=""
+	SPEEDBACKUP_PRESCAN_EXACT_ARCHIVES="0"
+	SPEEDBACKUP_PRESCAN_PACKPLAN_KEYS='|'
+	return 0
+}
+_backup_payload_stats_record_success() {
+	local _origin="$2" _stored="$3"
+	case $_origin in ''|*[!0-9]*) _origin=- ;; esac
+	case $_stored in ''|*[!0-9]*) _stored=- ;; esac
+	_backup_entry_event success "$_origin" "$_stored" 0 validated
+	_SBB_TERMINAL=1
+}
+_backup_payload_plan_reconcile_log() {
+	local _file="$1" _magic _schema _op _state _scope _planned _actual _match _entries _mismatch _unknown _failed _incomplete _outside _extra _n
+	[[ -s $_file ]] || return 1
+	IFS="$SB_TAB" read -r _magic _schema _op _state _scope _planned _actual _match _entries _mismatch _unknown _failed _incomplete _outside _extra < "$_file" || return 1
+	[[ $_magic = SBRESULT && $_schema = 1 && $_op = backup-plan && $_scope = planned-entries && -z $_extra ]] || return 1
+	for _n in "$_planned" "$_actual" "$_entries" "$_mismatch" "$_unknown" "$_failed" "$_incomplete" "$_outside"; do case $_n in ''|*[!0-9]*) return 1 ;; esac; done
+	case "$_state:$_match" in ok:1|mismatch:0|partial:unknown|unknown:unknown) ;; *) return 1 ;; esac
+	if [[ $_state = ok ]]; then
+		[[ -n ${_entries//0/} && $_planned = "$_actual" && $_mismatch = 0 && $_unknown = 0 && $_failed = 0 && $_incomplete = 0 ]] || return 1
+	fi
+	_speed_debug_log "BACKUP_PAYLOAD_STATS_PLAN_RECONCILE scope=$_scope state=$_state planned=$_planned actual=$_actual match=$_match archivesPlanned=$_entries mismatch=$_mismatch unknownInput=$_unknown failed=$_failed incomplete=$_incomplete outsidePlan=$_outside mode=r712 source=rust-plan-and-events"
+	return 0
+}
+_backup_payload_stats_show_summary() {
+	local _rows=0 _known=0 _pending=0 _origin_pending=0 _stored_pending=0 _tar_rows=0 _zstd_rows=0
+	local _origin_total _stored_total _saved _rate _ratio _expected _expected_diff _saved_label _origin_label
+	[[ -s "$TMPDIR/.backup_run.events" || -s "$TMPDIR/.backup_run.plan" ]] || { _speed_debug_log "BACKUP_PAYLOAD_STATS_SUMMARY_SKIP reason=no-successful-payload mode=r690"; return 0; }
+	local _receipt _magic _schema _operation _state _plan_match _archives _duplicates _apps _entries _skipped _failed _incomplete _mismatch _planned _unknown_plan
+	local _prefix="${SPEED_DEBUG_RUN_DIR:-$TMPDIR}/backup_run"
+	_expected="${SPEEDBACKUP_PRESCAN_EXPECTED_BYTES:-0}"
+	# Preserve the inputs even when the reducer rejects an invalid event sequence.
+	if [[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d $SPEED_DEBUG_RUN_DIR ]]; then
+		cp -f "$TMPDIR/.backup_run.events" "$SPEED_DEBUG_RUN_DIR/backup_run.events"
+		cp -f "$TMPDIR/.backup_run.plan" "$SPEED_DEBUG_RUN_DIR/backup_run.plan"
+	fi
+	_receipt="$(_speedscan_cmd backup-run-summary "$TMPDIR/.backup_run.plan" "$TMPDIR/.backup_run.events" "$(_backup_payload_stats_smb_post_map_file)" "$_prefix" "$_expected" "${SPEEDBACKUP_PRESCAN_EXACT_INPUT_BYTES:--}" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})" || {
+		_speed_debug_log "BACKUP_PAYLOAD_STATS_SUMMARY state=invalid reason=rust-reducer-failed mode=r705"
+		echoRgb "本輪統計資料無法完整驗證，未計算整體壓縮率" "2"
+		return 1
+	}
+	IFS="$SB_TAB" read -r _magic _schema _operation _state _rows _known _pending _origin_pending _stored_pending _origin_total _stored_total _tar_rows _zstd_rows _saved _rate _ratio _expected_diff _plan_match _archives _duplicates _expected _apps _entries _skipped _failed _incomplete _mismatch _planned _unknown_plan <<EOF
+$_receipt
+EOF
+	[[ $_magic = SBRESULT && $_schema = 1 && $_operation = backup-run ]] || return 1
+	_speed_debug_log "BACKUP_PAYLOAD_STATS_REDUCER state=$_state duplicates=$_duplicates mode=r705"
+	_backup_payload_plan_reconcile_log "$_prefix.reconcile" || {
+		_speed_debug_log "BACKUP_PAYLOAD_STATS_PLAN_RECONCILE scope=planned-entries state=invalid match=unknown reason=missing-or-invalid-receipt mode=r712"
+		return 1
+	}
+	if [[ -n ${SPEEDBACKUP_PRESCAN_EXACT_INPUT_BYTES:-} ]]; then
+		_speed_debug_log "BACKUP_PAYLOAD_STATS_GLOBAL_PLAN_RECONCILE scope=all-payload planned=$SPEEDBACKUP_PRESCAN_EXACT_INPUT_BYTES actual=$_origin_total match=$_plan_match archivesPlanned=$_archives mode=r712 source=zstd-exact"
+	fi
+	echoRgb "本輪項目：應用=$_apps 項目=$_entries 成功=$_rows 跳過=$_skipped 失敗=$_failed 未完成=$_incomplete 差異=$_mismatch" "2"
+	_speed_debug_log "BACKUP_RUN_SUMMARY apps=$_apps entries=$_entries success=$_rows skipped=$_skipped failed=$_failed incomplete=$_incomplete mismatch=$_mismatch planned=$_planned unknownPlan=$_unknown_plan failedAttempts=$_duplicates mode=r705"
+	if [[ $_rows = 0 && $_failed = 0 && $_incomplete = 0 ]]; then
+		echoRgb "本輪沒有實際重新封裝項目，未計算壓縮率" 2
+		_speed_debug_log "BACKUP_PAYLOAD_STATS_SUMMARY state=$_state rows=0 skipped=$_skipped mode=r705"
+		return 0
+	fi
+	if [[ "$_pending" -ne 0 || "$_known" -ne "$_rows" || $_failed -ne 0 || $_incomplete -ne 0 ]]; then
+		if [[ "$_origin_pending" -eq 0 ]]; then _origin_label="實際封裝 / 壓縮輸入"; else _origin_label="已知實際封裝 / 壓縮輸入"; fi
+		echoRgb "本輪實際處理統計\n -成功 archive：$_rows 個\n -${_origin_label}：$(size "$_origin_total")\n -統計未完整：$_pending 個 archive（原始大小未知 $_origin_pending、final bytes 未知 $_stored_pending）\n -未計算整體壓縮率" "2"
+		_speed_debug_log "BACKUP_PAYLOAD_STATS_SUMMARY state=partial rows=$_rows known=$_known pending=$_pending originPending=$_origin_pending storedPending=$_stored_pending originalKnown=$_origin_total storedKnown=$_stored_total zstdRows=$_zstd_rows tarRows=$_tar_rows expected=$_expected originBasis=tar-stream-exact mode=r690"
+		return 0
+	fi
+	case $_saved in
+	-*) _saved_label="增加空間：$(size "${_saved#-}")" ;;
+	*)  _saved_label="節省空間：$(size "$_saved")" ;;
+	esac
+	echoRgb "本輪實際處理統計\n -成功 archive：$_rows 個\n -實際封裝 / 壓縮輸入：$(size "$_origin_total")\n -壓縮後實際保存 / 傳輸：$(size "$_stored_total")\n -$_saved_label\n -整體壓縮率：${_rate}%\n -壓縮比：${_ratio}:1" "3"
+	if _decimal_is_positive "$_expected"; then
+		if [[ -n ${SPEEDBACKUP_PRESCAN_EXACT_INPUT_BYTES:-} ]]; then
+			case $_expected_diff in
+			-*) echoRgb "預掃實際處理：$(size "$_expected")（封裝時少 $(size "${_expected_diff#-}")）" "2" ;;
+			0)  echoRgb "預掃實際處理：$(size "$_expected")（與實際封裝一致）" "2" ;;
+			*)  echoRgb "預掃實際處理：$(size "$_expected")（封裝時多 $(size "$_expected_diff")）" "2" ;;
+			esac
+		else
+			case $_expected_diff in
+			-*) echoRgb "預掃預計處理：$(size "$_expected")（實際少 $(size "${_expected_diff#-}")）" "2" ;;
+			0)  echoRgb "預掃預計處理：$(size "$_expected")（與實際一致）" "2" ;;
+			*)  echoRgb "預掃預計處理：$(size "$_expected")（實際多 $(size "$_expected_diff")）" "2" ;;
+			esac
+		fi
+	fi
+	_speed_debug_log "BACKUP_PAYLOAD_STATS_SUMMARY state=$_state rows=$_rows known=$_known pending=0 original=$_origin_total stored=$_stored_total saved=$_saved compressionRate=$_rate compressionRatio=$_ratio zstdRows=$_zstd_rows tarRows=$_tar_rows expected=$_expected originBasis=tar-stream-exact mode=r690"
 }
 
 # 單檔 stage helper 第一刀：集中 archive 檔名、清理、存在判斷、校驗與壓縮率輸出。
@@ -5053,31 +5765,24 @@ _backup_mark_done_pkg() {
 	fi
 }
 _webdav_stream_success_sent_bytes() {
-	local _rb="$1" _comp="$2" _info _subdir _full_rel _bytes
+	local _rb="$1" _comp="$2" _subdir _rel _receipt _magic _schema _op _state _http _bytes _actual
 	[[ ${remote_type:-} = webdav && -n $_rb ]] || return 1
-	_info="$(_speed_debug_log_path webdav_daemon_info.log 2>/dev/null)"
-	[[ -s $_info ]] || return 1
 	_subdir="${_BACKUP_DIRNAME_CACHED:-$(get_backup_dirname)}"
-	case $_comp in tar|Tar|TAR) _full_rel="$_subdir/$_rb.tar" ;; *) _full_rel="$_subdir/$_rb.tar.zst" ;; esac
-	_bytes="$(tail -n 240 "$_info" 2>/dev/null | awk -v want="$_full_rel" '
-		/WEBDAV_STREAM_DONE/ && /kind=ok/ {
-			rel=""; sent=""
-			for (i=1; i<=NF; i++) {
-				if ($i ~ /^rel=/) { rel=$i; sub(/^rel=/,"",rel) }
-				else if ($i ~ /^sentBytes=/) { sent=$i; sub(/^sentBytes=/,"",sent) }
-			}
-			if (rel==want && sent ~ /^[0-9]+$/) last=sent
-		}
-		END { if (last!="") print last }
-	')"
+	case $_comp in tar|Tar|TAR) _rel="$_subdir/$_rb.tar" ;; *) _rel="$_subdir/$_rb.tar.zst" ;; esac
+	_receipt="${_rel//[!a-zA-Z0-9._-]/_}"
+	_receipt="$TMPDIR/.webdav_stream_${_receipt:0:180}.result"
+	[[ -s $_receipt ]] || return 1
+	IFS="$SB_TAB" read -r _magic _schema _op _state _http _bytes _actual < "$_receipt" || return 1
+	[[ $_magic = SBRESULT && $_schema = 1 && $_op = webdav-stream && $_state = ok && $_actual = "$_rel" ]] || return 1
+	case $_http in 2[0-9][0-9]) ;; *) return 1 ;; esac
 	case $_bytes in ''|*[!0-9]*) return 1 ;; esac
 	printf '%s\n' "$_bytes"
-	return 0
 }
 
 _stream_result_reset() {
 	SPEEDBACKUP_LAST_STREAM_ARCHIVE_REL=""
 	SPEEDBACKUP_LAST_STREAM_SENT_BYTES=""
+	SPEEDBACKUP_LAST_STREAM_INPUT_BYTES=""
 }
 
 _stream_result_capture() {
@@ -5092,38 +5797,92 @@ _stream_result_capture() {
 	return 0
 }
 
+# r690: local tar 完成後暫存 final bytes + exact tar-stream input；只有後續 Validation_file 成功才正式入帳。
+# 這避免 validation 失敗的 archive 被算進壓縮統計，同時不新增第二次 stat。
+_local_payload_result_reset() {
+	SPEEDBACKUP_LAST_LOCAL_ARCHIVE_REL=""
+	SPEEDBACKUP_LAST_LOCAL_ARCHIVE_BYTES=""
+	SPEEDBACKUP_LAST_LOCAL_ARCHIVE_COMP=""
+	SPEEDBACKUP_LAST_LOCAL_ARCHIVE_INPUT_BYTES=""
+}
+_local_payload_result_capture() {
+	local _out_base="$1" _comp="$2" _out_size="$3" _raw_log="$4" _input="-"
+	_local_payload_result_reset
+	case $_out_size in ''|*[!0-9]*) _out_size="-" ;; esac
+	case $_comp in
+	tar|Tar|TAR) _input="$_out_size" ;;
+	*)
+		if _zstd_input_bytes_from_raw_log "$_raw_log"; then _input="$SPEEDBACKUP_ZSTD_INPUT_BYTES_RET"; fi
+		;;
+	esac
+	case $_input in ''|*[!0-9]*) _input="-" ;; esac
+	SPEEDBACKUP_LAST_LOCAL_ARCHIVE_REL="${_out_base#$Backup/}"
+	SPEEDBACKUP_LAST_LOCAL_ARCHIVE_BYTES="$_out_size"
+	SPEEDBACKUP_LAST_LOCAL_ARCHIVE_COMP="$_comp"
+	SPEEDBACKUP_LAST_LOCAL_ARCHIVE_INPUT_BYTES="$_input"
+}
+_backup_payload_stats_record_local_validated() {
+	local _base="$1" _origin_unused="$2" _entry="$3" _rb _bytes _comp _input
+	_rb="${_base#$Backup/}"
+	_bytes="${SPEEDBACKUP_LAST_LOCAL_ARCHIVE_BYTES:-}"
+	_comp="${SPEEDBACKUP_LAST_LOCAL_ARCHIVE_COMP:-${_comp_override:-$Compression_method}}"
+	_input="${SPEEDBACKUP_LAST_LOCAL_ARCHIVE_INPUT_BYTES:-}"
+	if [[ ${SPEEDBACKUP_LAST_LOCAL_ARCHIVE_REL:-} = "$_rb" ]]; then
+		_backup_payload_stats_record_success "$_rb" "$_input" "$_bytes" "$_comp" "local" "$_entry"
+	fi
+	_local_payload_result_reset
+}
+
 _backup_stage_validate_and_ratio() {
-	local _entry="$1" _base="$2" _origin_size="$3"
+	local _entry="$1" _base="$2" _origin_size="$3" _source_size="$3"
 	if stream_enabled; then
 		result=0
 		local _sent="${SPEEDBACKUP_LAST_STREAM_SENT_BYTES:-}" _rate _stream_comp="${_comp_override:-$Compression_method}"
 		case $_sent in ''|*[!0-9]*) _sent="" ;; esac
+		# r702: excludes and tar padding must not be counted as compression savings.
+		_origin_size=0
+		if [[ ${SPEEDBACKUP_LAST_STREAM_ARCHIVE_REL:-} = "${_STREAM_DEST}/${_base##*/}" ]]; then
+			case ${SPEEDBACKUP_LAST_STREAM_INPUT_BYTES:-} in ''|*[!0-9]*) ;; *) _origin_size="$SPEEDBACKUP_LAST_STREAM_INPUT_BYTES" ;; esac
+		else
+			_sent=""
+		fi
 		if [[ ${remote_type:-} = webdav ]] && _decimal_is_positive "$_sent"; then
 			case $_origin_size in
 			''|0|*[!0-9]*)
 				echoRgb "${_entry}數據已流式上傳遠端 (實傳 $(size "$_sent"))" "1"
 				;;
 			*)
-				_rate="$(awk -v s="$_sent" -v f="$_origin_size" 'BEGIN{ if (f>0) printf "%.2f", (1-(s/f))*100; else printf "0.00" }')"
+				_rate="$(_speedscan_cmd payload-metrics "$_origin_size" "$_sent" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})" || _rate="-"
+				_rate=${_rate%%"$SB_TAB"*}
 				case $_stream_comp in
-				tar|Tar|TAR) echoRgb "${_entry}數據已流式上傳遠端 (原始 $(size "$_origin_size") → 封裝後/實傳 $(size "$_sent"))" "1" ;;
-				*) echoRgb "${_entry}數據已流式上傳遠端 (原始 $(size "$_origin_size") → 壓縮後/實傳 $(size "$_sent")，壓縮率${_rate}%)" "1" ;;
+				tar|Tar|TAR) echoRgb "${_entry}數據已流式上傳遠端 (封裝輸入 $(size "$_origin_size") → 封裝後/實傳 $(size "$_sent"))" "1" ;;
+				*) echoRgb "${_entry}數據已流式上傳遠端 (封裝輸入 $(size "$_origin_size") → 壓縮後/實傳 $(size "$_sent")，壓縮率${_rate}%)" "1" ;;
 				esac
 				;;
 			esac
-			_speed_debug_log "STREAM_UPLOAD_SIZE_UI entry=$_entry originBytes=${_origin_size:-0} sentBytes=$_sent comp=$_stream_comp source=webdav-stream-done mode=r671"
+			_speed_debug_log "STREAM_UPLOAD_SIZE_UI entry=$_entry originBytes=${_origin_size:-0} sentBytes=$_sent comp=$_stream_comp source=webdav-stream-receipt mode=r704"
 		else
-			echoRgb "${_entry}數據已流式上傳遠端 (原始大小 $(size "$_origin_size"))" "1"
+			echoRgb "${_entry}數據已流式上傳遠端 (來源目錄大小 $(size "$_source_size"))" "1"
 			_speed_debug_log "STREAM_UPLOAD_SIZE_UI_FALLBACK entry=$_entry originBytes=${_origin_size:-0} remoteType=${remote_type:-none} reason=sentbytes_unavailable mode=r671"
 		fi
 		return 0
 	fi
 	Validation_file "$_base.tar"*
 	case $result in ''|*[!0-9]*) result=1 ;; esac
-	[[ $result = 0 ]] || return "$result"
+	if [[ $result != 0 ]]; then
+		_backup_entry_fail "$result" validation_failed
+		_local_payload_result_reset
+		return "$result"
+	fi
+	local _validated_bytes="${SPEEDBACKUP_LAST_LOCAL_ARCHIVE_BYTES:-}" _validated_comp="${SPEEDBACKUP_LAST_LOCAL_ARCHIVE_COMP:-${_comp_override:-$Compression_method}}"
+	_origin_size=0
+	if [[ ${SPEEDBACKUP_LAST_LOCAL_ARCHIVE_REL:-} = "${_base#$Backup/}" ]]; then
+		case ${SPEEDBACKUP_LAST_LOCAL_ARCHIVE_INPUT_BYTES:-} in ''|*[!0-9]*) ;; *) _origin_size="$SPEEDBACKUP_LAST_LOCAL_ARCHIVE_INPUT_BYTES" ;; esac
+	fi
+	_backup_payload_stats_record_local_validated "$_base" "$_origin_size" "$_entry"
 	case $_origin_size in
 	''|0|*[!0-9]*) ;;
-	*) _archive_print_ratio "$_base" "$_origin_size" "${_comp_override:-$Compression_method}" ;;
+	*) _archive_print_ratio "$_base" "$_origin_size" "$_validated_comp" "$_validated_bytes" ;;
 	esac
 	case $result in ''|*[!0-9]*) result=1 ;; esac
 	return "$result"
@@ -5192,6 +5951,12 @@ _backup_apk_archive_stage() {
 	echo_log "備份$apk_number個Apk"
 	if [[ $result = 0 && $remote_stream != 1 ]]; then
 		Validation_file "$Backup_folder/apk.tar"*
+		case $result in ''|*[!0-9]*) result=1 ;; esac
+		if [[ $result = 0 ]]; then
+			_backup_payload_stats_record_local_validated "$Backup_folder/apk" "${BACKUP_TAR_CONTEXT_ORIGIN_SIZE:-0}" "apk"
+		else
+			_local_payload_result_reset
+		fi
 	fi
 	case $result in ''|*[!0-9]*) result=1 ;; esac
 	return "$result"
@@ -5273,6 +6038,22 @@ _tar_stream_finish() {
 	# from the parent after the pipeline has exited, then emit the per-entry summary.
 	[[ -n $_perf_file ]] && _stream_entry_perf_emit "$_perf_file" "$_rb" "$_comp" "$_final_rc"
 	if [[ $_final_rc = 0 ]]; then _stream_result_capture "$_rb" "$_comp" || true; else _stream_result_reset; fi
+	if [[ $_final_rc = 0 ]]; then
+		local _payload_stored="-" _payload_source="${remote_type:-unknown}" _payload_input="-"
+		if [[ $_payload_source = webdav && ${SPEEDBACKUP_LAST_STREAM_ARCHIVE_REL:-} = "$_rb" ]]; then
+			case ${SPEEDBACKUP_LAST_STREAM_SENT_BYTES:-} in ''|*[!0-9]*) ;; *) _payload_stored="$SPEEDBACKUP_LAST_STREAM_SENT_BYTES" ;; esac
+		fi
+		case $_comp in
+		tar|Tar|TAR)
+			case $_payload_stored in ''|*[!0-9]*) ;; *) _payload_input="$_payload_stored" ;; esac
+			;;
+		*)
+			if _zstd_input_bytes_from_raw_log "$_raw_log"; then _payload_input="$SPEEDBACKUP_ZSTD_INPUT_BYTES_RET"; fi
+			;;
+		esac
+		SPEEDBACKUP_LAST_STREAM_INPUT_BYTES="$_payload_input"
+		_backup_payload_stats_record_success "$_rb" "$_payload_input" "$_payload_stored" "$_comp" "$_payload_source" "${BACKUP_TAR_CONTEXT_ENTRY:-}"
+	fi
 	if [[ $_final_rc != 0 ]]; then
 		_backup_tar_error_record "$_rb" "$_comp" "$_raw_log" "${_mode}-stream" "$_final_rc"
 		echoRgb "流式上傳失敗 ($_rb) 遠端可能未寫入完整, 建議重試" "0" >&2
@@ -5282,10 +6063,12 @@ _tar_stream_finish() {
 	else
 		_manifest_add "$_rb"
 	fi
+	[[ $_final_rc = 0 ]] || _backup_entry_fail "$_final_rc" archive_failed
 	return "$_final_rc"
 }
 _tar_local_finish() {
 	local _out_base="$1" _comp="$2" _raw_log="$3" _raw_start="$4" _rc="$5" _out_file _out_size _final_rc
+	_local_payload_result_reset
 	case $_rc in ''|*[!0-9]*) _rc=1 ;; esac
 	_final_rc="$_rc"
 	_chmod_compressed_output "$_out_base" "$_comp"
@@ -5298,7 +6081,11 @@ _tar_local_finish() {
 	_local_raw_debug_end compress "$_raw_log" "$_final_rc" "$_raw_start" "out_file=$_out_file out_size=$_out_size original_rc=$_rc"
 	_media_backup_perf_done 0 "$_raw_start" "$_final_rc" "${_out_base#$Backup/}" "comp=$_comp originalRc=$_rc outSize=$_out_size"
 	[[ $_final_rc != 0 ]] && _backup_tar_error_record "${_out_base#$Backup/}" "$_comp" "$_raw_log" "local" "$_final_rc"
-	[[ $_final_rc = 0 ]] && _manifest_add "${_out_base#$Backup/}"
+	if [[ $_final_rc = 0 ]]; then
+		_manifest_add "${_out_base#$Backup/}"
+		_local_payload_result_capture "$_out_base" "$_comp" "$_out_size" "$_raw_log"
+	fi
+	[[ $_final_rc = 0 ]] || _backup_entry_fail "$_final_rc" archive_failed
 	return "$_final_rc"
 }
 
@@ -5308,8 +6095,18 @@ _backup_tar_safe_name() {
 
 # r309: App label / appList entry path segment sanitizer. Keep user-visible Unicode labels,
 # but never allow a label to become path traversal or nested local/remote directories.
-_backup_path_safe_name() {
+# r699: direct result for hot callers; stdout wrapper preserves existing callers.
+_backup_path_safe_name_set() {
 	local _raw="$1" _fallback="$2" _safe
+	case $_raw in
+	''|.|*..*|*'/'*|*'\'*|*' '*|\
+	*':'*|*$'\t'*|*$'\r'*|*$'\n'*|*'"'*|*'`'*|\
+	*'$'*|*';'*|*'|'*|*'&'*|*'('*|*')'*|\
+	*'<'*|*'>'*|*'!'*|*'*'*|*'?'*|*'['*|\
+	*']'*|*'{'*|*'}'*|*''"'"''*|*'='*|*'#'*|\
+	*'~'*|*'^'*) ;;
+	*) _BACKUP_PATH_SAFE_NAME_RET="$_raw"; return 0 ;;
+	esac
 	# 安全性修正: 除了路徑分隔/空白字元，額外過濾 shell 特殊字元
 	# (雙引號/反引號/$/;/|/&/(/)/<//>/!/*/?/[/]/{/}/'/=/#/~/^)。
 	# App 顯示名稱完全由 App 開發者控制 (Android 不限制 android:label 內容)，
@@ -5320,7 +6117,16 @@ _backup_path_safe_name() {
 	''|.|..) _safe="$(printf '%s' "${_fallback:-app}" | tr '/\\ :\t\r\n"`$;|&()<>!*?[]{}'"'"'=#~^' '________________________________' | sed 's/\.\./__/g; s/^[.][.]*$/_/')" ;;
 	esac
 	case "$_safe" in ''|.|..) _safe="app" ;; esac
-	printf '%s' "$_safe"
+	_BACKUP_PATH_SAFE_NAME_RET="$_safe"
+}
+
+_backup_path_safe_name() {
+	_backup_path_safe_name_set "$1" "$2"
+	_sb_print_init
+	case ${SPEEDBACKUP_PRINT_MODE:-} in
+		print-builtin) print -rn -- "$_BACKUP_PATH_SAFE_NAME_RET" ;;
+		*) printf '%s' "$_BACKUP_PATH_SAFE_NAME_RET" ;;
+	esac
 }
 
 _backup_path_sanitize_current_name() {
@@ -5460,9 +6266,63 @@ _tar_changed_retry_quiesce() {
 #   例: tar_compress_glob "$folder/apk" "$apk_path2" "*.apk"
 # 自動依 $Compression_method 決定輸出 .tar 還是 .tar.zst
 # 若呼叫前設了局部變數 _comp_override, 優先使用它 (取代暫時修改全域 Compression_method 再復原的舊做法)
+# r710: reuse the existing exact-input table. A hint never asserts fixed size;
+# live files may still change between the pre-scan and the actual tar stream.
+_backup_zstd_plan_hint() {
+	local _key="$1" _type _app _pkg _kind _bytes _extra _matches=0 _valid=1
+	SPEEDBACKUP_ZSTD_PLAN_BYTES_RET=""
+	[[ -n $_key && -r $TMPDIR/.backup_run.plan ]] || return 0
+	while IFS="$SB_TAB" read -r _type _app _pkg _kind _bytes _extra || [[ -n $_type ]]; do
+		[[ "$_app/$_kind" = "$_key" ]] || continue
+		_matches=$((_matches + 1))
+		case $_type in DIR|APK) ;; *) _valid=0 ;; esac
+		case $_bytes in ''|*[!0-9]*) _valid=0 ;; esac
+		[[ ${#_bytes} -le 15 && -z $_extra ]] || _valid=0
+		if [[ $_valid = 1 ]]; then
+			while [[ $_bytes = 0* && $_bytes != 0 ]]; do _bytes=${_bytes#0}; done
+			SPEEDBACKUP_ZSTD_PLAN_BYTES_RET=$_bytes
+		fi
+	done < "$TMPDIR/.backup_run.plan"
+	[[ $_matches = 1 && $_valid = 1 ]] || SPEEDBACKUP_ZSTD_PLAN_BYTES_RET=""
+	return 0
+}
+
+_backup_zstd_compress() {
+	local _key="$1" _level="${Zstd_level:-6}" _threads="${Zstd_threads:-4}"
+	local _small="${Zstd_small_threads:-1}" _limit="${Zstd_small_max_bytes:-1048576}" _hint _hint_arg=none
+	case $_level in 1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22) ;; *) _level=6 ;; esac
+	case $_threads in ''|*[!0-9]*) _threads=4 ;; esac
+	if [[ ${#_threads} -gt 2 ]]; then _threads=4; fi
+	_threads=$((10#$_threads)); [[ $_threads -le 64 ]] || _threads=4
+	case $_small in ''|*[!0-9]*) _small=1 ;; esac
+	if [[ ${#_small} -gt 2 ]]; then _small=1; fi
+	_small=$((10#$_small)); [[ $_small -le 64 ]] || _small=1
+	case $_limit in ''|*[!0-9]*) _limit=1048576 ;; esac
+	if [[ ${#_limit} -gt 15 ]]; then _limit=1048576; fi
+	while [[ $_limit = 0* && $_limit != 0 ]]; do _limit=${_limit#0}; done
+	_backup_zstd_plan_hint "$_key"
+	_hint="$SPEEDBACKUP_ZSTD_PLAN_BYTES_RET"
+	# mksh arithmetic may be 32-bit: compare normalized byte counts as decimal text.
+	if [[ -n $_hint && $_hint != 0 && $_limit != 0 ]]; then
+		if [[ ${#_hint} -lt ${#_limit} ]] ||
+			{ [[ ${#_hint} = ${#_limit} ]] && [[ $_hint < $_limit || $_hint = $_limit ]]; }; then
+			_threads=$_small
+		fi
+	fi
+	set -- "-$_level" "-T$_threads" -q -vvv --priority=rt
+	[[ $_level -lt 20 ]] || set -- "$@" --ultra
+	if [[ ${Zstd_size_hint:-1} = 1 && -n $_hint && $_hint != 0 ]]; then
+		set -- "$@" "--size-hint=$_hint"
+		_hint_arg="$_hint"
+	fi
+	_speed_debug_log "ZSTD_EFFECTIVE_PARAMS key=$_key level=$_level threads=$_threads plannedBytes=${_hint:-unknown} sizeHint=$_hint_arg source=existing-batch-plan mode=r710"
+	zstd "$@"
+}
+
 tar_compress_dir() {
 	local out_base="$1" cd_to="$2" pack_name="$3" result
 	shift 3
+	_backup_entry_begin "$out_base"
 	local _comp="${_comp_override:-$Compression_method}"
 	# 流式模式 (remote_stream=1): 直接管道到遠端, 不寫本機 (省空間)
 	# _STREAM_DEST 由呼叫端設為遠端目標目錄 (相對遠端根)
@@ -5490,7 +6350,7 @@ tar_compress_dir() {
 		zstd|Zstd|ZSTD)
 			( export SPEEDBACKUP_STREAM_PERF_FILE="$_stream_perf_file"; _backup_stream_local_read_release_env_prepare "$_comp"; set -o pipefail 2>/dev/null; tar --checkpoint-action="ttyout=%T\r" --warning=no-file-ignored \
 				"$@" -cpf - -C "$cd_to" "$pack_name" 2>>"$_stream_raw_log" | \
-				zstd --ultra -3 -T0 -q --priority=rt 2>>"$_stream_raw_log" | _stream_upload "$_stream_rel" ) & _stream_pid=$!
+				_backup_zstd_compress "${_SBB_KEY:-}" 2>>"$_stream_raw_log" | _stream_upload "$_stream_rel" ) & _stream_pid=$!
 			;;
 		esac
 			_remote_stream_wait_pid_busy_abortable "$_stream_pid" "正在流式傳輸 ${_stream_rel##*/}" "backup_stream_${_stream_rel##*/}" "" 1 ""
@@ -5502,6 +6362,8 @@ tar_compress_dir() {
 		elif [[ $_stream_rc != 0 ]] && _tar_changed_retry_enabled && _tar_raw_last_op_changed_as_read_only "$_stream_raw_log"; then
 			_local_raw_debug_end compress "$_stream_raw_log" "$_stream_rc" "$_stream_start" "mode=dir-stream rb=$_rb comp=$_comp attempt=1 retry=changed-as-read"
 			_speed_debug_log "TAR_CHANGED_RETRY_BEGIN mode=dir-stream rb=$_rb comp=$_comp pkg=${BACKUP_TAR_CONTEXT_PKG:-} entry=${BACKUP_TAR_CONTEXT_ENTRY:-}"
+			_backup_entry_fail "$_stream_rc" retry_changed_as_read
+			_backup_entry_begin "$out_base"
 			_tar_changed_retry_quiesce
 			_stream_start="$(_speed_now_ms)"; case $_stream_start in ''|*[!0-9]*) _stream_start="0" ;; esac
 			_stream_raw_log="$(_local_raw_debug_begin compress "mode=dir-stream-retry comp=$_comp out_base=$out_base cd_to=$cd_to pack=$pack_name extra=$*")"
@@ -5514,7 +6376,7 @@ tar_compress_dir() {
 			zstd|Zstd|ZSTD)
 				( export SPEEDBACKUP_STREAM_PERF_FILE="$_stream_perf_file"; _backup_stream_local_read_release_env_prepare "$_comp"; set -o pipefail 2>/dev/null; tar --checkpoint-action="ttyout=%T\r" --warning=no-file-ignored \
 					"$@" -cpf - -C "$cd_to" "$pack_name" 2>>"$_stream_raw_log" | \
-					zstd --ultra -3 -T0 -q --priority=rt 2>>"$_stream_raw_log" | _stream_upload "$_rb.tar.zst" ) & _stream_pid=$!
+					_backup_zstd_compress "${_SBB_KEY:-}" 2>>"$_stream_raw_log" | _stream_upload "$_rb.tar.zst" ) & _stream_pid=$!
 				;;
 			esac
 				_remote_stream_wait_pid_busy_abortable "$_stream_pid" "正在流式重試傳輸 ${_rb##*/}" "backup_stream_retry_${_rb##*/}" "" 1 ""
@@ -5539,7 +6401,7 @@ tar_compress_dir() {
 	zstd|Zstd|ZSTD)
 		( set -o pipefail 2>/dev/null; tar --checkpoint-action="ttyout=%T\r" --warning=no-file-ignored \
 			"$@" -cpf - -C "$cd_to" "$pack_name" 2>>"$_raw_log" | \
-			zstd --ultra -3 -T0 -q --priority=rt 2>>"$_raw_log" > "$out_base.tar.zst" )
+			_backup_zstd_compress "${_SBB_KEY:-}" 2>>"$_raw_log" > "$out_base.tar.zst" )
 		;;
 	esac
 	result=$?; _local_rc="$result"
@@ -5550,6 +6412,8 @@ tar_compress_dir() {
 	elif [[ $_local_rc != 0 ]] && _tar_changed_retry_enabled && _tar_raw_last_op_changed_as_read_only "$_raw_log"; then
 		_local_raw_debug_end compress "$_raw_log" "$_local_rc" "$_raw_start" "mode=dir rb=${out_base#$Backup/} comp=$_comp attempt=1 retry=changed-as-read"
 		_speed_debug_log "TAR_CHANGED_RETRY_BEGIN mode=dir rb=${out_base#$Backup/} comp=$_comp pkg=${BACKUP_TAR_CONTEXT_PKG:-} entry=${BACKUP_TAR_CONTEXT_ENTRY:-}"
+		_backup_entry_fail "$_local_rc" retry_changed_as_read
+		_backup_entry_begin "$out_base"
 		_tar_changed_retry_quiesce
 		_raw_start="$(_speed_now_ms)"; case $_raw_start in ''|*[!0-9]*) _raw_start="0" ;; esac
 		_raw_log="$(_local_raw_debug_begin compress "mode=dir-retry comp=$_comp out_base=$out_base cd_to=$cd_to pack=$pack_name extra=$*")"
@@ -5561,7 +6425,7 @@ tar_compress_dir() {
 		zstd|Zstd|ZSTD)
 			( set -o pipefail 2>/dev/null; tar --checkpoint-action="ttyout=%T\r" --warning=no-file-ignored \
 				"$@" -cpf - -C "$cd_to" "$pack_name" 2>>"$_raw_log" | \
-				zstd --ultra -3 -T0 -q --priority=rt 2>>"$_raw_log" > "$out_base.tar.zst" )
+				_backup_zstd_compress "${_SBB_KEY:-}" 2>>"$_raw_log" > "$out_base.tar.zst" )
 			;;
 		esac
 		result=$?; _local_rc="$result"
@@ -6053,6 +6917,7 @@ EOF3
 
 tar_compress_glob() {
 	local out_base="$1" cd_to="$2" pattern="$3"
+	_backup_entry_begin "$out_base"
 	# 第4參數可選: 覆寫本次使用的壓縮方式 (不傳則用全域 Compression_method)
 	# 讓呼叫端可以針對單次打包指定方式, 不需要暫時修改全域變數再復原
 	local _comp="${4:-$Compression_method}"
@@ -6081,7 +6946,7 @@ tar_compress_glob() {
 				;;
 			zstd|Zstd|ZSTD)
 				( set -o pipefail 2>/dev/null; tar --checkpoint-action="ttyout=%T\r" --warning=no-file-ignored -cf - $pattern 2>>"$_stream_raw_log" | \
-					zstd --ultra -3 -T0 -q --priority=rt 2>>"$_stream_raw_log" | _stream_upload "$_stream_rel" )
+					_backup_zstd_compress "${_SBB_KEY:-}" 2>>"$_stream_raw_log" | _stream_upload "$_stream_rel" )
 				;;
 			esac
 		) & _stream_pid=$!
@@ -6104,7 +6969,7 @@ tar_compress_glob() {
 			;;
 		zstd|Zstd|ZSTD)
 			( set -o pipefail 2>/dev/null; tar --checkpoint-action="ttyout=%T\r" --warning=no-file-ignored -cf - $pattern 2>>"$_raw_log" | \
-				zstd --ultra -3 -T0 -q --priority=rt 2>>"$_raw_log" > "$out_base.tar.zst" )
+				_backup_zstd_compress "${_SBB_KEY:-}" 2>>"$_raw_log" > "$out_base.tar.zst" )
 			;;
 		esac
 	)
@@ -6346,13 +7211,17 @@ find "$tools_path" -maxdepth 1 ! -path "$tools_path/tools.sh" -type f | grep -Ev
 	File_name="${REPLY##*/}"
 	# 發行目錄若殘留 tools.sh.bak / tools_v*.sh / *.orig / *.tmp，不應安裝到 /data/backup_tools，也不納入啟動工具環境。
 	case "$File_name" in
+	cgfreezer|eventwait|filewatch|netwatch|procwait|speedscan|uidexec|unixsock)
+		_speed_debug_log "TOOLS_INSTALL_SKIP_LEGACY_APPLET file=$File_name replacement=speednative"
+		continue
+		;;
 	tools.sh.bak|tools.sh.bak_*|tools_v*.sh|*.bak|*.bak_*|*.orig|*.tmp|.*.tmp|SHA256SUMS*)
 		_speed_debug_log "TOOLS_INSTALL_SKIP_RELEASE_ARTIFACT file=$File_name"
 		continue
 		;;
 	esac
 	if [[ ! -f $filepath/$File_name ]]; then
-		if [[ $File_name = cgfreezer ]]; then
+		if [[ $File_name = cgfreezer || $File_name = speednative ]]; then
 			_speed_debug_log "TOOLS_INSTALL_CGFREEZER_PRECOPY reason=missing dst=$filepath/$File_name src=$REPLY action=stop-daemon"
 			_speedbackup_stop_cgfreezer_for_replace_startup || true
 		fi
@@ -6367,7 +7236,7 @@ find "$tools_path" -maxdepth 1 ! -path "$tools_path/tools.sh" -type f | grep -Ev
 		filesha256="$(sha256sum "$filepath/$File_name" | cut -d" " -f1)"
 		filesha256_1="$(sha256sum "$tools_path/$File_name" | cut -d" " -f1)"
 		if [[ $filesha256 != $filesha256_1 ]]; then
-			if [[ $File_name = cgfreezer ]]; then
+			if [[ $File_name = cgfreezer || $File_name = speednative ]]; then
 				_speed_debug_log "TOOLS_INSTALL_CGFREEZER_PRECOPY reason=sha-mismatch oldSha=$filesha256 newSha=$filesha256_1 dst=$filepath/$File_name src=$REPLY action=stop-daemon"
 				_speedbackup_stop_cgfreezer_for_replace_startup || true
 			fi
@@ -6382,6 +7251,42 @@ find "$tools_path" -maxdepth 1 ! -path "$tools_path/tools.sh" -type f | grep -Ev
 		fi
 	fi
 done
+
+_speedbackup_multicall_install_links() {
+	local _dir="$1" _native="${1}/speednative" _list _cap _name _tmp _count=0
+	[[ -x $_native && ! -L $_native ]] || return 1
+	_cap="$("$_native" --capabilities 2>/dev/null)" || return 1
+	case " $_cap " in *" speednative.argv0_dispatch.v1 "*) ;; *) return 1 ;; esac
+	_list="$("$_native" --list 2>/dev/null)" || return 1
+	# Reject missing, duplicate or unknown applets before replacing any old file.
+	[[ $_list = 'cgfreezer
+eventwait
+filewatch
+netwatch
+procwait
+speedscan
+uidexec
+unixsock' ]] || return 1
+	for _name in cgfreezer eventwait filewatch netwatch procwait speedscan uidexec unixsock; do
+		[[ ! -d $_dir/$_name ]] || return 1
+	done
+	for _name in cgfreezer eventwait filewatch netwatch procwait speedscan uidexec unixsock; do
+		_tmp="$_dir/.${_name}.link.${$}.${RANDOM:-0}"
+		ln -s speednative "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
+		if ! mv -f "$_tmp" "$_dir/$_name" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+			rm -f "$_tmp" 2>/dev/null
+			return 1
+		fi
+		[[ -L $_dir/$_name && -x $_dir/$_name ]] || return 1
+		_count=$((_count + 1))
+	done
+	_speed_debug_log "TOOLS_MULTICALL_INSTALL rc=0 binary=$_native applets=$_count mode=argv0-symlinks-r715"
+	return 0
+}
+if ! _speedbackup_multicall_install_links "$filepath"; then
+	echoRgb "speednative 安裝或軟連結建立失敗，請使用完整配套工具" "0"
+	exit 2
+fi
 
 _speedbackup_cleanup_legacy_event_monitor_name() {
 	# r176: 不再另寫 keycheck SHA 驗證；工具完整性由既有 _speedbackup_tool_sha_table()/安裝 SHA loop 負責。
@@ -7038,6 +7943,7 @@ _backup_stream_local_producer_perf_ready() {
 }
 _backup_app_local_read_release_now() {
 	local _pkg="$1" _label="$2" _entry="$3" _producer="$4" _marker _release_rc=0
+	local _t0 _t1 _t2 _t3 _t4 _t5 _t6 _release_clock
 	[[ -n $_pkg && -n $_entry ]] || return 1
 	_marker="$(_backup_app_local_read_release_marker_file "$_pkg")"
 	[[ -s $_marker ]] && return 0
@@ -7046,12 +7952,20 @@ _backup_app_local_read_release_now() {
 	# is still frozen, then final thaw, then UID network restore.  Do not publish the
 	# parent-sync marker unless every real release step reports success; on any partial
 	# failure the parent retains its stale tokens and retries normal finalization.
+	_backup_perf_clock; _t0=$_BACKUP_PERF_MS; _release_clock=$_BACKUP_PERF_CLOCK
 	_cgroup_freezer_refresh_app "$_pkg" "$_label" "$_entry" "local_read_complete" || true
+	_backup_perf_clock; _t1=$_BACKUP_PERF_MS
 	_cgroup_freezer_pre_stop_confirm_app "backup_local_read_complete" || true
+	_backup_perf_clock; _t2=$_BACKUP_PERF_MS
 	_process_observer_stop_app "backup_local_read_complete" || _release_rc=1
+	_backup_perf_clock; _t3=$_BACKUP_PERF_MS
 	_cgroup_freezer_stop_app "backup_local_read_complete" 1 || _release_rc=1
+	_backup_perf_clock; _t4=$_BACKUP_PERF_MS
 	_uid_netblock_stop_app "backup_local_read_complete" || _release_rc=1
+	_backup_perf_clock; _t5=$_BACKUP_PERF_MS
 	_live_app_resume_paused || _release_rc=1
+	_backup_perf_clock; _t6=$_BACKUP_PERF_MS
+	_speed_debug_log "APP_LOCAL_READ_RELEASE_TIMING app=$_label package=$_pkg entry=$_entry producer=$_producer refreshMs=$((_t1 - _t0)) preConfirmMs=$((_t2 - _t1)) observerMs=$((_t3 - _t2)) cgroupMs=$((_t4 - _t3)) netMs=$((_t5 - _t4)) resumeMs=$((_t6 - _t5)) totalMs=$((_t6 - _t0)) releaseRc=$_release_rc clock=$_release_clock mode=r709"
 	if [[ $_release_rc != 0 ]]; then
 		_speed_debug_log "APP_LOCAL_READ_RELEASE_PARTIAL app=$_label package=$_pkg entry=$_entry producer=$_producer action=parent-finalize-retry mode=r605"
 		return 1
@@ -7281,7 +8195,8 @@ _dex_exec_unfiltered() {
 
 dex_hiddenapi_raw() {
 	case "$1" in
-	getPackageUid|getInstallSourceInfo|forceStopPackageBatch|forceStopPackageVerify|uidLiveState|uidObserverState|uidObserverProbe|uidObserverWatch|packageLiveState|setDisplayPowerMode|processObserverStart|processObserverStop|processObserverBatchStart|processObserverBatchStop|processObserverRestoreSessionStart|processObserverStatus|processObserverTop|processObserverForeground|appWakeBlockStart|appWakeBlockStop|appWakeBlockStatus|appWakeBlockRestoreObserverToken|appWakeBlockRestorePackage|appWakeBlockRestoreAll|appWakeBlockCleanupStale|uidNetBlockStart|uidNetBlockStop|uidNetBlockStatus|uidNetBlockRestorePackage|uidNetBlockRestoreAll|uidNetBlockCleanupStale|uidNetBlockProbe|cgroupFreezeStart|cgroupFreezeStop|cgroupFreezeStatus|cgroupFreezeRestorePackage|cgroupFreezeRestoreAll|cgroupFreezeCleanupStale)
+	getPackageUid|getInstallSourceInfo|forceStopPackageBatch|forceStopPackageVerify|uidLiveState|uidObserverState|uidObserverProbe|uidObserverWatch|packageLiveState|setDisplayPowerMode|processObserverStart|processObserverStop|processObserverBatchStart|processObserverBatchStop|processObserverRestoreSessionStart|processObserverStatus|processObserverTop|processObserverForeground|appWakeBlockStart|appWakeBlockStop|appWakeBlockStatus|appWakeBlockRestoreObserverToken|appWakeBlockRestorePackage|appWakeBlockRestoreAll|appWakeBlockCleanupStale|uidNetBlockStart|uidNetBlockStop|uidNetBlockStatus|uidNetBlockRestorePackage|uidNetBlockRestoreAll|uidNetBlockCleanupStale|uidNetBlockProbe|cgroupFreezeStart|cgroupFreezeRefreshPrimary|cgroupFreezeDaemonEnsure|cgroupFreezeStop|cgroupFreezeStatus|cgroupFreezeRestorePackage|cgroupFreezeRestoreAll|cgroupFreezeCleanupStale)
+		# r709: refresh/ensure share the existing RootDaemon JVM and its live freeze sessions.
 		# 465/r16: HiddenApi hot commands require unified root daemon; old HiddenApi daemon fallback removed.
 		# r111: processObserverStart/Stop 必須走 RootDaemon；global observer/target/session 都存在於 RootDaemon JVM。
 		_root_daemon_call_args_hot hiddenapi "$@"
@@ -7653,23 +8568,16 @@ SPEEDBACKUP_TOOL_SHA_VERIFIED=""
 _speedbackup_tool_sha_table() {
 	cat <<'SB_TOOL_SHA_TABLE'
 busybox 4d60ab3f5a59ebb2ca863f2f514e6924401b581e9b64f602665c008177626651
-cgfreezer bccbdabd94b1e5c6cb84a53e189508159b71307a7257db8067d062d98518b71d
-classes.dex 4c3c57e36e234520658a943b8b891a26e715e22c4da2d1b2bc32d3f7be24b108
+classes.dex 051550a619531ee5a43dec70dd7464036b6e0a6d6e3802695542a59210a6a7be
 cmd 08da8ac23b6e99788fd3ce6c19c7b5a083b2ad48be35963a48d01d6ee7f3bb6d
-dex_check.sh 366ea17ae30ede0ed9f5153e1ce1f1732f023a962b69843b0c3a490185140388
-eventwait 9abb1335b6f75eb5e50ea2cc9d53e0fb71e6156440104433b81c3438c972721d
-filewatch 2795e45ebe650ff30fde7a4b6994dbf5228b7c4244ba7596646d07898679ff13
+dex_check.sh 77c291fee7132e307435520cee6054f334776f45af59261b57ab63e39d28a2ad
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
 jq 6bc62f25981328edd3cfcfe6fe51b073f2d7e7710d7ef7fcdac28d4e384fc3d4
 keycheck 50645ee0e0d2a7d64fb4a1286446df7a4445f3d11aefd49eeeb88515b314c363
-netwatch 9f846d69e8f41c59dee8a14c6edb789725b50d66a42b011cd663573befbad1aa
-procwait 88d1370faa5d392a9eb00526624973a978e15071688cede200d5c4c8d10231b8
 smbclient 1866c6199998dbccfa7e7a3727e51f274cafaa8cd18752d345c62e38f28031e8
-speedscan dcf59a9590e5b185f06bc26a12458915fdb1acf6b0d830fffa4a86cfdb3882c9
+speednative 51c53df476cbce9db59ffe37209d0703636f6006b7d1890e5a43fba69676b91f
 tar 882639ac310a7eb4052c68c21cea02633307700f9cc8c7c469c2dd18d734a112
-uidexec dff9c9e3bbee05a990e2c7748ba68a0b458192613ad85b8a7867199c7d80b2b9
-unixsock bb77ba7075d6851ba4cf1c50f3e8c56f65e8466e7a1a4c2e16f68b69377c4f5e
-zstd 9ef4b54148699c9874cfd45aaf38e5cc950e5d168afdcf2edf58a2463f5561ed
+zstd d99e32849e924e6208d96b910d7b60bcfbd95d0bcf0907687d02d94e6ea08197
 SB_TOOL_SHA_TABLE
 }
 _speedbackup_tool_expected_sha() {
@@ -7684,7 +8592,7 @@ SB_TOOL_SHA_LOOKUP
 }
 _speedbackup_tool_is_startup_core() {
 	case "$1" in
-	busybox|cmd|dex_check.sh|find|jq|tar|zstd) return 0 ;;
+	busybox|cmd|dex_check.sh|find|jq|tar|zstd|speednative) return 0 ;;
 	*) return 1 ;;
 	esac
 }
@@ -7704,6 +8612,7 @@ _speedbackup_classes_dex_sha_warn() {
 _speedbackup_tool_verify_once() {
 	local _file="$1" _required="${2:-1}" _hash="" _expected="" _path=""
 	[[ -n $_file ]] || return 1
+	case $_file in cgfreezer|eventwait|filewatch|netwatch|procwait|speedscan|uidexec|unixsock) _file=speednative ;; esac
 	case " $SPEEDBACKUP_TOOL_SHA_VERIFIED " in *" $_file "*) return 0 ;; esac
 	_expected="$(_speedbackup_tool_expected_sha "$_file" 2>/dev/null)" || return 1
 	_path="$tools_path/$_file"
@@ -10249,6 +11158,10 @@ remote_dir_size() {
             cp -f "$_smb_size_map" "$(_remote_size_map_before_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
             _speed_debug_log "REMOTE_SIZE_MAP_BEFORE_CAPTURE protocol=smb path=$_path rows=$(grep -vc '^$' "$(_remote_size_map_before_file)" 2>/dev/null) mode=r309-bigint-deep"
         fi
+        if [[ ${SPEEDBACKUP_CAPTURE_SMB_POST_SIZE_MAP:-0} = 1 ]]; then
+            cp -f "$_smb_size_map" "$(_backup_payload_stats_smb_post_map_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+            _speed_debug_log "BACKUP_PAYLOAD_STATS_SMB_POST_MAP_CAPTURE path=$_path rows=$(grep -vc '^$' "$(_backup_payload_stats_smb_post_map_file)" 2>/dev/null) mode=r690 reuse=remote-dir-size"
+        fi
         _smb_sum="$(_remote_size_map_sum_file "$_smb_size_map" 2>/dev/null)"
         case $_smb_sum in ''|*[!0-9]*) _smb_sum=0 ;; esac
         _speed_debug_log "REMOTE_DIR_SIZE_SUM protocol=smb path=$_path rows=$(grep -vc '^$' "$_smb_size_map" 2>/dev/null) bytes=$_smb_sum mode=r309-bigint-deep"
@@ -10366,8 +11279,17 @@ _remote_stream_fatal_summary() {
 	return 0
 }
 
+_remote_stream_fatal_reason() {
+	local _f _reason
+	_f="$(_remote_stream_fatal_file)"
+	[[ -s $_f ]] || return 1
+	_reason="$(sed -n 's/^reason=//p' "$_f" 2>/dev/null | head -n 1)"
+	[[ -n $_reason ]] || return 1
+	printf '%s\n' "$_reason"
+}
+
 _remote_stream_fatal_exit_rc() {
-	# 遠端流式 fast-fail 統一用 126 對外表示「遠端中斷／連線狀態變更」，避免內部 tar/zstd/relay rc=1/2/141 被誤當普通流程成功。
+	# 遠端流式 fast-fail 統一用 126 表示「遠端流式 fatal」；可能是 transport，也可能是 metadata safety guard，具體原因以 fatal reason/UI 為準。
 	_remote_stream_fatal_active || { printf '0\n'; return 1; }
 	printf '126\n'
 	return 0
@@ -10665,7 +11587,7 @@ _appdetails_bundle_audit_guard() {
 	# so tools no longer keeps duplicate awk/sort/jq decision engines for this critical path.
 	[[ ${remote_stream:-0} = 1 && -n ${remote_type:-} ]] || return 0
 	local _root="$1" _rel="${2:-app_details_bundle.tar.zst}" _remote_files="${TMPDIR:-/data/local/tmp}/.remote_files"
-	local _seed_list _seed_state _seed_count _prefix _out _rc _status _stage _seed _payload _remote_payload_total _ignored_remote_payload _missing_seed _missing_stage _checked _bad _reason _first _allow _elapsed _seedless_repair _seedless_tainted _ignored_sample _ignored_debug _taint_file _taint_list
+	local _seed_list _seed_state _seed_count _prefix _out _rc _status _stage _seed _payload _remote_payload_total _ignored_remote_payload _missing_seed _missing_stage _checked _bad _reason _first _allow _elapsed _seedless_repair _seedless_tainted _seed_expansion _ignored_sample _ignored_debug _taint_file _taint_list
 	[[ -d $_root ]] || return 1
 	[[ ${REMOTE_BACKUP_ROOT_MISSING:-0} = 1 ]] && { _speed_debug_log "APPDETAILS_BUNDLE_AUDIT_GUARD_ALLOW rel=$_rel reason=remote_root_missing_new_backup mode=r664"; return 0; }
 	_seed_list="$(_appdetails_bundle_seed_app_list_file)"
@@ -10676,10 +11598,10 @@ _appdetails_bundle_audit_guard() {
 	_prefix="${TMPDIR:-/data/local/tmp}/.appdetails_bundle_audit_${$}_$RANDOM"
 	_allow=0
 	[[ ${REMOTE_APPDETAILS_BUNDLE_ALLOW_SHRINK:-0} = 1 ]] && _allow=1
-	if ! _speedscan_have_capability speedscan.appdetails_bundle_audit.v1 >/dev/null 2>&1 || ! _speedscan_have_capability speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 >/dev/null 2>&1 || ! _speedscan_have_capability speedscan.appdetails_bundle_audit_scoped_cover.v1 >/dev/null 2>&1 || ! _speedscan_have_capability speedscan.appdetails_bundle_audit_seedless_taint.v1 >/dev/null 2>&1; then
-		echoRgb "Rust speedscan 缺少 appdetails_bundle_audit/seedless_taint 能力；不上傳 app_details bundle" "0"
-		_speed_debug_log "APPDETAILS_BUNDLE_AUDIT_GUARD_FAIL rel=$_rel reason=missing_speedscan_capability_seedless_taint mode=r664"
-		_remote_stream_mark_fatal "$_rel" 1 0 "appdetails_bundle_audit_missing_seedless_taint_capability"
+	if ! _speedscan_have_capability speedscan.appdetails_bundle_audit.v1 >/dev/null 2>&1 || ! _speedscan_have_capability speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 >/dev/null 2>&1 || ! _speedscan_have_capability speedscan.appdetails_bundle_audit_scoped_cover.v1 >/dev/null 2>&1 || ! _speedscan_have_capability speedscan.appdetails_bundle_audit_seedless_taint.v1 >/dev/null 2>&1 || ! _speedscan_have_capability speedscan.appdetails_bundle_audit_seed_expansion.v1 >/dev/null 2>&1; then
+		echoRgb "Rust speedscan 缺少 appdetails_bundle_audit/seed-expansion 能力；不上傳 app_details bundle" "0"
+		_speed_debug_log "APPDETAILS_BUNDLE_AUDIT_GUARD_FAIL rel=$_rel reason=missing_speedscan_capability_seed_expansion mode=r695"
+		_remote_stream_mark_fatal "$_rel" 1 0 "appdetails_bundle_audit_missing_seed_expansion_capability"
 		return 1
 	fi
 	_out="$(_speedscan_cmd appdetails-bundle-audit "$_root" "$_remote_files" "$_seed_list" "$_seed_state" "$_seed_count" "$_prefix" "$_allow" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
@@ -10699,6 +11621,7 @@ _appdetails_bundle_audit_guard() {
 	_elapsed="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^elapsedMs=/){sub(/^elapsedMs=/,"",$i); print $i; exit}}' 2>/dev/null)"
 	_seedless_repair="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^seedlessRepair=/){sub(/^seedlessRepair=/,"",$i); print $i; exit}}' 2>/dev/null)"
 	_seedless_tainted="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^seedlessTainted=/){sub(/^seedlessTainted=/,"",$i); print $i; exit}}' 2>/dev/null)"
+	_seed_expansion="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^seedExpansion=/){sub(/^seedExpansion=/,"",$i); print $i; exit}}' 2>/dev/null)"
 	_ignored_sample="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^ignoredRemotePayloadSample=/){sub(/^ignoredRemotePayloadSample=/,"",$i); print $i; exit}}' 2>/dev/null)"
 	case $_stage in ''|*[!0-9]*) _stage=0 ;; esac
 	case $_seed in ''|*[!0-9]*) _seed=0 ;; esac
@@ -10712,6 +11635,7 @@ _appdetails_bundle_audit_guard() {
 	case $_seedless_repair in 1|true|TRUE) _seedless_repair=1 ;; *) _seedless_repair=0 ;; esac
 	[[ -z $_reason ]] && _reason=unknown
 	case $_seedless_tainted in 1|true|TRUE) _seedless_tainted=1 ;; *) _seedless_tainted=0 ;; esac
+	case $_seed_expansion in 1|true|TRUE) _seed_expansion=1 ;; *) _seed_expansion=0 ;; esac
 	_ignored_debug="${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/appdetails_ignored_remote_payload_apps.lst"
 	if [[ -f ${_prefix}.ignored_remote_payload_apps.lst ]]; then
 		cp -f "${_prefix}.ignored_remote_payload_apps.lst" "$_ignored_debug" 2>/dev/null || true
@@ -10754,7 +11678,11 @@ _appdetails_bundle_audit_guard() {
 		[[ -s ${_prefix}.stats ]] && cp -f "${_prefix}.stats" "$SPEED_DEBUG_RUN_DIR/appdetails_bundle_audit.stats" 2>/dev/null || true
 	}
 	if [[ $_rc = 0 && $_status = OK ]]; then
-		_speed_debug_log "APPDETAILS_BUNDLE_AUDIT_GUARD_OK rel=$_rel stage=$_stage seed=$_seed remotePayloadApps=$_payload remotePayloadTotal=$_remote_payload_total ignoredRemotePayloadApps=$_ignored_remote_payload ignoredRemotePayloadList=$(_speed_debug_kv "${_ignored_debug##*/}") ignoredRemotePayloadSample=$(_speed_debug_kv "${_ignored_sample:-none}") missingSeed=$_missing_seed missingStage=$_missing_stage checked=$_checked bad=$_bad seedState=$_seed_state seedlessRepair=$_seedless_repair seedlessTainted=$_seedless_tainted allowShrink=$_allow policy=scoped-folder-json-cover+payload-consistency engine=rust elapsedMs=${_elapsed:-0} mode=r664"
+		if [[ $_seed_expansion = 1 ]]; then
+			_appdetails_bundle_mark_dirty 'seed-expansion' 'bundle' "$_missing_seed"
+			_speed_debug_log "APPDETAILS_BUNDLE_SEED_EXPANSION_ALLOW rel=$_rel stage=$_stage seed=$_seed remotePayloadApps=$_payload missingSeed=$_missing_seed missingStage=$_missing_stage bad=$_bad ignoredRemotePayloadApps=$_ignored_remote_payload action=force-bundle-republish mode=r695"
+		fi
+		_speed_debug_log "APPDETAILS_BUNDLE_AUDIT_GUARD_OK rel=$_rel stage=$_stage seed=$_seed remotePayloadApps=$_payload remotePayloadTotal=$_remote_payload_total ignoredRemotePayloadApps=$_ignored_remote_payload ignoredRemotePayloadList=$(_speed_debug_kv "${_ignored_debug##*/}") ignoredRemotePayloadSample=$(_speed_debug_kv "${_ignored_sample:-none}") missingSeed=$_missing_seed missingStage=$_missing_stage checked=$_checked bad=$_bad seedState=$_seed_state seedlessRepair=$_seedless_repair seedlessTainted=$_seedless_tainted seedExpansion=$_seed_expansion allowShrink=$_allow policy=scoped-folder-json-cover+payload-consistency+safe-seed-expansion engine=rust elapsedMs=${_elapsed:-0} mode=r695"
 		rm -f "${_prefix}.remote_payload_apps.lst" "${_prefix}.ignored_remote_payload_apps.lst" "${_prefix}.missing_seed.lst" "${_prefix}.missing_stage.lst" "${_prefix}.bad.log" "${_prefix}.stats" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		return 0
 	fi
@@ -10763,7 +11691,7 @@ _appdetails_bundle_audit_guard() {
 	fi
 	echoRgb "app_details bundle 安全保護：遠端 payload / 舊 bundle / 本輪 staging 集合不一致，已拒絕覆蓋遠端 bundle" "0"
 	echoRgb "stage=$_stage seed=$_seed remotePayloadApps=$_payload remotePayloadTotal=$_remote_payload_total ignoredRemotePayloadApps=$_ignored_remote_payload missingSeed=$_missing_seed missingStage=$_missing_stage badPayload=$_bad first=${_first:-none} reason=$_reason" "3"
-	_speed_debug_log "APPDETAILS_BUNDLE_AUDIT_GUARD_BLOCK rel=$_rel reason=$_reason stage=$_stage seed=$_seed seedState=$_seed_state remotePayloadApps=$_payload remotePayloadTotal=$_remote_payload_total ignoredRemotePayloadApps=$_ignored_remote_payload ignoredRemotePayloadList=$(_speed_debug_kv "${_ignored_debug##*/}") ignoredRemotePayloadSample=$(_speed_debug_kv "${_ignored_sample:-none}") missingSeed=$_missing_seed missingStage=$_missing_stage checked=$_checked bad=$_bad seedlessRepair=$_seedless_repair seedlessTainted=$_seedless_tainted firstMissing=$(_speed_debug_kv "${_first:-}") root=$(_speed_debug_kv "$_root") engine=rust rc=$_rc mode=r664"
+	_speed_debug_log "APPDETAILS_BUNDLE_AUDIT_GUARD_BLOCK rel=$_rel reason=$_reason stage=$_stage seed=$_seed seedState=$_seed_state remotePayloadApps=$_payload remotePayloadTotal=$_remote_payload_total ignoredRemotePayloadApps=$_ignored_remote_payload ignoredRemotePayloadList=$(_speed_debug_kv "${_ignored_debug##*/}") ignoredRemotePayloadSample=$(_speed_debug_kv "${_ignored_sample:-none}") missingSeed=$_missing_seed missingStage=$_missing_stage checked=$_checked bad=$_bad seedlessRepair=$_seedless_repair seedlessTainted=$_seedless_tainted seedExpansion=$_seed_expansion firstMissing=$(_speed_debug_kv "${_first:-}") root=$(_speed_debug_kv "$_root") engine=rust rc=$_rc mode=r695"
 	_speed_debug_log "APPDETAILS_BUNDLE_NO_SHRINK_BLOCK rel=$_rel reason=$_reason stage=$_stage seed=$_seed seedState=$_seed_state remotePayloadApps=$_payload root=$_root mode=r664"
 	_remote_stream_mark_fatal "$_rel" 1 0 "appdetails_bundle_audit_${_reason:-blocked}"
 	rm -f "${_prefix}.remote_payload_apps.lst" "${_prefix}.ignored_remote_payload_apps.lst" "${_prefix}.missing_seed.lst" "${_prefix}.missing_stage.lst" "${_prefix}.bad.log" "${_prefix}.stats" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -10946,7 +11874,7 @@ _appdetails_bundle_build_local_for_current_upload() {
 }
 
 _appdetails_bundle_extract_file() {
-	local _bundle="$1" _dest="$2" _mode="${3:-extract}" _count
+	local _bundle="$1" _dest="$2" _mode="${3:-extract}" _jf _has_json=0
 	[[ -s $_bundle && -n $_dest ]] || return 1
 	rm -rf "$_dest" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	mkdir -p "$_dest" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
@@ -10954,11 +11882,16 @@ _appdetails_bundle_extract_file() {
 		_speed_debug_log "APPDETAILS_BUNDLE_EXTRACT_FAIL mode=$_mode file=$_bundle dest=$_dest"
 		return 1
 	fi
-	# r283: official release uses flat bundle only. No wrapper compatibility path; older test wrapper is unsupported.
-	[[ -f "$_dest/manifest.tsv" ]] && _eventwait_output_file_stable_ms "$_dest/manifest.tsv" appdetails_bundle_extract_manifest_ready 80 1500 >/dev/null 2>&1 || true
-	_count="$(_appdetails_index_count "$_dest" 2 2)"
-	_speed_debug_log "APPDETAILS_BUNDLE_EXTRACT_OK mode=$_mode count=${_count:-0} file=$_bundle dest=$_dest layout=flat-r286"
-	[[ ${_count:-0} -gt 0 ]]
+	# r697: zstd|tar is synchronous; when both children return, manifest/JSON writes
+	# are already closed.  Do not add an artificial stable-file sleep or launch a
+	# second speedscan index just to prove that the files we just waited for exist.
+	for _jf in "$_dest"/*/app_details.json; do
+		[[ -s $_jf ]] || continue
+		_has_json=1
+		break
+	done
+	_speed_debug_log "APPDETAILS_BUNDLE_EXTRACT_OK mode=$_mode count=deferred-to-rust-seed-index file=$_bundle dest=$_dest layout=flat-r286 syncComplete=1 mode2=r697"
+	[[ $_has_json = 1 ]]
 }
 
 # r515: merge an extracted app_details bundle into an existing backup root without clearing payloads.
@@ -10994,7 +11927,7 @@ _appdetails_bundle_download_extract_try() {
 		_speed_debug_log "APPDETAILS_BUNDLE_REMOTE_RESOLVE_DIRECT_PROBE subdir=$_subdir rel=$_rel candidate=$_try_rel canonical=$(_appdetails_bundle_rel) legacy=$(_appdetails_bundle_legacy_rel) mode=$_mode action=direct-probe-r515"
 	fi
 	_speed_debug_log "APPDETAILS_BUNDLE_DOWNLOAD_BEGIN rel=$_rel mode=$_mode canonical=$(_appdetails_bundle_rel) legacy=$(_appdetails_bundle_legacy_rel) resolved=$_try_rel source=$_source r515=1"
-	if ! _stream_download "$_rel" > "$_bundle" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+	if ! _backup_phase_timed metadata-download _stream_download "$_rel" > "$_bundle" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
 		_http="${_WEBDAV_HTTP_CODE:-0}"
 		if [[ ${remote_type:-} = webdav && $_source = direct ]]; then
 			case $_http in
@@ -11009,13 +11942,13 @@ _appdetails_bundle_download_extract_try() {
 		rm -f "$_bundle" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		return 1
 	fi
-	_eventwait_output_file_stable_ms "$_bundle" appdetails_bundle_download_ready 150 3000 >/dev/null 2>&1 || true
+	# r697: _stream_download is synchronous and stdout is redirected to this file; return means EOF/close is complete.
 	if [[ ! -s $_bundle ]]; then
 		_speed_debug_log "APPDETAILS_BUNDLE_DOWNLOAD_EMPTY rel=$_rel mode=$_mode resolved=$_try_rel source=$_source"
 		rm -f "$_bundle" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		return 1
 	fi
-	if _appdetails_bundle_extract_file "$_bundle" "$_dest" "$_mode"; then
+	if _backup_phase_timed metadata-extract _appdetails_bundle_extract_file "$_bundle" "$_dest" "$_mode"; then
 		[[ $_source = direct ]] && _speed_debug_log "APPDETAILS_BUNDLE_DIRECT_RESOLVE_OK subdir=$_subdir rel=$_rel resolved=$_try_rel mode=$_mode layout=flat-r515"
 		[[ $_try_rel != "$(_appdetails_bundle_rel)" ]] && _speed_debug_log "APPDETAILS_BUNDLE_LEGACY_COMPAT_USED rel=$_try_rel canonical=$(_appdetails_bundle_rel) mode=$_mode"
 		rm -f "$_bundle" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -11122,7 +12055,7 @@ _appdetails_bundle_download_extract_direct_known() {
 }
 
 _appdetails_bundle_seed_remote_json_cache() {
-	local _subdir="$1" _stage="$2" _jf _app _ok=0 _bad=0 _total=0 _seen=0 _batch _jq_rc _valid _seed_list _seed_tmp _seed_count_actual
+	local _subdir="$1" _stage="$2" _ok=0 _bad=0 _total=0 _seen=0 _seed_list _seed_count_actual _prefix _stats _diag _out _rc _elapsed=0 _schema _batch_state
 	[[ -n $_stage ]] || _stage="$(_appdetails_bundle_stage_root)"
 	_appdetails_bundle_seed_state_reset
 	rm -f "$(_appdetails_bundle_remote_json_missing_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -11135,96 +12068,49 @@ _appdetails_bundle_seed_remote_json_cache() {
 		_appdetails_bundle_seed_state_set missing 0
 		return 1
 	fi
-	# r583: validate every extracted JSON with one jq process. -R/n inputs each
-	# file line-by-line, groups by input_filename, then fromjson is isolated per
-	# file; one malformed JSON therefore cannot abort validation of later files.
-	# This preserves the old per-file drop semantics without 108 jq forks.
-	set --
-	for _jf in "$_stage"/*/app_details.json; do
-		[[ -s $_jf ]] || continue
-		set -- "$@" "$_jf"
-	done
-	_total=$#
-	_batch="${TMPDIR:-/data/local/tmp}/.appdetails_remote_batch_${$}_$RANDOM.tsv"
-	rm -f "$_batch" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	if [[ $_total -gt 0 ]]; then
-		jq -Rnr "$(_appdetails_jq_common_defs)
-			reduce inputs as \$line ({}; .[input_filename] = ((.[input_filename] // \"\") + \$line + \"\\n\"))
-			| to_entries[]
-			| .key as \$f
-			| (try (.value | fromjson) catch null) as \$j
-			| [\$f, (\$f|split(\"/\")|.[-2]), (if \$j == null then false else (\$j | ad_required_meta_ok) end | tostring)]
-			| @tsv" "$@" > "$_batch" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		_jq_rc=$?
-	else
-		_jq_rc=0
-	fi
-	if [[ $_jq_rc = 0 && $_total -gt 0 ]]; then
-		while IFS="$(printf '\t')" read -r _jf _app _valid || [[ -n $_jf || -n $_app || -n $_valid ]]; do
-			[[ -n $_jf ]] || continue
-			_seen=$((_seen + 1))
-			if [[ $_valid = true && -s $_jf ]]; then
-				_ok=$((_ok + 1))
-			else
-				_bad=$((_bad + 1))
-				_speed_debug_log "APPDETAILS_BUNDLE_CACHE_DROP_INVALID app=${_app:-unknown} file=$_jf action=remove-from-single-stage mode=r583-batch"
-				rm -f "$_jf" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-			fi
-		done < "$_batch"
-	fi
-	if [[ $_jq_rc != 0 || $_seen -ne $_total ]]; then
-		# Rare resource/tool failure only: preserve the historical safety path.
-		_speed_debug_log "APPDETAILS_BUNDLE_REMOTE_JSON_BATCH_FALLBACK total=$_total seen=$_seen jqRc=$_jq_rc mode=r583 action=per-file-safety"
-		_ok=0; _bad=0
-		for _jf in "$_stage"/*/app_details.json; do
-			[[ -s $_jf ]] || continue
-			_app="${_jf%/app_details.json}"; _app="${_app##*/}"
-			if _remote_appdetails_json_ok "$_jf"; then
-				_ok=$((_ok + 1))
-			else
-				_bad=$((_bad + 1))
-				_speed_debug_log "APPDETAILS_BUNDLE_CACHE_DROP_INVALID app=$_app file=$_jf action=remove-from-single-stage mode=r583-fallback"
-				rm -f "$_jf" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-			fi
-		done
-	else
-		_speed_debug_log "APPDETAILS_BUNDLE_REMOTE_JSON_BATCH_OK total=$_total ok=$_ok bad=$_bad jqRc=$_jq_rc mode=r583 singleJq=1"
-	fi
-	rm -f "$_batch" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	# r697: validate/index the extracted bundle once in Rust.  This replaces the
+	# 110-file jq argv batch + shell rescan/sort/grep path.  Invalid JSON files are
+	# removed from the temporary stage by speedscan, matching the historical drop
+	# semantics while producing the canonical seed list directly.
 	_seed_list="$(_appdetails_bundle_seed_app_list_file)"
-	rm -f "$_seed_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	if [[ $_ok -gt 0 ]]; then
-		_seed_tmp="${TMPDIR:-/data/local/tmp}/.appdetails_seed_apps_${$}_$RANDOM.tmp"
-		rm -f "$_seed_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		: > "$_seed_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
-		for _jf in "$_stage"/*/app_details.json; do
-			[[ -s $_jf ]] || continue
-			_app="${_jf%/app_details.json}"; _app="${_app##*/}"
-			[[ -n $_app ]] && printf '%s\n' "$_app" >> "$_seed_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		done
-		sort -u "$_seed_tmp" > "$_seed_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || : > "$_seed_list"
-		rm -f "$_seed_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		# r648: _seed_list is already normalized by sort -u above. r621 referenced a
-		# helper that never existed, so mksh printed "_appdetails_bundle_unique_count_file:
-		# inaccessible or not found", forced actual=0, and incorrectly marked a valid
-		# remote bundle unavailable. Count the already-unique non-empty seed list directly.
-		_seed_count_actual="$(grep -vc '^[[:space:]]*$' "$_seed_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
-		case $_seed_count_actual in ''|*[!0-9]*) _seed_count_actual=0 ;; esac
-		if [[ $_seed_count_actual -ne $_ok ]]; then
-			_speed_debug_log "APPDETAILS_BUNDLE_SEED_SET_COUNT_ADJUST oldOk=$_ok actual=$_seed_count_actual mode=r621"
-			_ok="$_seed_count_actual"
-		fi
+	_prefix="${TMPDIR:-/data/local/tmp}/.appdetails_seed_index_${$}_$RANDOM"
+	_stats="${_prefix}.stats"
+	_diag="${_prefix}.diag"
+	rm -f "$_seed_list" "$_stats" "$_diag" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	if ! _speedscan_have_capability speedscan.appdetails_seed_index.v1 >/dev/null 2>&1; then
+		_speed_debug_log "APPDETAILS_BUNDLE_REMOTE_JSON_INDEX_FAIL reason=missing_speedscan_appdetails_seed_index mode=r697"
+		: > "$(_appdetails_bundle_remote_json_missing_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+		_appdetails_bundle_seed_state_set empty 0
+		return 1
 	fi
-	_speed_debug_log "APPDETAILS_BUNDLE_REMOTE_JSON_MAP_OK count=$_ok bad=$_bad subdir=$_subdir mode=single-stage-r621 cache=stage-root seedSet=$_seed_list"
-	if [[ $_ok -gt 0 ]]; then
+	_out="$(_speedscan_cmd appdetails-seed-index "$_stage" "$_seed_list" "$_prefix" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	_rc=$?
+	if [[ -s $_stats ]]; then
+		IFS="$(printf '\t')" read -r _total _ok _bad _seen _elapsed _schema < "$_stats" 2>/dev/null || true
+	fi
+	case $_total in ''|*[!0-9]*) _total=0 ;; esac
+	case $_ok in ''|*[!0-9]*) _ok=0 ;; esac
+	case $_bad in ''|*[!0-9]*) _bad=0 ;; esac
+	case $_seen in ''|*[!0-9]*) _seen=0 ;; esac
+	case $_elapsed in ''|*[!0-9]*) _elapsed=0 ;; esac
+	[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_stats ]] && cp -f "$_stats" "$SPEED_DEBUG_RUN_DIR/appdetails_seed_index.stats" 2>/dev/null || true
+	[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_diag ]] && cp -f "$_diag" "$SPEED_DEBUG_RUN_DIR/appdetails_seed_index_bad.tsv" 2>/dev/null || true
+	if [[ $_rc = 0 ]]; then _batch_state=OK; else _batch_state=FAIL; fi
+	_speed_debug_log "APPDETAILS_BUNDLE_REMOTE_JSON_BATCH_${_batch_state} total=$_total ok=$_ok bad=$_bad rc=$_rc rustElapsedMs=$_elapsed mode=r697 engine=rust-seed-index-v1 processStarts=1 out=$(_speed_debug_kv "${_out:-empty}")"
+	rm -f "$_stats" "$_diag" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_seed_count_actual="$_ok"
+	if [[ $_rc = 0 && $_seed_count_actual -gt 0 && -s $_seed_list ]]; then
+		_speed_debug_log "APPDETAILS_BUNDLE_REMOTE_JSON_MAP_OK count=$_seed_count_actual bad=$_bad subdir=$_subdir mode=single-stage-r697 cache=stage-root seedSet=$_seed_list engine=rust-seed-index-v1"
 		rm -f "$(_appdetails_bundle_remote_json_missing_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
-		_appdetails_bundle_seed_state_set ok "$_ok"
+		_appdetails_bundle_seed_state_set ok "$_seed_count_actual"
 		return 0
 	fi
+	_speed_debug_log "APPDETAILS_BUNDLE_REMOTE_JSON_MAP_EMPTY total=$_total ok=$_ok bad=$_bad rc=$_rc subdir=$_subdir mode=r697 engine=rust-seed-index-v1"
 	: > "$(_appdetails_bundle_remote_json_missing_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 	_appdetails_bundle_seed_state_set empty 0
 	return 1
 }
+
 _restore_stream_appdetails_bundle_prepare() {
 	[[ ${_RESTORE_STREAM:-0} = 1 && -n ${remote_type:-} ]] || return 0
 	local _dest="$TMPDIR/.restore_stage"
@@ -11405,7 +12291,10 @@ _stream_upload() {
 		# r584: 若預掃遠端 filelist 已能證明目標 payload 不存在，對 AList/已知慢雲盤後端交給 Dex 使用
 		# replay 不需要的 known-missing hint；是否 direct 由 Dex backend profile 決策。既有 payload 仍保持 auto/atomic，避免覆蓋舊有效備份。
 		_put_mode="$(_remote_stream_webdav_put_mode_for_rel "$_subdir" "$_rel")"
-		_webdav_dex putstdinmanagedrel "$remote_user" "$remote_pass" "$_wbase" "$_rel" "$_put_mode" "$_parent_mode" 2>"$_stream_err"
+		local _stream_receipt="${_rel//[!a-zA-Z0-9._-]/_}"
+		_stream_receipt="$TMPDIR/.webdav_stream_${_stream_receipt:0:180}.result"
+		rm -f "$_stream_receipt" 2>/dev/null
+		_webdav_dex putstdinmanagedrel "$remote_user" "$remote_pass" "$_wbase" "$_rel" "$_put_mode" "$_parent_mode" >"$_stream_receipt" 2>"$_stream_err"
 		_rc=$?
 		_httpcode="$_WEBDAV_HTTP_CODE"
 		_speed_time_refresh; local _elapsed=$(( ${SPEEDBACKUP_NOW_SEC:-0} - _stream_start ))
@@ -12505,7 +13394,15 @@ remote_setup() {
 	if remote_precheck "$REMOTE_HOST" "$REMOTE_PORT"; then
 		echoRgb "遠端連線測試通過 ($REMOTE_HOST:$REMOTE_PORT)" "1"
 		if [[ $remote_type = webdav ]]; then
-			if ! _webdav_base_path_preflight_autocreate "${remote_url%/}" control; then
+			local _base_preflight_rc=0
+			if _webdav_base_url_has_configured_path "${remote_url%/}"; then
+				_webdav_base_path_preflight_autocreate "${remote_url%/}" control
+				_base_preflight_rc=$?
+			else
+				_base_preflight_rc=0
+				_speed_debug_log "WEBDAV_BASE_PATH_PREFLIGHT_SKIP reason=root-url base=$(_speed_debug_kv "${remote_url%/}") mode=r697 relaySaved=1"
+			fi
+			if [[ $_base_preflight_rc != 0 ]]; then
 				echoRgb "WebDAV 遠端基礎資料夾預檢失敗，已停用遠端上傳" "0"
 				_webdav_print_reason 0
 				if [[ $remote_stream = 1 ]]; then
@@ -12517,24 +13414,16 @@ remote_setup() {
 			fi
 			if _webdav_options_preflight "${remote_url%/}" "" control; then
 				echoRgb "WebDAV OPTIONS 能力預檢通過" "1"
-				# r612: build the complete feature profile for BOTH stream and non-stream backup.
-				# Probe inside the real Backup_zstd_X namespace so servers that reject writes at WebDAV
-				# root do not produce false negatives. The tiny probe tree is disposable and cleaned by Dex.
+				# r697: compatProbeRel already performs recursive MKCOL of its scoped probe
+				# root, which guarantees Backup_zstd_X exists, and then measures the real
+				# upload/list/MOVE/COPY/stat/delete contract.  Do not spend a separate
+				# ensuredirrel relay before it.  _webdav_feature_contract_probe now parses
+				# compat JSON directly, so backendprofilerel is also removed from this path.
 				local _feature_probe_relbase="${_BACKUP_DIRNAME_CACHED:-$(get_backup_dirname)}"
-				local _feature_probe_mk_err="$TMPDIR/.webdav_feature_probe_mkdir_$$" _feature_probe_mk_rc _feature_probe_mk_http
-				_webdav_mkdirrel_cached "$remote_user" "$remote_pass" "${remote_url%/}" "$_feature_probe_relbase" "$_feature_probe_mk_err"
-				_feature_probe_mk_rc=$?
-				_feature_probe_mk_http="${_WEBDAV_HTTP_CODE:-0}"
-				remote_raw_log "remote_webdav_stream_probe_raw.log" "FEATURE_PROFILE_MKDIR rel=$_feature_probe_relbase rc=$_feature_probe_mk_rc http=$_feature_probe_mk_http mode=r613"
-				remote_raw_cat "remote_webdav_stream_probe_raw.log" "$_feature_probe_mk_err" "[feature profile mkdir stderr rel=$_feature_probe_relbase]"
-				rm -f "$_feature_probe_mk_err" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-				if [[ $_feature_probe_mk_rc = 0 ]]; then
-					if ! _webdav_feature_contract_probe "${remote_url%/}" "$_feature_probe_relbase" remote-init; then
-						echoRgb "WebDAV 完整能力探測未全部通過，將依已確認能力安全降級" "3"
-					fi
-				else
-					_speed_debug_log "WEBDAV_FEATURE_CONTRACT_INIT_SKIP reason=backup-root-mkdir-fail rel=$_feature_probe_relbase rc=$_feature_probe_mk_rc http=$_feature_probe_mk_http mode=r613"
+				if ! _webdav_feature_contract_probe "${remote_url%/}" "$_feature_probe_relbase" remote-init; then
+					echoRgb "WebDAV 完整能力探測未全部通過，將依已確認能力安全降級" "3"
 				fi
+				_speed_debug_log "WEBDAV_REMOTE_SETUP_COLLAPSED rel=$_feature_probe_relbase baseEnsure=$([[ ${_base_preflight_rc:-0} = 0 ]] && printf ok || printf fail) separateEnsureDir=0 backendProfileRelay=0 mode=r697"
 				# Display after the feature probe so supportTier/featureSummary are fact-based when available.
 				_webdav_profile_display_once "remote_init"
 			else
@@ -14183,8 +15072,15 @@ remote_cleanup() {
 		else
 			# r289: SMB stream 無 WebDAV sentBytes 訊號，不能用 WebDAV fastmap 精確推總量。
 			# 對 SMB 直接落回既有 remote_dir_size，避免顯示「快速統計不可用」且保留準確總大小。
-			[[ $remote_type = smb ]] && _speed_debug_log "SMB_REMOTE_TOTAL_DEEP_FALLBACK reason=no_stream_sentbytes_fastmap mode=r309-bigint-deep subdir=$_subdir"
+			if [[ $remote_type = smb ]]; then
+				_speed_debug_log "SMB_REMOTE_TOTAL_DEEP_FALLBACK reason=no_stream_sentbytes_fastmap mode=r309-bigint-deep subdir=$_subdir"
+				[[ ${remote_stream:-0} = 1 ]] && SPEEDBACKUP_CAPTURE_SMB_POST_SIZE_MAP=1
+			fi
     		_rtotal="$(remote_dir_size "$_subdir")"
+			if [[ $remote_type = smb && ${remote_stream:-0} = 1 ]]; then
+				SPEEDBACKUP_CAPTURE_SMB_POST_SIZE_MAP=0
+				# r704: Rust resolves the captured SMB map during the final one-pass summary.
+			fi
     		if _decimal_is_positive "$_rtotal"; then
     			echoRgb "遠端備份資料夾↓↓↓\n -$remote_url ($_subdir)" "2"
     			echoRgb "遠端備份總體大小$(size_with_bytes "$_rtotal")" "3"
@@ -15726,6 +16622,10 @@ _appstate_capabilities_missing_summary() {
 			"dex.app_inventory.pkg_uid.single.v1",
 			"dex.app_inventory.package_status.single.v1",
 			"dex.app_inventory.getlist_onecall.v1",
+			"dex.app_inventory.display_label_facts.v1",
+			"dex.cgroup.lock_metrics.v1",
+			"dex.app_inventory.xposed_module_facts.v1",
+			"dex.app_inventory.xposed_runtime_facts.v1",
 			"dex.app_inventory.package_facts.batch.v1",
 			"dex.pm.pre_restore_package_state.batch.v1",
 			"dex.pm.installer_context_facts.v1",
@@ -15736,6 +16636,13 @@ _appstate_capabilities_missing_summary() {
 			"appstate.snapshot.batch.v2",
 			"appstate.restore.batch.v4",
 			"appstate.verify.batch.v4",
+			"appstate.run_results.v1",
+			"appstate.result_files.v1",
+			"appstate.ssaid.typed_result.v1",
+			"dex.control_results.v1",
+			"webdav.stream_result.v1",
+			"webdav.chunk_write_coalesced.v1",
+			"dex.result_contract.v1",
 			"appstate.verify.vendor_classification.dex.v1",
 			"appstate.daemon.af_unix.v1",
 			"appstate.structured_result_codes.v2",
@@ -15775,6 +16682,7 @@ _appstate_capabilities_missing_summary() {
 			"webdav.tsv_output.control_guard.v1",
 			"webdav.direct_children_manifest.dex.v1",
 			"webdav.prepare_dirs_created_only_progress.dex.v1",
+			"webdav.prepare_dirs_full_timing.dex.v1",
 			"webdav.profile_visible_compact.dex.v1",
 			"webdav.download_manifest.dex.v1",
 			"webdav.orphan_roots_manifest.dex.v1",
@@ -15865,8 +16773,28 @@ _appstate_capability_diagnose_transport() {
 _root_appstate_call() {
 	local _command="$1" _in="$2" _out="$3" _extra="${4:-}" _known_len="${5:-}" _out_kind="${6:-}" _rc
 	[[ -n $_command && -f $_in && -n $_out ]] || return 2
+	case $_command in
+	restoreAppStateBatch|verifyAppStateBatch)
+		_extra="$_out"
+		rm -f "$_out.summary" "$_out.summary.tmp" "$_out.issues" "$_out.ssaid" 2>/dev/null
+		;;
+	esac
 	_root_daemon_call_appstate "$_command" "$_in" "$_out" "$_extra" "$_known_len" "$_out_kind"
 	_rc=$?
+	case $_command in
+	restoreAppStateBatch|verifyAppStateBatch)
+		if [[ -n ${_APPSTATE_RUN_DIR:-} ]]; then
+			_APPSTATE_RUN_SEQ=$((_APPSTATE_RUN_SEQ + 1))
+			local _saved="$_APPSTATE_RUN_DIR/attempt_$_APPSTATE_RUN_SEQ" _kind=restore
+			[[ $_command = verifyAppStateBatch ]] && _kind=verify
+			rm -f "$_saved.out.summary" || return 1
+			cp -f "$_in" "$_saved.in" || return 1
+			if [[ -f $_out ]]; then cp -f "$_out" "$_saved.out" || return 1; else : > "$_saved.out"; fi
+			[[ ! -f $_out.summary ]] || cp -f "$_out.summary" "$_saved.out.summary" || return 1
+			printf '%s\t%s\t%s\t%s\n' "$_kind" "$_saved.in" "$_saved.out" "$_rc" >> "$_APPSTATE_RUN_DIR/request"
+		fi
+		;;
+	esac
 	[[ $_rc = 125 ]] && _speed_debug_log "ROOT_APPSTATE_REQUIRED_NO_FALLBACK command=$_command"
 	return $_rc
 }
@@ -15889,6 +16817,10 @@ _dex_capabilities_contract_ok() {
 			"dex.app_inventory.pkg_uid.single.v1",
 			"dex.app_inventory.package_status.single.v1",
 			"dex.app_inventory.getlist_onecall.v1",
+			"dex.app_inventory.display_label_facts.v1",
+			"dex.cgroup.lock_metrics.v1",
+			"dex.app_inventory.xposed_module_facts.v1",
+			"dex.app_inventory.xposed_runtime_facts.v1",
 			"dex.app_inventory.package_facts.batch.v1",
 			"dex.pm.pre_restore_package_state.batch.v1",
 			"dex.pm.installer_context_facts.v1",
@@ -15899,6 +16831,13 @@ _dex_capabilities_contract_ok() {
 			"appstate.snapshot.batch.v2",
 			"appstate.restore.batch.v4",
 			"appstate.verify.batch.v4",
+			"appstate.run_results.v1",
+			"appstate.result_files.v1",
+			"appstate.ssaid.typed_result.v1",
+			"dex.control_results.v1",
+			"webdav.stream_result.v1",
+			"webdav.chunk_write_coalesced.v1",
+			"dex.result_contract.v1",
 			"appstate.verify.vendor_classification.dex.v1",
 			"appstate.daemon.af_unix.v1",
 			"appstate.structured_result_codes.v2",
@@ -15938,6 +16877,7 @@ _dex_capabilities_contract_ok() {
 			"webdav.tsv_output.control_guard.v1",
 			"webdav.direct_children_manifest.dex.v1",
 			"webdav.prepare_dirs_created_only_progress.dex.v1",
+			"webdav.prepare_dirs_full_timing.dex.v1",
 			"webdav.profile_visible_compact.dex.v1",
 			"webdav.download_manifest.dex.v1",
 			"webdav.orphan_roots_manifest.dex.v1",
@@ -16183,34 +17123,30 @@ _appstate_direct_publish_maps() {
 }
 
 # AppState NDJSON 解析集中入口：所有 restore/verify/foreground/snapshot 結果讀取都走這裡，避免 jq 條件散落。
-_appstate_ndjson_has_summary() {
-	local _file="$1" _cmd="$2"
-	[[ -s $_file && -n $_cmd ]] || return 1
-	jq -s -e --arg cmd "$_cmd" 'any(.[]; .recordType=="summary" and .command==$cmd)' "$_file" >/dev/null 2>&1
+# r704 common receipt: SBRESULT, schema, operation, state, then typed fields.
+_appstate_result_read() {
+	local _file="$1" _kind="$2" _magic _schema _op _state _total _restored _same _failed _checked _n
+	_APPSTATE_NDJSON_OK=0; _APPSTATE_NDJSON_VENDOR=0; _APPSTATE_NDJSON_WARN=0; _APPSTATE_NDJSON_FAILED=0
+	[[ -s $_file && -s $_file.summary && -f $_file.issues && -f $_file.ssaid ]] || return 1
+	IFS="$SB_TAB" read -r _magic _schema _op _state _APPSTATE_DIRECT_CODE _total _APPSTATE_NDJSON_OK _APPSTATE_NDJSON_VENDOR _APPSTATE_NDJSON_WARN _APPSTATE_NDJSON_FAILED _restored _same _failed _checked < "$_file.summary" || return 1
+	[[ $_magic = SBRESULT && $_schema = 1 && $_op = appstate-$_kind ]] || return 1
+	case $_state in ok|partial|failed) ;; *) return 1 ;; esac
+	for _n in "$_APPSTATE_DIRECT_CODE" "$_total" "$_APPSTATE_NDJSON_OK" "$_APPSTATE_NDJSON_VENDOR" "$_APPSTATE_NDJSON_WARN" "$_APPSTATE_NDJSON_FAILED" "$_restored" "$_same" "$_failed" "$_checked"; do
+		case $_n in ''|*[!0-9]*) return 1 ;; esac
+	done
+	[[ $_total -gt 0 && $_total -eq $((_APPSTATE_NDJSON_OK + _APPSTATE_NDJSON_VENDOR + _APPSTATE_NDJSON_WARN + _APPSTATE_NDJSON_FAILED)) ]] || return 1
+	_speed_debug_log "APPSTATE_DIRECT_SUMMARY kind=$_kind total=$_total ssaidRestored=$_restored ssaidSame=$_same ssaidFailed=$_failed ssaidOther=$_checked mode=r704"
+	_APPSTATE_SSAID_RESTORED=$_restored; _APPSTATE_SSAID_SAME=$_same
+	_APPSTATE_SSAID_FAILED=$_failed; _APPSTATE_SSAID_CHECKED=$_checked
+	return 0
 }
 
-# r336: verifyAppStateBatch may intentionally return structured code 61 when the whole
-# chunk contains only vendor/platform constrained rows.  That is a valid Dex
-# classification, not a transport/protocol failure.  Accept it when the NDJSON
-# summary is present, then let _appstate_ndjson_summarize() count vendor rows.
-_appstate_verify_batch_accept() {
-	local _out="$1" _rc="${2:-1}"
-	[[ -s $_out ]] || return 1
-	_appstate_ndjson_has_summary "$_out" verifyAppStateBatch || return 1
-	[[ $_rc = 0 ]] && return 0
-	if [[ ${_APPSTATE_RESULT_CODE:-} = 61 || ${_APPSTATE_RESULT_NAME:-} = VERIFY_VENDOR_CONSTRAINED ]]; then
-		_speed_debug_log "APPSTATE_VERIFY_VENDOR_CONSTRAINED_ACCEPT rc=$_rc code=${_APPSTATE_RESULT_CODE:-unknown} name=${_APPSTATE_RESULT_NAME:-unknown} mode=r370"
-		return 0
-	fi
-	if jq -s -e '
-		any(.[]; .recordType=="summary" and .command=="verifyAppStateBatch" and .result.name=="VERIFY_VENDOR_CONSTRAINED") or
-		any(.[]; .recordType=="verify" and .result.name=="VERIFY_VENDOR_CONSTRAINED")
-	' "$_out" >/dev/null 2>&1; then
-		_speed_debug_log "APPSTATE_VERIFY_VENDOR_CONSTRAINED_ACCEPT rc=$_rc code=${_APPSTATE_RESULT_CODE:-unknown} name=${_APPSTATE_RESULT_NAME:-unknown} source=ndjson mode=r370"
-		return 0
-	fi
-	return 1
+_appstate_ndjson_has_summary() {
+	local _file="$1" _cmd="$2" _kind
+	case $_cmd in restoreAppStateBatch) _kind=restore ;; verifyAppStateBatch) _kind=verify ;; *) return 2 ;; esac
+	_appstate_result_read "$_file" "$_kind"
 }
+
 
 _appstate_ndjson_has_snapshot_ok_summary() {
 	local _file="$1"
@@ -16239,86 +17175,6 @@ _appstate_ndjson_snapshot_to_map_files() {
 	return 0
 }
 
-_appstate_ndjson_summarize() {
-	local _file="$1" _kind="$2" _issues="$3" _tmp _stats _tag _n
-	_APPSTATE_NDJSON_OK=0
-	_APPSTATE_NDJSON_WARN=0
-	_APPSTATE_NDJSON_FAILED=0
-	_APPSTATE_NDJSON_VENDOR=0
-	[[ -s $_file ]] || return 1
-	case $_kind in restore) _tag="RESTORE" ;; verify) _tag="VERIFY" ;; *) return 2 ;; esac
-	_tmp="$(_webdav_tmp_path appstate_${_kind}_summary)"
-	if ! jq -rs -r --arg kind "$_kind" --arg tag "$_tag" '
-		def mode_is($v; $n): (($v // "__null__")|tostring) == ($n|tostring);
-		def opnum($v): (($v // -1)|tonumber? // -1);
-		def vendor_verify_mismatch($m):
-			($m.path // "") as $p |
-			($m.expected // null) as $e |
-			($m.actual // null) as $a |
-			($m.message // "") as $msg |
-			(
-				# MIUI/HyperOS: restricted settings AppOp is often controlled by vendor policy;
-				# the framework keeps effective mode at default or prunes the explicit record.
-				(($p == "otherAppOps.119.mode") and mode_is($e;0) and mode_is($a;3) and ($msg == "effective mode mismatch")) or
-				(($p == "otherAppOps.119") and ($a == null) and (opnum($e.op) == 119) and (($e.publicName // "") == "android:access_restricted_settings") and ($msg == "missing AppOp record")) or
-				# MIUI/HyperOS may omit legacy_storage as a persisted AppOp record after restore.
-				(($p == "otherAppOps.87") and ($a == null) and (opnum($e.op) == 87) and (($e.publicName // "") == "android:legacy_storage") and ($msg == "missing AppOp record")) or
-				# Broad file access special access is subject to vendor and platform effective-policy gates.
-				(($p == "specialAccess.MANAGE_EXTERNAL_STORAGE.mode") and mode_is($e;0) and mode_is($a;3) and ($msg == "effective mode mismatch")) or
-				# MIUI battery policy may reset RUN_IN_BACKGROUND effective mode after restore.
-				(($p == "batterySettings.RUN_IN_BACKGROUND.mode") and mode_is($e;0) and mode_is($a;3) and ($msg == "effective mode mismatch")) or
-				# Some ROMs prune legacy runtime/AppOp records that are not user-visible anymore.
-				(($p == "permissions.android.permission.GET_ACCOUNTS") and ($a == null) and (($e.name // "") == "android.permission.GET_ACCOUNTS") and ($msg == "missing permission record")) or
-				# Vendor audio/media effective mode can be foreground-derived rather than stored as requested.
-				(($p == "otherAppOps.36.mode") and mode_is($e;1) and mode_is($a;4) and ($msg == "effective mode mismatch"))
-			);
-		def dex_vendor_row:
-			((.result.name // "") == "VERIFY_VENDOR_CONSTRAINED");
-		def vendor_only_row:
-			dex_vendor_row or
-			(((.result.name // "") == "VERIFY_MISMATCH") and
-			(((.mismatches // []) | length) > 0) and
-			(all((.mismatches // [])[]; vendor_verify_mismatch(.))));
-		def vendor_issue_detail:
-			[(.mismatches // [])[] | (.path // "unknown")] | unique | join(",");
-		[.[] | select(.recordType==$kind)] as $rows |
-		if $kind=="restore" then
-			# r371: STATS field order is OK, VENDOR, WARN, FAILED for both restore/verify.
-			# r370 emitted OK, WARN, FAILED, 0 here, so the shell reader stored partial
-			# in _APPSTATE_NDJSON_VENDOR and printed 部分=0 even when Dex summary was PARTIAL.
-			(["STATS", ($rows|map(select(.result.name=="OK"))|length), 0,
-			  ($rows|map(select(.result.name=="PARTIAL" or .result.name=="VERIFY_MISMATCH"))|length),
-			  ($rows|map(select(.result.name!="OK" and .result.name!="PARTIAL" and .result.name!="VERIFY_MISMATCH"))|length)] | @tsv),
-			($rows[] | select(.result.name!="OK") |
-			 "\($tag)\t\(.packageName)\t\(.result.name)\t\(.result.message // "")")
-		else
-			(["STATS", ($rows|map(select(.result.name=="OK"))|length),
-			  ($rows|map(select(vendor_only_row))|length),
-			  ($rows|map(select(.result.name=="VERIFY_MISMATCH" and (vendor_only_row|not)))|length),
-			  ($rows|map(select(.result.name!="OK" and .result.name!="VERIFY_MISMATCH" and .result.name!="VERIFY_VENDOR_CONSTRAINED"))|length)] | @tsv),
-			($rows[] | select(.result.name!="OK") |
-			 if vendor_only_row then
-				"VERIFY_VENDOR\t\(.packageName)\tVENDOR_CONSTRAINED\t\((.mismatches // [])|length)\t\((.vendorConstraintPaths // [] | join(",")) // vendor_issue_detail)"
-			 else
-				"\($tag)\t\(.packageName)\t\(.result.name)\t\((.mismatches // [])|length)"
-			 end)
-		end
-	' "$_file" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
-		rm -f "$_tmp" 2>/dev/null
-		return 1
-	fi
-	_stats="$(sed -n '1p' "$_tmp" 2>/dev/null)"
-	IFS="$(printf '\t')" read -r _tag _APPSTATE_NDJSON_OK _APPSTATE_NDJSON_VENDOR _APPSTATE_NDJSON_WARN _APPSTATE_NDJSON_FAILED <<EOF
-$_stats
-EOF
-	[[ $_tag = STATS ]] || { rm -f "$_tmp" 2>/dev/null; return 1; }
-	for _n in "$_APPSTATE_NDJSON_OK" "$_APPSTATE_NDJSON_VENDOR" "$_APPSTATE_NDJSON_WARN" "$_APPSTATE_NDJSON_FAILED"; do
-		case $_n in ''|*[!0-9]*) rm -f "$_tmp" 2>/dev/null; _APPSTATE_NDJSON_OK=0; _APPSTATE_NDJSON_VENDOR=0; _APPSTATE_NDJSON_WARN=0; _APPSTATE_NDJSON_FAILED=0; return 1 ;; esac
-	done
-	[[ -n $_issues ]] && sed -n '2,$p' "$_tmp" >> "$_issues" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	rm -f "$_tmp" 2>/dev/null
-	return 0
-}
 _appstate_ndjson_get_foreground_active() {
 	local _file="$1" _pkg="$2"
 	[[ -s $_file && -n $_pkg ]] || { printf '\n'; return 1; }
@@ -16853,9 +17709,9 @@ _speed_debug_dex_full_test() {
 		cat "$SPEED_DEBUG_RUN_DIR/dex_check.log" 2>/dev/null
 	} >> "$SPEED_DEBUG_RUN_DIR/dex_full_test.log" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	if [[ $_rc -eq 0 ]]; then
-		echo "OK dex_selftest rc=0 script=$_script level=$_level" >> "$SPEED_DEBUG_RUN_DIR/dex_full_test.summary" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		echo "SELFTEST state=ok rc=0 script=$_script level=$_level" >> "$SPEED_DEBUG_RUN_DIR/dex_full_test.summary" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	else
-		echo "FAIL dex_selftest rc=$_rc script=$_script level=$_level" >> "$SPEED_DEBUG_RUN_DIR/dex_full_test.summary" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		echo "SELFTEST state=failed rc=$_rc script=$_script level=$_level" >> "$SPEED_DEBUG_RUN_DIR/dex_full_test.summary" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	fi
 	_ok="$(grep -c '^OK ' "$SPEED_DEBUG_RUN_DIR/dex_full_test.summary" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 	_fail="$(grep -c '^FAIL ' "$SPEED_DEBUG_RUN_DIR/dex_full_test.summary" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
@@ -17160,7 +18016,7 @@ _speedbackup_download_local_tools_fill() {
 		return 1
 	fi
 	mkdir -p "$_dest/tools" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
-	cp -rf "$_src/." "$_dest/tools/" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
+	_speedbackup_sync_tools_tree "$_src" "$_dest/tools" || return 1
 	_speedscan_paths_all_exist "$_dest/tools/tools.sh" || return 1
 	_speedscan_chmod_tree_or_fallback "$_dest/tools" 0755
 	_cnt="$(find "$_dest/tools" -type f 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | wc -l 2>/dev/null | tr -d ' ')"
@@ -17218,6 +18074,27 @@ _speedbackup_download_sidecars_rebuild() {
 # 場景: 使用者把更新 zip 放在主目錄自動解壓後，主目錄 tools/ 已更新，
 # 但既有 Backup_zstd_X/tools/ 仍停在舊版，導致單 app 目錄 ./recover.sh 還會使用舊 wrapper。
 # 這裡只更新恢復基礎設施，不改 app payload/app_details/備份資料。
+_speedbackup_sync_tools_tree() {
+	# r718: reuse the updater's FUSE-safe writer; publish tools.sh last so a
+	# failed refresh cannot make the version comparison skip the next retry.
+	local _srcdir="$1" _dstdir="$2" _rel _list _rc=0
+	[[ -d $_srcdir && -f $_srcdir/tools.sh ]] || return 1
+	mkdir -p "$_dstdir" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
+	_list="${TMPDIR:-/data/local/tmp}/.sb_tools_sync_list.${$}.${RANDOM:-0}"
+	if ! ( cd "$_srcdir" && find . -type f ) > "$_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+		rm -f "$_list" 2>/dev/null
+		return 1
+	fi
+	while IFS= read -r _rel; do
+		case $_rel in ./tools.sh) continue ;; *../*|../*|/*) _rc=1; break ;; esac
+		cmp -s "$_srcdir/$_rel" "$_dstdir/$_rel" 2>/dev/null && continue
+		_sb_update_copy_one_file_fuse_safe "$_srcdir/$_rel" "$_dstdir/$_rel" || { _rc=1; break; }
+	done < "$_list"
+	rm -f "$_list" 2>/dev/null
+	[[ $_rc = 0 ]] || return 1
+	_sb_update_copy_one_file_fuse_safe "$_srcdir/tools.sh" "$_dstdir/tools.sh"
+}
+
 _speedbackup_sync_embedded_backup_tools() {
 	local _root="${1:-$path_hierarchy}" _src _br _app _cnt_file _cnt
 	[[ -z $_root || ! -d $_root ]] && return 0
@@ -17231,7 +18108,11 @@ _speedbackup_sync_embedded_backup_tools() {
 		[[ -d $_br/tools || -f $_br/restore_settings.conf || -f $_br/app_details.json ]] || continue
 		if [[ ! -f $_br/tools/tools.sh ]] || ! cmp -s "$_src/tools.sh" "$_br/tools/tools.sh" 2>/dev/null; then
 			mkdir -p "$_br/tools" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || continue
-			cp -rf "$_src/." "$_br/tools/" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || continue
+			if ! _speedbackup_sync_tools_tree "$_src" "$_br/tools"; then
+				_speed_debug_log "EMBEDDED_TOOLS_SYNC_FAIL src=$_src dest=$_br/tools reason=copy_failed action=retry-next-start"
+				echoRgb "備份目錄工具同步失敗，該目錄可能仍有舊工具：$_br/tools；請查看 speed_debug" "0"
+				continue
+			fi
 			chmod -R 0755 "$_br/tools" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 			echo 1 >> "$_cnt_file"
 		fi
@@ -17583,20 +18464,18 @@ _sb_update_stage_is_full_release() {
 		tools/tar \
 		tools/zstd \
 		tools/smbclient \
-		tools/uidexec \
-		tools/unixsock \
-		tools/filewatch \
-		tools/procwait \
-		tools/eventwait \
 		tools/keycheck
 	do
 		[[ -f $_stage/$_rel ]] || _missing="$_missing $_rel"
 	done
+	# r716: release stores one ELF; applet symlinks exist only after runtime install.
+	# A leftover legacy applet set must not make a package without speednative valid.
+	[[ -f $_stage/tools/speednative && -s $_stage/tools/speednative && ! -L $_stage/tools/speednative ]] || _missing="$_missing tools/speednative"
 	if [[ -n $_missing ]]; then
 		_sb_update_report_line "$_report" "Full release validate: MISSING$_missing"
 		return 1
 	fi
-	_sb_update_report_line "$_report" "Full release validate: OK"
+	_sb_update_report_line "$_report" "Full release validate: OK nativeLayout=speednative-multicall"
 	return 0
 }
 
@@ -19535,7 +20414,7 @@ _restore_install_issue_emit() {
 		_speed_debug_log "RESTORE_INSTALL_VENDOR_CONSTRAINED_SUMMARY count=$_warn_count file=restore_install_vendor_warnings.tsv mode=r377"
 		echoRgb "APK安裝系統限制警告: $_warn_count 個（詳情見 speed_debug/restore_install_vendor_warnings.tsv）" "2"
 		sed -n '1,12p' "$_warn_file" 2>/dev/null | while IFS="$(printf '\t')" read -r _pkg _label _reason _detail; do
-			[[ -n $_pkg ]] && echoRgb " - ${_label:-$_pkg} $_pkg system/vendor constrained" "2"
+			[[ -n $_pkg ]] && echoRgb "${_label:-$_pkg} $_pkg system/vendor constrained" "2"
 		done
 		[[ $_warn_count -gt 12 ]] && echoRgb "其餘 $((_warn_count-12)) 個見 speed_debug/restore_install_vendor_warnings.tsv" "2"
 		[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f "$_warn_file" "$SPEED_DEBUG_RUN_DIR/restore_install_vendor_warnings.tsv" 2>/dev/null
@@ -19544,7 +20423,7 @@ _restore_install_issue_emit() {
 	_speed_debug_log "RESTORE_INSTALL_ISSUE_SUMMARY count=$_count file=restore_install_issues.tsv mode=r377"
 	echoRgb "APK安裝/驗證異常: $_count 個（詳情見 speed_debug/restore_install_issues.tsv）" "0"
 	sed -n '1,12p' "$_file" 2>/dev/null | while IFS="$(printf '\t')" read -r _pkg _label _reason _detail; do
-		[[ -n $_pkg ]] && echoRgb " - ${_label:-$_pkg} $_pkg $_reason" "0"
+		[[ -n $_pkg ]] && echoRgb "${_label:-$_pkg} $_pkg $_reason" "0"
 	done
 	[[ $_count -gt 12 ]] && echoRgb "其餘 $((_count-12)) 個見 speed_debug/restore_install_issues.tsv" "0"
 	[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f "$_file" "$SPEED_DEBUG_RUN_DIR/restore_install_issues.tsv" 2>/dev/null
@@ -19958,6 +20837,7 @@ _dirsize_map_append_custom_media_manifest() {
 # 預掃所有待備份 app 的數據目錄大小 (data/user/user_de/obb), 並行加速 (約快 3 倍)
 # 寫到 $TMPDIR/.dir_sizes, 格式: pkg<TAB>type<TAB>size; 主迴圈 _dir_size 查此表免重複遍歷
 prepare_dir_size_map() {
+	rm -f "$TMPDIR/.dir_size_tar_input_map.tsv" "$TMPDIR/.dir_size_tar_input_map.tsv.part" 2>/dev/null
 	local _map="$TMPDIR/.dir_sizes" _exists="$TMPDIR/.local_dir_exists.tsv" _two_phase_filter=0 _two_phase_source="full" _filter_manifest="" _filter_exists="" _filter_stats="" _filter_tiny="" _dirsize_hints=""
 	local _local_filter_manifest="$TMPDIR/.local_dirsize_presize_manifest.tsv" _local_filter_exists="$TMPDIR/.local_dir_exists_presize.tsv" _local_filter_stats="$TMPDIR/.local_dirsize_presize_stats.tsv" _local_filter_tiny="$TMPDIR/.local_dirsize_presize_tiny.tsv"
 	local _remote_filter_manifest="$TMPDIR/.remote_dirsize_presize_manifest.tsv" _remote_filter_exists="$TMPDIR/.remote_dir_exists_presize.tsv" _remote_filter_stats="$TMPDIR/.remote_dirsize_presize_stats.tsv" _remote_filter_tiny="$TMPDIR/.remote_dirsize_presize_tiny.tsv"
@@ -20107,7 +20987,7 @@ EOF
 		[[ -n $_ss_bin && $_rows -gt 0 ]] && _speedbackup_progress_step 0 "$_logical_rows" "正在預掃數據大小" "prepare_dir_size_speedscan" "107"
 		# r668: 不再由 shell 推論 primary rows/worker；Rust 在 nested collapse 後以真實 scanRoots 決策。
 		# 使用者若明確 export SPEEDSCAN_DIRSIZE_WORKERS=N，原環境變數會自然覆蓋 Rust auto policy。
-		if [[ -n $_ss_bin && $_rows -gt 0 ]] && SPEEDSCAN_DIRSIZE_STATS_FILE="$_ss_stats" SPEEDSCAN_DIRSIZE_ROOT_STATS_FILE="$_ss_root_stats" SPEEDSCAN_DIRSIZE_HINTS_FILE="$_dirsize_hints" "$_ss_bin" dir-size-map "$_ss_manifest" > "$_map" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+		if [[ -n $_ss_bin && $_rows -gt 0 ]] && SPEEDSCAN_DIRSIZE_TAR_INPUT_MAP_FILE="$TMPDIR/.dir_size_tar_input_map.tsv" SPEEDSCAN_DIRSIZE_STATS_FILE="$_ss_stats" SPEEDSCAN_DIRSIZE_ROOT_STATS_FILE="$_ss_root_stats" SPEEDSCAN_DIRSIZE_HINTS_FILE="$_dirsize_hints" "$_ss_bin" dir-size-map "$_ss_manifest" > "$_map" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
 			# Synchronous native exit closes stdout before control returns; no post-exit stable wait is needed.
 			local _scan_roots="unknown" _nested_collapsed="unknown" _actual_workers="unknown" _requested_workers="${SPEEDSCAN_DIRSIZE_WORKERS:-auto}" _worker_policy="auto-r668-scanroots" _schedule_policy="unknown" _hint_rows="0" _hinted_roots="0" _files="unknown" _target_checks="unknown" _route_dir_lookups="unknown" _nested_activations="unknown" _file_meta_calls="unknown" _file_paths_avoided="unknown" _legacy_fallback_roots="unknown" _plan_elapsed_ms="unknown" _elapsed_ms="unknown" _output_elapsed_ms="unknown" _native_total_ms="unknown" _output_rows="unknown" _root_top1="" _root_top2="" _root_top3="" _sk _sv
 			if [[ -s $_ss_stats ]]; then
@@ -20186,6 +21066,8 @@ EOF
 		_speed_debug_log "DIRSIZE_MAP_SPEEDSCAN_FALLBACK rows=$_rows requestedWorkers=${SPEEDSCAN_DIRSIZE_WORKERS:-auto} workerPolicy=auto-r668-scanroots twoPhase=$_two_phase_filter twoPhaseSource=$_two_phase_source bin=${_ss_bin:-missing} mode=r668"
 		rm -f "$_ss_manifest" "$_ss_stats" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	fi
+	# Any native rejection invalidates its tar facts before shell size fallback.
+	rm -f "$TMPDIR/.dir_size_tar_input_map.tsv" "$TMPDIR/.dir_size_tar_input_map.tsv.part" 2>/dev/null
 	local _workdir="$TMPDIR/.dirsize_work"
 	rm -rf "$_workdir"; mkdir -p "$_workdir"
 	local _total _i=0 _running=0 _par=8 _dsz_pids=""
@@ -20334,8 +21216,9 @@ prepare_remote_json_map() {
 		_appdetails_bundle_seed_remote_json_cache "$_subdir" "$_cache" || true
 		_speed_debug_log "PROGRESS_ONESHOT_COLLAPSE tag=prepare_remote_bundle_map mode=busy status=done reason=one_step_0_1_hidden_r286"
 		echoRgb "遠端 app_details bundle 預掃完成" "2"
-		local _bundle_got=0
-		_bundle_got="$(_appdetails_index_count "$_cache" 2 2)"
+		local _bundle_got=0 _bundle_count_file
+		_bundle_count_file="$(_appdetails_bundle_seed_count_file)"
+		[[ -s $_bundle_count_file ]] && IFS= read -r _bundle_got < "$_bundle_count_file" 2>/dev/null || true
 		case $_bundle_got in ''|*[!0-9]*) _bundle_got=0 ;; esac
 		echoRgb "遠端 bundle staging: $_bundle_got 個 app 有遠端紀錄" "2"
 		return 0
@@ -21058,12 +21941,16 @@ _stream_fast_skip_collapse_applist() {
 	local _keep="$TMPDIR/.fast_skip_keep_$$"
 	local _skip="$TMPDIR/.fast_skip_skip_$$"
 	local _skip2="$TMPDIR/.fast_skip_skip2_$$"
-	local _line _name _pkg _skip_count _keep_count _mark_count _old_r _bf
+	local _line _name _pkg _skip_count _keep_count _mark_count _old_r
+	local _phase_start _classify_end _mark_end _notify_start _notify_end
+	_backup_perf_clock; _phase_start="$_BACKUP_PERF_MS"
+	_skip_count=0; _keep_count=0
+	: > "$_skip2"
 	: > "$_keep"
 	: > "$_skip"
 	while IFS= read -r _line; do
 		case $_line in ''|\#*|＃*)
-			[ -n "$_line" ] && echo "$_line" >> "$_keep"
+			if [[ -n $_line ]]; then _sb_println "$_line" >> "$_keep"; _keep_count=$((_keep_count + 1)); fi
 			continue
 			;;
 		esac
@@ -21073,22 +21960,24 @@ _stream_fast_skip_collapse_applist() {
 		\!*) _name="${_name#!}" ;;
 		！*) _name="${_name#！}" ;;
 		esac
-		_name="$(_backup_path_safe_name "$_name" "$_pkg")"
+		_backup_path_safe_name_set "$_name" "$_pkg"
+		_name="$_BACKUP_PATH_SAFE_NAME_RET"
 		if [[ -n $_name && -n $_pkg && $_pkg != "$_line" ]] && _remote_app_fast_skip_ok "$_name"; then
-			echo "$_line" >> "$_skip"
+			_sb_println "$_line" >> "$_skip"
+			_skip_count=$((_skip_count + 1))
 		else
-			echo "$_line" >> "$_keep"
+			_sb_println "$_line" >> "$_keep"
+			_keep_count=$((_keep_count + 1))
 		fi
 	done <<EOF_STREAM_FAST_SKIP_COLLAPSE
 $txt
 EOF_STREAM_FAST_SKIP_COLLAPSE
-	_skip_count="$(grep -vc '^$' "$_skip" 2>/dev/null)"
-	_keep_count="$(grep -vc '^$' "$_keep" 2>/dev/null)"
 	case $_skip_count in ''|*[!0-9]*) _skip_count=0 ;; esac
 	case $_keep_count in ''|*[!0-9]*) _keep_count=0 ;; esac
 	[[ $_skip_count -gt 0 ]] || { rm -f "$_keep" "$_skip" "$_skip2" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; return 0; }
 	# r34: 若全部都是 fast-skip，允許全數折疊；後續 wifi/summary/remote_cleanup 已可在 r=0 下完成。
 	# 不再保留最後 1 個 app 進主迴圈，避免「全無變化」仍多一次 UI/notify/quiesce 成本。
+	_backup_perf_clock; _classify_end="$_BACKUP_PERF_MS"
 	_mark_count=0
 	while IFS= read -r _line; do
 		[[ -z $_line ]] && continue
@@ -21099,15 +21988,18 @@ EOF_STREAM_FAST_SKIP_COLLAPSE
 		！*) _name="${_name#！}" ;;
 		esac
 		[[ -z $_name || -z $_pkg || $_pkg = "$_line" ]] && continue
-		_bf="$Backup/$_name"
-		[[ $remote_stream = 1 && -n $remote_type ]] && _bf="$TMPDIR/.stream_stage/$_name"
-		if ! awk -v p="$_pkg" '$2==p{f=1} END{exit !f}' "$TMPDIR/.backup_done" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
-			echo "${_bf##*/} $_pkg" >> "$TMPDIR/.backup_done"
-		fi
+		_backup_path_safe_name_set "$_name" "$_pkg"
+		printf '%s\t%s\n' "$_BACKUP_PATH_SAFE_NAME_RET" "$_pkg" >> "$_skip2"
 		osj="$((osj + 1))"
 		_mark_count="$((_mark_count + 1))"
 		_speed_debug_log "STREAM_APP_FAST_SKIP_UNCHANGED app=$_name package=$_pkg source=fast_prescan_batch"
 	done < "$_skip"
+	# Preserve package deduplication, including duplicates within this skipped batch.
+	_backup_entry_fast_batch "$_skip2" "$TMPDIR/.selected_apps.tsv" "$TMPDIR/.remote_blacklist_set.tsv"
+	[[ -f $TMPDIR/.backup_done ]] || : > "$TMPDIR/.backup_done" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	awk 'FILENAME==ARGV[1] { seen[$2]=1; next } !($2 in seen) { print $1 " " $2; seen[$2]=1 }' \
+		"$TMPDIR/.backup_done" "$_skip2" >> "$TMPDIR/.backup_done" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_backup_perf_clock; _mark_end="$_BACKUP_PERF_MS"
 	_old_r="$r"
 	txt="$(cat "$_keep" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 	r="$_keep_count"
@@ -21118,7 +22010,10 @@ EOF_STREAM_FAST_SKIP_COLLAPSE
 		_speed_debug_log "STREAM_APP_FAST_SKIP_ALL_APPS skipped=$_mark_count original=$_old_r"
 	fi
 	echoRgb "遠端無變化應用 $_mark_count 個，已批量快速跳過；剩餘 $r 個進一步檢查" "2"
+	_backup_perf_clock; _notify_start="$_BACKUP_PERF_MS"
 	notification_progress "101" "$_old_r" "$_mark_count" "已快速跳過 $_mark_count/$_old_r 個無變化應用"
+	_backup_perf_clock; _notify_end="$_BACKUP_PERF_MS"
+	_speed_debug_log "STREAM_FAST_SKIP_COLLAPSE_TIMING classifyMs=$((_classify_end - _phase_start)) markMs=$((_mark_end - _classify_end)) notifyMs=$((_notify_end - _notify_start)) totalMs=$((_notify_end - _phase_start)) doneDedupParsers=1 clock=$_BACKUP_PERF_CLOCK mode=r699"
 	rm -f "$_keep" "$_skip" "$_skip2" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
 
@@ -21264,7 +22159,7 @@ _local_fast_skip_collapse_applist() {
 	local _raw="$TMPDIR/.fast_skip_raw_$$"
 	local _skip_count _keep_count _mark_count _old_r _name _pkg _done_cache
 	: > "$_keep"; : > "$_skip"; : > "$_skip2"
-	printf '%s\n' "$txt" > "$_raw" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_sb_println "$txt" > "$_raw" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	awk -F '\t' -v skip="$_skip" -v rows="$_skip2" '
 		FILENAME==ARGV[1] { if ($1!="" && $2!="") safe[$2]=$1; next }
 		FILENAME==ARGV[2] { if ($0!="") fast[$0]=1; next }
@@ -21292,16 +22187,17 @@ _local_fast_skip_collapse_applist() {
 		done < "$TMPDIR/.backup_done"
 	fi
 	_mark_count=0
-	while IFS="$(printf '\t')" read -r _name _pkg; do
+	while IFS="$SB_TAB" read -r _name _pkg; do
 		[[ -n $_name && -n $_pkg ]] || continue
 		case "$_done_cache" in
 		*"|${_pkg}|"*) ;;
-		*) printf '%s %s\n' "$_name" "$_pkg" >> "$TMPDIR/.backup_done"; _done_cache="${_done_cache}${_pkg}|" ;;
+		*) _sb_println "$_name $_pkg" >> "$TMPDIR/.backup_done"; _done_cache="${_done_cache}${_pkg}|" ;;
 		esac
 		osj="$((osj + 1))"
 		_mark_count="$((_mark_count + 1))"
 		_speed_debug_log "LOCAL_APP_FAST_SKIP_UNCHANGED app=$_name package=$_pkg source=local_fast_prescan_batch-r631"
 	done < "$_skip2"
+	_backup_entry_fast_batch "$_skip2" "$TMPDIR/.local_selected_apps.tsv" "$TMPDIR/.local_blacklist_set.tsv"
 	_old_r="$r"
 	txt="$(cat "$_keep" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 	r="$_keep_count"
@@ -21611,12 +22507,17 @@ _remote_orphan_cleanup_stream() {
 		_speed_debug_log "REMOTE_ORPHAN_CLEANUP_SKIP reason=remote_stream_fatal $(_remote_stream_fatal_summary)"
 		return 0
 	fi
-	if ! prepare_installed_pkgs_map; then
+	if ! prepare_installed_pkgs_map refresh; then
 		_speed_debug_log "REMOTE_ORPHAN_CLEANUP_SKIP reason=installed_map_unavailable"
-		return 0
+		echoRgb "本機已安裝清單取得失敗，未完成掃描，已取消刪除" "0"
+		return 1
 	fi
+	local _roots _roots_mode _plan _plan_rc _plan_out _plan_stats _unknown=0 _list_rc=0
 	local _subdir _rfiles _list _pkgs _seen _report _rel _app _json _pkg _cnt _tmp _removed _failed _cache_hit=0 _stage_hit=0 _remote_get=0 _json_source _scan_total=0 _scan_i=0 _bundle_root _bundle_ready=0 _bundle_jsons _removed_apps
 	_subdir="${_BACKUP_DIRNAME_CACHED:-$(get_backup_dirname)}"
+	_plan="$TMPDIR/.remote_orphan_plan_${$}_$RANDOM"
+	_roots="${_plan}.roots.tsv"
+	_roots_mode="$remote_type"
 	_rfiles="$TMPDIR/.remote_orphan_files_${$}_$RANDOM"
 	_list="$TMPDIR/.remote_orphan_list_${$}_$RANDOM"
 	_pkgs="$TMPDIR/.remote_orphan_pkgs_${$}_$RANDOM"
@@ -21635,11 +22536,12 @@ _remote_orphan_cleanup_stream() {
 	# safe BUNDLE/DIR/FILE<TAB>name<TAB>rel rows instead of recursive href TSV.
 	if [[ $remote_type = webdav ]]; then
 		local _oroots _oroots_err _oroots_rc
-		_oroots="$TMPDIR/.remote_orphan_roots_${$}_$RANDOM.tsv"
+		_oroots="$_roots"
 		_oroots_err="$TMPDIR/.remote_orphan_roots_${$}_$RANDOM.err"
 		_webdav_status_sidecar_reset
 		_webdav_dex orphanrootsrel "$remote_user" "$remote_pass" "${remote_url%/}" "$_subdir" > "$_oroots" 2>"$_oroots_err"
 		_oroots_rc=$?
+		_list_rc=$_oroots_rc
 		_webdav_status_sidecar_load || true
 		remote_raw_cat "remote_orphan_cleanup.log" "$_oroots" "===== WEBDAV_ORPHAN_ROOTS stdout subdir=$_subdir rc=$_oroots_rc http=${_WEBDAV_HTTP_CODE:-0} ====="
 		remote_raw_cat "remote_orphan_cleanup.log" "$_oroots_err" "===== WEBDAV_ORPHAN_ROOTS stderr subdir=$_subdir rc=$_oroots_rc http=${_WEBDAV_HTTP_CODE:-0} ====="
@@ -21650,9 +22552,16 @@ _remote_orphan_cleanup_stream() {
 			_remote_netwatch_mark_remote_fatal "remote_orphan_webdav_roots_fail" "$_subdir" >/dev/null 2>&1 || true
 			_speed_debug_log "REMOTE_ORPHAN_WEBDAV_ROOTS_DEX_FAIL subdir=$_subdir rc=$_oroots_rc http=${_WEBDAV_HTTP_CODE:-0} mode=r572"
 		fi
-		rm -f "$_oroots" "$_oroots_err" 2>/dev/null
+		rm -f "$_oroots_err" 2>/dev/null
 	else
-		remote_list_files "$_subdir" > "$_rfiles" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+		remote_list_files "$_subdir" > "$_rfiles" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		_list_rc=$?
+		cp -f "$_rfiles" "$_roots" || _list_rc=1
+	fi
+	if [[ $_list_rc != 0 ]]; then
+		_speed_debug_log "REMOTE_ORPHAN_SCAN_FAIL reason=remote_list_failed rc=$_list_rc subdir=$_subdir mode=r703"
+		echoRgb "遠端清單取得失敗，未完成掃描，已取消刪除" "0"
+		return 1
 	fi
 	if [[ ! -s $_rfiles ]]; then
 		_speed_debug_log "REMOTE_ORPHAN_CLEANUP_SKIP reason=remote_filelist_empty subdir=$_subdir"
@@ -21696,20 +22605,30 @@ _remote_orphan_cleanup_stream() {
 	_appdetails_index_paths "$_bundle_root" "$_bundle_jsons" 2 2 1 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 	_scan_total="$(grep -vc '^$' "$_bundle_jsons" 2>/dev/null)"
 	case $_scan_total in ''|*[!0-9]*) _scan_total=0 ;; esac
-	_remote_manifest_plan_refresh remote_orphan_cleanup >/dev/null 2>&1 || true
-	local _rust_orphans="$(_remote_manifest_plan_prefix).orphan_candidates.tsv"
-	if [[ -s $_rust_orphans ]]; then
-		awk -F '	' 'NR>1 && $1!="" && $2!="" { print $1 "	" $2 }' "$_rust_orphans" > "$_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || : > "$_list"
-		awk -F '	' 'NR>1 && $2!="" { print $2 }' "$_rust_orphans" > "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || : > "$_pkgs"
-		_scan_i="$(awk 'NF{n++} END{print n+0}' "$_list" 2>/dev/null)"
-		_scan_total="$_scan_i"
-		_speed_debug_log "REMOTE_ORPHAN_SCAN_RUST_PLAN_USED count=$_scan_i source=remote-manifest-plan engine=rust mode=r631"
-	else
-		# r631: destructive orphan detection is Rust-plan only.  Do not resurrect the old bundle-json shell loop.
-		_scan_i=0
-		_scan_total="$(grep -vc '^$' "$_bundle_jsons" 2>/dev/null)"
-		case $_scan_total in ''|*[!0-9]*) _scan_total=0 ;; esac
-		_speed_debug_log "REMOTE_ORPHAN_SCAN_RUST_PLAN_EMPTY count=0 source=remote-manifest-plan action=no_destructive_cleanup mode=r631"
+	# r703: manual cleanup consumes this invocation's typed roots, never backup pre-scan caches.
+	if ! _speedscan_have_capability speedscan.remote_orphan_plan.v1; then
+		echoRgb "speedscan 缺少遠端刪除規劃能力，請同步更新 tools/speednative" "0"
+		return 1
+	fi
+	_plan_out="$(_speedscan_cmd remote-orphan-plan "$_roots" "$_roots_mode" "$_subdir" "$_bundle_root" "$TMPDIR/.installed_pkgs" "$_plan" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	_plan_rc=$?
+	_plan_stats="${_plan}.stats"
+	for _json in roots.tsv candidates.tsv decisions.tsv stats; do
+		[[ -f ${_plan}.${_json} && -d ${SPEED_DEBUG_RUN_DIR:-/nonexistent} ]] && cp -f "${_plan}.${_json}" "$SPEED_DEBUG_RUN_DIR/remote_orphan_plan.${_json}" 2>/dev/null
+	done
+	_speed_debug_log "REMOTE_ORPHAN_PLAN_RESULT rc=$_plan_rc $_plan_out mode=r703"
+	if [[ $_plan_rc != 0 || ! -s ${_plan}.candidates.tsv || ! -s ${_plan}.decisions.tsv || ! -s $_plan_stats ]]; then
+		echoRgb "遠端已卸載 App 判定未完成，已取消刪除；請查看 debug" "0"
+		return 1
+	fi
+	awk -F '\t' 'NR>1 {print $1 "\t" $2}' "${_plan}.candidates.tsv" > "$_list" || return 1
+	: > "$_pkgs"
+	_scan_i="$(awk -F '\t' '$1=="checked" {print $2}' "$_plan_stats")"
+	_scan_total="$(awk -F '\t' '$1=="remoteApps" {print $2}' "$_plan_stats")"
+	_unknown="$(awk -F '\t' '$1=="unknown" {print $2}' "$_plan_stats")"
+	_speed_debug_log "REMOTE_ORPHAN_SCAN_RUST_PLAN_USED checked=$_scan_i total=$_scan_total unknown=$_unknown source=fresh-roots engine=rust mode=r703"
+	if [[ $_unknown != 0 ]]; then
+		echoRgb "$_unknown 個遠端 App 的 metadata 缺失或無效，這些項目保留不刪除" "2"
 	fi
 	_cnt="$(grep -vc '^$' "$_list" 2>/dev/null)"
 	case $_cnt in ''|*[!0-9]*) _cnt=0 ;; esac
@@ -21717,7 +22636,7 @@ _remote_orphan_cleanup_stream() {
 		_speed_debug_log "REMOTE_ORPHAN_SCAN count=0 subdir=$_subdir bundle=$_bundle_ready cache_hit=$_cache_hit stage_hit=$_stage_hit remote_get=$_remote_get scanned=$_scan_i total=$_scan_total visible=$([[ $_remote_orphan_manual = 1 ]] && echo 1 || echo 0)"
 		if [[ $_remote_orphan_manual = 1 ]]; then
 			echoRgb "遠端已卸載 App 掃描完成：未發現可刪除的遠端孤兒備份" "1"
-			echoRgb "已掃描 $_scan_i/$_scan_total 個遠端 App 目錄，無需清理" "2"
+			echoRgb "已判定 $_scan_i/$_scan_total 個遠端 App 目錄，$_unknown 個資料不足已保留" "2"
 		fi
 		rm -f "$_rfiles" "$_list" "$_pkgs" "$_seen" "$_bundle_jsons" "$_removed_apps" 2>/dev/null
 		return 0
@@ -21727,13 +22646,13 @@ _remote_orphan_cleanup_stream() {
 		echo "type=$remote_type"
 		echo "subdir=$_subdir"
 		echo "count=$_cnt"
-		while IFS='	' read -r _app _pkg; do
+		while IFS="$SB_TAB" read -r _app _pkg; do
 			[[ -n $_app && -n $_pkg ]] && echo "orphan app=$_app package=$_pkg"
 		done < "$_list"
 	} >> "$_report" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_speed_debug_log "REMOTE_ORPHAN_SCAN type=$remote_type count=$_cnt subdir=$_subdir report=$_report bundle=$_bundle_ready cache_hit=$_cache_hit stage_hit=$_stage_hit remote_get=$_remote_get scanned=$_scan_i total=$_scan_total"
 	echoRgb "偵測到 $_cnt 個已卸載 App 的遠端備份孤兒項:" "2"
-	while IFS='	' read -r _app _pkg; do
+	while IFS="$SB_TAB" read -r _app _pkg; do
 		[[ -n $_app && -n $_pkg ]] && echoRgb "$_app [$_pkg]" "2"
 	done < "$_list"
 	if ! ask_yn "是否清理這些已卸載 App 的遠端備份?" "清理" "保留"; then
@@ -21741,7 +22660,7 @@ _remote_orphan_cleanup_stream() {
 		rm -f "$_rfiles" "$_list" "$_pkgs" "$_seen" "$_bundle_jsons" "$_removed_apps" 2>/dev/null
 		return 0
 	fi
-	if ! ask_yn "二次確認：將刪除上述遠端備份資料夾並更新遠端 appList.txt" "確認刪除" "取消"; then
+	if ! ask_yn "二次確認：將刪除上述遠端備份資料夾並更新遠端 metadata bundle" "確認刪除" "取消"; then
 		_speed_debug_log "REMOTE_ORPHAN_CLEANUP_CANCEL count=$_cnt"
 		rm -f "$_rfiles" "$_list" "$_pkgs" "$_seen" "$_bundle_jsons" "$_removed_apps" 2>/dev/null
 		return 0
@@ -21752,7 +22671,7 @@ _remote_orphan_cleanup_stream() {
 		rm -f "$_rfiles" "$_list" "$_pkgs" "$_seen" "$_bundle_jsons" "$_removed_apps" 2>/dev/null
 		return 0
 	fi
-	while IFS='	' read -r _app _pkg; do
+	while IFS="$SB_TAB" read -r _app _pkg; do
 		[[ -n $_app && -n $_pkg ]] || continue
 		if _remote_netwatch_mark_remote_fatal "remote_orphan_delete_app" "$_app"; then
 			_speed_debug_log "REMOTE_ORPHAN_DELETE_ABORT reason=remote_netwatch_changed app=$_app"
@@ -21761,6 +22680,7 @@ _remote_orphan_cleanup_stream() {
 		fi
 		if _remote_orphan_delete_dir "$_app"; then
 			_removed=$((_removed + 1))
+			printf '%s\n' "$_pkg" >> "$_pkgs"
 			printf '%s\n' "$_app" >> "$_removed_apps" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 			echoRgb "已刪除遠端孤兒備份: $_app [$_pkg]" "1"
 			_speed_debug_log "REMOTE_ORPHAN_DELETE_OK type=$remote_type app=$_app package=$_pkg"
@@ -21789,7 +22709,7 @@ _remote_orphan_cleanup_stream() {
 			_speed_debug_log "REMOTE_ORPHAN_BUNDLE_PRUNE_UPLOAD_FAIL removed=$_removed root=$_bundle_root mode=r312-bundle-only-strict"
 		fi
 	fi
-	# 同步本輪待上傳的 appList；stream_upload_infra 隨後會把它覆寫到遠端。
+	# 僅從呼叫者提供的本地 appList 移除已成功刪除的 package；遠端列表由 metadata 重建。
 	if [[ -n ${txt_path2:-} && -f $txt_path2 && -s $_pkgs && $_removed -gt 0 ]]; then
 		_tmp="$TMPDIR/.remote_orphan_applist_${$}_$RANDOM"
 		awk 'NR==FNR{drop[$1]=1; next} {p=$2; if (p in drop) next; print}' "$_pkgs" "$txt_path2" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && cat "$_tmp" > "$txt_path2"
@@ -21809,6 +22729,7 @@ _remote_orphan_cleanup_stream() {
 	_speed_debug_log "REMOTE_ORPHAN_CLEANUP_DONE type=$remote_type removed=$_removed failed=$_failed appList=${txt_path2:-}"
 	echoRgb "遠端孤兒備份清理完成: 已刪除 $_removed 個，失敗 $_failed 個" "1"
 	rm -f "$_rfiles" "$_list" "$_pkgs" "$_seen" "$_bundle_jsons" "$_removed_apps" 2>/dev/null
+	[[ $_failed = 0 ]]
 }
 
 # r242: 主選單明確入口；不在備份完成後自動掃整個遠端 app_details。
@@ -21989,7 +22910,11 @@ release_details_read() {
 # 寫到 $TMPDIR/.installed_pkgs (一行一個 pkg name)
 prepare_installed_pkgs_map() {
 	: > "$TMPDIR/.installed_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	appinventory pkgName all 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} >> "$TMPDIR/.installed_pkgs"
+	if ! appinventory pkgName all "${1:-}" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} >> "$TMPDIR/.installed_pkgs"; then
+		: > "$TMPDIR/.installed_pkgs"
+		_speed_debug_log "APP_INVENTORY_INSTALLED_MAP_FAIL reason=command_failed strict=1 fallback=off"
+		return 1
+	fi
 	if [[ -s "$TMPDIR/.installed_pkgs" ]]; then
 		_speed_debug_log "APP_INVENTORY_INSTALLED_MAP_OK rows=$(wc -l < "$TMPDIR/.installed_pkgs" 2>/dev/null | tr -d ' ')"
 		return 0
@@ -22051,6 +22976,20 @@ function commas(n, s, out) {
 	return s out
 }
 '
+
+# r699: same human() formatter as size(), one awk for numeric summary values.
+_size_format_batch() {
+	local _values="" _value
+	for _value in "$@"; do
+		case $_value in ''|*[!0-9]*) _value=0 ;; esac
+		_values="${_values}${_values:+$SB_TAB}${_value}"
+	done
+	awk -v s="$_values" -v count="$#" "${_size_format_awk}"'BEGIN {
+		split(s, values, "\t")
+		for (i=1; i<=count; i++) printf "%s%s", (i>1 ? "\t" : ""), human(values[i])
+		printf "\n"
+	}'
+}
 
 size() {
 	local b_size
@@ -22142,13 +23081,60 @@ _foreground_state_pkg_active() {
 
 # 透過 unified root daemon / HiddenApi forceStopPackageBatch 單獨終止指定 app。
 # 回傳: 0=daemon force-stop 成功, 1=daemon force-stop 失敗。
+# r708: control receipts are operation-specific; diagnostics never authorize cleanup.
+_operation_result_read() {
+	local _file="$1" _op="$2" _line _rest _v _i _found=0 _tab=$'\t'
+	_OP_RESULT_STATE=""; _OP_RESULT_TOKEN=""; _OP_RESULT_REQUESTED=""
+	_OP_RESULT_COMPLETED=""; _OP_RESULT_RECOVERED=""; _OP_RESULT_FAILED=""
+	_OP_RESULT_MISSING=""; _OP_RESULT_RESTORED=""; _OP_RESULT_DELETED=""
+	_OP_RESULT_USER=""; _OP_RESULT_PACKAGE=""
+	[[ -r $_file ]] || return 1
+	while IFS= read -r _line || [[ -n $_line ]]; do
+		case $_line in SBRESULT"$_tab"*"$_tab$_op$_tab"*) ;; *) continue ;; esac
+		_rest=$_line; _i=0
+		while :; do
+			case $_rest in *"$_tab"*) _v=${_rest%%"$_tab"*}; _rest=${_rest#*"$_tab"} ;; *) _v=$_rest; _rest="" ;; esac
+			_i=$((_i + 1))
+			[[ -n $_v ]] || return 1
+			case $_i in
+			1) [[ $_v = SBRESULT ]] || return 1 ;;
+			2) [[ $_v = 1 ]] || return 1 ;;
+			3) [[ $_v = "$_op" ]] || return 1 ;;
+			4) case $_v in ok|failed) _OP_RESULT_STATE=$_v ;; *) return 1 ;; esac ;;
+			5) [[ $_OP_RESULT_STATE:$_v = ok:0 || $_OP_RESULT_STATE:$_v = failed:1 ]] || return 1 ;;
+			6|7|8|9|10|11|14)
+				case $_v in
+				-) ;;
+				0[0-9]*|''|*[!0-9]*) return 1 ;;
+				*)
+					[[ ${#_v} -le 10 ]] || return 1
+					[[ ${#_v} = 10 && $_v > 2147483647 ]] && return 1 ;;
+				esac
+				case $_i in
+				6) _OP_RESULT_TOKEN=$_v ;; 7) _OP_RESULT_REQUESTED=$_v ;; 8) _OP_RESULT_COMPLETED=$_v ;;
+				9) _OP_RESULT_RECOVERED=$_v ;; 10) _OP_RESULT_FAILED=$_v ;; 11) _OP_RESULT_MISSING=$_v ;; 14) _OP_RESULT_USER=$_v ;;
+				esac ;;
+			12|13)
+				case $_v in true|false|-) ;; *) return 1 ;; esac
+				if [[ $_i = 12 ]]; then _OP_RESULT_RESTORED=$_v; else _OP_RESULT_DELETED=$_v; fi ;;
+			15) case $_v in *[!a-zA-Z0-9_.-]*) return 1 ;; esac; _OP_RESULT_PACKAGE=$_v ;;
+			*) return 1 ;;
+			esac
+			[[ -n $_rest ]] || break
+		done
+		[[ $_i = 15 && $_line != *"$_tab" && $_found = 0 ]] || return 1
+		_found=1
+	done < "$_file"
+	[[ $_found = 1 && $_OP_RESULT_STATE = ok ]]
+}
+
 _force_stop_pkg_daemon() {
 	local _pkg="$1" _out _rc
 	[[ -n $_pkg ]] || return 1
 	_out="$(_webdav_tmp_path hiddenapi_force_stop_${$}_$RANDOM)"
 	dex_hiddenapi_raw forceStopPackageBatch "${USER_ID:-${user:-0}}" "$_pkg" > "$_out"
 	_rc=$?
-	if [[ $_rc = 0 ]] && grep -F "FORCE_STOP_OK package=$_pkg " "$_out" >/dev/null 2>&1; then
+	if [[ $_rc = 0 ]] && _operation_result_read "$_out" force-stop && [[ $_OP_RESULT_PACKAGE = "$_pkg" && $_OP_RESULT_USER = "${USER_ID:-${user:-0}}" ]]; then
 		_speed_debug_log "FORCE_STOP_PACKAGE_BATCH_DAEMON_OK pkg=$_pkg out=$(tr '\n' '|' < "$_out" | cut -c1-300)"
 		rm -f "$_out" 2>/dev/null
 		return 0
@@ -22269,8 +23255,8 @@ _uid_netblock_start_app() {
 	_out="$(_webdav_tmp_path uid_netblock_start_${$}_$RANDOM)"
 	dex_hiddenapi_raw uidNetBlockStart "${USER_ID:-${user:-0}}" "$_pkg" "$_mode" "$_log" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_rc=$?
-	if [[ $_rc = 0 ]] && grep -F "UID_NET_BLOCK_START_OK" "$_out" >/dev/null 2>&1; then
-		_token="$(sed -n 's/.*token=\([0-9][0-9]*\).*/\1/p' "$_out" | head -n 1)"
+	if [[ $_rc = 0 ]] && _operation_result_read "$_out" uidnet-start && [[ $_OP_RESULT_TOKEN != - ]]; then
+		_token="$_OP_RESULT_TOKEN"
 		if [[ -n $_token ]]; then
 			_state="$(_uid_netblock_token_state_file)"
 			printf '%s\t%s\t%s\t%s\t%s\n' "$_token" "$_pkg" "$_label" "$_stage" "$_log" >> "$_state" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -22302,18 +23288,23 @@ _uid_netblock_remove_state_token() {
 }
 
 _uid_netblock_stop_token() {
-	local _token="$1" _reason="$2" _pkg="$3" _stage="$4" _log="$5" _out _rc _flat
+	local _token="$1" _reason="$2" _pkg="$3" _stage="$4" _log="$5" _out _rc _flat _dex_out _dex_rc
 	[[ -n $_token ]] || return 0
 	_out="$(_webdav_tmp_path uid_netblock_stop_${$}_$RANDOM)"
 	dex_hiddenapi_raw uidNetBlockStop "$_token" "${USER_ID:-${user:-0}}" "$_pkg" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_rc=$?
 	_flat="$(_cgroup_freezer_compact_out "$_out")"
 	_speed_debug_log "UID_NET_BLOCK_STOP token=$_token reason=$_reason pkg=$_pkg stage=$_stage rc=$_rc out=$_flat"
-	if [[ $_rc != 0 ]] || grep -E 'UID_NET_BLOCK_STOP_MISSING|UID_NET_BLOCK_STOP_FAILED|UID_NET_BLOCK_RESTORE_FAILED|UID_NET_BLOCK_PERSISTENT_RESTORE_MISSING|UID_NET_BLOCK_PERSISTENT_RESTORE_FAILED|UID_NET_BLOCK_PERSISTENT_RESTORE_REJECTED|stateRetained=true|stateDeleted=false' "$_out" >/dev/null 2>&1; then
+	if [[ $_rc != 0 ]] || ! _operation_result_read "$_out" uidnet-stop || [[ $_OP_RESULT_TOKEN != "$_token" || $_OP_RESULT_RESTORED != true || $_OP_RESULT_DELETED != true ]]; then
 		_dex_out="$(_webdav_tmp_path uid_netblock_restore_pkg_${$}_$RANDOM)"
 		dex_hiddenapi_raw uidNetBlockRestorePackage "${USER_ID:-${user:-0}}" "$_pkg" > "$_dex_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		_dex_rc=$?
 		_speed_debug_log "UID_NET_BLOCK_RESTORE_PACKAGE token=$_token reason=$_reason pkg=$_pkg rc=$_dex_rc out=$(tr '\n' '|' < "$_dex_out" | cut -c1-700)"
+		if [[ $_dex_rc != 0 ]] || ! _operation_result_read "$_dex_out" uidnet-stop || [[ $_OP_RESULT_RESTORED != true || $_OP_RESULT_DELETED != true ]]; then
+			_speed_debug_log "UID_NET_BLOCK_STOP_RETAIN_STATE token=$_token pkg=$_pkg reason=unconfirmed_restore mode=r708"
+			rm -f "$_dex_out" "$_out" 2>/dev/null
+			return 1
+		fi
 		rm -f "$_dex_out" 2>/dev/null
 	fi
 	_uid_netblock_remove_state_token "$_token"
@@ -22329,7 +23320,7 @@ _uid_netblock_stop_app() {
 		_speed_debug_log "UID_NET_BLOCK_APP_DEFER token=$_token reason=$_reason pkg=$_pkg label=$_label stage=$_stage until=restore_post_appstate"
 		return 0
 	fi
-	_uid_netblock_stop_token "$_token" "$_reason" "$_pkg" "$_stage" "$_log"
+	_uid_netblock_stop_token "$_token" "$_reason" "$_pkg" "$_stage" "$_log" || return 1
 	_speed_debug_log "UID_NET_BLOCK_APP_STOP token=$_token reason=$_reason pkg=$_pkg label=$_label stage=$_stage"
 }
 
@@ -22349,7 +23340,7 @@ _uid_netblock_stop_all() {
 		_speedbackup_progress_step "$_idx" "$_total" "解除網路阻斷 ${_label:-$_pkg}" "uid_netblock_stop_all" "107"
 		_uid_netblock_stop_token "$_token" "$_reason" "$_pkg" "$_stage" "$_log" >/dev/null 2>&1 || true
 	done < "$_tmp"
-	rm -f "$_tmp" "$_state" 2>/dev/null
+	rm -f "$_tmp" 2>/dev/null
 }
 
 
@@ -22485,13 +23476,13 @@ _cgroup_freezer_daemon_sock_call() {
 	rm -f "$_err" 2>/dev/null || true
 	# r253: cgfreezerd 全部 control/status 命令統一 plain-lines protocol。
 	# 不再用 RootDaemon/WebDAV header-file 模式，避免 STATUS/STATS/LAST_ERROR 單行回覆被 unixsock 誤判 rc=5。
-	printf '%s\n' "$_cmd" | _event_unixsock_call relay-unix "$_socket" > "$_out" 2>"$_err"
+	_sb_println "$_cmd" | _event_unixsock_call relay-unix "$_socket" > "$_out" 2>"$_err"
 	_rc=$?
 	_speedbackup_filter_cleanup_stderr_file "$_err" cgfreezer_parent_stop
 	return "$_rc"
 }
 
-_cgroup_freezer_daemon_debug_status() {
+_cgroup_freezer_daemon_debug_status_legacy() {
 	local _reason="${1:-status}" _cmd _out _rc _flat _safe
 	[[ -S "$(_cgroup_freezer_daemon_socket_path)" ]] || return 0
 	_safe="$(_process_observer_status_safe_name "$_reason" 2>/dev/null || printf '%s' "$_reason")"
@@ -22513,6 +23504,64 @@ _cgroup_freezer_daemon_debug_status() {
 	done
 	return 0
 }
+
+_cgroup_freezer_diagnostics_split() {
+	local _input="$1" _base="$2" _line _section="" _count=0 _expected=STATUS _header=0 _ended=0
+	while IFS= read -r _line || [[ -n $_line ]]; do
+		case $_line in
+			"CGFREEZER_DAEMON_DIAGNOSTICS_BEGIN section="*)
+				[[ -z $_section && ${_line#*=} = "$_expected" ]] || return 1
+				_section="$_expected"
+				_header=0; _ended=0
+				: > "${_base}.${_section}" || return 1
+				;;
+			"CGFREEZER_DAEMON_DIAGNOSTICS_END section="*)
+				[[ -n $_section && ${_line#*=} = "$_section" && $_header = 1 && $_ended = 1 ]] || return 1
+				case $_section in STATUS) _expected=STATS ;; STATS) _expected=STATS_DETAIL ;; STATS_DETAIL) _expected=LAST_ERROR ;; LAST_ERROR) _expected=done ;; esac
+				_section=""; _count=$((_count + 1))
+				;;
+			*)
+				[[ -n $_section ]] || return 1
+				case $_line in
+					"CGFREEZER_DAEMON_${_section} "*) [[ $_header = 0 && $_ended = 0 ]] || return 1; _header=1 ;;
+					"CGFREEZER_DAEMON_${_section}_ROW "*) [[ $_header = 1 && $_ended = 0 ]] || return 1 ;;
+					"CGFREEZER_DAEMON_${_section}_END "*) [[ $_header = 1 && $_ended = 0 ]] || return 1; _ended=1 ;;
+					*) return 1 ;;
+				esac
+				_sb_println "$_line" >> "${_base}.${_section}" || return 1
+				;;
+		esac
+	done < "$_input"
+	[[ $_count = 4 && $_expected = done && -z $_section ]]
+}
+
+_cgroup_freezer_daemon_debug_status() {
+	local _reason="${1:-status}" _base _safe _cmd _out _rc _flat _begin _end
+	[[ -S "$(_cgroup_freezer_daemon_socket_path)" ]] || return 0
+	_backup_perf_clock; _begin="$_BACKUP_PERF_MS"
+	_webdav_tmp_path_set cgroup_freezer_diagnostics; _base="$_WEBDAV_TMP_PATH_RET"
+	_cgroup_freezer_daemon_sock_call DIAGNOSTICS "$_base"
+	_rc=$?
+	if [[ $_rc != 0 ]] || ! _cgroup_freezer_diagnostics_split "$_base" "$_base"; then
+		rm -f "$_base" "$_base.STATUS" "$_base.STATS" "$_base.STATS_DETAIL" "$_base.LAST_ERROR" 2>/dev/null
+		_speed_debug_log "CGROUP_FREEZER_DAEMON_DIAGNOSTICS_FALLBACK reason=$_reason rc=$_rc mode=r700"
+		_cgroup_freezer_daemon_debug_status_legacy "$_reason"
+		return 0
+	fi
+	_safe="$(_process_observer_status_safe_name "$_reason" 2>/dev/null || printf '%s' "$_reason")"
+	for _cmd in STATUS STATS STATS_DETAIL LAST_ERROR; do
+		_out="${_base}.${_cmd}"
+		_flat="$(tr '\n' '|' < "$_out" 2>/dev/null | cut -c1-900)"
+		_speed_debug_log "CGROUP_FREEZER_DAEMON_${_cmd} reason=$_reason rc=0 out=$_flat"
+		if [[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]]; then
+			cp -f "$_out" "$SPEED_DEBUG_RUN_DIR/cgroup_freezer_daemon_${_cmd}_${_safe}.txt" 2>/dev/null || true
+		fi
+	done
+	rm -f "$_base" "$_base.STATUS" "$_base.STATS" "$_base.STATS_DETAIL" "$_base.LAST_ERROR" 2>/dev/null
+	_backup_perf_clock; _end="$_BACKUP_PERF_MS"
+	_speed_debug_log "CGROUP_FREEZER_DAEMON_DIAGNOSTICS_TIMING reason=$_reason requests=1 sections=4 totalMs=$((_end - _begin)) clock=$_BACKUP_PERF_CLOCK mode=r700"
+	return 0
+}
 _cgroup_freezer_daemon_stop_socket() {
 	local _reason="$1" _out _rc _flat _socket
 	_socket="$(_cgroup_freezer_daemon_socket_path)"
@@ -22524,6 +23573,13 @@ _cgroup_freezer_daemon_stop_socket() {
 	_speed_debug_log "CGROUP_FREEZER_DAEMON_PREFLIGHT_STOP reason=$_reason rc=$_rc socket=$_socket out=$_flat"
 	rm -f "$_out" "$_socket" 2>/dev/null
 	return 0
+}
+
+_cgroup_freezer_stop_receipt_verified() {
+	local _reply=" $1 "
+	case $_reply in *" CGFREEZER_DAEMON_EXIT ok=true "*) ;; *) return 1 ;; esac
+	case $_reply in *" activeChildren=0 "*) ;; *) return 1 ;; esac
+	case $_reply in *" cleanupVerified=true "*) return 0 ;; *) return 1 ;; esac
 }
 
 _cgroup_freezer_daemon_final_stop_unlink() {
@@ -22587,10 +23643,11 @@ _cgroup_freezer_daemon_final_stop_unlink() {
 	rm -f "$_socket" 2>/dev/null
 	_stop_confirmed=0
 	if [[ $_rc = 0 && -n $_pid && $_alive = 0 && $_socket_alive = 0 ]]; then
-		case "$_flat" in *"CGFREEZER_DAEMON_EXIT ok=true"*) _stop_confirmed=1 ;; esac
+		_cgroup_freezer_stop_receipt_verified "$_flat" && _stop_confirmed=1
 	fi
 	if [[ $_stop_confirmed = 1 && ${SPEEDBACKUP_CGROUP_FREEZER_SWEEP_AFTER_CLEAN_STOP:-0} != 1 ]]; then
-		# r582: a confirmed STOP already proves this run's daemon exited and unlinked its socket.
+		# r712: a confirmed STOP proves workers were reaped before the reply, and
+		# the parent subsequently exited and unlinked its socket.
 		# Avoid the old unconditional full /proc cmdline sweep: on Android it can cost >20s even
 		# when matched=0. Keep the strict sweep only as an uncertainty/failure fallback.
 		_speed_debug_log "CGFREEZER_DAEMON_PROCESS_SWEEP_SKIP reason=after-stop-${_reason} stopConfirmed=1 pid=$_pid socketAliveBeforeUnlink=$_socket_alive mode=r582"
@@ -22656,7 +23713,7 @@ _cgroup_freezer_batch_session_begin() {
 		_out="$(_webdav_tmp_path cgroup_freezer_batch_session_${$}_$RANDOM)"
 		dex_hiddenapi_raw cgroupFreezeDaemonEnsure "$_reason" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		_rc=$?
-		if [[ $_rc = 0 ]] && grep -F "CGROUP_FREEZE_DAEMON_ENSURE ok=true" "$_out" >/dev/null 2>&1; then
+		if [[ $_rc = 0 ]] && _operation_result_read "$_out" cgroup-daemon-ensure; then
 			if _speedbackup_cgfreezer_caps_file_ok "$_out"; then
 				_CGROUP_FREEZER_BATCH_SESSION_ACTIVE=1
 				_CGROUP_FREEZER_BATCH_SESSION_REASON="$_reason"
@@ -22836,8 +23893,8 @@ _cgroup_freezer_start_app() {
 	_out="$(_webdav_tmp_path cgroup_freezer_start_${$}_$RANDOM)"
 	dex_hiddenapi_raw cgroupFreezeStart "${USER_ID:-${user:-0}}" "$_pkg" "$_event_pid" "$_timeout" "$_stage" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_rc=$?
-	if [[ $_rc = 0 ]] && grep -F "CGROUP_FREEZE_START_OK" "$_out" >/dev/null 2>&1; then
-		_token="$(sed -n 's/.*token=\([0-9][0-9]*\).*/\1/p' "$_out" | head -n 1)"
+	if [[ $_rc = 0 ]] && _operation_result_read "$_out" cgroup-start && [[ $_OP_RESULT_TOKEN != - ]]; then
+		_token="$_OP_RESULT_TOKEN"
 		if [[ -n $_token ]]; then
 			_state="$(_cgroup_freezer_token_state_file)"
 			printf '%s\t%s\t%s\t%s\n' "$_token" "$_pkg" "$_label" "$_stage" >> "$_state" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -22876,7 +23933,7 @@ _cgroup_freezer_refresh_app() {
 	_out="$(_webdav_tmp_path cgroup_freezer_refresh_${$}_$RANDOM)"
 	dex_hiddenapi_raw cgroupFreezeRefreshPrimary "${USER_ID:-${user:-0}}" "$_pkg" "tools-${_phase}-${_entry}" "$_timeout" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_rc=$?
-	if [[ $_rc = 0 ]] && grep -F "CGROUP_FREEZE_PRIMARY_REFRESH_DONE ok=true" "$_out" >/dev/null 2>&1; then
+	if [[ $_rc = 0 ]] && _operation_result_read "$_out" cgroup-refresh; then
 		_speed_debug_log "CGROUP_FREEZER_APP_REFRESH_OK token=${CGROUP_FREEZER_APP_TOKEN:-} pkg=$_pkg label=$_label entry=$_entry phase=$_phase out=$(_cgroup_freezer_compact_out "$_out")"
 		rm -f "$_out" 2>/dev/null
 		return 0
@@ -22921,11 +23978,16 @@ _cgroup_freezer_stop_token() {
 	_flat="$(_cgroup_freezer_compact_out "$_out")"
 	_cgroup_freezer_log_key_lines "$_out" || true
 	_speed_debug_log "CGROUP_FREEZER_STOP token=$_token reason=$_reason pkg=$_pkg stage=$_stage rc=$_rc out=$_flat"
-	if [[ $_rc != 0 ]] || grep -E 'CGROUP_FREEZE_STOP_FAILED|CGROUP_FREEZE_STOP_REJECTED|stateDeleted=false' "$_out" >/dev/null 2>&1; then
+	if [[ $_rc != 0 ]] || ! _operation_result_read "$_out" cgroup-stop || [[ $_OP_RESULT_TOKEN != "$_token" || $_OP_RESULT_RESTORED != true || $_OP_RESULT_DELETED != true ]]; then
 		_dex_out="$(_webdav_tmp_path cgroup_freezer_restore_pkg_${$}_$RANDOM)"
 		dex_hiddenapi_raw cgroupFreezeRestorePackage "${USER_ID:-${user:-0}}" "$_pkg" > "$_dex_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		_dex_rc=$?
 		_speed_debug_log "CGROUP_FREEZER_RESTORE_PACKAGE token=$_token reason=$_reason pkg=$_pkg rc=$_dex_rc out=$(_cgroup_freezer_compact_out "$_dex_out")"
+		if [[ $_dex_rc != 0 ]] || ! _operation_result_read "$_dex_out" cgroup-restore-package || [[ $_OP_RESULT_RESTORED != true || $_OP_RESULT_DELETED != true ]]; then
+			_speed_debug_log "CGROUP_FREEZER_STOP_RETAIN_STATE token=$_token pkg=$_pkg reason=unconfirmed_restore mode=r708"
+			rm -f "$_dex_out" "$_out" 2>/dev/null
+			return 1
+		fi
 		rm -f "$_dex_out" 2>/dev/null
 	fi
 	_cgroup_freezer_remove_state_token "$_token"
@@ -22953,7 +24015,7 @@ _cgroup_freezer_stop_app() {
 		_speed_debug_log "CGROUP_FREEZER_TAR_SCOPE_APP_DEFER token=$_token reason=$_reason pkg=$_pkg label=$_label stage=$_stage until=restore_post_appstate"
 		return 0
 	fi
-	_cgroup_freezer_stop_token "$_token" "$_reason" "$_pkg" "$_stage" "$_preconfirmed"
+	_cgroup_freezer_stop_token "$_token" "$_reason" "$_pkg" "$_stage" "$_preconfirmed" || return 1
 	_speed_debug_log "CGROUP_FREEZER_TAR_SCOPE_APP_STOP token=$_token reason=$_reason pkg=$_pkg label=$_label stage=$_stage"
 }
 
@@ -22973,7 +24035,7 @@ _cgroup_freezer_stop_all() {
 		_speedbackup_progress_step "$_idx" "$_total" "解除 cgroup freezer ${_label:-$_pkg}" "cgroup_freezer_stop_all" "107"
 		_cgroup_freezer_stop_token "$_token" "$_reason" "$_pkg" "$_stage" >/dev/null 2>&1 || true
 	done < "$_tmp"
-	rm -f "$_tmp" "$_state" 2>/dev/null
+	rm -f "$_tmp" 2>/dev/null
 }
 
 # r148: 恢復時把 app-scope guard 延長到 AppState/SSAID 批量恢復與驗證之後再釋放。
@@ -23607,7 +24669,7 @@ _process_observer_batch_start_backup() {
 	_requested="$(awk 'NF{n++} END{print n+0}' "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 	case $_requested in ''|*[!0-9]*) _requested=0 ;; esac
 	_speed_debug_log "PROCESS_OBSERVER_BATCH_START_PARSE requested=$_requested parsed=$_started mode=pipe-normalized"
-	if [[ $_rc = 0 && $_started -gt 0 ]]; then
+	if [[ $_rc = 0 && $_started -gt 0 ]] && _operation_result_read "$_out" observer-batch-start && [[ $_OP_RESULT_COMPLETED = "$_started" ]]; then
 		cat "$_state" >> "$(_process_observer_token_state_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 		PROCESS_OBSERVER_BATCH_ACTIVE=1
 		PROCESS_OBSERVER_BATCH_STATE="$_state"
@@ -23986,7 +25048,7 @@ _process_observer_restore_session_direct_start() {
 	case $_requested in ''|*[!0-9]*) _requested=0 ;; esac
 	case $_facts_rows in ''|*[!0-9]*) _facts_rows=0 ;; esac
 	_elapsed=$(( $(_speed_now_ms) - _t0 ))
-	if [[ $_rc = 0 && $_started -gt 0 ]] && grep -F 'PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_START_OK' "$_out" >/dev/null 2>&1; then
+	if [[ $_rc = 0 && $_started -gt 0 ]] && _operation_result_read "$_out" observer-restore-start && [[ $_OP_RESULT_COMPLETED = "$_started" ]]; then
 		cat "$_state" >> "$(_process_observer_token_state_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 		PROCESS_OBSERVER_BATCH_ACTIVE=1
 		PROCESS_OBSERVER_BATCH_STATE="$_state"
@@ -24040,7 +25102,7 @@ _process_observer_restore_session_start() {
 	_requested="$(awk 'NF{n++} END{print n+0}' "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 	case $_started in ''|*[!0-9]*) _started=0 ;; esac
 	case $_requested in ''|*[!0-9]*) _requested=0 ;; esac
-	if [[ $_rc = 0 && $_started -gt 0 ]]; then
+	if [[ $_rc = 0 && $_started -gt 0 ]] && _operation_result_read "$_out" observer-batch-start && [[ $_OP_RESULT_COMPLETED = "$_started" ]]; then
 		cat "$_state" >> "$(_process_observer_token_state_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 		PROCESS_OBSERVER_BATCH_ACTIVE=1
 		PROCESS_OBSERVER_BATCH_STATE="$_state"
@@ -24075,11 +25137,12 @@ _process_observer_batch_stop() {
 		_eventwait_file_size_stable_ms "$_summary" 80 1200 process_observer_batch_stop_summary_ready >/dev/null 2>&1 || true
 	fi
 	_flat="$(tr '\n' '|' < "$_out" 2>/dev/null | cut -c1-1400)"
-	_requested="$(printf '%s\n' "$_flat" | sed -n 's/.*requested=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
-	_stopped="$(printf '%s\n' "$_flat" | sed -n 's/.*stopped=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
-	_recovered="$(printf '%s\n' "$_flat" | sed -n 's/.*recovered=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
-	_missing="$(printf '%s\n' "$_flat" | sed -n 's/.*missing=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
-	_failed="$(printf '%s\n' "$_flat" | sed -n 's/.*failed=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
+	_operation_result_read "$_out" observer-batch-stop || _rc=1
+	[[ $_OP_RESULT_REQUESTED = "$_requested" ]] || _rc=1
+	_stopped="${_OP_RESULT_COMPLETED:-}"
+	_recovered="${_OP_RESULT_RECOVERED:-}"
+	_missing="${_OP_RESULT_MISSING:-}"
+	_failed="${_OP_RESULT_FAILED:-}"
 	case $_requested in ''|*[!0-9]*) _requested=0 ;; esac
 	case $_stopped in ''|*[!0-9]*) _stopped=0 ;; esac
 	case $_recovered in ''|*[!0-9]*) _recovered=0 ;; esac
@@ -24087,7 +25150,7 @@ _process_observer_batch_stop() {
 	case $_failed in ''|*[!0-9]*) _failed=0 ;; esac
 	_speed_debug_log "PROCESS_OBSERVER_BATCH_STOP reason=$_reason rc=$_rc requested=$_requested stopped=$_stopped recovered=$_recovered missing=$_missing failed=$_failed summary=$_summary out=$_flat"
 	_sum=$((_stopped + _recovered))
-	if [[ $_rc = 0 && $_requested -gt 0 && $_requested = $_sum && $_missing = 0 && $_failed = 0 ]] && grep -F 'PROCESS_OBSERVER_BATCH_STOP_OK' "$_out" >/dev/null 2>&1 && grep -F 'restoreOk=true' "$_out" >/dev/null 2>&1 && grep -F 'stateDeleted=true' "$_out" >/dev/null 2>&1; then
+	if [[ $_rc = 0 && $_requested -gt 0 && $_requested = $_sum && $_missing = 0 && $_failed = 0 ]] && [[ $_OP_RESULT_RESTORED = true && $_OP_RESULT_DELETED = true ]]; then
 		_process_observer_batch_state_prune_main "$_state" || true
 		rm -f "$_state" "$_pkgs" "$_out" 2>/dev/null
 		PROCESS_OBSERVER_BATCH_ACTIVE=0
@@ -24129,17 +25192,19 @@ _process_observer_batch_release_pkg() {
 	dex_hiddenapi_raw processObserverBatchStop "$_subset" "${USER_ID:-${user:-0}}" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_rc=$?
 	_flat="$(tr '\n' '|' < "$_out" 2>/dev/null | cut -c1-1000)"
-	_stopped="$(printf '%s\n' "$_flat" | sed -n 's/.*stopped=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
-	_recovered="$(printf '%s\n' "$_flat" | sed -n 's/.*recovered=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
-	_missing="$(printf '%s\n' "$_flat" | sed -n 's/.*missing=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
-	_failed="$(printf '%s\n' "$_flat" | sed -n 's/.*failed=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
+	_operation_result_read "$_out" observer-batch-stop || _rc=1
+	[[ $_OP_RESULT_REQUESTED = "$_requested" ]] || _rc=1
+	_stopped="${_OP_RESULT_COMPLETED:-}"
+	_recovered="${_OP_RESULT_RECOVERED:-}"
+	_missing="${_OP_RESULT_MISSING:-}"
+	_failed="${_OP_RESULT_FAILED:-}"
 	case $_stopped in ''|*[!0-9]*) _stopped=0 ;; esac
 	case $_recovered in ''|*[!0-9]*) _recovered=0 ;; esac
 	case $_missing in ''|*[!0-9]*) _missing=0 ;; esac
 	case $_failed in ''|*[!0-9]*) _failed=0 ;; esac
 	_sum=$((_stopped + _recovered))
 	_speed_debug_log "PROCESS_OBSERVER_BATCH_RELEASE_PKG reason=$_reason pkg=$_pkg label=$_label rc=$_rc requested=$_requested stopped=$_stopped recovered=$_recovered missing=$_missing failed=$_failed out=$_flat"
-	if [[ $_rc = 0 && $_requested = $_sum && $_missing = 0 && $_failed = 0 ]] && grep -F 'PROCESS_OBSERVER_BATCH_STOP_OK' "$_out" >/dev/null 2>&1 && grep -F 'restoreOk=true' "$_out" >/dev/null 2>&1 && grep -F 'stateDeleted=true' "$_out" >/dev/null 2>&1; then
+	if [[ $_rc = 0 && $_requested = $_sum && $_missing = 0 && $_failed = 0 ]] && [[ $_OP_RESULT_RESTORED = true && $_OP_RESULT_DELETED = true ]]; then
 		_process_observer_batch_state_prune_main "$_subset" || true
 		awk -F '	' -v p="$_pkg" '$2!=p{print $0}' "$_state" > "$_remain" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || cp -f "$_state" "$_remain" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		cat "$_remain" > "$_state" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
@@ -24821,6 +25886,7 @@ _cgroup_freezer_wchan_enabled() {
 
 _cgroup_freezer_wchan_confirm_pkg() {
 	local _pkg="$1" _label="${2:-$1}" _phase="${3:-confirm}" _expect="${4:-any}" _stage="${5:-}" _pids _out _rc _flat _summary _safe_phase _safe_pkg _ok _checked _frozen _sigstop _mismatch
+	local _line _fields _field
 	_cgroup_freezer_wchan_enabled || return 0
 	[[ -n $_pkg ]] || return 0
 	case $_expect in frozen|thawed|not-frozen|any) ;; *) _expect=any ;; esac
@@ -24834,13 +25900,28 @@ _cgroup_freezer_wchan_confirm_pkg() {
 	_out="$(_webdav_tmp_path cgroup_wchan_${$}_$RANDOM)"
 	_cgroup_freezer_daemon_sock_call "WCHAN_PID_LIST ${USER_ID:-${user:-0}} $_pids $_expect" "$_out"
 	_rc=$?
-	_summary="$(grep -E 'CGFREEZER_WCHAN(_UID)?_DONE ' "$_out" 2>/dev/null | tail -n 1 | cut -c1-900)"
-	_flat="$(tr '\n' '|' < "$_out" 2>/dev/null | cut -c1-1400)"
-	_ok="$(_cgroup_freezer_kv_from_line "$_summary" ok)"
-	_checked="$(_cgroup_freezer_kv_from_line "$_summary" checked)"
-	_frozen="$(_cgroup_freezer_kv_from_line "$_summary" frozen)"
-	_sigstop="$(_cgroup_freezer_kv_from_line "$_summary" sigstop)"
-	_mismatch="$(_cgroup_freezer_kv_from_line "$_summary" mismatch)"
+	# r709: retain the last native summary in one builtin pass; no per-field subshells.
+	_summary=""; _ok=""; _checked=""; _frozen=""; _sigstop=""; _mismatch=""
+	if [[ -r $_out ]]; then
+		while IFS= read -r _line || [[ -n $_line ]]; do
+			case $_line in
+			*'CGFREEZER_WCHAN_DONE '*|*'CGFREEZER_WCHAN_UID_DONE '*) _summary="${_line:0:900}"; _summary="${_summary%$'\r'}" ;;
+			esac
+		done < "$_out"
+	fi
+	_fields="${_summary//$'\t'/ }"
+	_fields="${_fields//$'\r'/ }"
+	while [[ -n $_fields ]]; do
+		_field="${_fields%% *}"
+		case $_fields in *' '*) _fields="${_fields#* }" ;; *) _fields="" ;; esac
+		case $_field in
+		ok=*) _ok="${_field#*=}" ;;
+		checked=*) _checked="${_field#*=}" ;;
+		frozen=*) _frozen="${_field#*=}" ;;
+		sigstop=*) _sigstop="${_field#*=}" ;;
+		mismatch=*) _mismatch="${_field#*=}" ;;
+		esac
+	done
 	_speed_debug_log "CGROUP_WCHAN_CONFIRM phase=$_phase pkg=$_pkg label=$_label stage=$_stage expected=$_expect pids=$_pids rc=$_rc ok=${_ok:-unknown} checked=${_checked:-unknown} frozen=${_frozen:-unknown} sigstop=${_sigstop:-unknown} mismatch=${_mismatch:-unknown} summary=${_summary:-none} mode=r483"
 	if [[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_out ]]; then
 		_safe_phase="$(_process_observer_status_safe_name "$_phase" 2>/dev/null || printf '%s' "$_phase")"
@@ -24849,6 +25930,7 @@ _cgroup_freezer_wchan_confirm_pkg() {
 	fi
 	case $_expect:${_ok:-false} in
 	frozen:false|thawed:false|not-frozen:false)
+		_flat="$(tr '\n' '|' < "$_out" 2>/dev/null | cut -c1-1400)"
 		_speed_debug_log "CGROUP_WCHAN_CONFIRM_WARN phase=$_phase pkg=$_pkg label=$_label stage=$_stage expected=$_expect rc=$_rc out=$_flat mode=r483"
 		rm -f "$_out" 2>/dev/null
 		return 1 ;;
@@ -24870,7 +25952,6 @@ _cgroup_freezer_kill_pid_list() {
 	rm -f "$_out" 2>/dev/null
 	return $_rc
 }
-
 
 _process_observer_log_path() {
 	local _pkg="$1" _entry="$2" _stage="$3" _safe_pkg _safe_entry _safe_stage _base _kind _mode
@@ -24963,8 +26044,8 @@ _process_observer_start_token() {
 	_out="$(_webdav_tmp_path process_observer_start_${$}_$RANDOM)"
 	dex_hiddenapi_raw processObserverStart "${USER_ID:-${user:-0}}" "$_pkg" "$_action" "$_log" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_rc=$?
-	if [[ $_rc = 0 ]] && grep -F "PROCESS_OBSERVER_START_OK" "$_out" >/dev/null 2>&1; then
-		_token="$(sed -n 's/.*token=\([0-9][0-9]*\).*/\1/p' "$_out" | head -n 1)"
+	if [[ $_rc = 0 ]] && _operation_result_read "$_out" observer-start && [[ $_OP_RESULT_TOKEN != - ]]; then
+		_token="$_OP_RESULT_TOKEN"
 		if [[ -n $_token ]]; then
 			_state="$(_process_observer_token_state_file)"
 			printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$_token" "$_pkg" "$_label" "$_entry" "$_stage" "$_log" "$_scope" >> "$_state" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -25732,7 +26813,7 @@ get_current_apk_version_code() {
 # 備份核心函數 (Backup_apk / Backup_data / unified AppState)
 # ======================================================
 # 備份 app 的 apk 檔 (含 split apk, 用 tar/zstd 打包)
-Backup_apk() {
+_backup_apk_impl() {
 	# 契約 guard：nobackup 只可能是 "true"/"false"，兩個既有呼叫點 (12610/12612)
 	# 呼叫前都已經 [[ $nobackup != true ]] 過濾，所以這裡進來時 nobackup 必為 "false"。
 	# 明確寫成 guard，不再依賴函式內部一個「其實恆真」的 if 分支。
@@ -26121,7 +27202,7 @@ _keystore_cli_list_for_uid() {
 	return 0
 }
 
-Backup_data() {
+_backup_data_impl() {
 	data_path="$path/$1/$name2"
 	MODDIR_NAME="${data_path%/*}"
 	MODDIR_NAME="${MODDIR_NAME##*/}"
@@ -26264,6 +27345,7 @@ Backup_data() {
 			_small_size_text="$(size "${Filesize:-0}")"
 			echoRgb "$1數據 $_small_size_text太小，依設定不備份" "2"
 			_speed_debug_log "DATA_SMALL_SKIP_NO_RECORD app=$name1 package=$name2 entry=$1 size=${Filesize:-0}"
+			_SBB_SKIP_REASON=below_size_threshold
 			result=0
 			return 0
 		fi
@@ -26379,7 +27461,7 @@ Backup_data() {
 				if [[ $result = 0 ]]; then
 					_backup_stage_validate_and_ratio "$1" "$Backup_folder/$1" "$Filesize"
 					if [[ $result = 0 ]]; then
-								_backup_data_stage_record_success "$1" "$2" "$Filesize"
+						_backup_data_stage_record_success "$1" "$2" "$Filesize"
 					else
 						rm -rf "$Backup_folder/$1".tar.*
 					fi
@@ -26391,7 +27473,18 @@ Backup_data() {
 		fi
 		}
 	else
-		[[ -f $data_path ]] && echoRgb "$1是一個文件 不支持備份" "0"
+		if [[ -e $data_path || -L $data_path ]]; then
+			echoRgb "$1不是目錄 不支持備份" "0"
+			return 1
+		fi
+		case $1 in
+		user|user_de|data|obb|media)
+			_SBB_SKIP_REASON=source_missing
+			_speed_debug_log "DATA_SOURCE_MISSING_SKIP app=$name1 package=$name2 entry=$1"
+			return 0
+			;;
+		*) return 1 ;;
+		esac
 	fi
 }
 # 恢復 app 的 data 資料 (解壓 tar.zst 到 /data/data/<pkg>/)
@@ -26413,14 +27506,24 @@ _restore_mount_fstype() {
 }
 
 _restore_path_available_bytes_one() {
-	local _path="$1" _df _kb
+	local _path="$1" _df _kb _prefix _digit _carry=0 _product _bytes=""
 	[[ -z $_path ]] && { echo 0; return 1; }
 	[[ -d $_path ]] || _path="${_path%/*}"
 	[[ -d $_path ]] || { echo 0; return 1; }
 	_df="$(df -k "$_path" 2>/dev/null | tail -n 1)"
 	_kb="$(printf '%s\n' "$_df" | awk '{print $4; exit}' 2>/dev/null)"
 	case $_kb in ''|*[!0-9]*) echo 0; return 1 ;; esac
-	echo $((_kb * 1024))
+	# r714: mksh arithmetic can be 32-bit; multiply one decimal digit at a time.
+	while [[ -n $_kb ]]; do
+		_prefix=${_kb%?}
+		_digit=${_kb#$_prefix}
+		_kb=$_prefix
+		_product=$((_digit * 1024 + _carry))
+		_bytes="$((_product % 10))$_bytes"
+		_carry=$((_product / 10))
+	done
+	[[ $_carry = 0 ]] || _bytes="$_carry$_bytes"
+	_decimal_norm_uint "$_bytes"
 	return 0
 }
 
@@ -26494,14 +27597,13 @@ _restore_media_space_precheck() {
 	local _target="$1" _need="$2" _avail _margin _need_with_margin _cand _c_avail _c_type _picked _tmpfs_seen=0
 	case $_need in ''|*[!0-9]*|0) return 0 ;; esac
 	[[ -n $_target ]] || return 0
-
-	_avail=0
-	while read -r _cand; do
+	_avail=""
+	while IFS= read -r _cand; do
 		[[ -n $_cand ]] || continue
 		[[ -d $_cand ]] || _cand="${_cand%/*}"
 		[[ -d $_cand ]] || continue
-		_c_avail="$(_restore_path_available_bytes_one "$_cand")"
-		case $_c_avail in ''|*[!0-9]*|0) continue ;; esac
+		_c_avail="$(_restore_path_available_bytes_one "$_cand")" || continue
+		case $_c_avail in ''|*[!0-9]*) continue ;; esac
 		_c_type="$(_restore_mount_fstype "$_cand")"
 		{
 			echo "MEDIA_SPACE_CANDIDATE file=$FILE_NAME path=$_cand fstype=$_c_type avail=$_c_avail need=$_need stream=${_RESTORE_STREAM:-0} src=${_STREAM_SRC:-$tar_path}"
@@ -26509,13 +27611,13 @@ _restore_media_space_precheck() {
 		# Android 可能把 /data/media/0/DCIM 或 Pictures 額外 tmpfs 掛載；df /storage/emulated/0 會看到 300GB，
 		# 但 tar 實際寫入會打到 tmpfs，必須優先以 tmpfs 的可用空間判斷。
 		if [[ $_c_type = tmpfs ]]; then
-			_tmpfs_seen=1
-			if [[ $_avail -eq 0 || $_c_avail -lt $_avail ]]; then
+			if [[ $_tmpfs_seen != 1 || -z $_avail ]] || [[ $(_decimal_cmp_uint "$_c_avail" "$_avail") = -1 ]]; then
 				_avail="$_c_avail"
 				_picked="$_cand"
 			fi
+			_tmpfs_seen=1
 		elif [[ $_tmpfs_seen != 1 ]]; then
-			if [[ $_avail -eq 0 || $_c_avail -lt $_avail ]]; then
+			if [[ -z $_avail ]] || [[ $(_decimal_cmp_uint "$_c_avail" "$_avail") = -1 ]]; then
 				_avail="$_c_avail"
 				_picked="$_cand"
 			fi
@@ -26523,15 +27625,14 @@ _restore_media_space_precheck() {
 	done <<EOFMSPC
 $(_restore_media_target_candidates "$_target")
 EOFMSPC
-
-	case $_avail in ''|*[!0-9]*|0) return 0 ;; esac
+	case $_avail in ''|*[!0-9]*) return 0 ;; esac
 	# Media 解壓需要額外 metadata/目錄項/相簿索引餘量；至少保留 64MiB。
 	_margin=$((64 * 1024 * 1024))
-	_need_with_margin=$((_need + _margin))
+	_need_with_margin="$(_decimal_add_uint "$_need" "$_margin")"
 	if [[ $_tmpfs_seen = 1 ]]; then
 		echoRgb "偵測到 Media 目標路徑被 tmpfs 掛載，實際可用空間以 $_picked 為準" "2"
 	fi
-	if [[ $_avail -lt $_need_with_margin ]]; then
+	if [[ $(_decimal_cmp_uint "$_avail" "$_need_with_margin") = -1 ]]; then
 		echoRgb "Media恢復空間不足，跳過 $FILE_NAME" "0"
 		echoRgb "目標路徑：$_target" "0"
 		echoRgb "實際檢查：${_picked:-$_target}" "0"
@@ -26724,11 +27825,11 @@ Release_data() {
 		fi
 		if [[ $FILE_PATH != "" ]]; then
 			if [[ ${MODDIR_NAME##*/} = Media ]]; then
-				if ! _restore_media_space_precheck "$FILE_PATH" "$Size"; then
+				if ! _restore_media_space_precheck "${_media_restore_actual_path:-$FILE_PATH}" "$Size"; then
 					result=1
 					_restore_media_space_skip_record "$FILE_NAME" "$FILE_NAME2" "$FILE_PATH" "$Size" "${_STREAM_SRC:-$tar_path}"
 					_speed_debug_log "MEDIA_RESTORE_SPACE_SKIP_RESULT file=$FILE_NAME payload=$FILE_NAME2 dest=$FILE_PATH result=skip_no_extract mode=r378"
-					echo_log "解壓縮$FILE_NAME" "" 1
+					# r714: precheck skipped extraction; retain failure status without reporting a tar failure.
 					return 1
 				fi
 			fi
@@ -26738,6 +27839,10 @@ Release_data() {
 				;;
 			esac
 			[[ ${MODDIR_NAME##*/} != Media ]] && rm -rf "$FILE_PATH/$name2"
+			_restore_source_prefix
+			local _source_prefix="$_RESTORE_SOURCE_PREFIX" _source_mode=ignore _source_owner=ignore _source_mtime=ignore
+			case $FILE_NAME2 in user|user_de) _source_mode=keep; _source_owner=required-missing ;; esac
+			[[ ${MODDIR_NAME##*/} != Media || ${FILE_NAME##*.} != tar ]] || _source_mtime=keep
 			# 流式恢復: 從遠端拉 → 管道解壓 (不落地本機); _STREAM_SRC 為遠端相對路徑
 			if [[ $_RESTORE_STREAM = 1 && -n $_STREAM_SRC ]]; then
 				local _stream_extract_raw_log _stream_extract_raw_start _stream_perf_bytes _stream_perf_ext _stream_perf_path_mode _stream_stage_t0 _stream_stage_t1 _stream_stage_t2 _stream_stage_t3
@@ -26756,8 +27861,8 @@ Release_data() {
 				[[ ${MODDIR_NAME##*/} = Media ]] && _stream_notify="106"
 				_stream_event_fifo="$(_remote_stream_event_prepare "$_stream_extract_tag" 2>/dev/null || true)"
 				case ${FILE_NAME##*.} in
-				zst) ( export SPEEDBACKUP_REMOTE_STREAM_EVENT_FIFO="$_stream_event_fifo" SPEEDBACKUP_REMOTE_STREAM_EVENT_TAG="$_stream_extract_tag"; set -o pipefail 2>/dev/null; _stream_download "$_STREAM_SRC" | zstd -d 2>>"$_stream_extract_raw_log" | tar --checkpoint-action="ttyout=%T\r" -xmpf - -C "$FILE_PATH" 2>>"$_stream_extract_raw_log"; _ev_rc=$?; _remote_stream_event_emit done "$_ev_rc" "$_stream_extract_tag" complete; exit "$_ev_rc" ) & _stream_extract_pid=$! ;;
-				tar) if [[ ${MODDIR_NAME##*/} = Media ]]; then ( export SPEEDBACKUP_REMOTE_STREAM_EVENT_FIFO="$_stream_event_fifo" SPEEDBACKUP_REMOTE_STREAM_EVENT_TAG="$_stream_extract_tag"; set -o pipefail 2>/dev/null; _stream_download "$_STREAM_SRC" | tar --checkpoint-action="ttyout=%T\r" -axf - -C "$FILE_PATH" 2>>"$_stream_extract_raw_log"; _ev_rc=$?; _remote_stream_event_emit done "$_ev_rc" "$_stream_extract_tag" complete; exit "$_ev_rc" ) & _stream_extract_pid=$!; else ( export SPEEDBACKUP_REMOTE_STREAM_EVENT_FIFO="$_stream_event_fifo" SPEEDBACKUP_REMOTE_STREAM_EVENT_TAG="$_stream_extract_tag"; set -o pipefail 2>/dev/null; _stream_download "$_STREAM_SRC" | tar --checkpoint-action="ttyout=%T\r" -amxf - -C "$FILE_PATH" 2>>"$_stream_extract_raw_log"; _ev_rc=$?; _remote_stream_event_emit done "$_ev_rc" "$_stream_extract_tag" complete; exit "$_ev_rc" ) & _stream_extract_pid=$!; fi ;;
+				zst) ( export SPEEDBACKUP_REMOTE_STREAM_EVENT_FIFO="$_stream_event_fifo" SPEEDBACKUP_REMOTE_STREAM_EVENT_TAG="$_stream_extract_tag"; set -o pipefail 2>/dev/null; _stream_download "$_STREAM_SRC" | zstd -d 2>>"$_stream_extract_raw_log" | _speedscan_cmd tar-source-manifest "$_source_prefix" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | tar --checkpoint-action="ttyout=%T\r" -xmpf - -C "$FILE_PATH" 2>>"$_stream_extract_raw_log"; _ev_rc=$?; _remote_stream_event_emit done "$_ev_rc" "$_stream_extract_tag" complete; exit "$_ev_rc" ) & _stream_extract_pid=$! ;;
+				tar) if [[ ${MODDIR_NAME##*/} = Media ]]; then ( export SPEEDBACKUP_REMOTE_STREAM_EVENT_FIFO="$_stream_event_fifo" SPEEDBACKUP_REMOTE_STREAM_EVENT_TAG="$_stream_extract_tag"; set -o pipefail 2>/dev/null; _stream_download "$_STREAM_SRC" | _speedscan_cmd tar-source-manifest "$_source_prefix" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | tar --checkpoint-action="ttyout=%T\r" -axf - -C "$FILE_PATH" 2>>"$_stream_extract_raw_log"; _ev_rc=$?; _remote_stream_event_emit done "$_ev_rc" "$_stream_extract_tag" complete; exit "$_ev_rc" ) & _stream_extract_pid=$!; else ( export SPEEDBACKUP_REMOTE_STREAM_EVENT_FIFO="$_stream_event_fifo" SPEEDBACKUP_REMOTE_STREAM_EVENT_TAG="$_stream_extract_tag"; set -o pipefail 2>/dev/null; _stream_download "$_STREAM_SRC" | _speedscan_cmd tar-source-manifest "$_source_prefix" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | tar --checkpoint-action="ttyout=%T\r" -amxf - -C "$FILE_PATH" 2>>"$_stream_extract_raw_log"; _ev_rc=$?; _remote_stream_event_emit done "$_ev_rc" "$_stream_extract_tag" complete; exit "$_ev_rc" ) & _stream_extract_pid=$!; fi ;;
 				esac
 				_stream_stage_t1="$(_speed_now_ms)"
 				REMOTE_STREAM_LAST_EVENT_MS=""
@@ -26789,8 +27894,8 @@ Release_data() {
 				_extract_raw_start="$(_speed_now_ms)"; local _extract_profile_start="$_extract_raw_start"; case $_extract_raw_start in ''|*[!0-9]*) _extract_raw_start="0" ;; esac
 				_extract_raw_log="$(_local_raw_debug_begin extract "kind=data file=$tar_path name=$FILE_NAME dest=$FILE_PATH ext=${FILE_NAME##*.} size=$_extract_size")"
 				case ${FILE_NAME##*.} in
-				zst) ( set -o pipefail 2>/dev/null; zstd -d < "$tar_path" 2>>"$_extract_raw_log" | tar --checkpoint-action="ttyout=%T\r" -xmpf - -C "$FILE_PATH" 2>>"$_extract_raw_log" ) ;;
-				tar) [[ ${MODDIR_NAME##*/} = Media ]] && tar --checkpoint-action="ttyout=%T\r" -axf "$tar_path" -C "$FILE_PATH" 2>>"$_extract_raw_log" || tar --checkpoint-action="ttyout=%T\r" -amxf "$tar_path" -C "$FILE_PATH" 2>>"$_extract_raw_log" ;;
+				zst) ( set -o pipefail 2>/dev/null; zstd -d < "$tar_path" 2>>"$_extract_raw_log" | _speedscan_cmd tar-source-manifest "$_source_prefix" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | tar --checkpoint-action="ttyout=%T\r" -xmpf - -C "$FILE_PATH" 2>>"$_extract_raw_log" ) ;;
+				tar) ( set -o pipefail 2>/dev/null; local _flags=-amxf; [[ ${MODDIR_NAME##*/} != Media ]] || _flags=-axf; _speedscan_cmd tar-source-manifest "$_source_prefix" < "$tar_path" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | tar --checkpoint-action="ttyout=%T\r" "$_flags" - -C "$FILE_PATH" 2>>"$_extract_raw_log" ) ;;
 				esac
 				result=$?
 				_local_raw_debug_end extract "$_extract_raw_log" "$result" "$_extract_raw_start" "kind=data dest=$FILE_PATH"
@@ -26807,13 +27912,8 @@ Release_data() {
 			return 126
 		fi
 		if [[ $result = 0 ]]; then
-			local _speedscan_restore_verify_root=""
 			case $FILE_NAME2 in
 			user|data|obb|user_de)
-				case $FILE_NAME2 in
-				user|user_de) _speedscan_restore_verify_root="$X" ;;
-				data|obb) _speedscan_restore_verify_root="$FILE_PATH/$name2" ;;
-				esac
 				# 用 helper 查 uid (取代 3 層 fallback 散落)
 				G="$(get_app_uid "$name2")"
 				if [[ $G != "" ]]; then
@@ -26835,6 +27935,7 @@ Release_data() {
 							user_de) [[ $X = $path3/$name2 ]] && Validation_settings="true" || Validation_settings="false" ;;
 							esac
 							if [[ $Validation_settings = true ]]; then
+								_source_owner="$uid"
 								_speedscan_tree_fixup "$uid" "$X" - - || _speedscan_tree_chown "$uid" "$X" || chown -hR "$uid" "$X/"
 								echo_log "設置用戶組$uid"
 								_restore_chcon_tree_timed "$Selinux_state" "$X/" "${FILE_NAME2}_${name2}" || _restore_restorecon_timed "$X/" "${FILE_NAME2}_${name2}_restorecon_r371"
@@ -26856,7 +27957,7 @@ Release_data() {
 				fi
 				;;
 			media)
-				_speedscan_restore_verify_root="$FILE_PATH/$name2"
+				:
 				;;
 			thanox)
 				for _td in $(find "/data/system" -maxdepth 1 -type d -name "thanos*" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}); do _restore_restorecon_timed "$_td" "thanox"; done
@@ -26871,12 +27972,14 @@ Release_data() {
 				echo_log "selinux上下文設置" && echoRgb "警告 HMA-OSS配置恢復後建議重啟\n -否則 Hide My Applist 設定可能不立即生效" "0"
 				;;
 			*)
-				if [[ ${MODDIR_NAME##*/} = Media ]]; then
-					_speedscan_restore_verify_root="$FILE_PATH/$FILE_NAME2"
-				fi
+				:
 				;;
 			esac
-			[[ -n $_speedscan_restore_verify_root && -d $_speedscan_restore_verify_root ]] && _speedscan_restore_tree_verify_debug "$_speedscan_restore_verify_root" "${name1:-${MODDIR_NAME##*/}}" "$FILE_NAME2" "post_extract" "${name2:-}" || true
+			if ! _restore_source_verify "$FILE_PATH" "$_source_prefix" "$_source_mode" "$_source_owner" "$_source_mtime"; then
+				result=1
+				_restore_release_data_cleanup
+				return 1
+			fi
 		fi
 		;;
 	*)
@@ -27895,6 +28998,8 @@ _restore_pm_install_existing_for_user() {
 
 # 安裝 apk (含 split apk 處理), 自動繞過安裝驗證
 installapk() {
+	_restore_source_prefix
+	local _source_prefix="$_RESTORE_SOURCE_PREFIX"
 	local _apk_stage _apk_total_start _apk_extract_start _apk_install_start _apk_extract_ms=0 _apk_install_ms=0 _apk_commit_ms=0 _apk_bytes=0
 	_apk_total_start="$(_speed_now_ms)"
 	RESTORE_APK_TIMING_EXTRACT_MS=0
@@ -27919,8 +29024,8 @@ installapk() {
 			_apk_stream_extract_msg="正在流式解壓 apk.tar.zst → $_apk_stage"
 			_apk_stream_event_fifo="$(_remote_stream_event_prepare stream_extract_apk 2>/dev/null || true)"
 			case ${_STREAM_APK_SRC##*.} in
-			zst) ( export SPEEDBACKUP_REMOTE_STREAM_EVENT_FIFO="$_apk_stream_event_fifo" SPEEDBACKUP_REMOTE_STREAM_EVENT_TAG="stream_extract_apk"; set -o pipefail 2>/dev/null; _stream_download "$_STREAM_APK_SRC" | zstd -d 2>>"$_apk_stream_extract_raw_log" | tar --checkpoint-action="ttyout=%T\r" -xmpf - -C "$_apk_stage" 2>>"$_apk_stream_extract_raw_log"; _ev_rc=$?; _remote_stream_event_emit done "$_ev_rc" stream_extract_apk complete; exit "$_ev_rc" ) & _apk_stream_extract_pid=$! ;;
-			tar) ( export SPEEDBACKUP_REMOTE_STREAM_EVENT_FIFO="$_apk_stream_event_fifo" SPEEDBACKUP_REMOTE_STREAM_EVENT_TAG="stream_extract_apk"; set -o pipefail 2>/dev/null; _stream_download "$_STREAM_APK_SRC" | tar --checkpoint-action="ttyout=%T\r" -xmpf - -C "$_apk_stage" 2>>"$_apk_stream_extract_raw_log"; _ev_rc=$?; _remote_stream_event_emit done "$_ev_rc" stream_extract_apk complete; exit "$_ev_rc" ) & _apk_stream_extract_pid=$! ;;
+			zst) ( export SPEEDBACKUP_REMOTE_STREAM_EVENT_FIFO="$_apk_stream_event_fifo" SPEEDBACKUP_REMOTE_STREAM_EVENT_TAG="stream_extract_apk"; set -o pipefail 2>/dev/null; _stream_download "$_STREAM_APK_SRC" | zstd -d 2>>"$_apk_stream_extract_raw_log" | _speedscan_cmd tar-source-manifest "$_source_prefix" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | tar --checkpoint-action="ttyout=%T\r" -xmpf - -C "$_apk_stage" 2>>"$_apk_stream_extract_raw_log"; _ev_rc=$?; _remote_stream_event_emit done "$_ev_rc" stream_extract_apk complete; exit "$_ev_rc" ) & _apk_stream_extract_pid=$! ;;
+			tar) ( export SPEEDBACKUP_REMOTE_STREAM_EVENT_FIFO="$_apk_stream_event_fifo" SPEEDBACKUP_REMOTE_STREAM_EVENT_TAG="stream_extract_apk"; set -o pipefail 2>/dev/null; _stream_download "$_STREAM_APK_SRC" | _speedscan_cmd tar-source-manifest "$_source_prefix" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | tar --checkpoint-action="ttyout=%T\r" -xmpf - -C "$_apk_stage" 2>>"$_apk_stream_extract_raw_log"; _ev_rc=$?; _remote_stream_event_emit done "$_ev_rc" stream_extract_apk complete; exit "$_ev_rc" ) & _apk_stream_extract_pid=$! ;;
 			esac
 			_remote_stream_wait_pid_busy_abortable "$_apk_stream_extract_pid" "$_apk_stream_extract_msg" "stream_extract_apk" "" 1 "$_apk_stream_event_fifo"
 			result=$?
@@ -27950,8 +29055,8 @@ installapk() {
 			_apk_extract_raw_start="$(_speed_now_ms)"; local _apk_profile_start="$_apk_extract_raw_start"; case $_apk_extract_raw_start in ''|*[!0-9]*) _apk_extract_raw_start="0" ;; esac
 			_apk_extract_raw_log="$(_local_raw_debug_begin extract "kind=apk file=$apkfile dest=$_apk_stage ext=${apkfile##*.} size=$_apk_size")"
 			case ${apkfile##*.} in
-			zst) ( set -o pipefail 2>/dev/null; zstd -d < "$apkfile" 2>>"$_apk_extract_raw_log" | tar --checkpoint-action="ttyout=%T\r" -xmpf - -C "$_apk_stage" 2>>"$_apk_extract_raw_log" ) ;;
-			tar) tar --checkpoint-action="ttyout=%T\r" -xmpf "$apkfile" -C "$_apk_stage" 2>>"$_apk_extract_raw_log" ;;
+			zst) ( set -o pipefail 2>/dev/null; zstd -d < "$apkfile" 2>>"$_apk_extract_raw_log" | _speedscan_cmd tar-source-manifest "$_source_prefix" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | tar --checkpoint-action="ttyout=%T\r" -xmpf - -C "$_apk_stage" 2>>"$_apk_extract_raw_log" ) ;;
+			tar) ( set -o pipefail 2>/dev/null; _speedscan_cmd tar-source-manifest "$_source_prefix" < "$apkfile" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | tar --checkpoint-action="ttyout=%T\r" -xmpf - -C "$_apk_stage" 2>>"$_apk_extract_raw_log" ) ;;
 			*)
 				echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
 				Set_back_1
@@ -27973,6 +29078,7 @@ installapk() {
 		fi
 	fi
 	if [[ $result = 0 ]]; then
+		_restore_source_verify "$_apk_stage" "$_source_prefix" ignore ignore ignore || { result=1; return 1; }
 		_restore_payload_plan_log "$_apk_stage" "$app_details" "$name1" >/dev/null 2>&1 || true
 		# 用 glob + 計數取代 find | wc (省 2 fork)
 		local _apks _apk_count=0 _installer _installer_raw _used_play_session=0 _fallback_pm=0 _apk_install_profile_start
@@ -29482,6 +30588,7 @@ _appstate_debug_aggregate() {
 }
 
 _appstate_ssaid_report_reset() {
+	_SSAID_RESTORED=0; _SSAID_SAME=0; _SSAID_FAILED=0; _SSAID_CHECKED=0
 	: > "$TMPDIR/.appstate_ssaid_restored" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	: > "$TMPDIR/.appstate_ssaid_same" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	: > "$TMPDIR/.appstate_ssaid_failed" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -29516,35 +30623,22 @@ _appstate_ssaid_report_line() {
 }
 
 _appstate_ssaid_collect_restore_output() {
-	local _out="$1" _tmp _action _pkg _expected _actual _msg
-	[[ -s $_out ]] || return 0
-	_tmp="$TMPDIR/.appstate_ssaid_parse_$$"
-	jq -r '
-		def msg: (.result.message // "");
-		def capv($re): try ((msg | capture($re)).v // "") catch "";
-		select(.recordType=="restore") as $r |
-		($r.items[]? | select(.category=="ssaid")) |
-		(msg) as $m |
-		(if ((.result.name // "") != "OK") then "failed"
-		 elif ($m | test("metadataRestore=\\{attempted=true")) or ($m | test("metadataChangedByWrite=true")) then "restored"
-		 elif ($m | test("reason=already-matches")) then "same"
-		 else "checked" end) as $action |
-		[$action, ($r.packageName // .key // ""), capv("expected=(?<v>[^ ]+)"), capv("actual=(?<v>[^ ]+)"), ($m|gsub("\\t";" "))] | @tsv
-	' "$_out" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_tmp" 2>/dev/null; return 0; }
-	while IFS="$(printf '\t')" read -r _action _pkg _expected _actual _msg; do
+	local _out="$1" _action _pkg _expected _actual _msg
+	_appstate_result_read "$_out" restore || return 1
+	_SSAID_RESTORED=$_APPSTATE_SSAID_RESTORED; _SSAID_SAME=$_APPSTATE_SSAID_SAME
+	_SSAID_FAILED=$_APPSTATE_SSAID_FAILED; _SSAID_CHECKED=$_APPSTATE_SSAID_CHECKED
+	while IFS="$SB_TAB" read -r _action _pkg _expected _actual _msg; do
 		case $_action in
 		restored|same|failed|checked) _appstate_ssaid_report_line "$_action" "$_pkg" "$_expected" "$_actual" "$_msg" ;;
+		*) return 1 ;;
 		esac
-	done < "$_tmp"
-	rm -f "$_tmp" 2>/dev/null
+	done < "$_out.ssaid"
 	return 0
 }
 
 _appstate_ssaid_report_emit() {
-	local _restored=0 _same=0 _failed=0 _checked=0 _total=0 _n
-	for _n in restored same failed checked; do
-		eval "_${_n}=\$(awk 'NF{c++} END{print c+0}' \"\$TMPDIR/.appstate_ssaid_${_n}\" 2>/dev/null)"
-	done
+	local _restored=0 _same=0 _failed=0 _checked=0 _total=0
+	_restored=${_SSAID_RESTORED:-0}; _same=${_SSAID_SAME:-0}; _failed=${_SSAID_FAILED:-0}; _checked=${_SSAID_CHECKED:-0}
 	_total=$((_restored + _same + _failed + _checked))
 	[[ $_total -eq 0 ]] && return 0
 	# checked is the total number of SSAID restore items seen; other is the small
@@ -29566,150 +30660,62 @@ _appstate_ssaid_report_emit() {
 
 # 批量沖刷：同一份 canonical AppState NDJSON 依序交給 restore 與 verify；AppOps reset、特殊存取、電池與 SSAID 均由引擎內部處理。
 flush_batch_appstate() {
+	_APPSTATE_FLUSH_SEQUENCE=$((${_APPSTATE_FLUSH_SEQUENCE:-0} + 1))
 	local _queue="$TMPDIR/.batch_appstate_ndjson" _count _chunk_size _offset=0 _idx=0
-	local _restore_ok=0 _restore_partial=0 _restore_failed=0
-	local _verify_ok=0 _verify_vendor=0 _verify_mismatch=0 _verify_failed=0
+	local _restore_ok _restore_partial _restore_failed _verify_ok _verify_vendor _verify_mismatch _verify_failed
+	local _APPSTATE_RUN_DIR="${SPEED_DEBUG_RUN_DIR:-$TMPDIR}/appstate_run_$$_$_APPSTATE_FLUSH_SEQUENCE" _APPSTATE_RUN_SEQ=0
 	[[ -s $_queue ]] || return 0
-	_appstate_capabilities_check || {
-		echoRgb "AppState能力契約不符，已中止狀態恢復" "0"
-		return 1
-	}
-	_count="$(awk 'NF{n++} END{print n+0}' "$_queue" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
-	[[ ${_count:-0} -gt 0 ]] || return 0
+	_appstate_capabilities_check || return 1
+	mkdir -p "$_APPSTATE_RUN_DIR" || return 1
+	cp -f "$_queue" "$_APPSTATE_RUN_DIR/queue" || return 1
+	printf '%s\n' "$_APPSTATE_RUN_DIR/queue" > "$_APPSTATE_RUN_DIR/request" || return 1
+	_count="$(awk 'NF{n++} END{print n+0}' "$_queue")"
 	_chunk_size="$(_appstate_chunk_size "${APPSTATE_RESTORE_CHUNK_SIZE:-30}" 30)"
-	# r253: 不先輸出 appstate_batch_begin 0/N；第一個 chunk 會使用同一條批量預掃式進度列，避免窄螢幕出現兩條 0/N 進度條。
-	_speed_debug_log "PROGRESS_STEP_SKIP tag=appstate_batch_begin reason=merged_into_chunk_inline current=0 total=$_count"
 	_appstate_debug_aggregate reset
 	_appstate_ssaid_report_reset
-	: > "$TMPDIR/.appstate_restore_issues" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	: > "$TMPDIR/.appstate_verify_issues" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	while [[ $_offset -lt $_count ]]; do
-		_idx=$((_idx+1))
-		local _in="$TMPDIR/.appstate_chunk_${_idx}.ndjson"
-		local _ro="$TMPDIR/.appstate_restore_${_idx}.ndjson"
-		local _vo="$TMPDIR/.appstate_verify_${_idx}.ndjson"
-		local _chunk_count
-		awk -v off="$_offset" -v size="$_chunk_size" 'NF{n++; if(n>off && n<=off+size) print}' "$_queue" > "$_in" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		[[ -s $_in ]] || break
-		_chunk_count="$(awk 'NF{n++} END{print n+0}' "$_in" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
-		case $_chunk_count in ''|*[!0-9]*) _chunk_count=0 ;; esac
-		_speedbackup_progress_step "$_offset" "$_count" "正在處理 AppState 批次 $_idx（本批 $_chunk_count 個）" "appstate_batch_chunk" "107"
-		if _root_appstate_call restoreAppStateBatch "$_in" "$_ro" \
-				&& _appstate_ndjson_has_summary "$_ro" restoreAppStateBatch; then
+		_idx=$((_idx + 1))
+		local _in="$_APPSTATE_RUN_DIR/chunk_$_idx" _ro="$_APPSTATE_RUN_DIR/restore_$_idx" _vo="$_APPSTATE_RUN_DIR/verify_$_idx"
+		local _chunk_count _line _single=0
+		awk -v off="$_offset" -v size="$_chunk_size" 'NF{n++; if(n>off && n<=off+size) print}' "$_queue" > "$_in"
+		_chunk_count="$(awk 'NF{n++} END{print n+0}' "$_in")"
+		[[ $_chunk_count -gt 0 ]] || break
+		_speedbackup_progress_step "$_offset" "$_count" "正在處理 AppState 批次 $_idx（本批 $_chunk_count 個）" appstate_batch_chunk 107
+		if _root_appstate_call restoreAppStateBatch "$_in" "$_ro" && _appstate_ndjson_has_summary "$_ro" restoreAppStateBatch; then
 			_appstate_debug_aggregate save restore "$_idx" "$_in" "$_ro"
-			_appstate_ssaid_collect_restore_output "$_ro"
-			if _appstate_ndjson_summarize "$_ro" restore "$TMPDIR/.appstate_restore_issues"; then
-				_restore_ok=$((_restore_ok + _APPSTATE_NDJSON_OK))
-				_restore_partial=$((_restore_partial + _APPSTATE_NDJSON_WARN))
-				_restore_failed=$((_restore_failed + _APPSTATE_NDJSON_FAILED))
-			else
-				_restore_failed=$((_restore_failed + _chunk_count))
-				printf 'RESTORE\tchunk_%s\tNDJSON_PARSE_FAIL\tpackages=%s\n' "$_idx" "$_chunk_count" >> "$TMPDIR/.appstate_restore_issues"
-			fi
-		else
-			# r98: batch restore may be rejected by framework/Dex with BAD_REQUEST because one record is not accepted.
-			# Do not let one bad AppState item poison the whole chunk; split to per-package calls
-			# so good packages can still restore/verify and the bad package is isolated in debug.
-			if [[ $_chunk_count -gt 1 ]]; then
-				local _split_i=0 _line _single_in _single_ro _single_vo _single_tag _single_pkg
-				_speed_debug_log "APPSTATE_RESTORE_CHUNK_FAIL_SPLIT idx=$_idx packages=$_chunk_count code=${_APPSTATE_RESULT_CODE:-unknown} name=${_APPSTATE_RESULT_NAME:-unknown}"
-				while IFS= read -r _line; do
-					[[ -n $_line ]] || continue
-					_split_i=$((_split_i+1))
-					_single_tag=$((_idx * 1000 + _split_i))
-					_single_in="$TMPDIR/.appstate_chunk_${_idx}_${_split_i}.ndjson"
-					_single_ro="$TMPDIR/.appstate_restore_${_idx}_${_split_i}.ndjson"
-					_single_vo="$TMPDIR/.appstate_verify_${_idx}_${_split_i}.ndjson"
-					printf '%s\n' "$_line" > "$_single_in" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-					_single_pkg="$(printf '%s\n' "$_line" | jq -r '.packageName // "unknown"' 2>/dev/null | awk 'NF{print; exit}')"
-					[[ -n $_single_pkg ]] || _single_pkg=unknown
-					if _root_appstate_call restoreAppStateBatch "$_single_in" "$_single_ro" \
-							&& _appstate_ndjson_has_summary "$_single_ro" restoreAppStateBatch; then
-						_appstate_debug_aggregate save restore "$_single_tag" "$_single_in" "$_single_ro"
-						_appstate_ssaid_collect_restore_output "$_single_ro"
-						if _appstate_ndjson_summarize "$_single_ro" restore "$TMPDIR/.appstate_restore_issues"; then
-							_restore_ok=$((_restore_ok + _APPSTATE_NDJSON_OK))
-							_restore_partial=$((_restore_partial + _APPSTATE_NDJSON_WARN))
-							_restore_failed=$((_restore_failed + _APPSTATE_NDJSON_FAILED))
-						else
-							_restore_failed=$((_restore_failed + 1))
-							printf 'RESTORE\tchunk_%s_single_%s\tNDJSON_PARSE_FAIL\tpackage=%s\n' "$_idx" "$_split_i" "$_single_pkg" >> "$TMPDIR/.appstate_restore_issues"
-						fi
-
-						local _single_verify_rc
-						_root_appstate_call verifyAppStateBatch "$_single_in" "$_single_vo"
-						_single_verify_rc=$?
-						if _appstate_verify_batch_accept "$_single_vo" "$_single_verify_rc"; then
-							_appstate_debug_aggregate save verify "$_single_tag" "$_single_in" "$_single_vo"
-							if _appstate_ndjson_summarize "$_single_vo" verify "$TMPDIR/.appstate_verify_issues"; then
-								_verify_ok=$((_verify_ok + _APPSTATE_NDJSON_OK))
-								_verify_vendor=$((_verify_vendor + ${_APPSTATE_NDJSON_VENDOR:-0}))
-								_verify_mismatch=$((_verify_mismatch + _APPSTATE_NDJSON_WARN))
-								_verify_failed=$((_verify_failed + _APPSTATE_NDJSON_FAILED))
-							else
-								_verify_failed=$((_verify_failed + 1))
-								printf 'VERIFY\tchunk_%s_single_%s\tNDJSON_PARSE_FAIL\tpackage=%s\n' "$_idx" "$_split_i" "$_single_pkg" >> "$TMPDIR/.appstate_verify_issues"
-							fi
-						else
-							_verify_failed=$((_verify_failed + 1))
-							printf 'VERIFY\tchunk_%s_single_%s\tTRANSPORT_OR_PROTOCOL_FAIL\tcode=%s name=%s package=%s\n' \
-								"$_idx" "$_split_i" "${_APPSTATE_RESULT_CODE:-unknown}" "${_APPSTATE_RESULT_NAME:-unknown}" "$_single_pkg" >> "$TMPDIR/.appstate_verify_issues"
-							_speed_debug_log "APPSTATE_VERIFY_SINGLE_FAIL idx=$_idx single=$_split_i package=$_single_pkg code=${_APPSTATE_RESULT_CODE:-unknown} name=${_APPSTATE_RESULT_NAME:-unknown}"
-						fi
-					else
-						_restore_failed=$((_restore_failed + 1))
-						_verify_failed=$((_verify_failed + 1))
-						_appstate_debug_aggregate save restore "$_single_tag" "$_single_in" "$_single_ro"
-						printf 'RESTORE\tchunk_%s_single_%s\tTRANSPORT_OR_PROTOCOL_FAIL\tcode=%s name=%s package=%s\n' \
-							"$_idx" "$_split_i" "${_APPSTATE_RESULT_CODE:-unknown}" "${_APPSTATE_RESULT_NAME:-unknown}" "$_single_pkg" >> "$TMPDIR/.appstate_restore_issues"
-						_speed_debug_log "APPSTATE_RESTORE_SINGLE_FAIL idx=$_idx single=$_split_i package=$_single_pkg code=${_APPSTATE_RESULT_CODE:-unknown} name=${_APPSTATE_RESULT_NAME:-unknown}"
-					fi
-					rm -f "$_single_in" "$_single_ro" "$_single_vo" 2>/dev/null
-				done < "$_in"
-				rm -f "$_in" "$_ro" "$_vo" 2>/dev/null
-				_offset=$((_offset+_chunk_size))
-				_speedbackup_progress_step "$_offset" "$_count" "AppState 批次已完成（拆分重試）" "appstate_batch_split_done" "107"
-				continue
-			fi
-			_restore_failed=$((_restore_failed+_chunk_count))
-			_verify_failed=$((_verify_failed+_chunk_count))
-			printf 'RESTORE\tchunk_%s\tTRANSPORT_OR_PROTOCOL_FAIL\tcode=%s name=%s packages=%s\n' \
-				"$_idx" "${_APPSTATE_RESULT_CODE:-unknown}" "${_APPSTATE_RESULT_NAME:-unknown}" "$_chunk_count" >> "$TMPDIR/.appstate_restore_issues"
-			_speed_debug_log "APPSTATE_RESTORE_CHUNK_FAIL idx=$_idx packages=$_chunk_count code=${_APPSTATE_RESULT_CODE:-unknown} name=${_APPSTATE_RESULT_NAME:-unknown}"
-			rm -f "$_in" "$_ro" "$_vo" 2>/dev/null
-			_offset=$((_offset+_chunk_size))
-			_speedbackup_progress_step "$_offset" "$_count" "AppState 批次已完成（含失敗記錄）" "appstate_batch_fail_done" "107"
-			continue
-		fi
-		local _verify_rc
-		_root_appstate_call verifyAppStateBatch "$_in" "$_vo"
-		_verify_rc=$?
-		if _appstate_verify_batch_accept "$_vo" "$_verify_rc"; then
+			_root_appstate_call verifyAppStateBatch "$_in" "$_vo"
 			_appstate_debug_aggregate save verify "$_idx" "$_in" "$_vo"
-			if _appstate_ndjson_summarize "$_vo" verify "$TMPDIR/.appstate_verify_issues"; then
-				_verify_ok=$((_verify_ok + _APPSTATE_NDJSON_OK))
-				_verify_vendor=$((_verify_vendor + ${_APPSTATE_NDJSON_VENDOR:-0}))
-				_verify_mismatch=$((_verify_mismatch + _APPSTATE_NDJSON_WARN))
-				_verify_failed=$((_verify_failed + _APPSTATE_NDJSON_FAILED))
-			else
-				_verify_failed=$((_verify_failed + _chunk_count))
-				printf 'VERIFY\tchunk_%s\tNDJSON_PARSE_FAIL\tpackages=%s\n' "$_idx" "$_chunk_count" >> "$TMPDIR/.appstate_verify_issues"
-			fi
-		else
-			_verify_failed=$((_verify_failed+_chunk_count))
-			printf 'VERIFY\tchunk_%s\tTRANSPORT_OR_PROTOCOL_FAIL\tpackages=%s\n' "$_idx" "$_chunk_count" >> "$TMPDIR/.appstate_verify_issues"
-			_speed_debug_log "APPSTATE_VERIFY_CHUNK_FAIL idx=$_idx packages=$_chunk_count code=${_APPSTATE_RESULT_CODE:-unknown} name=${_APPSTATE_RESULT_NAME:-unknown}"
+		elif [[ $_chunk_count -gt 1 ]]; then
+			while IFS= read -r _line; do
+				[[ -n $_line ]] || continue
+				_single=$((_single + 1))
+				local _si="$_in.$_single" _sr="$_ro.$_single" _sv="$_vo.$_single"
+				printf '%s\n' "$_line" > "$_si"
+				if _root_appstate_call restoreAppStateBatch "$_si" "$_sr" && _appstate_ndjson_has_summary "$_sr" restoreAppStateBatch; then
+					_root_appstate_call verifyAppStateBatch "$_si" "$_sv"
+				fi
+				_appstate_debug_aggregate save restore "$((_idx * 1000 + _single))" "$_si" "$_sr"
+				_appstate_debug_aggregate save verify "$((_idx * 1000 + _single))" "$_si" "$_sv"
+			done < "$_in"
 		fi
-		rm -f "$_in" "$_ro" "$_vo" 2>/dev/null
-		_offset=$((_offset+_chunk_size))
-		_speedbackup_progress_step "$_offset" "$_count" "AppState 批次已完成" "appstate_batch_chunk_done" "107"
+		_offset=$((_offset + _chunk_count))
+		_speedbackup_progress_step "$_offset" "$_count" "AppState 批次已完成" appstate_batch_chunk_done 107
 	done
-	# r293: 不再送 AppState 結尾無進度 notification。
-	# Android 部分 ROM 會把 restore 尾段的無進度 service notification 套 auto-template，顯示 service_notification_apply_auto_template_* 系統垃圾通知。
-	# 最後一個 appstate_batch_chunk_done 已經送出 100% 進度，這裡只記 debug/終端摘要。
-	_speed_debug_log "PROGRESS_STEP_SKIP tag=appstate_batch_done reason=chunk_done_already_final current=$_count total=$_count notify=none-no-template-r293"
+	local _final="$_APPSTATE_RUN_DIR/final"
+	if ! _root_appstate_call appstateRunResults "$_APPSTATE_RUN_DIR/request" "$_final.receipt" "$_final"; then
+		echoRgb "AppState整輪摘要產生失敗，未將缺失結果視為成功" 0
+		return 1
+	fi
+	_appstate_result_read "$_final.restore" restore || return 1
+	_restore_ok=$_APPSTATE_NDJSON_OK; _restore_partial=$_APPSTATE_NDJSON_WARN; _restore_failed=$_APPSTATE_NDJSON_FAILED
+	cp -f "$_final.restore.issues" "$TMPDIR/.appstate_restore_issues"
+	_appstate_ssaid_collect_restore_output "$_final.restore" || return 1
+	_appstate_result_read "$_final.verify" verify || return 1
+	_speed_debug_log "SSAID_VERIFY_SUMMARY ok=$_APPSTATE_SSAID_SAME failed=$_APPSTATE_SSAID_FAILED mode=r705-run-dex"
+	_verify_ok=$_APPSTATE_NDJSON_OK; _verify_vendor=$_APPSTATE_NDJSON_VENDOR; _verify_mismatch=$_APPSTATE_NDJSON_WARN; _verify_failed=$_APPSTATE_NDJSON_FAILED
+	cp -f "$_final.verify.issues" "$TMPDIR/.appstate_verify_issues"
 	echoRgb "AppState恢復摘要: 成功=$_restore_ok 部分=$_restore_partial 失敗=$_restore_failed" "2"
-	_speed_debug_log "APPSTATE_VERIFY_SUMMARY ok=$_verify_ok vendor_constrained=$_verify_vendor mismatch=$_verify_mismatch failed=$_verify_failed mode=r322-vendor-dex"
+	_speed_debug_log "APPSTATE_VERIFY_SUMMARY ok=$_verify_ok vendor_constrained=$_verify_vendor mismatch=$_verify_mismatch failed=$_verify_failed mode=r705-run-dex"
 	if [[ $_verify_mismatch -gt 0 || $_verify_failed -gt 0 ]]; then
 		echoRgb "AppState驗證摘要: 一致=$_verify_ok 廠商限制=$_verify_vendor 不一致=$_verify_mismatch 失敗=$_verify_failed（詳情見speed_debug）" "0"
 	elif [[ $_verify_vendor -gt 0 ]]; then
@@ -30088,6 +31094,7 @@ backup() {
 	: > "$TMPDIR/.add_apks"
 	: > "$TMPDIR/.changed_apps"
 	: > "$TMPDIR/.listver_changed"
+	_backup_payload_stats_init || _speed_debug_log "BACKUP_PAYLOAD_STATS_INIT_FAIL mode=r690"
 	# 初始化備份變更標記
 	backup_has_changes=0
 	#校驗選填是否正確
@@ -30337,10 +31344,15 @@ backup() {
 		_prepare_timed prepare_local_fast_skip_map
 		[[ -s $TMPDIR/.pkg_appstate ]] || { echoRgb "AppState snapshot map缺失" "0"; exit 2; }
 	fi
+	local _preapp_start _preapp_notify_start _preapp_notify_ms _preapp_end
+	_backup_perf_clock; _preapp_start="$_BACKUP_PERF_MS"
 	_backup_prescan_show_summary || true
 	starttime1="$(date -u "+%s")"
 	TIME="$starttime1"
+	_backup_perf_clock; _preapp_notify_start="$_BACKUP_PERF_MS"
 	notification_progress "101" "$r" 0 "開始備份"
+	_backup_perf_clock; _preapp_notify_ms=$((_BACKUP_PERF_MS - _preapp_notify_start))
+	_speed_debug_log "BACKUP_INITIAL_NOTIFY_TIMING elapsedMs=$_preapp_notify_ms clock=$_BACKUP_PERF_CLOCK mode=r699"
 	# 保存本次備份實際使用的清單,供遠端上傳用 (純變數,不寫檔)
 	# 子目錄 backup.sh (app_details.json 存在於 0%/*) 只備份單一 app,
 	# 上傳時也只該上傳這一個 app 的目錄
@@ -30356,13 +31368,15 @@ backup() {
 		fi
 	fi
 	_stream_fast_skip_collapse_applist
-	_local_fast_skip_collapse_applist
+	_backup_phase_timed local-fast-skip-collapse _local_fast_skip_collapse_applist
 	_webdav_stream_prepare_app_dirs_from_txt
-	_smb_stream_prepare_app_dirs_from_txt
-	_speedbackup_progress_hint "正在啟動備份守護 session（live-safe：只守護當前 App）" "backup_batch_guard_prewarm"
-	_cgroup_freezer_batch_daemon_ensure "backup-batch" || true
-	_process_observer_guard_hint_once "backup-batch" || true
-	_process_observer_batch_start_backup || true
+	_backup_phase_timed smb-precreate _smb_stream_prepare_app_dirs_from_txt
+	_backup_phase_timed guard-progress-hint _speedbackup_progress_hint "正在啟動備份守護 session（live-safe：只守護當前 App）" "backup_batch_guard_prewarm"
+	_backup_phase_timed freezer-session _cgroup_freezer_batch_daemon_ensure "backup-batch" || true
+	_backup_phase_timed observer-hint _process_observer_guard_hint_once "backup-batch" || true
+	_backup_phase_timed observer-start _process_observer_batch_start_backup || true
+	_backup_perf_clock; _preapp_end="$_BACKUP_PERF_MS"
+	_speed_debug_log "BACKUP_PREAPP_FULL_TIMING elapsedMs=$((_preapp_end - _preapp_start)) initialNotifyMs=$_preapp_notify_ms remaining=$r clock=$_BACKUP_PERF_CLOCK mode=r699"
 	while [[ $i -le $r ]]; do
 		if [[ $remote_stream = 1 && -n $remote_type ]] && _remote_netwatch_mark_stream_fatal "app_loop_top" "netwatch"; then
 			echoRgb "遠端 LAN 路由／位址已變更，停止本輪後續應用備份" "0"
@@ -30438,6 +31452,7 @@ backup() {
 					result=0
 					_backup_mark_done_pkg
 					let osj++
+					_backup_entry_fast_app
 					echoRgb "整個應用無變化(遠端備份無變化) 快速跳過" "2"
 					_speed_debug_log "STREAM_APP_FAST_SKIP_UNCHANGED app=$name1 package=$name2 source=fast_prescan"
 					# r277: single-stage bundle 直接保留未變更 App 的舊 JSON，避免整包覆蓋後遺失 metadata。
@@ -30847,7 +31862,14 @@ backup() {
 	[[ $remote_stream != 1 ]] && Calculate_size "$Backup"
 	_stream_failed_report
 	if [[ $remote_stream = 1 && -n $remote_type ]] && _remote_stream_fatal_active; then
-		echoRgb "批量備份因遠端連線變更／中斷而停止；請確認遠端連線後重新執行" "0"
+		case "$(_remote_stream_fatal_reason 2>/dev/null)" in
+		appdetails_bundle_audit_*|appdetails_bundle_manifest_failed|appdetails_bundle_upload_failed)
+			echoRgb "批量備份因 app_details metadata 安全檢查失敗／bundle 更新失敗而停止；請查看 speed_debug 的 APPDETAILS_BUNDLE_AUDIT 診斷" "0"
+			;;
+		*)
+			echoRgb "批量備份因遠端連線變更／中斷而停止；請確認遠端連線後重新執行" "0"
+			;;
+		esac
 		_speed_debug_log "REMOTE_STREAM_FATAL_BATCH_END $(_remote_stream_fatal_summary)"
 	else
 		echoRgb "批量備份完成"
@@ -30903,17 +31925,18 @@ backup() {
 	REMOTE_TRIGGER=1
 	# subshell 環境下 trap EXIT 在主 shell 不會觸發, 這裡直接呼叫
 	remote_cleanup
+	# remote_cleanup 可能是最後一個觀察到遠端中斷的階段；先刷新 fatal，再決定是否顯示統計，避免失敗輪誤報 exact。
+	if [[ $remote_stream = 1 && -n $remote_type && $_backup_stream_fatal_rc = 0 ]] && _remote_stream_fatal_active; then
+		_backup_stream_fatal_rc="$(_remote_stream_fatal_exit_rc)"
+		_speed_debug_log "REMOTE_STREAM_FATAL_FINAL_REFRESH rc=$_backup_stream_fatal_rc $(_remote_stream_fatal_summary)"
+	fi
+	_backup_payload_stats_show_summary
 	if ! cleanup_tmpdir_contents; then
 		_speed_debug_pack 1
 		exit 1
 	fi
 	# 正常備份完成點主動建立 final 包並刪除 run_xxx。
 	# 仍會先建 snapshot；若 EXIT trap 在單獨入口 / pipeline subshell 未觸發，也不會留下 run 目錄。
-	# remote_cleanup 也可能是最後一個觀察到遠端中斷的階段，結束前再刷新一次。
-	if [[ $remote_stream = 1 && -n $remote_type && $_backup_stream_fatal_rc = 0 ]] && _remote_stream_fatal_active; then
-		_backup_stream_fatal_rc="$(_remote_stream_fatal_exit_rc)"
-		_speed_debug_log "REMOTE_STREAM_FATAL_FINAL_REFRESH rc=$_backup_stream_fatal_rc $(_remote_stream_fatal_summary)"
-	fi
 	_backup_final_rc="${_backup_stream_fatal_rc:-0}"
 	case $_backup_final_rc in ''|*[!0-9]*) _backup_final_rc=0 ;; esac
 	if [[ $_backup_final_rc = 0 && ${_backup_manifest_verify_rc:-0} != 0 ]]; then
@@ -32701,7 +33724,7 @@ Getlist() {
 	echoRgb "提示! 腳本默認會屏蔽預裝應用 如需備份請添加預裝應用白名單" "0"
 	# r322: appList 生成走 Dex one-call。把 user/xposed inventory、系統白名單、default HOME 解析
 	# 合併在同一個 RootDaemon command 內，避免 r319 仍需 appInventory + defaultHome + target packages 三次 round-trip。
-	local _target_system_pkgs="$TMPDIR/.getlist_target_system_pkgs" _target_filter _getlist_raw _meta _meta_ime _home_label _home_source _ime_label _ime_source Default_ime_pkg
+	local _target_system_pkgs="$TMPDIR/.getlist_target_system_pkgs" _target_filter _getlist_raw _meta _meta_ime _meta_xposed _meta_xposed_modules _home_label _home_source _ime_label _ime_source Default_ime_pkg _xp_state _xp_family _xp_evidence _xp_mgr_mode _xp_mgr_family _xp_mgr_pkg _xp_mgr_open _xp_mgr_evidence _xp_parasitic _xp_total _xp_legacy _xp_java _xp_native _xp_hybrid
 	: > "$_target_system_pkgs"
 	printf '%s\n' "$system" | awk '{for (i=1; i<=NF; i++) if ($i !~ /^[#＃]/) print $i}' >> "$_target_system_pkgs"
 	awk 'NF && $0 !~ /[^A-Za-z0-9_.-]/ && $0 !~ /^\./ && $0 !~ /\.\./ {print}' "$_target_system_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort -u > "$_target_system_pkgs.tmp"
@@ -32716,12 +33739,33 @@ Getlist() {
 	fi
 	_meta="$(printf '%s\n' "$_getlist_raw" | awk -F '\t' '$1=="#META" && $2=="defaultHome"{print; exit}')"
 	_meta_ime="$(printf '%s\n' "$_getlist_raw" | awk -F '\t' '$1=="#META" && $2=="defaultIme"{print; exit}')"
+	_meta_xposed="$(printf '%s\n' "$_getlist_raw" | awk -F '\t' '$1=="#META" && $2=="xposedFramework"{print; exit}')"
+	_meta_xposed_modules="$(printf '%s\n' "$_getlist_raw" | awk -F '\t' '$1=="#META" && $2=="xposedModules"{print; exit}')"
 	Default_home_pkg="$(printf '%s\n' "$_meta" | awk -F '\t' '{print $3}')"
 	_home_label="$(printf '%s\n' "$_meta" | awk -F '\t' '{print $4}')"
 	_home_source="$(printf '%s\n' "$_meta" | awk -F '\t' '{print $5}')"
 	Default_ime_pkg="$(printf '%s\n' "$_meta_ime" | awk -F '\t' '{print $3}')"
 	_ime_label="$(printf '%s\n' "$_meta_ime" | awk -F '\t' '{print $4}')"
 	_ime_source="$(printf '%s\n' "$_meta_ime" | awk -F '\t' '{print $5}')"
+	_xp_state="$(printf '%s\n' "$_meta_xposed" | awk -F '\t' '{print $3}')"
+	_xp_family="$(printf '%s\n' "$_meta_xposed" | awk -F '\t' '{print $4}')"
+	_xp_evidence="$(printf '%s\n' "$_meta_xposed" | awk -F '\t' '{print $5}')"
+	_xp_mgr_mode="$(printf '%s\n' "$_meta_xposed" | awk -F '\t' '{print $6}')"
+	_xp_mgr_pkg="$(printf '%s\n' "$_meta_xposed" | awk -F '\t' '{print $7}')"
+	_xp_mgr_open="$(printf '%s\n' "$_meta_xposed" | awk -F '\t' '{print $8}')"
+	_xp_parasitic="$(printf '%s\n' "$_meta_xposed" | awk -F '\t' '{print $9}')"
+	_xp_total="$(printf '%s\n' "$_meta_xposed_modules" | awk -F '\t' '{print $3}')"
+	_xp_legacy="$(printf '%s\n' "$_meta_xposed_modules" | awk -F '\t' '{print $4}')"
+	_xp_java="$(printf '%s\n' "$_meta_xposed_modules" | awk -F '\t' '{print $5}')"
+	_xp_native="$(printf '%s\n' "$_meta_xposed_modules" | awk -F '\t' '{print $6}')"
+	_xp_hybrid="$(printf '%s\n' "$_meta_xposed_modules" | awk -F '\t' '{print $7}')"
+	_speed_debug_log "XPOSED_RUNTIME_FACTS state=${_xp_state:-unknown} family=${_xp_family:-unknown} evidence=${_xp_evidence:-none} managerMode=${_xp_mgr_mode:-unknown} managerFamily=${_xp_mgr_family:-unknown} managerPackage=${_xp_mgr_pkg:-none} managerOpenCap=${_xp_mgr_open:-unknown} managerEvidence=${_xp_mgr_evidence:-none} parasiticHint=${_xp_parasitic:-false} mode=r688"
+	_speed_debug_log "XPOSED_MODULE_SUMMARY total=${_xp_total:-0} legacy=${_xp_legacy:-0} modernJava=${_xp_java:-0} modernNative=${_xp_native:-0} hybrid=${_xp_hybrid:-0} mode=r688"
+	if [[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]]; then
+		[[ -n $_meta_xposed ]] && printf '%s\n' "$_meta_xposed" > "$SPEED_DEBUG_RUN_DIR/xposed_runtime_facts_last.tsv" 2>/dev/null
+		[[ -n $_meta_xposed_modules ]] && printf '%s\n' "$_meta_xposed_modules" > "$SPEED_DEBUG_RUN_DIR/xposed_module_summary_last.tsv" 2>/dev/null
+		printf '%s\n' "$_getlist_raw" | awk -F '\t' '$1=="#META" && $2=="xposedModule"{print}' > "$SPEED_DEBUG_RUN_DIR/xposed_modules_last.tsv" 2>/dev/null
+	fi
 	case "$Default_home_pkg" in ''|*[!A-Za-z0-9_.-]*) Default_home_pkg="" ;; esac
 	case "$Default_ime_pkg" in ''|*[!A-Za-z0-9_.-]*) Default_ime_pkg="" ;; esac
 	# r323: appInventoryGetlist 已經在同一個 RootDaemon command 解析 default HOME。
@@ -33107,6 +34151,7 @@ Getlist() {
 backup_media() {
 	self_test
 	backup_path
+	_backup_payload_stats_init || return 1
 	show_conf media
 	# 清除可能殘留的遠端json快取: backup_media 本身不會建立這個快取(只有批量備份的
 	# prepare_remote_json_map 會), 但若先前跑過批量備份或中斷的測試留下舊快取,
@@ -33236,6 +34281,7 @@ backup_media() {
 	fi
 	# subshell 環境下 trap EXIT 在主 shell 不會觸發, 這裡直接呼叫
 	remote_cleanup
+	_backup_payload_stats_show_summary
 	cleanup_tmpdir_contents || return 1
 	return "$_media_final_rc"
 }

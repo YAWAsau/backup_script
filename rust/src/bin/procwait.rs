@@ -4,12 +4,11 @@
 // are reproduced exactly against c/procwait.c.
 
 use speedbackup_native_rs::{syscall, poll, c_strerror, PollFd, POLLIN, SYS_PIDFD_OPEN};
-use std::env;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::time::Instant;
 
-const VERSION: &str = "1.1.1-r572-package-stable-wait-api28-r28c-rust-r572";
+const VERSION: &str = "1.1.1-r572-package-stable-wait-api28-r29-rust-r572";
 const EINTR: i32 = 4;
 const ESRCH: i32 = 3;
 const ENOSYS: i32 = 38;
@@ -347,8 +346,8 @@ fn print_help(program: &str) {
     println!("uid-gone：掃 /proc/<pid> owner uid 消失並穩定。");
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+pub(crate) fn run() {
+    let args: Vec<String> = crate::multicall::args().collect();
     let argv0 = args.get(0).map(|s| s.as_str()).unwrap_or("procwait");
 
     let rc = if args.len() == 2 && args[1] == "--version" {
