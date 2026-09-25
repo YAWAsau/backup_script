@@ -10,7 +10,7 @@ use std::io::Write;
 use std::os::raw::{c_char, c_int, c_void};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-const VERSION: &str = "1.2.1-android28-r29-native-convergence-r572-rust-r572";
+const VERSION: &str = "1.2.1-android28-r30-native-convergence-r572-rust-r572";
 const RECEIVE_BUFFER_SIZE: usize = 64 * 1024;
 
 const AF_NETLINK: i32 = 16;

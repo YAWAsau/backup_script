@@ -9,9 +9,10 @@ use std::ffi::{CStr, CString};
 use std::io::{self, BufReader, ErrorKind, Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::os::fd::FromRawFd;
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::UnixStream;
 
-const VERSION: &str = "unixsock 2.3.1-plain-lines-single-eof-api28-r29-convergence-r572-rust-r572";
+const VERSION: &str = "unixsock 2.5.0-root-snapshot-v1-plain-lines-single-eof-api28-r30";
 const HEADER_LINE_MAX: usize = 4096;
 const COPY_BUFFER_SIZE: usize = 128 * 1024;
 const UNIX_SUN_PATH_MAX: usize = 108;
@@ -29,7 +30,12 @@ struct AddrInfo {
     ai_socktype: i32,
     ai_protocol: i32,
     ai_addrlen: u32,
+    // Bionic puts canonname before addr; glibc/musl put it after addr.
+    // A Linux layout on Android reads the null canonname as a sockaddr.
+    #[cfg(target_os = "android")]
+    ai_canonname: *mut std::os::raw::c_char,
     ai_addr: *mut std::os::raw::c_void,
+    #[cfg(not(target_os = "android"))]
     ai_canonname: *mut std::os::raw::c_char,
     ai_next: *mut AddrInfo,
 }
@@ -62,6 +68,7 @@ const EINTR: i32 = 4;
 const O_WRONLY: i32 = 0o1;
 const O_CREAT: i32 = 0o100;
 const O_TRUNC: i32 = 0o1000;
+const O_NONBLOCK: i32 = 0o4000;
 const O_CLOEXEC: i32 = 0o2000000;
 
 enum Conn {
@@ -101,7 +108,7 @@ impl Write for Conn {
 
 fn usage() {
     eprintln!(
-        "{}\nUsage:\n  unixsock relay-unix <socketPath> [--header-file <path>]\n  unixsock relay-tcp <host> <port> [--header-file <path>]\n\nstdin is copied to the socket. At stdin EOF the write side is half-closed,\nwhile the socket response continues to stdout. With --header-file, the first\ntwo newline-terminated response lines are written to that file and only the\nremaining binary body is written to stdout. The second header line may be\nan exact byte count, -1 (raw until EOF), or -2 (daemon chunk framing).\nWith --allow-plain-response and --header-file, a single-line plain\nresponse at EOF or a nonnumeric second response line is replayed to\nstdout and the header file receives the first line plus -1. Strict\nframed behavior is unchanged without --allow-plain-response.",
+        "{}\nUsage:\n  unixsock relay-unix <socketPath> [--header-file <path>]\n  unixsock relay-tcp <host> <port> [--header-file <path>]\n  unixsock root-args-unix <socketPath> <namespace> <command> <headerPath> [args...]\n  unixsock root-file-unix <socketPath> <namespace> <command> <headerPath> <bodyPath> [appstateUser appstateExtra]\n  unixsock capabilities\n\nstdin is copied to the socket. At stdin EOF the write side is half-closed,\nwhile the socket response continues to stdout. With --header-file, the first\ntwo newline-terminated response lines are written to that file and only the\nremaining binary body is written to stdout. The second header line may be\nan exact byte count, -1 (raw until EOF), or -2 (daemon chunk framing).\nWith --allow-plain-response and --header-file, a single-line plain\nresponse at EOF or a nonnumeric second response line is replayed to\nstdout and the header file receives the first line plus -1. Strict\nframed behavior is unchanged without --allow-plain-response.",
         VERSION
     );
 }
@@ -382,8 +389,7 @@ fn connect_tcp_socket(host: &str, port: &str) -> io::Result<TcpStream> {
             let p = gai_strerror(rc);
             if p.is_null() { "Unknown error".to_string() } else { CStr::from_ptr(p).to_string_lossy().into_owned() }
         };
-        eprintln!("unixsock: getaddrinfo: {}", msg);
-        return Err(io::Error::last_os_error());
+        return Err(io::Error::new(ErrorKind::Other, format!("getaddrinfo: {} (EAI {})", msg, rc)));
     }
 
     let mut item = result;
@@ -446,25 +452,9 @@ fn write_plain_stdout_exact<W: Write>(w: &mut W, parts: &[&[u8]]) -> io::Result<
     Ok(())
 }
 
-/// C relay_connection() parity: SIGPIPE ignored, a real fork() writer child,
-/// parent-only response handling, close-before-waitpid, and the same rc tree.
-fn relay_connection(mut conn: Conn, header_file: Option<String>, allow_plain_response: bool) -> i32 {
-    unsafe { signal(SIGPIPE, SIG_IGN); }
-    let writer_pid = unsafe { fork() };
-    if writer_pid < 0 {
-        eprintln!("unixsock: fork: {}", c_strerror(&io::Error::last_os_error()));
-        return 4;
-    }
-    if writer_pid == 0 {
-        let mut result = copy_request_to_socket(&mut conn);
-        if let Err(e) = conn.shutdown(Shutdown::Write) {
-            let er = e.raw_os_error().unwrap_or(0);
-            if er != 107 && er != 32 { result = -1; } // ENOTCONN / EPIPE tolerated
-        }
-        drop(conn);
-        unsafe { _exit(if result == 0 { 0 } else { 4 }) }
-    }
-
+// Shared framing implementation for streaming stdin and bounded argv calls.
+// Keep response length/chunk validation and consumer-close handling identical.
+fn relay_response(conn: Conn, header_file: Option<String>, allow_plain_response: bool) -> (i32, bool) {
     let mut reader = BufReader::with_capacity(COPY_BUFFER_SIZE, conn);
     let mut stdout = io::stdout().lock();
     let mut response_result = 0i32;
@@ -534,6 +524,107 @@ fn relay_connection(mut conn: Conn, header_file: Option<String>, allow_plain_res
     }
 
     drop(reader);
+    (response_result, consumer_closed)
+}
+
+const ROOT_BODY_MAX: u64 = 64 * 1024 * 1024;
+const ROOT_CAPABILITIES: &str = "unixsock.root_request_framing.v1 unixsock.root_request_snapshot.v1";
+
+fn root_request_header(namespace: &str, command: &str, size: u64, appstate: Option<(&str, &str)>) -> Result<Vec<u8>, i32> {
+    if command.is_empty() || command.contains(['\n', '\r', '\0']) || size > ROOT_BODY_MAX {
+        return Err(2);
+    }
+    match (namespace, appstate) {
+        ("hiddenapi" | "notify" | "notification", None) =>
+            Ok(format!("{}\n{}\n1\n{}\n", namespace, command, size).into_bytes()),
+        ("appstate", Some((user, extra))) if user.parse::<i32>().is_ok_and(|id| id >= 0)
+            && !extra.contains(['\n', '\r', '\0']) =>
+            Ok(format!("appstate\n{}\n{}\nndjson\n{}\n1\n{}\n", command, user, extra, size).into_bytes()),
+        _ => Err(2),
+    }
+}
+
+fn root_args_request(namespace: &str, command: &str, args: &[String]) -> Result<Vec<u8>, i32> {
+    let size = args.iter().try_fold(0u64, |total, arg| {
+        total.checked_add(arg.len() as u64)?.checked_add(1)
+    }).ok_or(2)?;
+    let mut request = root_request_header(namespace, command, size, None)?;
+    for arg in args {
+        request.extend_from_slice(arg.as_bytes());
+        request.push(b'\n');
+    }
+    Ok(request)
+}
+
+// RootDaemon reads a bounded, complete request before producing its reply.
+// Build the request here instead of a shell body file, cat pipeline and writer fork.
+fn root_request_connection(mut conn: Conn, parts: &[&[u8]], header_file: String) -> i32 {
+    unsafe { signal(SIGPIPE, SIG_IGN); }
+    for part in parts {
+        if let Err(e) = conn.write_all(part) {
+            eprintln!("unixsock: request copy failed: {}", describe_err(&e));
+            return 4;
+        }
+    }
+    finish_root_request(conn, header_file)
+}
+
+fn prepare_root_file(namespace: &str, command: &str, body_path: &str, appstate: Option<(&str, &str)>) -> Result<(Vec<u8>, Vec<u8>), i32> {
+    // Every failure here is local (rc=2), before any daemon connection. The
+    // request becomes immutable before sending, so appending to its source
+    // cannot report a transport failure after a complete request was accepted.
+    root_request_header(namespace, command, 0, appstate)?;
+    // O_NONBLOCK also lets us reject a FIFO without waiting for a writer.
+    let mut body = std::fs::OpenOptions::new().read(true).custom_flags(O_NONBLOCK)
+        .open(body_path).map_err(|_| 2)?;
+    let meta = body.metadata().map_err(|_| 2)?;
+    if !meta.is_file() { return Err(2); }
+    let size = meta.len();
+    if size > ROOT_BODY_MAX { return Err(2); }
+    let mut snapshot = Vec::new();
+    // Reserve the extra byte explicitly: reading a full-sized valid request
+    // must not double a 64 MiB allocation just to check for unexpected growth.
+    snapshot.try_reserve_exact((size + 1) as usize).map_err(|_| 2)?;
+    (&mut body).take(size + 1).read_to_end(&mut snapshot).map_err(|_| 2)?;
+    let after = body.metadata().map_err(|_| 2)?;
+    if snapshot.len() as u64 != size || after.len() != size || meta.modified().ok() != after.modified().ok() {
+        return Err(2);
+    }
+    let header = root_request_header(namespace, command, snapshot.len() as u64, appstate)?;
+    Ok((snapshot, header))
+}
+
+fn finish_root_request(conn: Conn, header_file: String) -> i32 {
+    if let Err(e) = conn.shutdown(Shutdown::Write) {
+        if !matches!(e.raw_os_error(), Some(107) | Some(32)) {
+            eprintln!("unixsock: request shutdown failed: {}", describe_err(&e));
+            return 4;
+        }
+    }
+    let (response_result, _) = relay_response(conn, Some(header_file), false);
+    if response_result == 0 { 0 } else { 5 }
+}
+
+/// C relay_connection() parity: SIGPIPE ignored, a real fork() writer child,
+/// parent-only response handling, close-before-waitpid, and the same rc tree.
+fn relay_connection(mut conn: Conn, header_file: Option<String>, allow_plain_response: bool) -> i32 {
+    unsafe { signal(SIGPIPE, SIG_IGN); }
+    let writer_pid = unsafe { fork() };
+    if writer_pid < 0 {
+        eprintln!("unixsock: fork: {}", c_strerror(&io::Error::last_os_error()));
+        return 4;
+    }
+    if writer_pid == 0 {
+        let mut result = copy_request_to_socket(&mut conn);
+        if let Err(e) = conn.shutdown(Shutdown::Write) {
+            let er = e.raw_os_error().unwrap_or(0);
+            if er != 107 && er != 32 { result = -1; } // ENOTCONN / EPIPE tolerated
+        }
+        drop(conn);
+        unsafe { _exit(if result == 0 { 0 } else { 4 }) }
+    }
+
+    let (response_result, consumer_closed) = relay_response(conn, header_file, allow_plain_response);
     let mut writer_status = 0i32;
     loop {
         let wr = unsafe { waitpid(writer_pid, &mut writer_status, 0) };
@@ -558,9 +649,19 @@ fn describe_err(e: &io::Error) -> String {
 }
 
 pub(crate) fn run() {
-    let args: Vec<String> = crate::multicall::args().collect();
+    let args: Vec<String> = match crate::multicall::args_os().map(|s| s.into_string()).collect() {
+        Ok(args) => args,
+        Err(_) => {
+            eprintln!("unixsock: non-UTF-8 argument rejected before connecting");
+            std::process::exit(2);
+        }
+    };
     if args.len() == 2 && (args[1] == "--version" || args[1] == "version") {
         println!("{}", VERSION);
+        return;
+    }
+    if args.len() == 2 && matches!(args[1].as_str(), "capabilities" | "--capabilities") {
+        println!("{}", ROOT_CAPABILITIES);
         return;
     }
     if args.len() < 3 {
@@ -568,7 +669,42 @@ pub(crate) fn run() {
         std::process::exit(2);
     }
 
-    let rc = if args[1] == "relay-unix" || args[1] == "relay" {
+    let rc = if args[1] == "root-file-unix" {
+        let shape_ok = (args.len() == 7 && args[3] != "appstate")
+            || (args.len() == 9 && args[3] == "appstate");
+        if !shape_ok || args[5].is_empty() {
+            usage();
+            2
+        } else {
+            let appstate = if args[3] == "appstate" { Some((args[7].as_str(), args[8].as_str())) } else { None };
+            match prepare_root_file(&args[3], &args[4], &args[6], appstate) {
+                Err(rc) => { eprintln!("unixsock: invalid or unreadable root request body (rc={})", rc); rc },
+                Ok((body, header)) => match connect_unix_socket(&args[2]) {
+                    Ok(s) => root_request_connection(Conn::Unix(s), &[&header, &body], args[5].clone()),
+                    Err(e) => {
+                        eprintln!("unixsock: connect failed: {}", c_strerror(&e));
+                        3
+                    },
+                },
+            }
+        }
+    } else if args[1] == "root-args-unix" {
+        if args.len() < 6 || args[5].is_empty() {
+            usage();
+            2
+        } else {
+            match root_args_request(&args[3], &args[4], &args[6..]) {
+                Err(rc) => rc,
+                Ok(request) => match connect_unix_socket(&args[2]) {
+                    Ok(s) => root_request_connection(Conn::Unix(s), &[&request], args[5].clone()),
+                    Err(e) => {
+                        eprintln!("unixsock: connect failed: {}", c_strerror(&e));
+                        3
+                    }
+                },
+            }
+        }
+    } else if args[1] == "relay-unix" || args[1] == "relay" {
         match parse_relay_args(&args, 3) {
             Err(rc) => {
                 usage();
@@ -606,4 +742,273 @@ pub(crate) fn run() {
         2
     };
     std::process::exit(rc);
+}
+
+#[cfg(test)]
+mod root_args_tests {
+    use super::*;
+    use std::os::unix::net::UnixListener;
+    use std::process::{Command, Stdio};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static SEQ: AtomicUsize = AtomicUsize::new(0);
+    #[test]
+    fn byte_framing_matches_shell_printf() {
+        let args = vec!["0".into(), "中文😀".into(), "".into(), "line\nline\t".into()];
+        let body = "0\n中文😀\n\nline\nline\t\n";
+        let expected = format!("hiddenapi\nprobe\n1\n{}\n{}", body.len(), body);
+        assert_eq!(root_args_request("hiddenapi", "probe", &args).unwrap(), expected.as_bytes());
+        assert_eq!(root_args_request("notify", "status", &[]).unwrap(), b"notify\nstatus\n1\n0\n");
+    }
+    #[test]
+    fn reject_control_headers() {
+        assert!(root_args_request("hiddenapi\nnotify", "probe", &[]).is_err());
+        assert!(root_args_request("hiddenapi", "probe\n1", &[]).is_err());
+        assert!(root_args_request("appstate", "probe", &[]).is_err());
+        assert!(root_request_header("hiddenapi", "", 0, None).is_err());
+        assert!(root_request_header("hiddenapi", "probe", ROOT_BODY_MAX + 1, None).is_err());
+        assert!(root_request_header("appstate", "probe", 0, Some(("0\n", ""))).is_err());
+        assert!(root_request_header("appstate", "probe", 0, Some(("-1", ""))).is_err());
+        assert!(root_request_header("appstate", "probe", 0, Some(("2147483648", ""))).is_err());
+        assert!(root_request_header("appstate", "probe", 0, Some(("0", "a\rb"))).is_err());
+        assert_eq!(root_request_header("appstate", "probe", 3, Some(("0", "中文"))).unwrap(),
+                   "appstate\nprobe\n0\nndjson\n中文\n1\n3\n".as_bytes());
+    }
+
+    #[test]
+    fn file_validation_precedes_connect() {
+        let binary = match std::env::var("SPEEDBACKUP_TEST_NATIVE") { Ok(p) => p, Err(_) => return };
+        let root = std::env::var("SPEEDBACKUP_TEST_DIR").unwrap();
+        let prefix = format!("{}/validation_{}", root, std::process::id());
+        let huge = format!("{prefix}.huge");
+        let fifo = format!("{prefix}.fifo");
+        std::fs::File::create(&huge).unwrap().set_len(ROOT_BODY_MAX + 1).unwrap();
+        assert!(Command::new("/system/bin/mkfifo").arg(&fifo).status().unwrap().success());
+        for (path, rc) in [(&huge, 2), (&fifo, 2), (&root, 2), (&prefix, 2)] {
+            let out = Command::new(&binary).args(["unixsock", "root-file-unix", "/no/socket", "notify", "probe", "/no/header", path]).output().unwrap();
+            assert_eq!(out.status.code(), Some(rc), "{path}");
+        }
+        for (namespace, command, rc) in [("unknown", "probe", 2), ("hiddenapi", "bad\ncommand", 2), ("hiddenapi", "probe", 3)] {
+            let out = Command::new(&binary).args(["unixsock", "root-args-unix", "/no/socket", namespace, command, "/no/header"]).output().unwrap();
+            assert_eq!(out.status.code(), Some(rc));
+        }
+        std::fs::remove_file(huge).unwrap();
+        std::fs::remove_file(fifo).unwrap();
+    }
+
+    #[test]
+    fn invalid_utf8_is_a_local_rejection() {
+        use std::os::unix::ffi::OsStringExt;
+        let binary = match std::env::var("SPEEDBACKUP_TEST_NATIVE") { Ok(p) => p, Err(_) => return };
+        let bad = std::ffi::OsString::from_vec(vec![0xff, 0xfe]);
+        let output = Command::new(&binary).args(["unixsock", "root-args-unix", "/no/socket", "notify", "probe", "/no/header"])
+            .arg(&bad).output().unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("panicked"));
+        if let Ok(old) = std::env::var("SPEEDBACKUP_TEST_OLD_NATIVE") {
+            let output = Command::new(old).args(["unixsock", "root-args-unix", "/no/socket", "notify", "probe", "/no/header"])
+                .arg(bad).output().unwrap();
+            assert!(!output.status.success());
+            assert!(String::from_utf8_lossy(&output.stderr).contains("non-UTF-8 argument"));
+            println!("old non-UTF8 status={:?}; new rejects with rc=2", output.status);
+        }
+    }
+
+    #[test]
+    fn snapshot_survives_source_changes_after_connect() {
+        let binary = match std::env::var("SPEEDBACKUP_TEST_NATIVE") { Ok(p) => p, Err(_) => return };
+        let root = std::env::var("SPEEDBACKUP_TEST_DIR").unwrap();
+        let mut versions = vec![(binary, false)];
+        if let Ok(old) = std::env::var("SPEEDBACKUP_TEST_OLD_NATIVE") { versions.push((old, true)); }
+        for (binary, is_old) in versions {
+            for truncate in [false, true] {
+                let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+                let prefix = format!("{}/mut_{}_{}", root, std::process::id(), seq);
+                let path = format!("{prefix}.body");
+                let socket = format!("{prefix}.sock");
+                let header = format!("{prefix}.header");
+                // Exceeds a Unix socket send buffer, so the old file path
+                // cannot finish copying before the server mutates the file.
+                let body = vec![0x5au8; 8 * 1024 * 1024];
+                std::fs::write(&path, &body).unwrap();
+                let mut expected = root_request_header("notify", "probe", body.len() as u64, None).unwrap();
+                expected.extend_from_slice(&body);
+                let listener = UnixListener::bind(&socket).unwrap();
+                let changed_path = path.clone();
+                let server = std::thread::spawn(move || {
+                    let (mut conn, _) = listener.accept().unwrap();
+                    conn.set_read_timeout(Some(std::time::Duration::from_secs(20))).unwrap();
+                    // accept() is the synchronization point: prepare_root_file
+                    // has returned, and this runs before draining the socket.
+                    if truncate {
+                        std::fs::OpenOptions::new().write(true).open(&changed_path).unwrap().set_len(1).unwrap();
+                    } else {
+                        std::fs::OpenOptions::new().append(true).open(&changed_path).unwrap().write_all(b"appended").unwrap();
+                    }
+                    let mut request = Vec::new();
+                    conn.read_to_end(&mut request).unwrap();
+                    let _ = conn.write_all(b"RESULT 0 OK\n2\nok");
+                    request
+                });
+                let output = Command::new(&binary).args(["unixsock", "root-file-unix", &socket, "notify", "probe", &header, &path])
+                    .output().unwrap();
+                let received = server.join().unwrap();
+                println!("source mutation old={} truncate={} rc={:?} received={} full={}", is_old, truncate, output.status.code(), received.len(), expected.len());
+                if is_old {
+                    assert_eq!(output.status.code(), Some(4));
+                    if !truncate { assert_eq!(received, expected, "old failure after complete delivery"); }
+                } else {
+                    assert!(output.status.success(), "{:?}", output.stderr);
+                    assert_eq!(received, expected);
+                    assert_eq!(output.stdout, b"ok");
+                }
+                std::fs::remove_file(path).unwrap();
+                std::fs::remove_file(socket).unwrap();
+                let _ = std::fs::remove_file(header);
+            }
+        }
+    }
+
+    #[test]
+    fn resolver_error_preserves_gai_reason() {
+        let err = connect_tcp_socket("127.0.0.1", "speedbackup-nonexistent-service").unwrap_err();
+        let message = c_strerror(&err);
+        assert!(message.contains("getaddrinfo:"), "{message}");
+        assert!(message.contains("EAI"), "{message}");
+        assert!(err.raw_os_error().is_none());
+    }
+
+    #[test]
+    fn large_binary_file_and_appstate_frame() {
+        let binary = match std::env::var("SPEEDBACKUP_TEST_NATIVE") { Ok(p) => p, Err(_) => return };
+        let root = std::env::var("SPEEDBACKUP_TEST_DIR").unwrap();
+        let body: Vec<u8> = (0..2 * 1024 * 1024).map(|i| (i % 256) as u8).collect();
+        for namespace in ["notify", "appstate"] {
+            let prefix = format!("{}/large_{}_{}", root, std::process::id(), namespace);
+            let path = format!("{prefix}.body");
+            let socket = format!("{prefix}.sock");
+            let header = format!("{prefix}.header");
+            std::fs::write(&path, &body).unwrap();
+            let listener = UnixListener::bind(&socket).unwrap();
+            let mut expected = root_request_header(namespace, "probe", body.len() as u64,
+                if namespace == "appstate" { Some(("10", "中文/extra")) } else { None }).unwrap();
+            expected.extend_from_slice(&body);
+            let server = std::thread::spawn(move || {
+                let (mut connection, _) = listener.accept().unwrap();
+                connection.set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+                let mut request = Vec::new();
+                connection.read_to_end(&mut request).unwrap();
+                assert_eq!(request, expected);
+                connection.write_all(b"RESULT 0 OK\n2\nok").unwrap();
+            });
+            let mut command = Command::new(&binary);
+            command.args(["unixsock", "root-file-unix", &socket, namespace, "probe", &header, &path]);
+            if namespace == "appstate" { command.args(["10", "中文/extra"]); }
+            let output = command.output().unwrap();
+            server.join().unwrap();
+            assert!(output.status.success(), "{:?}", output.stderr);
+            assert_eq!(output.stdout, b"ok");
+            assert_eq!(std::fs::read(&header).unwrap(), b"RESULT 0 OK\n2\n");
+            for p in [&path, &socket, &header] { std::fs::remove_file(p).unwrap(); }
+        }
+    }
+
+    #[test]
+    fn tcp_numeric_hostname_ipv6_and_refusal() {
+        // Exercise libc's actual sockaddr output, rather than a copied layout.
+        for (listen, host) in [("127.0.0.1:0", "127.0.0.1"),
+                               ("127.0.0.1:0", "localhost"), ("[::1]:0", "::1")] {
+            let listener = std::net::TcpListener::bind(listen).unwrap();
+            let port = listener.local_addr().unwrap().port().to_string();
+            let mut client = connect_tcp_socket(host, &port).unwrap();
+            let (mut server, _) = listener.accept().unwrap();
+            let timeout = Some(std::time::Duration::from_secs(3));
+            client.set_read_timeout(timeout).unwrap();
+            server.set_read_timeout(timeout).unwrap();
+            client.write_all(b"request\0\xff").unwrap();
+            client.shutdown(std::net::Shutdown::Write).unwrap();
+            let mut request = Vec::new();
+            server.read_to_end(&mut request).unwrap();
+            assert_eq!(request, b"request\0\xff");
+            server.write_all(b"response\0\xff").unwrap();
+            drop(server);
+            let mut response = Vec::new();
+            client.read_to_end(&mut response).unwrap();
+            assert_eq!(response, b"response\0\xff");
+            drop(listener);
+            assert_eq!(connect_tcp_socket(host, &port).unwrap_err().kind(), ErrorKind::ConnectionRefused);
+        }
+    }
+
+    // End-to-end: run both CLI paths against the same fragmented fake daemon.
+    // The environment is set only by the isolated Android test runner.
+    #[test]
+    fn real_socket_framing_and_failures() {
+        let binary = match std::env::var("SPEEDBACKUP_TEST_NATIVE") { Ok(p) => p, Err(_) => return };
+        let root = std::env::var("SPEEDBACKUP_TEST_DIR").unwrap();
+        let args = vec!["0".into(), "中文😀".into(), "".into(), "line\nline\t".into()];
+        let request = root_args_request("hiddenapi", "probe", &args).unwrap();
+        let cases: Vec<(&str, Vec<u8>, bool)> = vec![
+            ("exact", b"RESULT 0 OK\n5\na\0b\nc".to_vec(), true),
+            ("empty", b"RESULT 0 OK\n0\n".to_vec(), true),
+            ("app-error", b"RESULT 70 ERROR\n4\nfail".to_vec(), true),
+            ("raw", b"RESULT 0 OK\n-1\nraw\0bytes".to_vec(), true),
+            ("chunks", b"RESULT 0 OK\n-2\n3\r\na\0b\r\n2\r\ncd\r\n0\r\n\r\n".to_vec(), true),
+            ("no-header", Vec::new(), false),
+            ("short-header", b"RESULT 0 OK".to_vec(), false),
+            ("bad-size", b"RESULT 0 OK\nnope\n".to_vec(), false),
+            ("bad-negative", b"RESULT 0 OK\n-3\n".to_vec(), false),
+            ("short-exact", b"RESULT 0 OK\n10\nshort".to_vec(), false),
+            ("short-chunk", b"RESULT 0 OK\n-2\n10\nshort".to_vec(), false),
+            ("no-chunk-end", b"RESULT 0 OK\n-2\n3\nabc".to_vec(), false),
+            ("bad-chunk", b"RESULT 0 OK\n-2\nbad\n".to_vec(), false),
+        ];
+        for (name, response, success) in cases {
+            let mut prior: Option<(i32, Vec<u8>, Vec<u8>)> = None;
+            for route in ["relay", "args", "file"] {
+                let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+                let socket = format!("{}/s_{}_{}", root, std::process::id(), seq);
+                let header = format!("{}/h_{}_{}", root, std::process::id(), seq);
+                let listener = UnixListener::bind(&socket).unwrap();
+                let reply = response.clone();
+                let wanted = request.clone();
+                let server = std::thread::spawn(move || {
+                    let (mut connection, _) = listener.accept().unwrap();
+                    let mut got = Vec::new();
+                    connection.read_to_end(&mut got).unwrap();
+                    assert_eq!(got, wanted, "request bytes");
+                    for piece in reply.chunks(3) {
+                        if connection.write_all(piece).is_err() { break; }
+                    }
+                });
+                let mut command = Command::new(&binary);
+                command.arg("unixsock");
+                let body_path = format!("{}/b_{}_{}", root, std::process::id(), seq);
+                if route == "args" {
+                    command.args(["root-args-unix", &socket, "hiddenapi", "probe", &header]).args(&args);
+                } else if route == "file" {
+                    std::fs::write(&body_path, "0\n中文😀\n\nline\nline\t\n").unwrap();
+                    command.args(["root-file-unix", &socket, "hiddenapi", "probe", &header, &body_path]);
+                } else {
+                    command.args(["relay-unix", &socket, "--header-file", &header]);
+                }
+                let mut child = command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+                let mut stdin = child.stdin.take().unwrap();
+                if route == "relay" { stdin.write_all(&request).unwrap(); }
+                drop(stdin);
+                let out = child.wait_with_output().unwrap();
+                server.join().unwrap();
+                let status = out.status.code().unwrap();
+                assert_eq!(status == 0, success, "{name}, route={route}, stderr={:?}", out.stderr);
+                let actual = (status, out.stdout, std::fs::read(&header).unwrap_or_default());
+                if let Some(ref before) = prior { assert_eq!(&actual, before, "response parity: {name}"); }
+                prior = Some(actual);
+                std::fs::remove_file(&socket).unwrap();
+                let _ = std::fs::remove_file(&header);
+                let _ = std::fs::remove_file(&body_path);
+            }
+        }
+        let output = Command::new(&binary).args(["unixsock", "root-args-unix", "/no/such/socket", "hiddenapi", "probe", "/no/header"]).output().unwrap();
+        assert_eq!(output.status.code(), Some(3));
+    }
 }

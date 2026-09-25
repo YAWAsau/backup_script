@@ -8,10 +8,10 @@ package com.xayah.dex;
  * look like mixed r512/r547 artifacts when only one class was edited.
  */
 public final class DexBuildInfo {
-    public static final String VERSION = "v2.6.276-r715-multicall-labels build=v24.20.14-7.67-1132-multicall-r715-202607232022";
-    public static final String PATCH_BUILD = "v24.20.14-7.67-1132-multicall-r715-202607232022";
-    public static final String BUILD_TAG = "202607232022";
-    public static final String R_TAG = "r715";
+    public static final String VERSION = "v2.6.278-backup-trace19 build=v24.20.14-7.67-1135-backup-trace19-202609210001";
+    public static final String PATCH_BUILD = "v24.20.14-7.67-1135-backup-trace19-202609210001";
+    public static final String BUILD_TAG = "202609210001";
+    public static final String R_TAG = "r718-backup-trace19";
 
     private DexBuildInfo() {}
 }

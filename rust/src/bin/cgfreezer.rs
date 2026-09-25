@@ -98,7 +98,7 @@ fn with_cgfreezer_output<T, W: Write, F: FnOnce() -> T>(out: &mut W, f: F) -> T 
     })
 }
 
-const VERSION: &str = "r712-subscription-cleanup-api28-r29-202607232022";
+const VERSION: &str = "r712-subscription-cleanup-api28-r30-202607232022";
 const PROTOCOL: &str = "line-v9-backend-select-r485";
 const MAX_TEXT: usize = 16384;
 const MAX_PATH_LEN: usize = 2048;

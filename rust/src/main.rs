@@ -34,7 +34,7 @@ fn main() {
                         return;
                     }
                     Some("--version") => {
-                        println!("speednative r715-api28-r29-multicall-202607232022");
+                        println!("speednative r718-api28-r30-restore-trace28");
                         return;
                     }
                     _ => {}

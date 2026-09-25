@@ -4,17 +4,31 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{FileTypeExt, OpenOptionsExt};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-const VERSION: &str = "1.6.1-r572-pidfd-pipeline-convergence-api28-r29-rust-r572";
+#[path = "../tar_progress.rs"]
+mod tar_progress;
+#[path = "../tty_relay.rs"]
+mod tty_relay;
+
+// Relay v2 includes bounded FIFO/queue drain on parent death and graceful signals.
+const VERSION: &str = "1.13.0-tty-relay-v2";
 
 fn usage(argv0: &str) {
     eprintln!("usage:");
     eprintln!("  {} --version", argv0);
     eprintln!("  {} capabilities", argv0);
+    eprintln!("  {} tar-progress TAR_ARGS...", argv0);
+    eprintln!("  {} tty-write stdout|control  (stdin: optional UI text)", argv0);
+    eprintln!("  {} tty-relay FIFO SOCKET STATS PARENT_PID PARENT_START", argv0);
+    eprintln!("  {} tty-relay-fd FD FIFO", argv0);
+    eprintln!("  {} tty-relay-feed FD FIFO [IDLE_MS]", argv0);
+    eprintln!("  {} tty-relay-barrier SOCKET pause|resume|flush|stop TIMEOUT_MS", argv0);
+    eprintln!("  {} fifo-emit FIFO LINE  (best-effort notification)", argv0);
     eprintln!("  {} pidfd-probe [PID]", argv0);
-    eprintln!("  {} FIFO PID [FATAL_FILE|-] [TIMEOUT_MS] [TAG]", argv0);
+    eprintln!("  {} FIFO PID [FATAL_FILE|-] [TIMEOUT_MS] [TAG] [STARTTIME|-]", argv0);
     eprintln!("  {} file-created PATH TIMEOUT_MS [TAG]", argv0);
     eprintln!("  {} file-nonempty PATH TIMEOUT_MS [TAG]", argv0);
     eprintln!("  {} file-contains PATH PATTERN TIMEOUT_MS [TAG]", argv0);
@@ -25,6 +39,32 @@ fn usage(argv0: &str) {
     eprintln!("  {} pipeline-rate-watch PID_LIST_FILE FATAL_FILE|- PROGRESS_FILE|- IDLE_MS TIMEOUT_MS MIN_BPS WINDOW_MS [TAG] [--json|--tsv]", argv0);
     eprintln!("  {} file-size-stable PATH STABLE_MS TIMEOUT_MS [TAG]", argv0);
     eprintln!("  {} cleanup-owned RUN_ID TMPDIR", argv0);
+}
+
+// A listener can disappear between the shell's -p test and open(). Never wait
+// for it, and never create/truncate a replacement file. The authoritative result
+// remains the worker's exit status/fatal file, so a missed wakeup is harmless.
+fn emit_fifo_event(path: &str, line: &str) -> i32 {
+    if line.len() > 4092 || line.bytes().any(|b| b == 0 || b == b'\n' || b == b'\r') {
+        return 2;
+    }
+    #[cfg(any(target_arch = "aarch64", target_arch = "arm"))]
+    const O_NOFOLLOW: i32 = 0o100000;
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "arm")))]
+    const O_NOFOLLOW: i32 = 0o400000;
+    let mut fifo = match fs::OpenOptions::new().write(true)
+        .custom_flags(O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW).open(path) {
+        Ok(f) => f,
+        Err(_) => return 125,
+    };
+    if !fifo.metadata().map(|m| m.file_type().is_fifo()).unwrap_or(false) { return 2; }
+    let mut event = line.as_bytes().to_vec();
+    event.push(b'\n');
+    // One write <= PIPE_BUF: either a complete record, or no bytes on EAGAIN.
+    match fifo.write(&event) {
+        Ok(n) if n == event.len() => 0,
+        _ => 125,
+    }
 }
 
 fn parse_pid_arg_strict(s: &str) -> Option<i32> {
@@ -141,17 +181,48 @@ fn wait_pid_or_file(pid: i32, fatal_file: &str, timeout_ms: i64, tag: &str) -> i
     }
 }
 
-/// Faithful port of wait_fifo_event(): opens the FIFO once with O_RDWR (a
+fn fifo_process_stat(line: &str) -> Option<(u64, char)> {
+    // comm is allowed to contain spaces and ')'; fields follow the final ') '.
+    let (_, tail) = line.rsplit_once(") ")?;
+    let mut fields = tail.split_whitespace();
+    let state = fields.next()?.chars().next()?;
+    let start = fields.nth(18)?.parse::<u64>().ok()?;
+    Some((start, state))
+}
+
+fn fifo_process_snapshot(pid: i32) -> Option<(u64, char)> {
+    let data = fs::read(format!("/proc/{pid}/stat")).ok()?;
+    fifo_process_stat(&String::from_utf8_lossy(&data))
+}
+
+#[derive(Debug, PartialEq)]
+enum FifoWorker { Alive, Gone, Reused }
+
+fn fifo_worker(expected: Option<u64>, current: Option<(u64, char)>) -> FifoWorker {
+    match current {
+        None => FifoWorker::Gone,
+        Some((start, _)) if Some(start) != expected => FifoWorker::Reused,
+        Some((_, 'Z' | 'X')) => FifoWorker::Gone,
+        Some(_) => FifoWorker::Alive,
+    }
+}
+
+/// Opens the FIFO once with O_RDWR (a
 /// classic trick that avoids the "open for read blocks until a writer
 /// connects" FIFO semantics), then poll()s for POLLIN/POLLHUP/POLLERR and
 /// reads incrementally until a newline or buffer-full. fatal-file uses
 /// emit_fatal()'s rc=126 (the previous port used the wrong code, 125, which
 /// collides with eventwait's own "idle" rc used elsewhere in this binary).
-fn wait_fifo_event(fifo: &str, pid: i32, fatal_file: &str, timeout_ms: i64, tag: &str) -> i32 {
+fn wait_fifo_event(fifo: &str, pid: i32, fatal_file: &str, timeout_ms: i64, tag: &str, expected_start: Option<&str>) -> i32 {
     if fifo.is_empty() || pid <= 0 {
         return 2;
     }
     let out_tag = if tag.is_empty() { "remote_stream_child" } else { tag };
+    let expected = match expected_start {
+        None => fifo_process_snapshot(pid).map(|(start, _)| start),
+        Some("-") => None, // Caller already observed exit; never attach to a new PID.
+        Some(value) => match value.parse::<u64>() { Ok(start) => Some(start), Err(_) => return 2 },
+    };
     let fd = unsafe {
         let c = match CString::new(fifo) { Ok(v) => v, Err(_) => return 2 };
         open(c.as_ptr(), O_RDWR | O_NONBLOCK | O_CLOEXEC, 0)
@@ -181,10 +252,17 @@ fn wait_fifo_event(fifo: &str, pid: i32, fatal_file: &str, timeout_ms: i64, tag:
             println!("fatal\t126\t{}\tremote_stream_fatal_file", out_tag);
             return 126;
         }
-        if !pid_alive(pid) && used == 0 {
-            unsafe { close(fd) };
-            println!("done\t0\t{}\tchild_gone_no_event", out_tag);
-            return 0;
+        let worker = fifo_worker(expected, fifo_process_snapshot(pid));
+        match worker {
+            FifoWorker::Reused => {
+                unsafe { close(fd) };
+                println!("identity_changed\t125\t{}\tchild_identity_changed", out_tag);
+                return 125;
+            }
+            // The writer may have exited after queuing its final bytes.
+            // Drain what is already available before declaring an incomplete line.
+            FifoWorker::Gone => wait_ms = 0,
+            FifoWorker::Alive => {}
         }
 
         let mut pfd = PollFd { fd, events: POLLIN | POLLHUP | POLLERR, revents: 0 };
@@ -195,9 +273,6 @@ fn wait_fifo_event(fifo: &str, pid: i32, fatal_file: &str, timeout_ms: i64, tag:
             eprintln!("eventwait: poll failed: {}", c_strerror(&std::io::Error::last_os_error()));
             unsafe { close(fd) };
             return 4;
-        }
-        if prc == 0 {
-            continue;
         }
         if pfd.revents & (POLLIN | POLLHUP | POLLERR) != 0 {
             loop {
@@ -229,6 +304,12 @@ fn wait_fifo_event(fifo: &str, pid: i32, fatal_file: &str, timeout_ms: i64, tag:
                 }
                 break; // n == 0
             }
+        }
+        if worker == FifoWorker::Gone {
+            unsafe { close(fd) };
+            if used == 0 { println!("done\t0\t{}\tchild_gone_no_event", out_tag); }
+            else { println!("done\t125\t{}\tchild_gone_partial_event", out_tag); }
+            return 0;
         }
     }
 }
@@ -642,11 +723,27 @@ fn cleanup_owned(run_id: &str, tmpdir: &str) -> i32 {
 }
 
 pub(crate) fn run() {
+    let os_args: Vec<_> = crate::multicall::args_os().collect();
+    if os_args.get(1).map(|s| s == "tar-progress").unwrap_or(false) {
+        std::process::exit(tar_progress::run(&os_args[2..]));
+    }
     let args: Vec<String> = crate::multicall::args().collect();
     let argv0 = args.get(0).map(|s| s.as_str()).unwrap_or("eventwait");
     let rc = match args.get(1).map(|s| s.as_str()) {
+        Some("tty-relay") if args.len()==7 => match (args[5].parse::<i32>(),args[6].parse::<u64>()) {
+            (Ok(pid),Ok(start)) => tty_relay::run(&args[2],&args[3],&args[4],pid,start), _ => 2,
+        },
+        Some("tty-relay-fd") if args.len()==4 => match args[2].parse::<i32>() { Ok(fd) => tty_relay::configure_fd(fd,&args[3]), _ => 2 },
+        Some("tty-relay-feed") if matches!(args.len(),4|5) => match args[2].parse::<i32>() {
+            Ok(fd) => tty_relay::feed(fd,&args[3],args.get(4).and_then(|n|n.parse().ok()).unwrap_or(250)), _ => 2,
+        },
+        Some("tty-relay-barrier") if args.len()==5 => match args[4].parse::<u64>() {
+            Ok(ms) => tty_relay::barrier(&args[2],&args[3],ms), _ => 2,
+        },
+        Some("tty-write") if args.len()==3 && matches!(args[2].as_str(),"stdout"|"control") => tar_progress::tty_write(args[2]=="stdout"),
+        Some("fifo-emit") if args.len()==4 => emit_fifo_event(&args[2], &args[3]),
         Some("--version") if args.len() == 2 => { println!("eventwait {}", VERSION); 0 }
-        Some("capabilities") | Some("--capabilities") if args.len() == 2 => { println!("eventwait.pidfd_open.v1 eventwait.pid_exit_pidfd.v1 eventwait.proc_inotify_fallback.v1 eventwait.poll_fallback.v1 eventwait.rust_convergence_source.v1"); 0 }
+        Some("capabilities") | Some("--capabilities") if args.len() == 2 => { println!("eventwait.pidfd_open.v1 eventwait.pid_exit_pidfd.v1 eventwait.proc_inotify_fallback.v1 eventwait.poll_fallback.v1 eventwait.rust_convergence_source.v1 eventwait.fifo_process_identity.v1 eventwait.tar_progress_nonblocking.v1 eventwait.tar_progress_extract_total.v1 eventwait.tty_write_nonblocking.v1 eventwait.tty_write_retry.v2 eventwait.tty_relay.v2 eventwait.fifo_emit_nonblocking.v1"); 0 }
         Some("pidfd-probe") => {
             let probe_pid = if let Some(s) = args.get(2) {
                 match parse_pid_arg_strict(s) { Some(v) => v, None => { std::process::exit(2); } }
@@ -691,10 +788,31 @@ pub(crate) fn run() {
         Some("pid-or-file") | Some("pipeline-watch") | Some("pipeline-rate-watch") |
         Some("cleanup-owned") => 2,
         Some(_) if args.len() >= 3 => match parse_pid_arg_strict(&args[2]) {
-            Some(pid) => wait_fifo_event(&args[1], pid, args.get(3).map(|s|s.as_str()).unwrap_or("-"), parse_eventwait_int(args.get(4).map(String::as_str), 0), args.get(5).map(|s|s.as_str()).unwrap_or("remote_stream_child")),
+            Some(pid) => wait_fifo_event(&args[1], pid, args.get(3).map(|s|s.as_str()).unwrap_or("-"), parse_eventwait_int(args.get(4).map(String::as_str), 0), args.get(5).map(|s|s.as_str()).unwrap_or("remote_stream_child"), args.get(6).map(String::as_str)),
             None => 2,
         },
         _ => { usage(argv0); 2 }
     };
     std::process::exit(rc);
+}
+
+#[cfg(test)]
+mod fifo_identity_tests {
+    use super::*;
+    #[test]
+    fn parses_starttime_after_comm_with_spaces_and_parentheses() {
+        let middle = (4..22).map(|v| v.to_string()).collect::<Vec<_>>().join(" ");
+        assert_eq!(fifo_process_stat(&format!("123 (worker ) name (x)) S {middle} 54321 0")), Some((54321, 'S')));
+        assert_eq!(fifo_process_stat("123 (broken) S 0"), None);
+        assert_eq!(fifo_process_stat("missing fields"), None);
+    }
+    #[test]
+    fn reused_pid_cannot_extend_wait_or_attach_after_exit() {
+        assert_eq!(fifo_worker(Some(10), Some((11, 'S'))), FifoWorker::Reused);
+        assert_eq!(fifo_worker(None, Some((11, 'S'))), FifoWorker::Reused);
+        assert_eq!(fifo_worker(Some(10), Some((10, 'Z'))), FifoWorker::Gone);
+        assert_eq!(fifo_worker(Some(10), Some((10, 'X'))), FifoWorker::Gone);
+        assert_eq!(fifo_worker(Some(10), None), FifoWorker::Gone);
+        assert_eq!(fifo_worker(Some(10), Some((10, 'S'))), FifoWorker::Alive);
+    }
 }

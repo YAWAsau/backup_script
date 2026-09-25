@@ -7,10 +7,217 @@
 param(
     [string]$JavaHome = "",
     [string]$SdkRoot = "",
-    [switch]$Offline
+    [switch]$Offline,
+    [string]$AsciiBuildRoot = "",
+    [switch]$NoDaemon
 )
 
 $ErrorActionPreference = "Stop"
+
+function Publish-SpeedBackupDexFiles([object[]]$Pairs) {
+    # Stage beside each destination; retain backups for pair rollback.
+    $publishId = [Guid]::NewGuid().ToString("N")
+    $entries = @()
+    try {
+        foreach ($pair in $Pairs) {
+            $destination = [IO.Path]::GetFullPath($pair.Dst)
+            $entry = [pscustomobject]@{
+                Destination = $destination
+                Temporary = $destination + "." + $publishId + ".tmp"
+                Backup = $destination + "." + $publishId + ".bak"
+                Existed = [IO.File]::Exists($destination)
+                Committed = $false
+                KeepBackup = $false
+            }
+            $entries += $entry
+            Copy-Item -LiteralPath $pair.Src -Destination $entry.Temporary -ErrorAction Stop
+            if ((Get-FileHash -LiteralPath $pair.Src -Algorithm SHA256).Hash -ne
+                (Get-FileHash -LiteralPath $entry.Temporary -Algorithm SHA256).Hash) {
+                throw "Staged build output hash mismatch: $destination"
+            }
+        }
+        foreach ($entry in $entries) {
+            if ($entry.Existed) {
+                [IO.File]::Replace($entry.Temporary, $entry.Destination, $entry.Backup)
+            } else {
+                [IO.File]::Move($entry.Temporary, $entry.Destination)
+            }
+            $entry.Committed = $true
+        }
+    } catch {
+        $publishFailure = $_
+        for ($entryIndex = $entries.Count - 1; $entryIndex -ge 0; $entryIndex--) {
+            $entry = $entries[$entryIndex]
+            if (-not $entry.Committed) { continue }
+            try {
+                if ($entry.Existed) {
+                    # PowerShell converts a null string argument to an empty
+                    # path on some hosts. Use our consumed staging path for
+                    # the discarded new output; finally removes that file.
+                    [IO.File]::Replace($entry.Backup, $entry.Destination, $entry.Temporary)
+                } else {
+                    [IO.File]::Delete($entry.Destination)
+                }
+            } catch {
+                $entry.KeepBackup = $true
+                Write-Warning "Build output rollback failed; preserved backup $($entry.Backup): $($_.Exception.Message)"
+            }
+        }
+        throw $publishFailure
+    } finally {
+        foreach ($entry in $entries) {
+            foreach ($candidate in @($entry.Temporary, $entry.Backup)) {
+                if ($candidate -eq $entry.Backup -and $entry.KeepBackup) { continue }
+                try { [IO.File]::Delete($candidate) }
+                catch { Write-Warning "Build output temporary file retained: $candidate ($($_.Exception.Message))" }
+            }
+        }
+    }
+}
+
+function Assert-SpeedBackupBuildTreeHasNoLinks([string]$Directory) {
+    # Enumerate one directory at a time without following build-created links.
+    $pendingDirectories = New-Object 'System.Collections.Generic.Stack[string]'
+    $pendingDirectories.Push($Directory)
+    while ($pendingDirectories.Count -gt 0) {
+        $currentDirectory = $pendingDirectories.Pop()
+        $currentEntry = Get-Item -LiteralPath $currentDirectory -Force -ErrorAction Stop
+        if ($currentEntry.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            throw "Build cleanup refused a linked directory: $currentDirectory"
+        }
+        foreach ($child in Get-ChildItem -LiteralPath $currentDirectory -Force -ErrorAction Stop) {
+            if ($child.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                throw "Build cleanup refused a linked entry: $($child.FullName)"
+            }
+            if ($child.PSIsContainer) { $pendingDirectories.Push($child.FullName) }
+        }
+    }
+}
+
+function New-SpeedBackupDexStage([string]$RequestedRoot) {
+    $explicitRoot = -not [string]::IsNullOrWhiteSpace($RequestedRoot)
+    $candidates = @()
+    if ($explicitRoot) {
+        $candidates += $RequestedRoot
+    } else {
+        $candidates += [IO.Path]::GetTempPath()
+        if ($env:SystemDrive -match '^[A-Za-z]:$') {
+            $candidates += (Join-Path ($env:SystemDrive + "\") "sbdex")
+        }
+    }
+    $failures = @()
+    foreach ($candidate in $candidates) {
+        try {
+            $parent = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($candidate)
+            # Reserve room for Gradle/AGP paths, even with legacy Windows tools.
+            if ($parent -match '[^\x00-\x7F]' -or $parent.Length -gt 80) {
+                throw "Build parent must be ASCII and at most 80 characters: $parent"
+            }
+            if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
+                if ($explicitRoot) { throw "ASCII build parent does not exist: $parent" }
+                $null = New-Item -ItemType Directory -Path $parent -Force -ErrorAction Stop
+            }
+            $parentEntry = Get-Item -LiteralPath $parent -Force -ErrorAction Stop
+            if ($parentEntry.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                throw "Build parent is a linked directory: $parent"
+            }
+            # No -Force: a collision never reuses an existing build tree.
+            $name = "sbdex-" + [Guid]::NewGuid().ToString("N").Substring(0,12)
+            return (New-Item -ItemType Directory -Path (Join-Path $parent $name) -ErrorAction Stop)
+        } catch {
+            $failures += $_.Exception.Message
+        }
+    }
+    throw ("No writable short ASCII build directory. Use -AsciiBuildRoot with an existing directory. " + ($failures -join "; "))
+}
+
+# AGP and Windows AIDL require ASCII paths. Stage deep ASCII projects too.
+if ($env:OS -eq "Windows_NT" -and ($PSScriptRoot -match '[^\x00-\x7F]' -or $PSScriptRoot.Length -gt 100)) {
+    $stageDir = New-SpeedBackupDexStage $AsciiBuildRoot
+    $stageRoot = $stageDir.FullName
+    $stageName = $stageDir.Name
+    $stageParent = $stageDir.Parent.FullName
+
+    function Copy-SpeedBackupDexSources([string]$From, [string]$To) {
+        foreach ($entry in Get-ChildItem -LiteralPath $From -Force) {
+            if ($entry.PSIsContainer -and $entry.Name -in @("build", ".gradle", ".git", ".idea")) { continue }
+            if (-not $entry.PSIsContainer -and ($entry.Name -eq "local.properties" -or $entry.Name -match '^classes[0-9]*[.]dex$')) { continue }
+            if ($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                throw "Refusing a linked source entry in the temporary build: $($entry.FullName)"
+            }
+            $target = Join-Path $To $entry.Name
+            if ($entry.PSIsContainer) {
+                $null = New-Item -ItemType Directory -Path $target
+                Copy-SpeedBackupDexSources $entry.FullName $target
+            } else {
+                Copy-Item -LiteralPath $entry.FullName -Destination $target
+            }
+        }
+    }
+
+    $stageExitCode = 1
+    try {
+        Copy-SpeedBackupDexSources $PSScriptRoot $stageRoot
+        Write-Host "Unicode or long project path: building an isolated source copy at $stageRoot" -ForegroundColor Cyan
+        $hostExe = Join-Path $PSHOME "powershell.exe"
+        if (-not (Test-Path -LiteralPath $hostExe)) { $hostExe = Join-Path $PSHOME "pwsh.exe" }
+        $stageArgs = @("-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $stageRoot "build_dex.ps1"), "-NoDaemon")
+        if (-not [string]::IsNullOrWhiteSpace($JavaHome)) {
+            $stageArgs += @("-JavaHome", $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($JavaHome))
+        }
+        if (-not [string]::IsNullOrWhiteSpace($SdkRoot)) {
+            $stageArgs += @("-SdkRoot", $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($SdkRoot))
+        }
+        if ($Offline) { $stageArgs += "-Offline" }
+        Push-Location -LiteralPath $stageRoot
+        try {
+            & $hostExe @stageArgs
+            $stageExitCode = $LASTEXITCODE
+        } finally {
+            Pop-Location
+        }
+        if ($stageExitCode -eq 0) {
+            # The child has already checked R8 output and all required Dex capabilities.
+            $stagedDex = Join-Path $stageRoot "classes.dex"
+            $stagedRelease = Join-Path $stageRoot "app/build/outputs/apk/release"
+            $stagedApks = @(Get-ChildItem -LiteralPath $stagedRelease -Filter "*.apk" -File)
+            if (-not (Test-Path -LiteralPath $stagedDex -PathType Leaf) -or $stagedApks.Count -ne 1) {
+                throw "The isolated build did not produce the expected Dex and single release APK."
+            }
+            $finalRelease = Join-Path $PSScriptRoot "app/build/outputs/apk/release"
+            $null = New-Item -ItemType Directory -Path $finalRelease -Force
+            Publish-SpeedBackupDexFiles @(
+                @{ Src = $stagedApks[0].FullName; Dst = (Join-Path $finalRelease $stagedApks[0].Name) },
+                @{ Src = $stagedDex; Dst = (Join-Path $PSScriptRoot "classes.dex") }
+            )
+            Write-Host "Verified build outputs copied back to the original project:" -ForegroundColor Green
+            Write-Host (Join-Path $PSScriptRoot "classes.dex")
+            Write-Host (Join-Path $finalRelease $stagedApks[0].Name)
+        }
+    } finally {
+        try {
+            # Delete only the exact fresh directory created by this invocation.
+            $resolvedStage = Get-Item -LiteralPath $stageRoot -Force -ErrorAction Stop
+            if ($resolvedStage.FullName -ne $stageDir.FullName -or
+                $resolvedStage.Parent.FullName.TrimEnd([char[]]"\/") -ne (Get-Item -LiteralPath $stageParent).FullName.TrimEnd([char[]]"\/") -or
+                $resolvedStage.Name -ne $stageName -or
+                ($resolvedStage.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+                throw "Temporary build cleanup refused an unexpected path: $stageRoot"
+            }
+            Assert-SpeedBackupBuildTreeHasNoLinks $resolvedStage.FullName
+            # Windows PowerShell 5.1 needs the extended path prefix for deep Gradle caches.
+            $cleanupPath = "\\?\" + $resolvedStage.FullName
+            if ($resolvedStage.FullName.StartsWith("\\")) {
+                $cleanupPath = "\\?\UNC\" + $resolvedStage.FullName.TrimStart([char[]]"\")
+            }
+            Remove-Item -LiteralPath $cleanupPath -Recurse -Force -ErrorAction Stop
+        } catch {
+            # Retain the original build outcome and identify any leftover path.
+            Write-Warning "Temporary build directory retained: $stageRoot ($($_.Exception.Message))"
+        }
+    }
+    exit $stageExitCode
+}
 
 # ---- 1. Set JAVA_HOME (Android Studio bundled JDK) ----
 if ([string]::IsNullOrWhiteSpace($JavaHome)) {
@@ -57,6 +264,7 @@ $gradlewPath = Join-Path $PSScriptRoot "gradlew.bat"
 Push-Location -LiteralPath $PSScriptRoot
 try {
     $gradleBuildArgs = @(":app:assembleRelease", "--console=plain")
+    if ($NoDaemon) { $gradleBuildArgs += "--no-daemon" }
     if ($Offline) { $gradleBuildArgs += "--offline" }
     & $gradlewPath @gradleBuildArgs
     $gradleExitCode = $LASTEXITCODE
@@ -104,6 +312,9 @@ try {
 $dexBytes = [System.IO.File]::ReadAllBytes($outputDex)
 $dexLatin1 = [System.Text.Encoding]::GetEncoding("ISO-8859-1").GetString($dexBytes)
 $requiredDexStrings = @(
+    "com/xayah/dex/WebDavDiscoveryUtil",
+    "webdav.lan_discovery.v1",
+    "webdav.speedbackup_identity.dex.v1",
     "appstate.run_results.v1",
     "appstate.result_files.v1",
     "appstate.ssaid.typed_result.v1",

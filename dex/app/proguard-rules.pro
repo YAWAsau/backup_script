@@ -28,6 +28,7 @@
 -dontwarn **
 
 -keep class com.xayah.dex.SmbScanUtil { public static void main(java.lang.String[]); }
+-keep class com.xayah.dex.WebDavDiscoveryUtil { public static void main(java.lang.String[]); }
 -keep class com.xayah.dex.AppStateUtil { public static void main(java.lang.String[]); }
 
 # LSPosed AndroidHiddenApiBypass 6.1: keep full helper graph.

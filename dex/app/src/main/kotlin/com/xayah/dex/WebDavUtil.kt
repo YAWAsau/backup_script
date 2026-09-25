@@ -70,7 +70,8 @@ object WebDavUtil {
     private val http = HttpCore.Client(keepAlive = true)
     private val mkcolOkCache = ConcurrentHashMap<String, Boolean>()
     private val listOkCache = ConcurrentHashMap<ListCacheKey, String>()
-    private val serverKindCache = ConcurrentHashMap<String, String>()
+    private val serverKindCache = WebDavIdentityCache<String>(WebDavIdentityCache.Companion::serverKindLifetime)
+    private val speedBackupIdentityCache = WebDavIdentityCache<Boolean>(WebDavIdentityCache.Companion::identityLifetime)
     private val featureFactsCache = ConcurrentHashMap<String, WebDavFeatureFacts>()
     private val managedUploadSeq = AtomicInteger(0)
     private val streamLogSeq = AtomicInteger(0)
@@ -520,6 +521,7 @@ object WebDavUtil {
             mkcolOkCache.clear()
             listOkCache.clear()
             serverKindCache.clear()
+            speedBackupIdentityCache.clear()
             featureFactsCache.clear()
             dirStateCache.clear()
             runCatching { listenerRef.getAndSet(null)?.close() }
@@ -1981,8 +1983,21 @@ object WebDavUtil {
         return result.first to body
     }
 
+    // Identity discovery is optional and never changes measured DAV capabilities.
+    // No credentials or redirects: the existing server endpoint is public.
+    private fun speedBackupIdentity(url: String, server: String, dav: String): Boolean {
+        if (server.isNotBlank() || dav.isBlank()) return false
+        val key = serverKindCacheKey(url)
+        return speedBackupIdentityCache.getOrProbe(key) {
+            val start = System.nanoTime()
+            val recognized = SpeedBackupIdentityProbe.probe(url)
+            infoLog("WEBDAV_SERVER_IDENTITY source=same-origin-capabilities speedbackup=${recognized == true} outcome=${if (recognized == null) "inconclusive" else "confirmed"} elapsedMs=${(System.nanoTime()-start)/1_000_000} mode=backup-trace19")
+            recognized
+        } == true
+    }
+
     private fun optionsDav(user: String, pass: String, url: String): Pair<Int, String> {
-        return pacedPair(DavOperation.OPTIONS, "") {
+        val result = pacedPair(DavOperation.OPTIONS, "") {
             var text = ""
             val code = http.request(
                 "OPTIONS", url, user, pass, mapOf("Content-Length" to "0"),
@@ -2004,6 +2019,9 @@ object WebDavUtil {
             }
             code to text
         }
+        val values = parseKeyValueLines(result.second)
+        return if (result.first in 200..299 && speedBackupIdentity(url, values["server"].orEmpty(), values["dav"].orEmpty()))
+            result.first to (result.second + "speedbackupIdentity=api-v1\n") else result
     }
 
     private fun statDav(user: String, pass: String, url: String): Pair<Int, DavEntry?> {
@@ -2062,6 +2080,7 @@ object WebDavUtil {
     private data class CompatProbeStep(val name: String, val code: Int, val ok: Boolean, val detail: String = "")
 
     private enum class WebDavVendorProfile(val wireName: String) {
+        SPEEDBACKUP("speedbackup"),
         AUTO("auto"),
         RCLONE("rclone"),
         NEXTCLOUD("nextcloud"),
@@ -2146,11 +2165,13 @@ object WebDavUtil {
         server: String,
         allowReliable: Boolean,
         steps: List<CompatProbeStep>,
+        speedbackupIdentity: Boolean,
     ): WebDavQuirks {
         val lowerServer = server.lowercase(java.util.Locale.US)
         val lowerDav = dav.lowercase(java.util.Locale.US)
         val lowerHost = baseHostLower(baseUrl)
         val profile = when {
+            speedbackupIdentity -> WebDavVendorProfile.SPEEDBACKUP
             lowerHost.contains("123pan") || lowerHost.contains("123pan.cn") || lowerServer.contains("123pan") || lowerServer.contains("123") -> WebDavVendorProfile.PAN123
             lowerHost.contains("jianguoyun") || lowerHost.contains("nutstore") || lowerServer.contains("jianguoyun") || lowerServer.contains("jian guo") || lowerServer.contains("nutstore") -> WebDavVendorProfile.JIANGUOYUN
             lowerHost.contains("nextcloud") || lowerServer.contains("nextcloud") || lowerServer.contains("owncloud") || lowerDav.contains("nextcloud") || lowerDav.contains("sabredav") -> WebDavVendorProfile.NEXTCLOUD
@@ -2189,6 +2210,7 @@ object WebDavUtil {
         var allow = ""
         var dav = ""
         var server = ""
+        var speedbackupIdentity = false
         var allowReliable = true
         var bodyMatches = false
         var finalStatOk = false
@@ -2239,6 +2261,7 @@ object WebDavUtil {
                 allow = opt["allow"].orEmpty()
                 dav = opt["dav"].orEmpty()
                 server = opt["server"].orEmpty()
+                speedbackupIdentity = opt["speedbackupidentity"] == "api-v1"
                 val required = listOf("OPTIONS", "PROPFIND", "PUT", "GET", "DELETE")
                 allowReliable = allow.isBlank() || required.all { allowHasMethod(allow, it) }
             }
@@ -2398,7 +2421,7 @@ object WebDavUtil {
         val listUsable = depthInfinityOk || recursiveWalkOk
         val uploadUsable = chunkedPutOk || fixedPutOk
         val ok = finalCode in 200..299 && uploadUsable && bodyMatches && mkcolOk && deleteOk && listUsable && cleanupOk
-        val quirks = detectWebDavQuirks(base, allow, dav, server, allowReliable, steps)
+        val quirks = detectWebDavQuirks(base, allow, dav, server, allowReliable, steps, speedbackupIdentity)
         cacheFeatureFacts(baseUrl, WebDavFeatureFacts(
             supportsChunkedPut = chunkedOk,
             supportsFixedPut = fixedPutOk,
@@ -3149,6 +3172,7 @@ object WebDavUtil {
     }
 
     private fun serverFamilyForKind(kind: String): String = when (kind) {
+        "speedbackup" -> "speedbackup"
         "alist", "openlist", "alist_compatible" -> "alist_openlist"
         "rclone" -> "rclone"
         "123pan" -> "123pan"
@@ -3175,6 +3199,7 @@ object WebDavUtil {
     }
 
     private fun serverDisplayForKind(kind: String): String = when (kind) {
+        "speedbackup" -> "SpeedBackup WebDAV"
         "openlist" -> "OpenList"
         "alist" -> "AList"
         "alist_compatible" -> "AList/OpenList 相容端"
@@ -3249,6 +3274,7 @@ object WebDavUtil {
         val lowerServer = values["server"].orEmpty().lowercase(java.util.Locale.US)
         val lowerDav = values["dav"].orEmpty().lowercase(java.util.Locale.US)
         return when {
+            code in 200..299 && values["speedbackupidentity"] == "api-v1" -> "speedbackup"
             host.contains("123pan") || host.contains("123pan.cn") || (code in 200..299 && lowerServer.contains("123pan")) -> "123pan"
             host.contains("jianguoyun") || host.contains("nutstore") || (code in 200..299 && (lowerServer.contains("jianguoyun") || lowerServer.contains("nutstore"))) -> "jianguoyun"
             host.contains("webdav.yandex") || host == "webdav.yandex.com" || host == "webdav.yandex.ru" -> "yandex"
@@ -3280,7 +3306,7 @@ object WebDavUtil {
     }
 
     private fun cacheServerKind(baseUrl: String, code: Int, kind: String) {
-        if (code in 200..299 || kind == "alist_compatible") serverKindCache[serverKindCacheKey(baseUrl)] = kind
+        if (code in 200..299 || kind == "alist_compatible") serverKindCache.put(serverKindCacheKey(baseUrl), kind)
     }
 
     private fun serverKindCacheKey(baseUrl: String): String {
@@ -3422,7 +3448,7 @@ object WebDavUtil {
 
     private fun detectServerKind(user: String, pass: String, baseUrl: String): String {
         val key = serverKindCacheKey(baseUrl)
-        serverKindCache[key]?.let { return it }
+        serverKindCache.get(key)?.let { return it }
         val (code, body) = optionsDav(user, pass, buildRelUrl(baseUrl, ""))
         val kind = classifyServerKind(baseUrl, code, body)
         cacheServerKind(baseUrl, code, kind)
@@ -3454,7 +3480,7 @@ object WebDavUtil {
         val alistFamily = isAlistFamily(kind)
         val alistServerHeader = if (alistFamily) runCatching { parseKeyValueLines(optionsDav(user, pass, buildRelUrl(baseUrl, "")).second)["server"].orEmpty() }.getOrDefault("") else ""
         val alistSecurity = alistSecurityAdvisory(kind, alistServerHeader)
-        val newPayloadDirect = directAll || alistFamily || kind == "generic"
+        val newPayloadDirect = directAll || alistFamily || kind == "generic" || kind == "speedbackup"
         // r600: BODY_DONE means only that SpeedBackup emitted the request body. AList/OpenList
         // can still synchronously hash/cache/upload to a backing provider before WebDAV PUT 2xx.
         // Keep the safety bound, but model/log it as post-body server processing, not finalize.
@@ -4693,6 +4719,7 @@ object WebDavUtil {
         println("  verifyuploadmaprel <user> <pass> <baseUrl> <rootRel>  (stdin: rel<TAB>expectedBytes; one remote list + size join)")
         println("  r613 capabilities: webdav.put_verify_after_ambiguous.dex.v1 / webdav.put_405_ambiguous_stat.dex.v1 / webdav.direct_put_verify_before_cleanup.dex.v1")
         println("  r613 integrity capabilities: webdav.put_2xx_body_semantic_guard.dex.v1 / webdav.put_2xx_stat_verify.dex.v1 / webdav.cloudreve_identity.dex.v1")
+        println("  trace16 identity capability: webdav.speedbackup_identity.dex.v1")
         println("  r618 identity capability: webdav.sftpgo_identity.dex.v1")
         println("  r620 NAS identity capability: webdav.zspace_identity.dex.v1")
         println("  r622 extended NAS identity capability: webdav.nas_identity_extended.dex.v1")

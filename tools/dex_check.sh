@@ -8,7 +8,7 @@ TOOLS_PATH="${TOOLS_PATH:-}"
 TEST_LOG_DIR="${TEST_LOG_DIR:-${PWD:-.}}"
 TEST_LOG_FILE="${TEST_LOG_FILE:-$TEST_LOG_DIR/dex_check.log}"
 TEST_SUMMARY_FILE="${TEST_SUMMARY_FILE:-$TEST_LOG_DIR/dex_full_test.summary}"
-DEX_CHECK_VERSION="v24.20.14-7.67-1135-selftest-fuse-sync-r718-202607232022"
+DEX_CHECK_VERSION="v24.20.14-7.67-1135-selftest-fuse-sync-r718-202607232022-ndk30-38"
 BACKUP_WIFI_ENABLE="${BACKUP_WIFI_ENABLE:-1}"
 SB_SELFTEST_LEVEL="${SB_SELFTEST_LEVEL:-quick}"
 CHANGELOG_URL="${CHANGELOG_URL:-https://api.github.com/repos/XayahSuSuSu/Android-DataBackup/releases/latest}"
@@ -318,6 +318,7 @@ require_caps_json(){
 			"webdav.list_strategy_by_fact.dex.v1",
 			"webdav.fixed_put_chunked_fallback.dex.v1",
 			"webdav.nas_identity_profile.dex.v1",
+			"webdav.speedbackup_identity.dex.v1",
 			"webdav.sftpgo_identity.dex.v1",
 			"webdav.zspace_identity.dex.v1",
 			"webdav.nas_identity_extended.dex.v1",
@@ -373,6 +374,16 @@ if [ -x "$_multicall" ] && "$_multicall" --capabilities 2>/dev/null | grep -F 's
 else
 	critical_fail "Rust 單一 ELF" "missing_multicall_capability"
 fi
+
+_unixsock="$(command -v unixsock 2>/dev/null)"
+_root_caps=""
+if [ -x "$_unixsock" ]; then _root_caps="$("$_unixsock" capabilities 2>/dev/null)"; fi
+for _root_cap in unixsock.root_request_framing.v1 unixsock.root_request_snapshot.v1; do
+	case " $_root_caps " in
+	*" $_root_cap "*) ok "Root native 請求安全能力" "$_root_cap" ;;
+	*) critical_fail "Root native 請求安全能力" "missing=$_root_cap，請一起更新 tools.sh 與 speednative" ;;
+	esac
+done
 
 _uidexec="$(command -v uidexec 2>/dev/null)"; [ -n "$_uidexec" ] || _uidexec="/data/backup_tools/uidexec"
 if [ -x "$_uidexec" ]; then
@@ -485,6 +496,26 @@ if [ -x "$_ew_bin" ]; then
 	fi
 	_ew_caps="$($_ew_bin capabilities 2>/dev/null | head -n 3)"; _ew_caps_rc=$?
 	printf '%s\n' "$_ew_caps" > "$TEST_LOG_DIR/eventwait_capabilities.txt" 2>/dev/null
+	case " $_ew_caps " in
+	*" eventwait.fifo_process_identity.v1 "*) ok "eventwait FIFO process identity" "present" ;;
+	*) critical_fail "eventwait FIFO process identity" "missing；執行時使用 Shell FIFO 相容路徑，套件完整性檢查不通過，請同步更新配套 speednative" ;;
+	esac
+	case " $_ew_caps " in
+	*" eventwait.fifo_emit_nonblocking.v1 "*) ok "eventwait FIFO 非阻塞通知" "present" ;;
+	*) critical_fail "eventwait FIFO 非阻塞通知" "missing；執行時省略通知並以 child exit/fatal file 判斷，請同步更新配套 speednative" ;;
+	esac
+	case " $_ew_caps " in
+	*" eventwait.tar_progress_extract_total.v1 "*)
+		case " $_ew_caps " in
+		*" eventwait.tty_write_retry.v2 "*) ok "tar 進度與非阻塞訊息輸出" "present" ;;
+		*) critical_fail "native 終端訊息輸出" "缺少非阻塞 tty-write 能力" ;;
+		esac ;;
+	*) critical_fail "tar 非阻塞即時進度" "missing；備份仍可執行但無即時位元組顯示，請同步更新配套 speednative" ;;
+	esac
+	case " $_ew_caps " in
+	*" eventwait.tty_relay.v2 "*) ok "常駐終端訊息輸出" "present" ;;
+	*) critical_fail "常駐終端訊息輸出" "missing；執行時回退單次輸出，請同步更新配套 speednative" ;;
+	esac
 	if [ "$_ew_caps_rc" -eq 0 ] && printf '%s\n' "$_ew_caps" | grep -F "eventwait.pidfd_open.v1" >/dev/null 2>&1 && printf '%s\n' "$_ew_caps" | grep -F "eventwait.pid_exit_pidfd.v1" >/dev/null 2>&1; then ok "eventwait pidfd capability" "present"; else critical_fail "eventwait pidfd capability" "rc=$_ew_caps_rc $_ew_caps，請重編/替換 eventwait"; fi
 	_ew_probe="$($_ew_bin pidfd-probe $$ 2>/dev/null | head -n 3)"; _ew_probe_rc=$?
 	printf '%s\n' "$_ew_probe" > "$TEST_LOG_DIR/eventwait_pidfd_probe.txt" 2>/dev/null
@@ -543,6 +574,7 @@ if [ -x "$_ss_bin" ]; then
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.tree_fixup_symlink_owner.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.tar_source_manifest.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.restore_source_verify.v1" >/dev/null 2>&1 \
+		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.debug_consolidate.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.remote_orphan_plan.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.restore_tree_manifest_bytes.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.app_media_index.v1" >/dev/null 2>&1 \
@@ -1045,4 +1077,10 @@ _dex_check_finish() {
 	log "DEX_CHECK_DONE state=$_state rc=$_rc checks=${IDX:-0} ok=${OK:-0} warn=${WARN:-0} failed=${FAIL:-0} critical=${CRITICAL_FAIL:-0}"
 	exit "$_rc"
 }
+_discovery_caps="$(run_class_stdout com.xayah.dex.WebDavDiscoveryUtil capabilities 2>/dev/null)"
+if [ "$_discovery_caps" = "webdav.lan_discovery.v1" ]; then
+    ok "WebDAV內網探測" "anonymous/read-only/deadline"
+else
+    critical_fail "WebDAV內網探測" "配套Dex缺少webdav.lan_discovery.v1"
+fi
 _dex_check_finish

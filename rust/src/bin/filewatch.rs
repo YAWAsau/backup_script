@@ -9,7 +9,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-const VERSION: &str = "1.0.1-android28-r29-native-convergence-r572-rust-r572";
+const VERSION: &str = "1.0.1-android28-r30-native-convergence-r572-rust-r572";
 const EVENT_BUFFER_SIZE: usize = 64 * 1024;
 
 // inotify mask bits (Linux uapi/linux/inotify.h) - stable ABI, safe to hardcode.

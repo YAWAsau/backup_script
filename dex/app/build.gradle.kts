@@ -18,8 +18,8 @@ android {
         applicationId = "com.xayah.dex"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2740
-        versionName = "2.6.239-qq-primary-freeze-hold"
+        versionCode = 2742
+        versionName = "2.6.241-webdav-discovery"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         multiDexEnabled = false

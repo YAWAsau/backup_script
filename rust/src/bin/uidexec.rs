@@ -10,7 +10,7 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_ulong};
 use std::os::unix::ffi::OsStrExt;
 
-const VERSION: &str = "1.0.1-android28-r29-native-convergence-r572-rust-r572";
+const VERSION: &str = "1.0.1-android28-r30-native-convergence-r572-rust-r572";
 
 extern "C" {
     fn setgroups(size: usize, list: *const u32) -> c_int;

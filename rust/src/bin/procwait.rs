@@ -8,7 +8,7 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::time::Instant;
 
-const VERSION: &str = "1.1.1-r572-package-stable-wait-api28-r29-rust-r572";
+const VERSION: &str = "1.1.1-r572-package-stable-wait-api28-r30-rust-r572";
 const EINTR: i32 = 4;
 const ESRCH: i32 = 3;
 const ENOSYS: i32 = 38;
