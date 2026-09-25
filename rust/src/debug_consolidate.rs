@@ -36,6 +36,31 @@ fn escaped(s: &str) -> String {
     s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"._-".contains(&b) { (b as char).to_string() } else {format!("%{b:02X}")}).collect()
 }
 
+// Index only complete v1 records, using the byte length rather than searching
+// inside arbitrary source data for delimiters. Keep the latest value for each
+// source name, so a genuinely changed source is still appended on a later run.
+fn published_sources(mut data: &[u8]) -> io::Result<std::collections::BTreeMap<&str, &[u8]>> {
+    let mut published = std::collections::BTreeMap::new();
+    let invalid = || io::Error::new(io::ErrorKind::InvalidData,
+        "invalid aggregate framing; sources retained");
+    while !data.is_empty() {
+        data = data.strip_prefix(b"\n===== SOURCE ").ok_or_else(invalid)?;
+        let newline = data.iter().position(|b| *b == b'\n').ok_or_else(invalid)?;
+        let header = std::str::from_utf8(&data[..newline]).map_err(|_| invalid())?;
+        let (name, length) = header.strip_suffix(" =====").ok_or_else(invalid)?
+            .rsplit_once(" bytes=").ok_or_else(invalid)?;
+        if name.is_empty() || length.is_empty() || !length.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(invalid());
+        }
+        let length = length.parse::<usize>().map_err(|_| invalid())?;
+        data = &data[newline + 1..];
+        let payload = data.get(..length).ok_or_else(invalid)?;
+        data = data[length..].strip_prefix(b"\n===== END SOURCE =====\n").ok_or_else(invalid)?;
+        published.insert(name, payload);
+    }
+    Ok(published)
+}
+
 pub fn consolidate(root: &Path) -> io::Result<(usize, usize)> {
     if fs::symlink_metadata(root)?.file_type().is_symlink() || !root.is_dir() {
         return Err(io::Error::new(io::ErrorKind::InvalidInput,"expected real run directory"));
@@ -63,12 +88,19 @@ pub fn consolidate(root: &Path) -> io::Result<(usize, usize)> {
             Err(e) if e.kind()==io::ErrorKind::NotFound => Vec::new(),
             Err(e)=>return Err(e),
         };
+        let published=published_sources(&previous)?;
         let temp=root.join(format!(".debug-merge-{}-{out}.tmp",std::process::id()));
         let mut f=OpenOptions::new().write(true).create_new(true).open(&temp)?;
         let result=(||->io::Result<()> {
             f.write_all(&previous)?;
             for (name,data) in &entries {
-                writeln!(f,"\n===== SOURCE {} bytes={} =====",escaped(name),data.len())?;
+                let key=escaped(name);
+                // rename may have succeeded on a previous attempt even when
+                // directory fsync or source cleanup failed. Do not append the
+                // same published snapshot again; still sync the replacement
+                // and directory before allowing unchanged sources to be deleted.
+                if published.get(key.as_str()).copied()==Some(data.as_slice()) {continue;}
+                writeln!(f,"\n===== SOURCE {} bytes={} =====",key,data.len())?;
                 f.write_all(data)?;
                 f.write_all(b"\n===== END SOURCE =====\n")?;
             }

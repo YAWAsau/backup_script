@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$RequiredNdkVersion = '29.0.14206865' # Android NDK r29; API remains 28
+$RequiredNdkVersion = '30.0.16248370' # Android NDK r30; API remains 28
 $Api = 28
 $RustTarget = 'aarch64-linux-android'
 $ExpectedMachine = 'AArch64'
@@ -51,7 +51,7 @@ function Resolve-Ndk([string]$ExplicitNdk, [string]$SdkRoot) {
         $resolved = (Resolve-Path -LiteralPath $ExplicitNdk).Path
         $revision = Get-NdkRevision $resolved
         if ($revision -ne $RequiredNdkVersion) {
-            throw "Wrong explicit NDK revision: $revision; required $RequiredNdkVersion (r29)"
+            throw "Wrong explicit NDK revision: $revision; required $RequiredNdkVersion (r30)"
         }
         return $resolved
     }
@@ -74,7 +74,7 @@ function Resolve-Ndk([string]$ExplicitNdk, [string]$SdkRoot) {
             # Ignore unrelated/broken NDK candidates and continue to the fixed SDK path.
         }
     }
-    throw "Android NDK r29 ($RequiredNdkVersion) not found under $SdkRoot\ndk. Install it with Android Studio SDK Manager or pass -Ndk <path>."
+    throw "Android NDK r30 ($RequiredNdkVersion) not found under $SdkRoot\ndk. Install it with Android Studio SDK Manager or pass -Ndk <path>."
 }
 
 function Get-NdkRevision([string]$NdkRoot) {
@@ -126,8 +126,8 @@ function Assert-Elf([string]$Path, [string]$ReadElf) {
         throw "No LOAD program headers found in $Path"
     }
     $notes = & $ReadElf -n $Path 2>&1
-    if ($LASTEXITCODE -ne 0 -or -not ($notes -match '1c 00 00 00 72 32 39 00')) {
-        throw "Expected Android API28 / NDK r29 build note missing: $Path"
+    if ($LASTEXITCODE -ne 0 -or -not ($notes -match '1c 00 00 00 72 33 30 00')) {
+        throw "Expected Android API28 / NDK r30 build note missing: $Path"
     }
 }
 
@@ -158,7 +158,7 @@ try {
     $NdkRoot = Resolve-Ndk $Ndk $SdkRoot
     $NdkRevision = Get-NdkRevision $NdkRoot
     if ($NdkRevision -ne $RequiredNdkVersion) {
-        throw "Wrong NDK revision: $NdkRevision; required $RequiredNdkVersion (r29)"
+        throw "Wrong NDK revision: $NdkRevision; required $RequiredNdkVersion (r30)"
     }
 
     $HostTag = 'windows-x86_64'
@@ -175,7 +175,7 @@ try {
 
     Write-Host "  SDK       : $SdkRoot"
     Write-Host "  NDK       : $NdkRoot"
-    Write-Host "  NDK rev   : $NdkRevision (r29)"
+    Write-Host "  NDK rev   : $NdkRevision (r30)"
     Write-Host "  API       : $Api"
     Write-Host "  target    : $RustTarget"
     Write-Host '  page size : 16384 (0x4000)'
@@ -205,7 +205,7 @@ try {
     try {
         $projectId = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($PSScriptRoot)))).Replace('-', '').Substring(0, 12)
     } finally { $sha.Dispose() }
-    $cacheName = "SpeedBackup-cargo-$projectId-ndk29-api28"
+    $cacheName = "SpeedBackup-cargo-$projectId-ndk30-api28"
     # -Clean requests a fresh build without deleting old source or build output.
     if ($Clean) { $cacheName += '-' + [Guid]::NewGuid().ToString('N') }
     $CargoTargetDir = Join-Path ([System.IO.Path]::GetTempPath()) $cacheName
@@ -284,7 +284,7 @@ try {
     $toolsFile = Join-Path (Split-Path -Parent $PSScriptRoot) 'tools.sh'
     if (Test-Path -LiteralPath $toolsFile -PathType Leaf) {
         $text = [IO.File]::ReadAllText($toolsFile)
-        $table = [regex]::Match($text, "(?ms)^\tcat <<'SB_TOOL_SHA_TABLE'\r?\n.*?^SB_TOOL_SHA_TABLE$")
+        $table = [regex]::Match($text, "(?ms)^\tcat <<'SB_TOOL_SHA_TABLE'\r?\n.*?^SB_TOOL_SHA_TABLE\r?$")
         if (-not $table.Success) { throw 'Cannot find the runtime SHA table in tools.sh' }
         $updated = $table.Value
         foreach ($bin in $Bins) {
