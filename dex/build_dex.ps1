@@ -131,6 +131,14 @@ function New-SpeedBackupDexStage([string]$RequestedRoot) {
     throw ("No writable short ASCII build directory. Use -AsciiBuildRoot with an existing directory. " + ($failures -join "; "))
 }
 
+# Sync before ASCII staging. The stage carries generated version metadata.
+$releaseSync = Join-Path (Split-Path -Parent $PSScriptRoot) 'sync_version.ps1'
+if (Test-Path -LiteralPath $releaseSync -PathType Leaf) {
+    & $releaseSync
+} elseif (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'release-version.properties') -PathType Leaf)) {
+    throw 'Missing VERSION synchronization metadata; use the FULL_SOURCE build entry.'
+}
+
 # AGP and Windows AIDL require ASCII paths. Stage deep ASCII projects too.
 if ($env:OS -eq "Windows_NT" -and ($PSScriptRoot -match '[^\x00-\x7F]' -or $PSScriptRoot.Length -gt 100)) {
     $stageDir = New-SpeedBackupDexStage $AsciiBuildRoot
@@ -190,6 +198,8 @@ if ($env:OS -eq "Windows_NT" -and ($PSScriptRoot -match '[^\x00-\x7F]' -or $PSSc
                 @{ Src = $stagedApks[0].FullName; Dst = (Join-Path $finalRelease $stagedApks[0].Name) },
                 @{ Src = $stagedDex; Dst = (Join-Path $PSScriptRoot "classes.dex") }
             )
+            $artifactSync = Join-Path (Split-Path -Parent $PSScriptRoot) 'sync_artifacts.ps1'
+            if (Test-Path -LiteralPath $artifactSync -PathType Leaf) { & $artifactSync -Component Dex }
             Write-Host "Verified build outputs copied back to the original project:" -ForegroundColor Green
             Write-Host (Join-Path $PSScriptRoot "classes.dex")
             Write-Host (Join-Path $finalRelease $stagedApks[0].Name)
@@ -358,6 +368,8 @@ foreach ($needle in $requiredDexStrings) {
     }
 }
 Write-Host "Dex verify: required CLI classes and Dex capabilities present (version strings diagnostic only)" -ForegroundColor Green
+$artifactSync = Join-Path (Split-Path -Parent $PSScriptRoot) 'sync_artifacts.ps1'
+if (Test-Path -LiteralPath $artifactSync -PathType Leaf) { & $artifactSync -Component Dex }
 
 # ---- 5. No companion APK / no UI output in zero-UI build ----
 Write-Host ""

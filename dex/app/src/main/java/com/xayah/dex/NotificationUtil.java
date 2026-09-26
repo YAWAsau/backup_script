@@ -132,7 +132,7 @@ public class NotificationUtil extends BaseUtil {
             case "version":
             case "--version":
             case "-v":
-                System.out.println(VERSION);
+                System.out.println(DexBuildInfo.VERSION_DISPLAY);
                 break;
             default:
                 rejectUnknownCommand(mCmd);
@@ -162,7 +162,7 @@ public class NotificationUtil extends BaseUtil {
             System.exit(0);
         }
         if ("version".equals(mCmd) || "--version".equals(mCmd) || "-v".equals(mCmd)) {
-            System.out.println(VERSION);
+            System.out.println(DexBuildInfo.VERSION_DISPLAY);
             System.exit(0);
         }
 

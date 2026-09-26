@@ -7,7 +7,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 
-/** r704: pure result reducer; never invokes Android services or parses diagnostic messages. */
+/* * : pure result reducer; never invokes Android services or parses diagnostic messages. */
 final class BatchResultFiles {
     final String kind;
     int total, ok, vendor, warn, failed;

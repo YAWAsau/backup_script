@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# SpeedBackup dex_check - r318; core-only precheck: key tools and Dex capabilities, no historical tools regression grep.
+# SpeedBackup dex_check; script functionality and build come from versions.properties.
 # 不再鎖 Dex 版本字串、build 號、tools.sh patch marker 或歷史回歸 grep；只檢查目前 tools 真正依賴的 Dex 核心能力是否可用。
 PKG="${1:-${PKG:-com.tencent.mobileqq}}"
 USER_ID="${2:-${USER_ID:-0}}"
@@ -8,12 +8,13 @@ TOOLS_PATH="${TOOLS_PATH:-}"
 TEST_LOG_DIR="${TEST_LOG_DIR:-${PWD:-.}}"
 TEST_LOG_FILE="${TEST_LOG_FILE:-$TEST_LOG_DIR/dex_check.log}"
 TEST_SUMMARY_FILE="${TEST_SUMMARY_FILE:-$TEST_LOG_DIR/dex_full_test.summary}"
-DEX_CHECK_VERSION="v24.20.14-7.67-1135-selftest-fuse-sync-r718-202607232022-ndk30-38"
+DEX_CHECK_VERSION="v778"
+DEX_CHECK_BUILD="v780"
 BACKUP_WIFI_ENABLE="${BACKUP_WIFI_ENABLE:-1}"
 SB_SELFTEST_LEVEL="${SB_SELFTEST_LEVEL:-quick}"
 CHANGELOG_URL="${CHANGELOG_URL:-https://api.github.com/repos/XayahSuSuSu/Android-DataBackup/releases/latest}"
-SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-v24.20.14-7.67-1135-selftest-fuse-sync-r718-202607232022}"
-SPEEDBACKUP_PATCH_BUILD="${SPEEDBACKUP_PATCH_BUILD:-}"
+SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-$DEX_CHECK_VERSION}"
+SPEEDBACKUP_PATCH_BUILD="${SPEEDBACKUP_PATCH_BUILD:-$DEX_CHECK_BUILD}"
 PATH="/data/backup_tools:$(dirname "$CLASSPATH_PATH" 2>/dev/null):$PATH"
 export PATH
 HIDDEN_CLASS="com.xayah.dex.HiddenApiUtil"
@@ -351,10 +352,8 @@ require_caps_json(){
 
 log "=================================================="
 log "SpeedBackup dex_check 使用者可讀分組檢查"
-log "pkg=$PKG user=$USER_ID classpath=$CLASSPATH_PATH tools=$TOOLS_PATH level=$SB_SELFTEST_LEVEL dex_check=$DEX_CHECK_VERSION"
-log "selftest_version=$SELFTEST_SCRIPT_VERSION"
-log "speedbackup_patch_build=$SPEEDBACKUP_PATCH_BUILD"
-log "policy=final_user_groups_logged required_core optional_facts reverted_display_timeout_direct native_pack_plan_facts webdav_stream_stall_watchdog webdav_stream_stall_socket_abort webdav_stream_post_body_response_timeout webdav_stream_post_body_phase_guard webdav_alist_new_payload_direct webdav_pathmode_retry_http400 speedscan_nonblocking_timeout speedscan_prescan_singlepass speedscan_tsv_decimal_sum payload_compression_zstd_aligned_parser_r691 payload_prescan_exact_tar_input_r692 webdav_backend_profile webdav_server_provider_profile speedscan_entryfacts_fastskip_join stream_entry_perf_child_elapsed rust_capability_only tools_runtime_capability_only eventwait_capability_only webdav_known_missing_direct_by_fact webdav_alist_openlist_sync_put_semantics stream_entry_post_body_semantics remote_stream_local_read_release webdav_compact_profile_created_only_dirs appdetails_bundle_no_shrink_guard appdetails_bundle_payload_set_cover_guard single_apk_parse_session_fallback single_apk_sdk36_session_first installer_context_facts_direct_parse single_apk_session_all_sdk_no_legacy single_apk_session_log_dedupe dex_webdav_profile_contract install_plan_diagnostic speedscan_appdetails_bundle_audit speedscan_appdetails_bundle_manifest speedscan_remote_manifest_plan speedscan_restore_payload_plan speedscan_manifest_diff_cache_index speedscan_full_convergence_stage3 speedscan_manifest_diff_cache_index_v2 speedscan_selected_apps_map speedscan_appdetails_summary_map speedscan_appstate_match_map speedscan_remote_orphan_candidates speedscan_full_convergence_stage4 speedscan_full_convergence_stage5 webdav_profile_contract_authoritative dex_appstate_android16_17_policy_contract play_installer_exact_source_hybrid shell_pm_install_restore_r634 dex_install_deadcode_clean_r635 dex_hygiene_stage2_r636 rust_appdetails_manifest_r637 appstate_match_canonical_r638 restore_guard_safe_appstate_v3_r640 restore_home_ime_cgroup_scope_r641 appstate_ssaid_preserve_v4_r642 webdav_generic_nas_dav5005_identity_r643 appdetails_seedless_stage_cover_r643 appdetails_scoped_cover_r644 rust_speedscan_compilefix_r645 restore_guard_filtered_wide_r646 appdetails_seedless_taint_r647 appdetails_seed_count_fix_r648 appdetails_seed_expansion_r695 prescan_exact_batch_r696 remote_prescan_converge_r697 prepare_finish_convergence_r649 remote_stream_local_read_plan_v2_r650 restore_finalize_terminal_r650 appdetails_audit_mode_tag_r651 appdetails_health_batch_r652 remote_bundle_health_fastpath_r653 deadcode_hygiene_r654 install_unzip_fastskip_clean_r655 dirsize_map_v2_r656 dirsize_profiler_timeout_r657 cgfreezer_startup_nosocket_skip_r658"
+log "pkg=$PKG user=$USER_ID classpath=$CLASSPATH_PATH tools=$TOOLS_PATH level=$SB_SELFTEST_LEVEL"
+log "policy=final_user_groups_logged required_core optional_facts reverted_display_timeout_direct native_pack_plan_facts webdav_stream_stall_watchdog webdav_stream_stall_socket_abort webdav_stream_post_body_response_timeout webdav_stream_post_body_phase_guard webdav_alist_new_payload_direct webdav_pathmode_retry_http400 speedscan_nonblocking_timeout speedscan_prescan_singlepass speedscan_tsv_decimal_sum payload_compression_zstd_aligned_parser payload_prescan_exact_tar_input webdav_backend_profile webdav_server_provider_profile speedscan_entryfacts_fastskip_join stream_entry_perf_child_elapsed rust_capability_only tools_runtime_capability_only eventwait_capability_only webdav_known_missing_direct_by_fact webdav_alist_openlist_sync_put_semantics stream_entry_post_body_semantics remote_stream_local_read_release webdav_compact_profile_created_only_dirs appdetails_bundle_no_shrink_guard appdetails_bundle_payload_set_cover_guard single_apk_parse_session_fallback single_apk_sdk36_session_first installer_context_facts_direct_parse single_apk_session_all_sdk_no_legacy single_apk_session_log_dedupe dex_webdav_profile_contract install_plan_diagnostic speedscan_appdetails_bundle_audit speedscan_appdetails_bundle_manifest speedscan_remote_manifest_plan speedscan_restore_payload_plan speedscan_manifest_diff_cache_index speedscan_full_convergence_stage3 speedscan_manifest_diff_cache_index_v2 speedscan_selected_apps_map speedscan_appdetails_summary_map speedscan_appstate_match_map speedscan_remote_orphan_candidates speedscan_full_convergence_stage4 speedscan_full_convergence_stage5 webdav_profile_contract_authoritative dex_appstate_android16_17_policy_contract play_installer_exact_source_hybrid shell_pm_install_restore dex_install_deadcode_clean dex_hygiene_stage2 rust_appdetails_manifest appstate_match_canonical restore_guard_safe_appstate_v3 restore_home_ime_cgroup_scope appstate_ssaid_preserve_v4 webdav_generic_nas_dav5005_identity appdetails_seedless_stage_cover appdetails_scoped_cover rust_speedscan_compilefix restore_guard_filtered_wide appdetails_seedless_taint appdetails_seed_count_fix appdetails_seed_expansion prescan_exact_batch remote_prescan_converge prepare_finish_convergence remote_stream_local_read_plan_v2 restore_finalize_terminal appdetails_audit_mode_tag appdetails_health_batch remote_bundle_health_fastpath deadcode_hygiene install_unzip_fastskip_clean dirsize_map_v2 dirsize_profiler_timeout cgfreezer_startup_nosocket_skip"
 log "=================================================="
 
 section "核心環境" "檢查 Dex / native 啟動條件"
@@ -378,7 +377,7 @@ fi
 _unixsock="$(command -v unixsock 2>/dev/null)"
 _root_caps=""
 if [ -x "$_unixsock" ]; then _root_caps="$("$_unixsock" capabilities 2>/dev/null)"; fi
-for _root_cap in unixsock.root_request_framing.v1 unixsock.root_request_snapshot.v1; do
+for _root_cap in unixsock.stream_relay.v1 unixsock.plain_response_eof.v1 unixsock.root_request_framing.v1 unixsock.root_request_snapshot.v1; do
 	case " $_root_caps " in
 	*" $_root_cap "*) ok "Root native 請求安全能力" "$_root_cap" ;;
 	*) critical_fail "Root native 請求安全能力" "missing=$_root_cap，請一起更新 tools.sh 與 speednative" ;;
@@ -416,7 +415,7 @@ _notify_ver="$(run_class_stdout "$NOTIFICATION_CLASS" version 2>&1 | head -n 1)"
 _appstate_ver="$(run_class_stdout "$APPSTATE_CLASS" version 2>&1 | head -n 1)"; _appstate_ver_rc=$?
 _supervisor_ver="$(run_class_stdout com.xayah.dex.DaemonSupervisorUtil version 2>&1 | head -n 1)"; _supervisor_ver_rc=$?
 if [ "$_root_ver_rc" -eq 0 ] && [ "$_webdav_ver_rc" -eq 0 ] && [ "$_notify_ver_rc" -eq 0 ] && [ "$_appstate_ver_rc" -eq 0 ] && [ "$_supervisor_ver_rc" -eq 0 ]     && [ "$_root_ver" = "$_dex_ver_line" ] && [ "$_webdav_ver" = "$_dex_ver_line" ] && [ "$_notify_ver" = "$_dex_ver_line" ] && [ "$_appstate_ver" = "$_dex_ver_line" ] && [ "$_supervisor_ver" = "$_dex_ver_line" ]; then
-	ok "Dex 全域版本資訊" "consistent version=$_dex_ver_line diagnostic-only"
+	ok "Dex 全域版本資訊" "consistent diagnostic-only"
 else
 	warn "Dex 全域版本資訊" "diagnostic-only capability-gated HiddenApi=$_dex_ver_line RootDaemon=$_root_ver WebDav=$_webdav_ver Notification=$_notify_ver AppState=$_appstate_ver DaemonSupervisor=$_supervisor_ver"
 fi
@@ -474,7 +473,7 @@ if [ -x "$_cg_bin" ]; then
 		if [ "$_cg_caps_rc" -eq 0 ] && printf '%s\n' "$_cg_caps" | tr ',' '\n' | grep -Fx "$_cg_need" >/dev/null 2>&1; then
 			ok "cgfreezer $_cg_need" "capability-only present"
 		else
-			critical_fail "cgfreezer $_cg_need" "missing_required_capability，請替換 r712 cgfreezer"
+			critical_fail "cgfreezer $_cg_need" "missing_required_capability，請替換配套的 speednative"
 		fi
 	done
 	if [ "$_cg_caps_rc" -eq 0 ] && printf '%s\n' "$_cg_caps" | tr ',' '\n' | grep -Fx "daemon-diagnostics-batch-v1" >/dev/null 2>&1; then
@@ -490,7 +489,7 @@ if [ -x "$_ew_bin" ]; then
 	_ew_ver="$($_ew_bin --version 2>/dev/null | head -n 1)"; _ew_ver_rc=$?
 	printf '%s\n' "$_ew_ver" > "$TEST_LOG_DIR/eventwait_version.txt" 2>/dev/null
 	if [ "$_ew_ver_rc" -eq 0 ] && [ -n "$_ew_ver" ]; then
-		ok "eventwait 版本資訊" "diagnostic-only capability-gated version=$_ew_ver"
+		ok "eventwait 版本資訊" "diagnostic-only capability-gated"
 	else
 		warn "eventwait 版本資訊" "diagnostic-only rc=$_ew_ver_rc version=$_ew_ver"
 	fi
@@ -532,7 +531,7 @@ if [ -x "$_cg_bin" ]; then
 	_cg_backend_out="$($_cg_bin backend-probe 2>/dev/null | head -n 20)"; _cg_backend_rc=$?
 	printf '%s\n' "$_cg_backend_out" > "$TEST_LOG_DIR/cgfreezer_backend_probe.txt" 2>/dev/null
 	if [ "$_cg_backend_rc" -eq 0 ] && printf '%s\n' "$_cg_backend_out" | grep -q 'preferred='; then ok "cgroup backend selector 探測" "rc=0"; else critical_fail "cgroup backend selector 探測" "rc=$_cg_backend_rc"; fi
-		# r493: r485+ cgfreezer keeps backend-select-cache-v1 in the CAPS payload, not in the no-arg usage line.
+		# + cgfreezer keeps backend-select-cache-v1 in the CAPS payload, not in the no-arg usage line.
 		# The no-arg usage is intentionally short, so fall back to checking the binary payload directly.
 		if printf '%s\n' "$_cg_usage" | grep -F "backend-select-cache-v1" >/dev/null 2>&1; then
 			ok "cgroup backend 快取 capability" "present usage"
@@ -551,7 +550,7 @@ fi
 
 _ss_bin="$(command -v speedscan 2>/dev/null)"; [ -n "$_ss_bin" ] || _ss_bin="/data/backup_tools/speedscan"
 if [ -x "$_ss_bin" ]; then
-		# r596: speedscan contract is capability-only. Do not grep usage/help text or exact --version;
+		# speedscan contract is capability-only. Do not grep usage/help text or exact --version;
 		# help wording and VERSION are diagnostic-only and may legitimately lag behind capabilities.
 		_ss_usage="$($_ss_bin 2>&1 | head -n 120)"
 		printf '%s\n' "$_ss_usage" > "$TEST_LOG_DIR/speedscan_usage.txt" 2>/dev/null
@@ -647,7 +646,7 @@ EOF_SPEEDSCAN_APPDETAILS_MANIFEST
 	else
 		critical_fail "speedscan app_details manifest Rust 化" "rc=$_ss_ad_rc $_ss_ad_msg"
 	fi
-	# r697: extracted app_details bundle validation/seed-list generation is Rust-owned.
+	# extracted app_details bundle validation/seed-list generation is Rust-owned.
 	_ss_seed_root="$DEX_CHECK_TMPDIR/appdetails_seed_index_root"
 	_ss_seed_out="$DEX_CHECK_TMPDIR/appdetails_seed_index.lst"
 	_ss_seed_prefix="$DEX_CHECK_TMPDIR/appdetails_seed_index_probe"
@@ -705,7 +704,7 @@ AppB/apk.tar.zst
 	else
 		critical_fail "speedscan app_details seedless stage-cover 修復" "rc=$_ss_audit_rc $_ss_audit_msg"
 	fi
-	# r695: old bundle seed may safely expand only when stage exactly covers scoped remote payload.
+	# old bundle seed may safely expand only when stage exactly covers scoped remote payload.
 	_ss_audit_seed="$DEX_CHECK_TMPDIR/appdetails_audit_seed_expansion_seed.lst"
 	printf 'AppA\n' > "$_ss_audit_seed" 2>/dev/null
 	_ss_audit_expand_prefix="$DEX_CHECK_TMPDIR/appdetails_audit_seed_expansion_probe"
@@ -732,7 +731,7 @@ AppB/apk.tar.zst
 	else
 		critical_fail "speedscan local-read release plan" "rc=$_ss_lr_rc $_ss_lr_msg"
 	fi
-	# r696: exact-input must resolve DIR map + all requested APK packages in one native process.
+	# exact-input must resolve DIR map + all requested APK packages in one native process.
 	_ss_exact_dir="$DEX_CHECK_TMPDIR/speedscan_exact_batch"
 	mkdir -p "$_ss_exact_dir" 2>/dev/null
 	dd if=/dev/zero of="$_ss_exact_dir/base.apk" bs=513 count=1 2>/dev/null
@@ -793,7 +792,7 @@ AppB/apk.tar.zst
 	else
 		critical_fail "speedscan unified payload stats" "rc=$_ss_stats_rc"
 	fi
-	# r705: exercise the run state machine using only isolated fixture files.
+	# exercise the run state machine using only isolated fixture files.
 	_ss_run="$TEST_LOG_DIR/backup_run_fixture"
 	printf 'DIR\tFixture\tpkg\tuser\t10240\n' > "$_ss_run.plan"
 	printf 'Fixture/user\tFixture\tuser\t1\tbegin\t-\t-\tzstd\tlocal\t10\t-\tpacking\nFixture/user\tFixture\tuser\t1\tsuccess\t10240\t100\tzstd\tlocal\t20\t0\tvalidated\nFixture/apk\tFixture\tapk\t0\tskipped\t-\t-\tzstd\tlocal\t20\t0\tunchanged\n' > "$_ss_run.events"
@@ -855,9 +854,9 @@ if [ -f "$_tools_self" ] \
 	&& grep -F 'requestBodyBytes=$_snapshot_body_len' "$_tools_self" >/dev/null 2>&1 \
 	&& grep -F 'speedbackup.appstate_root_protocol_timing.v1' "$_tools_self" >/dev/null 2>&1 \
 	&& ! grep -F 'if [[ $_ROOT_DAEMON_READY = 1 ]] && _root_daemon_probe' "$_tools_self" >/dev/null 2>&1; then
-	ok "RootDaemon healthy hot-path no-preprobe" "r684 trusted-ready+protocol-telemetry"
+	ok "RootDaemon healthy hot-path no-preprobe" "trusted-ready+protocol-telemetry"
 else
-	critical_fail "RootDaemon healthy hot-path no-preprobe" "r684 tools integration missing"
+	critical_fail "RootDaemon healthy hot-path no-preprobe" "tools integration missing"
 fi
 if [ -f "$_tools_self" ] \
 	&& grep -F 'SPEEDSCAN_DIRSIZE_HINTS_FILE=' "$_tools_self" >/dev/null 2>&1 \
@@ -865,25 +864,25 @@ if [ -f "$_tools_self" ] \
 	&& grep -F 'speedscan.dir_size_map_route_trie.v1' "$_tools_self" >/dev/null 2>&1 \
 	&& grep -F 'speedscan.dir_size_map_hint_schedule.v1' "$_tools_self" >/dev/null 2>&1 \
 	&& ! grep -F 'dirsize_map_ready 80 1500' "$_tools_self" >/dev/null 2>&1; then
-	ok "dir-size route/schedule hot-path" "r685 trie+hints+singlepass-stats"
+	ok "dir-size route/schedule hot-path" "trie+hints+singlepass-stats"
 	if grep -q "speedscan.remote_fastskip_presize_bundle_v1.v1" "$_tools_self" 2>/dev/null && grep -q "remote-fastskip-presize-bundle-v1" "$_tools_self" 2>/dev/null; then
-		ok "remote presize convergence" "r686 bundle+tiny+singlepass"
+		ok "remote presize convergence" "bundle+tiny+singlepass"
 	else
-		critical_fail "remote presize convergence" "r686 tools integration missing"
+		critical_fail "remote presize convergence" "tools integration missing"
 	fi
 	if grep -q "REMOTE_FIRST_FULL_PRESIZE_PLAN_OK" "$_tools_self" 2>/dev/null && grep -q "rust-local-firstfull-bundle-v1" "$_tools_self" 2>/dev/null && grep -q "REMOTE_FIRST_FULL_PRESIZE_FACTS_REUSE_DISABLED" "$_tools_self" 2>/dev/null; then
-		ok "remote first-full presize" "r687 local-existence-prune no-remote-facts"
+		ok "remote first-full presize" "local-existence-prune no-remote-facts"
 	else
-		critical_fail "remote first-full presize" "r687 tools integration missing"
+		critical_fail "remote first-full presize" "tools integration missing"
 	fi
 	if grep -q "XPOSED_RUNTIME_FACTS" "$_tools_self" 2>/dev/null \
 		&& grep -q "XPOSED_MODULE_SUMMARY" "$_tools_self" 2>/dev/null \
 		&& grep -q "xposed_runtime_facts_last.tsv" "$_tools_self" 2>/dev/null \
 		&& grep -q "dex.app_inventory.xposed_module_facts.v1" "$_tools_self" 2>/dev/null \
 		&& grep -q "dex.app_inventory.xposed_runtime_facts.v1" "$_tools_self" 2>/dev/null; then
-		ok "Xposed facts integration" "r688 module-format+runtime-positive-evidence"
+		ok "Xposed facts integration" "module-format+runtime-positive-evidence"
 	else
-		critical_fail "Xposed facts integration" "r688 tools integration missing"
+		critical_fail "Xposed facts integration" "tools integration missing"
 	fi
 	if grep -q "BACKUP_PAYLOAD_STATS_SUMMARY" "$_tools_self" 2>/dev/null \
 		&& grep -q "_backup_payload_stats_record_success" "$_tools_self" 2>/dev/null \
@@ -901,28 +900,28 @@ if [ -f "$_tools_self" ] \
 		&& grep -q "BACKUP_PAYLOAD_STATS_PLAN_RECONCILE" "$_tools_self" 2>/dev/null \
 		&& grep -q -- "-實際處理：" "$_tools_self" 2>/dev/null \
 		&& grep -q -- "-q -vvv --priority=rt" "$_tools_self" 2>/dev/null; then
-		ok "payload compression stats" "r696 prescan-exact single Rust batch + r691 zstd exact final reconcile"
+		ok "payload compression stats" "prescan-exact single Rust batch + zstd exact final reconcile"
 	else
-		critical_fail "payload compression stats" "r696 exact-input batch integration missing"
+		critical_fail "payload compression stats" "exact-input batch integration missing"
 	fi
 	if grep -q "WEBDAV_REMOTE_SETUP_COLLAPSED" "$_tools_self" 2>/dev/null \
 		&& grep -q "WEBDAV_BASE_PATH_PREFLIGHT_SKIP" "$_tools_self" 2>/dev/null \
 		&& grep -q "backendProfileRelay=0" "$_tools_self" 2>/dev/null \
 		&& grep -q "appdetails-seed-index" "$_tools_self" 2>/dev/null; then
-		ok "remote prescan convergence" "r697 root-url ensure skip + compat JSON parse + Rust seed index"
+		ok "remote prescan convergence" "root-url ensure skip + compat JSON parse + Rust seed index"
 	else
-		critical_fail "remote prescan convergence" "r697 tools integration missing"
+		critical_fail "remote prescan convergence" "tools integration missing"
 	fi
 	if grep -F '_webdav_feature_support_tier' "$_tools_self" >/dev/null 2>&1 \
 		&& grep -F 'speedscan.appdetails_seed_index_strict_meta.v1' "$_tools_self" >/dev/null 2>&1 \
 		&& grep -F '[[ $_depth1 = 1 && $_walk = 1 ]]' "$_tools_self" >/dev/null 2>&1 \
 		&& ! grep -F '_WEBDAV_PROFILE_SUPPORT_TIER="VERIFIED"' "$_tools_self" >/dev/null 2>&1; then
-		ok "strict metadata and measured WebDAV tier" "r698 capability gate + depth1/walk + measured support tier"
+		ok "strict metadata and measured WebDAV tier" "capability gate + depth1/walk + measured support tier"
 	else
-		critical_fail "strict metadata and measured WebDAV tier" "r698 tools integration missing"
+		critical_fail "strict metadata and measured WebDAV tier" "tools integration missing"
 	fi
 else
-	critical_fail "dir-size route/schedule hot-path" "r685 tools integration missing"
+	critical_fail "dir-size route/schedule hot-path" "tools integration missing"
 fi
 if [ -f "$_tools_self" ] && grep -F "_speedscan_cmd_bounded_to_file" "$_tools_self" >/dev/null 2>&1 && grep -F "SPEEDBACKUP_NATIVE_PACK_PLAN_TIMEOUT_MS" "$_tools_self" >/dev/null 2>&1 && grep -F "SPEEDBACKUP_NATIVE_APP_MEDIA_INDEX_TIMEOUT_MS" "$_tools_self" >/dev/null 2>&1; then
 	ok "speedscan native facts timeout bound" "scope=pack-plan+app-media-index tools=present source-check-only"
@@ -933,7 +932,7 @@ if [ -f "$_tools_self" ] \
 	&& grep -F "SPEEDBACKUP_SPEEDSCAN_REQUIRED_CAPS" "$_tools_self" >/dev/null 2>&1 \
 	&& grep -F "_speedscan_require_main_capabilities" "$_tools_self" >/dev/null 2>&1 \
 	&& grep -F "SPEEDSCAN_CAPABILITIES_OK stage=runtime_contract" "$_tools_self" >/dev/null 2>&1 \
-	&& grep -F "no_exact_version=1 mode=r597" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F 'no_exact_version=1' "$_tools_self" >/dev/null 2>&1 \
 	&& ! grep -F 'startswith("v2.6.")' "$_tools_self" >/dev/null 2>&1; then
 	ok "tools runtime Rust capability gate" "capability-only version-debug-only"
 else
@@ -948,14 +947,14 @@ if [ -f "$_tools_self" ] \
 	&& grep -F "APP_LOCAL_READ_RELEASE_ARM" "$_tools_self" >/dev/null 2>&1 \
 	&& grep -F "APP_LOCAL_READ_RELEASE_DONE" "$_tools_self" >/dev/null 2>&1 \
 	&& grep -F "APP_LOCAL_READ_RELEASE_PARENT_SYNC" "$_tools_self" >/dev/null 2>&1; then
-	ok "WebDAV 最後本地讀取提前釋放" "r602 plan+producer+parent-sync"
+	ok "WebDAV 最後本地讀取提前釋放" "plan+producer+parent-sync"
 else
-	critical_fail "WebDAV 最後本地讀取提前釋放" "missing r602 local-read release integration"
+	critical_fail "WebDAV 最後本地讀取提前釋放" "missing local-read release integration"
 fi
 if [ -f "$_tools_self" ] \
 	&& grep -F "_sb_println()" "$_tools_self" >/dev/null 2>&1 \
 	&& grep -F "print -r --" "$_tools_self" >/dev/null 2>&1 \
-	&& grep -F "timelineMode=builtin-print-r521" "$_tools_self" >/dev/null 2>&1 \
+	&& grep -F 'timelineMode=builtin-print' "$_tools_self" >/dev/null 2>&1 \
 	&& grep -F "printMode=\${SPEEDBACKUP_PRINT_MODE:-unresolved}" "$_tools_self" >/dev/null 2>&1 \
 	&& grep -F 'SPEEDBACKUP_PRINT_MODE="print-builtin"' "$_tools_self" >/dev/null 2>&1 \
 	&& ! grep -F "printMode=\${SPEEDBACKUP_PRINT_MODE:-auto}" "$_tools_self" >/dev/null 2>&1 \
@@ -964,9 +963,9 @@ if [ -f "$_tools_self" ] \
 	&& grep -F "_sb_file_has_exact_line()" "$_tools_self" >/dev/null 2>&1 \
 	&& ! grep -F "grep -Fqx" "$_tools_self" >/dev/null 2>&1 \
 	&& grep -F "RESTORE_STREAM_PERF_STAGES" "$_tools_self" >/dev/null 2>&1; then
-	ok "speed_debug print builtin/resolved 熱路徑 + r521 cleanup" "timelineMode=builtin-print-r521"
+	ok "speed_debug print builtin/resolved 熱路徑 + cleanup" "timelineMode=builtin-print"
 else
-	critical_fail "speed_debug print builtin/resolved 熱路徑 + r521 cleanup" "tools_missing_or_hotpath_regression"
+	critical_fail "speed_debug print builtin/resolved 熱路徑 + cleanup" "tools_missing_or_hotpath_regression"
 fi
 require_text "ProcessObserver 啟動" "$_hidden_help" "processObserverStart"
 require_text "ProcessObserver 停止" "$_hidden_help" "processObserverStop"
@@ -1059,10 +1058,10 @@ section "已撤回" "顯示已移除的過時檢測與正式 fallback"
 _settings_out="$(run_class_stdout "$APPSTATE_CLASS" settingsGet "$USER_ID" secure default_input_method 2>/dev/null)"; _settings_rc=$?
 printf '%s\n' "$_settings_out" > "$TEST_LOG_DIR/appstate_settings_get_smoke.ndjson" 2>/dev/null
 if [ "$_settings_rc" -eq 0 ] && printf '%s\n' "$_settings_out" | jq -s -e 'any(.[]; .recordType=="settingsGet" and .source=="exec_settings")' >/dev/null 2>&1; then ok "系統設定 shell fallback" "rc=0"; else warn "系統設定 shell fallback" "rc=$_settings_rc"; fi
-	# r473: Dex display-timeout/settings direct smoke removed. Settings screen_off_timeout is intentionally handled by bounded shell in tools.
+	# Dex display-timeout/settings direct smoke removed. Settings screen_off_timeout is intentionally handled by bounded shell in tools.
 ok "Dex 直接改螢幕逾時已撤回" "正式路徑=bounded-shell"
 
-# r718: a later successful probe must not erase an earlier critical failure.
+# a later successful probe must not erase an earlier critical failure.
 _dex_check_finish() {
 	local _rc=0 _state=ok
 	if [ "${CRITICAL_FAIL:-0}" != 0 ]; then

@@ -4,6 +4,7 @@ import android.app.AppOpsManagerHidden;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Version-tolerant AppOps APIs.
@@ -13,6 +14,24 @@ import java.util.Set;
  * in HiddenApiUtil command routing.
  */
 public final class AppOpsCompat {
+    private static final ConcurrentHashMap<Integer, Integer> DEFAULT_MODES = new ConcurrentHashMap<>();
+
+    /** Framework defaults are static for this process; no per-call shell query. */
+    public static Integer tryGetDefaultMode(int op) {
+        Integer cached = DEFAULT_MODES.get(op);
+        if (cached != null) return cached == Integer.MIN_VALUE ? null : cached;
+        try {
+            Class<?> manager = HiddenApiReflection.classForNameCached("android.app.AppOpsManager");
+            int switchOp = (Integer) HiddenApiReflection.invokeFlexible(manager, "opToSwitch", op);
+            Integer mode = (Integer) HiddenApiReflection.invokeFlexible(manager, "opToDefaultMode", switchOp);
+            DEFAULT_MODES.put(op, mode);
+            return mode;
+        } catch (Throwable ignored) {
+            DEFAULT_MODES.put(op, Integer.MIN_VALUE);
+            return null;
+        }
+    }
+
     private AppOpsCompat() {
     }
 
@@ -122,6 +141,37 @@ public final class AppOpsCompat {
                 return (Integer) value;
             }
         } catch (Throwable ignored) {
+        }
+        // AOSP exposes the stored UID entries through IAppOpsService.getUidOps,
+        // not AppOpsManager.getUidMode. Keep the vendor signatures above, then
+        // use the same service query as `cmd appops get --uid`.
+        try {
+            Class<?> managerClass = Class.forName("android.app.AppOpsManager");
+            int switchOp = (Integer) HiddenApiReflection.invokeFlexible(managerClass, "opToSwitch", op);
+            java.lang.reflect.Field serviceField = managerClass.getDeclaredField("mService");
+            serviceField.setAccessible(true);
+            Object service = serviceField.get(appOpsManager);
+            Object value = HiddenApiReflection.invokeFlexible(service, "getUidOps", uid, new int[]{switchOp});
+            if (value != null && !(value instanceof List<?>)) {
+                throw new IllegalStateException("Unexpected getUidOps result");
+            }
+            if (value != null) {
+                for (Object row : (List<?>) value) {
+                    if (row == null) continue;
+                    Object entries = HiddenApiReflection.invokeFlexible(row, "getOps");
+                    if (!(entries instanceof List<?>)) throw new IllegalStateException("Missing UID op entries");
+                    for (Object entry : (List<?>) entries) {
+                        if (entry != null && ((Integer) HiddenApiReflection.invokeFlexible(entry, "getOp")) == switchOp) {
+                            return (Integer) HiddenApiReflection.invokeFlexible(entry, "getMode");
+                        }
+                    }
+                }
+            }
+            // A successful empty query means the op's framework default, which
+            // is NOT necessarily MODE_DEFAULT (3). A failed query remains null.
+            return (Integer) HiddenApiReflection.invokeFlexible(managerClass, "opToDefaultMode", switchOp);
+        } catch (Throwable error) {
+            CompatDebug.throwable("UID raw mode unavailable: getUidMode/getUidOps op=" + op, error);
         }
         return null;
     }

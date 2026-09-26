@@ -2,6 +2,7 @@ use speedbackup_native_rs::*;
 use std::ffi::CString;
 use std::fs::{self, File};
 use std::io::{Read, Write};
+use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::{FileTypeExt, OpenOptionsExt};
@@ -14,7 +15,8 @@ mod tar_progress;
 mod tty_relay;
 
 // Relay v2 includes bounded FIFO/queue drain on parent death and graceful signals.
-const VERSION: &str = "1.13.0-tty-relay-v2";
+const VERSION: &str = speedbackup_native_rs::versions::EVENTWAIT;
+use speedbackup_native_rs::BUILD_VERSION;
 
 fn usage(argv0: &str) {
     eprintln!("usage:");
@@ -315,7 +317,55 @@ fn wait_fifo_event(fifo: &str, pid: i32, fatal_file: &str, timeout_ms: i64, tag:
 }
 
 
-struct PipelinePid { pid: i32 }
+struct PipelinePid {
+    pid: i32,
+    exit_fd: Option<File>,
+    exited: bool,
+}
+
+impl PipelinePid {
+    fn new(pid: i32) -> Self {
+        // Open once per discovered process. Unsupported kernels/denied opens
+        // retain the bounded liveness polling path; no repeated failed syscalls.
+        let exit_fd = pidfd_open(pid).ok().map(|fd| unsafe { File::from_raw_fd(fd) });
+        Self { pid, exit_fd, exited: false }
+    }
+
+    fn alive(&self) -> bool {
+        !self.exited && (self.exit_fd.is_some() || pid_alive(self.pid))
+    }
+}
+
+fn wait_pipeline_exit(pids: &mut [PipelinePid], pollfds: &mut Vec<PollFd>, wait_ms: i64) {
+    pollfds.clear();
+    for p in pids.iter().filter(|p| !p.exited) {
+        if let Some(fd) = &p.exit_fd {
+            pollfds.push(PollFd { fd: fd.as_raw_fd(), events: POLLIN, revents: 0 });
+        }
+    }
+    let wait_ms = wait_ms.max(0).min(i32::MAX as i64) as i32;
+    if pollfds.is_empty() {
+        if wait_ms > 0 { std::thread::sleep(Duration::from_millis(wait_ms as u64)); }
+        return;
+    }
+    let rc = unsafe { poll(pollfds.as_mut_ptr(), pollfds.len() as _, wait_ms) };
+    if rc > 0 {
+        for (p, fd) in pids.iter_mut().filter(|p| !p.exited && p.exit_fd.is_some()).zip(pollfds.iter()) {
+            if fd.revents & (POLLIN | POLLHUP) != 0 {
+                // A signalled pidfd is final even if its PID is subsequently reused
+                // or the exited process remains a zombie awaiting its parent's wait.
+                p.exited = true;
+                p.exit_fd = None;
+            } else if fd.revents != 0 {
+                // Invalid/error descriptors fall back without spinning or claiming exit.
+                p.exit_fd = None;
+            }
+        }
+    } else if rc < 0 && std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
+        for p in pids { p.exit_fd = None; }
+        if wait_ms > 0 { std::thread::sleep(Duration::from_millis(wait_ms as u64)); }
+    }
+}
 
 fn parse_pipeline_pid_chunk(mut line: &[u8]) -> Option<PipelinePid> {
     // c/eventwait.c parse_pid_line(): skip only leading space/tab; the
@@ -343,7 +393,7 @@ fn parse_pipeline_pid_chunk(mut line: &[u8]) -> Option<PipelinePid> {
     // C computes a label for diagnostics, but the current pipeline-watch
     // output does not print it. Keep the pid semantics without storing an
     // unused Rust field.
-    Some(PipelinePid { pid })
+    Some(PipelinePid::new(pid))
 }
 
 /// Faithful port of fgets(line[256]) + parse_pid_line(). A physical line
@@ -388,6 +438,7 @@ fn discover_children_once(pids: &mut Vec<PipelinePid>) {
     let initial = pids.len().min(160);
     for i in 0..initial {
         if pids.len() >= 160 { break; }
+        if pids[i].exited { continue; }
         let pid = pids[i].pid;
         let path = format!("/proc/{}/task/{}/children", pid, pid);
         let mut f = match File::open(&path) { Ok(v) => v, Err(_) => continue };
@@ -407,7 +458,7 @@ fn discover_children_once(pids: &mut Vec<PipelinePid>) {
                 if pids.len() < 160 && !pids.iter().any(|p| p.pid == child) {
                     let mut label = format!("child{}", child);
                     if label.len() > 63 { label.truncate(63); }
-                    pids.push(PipelinePid { pid: child });
+                    pids.push(PipelinePid::new(child));
                 }
             }
         }
@@ -444,7 +495,7 @@ fn c_atoll_prefix(bytes: &[u8]) -> i64 {
 fn sum_pipeline_cpu_ticks(pids: &[PipelinePid]) -> i64 {
     let mut total: i64 = 0;
     for p in pids {
-        if p.pid <= 0 { continue; }
+        if p.pid <= 0 || p.exited { continue; }
         let mut f = match File::open(format!("/proc/{}/stat", p.pid)) { Ok(v) => v, Err(_) => continue };
         let mut buf = [0u8; 1023];
         let n = loop {
@@ -493,9 +544,9 @@ fn emit_pipeline_event(event: &str, rc: i32, tag: &str, reason: &str, pid_count:
     }
 }
 
-/// Faithful port of wait_pipeline_watch(): polls every ~500ms (matching C;
-/// this genuinely cannot be made event-driven since it must periodically
-/// recheck N pids' liveness and cumulative CPU ticks). rc=125 ("idle") is a
+/// Exit events wake the wait immediately. The bounded 500ms timer remains
+/// for child discovery, fatal/progress files, CPU sampling and pidfd fallback.
+/// rc=125 ("idle") is a
 /// DISTINCT outcome from rc=124 ("timeout") - the previous implementation
 /// collapsed both into rc=124, which breaks any caller distinguishing
 /// "genuinely stalled" from "overall deadline exceeded". CPU-tick tracking
@@ -509,6 +560,7 @@ fn pipeline_watch(pid_file: &str, fatal_file: &str, progress_file: &str, idle_ms
 
     let mut pids = load_pid_file(pid_file);
     if pids.is_empty() { return 2; }
+    let mut exit_pollfds = Vec::with_capacity(160);
     if fatal_enabled && file_nonempty(Path::new(fatal_file)) {
         emit_pipeline_event("fatal", 126, out_tag, "fatal-file", pids.len(), -1, "", json);
         return 126;
@@ -532,8 +584,9 @@ fn pipeline_watch(pid_file: &str, fatal_file: &str, progress_file: &str, idle_ms
     loop {
         let now = start.elapsed().as_millis() as i64;
         let mut wait_ms: i64 = 500;
+        wait_pipeline_exit(&mut pids, &mut exit_pollfds, 0);
         discover_children_once(&mut pids);
-        let alive = pids.iter().filter(|p| pid_alive(p.pid)).count() as i32;
+        let alive = pids.iter().filter(|p| p.alive()).count() as i32;
         if fatal_enabled && file_nonempty(Path::new(fatal_file)) {
             emit_pipeline_event("fatal", 126, out_tag, "fatal-file", pids.len(), alive, "", json);
             return 126;
@@ -571,7 +624,7 @@ fn pipeline_watch(pid_file: &str, fatal_file: &str, progress_file: &str, idle_ms
             let remain = idle_ms - (now - last_progress_ms);
             if remain > 0 && remain < wait_ms { wait_ms = remain; }
         }
-        std::thread::sleep(Duration::from_millis(if wait_ms > 0 { wait_ms as u64 } else { 100 }));
+        wait_pipeline_exit(&mut pids, &mut exit_pollfds, if wait_ms > 0 { wait_ms } else { 100 });
     }
 }
 
@@ -587,6 +640,7 @@ fn pipeline_rate_watch(pid_file: &str, fatal_file: &str, progress_file: &str, id
 
     let mut pids = load_pid_file(pid_file);
     if pids.is_empty() { return 2; }
+    let mut exit_pollfds = Vec::with_capacity(160);
     if fatal_enabled && file_nonempty(Path::new(fatal_file)) {
         emit_pipeline_event("fatal", 126, out_tag, "fatal-file", pids.len(), -1, "", json);
         return 126;
@@ -614,8 +668,9 @@ fn pipeline_rate_watch(pid_file: &str, fatal_file: &str, progress_file: &str, id
     loop {
         let now = start.elapsed().as_millis() as i64;
         let mut wait_ms: i64 = 500;
+        wait_pipeline_exit(&mut pids, &mut exit_pollfds, 0);
         discover_children_once(&mut pids);
-        let alive = pids.iter().filter(|p| pid_alive(p.pid)).count() as i32;
+        let alive = pids.iter().filter(|p| p.alive()).count() as i32;
         if fatal_enabled && file_nonempty(Path::new(fatal_file)) {
             emit_pipeline_event("fatal", 126, out_tag, "fatal-file", pids.len(), alive, "", json);
             return 126;
@@ -665,7 +720,7 @@ fn pipeline_rate_watch(pid_file: &str, fatal_file: &str, progress_file: &str, id
             let remain = idle_ms - (now - last_progress_ms);
             if remain > 0 && remain < wait_ms { wait_ms = remain; }
         }
-        std::thread::sleep(Duration::from_millis(if wait_ms > 0 { wait_ms as u64 } else { 100 }));
+        wait_pipeline_exit(&mut pids, &mut exit_pollfds, if wait_ms > 0 { wait_ms } else { 100 });
     }
 }
 
@@ -742,8 +797,8 @@ pub(crate) fn run() {
         },
         Some("tty-write") if args.len()==3 && matches!(args[2].as_str(),"stdout"|"control") => tar_progress::tty_write(args[2]=="stdout"),
         Some("fifo-emit") if args.len()==4 => emit_fifo_event(&args[2], &args[3]),
-        Some("--version") if args.len() == 2 => { println!("eventwait {}", VERSION); 0 }
-        Some("capabilities") | Some("--capabilities") if args.len() == 2 => { println!("eventwait.pidfd_open.v1 eventwait.pid_exit_pidfd.v1 eventwait.proc_inotify_fallback.v1 eventwait.poll_fallback.v1 eventwait.rust_convergence_source.v1 eventwait.fifo_process_identity.v1 eventwait.tar_progress_nonblocking.v1 eventwait.tar_progress_extract_total.v1 eventwait.tty_write_nonblocking.v1 eventwait.tty_write_retry.v2 eventwait.tty_relay.v2 eventwait.fifo_emit_nonblocking.v1"); 0 }
+        Some("--version") if args.len() == 2 => { println!("eventwait {VERSION} build={BUILD_VERSION}"); 0 }
+        Some("capabilities") | Some("--capabilities") if args.len() == 2 => { println!("eventwait.pidfd_open.v1 eventwait.pid_exit_pidfd.v1 eventwait.proc_inotify_fallback.v1 eventwait.poll_fallback.v1 eventwait.rust_convergence_source.v1 eventwait.fifo_process_identity.v1 eventwait.tar_progress_nonblocking.v1 eventwait.tar_progress_extract_total.v1 eventwait.tty_write_nonblocking.v1 eventwait.tty_write_retry.v2 eventwait.tty_relay.v2 eventwait.fifo_emit_nonblocking.v1 eventwait.pipeline_exit_pidfd.v1"); 0 }
         Some("pidfd-probe") => {
             let probe_pid = if let Some(s) = args.get(2) {
                 match parse_pid_arg_strict(s) { Some(v) => v, None => { std::process::exit(2); } }

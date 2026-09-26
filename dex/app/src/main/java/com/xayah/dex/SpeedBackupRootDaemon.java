@@ -33,11 +33,11 @@ public final class SpeedBackupRootDaemon {
         }
         String cmd = args[0];
         if ("version".equals(cmd) || "--version".equals(cmd) || "-v".equals(cmd)) {
-            System.out.println(VERSION);
+            System.out.println(DexBuildInfo.VERSION_DISPLAY);
             System.exit(0);
         }
         if ("daemonunix".equals(cmd)) {
-            // r498: Android Canary can hang before READY while installing hidden-api exemptions
+            // Android Canary can hang before READY while installing hidden-api exemptions
             // on the long-lived root daemon startup path. Publish the AF_UNIX daemon first and
             // initialize hidden-api exemptions lazily only for requests that actually need them.
             cmdDaemonUnix(args);
@@ -163,7 +163,7 @@ public final class SpeedBackupRootDaemon {
             try { idleTimeoutMs = Math.max(1L, Long.parseLong(args[2])) * 1000L; } catch (Throwable ignored) {}
         }
         int ownerPid = args.length >= 4 ? parsePositiveInt(args[3], -1) : -1;
-        // r497: Android Canary/SDK37+ may block in early Binder-backed AppState/bootstrap
+        // Android Canary/SDK37+ may block in early Binder-backed AppState/bootstrap
         // calls before the AF_UNIX daemon publishes READY. Do not perform optional cleanup or
         // AppState runtime initialization on the startup path; hiddenapi inventory commands must
         // be able to use the daemon even when AppState services are slow or unavailable.

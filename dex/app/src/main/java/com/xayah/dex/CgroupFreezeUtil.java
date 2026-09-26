@@ -91,7 +91,7 @@ final class CgroupFreezeUtil {
         int safeTimeoutMs = clamp(timeoutMs, 100, 5000, 1500);
         String safeOwner = safeWord(owner == null || owner.trim().isEmpty() ? "manual" : owner.trim());
         StringBuilder out = new StringBuilder(4096);
-        out.append("CGROUP_FREEZE_START_BEGIN version=").append(VERSION)
+        out.append("CGROUP_FREEZE_START_BEGIN")
                 .append(" user=").append(userId)
                 .append(" package=").append(sanitize(pkg))
                 .append(" pid=").append(explicitPid)
@@ -229,7 +229,7 @@ final class CgroupFreezeUtil {
         long startMs = System.currentTimeMillis();
         String expectedPkg = safePackage(expectedPackageName);
         StringBuilder out = new StringBuilder(4096);
-        out.append("CGROUP_FREEZE_STOP_BEGIN version=").append(VERSION)
+        out.append("CGROUP_FREEZE_STOP_BEGIN")
                 .append(" token=").append(token)
                 .append(" expectedUser=").append(expectedUserId)
                 .append(" expectedPackage=").append(sanitize(expectedPkg))
@@ -317,7 +317,7 @@ final class CgroupFreezeUtil {
         String safeReason = safeWord(reason == null || reason.trim().isEmpty() ? "manual-refresh" : reason.trim());
         int safeTimeoutMs = clamp(timeoutMs, 100, 5000, 1000);
         StringBuilder out = new StringBuilder(4096);
-        out.append("CGROUP_FREEZE_PRIMARY_REFRESH_BEGIN version=").append(VERSION)
+        out.append("CGROUP_FREEZE_PRIMARY_REFRESH_BEGIN")
                 .append(" user=").append(userId)
                 .append(" package=").append(sanitize(pkg))
                 .append(" reason=").append(sanitize(safeReason))
@@ -520,7 +520,7 @@ final class CgroupFreezeUtil {
 
     private static String statusLocked() {
         StringBuilder out = new StringBuilder();
-        out.append("CGROUP_FREEZE_STATUS version=").append(VERSION)
+        out.append("CGROUP_FREEZE_STATUS")
                 .append(" active=").append(SESSIONS.size())
                 .append(" stateFile=").append(STATE_FILE)
                 .append('\n');
@@ -898,7 +898,7 @@ final class CgroupFreezeUtil {
         String expectedPkg = safePackage(expectedPackageName);
         String safeReason = safeWord(reason);
         StringBuilder out = new StringBuilder(1024);
-        out.append("CGROUP_FREEZE_STOP_PROCESS_OBSERVER_DEFER_BEGIN version=").append(VERSION)
+        out.append("CGROUP_FREEZE_STOP_PROCESS_OBSERVER_DEFER_BEGIN")
                 .append(" token=").append(token)
                 .append(" expectedUser=").append(expectedUserId)
                 .append(" expectedPackage=").append(sanitize(expectedPkg))
@@ -1116,7 +1116,7 @@ final class CgroupFreezeUtil {
         }
         StringBuilder out = new StringBuilder();
         out.append("CGROUP_FREEZE_DAEMON_ENSURE ok=").append(ok)
-                .append(" version=").append(VERSION)
+                
                 .append(" reason=").append(sanitize(safeReason))
                 .append(" helper=").append(sanitize(helper == null ? "" : helper))
                 .append(" socket=").append(sanitize(DAEMON_SOCKET))
@@ -1146,7 +1146,7 @@ final class CgroupFreezeUtil {
         int safeTimeoutMs = clamp(timeoutMs, 100, 3000, 700);
         String safeOwner = safeWord(owner == null || owner.trim().isEmpty() ? "native-kill" : owner.trim());
         StringBuilder out = new StringBuilder(8192);
-        out.append("CGROUP_NATIVE_KILL_BEGIN version=").append(VERSION)
+        out.append("CGROUP_NATIVE_KILL_BEGIN")
                 .append(" user=").append(userId)
                 .append(" package=").append(sanitize(pkg))
                 .append(" eventPid=").append(safeEventPid)

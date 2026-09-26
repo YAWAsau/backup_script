@@ -33,8 +33,14 @@ fn main() {
                         println!("speednative.multicall.v1 speednative.argv0_dispatch.v1");
                         return;
                     }
+                    Some("--versions") => {
+                        for (name, version) in speedbackup_native_rs::APPLET_VERSIONS {
+                            println!("{name} {version} build={}", speedbackup_native_rs::BUILD_VERSION);
+                        }
+                        return;
+                    }
                     Some("--version") => {
-                        println!("speednative r718-api28-r30-restore-trace28");
+                        println!("speednative build={}", speedbackup_native_rs::BUILD_VERSION);
                         return;
                     }
                     _ => {}

@@ -1,9 +1,20 @@
 @file:Suppress("DSL_SCOPE_VIOLATION") // TODO: Remove once KTIJ-19369 is fixed
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.refine)
     alias(libs.plugins.jetbrainsKotlinAndroid)
 }
+
+val releaseInfo = Properties().apply {
+    rootProject.file("release-version.properties").inputStream().use { load(it) }
+}
+val componentVersion = releaseInfo.getProperty("version")
+require(componentVersion.matches(Regex("v[1-9][0-9]{2}"))) { "Invalid release version; run sync_version.ps1" }
+val buildVersion = releaseInfo.getProperty("build")
+require(buildVersion.matches(Regex("v[1-9][0-9]{2}"))) { "Invalid build version; run sync_version.ps1" }
+val buildVersionCode = releaseInfo.getProperty("versionCode").toInt()
 
 android {
     // AndroidHiddenApiBypass upstream recommends disabling dependency metadata reporting.
@@ -18,8 +29,8 @@ android {
         applicationId = "com.xayah.dex"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2742
-        versionName = "2.6.241-webdav-discovery"
+        versionCode = buildVersionCode
+        versionName = "$componentVersion build=$buildVersion"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         multiDexEnabled = false

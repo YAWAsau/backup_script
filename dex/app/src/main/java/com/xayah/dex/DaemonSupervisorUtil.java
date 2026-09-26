@@ -19,7 +19,7 @@ public final class DaemonSupervisorUtil {
     public static void main(String[] args) throws Exception {
         if (args.length == 0 || "help".equals(args[0])) { usage(); return; }
         if ("version".equals(args[0]) || "--version".equals(args[0]) || "-v".equals(args[0])) {
-            System.out.println(DexBuildInfo.VERSION);
+            System.out.println(DexBuildInfo.VERSION_DISPLAY);
             return;
         }
         if (!"supervise".equals(args[0])) { usage(); System.exit(2); }

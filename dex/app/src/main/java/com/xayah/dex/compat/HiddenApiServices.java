@@ -25,11 +25,13 @@ public final class HiddenApiServices {
                 HiddenApiReflection.classForNameCached("android.os.ServiceManager"), "getService", serviceName);
     }
 
-    public static Object interfaceService(String serviceName, String stubClassName) throws Exception {
+    public static synchronized Object interfaceService(String serviceName, String stubClassName) throws Exception {
         String key = serviceName + "#" + stubClassName;
         Object cached = SERVICE_CACHE.get(key);
         if (cached != null) {
-            return cached;
+            Object raw = HiddenApiReflection.invokeFlexible(cached, "asBinder");
+            if (raw instanceof android.os.IBinder && ((android.os.IBinder) raw).isBinderAlive()) return cached;
+            SERVICE_CACHE.remove(key);
         }
         Object binder = binder(serviceName);
         if (binder == null) {

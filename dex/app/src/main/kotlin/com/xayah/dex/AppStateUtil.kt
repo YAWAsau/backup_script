@@ -41,7 +41,7 @@ object AppStateUtil {
         }
         when (args[0]) {
             "version", "--version", "-v" -> {
-                println(VERSION)
+                println(DexBuildInfo.VERSION_DISPLAY)
                 exitProcess(0)
             }
             "help" -> {
@@ -269,7 +269,7 @@ object AppStateUtil {
         println("  foregroundListJson USER_ID")
         println("  foregroundTop USER_ID")
         println("  defaultHome USER_ID")
-        println("  defaultIme USER_ID   # r340 exec settings --user USER_ID")
+        println("  defaultIme USER_ID   # exec settings --user USER_ID")
         println("  settingsGet USER_ID secure|global|system KEY")
         println("  settingsPut USER_ID secure|global|system KEY VALUE")
         println("  frameworkFacts USER_ID PACKAGE...|--stdin")

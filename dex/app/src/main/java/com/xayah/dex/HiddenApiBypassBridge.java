@@ -76,7 +76,6 @@ public final class HiddenApiBypassBridge {
                 + " required=false"
                 + " softGate=true"
                 + " mode=" + sanitize(mode)
-                + " version=" + VERSION
                 + " sdk=" + Build.VERSION.SDK_INT
                 + " reason=" + sanitize(reason);
     }

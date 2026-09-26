@@ -366,7 +366,7 @@ mod tests {
     #[test]
     fn actual_files_empty_odd_names_and_mutation() {
         use std::os::unix::ffi::OsStrExt;
-        let base = std::env::temp_dir().join(format!("r702-manifest-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("manifest-{}", std::process::id()));
         let root = base.join("root");
         std::fs::create_dir_all(&root).unwrap();
         let manifest = base.join("manifest");

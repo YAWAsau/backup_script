@@ -98,8 +98,11 @@ fn with_cgfreezer_output<T, W: Write, F: FnOnce() -> T>(out: &mut W, f: F) -> T 
     })
 }
 
-const VERSION: &str = "r712-subscription-cleanup-api28-r30-202607232022";
+const VERSION: &str = speedbackup_native_rs::versions::CGFREEZER;
+use speedbackup_native_rs::BUILD_VERSION;
 const PROTOCOL: &str = "line-v9-backend-select-r485";
+// Wire identity is stable; release identity is available through --version.
+const LEGACY_PROTOCOL: &str = "plain-lines-r253";
 const MAX_TEXT: usize = 16384;
 const MAX_PATH_LEN: usize = 2048;
 const UNIX_SUN_PATH_MAX: usize = 108;
@@ -2184,9 +2187,6 @@ fn cmd_watch_logd(pkg: &str, user_id: i32, duration_ms: i64) -> i32 {
         signal(SIGINT_LOGD, on_signal_logd as *const () as usize);
     }
 
-    println!("CGFREEZER_LOGD_WATCH_START ok=true package={} user={} durationMs={} initialPids={} pids={}",
-        shell_sanitize(pkg), user_id, duration_ms, initial_count, shell_sanitize(&initial_csv));
-
     let mut list = unsafe { logger_open(LOG_ID_EVENTS, 0, 0, 0) };
     if list.is_null() {
         println!("CGFREEZER_LOGD_WATCH_DONE ok=false reason=open_events_failed elapsedMs={}", monotonic_ms(&start));
@@ -2194,8 +2194,13 @@ fn cmd_watch_logd(pkg: &str, user_id: i32, duration_ms: i64) -> i32 {
         return 5;
     }
 
+    println!("CGFREEZER_LOGD_WATCH_START ok=true package={} user={} durationMs={} initialPids={} pids={}",
+        shell_sanitize(pkg), user_id, duration_ms, initial_count, shell_sanitize(&initial_csv));
+
     let deadline = if duration_ms > 0 { Some(start + Duration::from_millis(duration_ms as u64)) } else { None };
     let (mut events, mut matches, mut starts, mut deaths, mut reconnects) = (0i64, 0i64, 0i64, 0i64, 0i64);
+    let mut recovery_failed = false;
+    let mut reconnect_pending = false;
     let mut buf = vec![0u8; LOGGER_ENTRY_MAX_LEN + 1];
 
     while G_RUNNING.load(Ordering::Relaxed) {
@@ -2203,16 +2208,42 @@ fn cmd_watch_logd(pkg: &str, user_id: i32, duration_ms: i64) -> i32 {
         buf.fill(0);
         let ret = unsafe { logger_read(list, buf.as_mut_ptr()) };
         if ret == -(EINTR as i32) { continue; }
-        if ret == -(EAGAIN as i32) || ret == 0 { std::thread::sleep(Duration::from_millis(50)); continue; }
-        if ret < 0 {
+        if ret == -(EAGAIN as i32) { std::thread::sleep(Duration::from_millis(50)); continue; }
+        // Blocking liblog returns zero on EOF; retrying the same descriptor cannot recover.
+        if ret <= 0 {
             unsafe { logger_free(list); }
             list = std::ptr::null_mut();
             reconnects += 1;
-            while G_RUNNING.load(Ordering::Relaxed) && list.is_null() {
+            println!("CGFREEZER_LOGD_DISCONNECTED error={} reconnects={}", ret, reconnects);
+            if reconnects > 4 { recovery_failed = true; break; }
+            for wait_ms in [100u64, 250, 500, 1000] {
+                if !G_RUNNING.load(Ordering::Relaxed) || deadline.is_some_and(|d| Instant::now() >= d) { break; }
+                let wait = deadline.map(|d| d.saturating_duration_since(Instant::now()).min(Duration::from_millis(wait_ms)))
+                    .unwrap_or(Duration::from_millis(wait_ms));
+                std::thread::sleep(wait);
+                if !G_RUNNING.load(Ordering::Relaxed) || deadline.is_some_and(|d| Instant::now() >= d) { break; }
                 list = unsafe { logger_open(LOG_ID_EVENTS, 0, 0, 0) };
-                if list.is_null() { std::thread::sleep(Duration::from_millis(250)); }
+                if !list.is_null() { break; }
             }
+            if list.is_null() {
+                recovery_failed = G_RUNNING.load(Ordering::Relaxed) && !deadline.is_some_and(|d| Instant::now() >= d);
+                break;
+            }
+            reconnect_pending = true;
             continue;
+        }
+        if reconnect_pending {
+            reconnect_pending = false;
+            // A successful read confirms reconnection; logger_open may be lazy.
+            cache = PidCache::new();
+            let current = scan_package_collect(pkg, user_id, false);
+            for item in current.csv.split(',').filter(|v| !v.is_empty()) {
+                let mut parts = item.splitn(3, ':');
+                let pid = parts.next().map(atoi_prefix_i32).unwrap_or(-1);
+                let uid = parts.next().map(atoi_prefix_i32).unwrap_or(-1);
+                if pid > 0 { cache.add(pid, uid); }
+            }
+            println!("CGFREEZER_LOGD_RECONNECTED ok=true reconnects={} currentPids={} historicalReplay=false", reconnects, cache.pids.len());
         }
         // struct logger_entry header: len(u16) hdr_size(u16) pid(i32) tid(u32)
         // sec(u32) nsec(u32) lid(u32) uid(u32) = 28 bytes on the ABI this
@@ -2255,10 +2286,10 @@ fn cmd_watch_logd(pkg: &str, user_id: i32, duration_ms: i64) -> i32 {
     if !list.is_null() { unsafe { logger_free(list) }; }
     unsafe { dlclose(liblog) };
     println!(
-        "CGFREEZER_LOGD_WATCH_DONE ok=true package={} user={} events={} matches={} starts={} deaths={} cachePids={} cacheUid={} reconnects={} elapsedMs={}",
-        shell_sanitize(pkg), user_id, events, matches, starts, deaths, cache.pids.len(), cache.uid, reconnects, monotonic_ms(&start)
+        "CGFREEZER_LOGD_WATCH_DONE ok={} package={} user={} events={} matches={} starts={} deaths={} cachePids={} cacheUid={} reconnects={} elapsedMs={}",
+        !recovery_failed, shell_sanitize(pkg), user_id, events, matches, starts, deaths, cache.pids.len(), cache.uid, reconnects, monotonic_ms(&start)
     );
-    0
+    if recovery_failed { 6 } else { 0 }
 }
 
 
@@ -2412,12 +2443,12 @@ fn daemon_stop_children_bounded(stats: &mut DaemonStats) {
 
 fn daemon_stop_receipt(stats: &DaemonStats, before: usize, elapsed: u128) -> String {
     let remaining = stats.active_children();
-    format!("CGFREEZER_DAEMON_EXIT ok={} version={} pid={} protocol={} parentDirect=true activeChildren={} childrenBefore={} childrenReaped={} cleanupVerified={} cleanupMs={}\n",
-        remaining == 0, VERSION, std::process::id(), PROTOCOL, remaining,
+    format!("CGFREEZER_DAEMON_EXIT ok={} pid={} protocol={} parentDirect=true activeChildren={} childrenBefore={} childrenReaped={} cleanupVerified={} cleanupMs={}\n",
+        remaining == 0, std::process::id(), PROTOCOL, remaining,
         before, before.saturating_sub(remaining), remaining == 0, elapsed)
 }
 
-// r534: daemon worker commands share the same CLI cmd_* logic through
+// daemon worker commands share the same CLI cmd_* logic through
 // with_cgfreezer_output(), an in-process writer sink. This deliberately avoids
 // the rejected stdout-capture/dup2 pipe design while removing the previous
 // daemon-vs-CLI split for FREEZE/THAW/KILL/CHECK/SCAN.
@@ -2430,11 +2461,11 @@ fn handle_worker_to<W: Write>(args: &[String], out: &mut W) -> i32 {
         }
         match args.get(0).map(|s| canonical_daemon_command(s)) {
             Some("HELLO") => {
-                println!("CGFREEZER_DAEMON_HELLO ok=true version={} pid={} protocol={} parentDirect=false", VERSION, std::process::id(), PROTOCOL);
+                println!("CGFREEZER_DAEMON_HELLO ok=true pid={} protocol={} parentDirect=false", std::process::id(), PROTOCOL);
                 0
             }
             Some("CAPS") => {
-                println!("CGFREEZER_DAEMON_CAPS ok=true version={} protocol={} caps={}", VERSION, PROTOCOL, CAPS);
+                println!("CGFREEZER_DAEMON_CAPS ok=true protocol={} caps={}", PROTOCOL, CAPS);
                 0
             }
             Some("BACKEND_PROBE") => cmd_backend_probe(),
@@ -2626,9 +2657,9 @@ fn handle_parent(line: &str, stats: &DaemonStats, socket: &str) -> Option<(bool,
     // argv[0]; trailing tokens do not force the command into worker dispatch.
     let cmd = daemon_ascii_fields(line, 1).into_iter().next()?;
     match cmd {
-        "HELLO" => Some((false, format!("CGFREEZER_DAEMON_HELLO ok=true version={} pid={} protocol={} parentDirect=true\n", VERSION, std::process::id(), PROTOCOL))),
-        "CAPS" => Some((false, format!("CGFREEZER_DAEMON_CAPS ok=true version={} protocol={} caps={} parentDirect=true\n", VERSION, PROTOCOL, CAPS))),
-        "PING" => Some((false, format!("CGFREEZER_DAEMON_PONG ok=true version={} pid={} uptimeMs={} activeChildren={}\n", VERSION, std::process::id(), uptime, stats.active_children()))),
+        "HELLO" => Some((false, format!("CGFREEZER_DAEMON_HELLO ok=true pid={} protocol={} parentDirect=true\n", std::process::id(), PROTOCOL))),
+        "CAPS" => Some((false, format!("CGFREEZER_DAEMON_CAPS ok=true protocol={} caps={} parentDirect=true\n", PROTOCOL, CAPS))),
+        "PING" => Some((false, format!("CGFREEZER_DAEMON_PONG ok=true pid={} uptimeMs={} activeChildren={}\n", std::process::id(), uptime, stats.active_children()))),
         "DIAGNOSTICS" => {
             let mut body = String::new();
             // One parent-direct request; all four sections use the same stats snapshot.
@@ -2644,8 +2675,8 @@ fn handle_parent(line: &str, stats: &DaemonStats, socket: &str) -> Option<(bool,
         "STATUS" => {
             let (pb, pr) = preferred_backend();
             let mut body = format!(
-                "CGFREEZER_DAEMON_STATUS ok=true version={} pid={} protocol=plain-lines-r253 lineProtocol={} uptimeMs={} requests={} directRequests={} workerRequests={} activeChildren={} socket={} running=1 freeze={} freezePkg={} killPkg={} thaw={} scan={} lastCommand={} lastError={} backendPreferred={} backendReason={} backendProbeMs={} backendV1Mount={} hash=0 policy=facts-only\n",
-                VERSION, std::process::id(), PROTOCOL, uptime, stats.requests, stats.direct, stats.worker, stats.active_children(),
+                "CGFREEZER_DAEMON_STATUS ok=true pid={} protocol={LEGACY_PROTOCOL} lineProtocol={} uptimeMs={} requests={} directRequests={} workerRequests={} activeChildren={} socket={} running=1 freeze={} freezePkg={} killPkg={} thaw={} scan={} lastCommand={} lastError={} backendPreferred={} backendReason={} backendProbeMs={} backendV1Mount={} hash=0 policy=facts-only\n",
+                std::process::id(), PROTOCOL, uptime, stats.requests, stats.direct, stats.worker, stats.active_children(),
                 socket, stats.stat_freeze, stats.stat_freeze_pkg, stats.stat_kill_pkg, stats.stat_thaw, stats.stat_scan,
                 stats.last_command, stats.last_error,
                 pb, pr, G_FREEZE_BACKEND_PROBE_MS.with(|c| *c.borrow()), v1_mount_hint()
@@ -2654,7 +2685,7 @@ fn handle_parent(line: &str, stats: &DaemonStats, socket: &str) -> Option<(bool,
             Some((false, body))
         }
         "STATS" => {
-            let mut body = format!("CGFREEZER_DAEMON_STATS ok=true version={} pid={} uptimeMs={} protocol=plain-lines-r253 hash=0 policy=facts-only\n", VERSION, std::process::id(), uptime);
+            let mut body = format!("CGFREEZER_DAEMON_STATS ok=true pid={} uptimeMs={} protocol={LEGACY_PROTOCOL} hash=0 policy=facts-only\n", std::process::id(), uptime);
             body.push_str(&format!(
                 "CGFREEZER_DAEMON_STATS_ROW class=summary requests={} directRequests={} workerRequests={} activeChildren={} freeze={} freezePkg={} killPkg={} thaw={} scan={} lastCommand={}\n",
                 stats.requests, stats.direct, stats.worker, stats.active_children(), stats.stat_freeze, stats.stat_freeze_pkg, stats.stat_kill_pkg, stats.stat_thaw, stats.stat_scan, stats.last_command
@@ -2663,7 +2694,7 @@ fn handle_parent(line: &str, stats: &DaemonStats, socket: &str) -> Option<(bool,
             Some((false, body))
         }
         "STATS_DETAIL" => {
-            let mut body = format!("CGFREEZER_DAEMON_STATS_DETAIL ok=true version={} pid={} uptimeMs={} protocol=plain-lines-r253 hash=0 policy=facts-only timingScope=parent-reap p95Semantics=legacy-max\n", VERSION, std::process::id(), uptime);
+            let mut body = format!("CGFREEZER_DAEMON_STATS_DETAIL ok=true pid={} uptimeMs={} protocol={LEGACY_PROTOCOL} hash=0 policy=facts-only timingScope=parent-reap p95Semantics=legacy-max\n", std::process::id(), uptime);
             for i in 0..CGSTAT_CLASSES {
                 let c = &stats.classes[i];
                 let avg = if c.completed > 0 { c.total_ms / c.completed as i64 } else { 0 };
@@ -2679,7 +2710,7 @@ fn handle_parent(line: &str, stats: &DaemonStats, socket: &str) -> Option<(bool,
             Some((false, body))
         }
         "LAST_ERROR" => {
-            let mut body = format!("CGFREEZER_DAEMON_LAST_ERROR ok=true version={} pid={} protocol=plain-lines-r253 lastError={} lastCommand={} hash=0 policy=facts-only\n", VERSION, std::process::id(), stats.last_error, stats.last_command);
+            let mut body = format!("CGFREEZER_DAEMON_LAST_ERROR ok=true pid={} protocol={LEGACY_PROTOCOL} lastError={} lastCommand={} hash=0 policy=facts-only\n", std::process::id(), stats.last_error, stats.last_command);
             body.push_str(&format!("CGFREEZER_DAEMON_LAST_WORKER_ERROR command={} pid={} exitCode={} signal={} scope=last-failed-worker\n",
                 stats.last_failed_command, stats.last_worker_pid, stats.last_worker_exit, stats.last_worker_signal));
             body.push_str("CGFREEZER_DAEMON_LAST_ERROR_END ok=true rows=2\n");
@@ -2690,7 +2721,7 @@ fn handle_parent(line: &str, stats: &DaemonStats, socket: &str) -> Option<(bool,
             let probe_ms = G_FREEZE_BACKEND_PROBE_MS.with(|c| *c.borrow());
             Some((false, format!("CGFREEZER_BACKEND_PROBE ok=true preferred={} preferredReason={} v1Mount={} cache=true elapsedMs={}\n", p, r, v1_mount_hint(), probe_ms)))
         }
-        "EXIT" | "STOP" => Some((true, format!("CGFREEZER_DAEMON_EXIT ok=true version={} pid={} protocol={} parentDirect=true activeChildren={}\n", VERSION, std::process::id(), PROTOCOL, stats.active_children()))),
+        "EXIT" | "STOP" => Some((true, format!("CGFREEZER_DAEMON_EXIT ok=true pid={} protocol={} parentDirect=true activeChildren={}\n", std::process::id(), PROTOCOL, stats.active_children()))),
         _ => None,
     }
 }
@@ -2747,8 +2778,8 @@ fn cmd_daemon(socket_path: &str) -> i32 {
     cgfb_ensure_global(true);
     let backend_probe_ms = G_FREEZE_BACKEND_PROBE_MS.with(|c| *c.borrow());
     let (backend_preferred, backend_reason) = preferred_backend();
-    println!("CGFREEZER_DAEMON_START ok=true version={} pid={} socket={} protocol={} parentControl=true backendPreferred={} backendReason={} backendProbeMs={}",
-        VERSION, std::process::id(), shell_sanitize(socket_path), PROTOCOL, backend_preferred, shell_sanitize(&backend_reason), backend_probe_ms);
+    println!("CGFREEZER_DAEMON_START ok=true pid={} socket={} protocol={} parentControl=true backendPreferred={} backendReason={} backendProbeMs={}",
+        std::process::id(), shell_sanitize(socket_path), PROTOCOL, backend_preferred, shell_sanitize(&backend_reason), backend_probe_ms);
 
     while G_RUNNING.load(Ordering::Relaxed) {
         reap_children_nonblock(&mut stats);
@@ -2847,7 +2878,7 @@ fn cmd_daemon(socket_path: &str) -> i32 {
     let _ = fs::remove_file(socket_path);
     daemon_stop_children_bounded(&mut stats);
     let clean = stats.active_children() == 0;
-    println!("CGFREEZER_DAEMON_DONE ok={} version={} socket={} requests={} directRequests={} workerRequests={} activeChildren={} cleanupVerified={}", clean, VERSION, shell_sanitize(socket_path), stats.requests, stats.direct, stats.worker, stats.active_children(), clean);
+    println!("CGFREEZER_DAEMON_DONE ok={} socket={} requests={} directRequests={} workerRequests={} activeChildren={} cleanupVerified={}", clean, shell_sanitize(socket_path), stats.requests, stats.direct, stats.worker, stats.active_children(), clean);
     if clean { 0 } else { 1 }
 }
 
@@ -2856,7 +2887,7 @@ fn main_rc(args: &[String]) -> i32 {
         return usage();
     }
     if args.len() == 2 && (args[1] == "--version" || args[1] == "version") {
-        println!("cgfreezer {}", VERSION);
+        println!("cgfreezer {VERSION} build={BUILD_VERSION}");
         return 0;
     }
     match args[1].as_str() {
@@ -3062,7 +3093,7 @@ mod daemon_control_tests {
 }
 
 #[cfg(test)]
-mod r712_tests {
+mod subscription_cleanup_tests {
     use super::*;
     #[test]
     fn every_spawned_pid_is_tracked_even_at_the_admission_boundary() {

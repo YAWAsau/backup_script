@@ -104,8 +104,8 @@ final class DeviceFactsUtil {
     }
 
     /**
-     * r397: Prefer public product model properties before vendor/system/bootimage
-     * partition model values. r396 correctly added more raw model-code candidates,
+     * Prefer public product model properties before vendor/system/bootimage
+     * partition model values.  correctly added more raw model-code candidates,
      * but on OPlus/OnePlus builds `ro.product.vendor.model` can carry a regional
      * build/fingerprint code (for example CPH2745IN) while the user-visible device
      * model remains ro.product.model/Build.MODEL (for example CPH2747). Matching

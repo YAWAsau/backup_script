@@ -8,7 +8,7 @@ import java.util.Map;
 /**
  * Dex-builtin device model name database.
  *
- * r393: generated from the full uploaded tools/Device_List source with no
+ * generated from the full uploaded tools/Device_List source with no
  * project override block. Runtime no longer reads or downloads tools/Device_List;
  * updating model names requires regenerating this file and rebuilding classes.dex.
  *

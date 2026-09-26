@@ -194,7 +194,7 @@ public class HiddenApiUtil {
     }
 
     private static void printVersion() {
-        System.out.println(VERSION);
+        System.out.println(DexBuildInfo.VERSION_DISPLAY);
     }
 
     private static void onCommand(String cmd, String[] args) {
@@ -823,7 +823,7 @@ public class HiddenApiUtil {
     }
 
 
-    // r634: Dex APK install executor removed from public/daemon dispatch.
+    // Dex APK install executor removed from public/daemon dispatch.
     // APK restore execution is intentionally back on shell pm session for source fidelity and speed; Dex only supplies facts.
 
     private static int installSessionCreateCommand(String[] args) {

@@ -9,7 +9,8 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-const VERSION: &str = "1.0.1-android28-r30-native-convergence-r572-rust-r572";
+const VERSION: &str = speedbackup_native_rs::versions::FILEWATCH;
+use speedbackup_native_rs::BUILD_VERSION;
 const EVENT_BUFFER_SIZE: usize = 64 * 1024;
 
 // inotify mask bits (Linux uapi/linux/inotify.h) - stable ABI, safe to hardcode.
@@ -341,7 +342,7 @@ pub(crate) fn run() {
     let argv0 = args.get(0).map(|s| s.as_str()).unwrap_or("filewatch");
 
     let rc = if args.len() == 2 && args[1] == "--version" {
-        println!("filewatch {}", VERSION);
+        println!("filewatch {VERSION} build={BUILD_VERSION}");
         0
     } else if args.len() == 2 && (args[1] == "--help" || args[1] == "-h") {
         print_help(argv0);

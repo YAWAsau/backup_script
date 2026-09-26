@@ -304,6 +304,7 @@ public final class AppStateEngine {
         root.addProperty("schemaVersion", SCHEMA_VERSION);
         root.addProperty("daemonProtocolVersion", DAEMON_PROTOCOL_VERSION);
         root.addProperty("engineVersion", ENGINE_VERSION);
+        root.addProperty("buildVersion", DexBuildInfo.PATCH_BUILD);
         root.addProperty("dexVersion", HiddenApiUtil.VERSION);
         root.addProperty("mainClass", "com.xayah.dex.AppStateUtil");
 
@@ -328,13 +329,13 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.cchelper.repeat_merge_fix.v1", true, false, "CCHelper maps 重复/合并 to 重複/合併 in zh-TW and back to 简中 correctly");
         addCapability(capabilities, "appstate.snapshot.batch.v2", true, true, "canonical-ndjson");
         addCapability(capabilities, "appstate.snapshot.batch.parallel.v1", true, true, "bounded-fixed-pool-1-2-4;input-order-stable;max4");
-        addCapability(capabilities, "appstate.run_results.v1", true, true, "r705 run-local retry-aware package summaries");
-        addCapability(capabilities, "appstate.result_files.v1", true, true, "r704 typed results and bounded streaming");
-        addCapability(capabilities, "dex.control_results.v1", true, true, "r708 typed control completion");
-        addCapability(capabilities, "appstate.ssaid.typed_result.v1", true, true, "r704 typed results and bounded streaming");
-        addCapability(capabilities, "webdav.stream_result.v1", true, true, "r704 typed results and bounded streaming");
-        addCapability(capabilities, "webdav.chunk_write_coalesced.v1", true, true, "r704 typed results and bounded streaming");
-        addCapability(capabilities, "dex.result_contract.v1", true, true, "r704 typed results and bounded streaming");
+        addCapability(capabilities, "appstate.run_results.v1", true, true, "run-local retry-aware package summaries");
+        addCapability(capabilities, "appstate.result_files.v1", true, true, "typed results and bounded streaming");
+        addCapability(capabilities, "dex.control_results.v1", true, true, "typed control completion");
+        addCapability(capabilities, "appstate.ssaid.typed_result.v1", true, true, "typed results and bounded streaming");
+        addCapability(capabilities, "webdav.stream_result.v1", true, true, "typed results and bounded streaming");
+        addCapability(capabilities, "webdav.chunk_write_coalesced.v1", true, true, "typed results and bounded streaming");
+        addCapability(capabilities, "dex.result_contract.v1", true, true, "typed results and bounded streaming");
         addCapability(capabilities, "appstate.snapshot.direct_files.v1", true, true, "snapshotAppStateBatchFiles writes run-scoped staging NDJSON/state/error files and returns compact TSV summary; shell publishes canonical maps; legacy relay/reducer remains fallback");
         addCapability(capabilities, "appstate.snapshot.direct_files.single_pass.v1", true, true, "direct-file snapshot consumes shared canonical batch records and serialized rows once; no response-body split or JsonParser reparse");
         addCapability(capabilities, "appstate.snapshot.direct_files.telemetry_v2.v1", true, true, "shared snapshot core/serialize plus direct snapshot/state/error write/publish/total timing fields");
@@ -360,10 +361,10 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.pm.installer_context_facts.v1", true, false, "installerContextFacts emits installer package availability/uid/dataDir/source facts; tools still owns installer strategy");
         addCapability(capabilities, "dex.pm.restore_install_plan.v1", true, false, "restoreInstallPlan emits session-only PackageManager install route facts for single/split APK restore; tools consumes as contract field");
         addCapability(capabilities, "dex.pm.restore_install_plan_batch.v1", true, false, "restoreInstallPlanBatch emits batched session-only PackageManager install route facts for restore planning");
-        addCapability(capabilities, "dex.pm.restore_install_plan_shell_pm.v1", true, false, "r634 restore APK installation uses shell pm session execution; Dex remains responsible for installer/plan facts only");
+        addCapability(capabilities, "dex.pm.restore_install_plan_shell_pm.v1", true, false, "restore APK installation uses shell pm session execution; Dex remains responsible for installer/plan facts only");
         addCapability(capabilities, "webdav.profile_contract.dex.v1", true, false, "backendprofilerel emits machine-readable put/list/publish/verify/cleanup/security contract fields; tools consumes policy fields instead of re-deriving server quirks");
         addCapability(capabilities, "webdav.profile_contract_full.dex.v1", true, false, "WebDAV backend profile carries server identity, support tier, strategy, cleanup and security advisory as a complete machine-readable contract");
-        addCapability(capabilities, "webdav.profile_contract_authoritative.dex.v1", true, false, "r631 WebDAV strategy display and policy fields are consumed as a Dex-owned contract instead of shell-side server-name heuristics");
+        addCapability(capabilities, "webdav.profile_contract_authoritative.dex.v1", true, false, "WebDAV strategy display and policy fields are consumed as a Dex-owned contract instead of shell-side server-name heuristics");
         addCapability(capabilities, "dex.appstate.android16_17_policy_contract.v1", true, false, "AppState Android 16/17 permission/AppOps/special-access behavior is declared through Dex capability policy and batch facts rather than ad-hoc shell dumpsys parsing");
         addCapability(capabilities, "dex.pm.post_install_facts_batch.v1", true, false, "appInventoryPostInstallFactsBatch refreshes PackageManager facts after APK install; tools still owns restore decisions");
         addCapability(capabilities, "dex.default_role_facts.batch.v1", true, false, "defaultRoleFacts emits HOME/DIALER/SMS/BROWSER/ASSISTANT role holders; tools still owns policy");
@@ -383,7 +384,7 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.cchelper.table_hardening.v1", true, true, "CCHelper conversion tables skip malformed lines, use codepoint maps, and sort phrase replacements longest-first at runtime");
         addCapability(capabilities, "dex.device_model_db.entry_count_runtime.v1", true, true, "DeviceModelDb.entryCount returns BY_KEY.size so model count reflects actual normalized map entries");
         addCapability(capabilities, "dex.device_model_db.entry_count_selfcheck.v1", true, true, "deviceFacts reports expected/runtime DeviceModelDb entry-count equality so generated table shrink/duplication is visible in dex_check");
-        addCapability(capabilities, "dex.convergence.boundary_100_reviewed.v1", true, true, "r637 records that APK live install stays shell pm/hybrid while Dex/Rust own stable facts, profiles, audits and manifest/planner producers");
+        addCapability(capabilities, "dex.convergence.boundary_100_reviewed.v1", true, true, "records that APK live install stays shell pm/hybrid while Dex/Rust own stable facts, profiles, audits and manifest/planner producers");
         addCapability(capabilities, "appstate.default_home.role_fallback.v1", true, false, "RoleManager HOME holder fallback when resolveActivity returns android/empty");
         addCapability(capabilities, "appstate.default_home.get_home_activities.v1", true, false, "PackageManager getHomeActivities default ComponentName fallback before role/single-candidate fallback");
         addCapability(capabilities, "appstate.default_home.get_home_activities.reflect.v1", true, false, "Compile-safe reflection bridge for getHomeActivities on SDK stubs that hide the method");
@@ -398,14 +399,15 @@ public final class AppStateEngine {
         addCapability(capabilities, "appstate.restore.vendor_classification.dex.v1", true, true, "restoreAppStateBatch treats known platform/vendor-owned runtime and scoped AppOps as non-partial structured vendor-constrained successes");
         addCapability(capabilities, "appstate.restore.permission_appop_vendor_classification.dex.v1", true, true, "permissionAppOp restore classifies active IME INTERACT_ACROSS_PROFILES op=93 default-to-allowed policy drift as non-partial vendor constrained success");
         addCapability(capabilities, "appstate.android17_runtime_permission_appop_package_fallback.v1", true, true, "Android 17 runtime location AppOps retry package-scope mode when uid-scope restore leaves effective mode ignored");
-        addCapability(capabilities, "appstate.android17_location_appop_policy_classification.v1", true, true, "Android 17 location AppOps effective ignored rows are classified as platform policy constrained after restore attempts uid+package scopes");
+        addCapability(capabilities, "appstate.special_access_package_fallback.v1", true, true, "Legacy usage-stats/all-files effective allow with unknown UID restores package mode and verifies readback; unresolved location/special-access differences remain mismatches");
+        addCapability(capabilities, "dex.process_observer.bounded_recovery.v1", true, true, "Binder death and native EOF trigger bounded recovery; reconnected subscriptions reconcile live target state; stop cancels retries");
+        addCapability(capabilities, "appstate.uid_raw_service_query.v1", true, true, "UID raw mode fallback via getUidOps with switch/default-op semantics");
         addCapability(capabilities, "dex.root_daemon.ready_before_appstate_init.v1", true, true, "Root daemon publishes READY before optional AppState cleanup/bootstrap to avoid Android Canary startup hangs");
         addCapability(capabilities, "dex.root_daemon.ready_before_hiddenapi_init.v1", true, true, "Root daemon publishes READY before hidden-api exemption/bootstrap on Android Canary; HiddenApi initializes lazily per request");
         addCapability(capabilities, "dex.root_daemon.ready_before_hardening.v1", true, true, "Root daemon publishes READY before best-effort daemon hardening on Android Canary; hardening runs after socket bind/READY");
-        addCapability(capabilities, "dex.root_daemon.capability_signature.compilefix.v1", true, true, "r500 compilefix: RootDaemon capability rows use the stable addCapability(JsonArray,String,boolean,boolean,String) signature");
-        addCapability(capabilities, "dex.daemon_supervisor.r8_keep.v1", true, true, "r501 keeps DaemonSupervisorUtil in release R8 output so app_process supervisor does not crash with ClassNotFoundException on Android Canary");
+        addCapability(capabilities, "dex.root_daemon.capability_signature.compilefix.v1", true, true, "compilefix: RootDaemon capability rows use the stable addCapability(JsonArray,String,boolean,boolean,String) signature");
+        addCapability(capabilities, "dex.daemon_supervisor.r8_keep.v1", true, true, "keeps DaemonSupervisorUtil in release R8 output so app_process supervisor does not crash with ClassNotFoundException on Android Canary");
         addCapability(capabilities, "appstate.verify.android17_platform_permission_policy.dex.v1", true, true, "Android 17 platform-retained privileged/system permission drift is classified as vendor/platform constrained during verify");
-        addCapability(capabilities, "appstate.restore.special_access_vendor_classification.dex.v1", true, true, "restore specialAccess classifies platform/role-owned MANAGE_EXTERNAL_STORAGE and default dialer full-screen-intent drift as non-partial vendor constrained success");
         addCapability(capabilities, "appstate.verify.default_dialer_vendor_classification.dex.v1", true, true, "verify classifies default/system dialer platform-retained WRITE_SECURE_SETTINGS/INTERACT_ACROSS_USERS/full-screen-intent drift as vendor constrained");
         addCapability(capabilities, "appstate.appops_reset.integrated.v1", true, true, "package-scoped");
         addCapability(capabilities, "appstate.ssaid.integrated.v1", true, true, "snapshot+restore+verify+uid-key-settings_ssaid");
@@ -529,6 +531,9 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.google_package_snapshot.shared.v1", true, true, "install-diagnostics+appstate-verify");
         addCapability(capabilities, "appstate.structured_result_codes.v2", true, true, "result-header+package+item-ndjson");
         addCapability(capabilities, "appstate.scoped_appops_fields.v1", true, true, "packageMode+uidMode+effectiveMode");
+        addCapability(capabilities, "appstate.location_policy_separation.v1", true, true, "preserves granted location stored mode when global location is disabled; verifies raw state separately from effective policy");
+        addCapability(capabilities, "appstate.location_restore_order.v1", true, true, "restores related grants before location AppOps and rechecks known location policy after package fallback");
+        addCapability(capabilities, "appstate.scoped_default_equivalence.v1", true, true, "normalizes framework default only with matching known package and uid scopes");
         addCapability(capabilities, "appstate.explicit_package_mode_snapshot.v1", true, true, "getOpsForPackage-not-effective-check");
         addCapability(capabilities, "appstate.default_appop_missing_equivalent.v1", true, true, "missing-row-equals-mode-default");
         addCapability(capabilities, "appstate.permission_denied_item_partial.v1", true, true, "item-level-securityexception-does-not-poison-batch");
@@ -669,8 +674,8 @@ public final class AppStateEngine {
         addCapability(capabilities, "hiddenapi.force_stop_package_batch.daemon.v1", true, true, "single-package-or-batch-force-stop-via-hiddenapi-daemon");
         addCapability(capabilities, "hiddenapi.daemon.response_body.capture.fix.v1", true, true, "ping+forceStopPackageBatch-body-returned-on-socket");
         addCapability(capabilities, "hiddenapi.install_session.hybrid_write.v1", true, true, "createSession=PlayUID;write=root;commit=PlayUID");
-        addCapability(capabilities, "hiddenapi.install_session.batch", false, false, "removed in v2.6.4; use installSessionCreate/installSessionCommit");
-        addCapability(capabilities, "hiddenapi.install_precheck_apks", false, false, "removed in v2.6.4; root pm install-write path does not need Play-readable APK precheck");
+        addCapability(capabilities, "hiddenapi.install_session.batch", false, false, "removed; use installSessionCreate/installSessionCommit");
+        addCapability(capabilities, "hiddenapi.install_precheck_apks", false, false, "removed; root pm install-write path does not need Play-readable APK precheck");
         addCapability(capabilities, "hiddenapi.hot_cli_removed.v1", true, true, "hot commands are daemon-only");
         addCapability(capabilities, "notification.daemon.af_unix.v1", true, true, "notifyBatch");
         addCapability(capabilities, "notification.hot_cli_removed.v1", true, true, "notifyBatch is daemon-only");
@@ -732,7 +737,7 @@ public final class AppStateEngine {
     }
 
     /**
-     * r683 shared snapshot core.  Package state is captured once and each canonical record is
+     * shared snapshot core.  Package state is captured once and each canonical record is
      * serialized exactly once.  Legacy relay and direct-file persistence consume the same
      * JsonObject/String pairs, so direct mode cannot drift into a second snapshot schema.
      */
@@ -826,7 +831,7 @@ public final class AppStateEngine {
 
 
     /**
-     * r683 direct-file snapshot path.  It consumes the same canonical JsonObject/String pairs
+     * direct-file snapshot path.  It consumes the same canonical JsonObject/String pairs
      * produced by snapshotBatchCore(), writes snapshot/state/error staging files in one pass,
      * and returns only a compact TSV summary.  There is no 1 MiB response-body construction,
      * line split, or JsonParser reparse in the direct path.
@@ -1152,8 +1157,6 @@ public final class AppStateEngine {
 
             JsonObject root = new JsonObject();
             root.addProperty("schemaVersion", SCHEMA_VERSION);
-            root.addProperty("engineVersion", ENGINE_VERSION);
-            root.addProperty("dexVersion", HiddenApiUtil.VERSION);
             root.addProperty("recordType", "foregroundList");
             root.addProperty("userId", userId);
             root.addProperty("stateSource", snapshot.source);
@@ -2528,6 +2531,7 @@ public final class AppStateEngine {
         }
         int permissionMask = permissionFlagRestoreMask();
         JsonArray permissions = desired.getAsJsonArray("permissions");
+        JsonArray deferredLocationAppOps = null;
         for (JsonElement element : permissions) {
             if (!element.isJsonObject()) continue;
             JsonObject permission = element.getAsJsonObject();
@@ -2589,8 +2593,15 @@ public final class AppStateEngine {
             }
             if (op != AppOpsManagerHidden.OP_NONE) {
                 if (changeableGrant && runtime && !specialAccessOp) {
-                    restoreRuntimePermissionAppOp(appOps, uid, packageName, permission, op,
-                            "permissionAppOp", name, report);
+                    // Fine/coarse AppOps also depend on the background-location grant.
+                    // Complete all grants/flags before setting and checking these modes.
+                    if (isLocationPermission(name, op)) {
+                        if (deferredLocationAppOps == null) deferredLocationAppOps = new JsonArray();
+                        deferredLocationAppOps.add(permission);
+                    } else {
+                        restoreRuntimePermissionAppOp(appOps, uid, packageName, permission, op,
+                                "permissionAppOp", name, report);
+                    }
                 } else {
                     // For legacy-migrated permission rows that are not emitted by the new
                     // snapshot schema, bridge their AppOp into the scoped writer so old
@@ -2598,6 +2609,15 @@ public final class AppStateEngine {
                     restoreScopedAppOp(appOps, uid, packageName, permission, op, "appOpMode",
                             "permissionAppOp", name, false, report);
                 }
+            }
+        }
+
+        if (deferredLocationAppOps != null) {
+            for (JsonElement element : deferredLocationAppOps) {
+                JsonObject permission = element.getAsJsonObject();
+                restoreRuntimePermissionAppOp(appOps, uid, packageName, permission,
+                        intMember(permission, "appOp", AppOpsManagerHidden.OP_NONE),
+                        "permissionAppOp", stringMember(permission, "name"), report);
             }
         }
 
@@ -2721,30 +2741,6 @@ public final class AppStateEngine {
         return op == 0 || op == 1;
     }
 
-    private static boolean isAndroid17LocationEffectivePolicyConstrained(String permissionName, int op,
-                                                                         int expectedEffective,
-                                                                         int actualEffective) {
-        if (!isAndroid17LocationPermissionAppOp(permissionName, op)) return false;
-        if (actualEffective != AppOpsManagerHidden.MODE_IGNORED) return false;
-        return expectedEffective == AppOpsManagerHidden.MODE_ALLOWED
-                || expectedEffective == AppOpsManagerHidden.MODE_FOREGROUND;
-    }
-
-    private static boolean isAndroid17LocationVerifyEffectivePolicyMismatch(String path,
-                                                                            JsonElement expected,
-                                                                            JsonElement actual,
-                                                                            String message) {
-        if (Build.VERSION.SDK_INT < 37) return false;
-        if (!"effective mode mismatch".equals(message)) return false;
-        if (!("permissions.android.permission.ACCESS_FINE_LOCATION.appOp.appOpMode".equals(path)
-                || "permissions.android.permission.ACCESS_COARSE_LOCATION.appOp.appOpMode".equals(path))) {
-            return false;
-        }
-        if (!jsonModeIs(actual, AppOpsManagerHidden.MODE_IGNORED)) return false;
-        return jsonModeIs(expected, AppOpsManagerHidden.MODE_ALLOWED)
-                || jsonModeIs(expected, AppOpsManagerHidden.MODE_FOREGROUND);
-    }
-
     private static boolean isDefaultOrSystemDialerPackage(String packageName) {
         if (packageName == null) return false;
         return "com.google.android.dialer".equals(packageName)
@@ -2753,26 +2749,66 @@ public final class AppStateEngine {
                 || packageName.contains(".dialer.");
     }
 
-    private static boolean isVendorConstrainedSpecialAccessRestore(String packageName, String category, String key,
-                                                                   int op, int expectedEffective,
-                                                                   int actualEffective,
-                                                                   boolean packageOk, boolean uidOk) {
-        if (!"specialAccess".equals(category)) return false;
-        if (!packageOk || !uidOk) return false;
-        if ("MANAGE_EXTERNAL_STORAGE".equals(key)
-                && op == 92
-                && expectedEffective == AppOpsManagerHidden.MODE_ALLOWED
-                && actualEffective == AppOpsManagerHidden.MODE_DEFAULT) {
-            return true;
+    private static boolean isLocationPermission(String name, int op) {
+        return (op == 1 && "android.permission.ACCESS_FINE_LOCATION".equals(name))
+                || (op == 0 && "android.permission.ACCESS_COARSE_LOCATION".equals(name));
+    }
+
+    private static int runtimePermissionExpectedMode(JsonObject state, int op) {
+        int effective = intMember(state, "appOpMode", AppOpsManagerHidden.MODE_DEFAULT);
+        Integer saved = nullableIntMember(state, "appOpRestoreMode");
+        Integer stored = nullableIntMember(state, "appOpStoredMode");
+        // Optional new snapshot field; old backups retain their existing interpretation.
+        if ((op == 0 || op == 1) && booleanMember(state, "granted", false)
+                && saved != null && saved.equals(stored) && allowedMode(saved)
+                && effective == AppOpsManagerHidden.MODE_IGNORED
+                && jsonBooleanIs(state.get("locationEnabled"), false)) return saved;
+        return effective;
+    }
+
+    private static Boolean locationEnabledForUser(int userId) {
+        try {
+            Object service = HiddenApiServices.interfaceService("location", "android.location.ILocationManager$Stub");
+            Object value = HiddenApiReflection.invokeFlexible(service, "isLocationEnabledForUser", userId);
+            return value instanceof Boolean ? (Boolean) value : null;
+        } catch (Throwable ignored) {
+            return null; // Unavailable policy is not proof of a harmless mismatch.
         }
-        if ("USE_FULL_SCREEN_INTENT".equals(key)
-                && op == 133
-                && expectedEffective == AppOpsManagerHidden.MODE_ALLOWED
-                && actualEffective == AppOpsManagerHidden.MODE_DEFAULT
-                && isDefaultOrSystemDialerPackage(packageName)) {
-            return true;
-        }
-        return false;
+    }
+
+    private static boolean restoredLocationIsGloballyDisabled(AppOpsManagerHidden appOps, int uid,
+                                                               String packageName, JsonObject state,
+                                                               int op, String key, int expected, int actual) {
+        if (!isLocationPermission(key, op) || !booleanMember(state, "granted", false)
+                || !allowedMode(expected) || actual != AppOpsManagerHidden.MODE_IGNORED) return false;
+        Integer stored = AppOpModePolicy.storedMode(
+                AppOpsCompat.tryGetPackageModeRaw(appOps, op, uid, packageName),
+                AppOpsCompat.tryGetUidModeRaw(appOps, op, uid, AppStateEngine::publicOpName),
+                AppOpsCompat.tryGetDefaultMode(op));
+        if (stored == null || stored != expected) return false;
+        return AppOpModePolicy.locationDisabledMatches(expected, actual, stored,
+                locationEnabledForUser(uid / 100000), true);
+    }
+
+    private static boolean scopedDefaultEquivalent(int op, int expected, int actual,
+                                                    Integer expectedPackage, Integer actualPackage,
+                                                    Integer expectedUid, Integer actualUid) {
+        if (expected == actual || (expected != AppOpsManagerHidden.MODE_DEFAULT
+                && actual != AppOpsManagerHidden.MODE_DEFAULT)) return false;
+        return AppOpModePolicy.scopedDefaultMatches(expected, actual, expectedPackage, actualPackage,
+                expectedUid, actualUid, AppOpsCompat.tryGetDefaultMode(op));
+    }
+
+    private static boolean reportRestoredLocationConstraint(AppOpsManagerHidden appOps, int uid,
+                                                             String packageName, JsonObject state,
+                                                             int op, String category, String key,
+                                                             int expected, int actual,
+                                                             OperationReport report) {
+        if (!restoredLocationIsGloballyDisabled(appOps, uid, packageName, state, op, key,
+                expected, actual)) return false;
+        report.success(category, key, "op=" + op + " storedMode=" + expected
+                + " effective=" + actual + " effectiveConstraint=location_disabled");
+        return true;
     }
 
     private static void restoreRuntimePermissionAppOp(AppOpsManagerHidden appOps, int uid,
@@ -2780,16 +2816,33 @@ public final class AppStateEngine {
                                                       String category, String key,
                                                       OperationReport report) {
         try {
-            int expectedEffective = intMember(state, "appOpMode", AppOpsManagerHidden.MODE_DEFAULT);
+            int expectedEffective = runtimePermissionExpectedMode(state, op);
             AppOpsCompat.setRuntimePermissionUidMode(appOps, op, uid, expectedEffective,
                     packageName, AppStateEngine::publicOpName);
-            int actualEffective = readEffectiveModeWithRetry(appOps, op, uid, packageName, expectedEffective);
+            int actualEffective = getEffectiveOpMode(appOps, op, uid, packageName);
+            if (reportRestoredLocationConstraint(appOps, uid, packageName, state, op, category, key,
+                    expectedEffective, actualEffective, report)) {
+                return; // Waiting/re-writing cannot override a device-wide location switch.
+            }
+            if (!modeEquivalent(expectedEffective, actualEffective)) {
+                actualEffective = readEffectiveModeWithRetry(appOps, op, uid, packageName, expectedEffective);
+                // The saved mode may settle while the effective result remains ignored.
+                if (reportRestoredLocationConstraint(appOps, uid, packageName, state, op, category, key,
+                        expectedEffective, actualEffective, report)) return;
+            }
             if (modeEquivalent(expectedEffective, actualEffective)) {
                 report.success(category, key, "op=" + op + " uidMode=" + expectedEffective
                         + " effective=" + actualEffective);
             } else if (isAndroid17RuntimePermissionAppOpPackageFallback(key, op, expectedEffective, actualEffective)) {
                 AppOpsCompat.setPackageModeIfNeeded(appOps, op, uid, packageName, expectedEffective);
-                int fallbackEffective = readEffectiveModeWithRetry(appOps, op, uid, packageName, expectedEffective);
+                int fallbackEffective = getEffectiveOpMode(appOps, op, uid, packageName);
+                if (reportRestoredLocationConstraint(appOps, uid, packageName, state, op, category, key,
+                        expectedEffective, fallbackEffective, report)) return;
+                if (!modeEquivalent(expectedEffective, fallbackEffective)) {
+                    fallbackEffective = readEffectiveModeWithRetry(appOps, op, uid, packageName, expectedEffective);
+                    if (reportRestoredLocationConstraint(appOps, uid, packageName, state, op, category, key,
+                            expectedEffective, fallbackEffective, report)) return;
+                }
                 if (modeEquivalent(expectedEffective, fallbackEffective)) {
                     report.success(category, key, "op=" + op
                             + " uidMode=" + expectedEffective
@@ -2797,15 +2850,7 @@ public final class AppStateEngine {
                             + " initialEffective=" + actualEffective
                             + " effective=" + fallbackEffective
                             + " strategy=runtime_permission_uid_package_fallback"
-                            + " android17=true mode=r494");
-                } else if (isAndroid17LocationEffectivePolicyConstrained(key, op, expectedEffective, fallbackEffective)) {
-                    report.vendorConstrainedSuccess(category, key, "op=" + op
-                            + " expectedEffective=" + expectedEffective
-                            + " actualEffective=" + fallbackEffective
-                            + " initialEffective=" + actualEffective
-                            + " strategy=runtime_permission_uid_package_fallback"
-                            + " android17=true vendorConstrained=true"
-                            + " reason=android17_location_effective_mode_policy mode=r496");
+                            + " android17=true");
                 } else {
                     report.mismatch(category, key, "op=" + op
                             + " expectedEffective=" + expectedEffective
@@ -2820,7 +2865,7 @@ public final class AppStateEngine {
                                 + " expectedEffective=" + expectedEffective
                                 + " actualEffective=" + actualEffective
                                 + " strategy=runtime_permission_uid"
-                                + " vendorConstrained=true reason=platform_owned_active_ime_profile_appop mode=r494");
+                                + " vendorConstrained=true reason=platform_owned_active_ime_profile_appop");
             } else {
                 report.mismatch(category, key, "op=" + op
                         + " expectedEffective=" + expectedEffective
@@ -2830,6 +2875,18 @@ public final class AppStateEngine {
         } catch (Throwable e) {
             report.failure(category, key, e);
         }
+    }
+
+    private static boolean isLegacySpecialAccessPackageFallback(String category, String key,
+                                                                  JsonObject state, int op) {
+        if (!"specialAccess".equals(category)) return false;
+        if (!(op == 43 && "GET_USAGE_STATS".equals(key))
+                && !(op == 92 && "MANAGE_EXTERNAL_STORAGE".equals(key))) return false;
+        return booleanMember(state, "requested", false)
+                && booleanMember(state, "supported", true)
+                && nullableIntMember(state, "uidMode") == null
+                && nullableModeEquivalent(AppOpsManagerHidden.MODE_DEFAULT, nullableIntMember(state, "packageMode"))
+                && intMember(state, "mode", AppOpsManagerHidden.MODE_DEFAULT) == AppOpsManagerHidden.MODE_ALLOWED;
     }
 
     private static void restoreScopedAppOp(AppOpsManagerHidden appOps, int uid, String packageName,
@@ -2859,14 +2916,29 @@ public final class AppStateEngine {
             Integer actualPackage = AppOpsCompat.tryGetPackageModeRaw(appOps, op, uid, packageName);
             Integer actualUid = AppOpsCompat.tryGetUidModeRaw(appOps, op, uid, AppStateEngine::publicOpName);
             int actualEffective = readEffectiveModeWithRetry(appOps, op, uid, packageName, expectedEffective);
+            boolean packageFallback = false;
+            if (isLegacySpecialAccessPackageFallback(category, key, state, op)
+                    && !modeEquivalent(expectedEffective, actualEffective)) {
+                // Preserve unknown UID state, especially shared UIDs. Only the
+                // selected package receives the source's effective allow mode.
+                AppOpsCompat.setPackageModeIfNeeded(appOps, op, uid, packageName, expectedEffective);
+                actualPackage = AppOpsCompat.tryGetPackageModeRaw(appOps, op, uid, packageName);
+                actualUid = AppOpsCompat.tryGetUidModeRaw(appOps, op, uid, AppStateEngine::publicOpName);
+                actualEffective = readEffectiveModeWithRetry(appOps, op, uid, packageName, expectedEffective);
+                packageFallback = true;
+            }
             boolean packageOk = packageMode == null || nullableModeEquivalent(packageMode, actualPackage);
             boolean uidOk = uidMode == null || nullableModeEquivalent(uidMode, actualUid);
             boolean explicitScopeOk = (packageMode != null || uidMode != null) && packageOk && uidOk;
             boolean effectiveModeMatched = modeEquivalent(expectedEffective, actualEffective);
-            boolean effectiveOk = effectiveModeMatched || (explicitScopeOk && isEffectiveModeAdvisory(op));
+            boolean defaultNormalized = scopedDefaultEquivalent(op, expectedEffective, actualEffective,
+                    packageMode, actualPackage, uidMode, actualUid);
+            boolean effectiveOk = effectiveModeMatched || defaultNormalized || (explicitScopeOk && isEffectiveModeAdvisory(op));
             boolean scopeDriftIgnored = !packageOk || !uidOk;
             boolean rawScopeOk = (packageOk && uidOk)
-                    || (effectiveModeMatched && isRawScopeDriftAllowed(category, op));
+                    || (effectiveModeMatched && isRawScopeDriftAllowed(category, op))
+                    || (packageFallback && effectiveModeMatched
+                        && nullableModeEquivalent(expectedEffective, actualPackage) && uidOk);
             if (rawScopeOk && effectiveOk) {
                 String suffix = isEffectiveModeAdvisory(op) && !effectiveModeMatched
                         ? " advisoryEffective=" + actualEffective
@@ -2880,7 +2952,8 @@ public final class AppStateEngine {
                 report.success(category, key, "op=" + op + suffix
                         + " packageMode=" + String.valueOf(actualPackage)
                         + " uidMode=" + String.valueOf(actualUid)
-                        + drift);
+                        + " packageFallback=" + packageFallback + drift
+                        + (defaultNormalized ? " effectiveConstraint=matching_scopes_target_default" : ""));
             } else if ("permissionAppOp".equals(category)
                     && isVendorConstrainedImeCrossProfileAppOp(packageName, key, op, expectedEffective, actualEffective)
                     && packageOk && uidOk) {
@@ -2889,20 +2962,13 @@ public final class AppStateEngine {
                         + " expectedPackage=" + String.valueOf(packageMode) + " actualPackage=" + String.valueOf(actualPackage)
                         + " expectedUid=" + String.valueOf(uidMode) + " actualUid=" + String.valueOf(actualUid)
                         + " strategy=scoped_appop"
-                        + " vendorConstrained=true reason=platform_owned_active_ime_profile_appop mode=r373");
-            } else if (isVendorConstrainedSpecialAccessRestore(packageName, category, key, op,
-                    expectedEffective, actualEffective, packageOk, uidOk)) {
-                report.vendorConstrainedSuccess(category, key, "op=" + op
-                        + " expectedEffective=" + expectedEffective + " actualEffective=" + actualEffective
-                        + " expectedPackage=" + String.valueOf(packageMode) + " actualPackage=" + String.valueOf(actualPackage)
-                        + " expectedUid=" + String.valueOf(uidMode) + " actualUid=" + String.valueOf(actualUid)
-                        + " strategy=scoped_special_access"
-                        + " vendorConstrained=true reason=platform_or_role_owned_special_access mode=r376");
+                        + " vendorConstrained=true reason=platform_owned_active_ime_profile_appop");
             } else {
                 report.mismatch(category, key, "op=" + op
                         + " expectedEffective=" + expectedEffective + " actualEffective=" + actualEffective
                         + " expectedPackage=" + String.valueOf(packageMode) + " actualPackage=" + String.valueOf(actualPackage)
-                        + " expectedUid=" + String.valueOf(uidMode) + " actualUid=" + String.valueOf(actualUid));
+                        + " expectedUid=" + String.valueOf(uidMode) + " actualUid=" + String.valueOf(actualUid)
+                        + " packageFallback=" + packageFallback);
             }
         } catch (Throwable e) {
             if ("permissionAppOp".equals(category)
@@ -2979,12 +3045,13 @@ public final class AppStateEngine {
                 packageName, playStore, playServices);
         JsonObject root = baseRecord("verify", userId, packageName);
         JsonArray mismatches = new JsonArray();
+        JsonArray effectiveConstraints = new JsonArray();
 
         compareInstallState(desired, current, mismatches);
-        comparePermissionState(desired, current, mismatches);
-        compareSpecialAccessState(desired, current, mismatches);
-        compareOtherAppOpsState(desired, current, mismatches);
-        compareBatteryState(desired, current, mismatches);
+        comparePermissionState(desired, current, mismatches, effectiveConstraints);
+        compareSpecialAccessState(desired, current, mismatches, effectiveConstraints);
+        compareOtherAppOpsState(desired, current, mismatches, effectiveConstraints);
+        compareBatteryState(desired, current, mismatches, effectiveConstraints);
         compareSsaidState(desired, current, mismatches);
         if (desired.has("ssaid") && !desired.get("ssaid").isJsonNull()) {
             JsonObject ssaidResult = new JsonObject();
@@ -3000,6 +3067,7 @@ public final class AppStateEngine {
 
         root.addProperty("uid", packageInfo.applicationInfo.uid);
         root.add("mismatches", mismatches);
+        if (effectiveConstraints.size() > 0) root.add("effectiveConstraints", effectiveConstraints);
         JsonObject currentResult = objectMember(current, "result");
         if (currentResult != null) root.add("currentSnapshotResult", currentResult.deepCopy());
         ResultCode currentCode = resultCodeFromRecord(current);
@@ -3068,9 +3136,6 @@ public final class AppStateEngine {
                 && jsonIsNull(actual) && jsonObjectOpIs(expected, 87)
                 && jsonObjectStringIs(expected, "publicName", "android:legacy_storage")
                 && "missing AppOp record".equals(message)) return true;
-        if ("specialAccess.MANAGE_EXTERNAL_STORAGE.mode".equals(path)
-                && jsonModeIs(expected, 0) && jsonModeIs(actual, 3)
-                && "effective mode mismatch".equals(message)) return true;
         if (isDefaultOrSystemDialerPackage(packageName)) {
             if ("permissions.android.permission.WRITE_SECURE_SETTINGS.granted".equals(path)
                     && jsonBooleanIs(expected, false) && jsonBooleanIs(actual, true)
@@ -3078,9 +3143,6 @@ public final class AppStateEngine {
             if ("permissions.android.permission.INTERACT_ACROSS_USERS.granted".equals(path)
                     && jsonBooleanIs(expected, false) && jsonBooleanIs(actual, true)
                     && "value mismatch".equals(message)) return true;
-            if ("specialAccess.USE_FULL_SCREEN_INTENT.mode".equals(path)
-                    && jsonModeIs(expected, 0) && jsonModeIs(actual, 3)
-                    && "effective mode mismatch".equals(message)) return true;
         }
         if ("batterySettings.RUN_IN_BACKGROUND.mode".equals(path)
                 && jsonModeIs(expected, 0) && jsonModeIs(actual, 3)
@@ -3100,7 +3162,7 @@ public final class AppStateEngine {
             if ((jsonModeIs(expected, 3) && jsonModeIs(actual, 0))
                     || (jsonModeIs(expected, 0) && jsonModeIs(actual, 3))) return true;
         }
-        if (isAndroid17LocationVerifyEffectivePolicyMismatch(path, expected, actual, message)) return true;
+        // Location mode differences alone do not establish a platform restriction.
         if (isAndroid17PlatformPermissionPolicyMismatch(packageName, path, expected, actual, message)) return true;
         return false;
     }
@@ -3163,7 +3225,7 @@ public final class AppStateEngine {
         compareScalar(mismatches, "installDiagnostics.splitCount", expected, actual, "splitCount", false);
     }
 
-    private static void comparePermissionState(JsonObject desired, JsonObject current, JsonArray mismatches) {
+    private static void comparePermissionState(JsonObject desired, JsonObject current, JsonArray mismatches, JsonArray notes) {
         Map<String, JsonObject> expected = indexArrayByString(desired.getAsJsonArray("permissions"), "name");
         Map<String, JsonObject> actual = indexArrayByString(current.getAsJsonArray("permissions"), "name");
         int mask = permissionFlagRestoreMask();
@@ -3206,16 +3268,33 @@ public final class AppStateEngine {
                     && !isSpecialAccessOp(op)
                     && !isNonRestorablePermissionAppOp(name, op)) {
                 if (runtime && !legacySpecialOrNonSnapshot) {
-                    compareEffectiveOpState(mismatches, "permissions." + name + ".appOp",
-                            e, a, "appOpMode");
+                    int expectedMode = runtimePermissionExpectedMode(e, op);
+                    int actualMode = intMember(a, "appOpMode", AppOpsManagerHidden.MODE_DEFAULT);
+                    String path = "permissions." + name + ".appOp.appOpMode";
+                    Boolean enabled = a.has("locationEnabled") && !a.get("locationEnabled").isJsonNull()
+                            ? a.get("locationEnabled").getAsBoolean() : null;
+                    if (isLocationPermission(name, op) && AppOpModePolicy.locationDisabledMatches(
+                            expectedMode, actualMode, nullableIntMember(a, "appOpStoredMode"),
+                            enabled, booleanMember(a, "granted", false))) {
+                        addEffectiveConstraint(notes, path, expectedMode, actualMode, "location_disabled");
+                    } else if (isLocationPermission(name, op) && Boolean.FALSE.equals(enabled)
+                            && booleanMember(a, "granted", false) && expectedMode == actualMode
+                            && actualMode == AppOpsManagerHidden.MODE_IGNORED
+                            && nullableIntMember(a, "appOpStoredMode") != null
+                            && nullableIntMember(a, "appOpStoredMode") != expectedMode) {
+                        addMismatch(mismatches, "permissions." + name + ".appOpStoredMode", expectedMode,
+                                nullableIntMember(a, "appOpStoredMode"), "stored mode differs under location restriction");
+                    } else if (!modeEquivalent(expectedMode, actualMode)) {
+                        addMismatch(mismatches, path, expectedMode, actualMode, "effective mode mismatch");
+                    }
                 } else {
-                    compareOpState(mismatches, "permissions." + name + ".appOp", e, a, "appOpMode");
+                    compareOpState(mismatches, "permissions." + name + ".appOp", e, a, "appOpMode", notes);
                 }
             }
         }
     }
 
-    private static void compareSpecialAccessState(JsonObject desired, JsonObject current, JsonArray mismatches) {
+    private static void compareSpecialAccessState(JsonObject desired, JsonObject current, JsonArray mismatches, JsonArray notes) {
         JsonObject expected = desired.getAsJsonObject("specialAccess");
         JsonObject actual = current.getAsJsonObject("specialAccess");
         for (Map.Entry<String, JsonElement> entry : expected.entrySet()) {
@@ -3228,11 +3307,18 @@ public final class AppStateEngine {
                 addMismatch(mismatches, "specialAccess." + entry.getKey(), e, null, "missing special access record");
                 continue;
             }
-            compareOpState(mismatches, "specialAccess." + entry.getKey(), e, a, "mode");
+            if (isLegacySpecialAccessPackageFallback("specialAccess", entry.getKey(), e,
+                    intMember(e, "op", AppOpsManagerHidden.OP_NONE))
+                    && nullableModeEquivalent(AppOpsManagerHidden.MODE_ALLOWED, nullableIntMember(a, "packageMode"))
+                    && intMember(a, "mode", AppOpsManagerHidden.MODE_DEFAULT) == AppOpsManagerHidden.MODE_ALLOWED) {
+                // A package-only migration is intentional; source UID was unknown.
+                continue;
+            }
+            compareOpState(mismatches, "specialAccess." + entry.getKey(), e, a, "mode", notes);
         }
     }
 
-    private static void compareOtherAppOpsState(JsonObject desired, JsonObject current, JsonArray mismatches) {
+    private static void compareOtherAppOpsState(JsonObject desired, JsonObject current, JsonArray mismatches, JsonArray notes) {
         Map<Integer, JsonObject> expected = indexArrayByInt(desired.getAsJsonArray("otherAppOps"), "op");
         Map<Integer, JsonObject> actual = indexArrayByInt(current.getAsJsonArray("otherAppOps"), "op");
         for (Map.Entry<Integer, JsonObject> entry : expected.entrySet()) {
@@ -3252,11 +3338,11 @@ public final class AppStateEngine {
                 addMismatch(mismatches, "otherAppOps." + entry.getKey(), e, null, "missing AppOp record");
                 continue;
             }
-            compareOpState(mismatches, "otherAppOps." + entry.getKey(), e, a, "mode");
+            compareOpState(mismatches, "otherAppOps." + entry.getKey(), e, a, "mode", notes);
         }
     }
 
-    private static void compareBatteryState(JsonObject desired, JsonObject current, JsonArray mismatches) {
+    private static void compareBatteryState(JsonObject desired, JsonObject current, JsonArray mismatches, JsonArray notes) {
         JsonObject expected = desired.getAsJsonObject("batterySettings");
         JsonObject actual = current.getAsJsonObject("batterySettings");
         for (String key : Arrays.asList("RUN_IN_BACKGROUND", "RUN_ANY_IN_BACKGROUND")) {
@@ -3267,7 +3353,7 @@ public final class AppStateEngine {
                 addMismatch(mismatches, "batterySettings." + key, e, null, "missing battery AppOp record");
                 continue;
             }
-            compareOpState(mismatches, "batterySettings." + key, e, a, "mode");
+            compareOpState(mismatches, "batterySettings." + key, e, a, "mode", notes);
         }
         compareScalar(mismatches, "batterySettings.deviceidleWhitelist", expected, actual,
                 "deviceidleWhitelist", false);
@@ -3313,7 +3399,7 @@ public final class AppStateEngine {
     }
 
     private static void compareOpState(JsonArray mismatches, String path, JsonObject expected,
-                                       JsonObject actual, String effectiveField) {
+                                       JsonObject actual, String effectiveField, JsonArray notes) {
         int op = intMember(expected, "op", intMember(expected, "appOp", AppOpsManagerHidden.OP_NONE));
         boolean packageCompared = false;
         boolean packageOk = true;
@@ -3345,7 +3431,27 @@ public final class AppStateEngine {
         if (isEffectiveModeAdvisory(op) && (packageCompared || uidCompared) && packageOk && uidOk) {
             return;
         }
+        int expectedMode = intMember(expected, effectiveField, AppOpsManagerHidden.MODE_DEFAULT);
+        int actualMode = intMember(actual, effectiveField, AppOpsManagerHidden.MODE_DEFAULT);
+        if (scopedDefaultEquivalent(op, expectedMode, actualMode,
+                nullableIntMember(expected, "packageMode"), nullableIntMember(actual, "packageMode"),
+                nullableIntMember(expected, "uidMode"), nullableIntMember(actual, "uidMode"))) {
+            addEffectiveConstraint(notes, path + "." + effectiveField, expectedMode, actualMode,
+                    "matching_scopes_target_default");
+            return;
+        }
         compareEffectiveOpState(mismatches, path, expected, actual, effectiveField);
+    }
+
+    private static void addEffectiveConstraint(JsonArray notes, String path, int expected,
+                                               int actual, String reason) {
+        JsonObject note = new JsonObject();
+        note.addProperty("path", path);
+        note.addProperty("expected", expected);
+        note.addProperty("actual", actual);
+        note.addProperty("reason", reason);
+        note.addProperty("storedStateMatched", true);
+        notes.add(note);
     }
 
     private static void compareScalar(JsonArray mismatches, String path, JsonObject expected,
@@ -3848,7 +3954,7 @@ public final class AppStateEngine {
                 else item.addProperty("packageMode", packageMode);
                 if (uidMode == null) addJsonNull(item, "uidMode");
                 else item.addProperty("uidMode", uidMode);
-                String scope = "default";
+                String scope = packageMode == null || uidMode == null ? "unknown" : "default";
                 if (packageMode != null && packageMode != AppOpsManagerHidden.MODE_DEFAULT) scope = "package";
                 else if (uidMode != null && uidMode != AppOpsManagerHidden.MODE_DEFAULT) scope = "uid";
                 item.addProperty("scope", scope);
@@ -3914,7 +4020,8 @@ public final class AppStateEngine {
                 pruneJsonObject(element.getAsJsonObject(),
                         "name", "nameCn", "granted", "flags", "flagsError",
                         "runtime", "development", "appOp", "appOpName", "appOpNameCn", "appOpManagedBy",
-                        "packageMode", "uidMode", "scope", "appOpMode", "appOpModeName", "appOpModeCn");
+                        "packageMode", "uidMode", "scope", "appOpMode", "appOpModeName", "appOpModeCn",
+                        "appOpStoredMode", "appOpRestoreMode", "locationEnabled");
             }
         }
 
@@ -4007,7 +4114,7 @@ public final class AppStateEngine {
         else item.addProperty("packageMode", packageMode);
         if (uidMode == null) addJsonNull(item, "uidMode");
         else item.addProperty("uidMode", uidMode);
-        String scope = "default";
+        String scope = packageMode == null || uidMode == null ? "unknown" : "default";
         if (packageMode != null && packageMode != AppOpsManagerHidden.MODE_DEFAULT) scope = "package";
         else if (uidMode != null && uidMode != AppOpsManagerHidden.MODE_DEFAULT) scope = "uid";
         item.addProperty("scope", scope);
@@ -4015,6 +4122,18 @@ public final class AppStateEngine {
         item.addProperty(modeField + "Name", modeName(mode));
         item.addProperty(modeField + "Cn", AppStateLocalization.modeCn(mode));
         item.addProperty("allowed", allowedMode(mode));
+        if (isLocationPermission(stringMember(item, "name"), op)) {
+            Integer stored = AppOpModePolicy.storedMode(packageMode, uidMode, AppOpsCompat.tryGetDefaultMode(op));
+            if (stored != null) item.addProperty("appOpStoredMode", stored);
+            if (mode == AppOpsManagerHidden.MODE_IGNORED && stored != null && allowedMode(stored)
+                    && booleanMember(item, "granted", false)) {
+                Boolean enabled = locationEnabledForUser(uid / 100000);
+                if (enabled != null) item.addProperty("locationEnabled", enabled);
+                if (AppOpModePolicy.locationDisabledMatches(stored, mode, stored, enabled, true)) {
+                    item.addProperty("appOpRestoreMode", stored);
+                }
+            }
+        }
     }
 
     private static void addJsonNull(JsonObject object, String name) {
@@ -4530,8 +4649,6 @@ public final class AppStateEngine {
     private static JsonObject baseRecord(String recordType, int userId, String packageName) {
         JsonObject root = new JsonObject();
         root.addProperty("schemaVersion", SCHEMA_VERSION);
-        root.addProperty("engineVersion", ENGINE_VERSION);
-        root.addProperty("dexVersion", HiddenApiUtil.VERSION);
         root.addProperty("recordType", recordType);
         root.addProperty("userId", userId);
         root.addProperty("packageName", packageName == null ? "" : packageName);
@@ -4549,7 +4666,6 @@ public final class AppStateEngine {
                                             int partial, int failed, String message) {
         JsonObject root = new JsonObject();
         root.addProperty("schemaVersion", SCHEMA_VERSION);
-        root.addProperty("engineVersion", ENGINE_VERSION);
         root.addProperty("recordType", "summary");
         root.addProperty("command", command);
         root.addProperty("total", total);
@@ -4588,7 +4704,6 @@ public final class AppStateEngine {
     private static EngineResponse errorResponse(ResultCode code, String command, String packageName, String message) {
         JsonObject root = new JsonObject();
         root.addProperty("schemaVersion", SCHEMA_VERSION);
-        root.addProperty("engineVersion", ENGINE_VERSION);
         root.addProperty("recordType", "error");
         root.addProperty("command", command == null ? "" : command);
         if (packageName == null) addJsonNull(root, "packageName");

@@ -12,7 +12,8 @@ use std::os::fd::FromRawFd;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::UnixStream;
 
-const VERSION: &str = "unixsock 2.5.0-root-snapshot-v1-plain-lines-single-eof-api28-r30";
+const VERSION: &str = speedbackup_native_rs::versions::UNIXSOCK;
+use speedbackup_native_rs::BUILD_VERSION;
 const HEADER_LINE_MAX: usize = 4096;
 const COPY_BUFFER_SIZE: usize = 128 * 1024;
 const UNIX_SUN_PATH_MAX: usize = 108;
@@ -108,7 +109,7 @@ impl Write for Conn {
 
 fn usage() {
     eprintln!(
-        "{}\nUsage:\n  unixsock relay-unix <socketPath> [--header-file <path>]\n  unixsock relay-tcp <host> <port> [--header-file <path>]\n  unixsock root-args-unix <socketPath> <namespace> <command> <headerPath> [args...]\n  unixsock root-file-unix <socketPath> <namespace> <command> <headerPath> <bodyPath> [appstateUser appstateExtra]\n  unixsock capabilities\n\nstdin is copied to the socket. At stdin EOF the write side is half-closed,\nwhile the socket response continues to stdout. With --header-file, the first\ntwo newline-terminated response lines are written to that file and only the\nremaining binary body is written to stdout. The second header line may be\nan exact byte count, -1 (raw until EOF), or -2 (daemon chunk framing).\nWith --allow-plain-response and --header-file, a single-line plain\nresponse at EOF or a nonnumeric second response line is replayed to\nstdout and the header file receives the first line plus -1. Strict\nframed behavior is unchanged without --allow-plain-response.",
+        "unixsock {}\nUsage:\n  unixsock relay-unix <socketPath> [--header-file <path>]\n  unixsock relay-tcp <host> <port> [--header-file <path>]\n  unixsock root-args-unix <socketPath> <namespace> <command> <headerPath> [args...]\n  unixsock root-file-unix <socketPath> <namespace> <command> <headerPath> <bodyPath> [appstateUser appstateExtra]\n  unixsock capabilities\n\nstdin is copied to the socket. At stdin EOF the write side is half-closed,\nwhile the socket response continues to stdout. With --header-file, the first\ntwo newline-terminated response lines are written to that file and only the\nremaining binary body is written to stdout. The second header line may be\nan exact byte count, -1 (raw until EOF), or -2 (daemon chunk framing).\nWith --allow-plain-response and --header-file, a single-line plain\nresponse at EOF or a nonnumeric second response line is replayed to\nstdout and the header file receives the first line plus -1. Strict\nframed behavior is unchanged without --allow-plain-response.",
         VERSION
     );
 }
@@ -528,7 +529,7 @@ fn relay_response(conn: Conn, header_file: Option<String>, allow_plain_response:
 }
 
 const ROOT_BODY_MAX: u64 = 64 * 1024 * 1024;
-const ROOT_CAPABILITIES: &str = "unixsock.root_request_framing.v1 unixsock.root_request_snapshot.v1";
+const ROOT_CAPABILITIES: &str = "unixsock.stream_relay.v1 unixsock.plain_response_eof.v1 unixsock.root_request_framing.v1 unixsock.root_request_snapshot.v1";
 
 fn root_request_header(namespace: &str, command: &str, size: u64, appstate: Option<(&str, &str)>) -> Result<Vec<u8>, i32> {
     if command.is_empty() || command.contains(['\n', '\r', '\0']) || size > ROOT_BODY_MAX {
@@ -657,7 +658,7 @@ pub(crate) fn run() {
         }
     };
     if args.len() == 2 && (args[1] == "--version" || args[1] == "version") {
-        println!("{}", VERSION);
+        println!("unixsock {VERSION} build={BUILD_VERSION}");
         return;
     }
     if args.len() == 2 && matches!(args[1].as_str(), "capabilities" | "--capabilities") {

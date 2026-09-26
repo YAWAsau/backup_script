@@ -8,6 +8,16 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$ReleaseRoot = Split-Path -Parent $PSScriptRoot
+& (Join-Path $ReleaseRoot 'sync_version.ps1')
+. (Join-Path $ReleaseRoot 'read_versions.ps1')
+$ComponentVersions = Read-SpeedBackupVersions $ReleaseRoot
+$ReleaseVersion = $ComponentVersions['build']
+$AppletVersions = [ordered]@{}
+foreach ($name in @('cgfreezer','eventwait','filewatch','netwatch','procwait','speedscan','uidexec','unixsock')) {
+    $AppletVersions[$name] = $ComponentVersions[$name]
+}
+
 $RequiredNdkVersion = '30.0.16248370' # Android NDK r30; API remains 28
 $Api = 28
 $RustTarget = 'aarch64-linux-android'
@@ -275,6 +285,8 @@ try {
     $info = [ordered]@{
         ndk = $NdkRevision; api = $Api; target = $RustTarget; pageSize = $ExpectedLoadAlign
         applets = $LegacyApplets; dispatch = 'argv0-symlinks-or-subcommand'
+        releaseVersion = $ReleaseVersion # compatibility alias for the package build
+        buildVersion = $ReleaseVersion; appletVersions = $AppletVersions
         rustc = (& rustc --version | Out-String).Trim()
         clang = (& $Clang --version | Out-String).Trim()
         androidTests = 'compiled, not executed'; previousOutput = $BackupDir

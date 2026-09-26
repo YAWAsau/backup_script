@@ -354,7 +354,7 @@ final class AppWakeBlockUtil {
             CURRENT_USER.set(userId);
             CURRENT_PACKAGE.set(packageName);
             CURRENT_UID.set(targetUid);
-            logLine("APP_WAKE_BLOCK_START schema=speedbackup.app_wake_block.v1 version=" + VERSION
+            logLine("APP_WAKE_BLOCK_START schema=speedbackup.app_wake_block.v1"
                     + " user=" + userId + " package=" + packageName + " uid=" + targetUid
                     + " mode=" + mode + " token=" + token
                     + " ownerToken=" + ownerToken

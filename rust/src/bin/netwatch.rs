@@ -10,7 +10,8 @@ use std::io::Write;
 use std::os::raw::{c_char, c_int, c_void};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-const VERSION: &str = "1.2.1-android28-r30-native-convergence-r572-rust-r572";
+const VERSION: &str = speedbackup_native_rs::versions::NETWATCH;
+use speedbackup_native_rs::BUILD_VERSION;
 const RECEIVE_BUFFER_SIZE: usize = 64 * 1024;
 
 const AF_NETLINK: i32 = 16;
@@ -351,7 +352,7 @@ pub(crate) fn run() {
     }
     if args.len() == 2 {
         if args[1] == "--version" {
-            println!("netwatch {}", VERSION);
+            println!("netwatch {VERSION} build={BUILD_VERSION}");
             std::process::exit(0);
         }
         if args[1] == "--help" || args[1] == "-h" {

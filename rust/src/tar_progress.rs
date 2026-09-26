@@ -135,15 +135,27 @@ fn progress_color(raw: &str) -> u8 {
     if raw.is_empty() || raw.len()>3 || !raw.bytes().all(|c|c.is_ascii_digit()) {return 51;}
     raw.parse().unwrap_or(51)
 }
+// Decimal units match the labels KB/MB/GB. Amount and rate choose units independently.
+fn human_decimal(mut value: f64) -> String {
+    const UNITS: [&str; 7] = ["B", "KB", "MB", "GB", "TB", "PB", "EB"];
+    let mut unit = 0;
+    // Promote on the displayed (two-decimal) boundary too: never show 1000 KB.
+    while unit + 1 < UNITS.len() && (value * 100.0).round() >= 100_000.0 {
+        value /= 1000.0;
+        unit += 1;
+    }
+    // Keep two decimal places without left-padding the value or unit.
+    format!("{:.2} {}", value, UNITS[unit])
+}
 fn frame(mode: Mode, bytes: u64, delta: u64, seconds: f64, total: Option<u64>, color: u8) -> String {
     let label=if mode==Mode::Create { "封裝" } else { "解包" };
     let percent=total.map(|t|{
         let tenths=((bytes as u128)*1000/(t as u128)).min(999);
-        format!(" 約{:>2}.{}%",tenths/10,tenths%10)
+        format!("約{:>2}.{}%",tenths/10,tenths%10)
     }).unwrap_or_default();
-    // Match echoRgb's leading space and progress color; overwrite before erasing
-    // the old tail to avoid a blank-frame flash. Reset color in the same write.
-    format!("\r\x1b[38;5;{}m -{}{} 已處理約{:.2} MiB /{:.2} MiB/s\x1b[0m\x1b[K",color,label,percent,bytes as f64/1048576.0,delta as f64/1048576.0/seconds.max(0.001))
+    // Preserve the shell prefix; write the compact frame before clearing its old tail.
+    // Reset color in the same write to avoid a blank-frame flash.
+    format!("\r\x1b[38;5;{}m -{}{} 已處理約{} {}/s\x1b[0m\x1b[K",color,label,percent,human_decimal(bytes as f64),human_decimal(delta as f64/seconds.max(0.001)))
 }
 // Exactly one nonblocking write: a full tty drops the frame. Never write_all,
 // flush, tcdrain, retry EAGAIN, or change flags on stdout/stderr's description.
@@ -274,7 +286,7 @@ mod tests {
         assert_eq!(io_bytes(b"wchar: -1\n",Mode::Create),None);
         assert_eq!(io_bytes(b"wchar: 18446744073709551616\n",Mode::Create),None);
         let s=frame(Mode::Create,1048576,1048576,2.0,None,51);
-        assert!(s.contains("1.00 MiB")&&s.contains("0.50 MiB/s")&&!s.contains('%'));
+        assert!(s.contains("1.05 MB")&&s.contains("524.29 KB/s")&&!s.contains('%'));
         assert!(s.len()<192);
     }
     #[test] fn progress_option_arguments_are_not_modes() {
@@ -300,7 +312,7 @@ mod tests {
             assert_eq!(plan_total(&format!("DIR\tQQ\tcom.qq\tuser\t{}\n",v),"QQ/user"),None);
         }
         assert!(frame(Mode::Create,4096,2048,1.0,Some(8192),51).contains("約50.0%"));
-        assert!(frame(Mode::Extract,4096,2048,1.0,Some(8192),51).contains("解包 約50.0%"));
+        assert!(frame(Mode::Extract,4096,2048,1.0,Some(8192),51).contains("解包約50.0%"));
         assert!(frame(Mode::Create,u64::MAX,0,1.0,Some(1),51).contains("約99.9%"));
         assert!(frame(Mode::Create,1,0,1.0,Some(u64::MAX),51).contains("約 0.0%"));
     }
@@ -331,7 +343,7 @@ mod tests {
         assert_eq!(progress_color("213"),213);
         for value in ["", "-1", "256", "51\x1b[2J", "cyan"] {assert_eq!(progress_color(value),51);}
         let line=frame(Mode::Create,12345,4096,0.5,Some(100000),213);
-        assert!(line.starts_with("\r\x1b[38;5;213m -封裝 約12.3%"));
+        assert!(line.starts_with("\r\x1b[38;5;213m -封裝約12.3% 已處理約"));
         assert!(line.ends_with("\x1b[0m\x1b[K"));
         assert!(!line.contains("\x1b[2K") && !line.contains('\n'));
     }

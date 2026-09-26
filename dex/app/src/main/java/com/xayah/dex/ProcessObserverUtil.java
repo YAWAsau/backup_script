@@ -73,6 +73,12 @@ final class ProcessObserverUtil {
     private static volatile Object GLOBAL_TASK_STACK_LISTENER;
     private static volatile boolean GLOBAL_PROCESS_OBSERVER_REGISTERED = false;
     private static volatile boolean GLOBAL_TASK_STACK_REGISTERED = false;
+    private static volatile IBinder GLOBAL_PROCESS_SERVICE;
+    private static volatile IBinder GLOBAL_TASK_SERVICE;
+    private static volatile IBinder.DeathRecipient GLOBAL_PROCESS_DEATH;
+    private static volatile IBinder.DeathRecipient GLOBAL_TASK_DEATH;
+    private static final AtomicBoolean GLOBAL_RECOVERING = new AtomicBoolean(false);
+    private static final AtomicInteger GLOBAL_LOSS_GENERATION = new AtomicInteger();
     private static final AtomicInteger GLOBAL_PROCESS_EVENTS = new AtomicInteger(0);
     private static final AtomicInteger GLOBAL_TASK_EVENTS = new AtomicInteger(0);
     private static final String BATCH_STATE_DIR = scopedPath("SPEEDBACKUP_PROCESS_OBSERVER_BATCH_STATE_DIR", ".speedbackup_process_observer_batch_state");
@@ -306,7 +312,7 @@ final class ProcessObserverUtil {
         }
         long elapsed = Math.max(0L, System.currentTimeMillis() - t0);
         if (started > 0) {
-            out.insert(0, "PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_START_OK version=" + VERSION
+            out.insert(0, "PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_START_OK"
                     + " user=" + userId
                     + " requested=" + requested
                     + " started=" + started
@@ -317,13 +323,13 @@ final class ProcessObserverUtil {
                     + " factsRows=" + factsRows
                     + " policy=" + sanitize(opts.raw)
                     + " policyBase=" + sanitize(opts.base)
-                    + " policyBuilder=dex-r430"
+                    + " policyBuilder=dex"
                     + " home=" + sanitize(home)
                     + " ime=" + sanitize(ime)
                     + " elapsedMs=" + elapsed
                     + " lifecycle=batch-watchset\n");
         } else {
-            out.insert(0, "PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_START_FAILED version=" + VERSION
+            out.insert(0, "PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_START_FAILED"
                     + " reason=no_candidates requested=" + requested + " started=0 failed=" + failed
                     + " source=" + sanitize(cmp.getName()) + " factsOut=" + sanitize(factsOutPath)
                     + " factsRows=" + factsRows + " elapsedMs=" + elapsed + "\n");
@@ -631,12 +637,12 @@ final class ProcessObserverUtil {
                             .append(" message=").append(sanitize(t.getMessage())).append('\n');
                 }
             }
-            out.insert(0, "PROCESS_OBSERVER_BATCH_START_OK version=" + VERSION
+            out.insert(0, "PROCESS_OBSERVER_BATCH_START_OK"
                     + " user=" + userId
                     + " requested=" + requested
                     + " started=" + started
                     + " failed=" + failed
-                    + " lifecycle=batch-watchset persistentSafety=r296\n");
+                    + " lifecycle=batch-watchset persistentSafety=true\n");
         } catch (Throwable t) {
             return new OperationResult("observer-batch-start", false).counts(requested, started, 0, failed, 0).appendTo("PROCESS_OBSERVER_BATCH_START_FAILED exception=" + sanitize(t.getClass().getName())
                     + " message=" + sanitize(t.getMessage())
@@ -750,7 +756,7 @@ final class ProcessObserverUtil {
             complete = requested > 0 && requested == (stopped + recovered) && missing == 0 && failed == 0 && stateDeleteFailed == 0;
             String header = complete ? "PROCESS_OBSERVER_BATCH_STOP_OK" : "PROCESS_OBSERVER_BATCH_STOP_INCOMPLETE";
             writeBatchStopSummaryIfRequested(summaryPath, summaryTsv, summaryRows, out);
-            out.insert(0, header + " version=" + VERSION
+            out.insert(0, header
                     + " expectedUser=" + expectedUserId
                     + " requested=" + requested
                     + " stopped=" + stopped
@@ -764,7 +770,7 @@ final class ProcessObserverUtil {
                     + " restoreOk=" + complete
                     + " stateDeleted=" + complete
                     + " stateRetained=" + (!complete)
-                    + " lifecycle=batch-watchset safeStop=r430 summaryTsv=true persistentSafety=true\n");
+                    + " lifecycle=batch-watchset safeStop=true summaryTsv=true persistentSafety=true\n");
         } catch (Throwable t) {
             writeBatchStopSummaryIfRequested(summaryPath, summaryTsv, summaryRows, out);
             return new OperationResult("observer-batch-stop", false).counts(requested, stopped, recovered, failed, missing).restoration(false, false).appendTo("PROCESS_OBSERVER_BATCH_STOP_FAILED exception=" + sanitize(t.getClass().getName())
@@ -982,7 +988,7 @@ final class ProcessObserverUtil {
 
     static String topStatus(int userId) {
         TopSnapshot top = findTopApp(userId);
-        return "PROCESS_OBSERVER_TOP version=" + VERSION
+        return "PROCESS_OBSERVER_TOP"
                 + " user=" + userId
                 + " topPackage=" + (top == null ? "" : sanitize(top.packageName))
                 + " topActivity=" + (top == null ? "" : sanitize(top.activityName))
@@ -1004,7 +1010,7 @@ final class ProcessObserverUtil {
             List<PidInfo> alive = findAliveProcesses(userId, pkg, uid);
             boolean topTarget = isTargetTop(top, pkg);
             boolean active = topTarget || !alive.isEmpty();
-            out.append("PROCESS_OBSERVER_FOREGROUND version=").append(VERSION)
+            out.append("PROCESS_OBSERVER_FOREGROUND")
                     .append(" user=").append(userId)
                     .append(" package=").append(pkg)
                     .append(" targetUid=").append(uid)
@@ -1052,7 +1058,7 @@ final class ProcessObserverUtil {
             List<PidInfo> alive = findAliveProcesses(userId, pkg, uid);
             boolean topTarget = isTargetTop(top, pkg);
             boolean active = topTarget || !alive.isEmpty();
-            out.append("PACKAGE_LIVE_STATE version=").append(VERSION)
+            out.append("PACKAGE_LIVE_STATE")
                     .append(" user=").append(userId)
                     .append(" package=").append(pkg)
                     .append(" installed=").append(installed)
@@ -1151,7 +1157,7 @@ final class ProcessObserverUtil {
                     if (pfu != null) packagesForUid = joinCsv(pfu);
                 }
             } catch (Throwable ignored) {}
-            out.append("PACKAGE_INSTALL_SNAPSHOT version=").append(VERSION)
+            out.append("PACKAGE_INSTALL_SNAPSHOT")
                     .append(" user=").append(userId)
                     .append(" package=").append(pkg)
                     .append(" installed=").append(installed)
@@ -1197,7 +1203,7 @@ final class ProcessObserverUtil {
             String hibernating = readHibernationState(pkg, userId);
             String unusedRestrictions = readUnusedAppRestrictions(pkg, userId);
             String backgroundRestricted = readBackgroundRestricted(pkg, userId);
-            out.append("PACKAGE_RESTRICTION_SNAPSHOT version=").append(VERSION)
+            out.append("PACKAGE_RESTRICTION_SNAPSHOT")
                     .append(" user=").append(userId)
                     .append(" package=").append(pkg)
                     .append(" uid=").append(uid)
@@ -1344,7 +1350,7 @@ final class ProcessObserverUtil {
             UidRuntimeSnapshot runtime = runningProcessSnapshot(uid);
             boolean topTarget = isTargetTop(top, pkg);
             boolean active = topTarget || !alive.isEmpty() || runtime.runningCount > 0;
-            out.append("UID_LIVE_STATE version=").append(VERSION)
+            out.append("UID_LIVE_STATE")
                     .append(" user=").append(userId)
                     .append(" package=").append(pkg)
                     .append(" uid=").append(uid)
@@ -1378,7 +1384,7 @@ final class ProcessObserverUtil {
                 methods.append(m.getName()).append('/').append(m.getParameterTypes().length);
             }
         } catch (Throwable ignored) {}
-        return "UID_OBSERVER_PROBE version=" + VERSION
+        return "UID_OBSERVER_PROBE"
                 + " ok=" + api
                 + " registerUidObserver=" + api
                 + " methods=" + sanitize(methods.toString())
@@ -1393,7 +1399,7 @@ final class ProcessObserverUtil {
         if (durationMs > 5000) durationMs = 5000;
         int uid = pkg.isEmpty() ? -1 : resolveTargetUid(userId, pkg);
         StringBuilder out = new StringBuilder();
-        out.append("UID_OBSERVER_WATCH_BEGIN version=").append(VERSION)
+        out.append("UID_OBSERVER_WATCH_BEGIN")
                 .append(" user=").append(userId)
                 .append(" package=").append(pkg)
                 .append(" uid=").append(uid)
@@ -1463,7 +1469,7 @@ final class ProcessObserverUtil {
         TopSnapshot afterTop = findTopApp(userId);
         boolean ok = forceStopOk && after.isEmpty() && !isTargetTop(afterTop, pkg);
         out.append("FORCE_STOP_VERIFY ok=").append(ok)
-                .append(" version=").append(VERSION)
+                
                 .append(" user=").append(userId)
                 .append(" package=").append(pkg)
                 .append(" forceStopOk=").append(forceStopOk)
@@ -1525,8 +1531,73 @@ final class ProcessObserverUtil {
     }
 
 
+    private static IBinder serviceBinder(Object service) throws Exception {
+        return (IBinder) HiddenApiReflection.invokeFlexible(service, "asBinder");
+    }
+
+    private static void watchServiceDeath(Object service, boolean process) throws Exception {
+        final IBinder binder = serviceBinder(service);
+        final IBinder.DeathRecipient death = () -> {
+            synchronized (GLOBAL_LOCK) {
+                if (binder != (process ? GLOBAL_PROCESS_SERVICE : GLOBAL_TASK_SERVICE)) return;
+                if (process) GLOBAL_PROCESS_OBSERVER_REGISTERED = false;
+                else GLOBAL_TASK_STACK_REGISTERED = false;
+                GLOBAL_LOSS_GENERATION.incrementAndGet();
+            }
+            requestGlobalRecovery();
+        };
+        IBinder old = process ? GLOBAL_PROCESS_SERVICE : GLOBAL_TASK_SERVICE;
+        IBinder.DeathRecipient oldDeath = process ? GLOBAL_PROCESS_DEATH : GLOBAL_TASK_DEATH;
+        if (old != null && oldDeath != null) try { old.unlinkToDeath(oldDeath, 0); } catch (Throwable ignored) {}
+        if (process) { GLOBAL_PROCESS_SERVICE = binder; GLOBAL_PROCESS_DEATH = death; }
+        else { GLOBAL_TASK_SERVICE = binder; GLOBAL_TASK_DEATH = death; }
+        binder.linkToDeath(death, 0);
+    }
+
+    private static void requestGlobalRecovery() {
+        if (!GLOBAL_RECOVERING.compareAndSet(false, true)) return;
+        Thread worker = new Thread(() -> {
+            int generation = GLOBAL_LOSS_GENERATION.get();
+            try {
+                long[] waits = {100, 250, 500, 1000, 2000, 4000};
+                for (int i = 0; i < waits.length; i++) {
+                    Thread.sleep(waits[i]);
+                    WatchSession[] sessions = sessionsSnapshot();
+                    WatchSession first = null;
+                    for (WatchSession session : sessions) if (session.running.get()) { first = session; break; }
+                    if (first == null) return;
+                    generation = GLOBAL_LOSS_GENERATION.get();
+                    try { ensureGlobalListeners(first); }
+                    catch (Throwable t) { first.logLine("PROCESS_OBSERVER_GLOBAL_RECOVER_ERROR attempt=" + (i+1)
+                            + " exception=" + sanitize(t.getClass().getName())); }
+                    if (GLOBAL_PROCESS_OBSERVER_REGISTERED && GLOBAL_TASK_STACK_REGISTERED
+                            && generation == GLOBAL_LOSS_GENERATION.get()) {
+                        for (WatchSession session : sessions) session.reconcileAfterGap("binder-recovery");
+                        first.logLine("PROCESS_OBSERVER_GLOBAL_RECOVER_OK attempts=" + (i+1));
+                        return;
+                    }
+                }
+                for (WatchSession session : sessionsSnapshot()) if (session.running.get()) {
+                    session.reconcileAfterGap("binder-recovery-exhausted");
+                    session.logLine("PROCESS_OBSERVER_GLOBAL_RECOVER_EXHAUSTED process="
+                            + GLOBAL_PROCESS_OBSERVER_REGISTERED + " task=" + GLOBAL_TASK_STACK_REGISTERED);
+                }
+            } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            catch (Throwable t) { System.err.println("PROCESS_OBSERVER_GLOBAL_RECOVER_ERROR " + t.getClass().getName()); }
+            finally {
+                GLOBAL_RECOVERING.set(false);
+                // A new death arriving at the end of this bounded attempt gets its own recovery.
+                if (generation != GLOBAL_LOSS_GENERATION.get()) requestGlobalRecovery();
+            }
+        }, "speedbackup-observer-recovery");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
     private static void ensureGlobalListeners(WatchSession logSession) throws Exception {
         synchronized (GLOBAL_LOCK) {
+            if (GLOBAL_PROCESS_SERVICE != null && !GLOBAL_PROCESS_SERVICE.isBinderAlive()) GLOBAL_PROCESS_OBSERVER_REGISTERED = false;
+            if (GLOBAL_TASK_SERVICE != null && !GLOBAL_TASK_SERVICE.isBinderAlive()) GLOBAL_TASK_STACK_REGISTERED = false;
             if (!GLOBAL_PROCESS_OBSERVER_REGISTERED) {
                 GlobalObserverBinder binder = new GlobalObserverBinder();
                 Class<?> iface = HiddenApiReflection.classForNameCached(DESCRIPTOR);
@@ -1539,8 +1610,10 @@ final class ProcessObserverUtil {
                     return null;
                 });
                 Object am = HiddenApiServices.activity();
+                watchServiceDeath(am, true);
                 HiddenApiReflection.invokeFlexible(am, "registerProcessObserver", GLOBAL_PROCESS_OBSERVER);
-                GLOBAL_PROCESS_OBSERVER_REGISTERED = true;
+                GLOBAL_PROCESS_OBSERVER_REGISTERED = GLOBAL_PROCESS_SERVICE.isBinderAlive();
+                if (!GLOBAL_PROCESS_OBSERVER_REGISTERED) throw new IllegalStateException("activity service died during registration");
                 if (logSession != null) {
                     logSession.logLine("PROCESS_OBSERVER_GLOBAL_LISTEN_OK event_source=IActivityManager.registerProcessObserver true_event_driven=1 sleep_loop=0 poll_proc=0 lifecycle=daemon-global");
                 }
@@ -1560,8 +1633,10 @@ final class ProcessObserverUtil {
                         return null;
                     });
                     Object atm = activityTaskService();
+                    watchServiceDeath(atm, false);
                     HiddenApiReflection.invokeFlexible(atm, "registerTaskStackListener", GLOBAL_TASK_STACK_LISTENER);
-                    GLOBAL_TASK_STACK_REGISTERED = true;
+                    GLOBAL_TASK_STACK_REGISTERED = GLOBAL_TASK_SERVICE.isBinderAlive();
+                    if (!GLOBAL_TASK_STACK_REGISTERED) throw new IllegalStateException("task service died during registration");
                     if (logSession != null) {
                         logSession.logLine("PROCESS_OBSERVER_TASKSTACK_LISTEN_OK event_source=IActivityTaskManager.registerTaskStackListener true_event_driven=1 poll_proc=0 sleep_loop=0 lifecycle=daemon-global");
                     }
@@ -1657,6 +1732,7 @@ final class ProcessObserverUtil {
         volatile NativeLogdObserver nativeLogdObserver;
         volatile boolean nativeLogdEnabled = true;
         volatile boolean callbacksReady = false;
+        final AtomicBoolean gapPending = new AtomicBoolean(false);
 
         WatchSession(int userId, String packageName, long durationMs, String action, String wakeBlockMode, String logPath) {
             this.userId = userId;
@@ -1674,7 +1750,7 @@ final class ProcessObserverUtil {
             log = openLog(logPath);
             running.set(true);
             ensureGlobalListeners(this);
-            logLine("PROCESS_OBSERVER_LISTEN_OK schema=speedbackup.process_observer.v1 version=" + VERSION
+            logLine("PROCESS_OBSERVER_LISTEN_OK schema=speedbackup.process_observer.v1"
                     + " event_source=RootDaemon.global.IActivityManager.registerProcessObserver true_event_driven=1 sleep_loop=0 poll_proc=0"
                     + " user=" + userId + " package=" + packageName + " targetUid=" + targetUid
                     + " action=" + action
@@ -1685,6 +1761,7 @@ final class ProcessObserverUtil {
             startIntegratedWakeBlockIfNeeded();
             runPreGuardIfNeeded();
             callbacksReady = true;
+            if (gapPending.getAndSet(false)) reconcileAfterGap("bootstrap-event-gap");
             logLine("PROCESS_OBSERVER_READY callbacks=enabled lifecycle=global-target wakeBlockMode=" + (wakeBlockMode.isEmpty() ? "none" : wakeBlockMode));
         }
 
@@ -1695,8 +1772,10 @@ final class ProcessObserverUtil {
         String finish(String reason) {
             running.set(false);
             stopNativeLogdObserverIfNeeded(reason);
-            stopIntegratedWakeBlockIfNeeded(reason);
-            stopIntegratedCgroupFreezerIfNeeded(reason);
+            synchronized (this) {
+                stopIntegratedWakeBlockIfNeeded(reason);
+                stopIntegratedCgroupFreezerIfNeeded(reason);
+            }
             String summary = "PROCESS_OBSERVER_DONE reason=" + sanitize(reason)
                     + " user=" + userId
                     + " package=" + packageName
@@ -1732,6 +1811,16 @@ final class ProcessObserverUtil {
                 logLine("PROCESS_OBSERVER_NATIVE_LOGD_START helper=1 detail=" + sanitize(line));
                 return;
             }
+            if (line.startsWith("CGFREEZER_LOGD_DISCONNECTED")) {
+                reconcileAfterGap("logd-disconnected");
+                logLine("PROCESS_OBSERVER_NATIVE_LOGD_DISCONNECTED detail=" + sanitize(line));
+                return;
+            }
+            if (line.startsWith("CGFREEZER_LOGD_RECONNECTED")) {
+                reconcileAfterGap("logd-reopen");
+                logLine("PROCESS_OBSERVER_NATIVE_LOGD_RECONNECTED detail=" + sanitize(line));
+                return;
+            }
             if (line.startsWith("CGFREEZER_LOGD_WATCH_DONE")) {
                 logLine("PROCESS_OBSERVER_NATIVE_LOGD_DONE helper=1 detail=" + sanitize(line));
                 return;
@@ -1764,6 +1853,7 @@ final class ProcessObserverUtil {
                     + " package=" + packageName
                     + " process=" + sanitize(processName));
             if (!callbacksReady) {
+                markGapDuringBootstrap();
                 logLine("PROCESS_OBSERVER_BOOTSTRAP_SKIP callback=native-logd-" + sanitize(type)
                         + " pid=" + pid
                         + " uid=" + uid
@@ -1801,6 +1891,7 @@ final class ProcessObserverUtil {
                     + " matchMode=" + matchMode
                     + (extraKey == null || extraKey.isEmpty() ? "" : " " + extraKey + "=" + sanitize(extraValue)));
             if (!callbacksReady) {
+                markGapDuringBootstrap();
                 logLine("PROCESS_OBSERVER_BOOTSTRAP_SKIP callback=" + sanitize(callback)
                         + " pid=" + pid
                         + " uid=" + uid
@@ -1843,7 +1934,27 @@ final class ProcessObserverUtil {
             return false;
         }
 
+        private void markGapDuringBootstrap() {
+            gapPending.set(true);
+            if (callbacksReady && gapPending.getAndSet(false)) reconcileAfterGap("bootstrap-event-gap");
+        }
+
+        synchronized void reconcileAfterGap(String reason) {
+            if (!running.get()) return;
+            if (!callbacksReady) { markGapDuringBootstrap(); return; }
+            try {
+                List<PidInfo> alive = findAliveProcesses(userId, packageName, targetUid);
+                logLine("PROCESS_OBSERVER_GAP_RECONCILE reason=" + sanitize(reason) + " alivePids=" + pidCsv(alive)
+                        + " historicalReplay=false");
+                if (!alive.isEmpty()) performAction("gap-reconcile-" + reason, -1, targetUid, packageName);
+            } catch (Throwable t) {
+                logLine("PROCESS_OBSERVER_GAP_RECONCILE_FAILED reason=" + sanitize(reason)
+                        + " exception=" + sanitize(t.getClass().getName()));
+            }
+        }
+
         private synchronized void performAction(String callback, int pid, int uid, String processName) {
+            if (!running.get()) return;
             if ("monitor".equals(action) || "log".equals(action)) {
                 return;
             }
@@ -1878,8 +1989,7 @@ final class ProcessObserverUtil {
                         + " alivePids=" + pidCsv(alive)
                         + " topPackage=" + (top == null ? "" : sanitize(top.packageName))
                         + " topTarget=" + targetTop
-                        + " callback=" + sanitize(callback)
-                        + " mode=r304");
+                        + " callback=" + sanitize(callback));
                 lastFinalOkMs = System.currentTimeMillis();
                 return;
             }
@@ -1892,8 +2002,7 @@ final class ProcessObserverUtil {
                         + " alivePids=" + pidCsv(alive)
                         + " topPackage=" + (top == null ? "" : sanitize(top.packageName))
                         + " topTarget=false"
-                        + " callback=" + sanitize(callback)
-                        + " mode=r304");
+                        + " callback=" + sanitize(callback));
             }
             if (cgroupFreezerPreferredForAction(packageName, action) && pid <= 0 && targetTop) {
                 logLine("PROCESS_OBSERVER_ACTION actionNo=" + n
@@ -1921,7 +2030,7 @@ final class ProcessObserverUtil {
                 for (Integer frozenPid : result.cgroupPids) {
                     if (frozenPid != null && frozenPid > 0) addFrozenPid(frozenPid, tokenPids);
                 }
-                // r303/r304: pid-scope cgroup freeze may freeze the whole package pid-set, but older
+                // /: pid-scope cgroup freeze may freeze the whole package pid-set, but older
                 // bookkeeping recorded only the eventPid. Record the alive pid-set observed just
                 // before the freeze too, so the next foreground-service/activity callback reuses
                 // the existing token instead of opening another cgroup freezer token for the
@@ -1982,7 +2091,6 @@ final class ProcessObserverUtil {
                         + " oldPids=" + intPidCsv(oldPids)
                         + " alivePids=" + pidCsv(alive)
                         + " callback=" + sanitize(callback)
-                        + " mode=r304"
                         + " result=" + sanitize(stopResult));
             }
         }
@@ -2009,8 +2117,7 @@ final class ProcessObserverUtil {
                         + " package=" + packageName
                         + " tokenCount=" + cgroupFreezeTokens.size()
                         + " alivePids=" + pidCsv(alive)
-                        + " callback=" + sanitize(callback)
-                        + " mode=r304");
+                        + " callback=" + sanitize(callback));
                 lastFinalOkMs = System.currentTimeMillis();
                 return true;
             }
@@ -2032,7 +2139,6 @@ final class ProcessObserverUtil {
                         + " alivePids=" + pidCsv(alive)
                         + " elapsedMs=" + (System.currentTimeMillis() - startMs)
                         + " callback=" + sanitize(callback)
-                        + " mode=r304"
                         + " detail=" + sanitize(freezeResult));
                 return true;
             }
@@ -2042,7 +2148,6 @@ final class ProcessObserverUtil {
                     + " alivePids=" + pidCsv(alive)
                     + " elapsedMs=" + (System.currentTimeMillis() - startMs)
                     + " callback=" + sanitize(callback)
-                    + " mode=r304"
                     + " detail=" + sanitize(freezeResult));
             return false;
         }
@@ -2066,7 +2171,7 @@ final class ProcessObserverUtil {
                 NativeLogdObserver observer = new NativeLogdObserver(this, helper, daemonMode);
                 nativeLogdObserver = observer;
                 observer.start();
-                logLine("PROCESS_OBSERVER_NATIVE_LOGD_LISTEN_OK helper=" + sanitize(helper)
+                logLine("PROCESS_OBSERVER_NATIVE_LOGD_LISTEN_STARTING helper=" + sanitize(helper)
                         + " daemon=" + daemonMode
                         + " event_source=LOG_ID_EVENTS tags=am_proc_start,am_proc_died optional=1");
             } catch (Throwable t) {
@@ -2195,13 +2300,14 @@ final class ProcessObserverUtil {
             }
             if (targetTop) {
                 if (!callbacksReady) {
+                markGapDuringBootstrap();
                     logLine("PROCESS_OBSERVER_BOOTSTRAP_SKIP callback=" + sanitize(callback)
                             + " code=" + code
                             + " reason=callbacks-not-ready topTarget=" + targetTop
                             + " targetAlive=" + targetAlive);
                     return;
                 }
-                // r302: high-risk topTarget uses the shortest cgroup path first, before the heavier
+                // high-risk topTarget uses the shortest cgroup path first, before the heavier
                 // guard-stop context collection. If fast freeze is unavailable, fall back to the
                 // existing performAction path so safety is not weakened.
                 if (tryFastCgroupFreezeTopTarget(callback, alive)) {
@@ -2210,6 +2316,7 @@ final class ProcessObserverUtil {
                 performAction(callback, -1, targetUid, topPackage);
             } else if (targetAlive && stateChanged) {
                 if (!callbacksReady) {
+                markGapDuringBootstrap();
                     logLine("PROCESS_OBSERVER_BOOTSTRAP_SKIP callback=" + sanitize(callback)
                             + " code=" + code
                             + " reason=callbacks-not-ready targetAlive=true topTarget=false");
@@ -2218,8 +2325,7 @@ final class ProcessObserverUtil {
                 logLine("PROCESS_OBSERVER_TASKSTACK_GUARD_ACTION reason=target-alive-not-top"
                         + " package=" + packageName
                         + " alivePids=" + pidCsv(alive)
-                        + " callback=" + sanitize(callback)
-                        + " mode=r304");
+                        + " callback=" + sanitize(callback));
                 performAction(callback + "-target-alive-not-top", -1, targetUid, packageName);
             }
         }
@@ -2252,39 +2358,98 @@ final class ProcessObserverUtil {
             this.daemonMode = daemonMode;
         }
 
-        void start() throws Exception {
-            long duration = session.durationMs > 0L ? session.durationMs + 5000L : 0L;
-            active.set(true);
-            final InputStream source;
+        final Object transportLock = new Object();
+        volatile long deadlineMs;
+        final AtomicInteger reconnects = new AtomicInteger();
+
+        private InputStream connect() throws Exception {
+            long remaining = deadlineMs == 0L ? 0L : Math.max(1L, deadlineMs - android.os.SystemClock.elapsedRealtime());
             if (daemonMode) {
                 LocalSocket s = new LocalSocket();
-                s.connect(new LocalSocketAddress(helper, LocalSocketAddress.Namespace.FILESYSTEM));
-                OutputStream os = s.getOutputStream();
-                os.write(("SUBSCRIBE " + session.packageName + " " + session.userId + " " + duration + "\n").getBytes(StandardCharsets.UTF_8));
-                os.flush();
-                try { s.shutdownOutput(); } catch (Throwable ignored) {}
-                socket = s;
-                source = s.getInputStream();
-            } else {
-                ProcessBuilder pb = new ProcessBuilder(helper, "watch-logd", session.packageName, String.valueOf(session.userId), String.valueOf(duration));
-                pb.redirectErrorStream(true);
-                process = pb.start();
-                source = process.getInputStream();
+                try {
+                    synchronized (transportLock) {
+                        if (!active.get() || !session.running.get()) throw new InterruptedException("session stopped");
+                        socket = s;
+                    }
+                    s.connect(new LocalSocketAddress(helper, LocalSocketAddress.Namespace.FILESYSTEM));
+                    OutputStream os = s.getOutputStream();
+                    os.write(("SUBSCRIBE " + session.packageName + " " + session.userId + " " + remaining + "\n").getBytes(StandardCharsets.UTF_8));
+                    os.flush();
+                    try { s.shutdownOutput(); } catch (Throwable ignored) {}
+                    synchronized (transportLock) {
+                        if (!active.get() || !session.running.get()) throw new InterruptedException("session stopped");
+                        socket = s;
+                        return s.getInputStream();
+                    }
+                } catch (Exception e) { try { s.close(); } catch (Throwable ignored) {} throw e; }
             }
+            ProcessBuilder pb = new ProcessBuilder(helper, "watch-logd", session.packageName, String.valueOf(session.userId), String.valueOf(remaining));
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            synchronized (transportLock) {
+                if (!active.get() || !session.running.get()) { p.destroy(); throw new InterruptedException("session stopped"); }
+                process = p;
+                return p.getInputStream();
+            }
+        }
+
+        private void closeTransport() {
+            LocalSocket s; Process p;
+            synchronized (transportLock) { s = socket; socket = null; p = process; process = null; }
+            if (s != null) {
+                try { s.shutdownOutput(); } catch (Throwable ignored) {}
+                try { s.shutdownInput(); } catch (Throwable ignored) {}
+                try { s.close(); } catch (Throwable ignored) {}
+            }
+            if (p != null) {
+                p.destroy();
+                try { if (!p.waitFor(300, TimeUnit.MILLISECONDS)) p.destroyForcibly(); }
+                catch (InterruptedException e) { p.destroyForcibly(); Thread.currentThread().interrupt(); }
+            }
+        }
+
+        void start() {
+            active.set(true);
+            deadlineMs = session.durationMs > 0L ? android.os.SystemClock.elapsedRealtime() + session.durationMs + 5000L : 0L;
             readerThread = new Thread(() -> {
-                try (BufferedReader br = new BufferedReader(new InputStreamReader(source, StandardCharsets.UTF_8))) {
-                    String line;
-                    while (active.get() && (line = br.readLine()) != null) {
-                        lines.incrementAndGet();
-                        session.onNativeLogdLine(line);
+                long[] delays = {100, 250, 500, 1000};
+                boolean gapChecked = false;
+                try {
+                    while (active.get() && session.running.get()) {
+                        if (deadlineMs != 0L && android.os.SystemClock.elapsedRealtime() >= deadlineMs) break;
+                        try (BufferedReader br = new BufferedReader(new InputStreamReader(connect(), StandardCharsets.UTF_8))) {
+                            boolean ready = false;
+                            String line;
+                            while (active.get() && (line = br.readLine()) != null) {
+                                if (!active.get() || !session.running.get()) break;
+                                lines.incrementAndGet();
+                                session.onNativeLogdLine(line);
+                                if (!ready && line.startsWith("CGFREEZER_LOGD_WATCH_START ok=true")) {
+                                    ready = true;
+                                    gapChecked = false;
+                                    session.logLine("PROCESS_OBSERVER_NATIVE_LOGD_LISTEN_OK helper=" + sanitize(helper)
+                                            + " daemon=" + daemonMode + " reconnects=" + reconnects.get());
+                                    session.reconcileAfterGap(reconnects.get() > 0 ? "subscription-reconnect" : "subscription-ready");
+                                }
+                            }
+                        } catch (Throwable t) {
+                            if (active.get() && session.running.get()) session.logLine("PROCESS_OBSERVER_NATIVE_LOGD_READER_ERROR exception="
+                                    + sanitize(t.getClass().getName()) + " message=" + sanitize(t.getMessage()));
+                        } finally { closeTransport(); }
+                        if (!active.get() || !session.running.get()) break;
+                        if (deadlineMs != 0L && android.os.SystemClock.elapsedRealtime() >= deadlineMs) break;
+                        int attempt = reconnects.get();
+                        if (!gapChecked) { session.reconcileAfterGap("subscription-lost"); gapChecked = true; }
+                        if (attempt >= delays.length) {
+                            session.logLine("PROCESS_OBSERVER_NATIVE_LOGD_RECOVER_EXHAUSTED attempts=" + attempt + " optional=1");
+                            break;
+                        }
+                        reconnects.incrementAndGet();
+                        session.logLine("PROCESS_OBSERVER_NATIVE_LOGD_RECOVER_RETRY attempt=" + (attempt+1) + " delayMs=" + delays[attempt]);
+                        Thread.sleep(delays[attempt]);
                     }
-                } catch (Throwable t) {
-                    if (active.get()) {
-                        session.logLine("PROCESS_OBSERVER_NATIVE_LOGD_READER_ERROR exception=" + sanitize(t.getClass().getName())
-                                + " message=" + sanitize(t.getMessage())
-                                + " daemon=" + daemonMode);
-                    }
-                }
+                } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                finally { active.set(false); closeTransport(); }
             }, "speedbackup-native-logd-reader-" + session.token);
             readerThread.setDaemon(true);
             readerThread.start();
@@ -2292,20 +2457,43 @@ final class ProcessObserverUtil {
 
         String stop(String reason) {
             active.set(false);
-            LocalSocket s = socket;
+            Thread stoppingReader = readerThread;
+            if (stoppingReader != null) stoppingReader.interrupt();
+            LocalSocket s; Process p;
+            synchronized (transportLock) { s = socket; socket = null; p = process; process = null; }
+            boolean inputShutdown = s == null;
+            boolean outputShutdown = s == null;
+            boolean socketClosed = s == null;
+            String stopError = "none";
             if (s != null) {
-                try { s.close(); } catch (Throwable ignored) {}
+                // close alone can leave a Linux blocking read holding the socket
+                // alive. Finish both directions before close so the reader wakes
+                // and the Rust SUBSCRIBE peer watcher receives full shutdown/HUP.
+                // Request-side half-close in start() remains unchanged.
+                try { s.shutdownOutput(); outputShutdown = true; }
+                catch (Throwable e) { stopError = "shutdownOutput:" + e.getClass().getSimpleName(); }
+                try { s.shutdownInput(); inputShutdown = true; }
+                catch (Throwable e) { stopError = "shutdownInput:" + e.getClass().getSimpleName(); }
+                try { s.close(); socketClosed = true; }
+                catch (Throwable e) { stopError = "close:" + e.getClass().getSimpleName(); }
             }
-            Process p = process;
             if (p != null) {
                 try { p.destroy(); } catch (Throwable ignored) {}
                 try { if (!p.waitFor(300, TimeUnit.MILLISECONDS)) p.destroyForcibly(); } catch (Throwable ignored) { try { p.destroyForcibly(); } catch (Throwable ignored2) {} }
             }
             Thread t = readerThread;
-            if (t != null) {
+            if (t != null && t != Thread.currentThread()) {
                 try { t.join(300); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             }
-            return "helper=" + sanitize(helper) + " daemon=" + daemonMode + " lines=" + lines.get() + " reason=" + sanitize(reason);
+            boolean readerStopped = t == null || !t.isAlive();
+            if (!readerStopped || !socketClosed) {
+                session.logLine("PROCESS_OBSERVER_NATIVE_LOGD_STOP_WARN readerStopped=" + readerStopped
+                        + " socketClosed=" + socketClosed + " error=" + sanitize(stopError));
+            }
+            return "helper=" + sanitize(helper) + " daemon=" + daemonMode + " lines=" + lines.get()
+                    + " reason=" + sanitize(reason) + " inputShutdown=" + inputShutdown
+                    + " outputShutdown=" + outputShutdown + " socketClosed=" + socketClosed
+                    + " readerStopped=" + readerStopped + " stopError=" + sanitize(stopError);
         }
     }
 
@@ -2414,7 +2602,7 @@ final class ProcessObserverUtil {
                         + " fallback=not-needed");
                 return result;
             }
-            // r315: onProcessDied can arrive for a pid that has already vanished while
+            // onProcessDied can arrive for a pid that has already vanished while
             // sibling processes of the same high-risk app are still alive.  Freezing the
             // dead event pid returns false and previously fell through to force-stop,
             // even though package-scope cgroup freeze is the desired cgroup-first
@@ -2612,7 +2800,7 @@ final class ProcessObserverUtil {
     }
 
     private static boolean cgroupFreezerPreferred(String packageName) {
-        // r302: keep cgroup freeze as the primary path only for the hardcoded high-risk set.
+        // keep cgroup freeze as the primary path only for the hardcoded high-risk set.
         // TOP and targetAlive-not-top task-stack events both use package-scope freeze first;
         // duplicate events reuse existing frozen pid sets to avoid redundant cgroup tokens,
         // while ordinary packages still use immediate force-stop/kill guard.

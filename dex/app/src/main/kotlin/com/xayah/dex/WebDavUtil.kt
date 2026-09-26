@@ -188,9 +188,9 @@ object WebDavUtil {
     private fun streamIdleWarnMs(): Long = envLong("WEBDAV_STREAM_IDLE_WARN_SEC", 60L, 10L, 86400L) * 1000L
     private fun streamStallAbortMs(): Long = envLong("WEBDAV_STREAM_STALL_ABORT_SEC", 180L, 30L, 86400L) * 1000L
     private fun streamPostBodyTimeoutMs(defaultSec: Long = 180L): Int {
-        // r600: canonical name reflects the protocol-visible phase. Once the client request
+        // canonical name reflects the protocol-visible phase. Once the client request
         // body is emitted, AList/OpenList may still synchronously hash/cache/upload to the
-        // backing provider before returning HTTP 2xx. The r599 env name is retained only as
+        // backing provider before returning HTTP 2xx. The  env name is retained only as
         // a compatibility alias for existing configs.
         val canonical = System.getenv("WEBDAV_STREAM_POST_BODY_TIMEOUT_SEC")?.trim()?.toLongOrNull()
         val legacy = System.getenv("WEBDAV_STREAM_FINALIZE_TIMEOUT_SEC")?.trim()?.toLongOrNull()
@@ -429,7 +429,7 @@ object WebDavUtil {
             exitProcess(2)
         }
         when (args[0]) {
-            "version" -> { println(VERSION); exitProcess(0) }
+            "version" -> { println(DexBuildInfo.VERSION_DISPLAY); exitProcess(0) }
             "mkdirrel" -> cmdMkdirRel(args)
             "mkdirsrel" -> cmdMkdirsRel(args)
             "putrel" -> cmdPutRel(args)
@@ -713,10 +713,10 @@ object WebDavUtil {
 
         fun safe(block: () -> Int): Int = runCatching(block).getOrElse { e -> lastError = e; HttpCore.extractCode(e) }
 
-        // r547: The daemon control line stores command-specific arguments in a
+        // The daemon control line stores command-specific arguments in a
         // TAB-delimited extra field.  Treat that line as a strict local protocol:
         // a literal TAB inside caller-controlled path/name data must never shift
-        // positional fields and become another WebDAV argument.  Shell r546 still
+        // positional fields and become another WebDAV argument.  Shell  still
         // sanitizes serialized segments for compatibility with existing classes.dex;
         // this Dex-side gate is the final authority if a future caller or a manual
         // socket request bypasses the shell guard.
@@ -936,7 +936,7 @@ object WebDavUtil {
         }
 
         if (httpCode == 0 && lastError != null) {
-            // v2.6.94: getrel/listrel/statrel may intentionally return rc!=0 for missing,
+            // getrel/listrel/statrel may intentionally return rc!=0 for missing,
             // truncated, or stale remote files. Do not dump full stack traces to daemon stderr
             // for these request-scoped WebDAV transport failures; shell-side raw logs already
             // record rc/bytes/http, and stderr must remain reserved for daemon/process fatal
@@ -1465,7 +1465,7 @@ object WebDavUtil {
             if (localPolicyReject || decision.ok || !decision.retryable || attempt + 1 >= maxAttempts) return code
             val sleepMs = pacerSleepMs(attempt, retryAfterMs)
             if (System.currentTimeMillis() - started + sleepMs > 60_000L) return code
-            infoLog("WEBDAV_PACER_RETRY op=$operation code=$code attempt=${attempt + 1} sleepMs=$sleepMs retryAfterMs=$retryAfterMs mode=r610")
+            infoLog("WEBDAV_PACER_RETRY op=$operation code=$code attempt=${attempt + 1} sleepMs=$sleepMs retryAfterMs=$retryAfterMs")
             runCatching { Thread.sleep(sleepMs) }
             attempt++
         }
@@ -1485,7 +1485,7 @@ object WebDavUtil {
             if (localPolicyReject || decision.ok || !decision.retryable || attempt + 1 >= maxAttempts) return result
             val sleepMs = pacerSleepMs(attempt, retryAfterMs)
             if (System.currentTimeMillis() - started + sleepMs > 60_000L) return result
-            infoLog("WEBDAV_PACER_RETRY op=$operation code=${result.first} attempt=${attempt + 1} sleepMs=$sleepMs retryAfterMs=$retryAfterMs mode=r610")
+            infoLog("WEBDAV_PACER_RETRY op=$operation code=${result.first} attempt=${attempt + 1} sleepMs=$sleepMs retryAfterMs=$retryAfterMs")
             runCatching { Thread.sleep(sleepMs) }
             attempt++
         }
@@ -1682,7 +1682,7 @@ object WebDavUtil {
      * already exist, create only missing parents, and return TSV facts for tools cache seeding.
      */
     private fun prepareDirsPlanRel(user: String, pass: String, baseUrl: String, rootRelRaw: String, modeRaw: String, body: String, progressFile: String = ""): Pair<Int, String> {
-        // r699: elapsedMs historically timed only creation; totalMs covers every branch.
+        // elapsedMs historically timed only creation; totalMs covers every branch.
         val callStartedNs = System.nanoTime()
         var rootListMs = 0L
         var rootParseMs = 0L
@@ -1690,7 +1690,7 @@ object WebDavUtil {
         fun finish(code: Int, payload: String): Pair<Int, String> {
             val totalMs = ((System.nanoTime() - callStartedNs) / 1_000_000L).coerceAtLeast(0L)
             val fields = "\trootListMs=$rootListMs\trootParseMs=$rootParseMs\tcreateMs=$createMs\ttotalMs=$totalMs\ttimingScope=full"
-            infoLog("WEBDAV_PREPARE_DIRS_FULL_TIMING totalMs=$totalMs rootListMs=$rootListMs rootParseMs=$rootParseMs createMs=$createMs mode=r699")
+            infoLog("WEBDAV_PREPARE_DIRS_FULL_TIMING totalMs=$totalMs rootListMs=$rootListMs rootParseMs=$rootParseMs createMs=$createMs")
             return code to payload.lineSequence().joinToString("\n") { line ->
                 if (line.startsWith("SUMMARY\t")) line + fields else line
             }
@@ -1793,7 +1793,7 @@ object WebDavUtil {
                 .append("\trootStatus=").append(rootStatus)
                 .append("\tcreateTotal=0\tworkers=0\telapsedMs=0")
                 .append("\tstrategy=list-only-existing\tmode=create\n")
-            infoLog("WEBDAV_PREPARE_DIRS_PARALLEL_DONE root=$rootRel total=${desired.size} createTotal=0 workers=0 existing=$existingCount created=0 failed=0 elapsedMs=0 mode=r671")
+            infoLog("WEBDAV_PREPARE_DIRS_PARALLEL_DONE root=$rootRel total=${desired.size} createTotal=0 workers=0 existing=$existingCount created=0 failed=0 elapsedMs=0")
             return finish(200, out.toString())
         }
         writePrepareDirsProgress(progressFile, createTotal, 0, existingCount, 0, 0, "CREATE_BEGIN", rootRel)
@@ -1859,7 +1859,7 @@ object WebDavUtil {
             .append("\tstrategy=parallel-known-missing-direct-mkcol")
             .append("\tmode=create")
             .append('\n')
-        infoLog("WEBDAV_PREPARE_DIRS_PARALLEL_DONE root=$rootRel total=${desired.size} createTotal=$createTotal workers=$workers existing=$existingCount created=$createdCount failed=$failedCount elapsedMs=$elapsedMs mode=r671")
+        infoLog("WEBDAV_PREPARE_DIRS_PARALLEL_DONE root=$rootRel total=${desired.size} createTotal=$createTotal workers=$workers existing=$existingCount created=$createdCount failed=$failedCount elapsedMs=$elapsedMs")
         if (createdCount > 0) invalidateListCache()
         return finish(finalCode, out.toString())
     }
@@ -1991,7 +1991,7 @@ object WebDavUtil {
         return speedBackupIdentityCache.getOrProbe(key) {
             val start = System.nanoTime()
             val recognized = SpeedBackupIdentityProbe.probe(url)
-            infoLog("WEBDAV_SERVER_IDENTITY source=same-origin-capabilities speedbackup=${recognized == true} outcome=${if (recognized == null) "inconclusive" else "confirmed"} elapsedMs=${(System.nanoTime()-start)/1_000_000} mode=backup-trace19")
+            infoLog("WEBDAV_SERVER_IDENTITY source=same-origin-capabilities speedbackup=${recognized == true} outcome=${if (recognized == null) "inconclusive" else "confirmed"} elapsedMs=${(System.nanoTime()-start)/1_000_000}")
             recognized
         } == true
     }
@@ -2315,7 +2315,7 @@ object WebDavUtil {
                     chunkedPutOk = chunkedPutCode in 200..299 && chunkedPutVerified
                     addOptional("putstdinchunkedrel", chunkedPutCode, chunkedPutOk, if (chunkedPutRecovered) "ambiguous-put-verified" else if (chunkedPutVerified) "2xx-stat-verified" else "2xx-stat-mismatch")
 
-                    // r612 feature contract is mode-neutral: a backend may be fixed-length-only and
+                    // feature contract is mode-neutral: a backend may be fixed-length-only and
                     // still fully support non-stream SpeedBackup. remote_stream=1 has its own hard
                     // managed chunked gate. Here require at least one upload mode, then measure the
                     // common GET/list/delete/integrity contract against whichever mode actually works.
@@ -2444,7 +2444,7 @@ object WebDavUtil {
             bodyCompareOk = bodyMatches,
             copyStatOk = copyStatOk,
             cleanupOk = cleanupOk,
-            source = "compat-probe-r613"
+            source = "compat-probe"
         ))
         return finishCompatProbe(
             steps, finalCode, ok, allowReliable, allow, dav, server, quirks,
@@ -2736,7 +2736,7 @@ object WebDavUtil {
             HttpCore.readResponseBody(headers, input, capture)
             val check = put2xxSemanticBodyCheck(status, headers, capture.bytes(), capture.total(), capture.truncated())
             if (check.failed) {
-                infoLog("WEBDAV_PUT_2XX_BODY_SEMANTIC_ERROR http=$status synthetic=$PUT_SEMANTIC_FAILURE_HTTP_CODE reason=${check.reason} detail=${check.detail} mode=r613")
+                infoLog("WEBDAV_PUT_2XX_BODY_SEMANTIC_ERROR http=$status synthetic=$PUT_SEMANTIC_FAILURE_HTTP_CODE reason=${check.reason} detail=${check.detail}")
                 return PUT_SEMANTIC_FAILURE_HTTP_CODE to check.reason
             }
             return status to ""
@@ -2759,7 +2759,7 @@ object WebDavUtil {
     ): Boolean {
         val facts = featureFactsCache[featureFactsKey(baseUrl)]
         if (requireKnownRemoteSize && facts?.supportsRemoteSize != true) {
-            infoLog("WEBDAV_PUT_2XX_VERIFY_SKIP context=$context rel=$targetRel expectedBytes=$expectedLength reason=remote-size-not-proven mode=r613")
+            infoLog("WEBDAV_PUT_2XX_VERIFY_SKIP context=$context rel=$targetRel expectedBytes=$expectedLength reason=remote-size-not-proven")
             return true
         }
         val (statCode, entry) = statDav(user, pass, targetUrl)
@@ -2773,7 +2773,7 @@ object WebDavUtil {
             bodyOk = bodyResult.second
         }
         val verified = sizeOk && (allowSizeOnly || compareLocalFile == null || bodyOk)
-        infoLog("WEBDAV_PUT_2XX_VERIFY context=$context rel=$targetRel statHttp=$statCode getHttp=$getCode expectedBytes=$expectedLength actualBytes=$actualLength verifyMode=${if (allowSizeOnly) "stat-size" else if (compareLocalFile != null) "stat-size-get-body" else "stat-size"} verified=${if (verified) 1 else 0} mode=r613")
+        infoLog("WEBDAV_PUT_2XX_VERIFY context=$context rel=$targetRel statHttp=$statCode getHttp=$getCode expectedBytes=$expectedLength actualBytes=$actualLength verifyMode=${if (allowSizeOnly) "stat-size" else if (compareLocalFile != null) "stat-size-get-body" else "stat-size"} verified=${if (verified) 1 else 0}")
         return verified
     }
 
@@ -2794,7 +2794,7 @@ object WebDavUtil {
                 }
             }
         }.getOrElse { HttpCore.extractCode(it) }
-        infoLog("WEBDAV_PUT_AMBIGUOUS_BODY_COMPARE rel=$relPath getHttp=$code expectedBytes=${localFile.length()} bodyMatch=${if (bodyMatches) 1 else 0} mode=r613")
+        infoLog("WEBDAV_PUT_AMBIGUOUS_BODY_COMPARE rel=$relPath getHttp=$code expectedBytes=${localFile.length()} bodyMatch=${if (bodyMatches) 1 else 0}")
         return code to (code in 200..299 && bodyMatches)
     }
 
@@ -2822,7 +2822,7 @@ object WebDavUtil {
         val message = failure?.message.orEmpty()
         if (message.startsWith("HTTP_REDIRECT_AUTH_")) return false
         if (!clientBodyComplete || expectedLength < 0L) {
-            infoLog("WEBDAV_PUT_AMBIGUOUS_VERIFY context=$context rel=$targetRel originalHttp=$code clientBodyComplete=${if (clientBodyComplete) 1 else 0} expectedBytes=$expectedLength recovered=0 reason=body-incomplete-or-unknown mode=r613")
+            infoLog("WEBDAV_PUT_AMBIGUOUS_VERIFY context=$context rel=$targetRel originalHttp=$code clientBodyComplete=${if (clientBodyComplete) 1 else 0} expectedBytes=$expectedLength recovered=0 reason=body-incomplete-or-unknown")
             return false
         }
         val (statCode, entry) = statDav(user, pass, targetUrl)
@@ -2837,7 +2837,7 @@ object WebDavUtil {
         }
         val recovered = sizeOk && (allowSizeOnly || bodyOk)
         val verifyMode = if (allowSizeOnly) "stat-size" else if (compareLocalFile != null) "stat-size-get-body" else "stat-size-disabled"
-        infoLog("WEBDAV_PUT_AMBIGUOUS_VERIFY context=$context rel=$targetRel originalHttp=$code statHttp=$statCode getHttp=$getCode expectedBytes=$expectedLength actualBytes=$actualLength clientBodyComplete=1 verifyMode=$verifyMode bodyCompare=${if (compareLocalFile != null) 1 else 0} bodyOk=${if (bodyOk) 1 else 0} recovered=${if (recovered) 1 else 0} mode=r613")
+        infoLog("WEBDAV_PUT_AMBIGUOUS_VERIFY context=$context rel=$targetRel originalHttp=$code statHttp=$statCode getHttp=$getCode expectedBytes=$expectedLength actualBytes=$actualLength clientBodyComplete=1 verifyMode=$verifyMode bodyCompare=${if (compareLocalFile != null) 1 else 0} bodyOk=${if (bodyOk) 1 else 0} recovered=${if (recovered) 1 else 0}")
         return recovered
     }
 
@@ -2849,7 +2849,7 @@ object WebDavUtil {
     private fun putReplayableLocalFileAttempt(user: String, pass: String, baseUrl: String, relPath: String, file: File): PutAttempt {
         val chunked = replayableLocalFileUsesChunked(baseUrl)
         val bodyDone = AtomicBoolean(false)
-        infoLog("WEBDAV_REPLAYABLE_FILE_PUT rel=$relPath size=${file.length()} chunked=${if (chunked) 1 else 0} source=${featureFactsCache[featureFactsKey(baseUrl)]?.source ?: "unknown"} mode=r613")
+        infoLog("WEBDAV_REPLAYABLE_FILE_PUT rel=$relPath size=${file.length()} chunked=${if (chunked) 1 else 0} source=${featureFactsCache[featureFactsKey(baseUrl)]?.source ?: "unknown"}")
         return runCatching {
             val code = FileInputStream(file).use {
                 put(user, pass, buildRelUrl(baseUrl, relPath), it, if (chunked) null else file.length(), chunked = chunked, onBodyComplete = { bodyDone.set(true) })
@@ -2957,7 +2957,7 @@ object WebDavUtil {
             }
         )
         return if (rawCode in 200..299 && semanticFailure) {
-            infoLog("WEBDAV_PUT_2XX_BODY_RECLASSIFY http=$rawCode synthetic=$PUT_SEMANTIC_FAILURE_HTTP_CODE reason=$semanticReason action=stat-verify-before-success mode=r613")
+            infoLog("WEBDAV_PUT_2XX_BODY_RECLASSIFY http=$rawCode synthetic=$PUT_SEMANTIC_FAILURE_HTTP_CODE reason=$semanticReason action=stat-verify-before-success")
             PUT_SEMANTIC_FAILURE_HTTP_CODE
         } else rawCode
     }
@@ -2996,7 +2996,7 @@ object WebDavUtil {
                 }
             )
             val finalCode = if (code in 200..299 && semanticCode == PUT_SEMANTIC_FAILURE_HTTP_CODE) {
-                infoLog("WEBDAV_PUT_2XX_BODY_RECLASSIFY http=$code synthetic=$PUT_SEMANTIC_FAILURE_HTTP_CODE reason=$semanticReason action=probe-stat-verify-before-success mode=r613")
+                infoLog("WEBDAV_PUT_2XX_BODY_RECLASSIFY http=$code synthetic=$PUT_SEMANTIC_FAILURE_HTTP_CODE reason=$semanticReason action=probe-stat-verify-before-success")
                 PUT_SEMANTIC_FAILURE_HTTP_CODE
             } else code
             PutAttempt(finalCode, null, bodyDone.get())
@@ -3043,7 +3043,7 @@ object WebDavUtil {
                 }
             )
             val finalCode = if (code in 200..299 && semanticCode == PUT_SEMANTIC_FAILURE_HTTP_CODE) {
-                infoLog("WEBDAV_PUT_2XX_BODY_RECLASSIFY http=$code synthetic=$PUT_SEMANTIC_FAILURE_HTTP_CODE reason=$semanticReason action=probe-stat-verify-before-success mode=r613")
+                infoLog("WEBDAV_PUT_2XX_BODY_RECLASSIFY http=$code synthetic=$PUT_SEMANTIC_FAILURE_HTTP_CODE reason=$semanticReason action=probe-stat-verify-before-success")
                 PUT_SEMANTIC_FAILURE_HTTP_CODE
             } else code
             PutAttempt(finalCode, null, bodyDone.get())
@@ -3056,7 +3056,7 @@ object WebDavUtil {
         return putReplayableChunkedBytesAttempt(user, pass, url, bytes).code
     }
 
-    // r603: server product and backing-provider presentation are deliberately separate.
+    // server product and backing-provider presentation are deliberately separate.
     // WebDAV headers can identify the front-end product (AList/OpenList/rclone/etc.), but an
     // AList/OpenList WebDAV endpoint does not reliably expose its backing storage driver.
     // The provider registry below is therefore presentation-only when inferred from the mount
@@ -3354,7 +3354,7 @@ object WebDavUtil {
                 "list0=${merged.supportsDepth0} list1=${merged.supportsDepth1} listInf=${merged.supportsDepthInfinity} walk=${merged.supportsRecursiveWalkFallback} " +
                 "mkcol=${merged.supportsMkcol} delete=${merged.supportsDelete} atomic=${merged.supportsAtomicPublish} move=${merged.supportsMove} " +
                 "copy=${merged.supportsCopy} stat=${merged.supportsStat} remoteSize=${merged.supportsRemoteSize} overwriteMove=${merged.supportsOverwriteMove} " +
-                "quota=${merged.supportsQuota} body=${merged.bodyCompareOk} copyStat=${merged.copyStatOk} cleanup=${merged.cleanupOk} mode=r613"
+                "quota=${merged.supportsQuota} body=${merged.bodyCompareOk} copyStat=${merged.copyStatOk} cleanup=${merged.cleanupOk}"
         )
     }
 
@@ -3465,7 +3465,7 @@ object WebDavUtil {
         val kind = detectServerKind(user, pass, baseUrl)
         val facts = featureFactsCache[featureFactsKey(baseUrl)]
         val vendorDirectAll = kind == "rclone" || kind == "123pan"
-        // r612: once atomic-publish capability is measured, the fact wins over legacy
+        // once atomic-publish capability is measured, the fact wins over legacy
         // vendor defaults in either direction. Vendor identity remains only a fallback
         // before probing and a semantic/display hint for server-specific behavior.
         val directAll = when (facts?.supportsAtomicPublish) {
@@ -3473,15 +3473,15 @@ object WebDavUtil {
             true -> false
             null -> vendorDirectAll
         }
-        // r598: the remote filelist fact is authoritative for a new streaming payload.
+        // the remote filelist fact is authoritative for a new streaming payload.
         // A generic/blank Server header must not force a known-missing archive back to .part+MOVE.
-        // r600 recognizes both official AList and OpenList (used by AListLiteAndroid), while
+        // recognizes both official AList and OpenList (used by AListLiteAndroid), while
         // retaining :5244/dav as an alist-compatible fallback when Server is stripped.
         val alistFamily = isAlistFamily(kind)
         val alistServerHeader = if (alistFamily) runCatching { parseKeyValueLines(optionsDav(user, pass, buildRelUrl(baseUrl, "")).second)["server"].orEmpty() }.getOrDefault("") else ""
         val alistSecurity = alistSecurityAdvisory(kind, alistServerHeader)
         val newPayloadDirect = directAll || alistFamily || kind == "generic" || kind == "speedbackup"
-        // r600: BODY_DONE means only that SpeedBackup emitted the request body. AList/OpenList
+        // BODY_DONE means only that SpeedBackup emitted the request body. AList/OpenList
         // can still synchronously hash/cache/upload to a backing provider before WebDAV PUT 2xx.
         // Keep the safety bound, but model/log it as post-body server processing, not finalize.
         val defaultPostBodySec = if (alistFamily) 900L else 180L
@@ -3508,7 +3508,7 @@ object WebDavUtil {
                 "atomicReplace=${if (profile.atomicReplace) 1 else 0} cjkPathRetry=${if (profile.cjkPathRetry) 1 else 0} " +
                 "supportTier=${profile.supportTier} featureSource=${profile.featureSource} featureSummary=${featureSummary(facts).replace(' ', '_')} " +
                 "postBodyTimeoutSec=${profile.postBodyTimeoutMs / 1000} reason=$reason " +
-                "postBodyPolicy=${if (alistFamily) "sync-put-server-processing" else "response-head"} mode=r613"
+                "postBodyPolicy=${if (alistFamily) "sync-put-server-processing" else "response-head"}"
         )
         return profile
     }
@@ -3553,7 +3553,7 @@ object WebDavUtil {
                 "kind=$kind direct=${if (direct) 1 else 0} mode=$modeName " +
                 "directAll=${if (profile.directAll) 1 else 0} newPayloadDirect=${if (profile.newPayloadDirect) 1 else 0} " +
                 "atomicReplace=${if (profile.atomicReplace) 1 else 0} supportTier=${profile.supportTier} featureSource=${profile.featureSource} " +
-                "postBodyTimeoutSec=${profile.postBodyTimeoutMs / 1000} postBodySemantics=server_processing_until_put_response modeVersion=r613"
+                "postBodyTimeoutSec=${profile.postBodyTimeoutMs / 1000} postBodySemantics=server_processing_until_put_response"
         )
         return ManagedDecision(direct, modeName, kind, profile, mode, knownMissing)
     }
@@ -3636,7 +3636,7 @@ object WebDavUtil {
         val baseHost = runCatching { URL(baseUrl).host.lowercase(java.util.Locale.US) }.getOrDefault("")
         val publicJianguoyun = decision.serverKind == "jianguoyun" && (baseHost.contains("jianguoyun") || baseHost.contains("nutstore"))
         val sourceInput = if (publicJianguoyun) {
-            infoLog("WEBDAV_PROVIDER_LIMIT_ARM provider=jianguoyun kind=single_file_default_500m rel=$relPath limit=500000000 mode=r610")
+            infoLog("WEBDAV_PROVIDER_LIMIT_ARM provider=jianguoyun kind=single_file_default_500m rel=$relPath limit=500000000")
             limitInputBytes(input, 500_000_000L, "jianguoyun_500m")
         } else input
         val targetRel = if (decision.direct) relPath else managedPartRel(relPath)
@@ -3684,7 +3684,7 @@ object WebDavUtil {
             invalidateListCache()
         } else if (decision.direct && decision.knownMissing) {
             if (isAmbiguousPutCode(code)) {
-                infoLog("MANAGED_PUT_DIRECT_NEW_MISSING_CLEANUP_SKIP rel=$relPath mode=${decision.modeName} afterHttp=$code reason=put-ambiguous-unverified mode=r613")
+                infoLog("MANAGED_PUT_DIRECT_NEW_MISSING_CLEANUP_SKIP rel=$relPath mode=${decision.modeName} afterHttp=$code reason=put-ambiguous-unverified")
             } else {
                 val cleanupCode = runCatching { deleteCleanup(user, pass, buildRelUrl(baseUrl, relPath), "direct-new-failed") }.getOrDefault(0)
                 infoLog("MANAGED_PUT_DIRECT_NEW_MISSING_CLEANUP rel=$relPath mode=${decision.modeName} code=$cleanupCode afterHttp=$code")
@@ -3704,11 +3704,11 @@ object WebDavUtil {
         val publicJianguoyun = decision.serverKind == "jianguoyun" && (baseHost.contains("jianguoyun") || baseHost.contains("nutstore"))
         val jianguoyunDefaultLimit = 500_000_000L
         if (publicJianguoyun && file.length() > jianguoyunDefaultLimit) {
-            infoLog("WEBDAV_PROVIDER_LIMIT_REJECT provider=jianguoyun kind=single_file_default_500m rel=$relPath size=${file.length()} limit=$jianguoyunDefaultLimit action=fail_early mode=r610")
+            infoLog("WEBDAV_PROVIDER_LIMIT_REJECT provider=jianguoyun kind=single_file_default_500m rel=$relPath size=${file.length()} limit=$jianguoyunDefaultLimit action=fail_early")
             return 413
         }
         val facts = featureFactsCache[featureFactsKey(baseUrl)]
-        // r612: all replayable local-file endpoints share the same fact-driven fixed/chunked policy.
+        // all replayable local-file endpoints share the same fact-driven fixed/chunked policy.
         val chunkedFilePut = replayableLocalFileUsesChunked(baseUrl)
         infoLog("MANAGED_PUT_FILE mode=${decision.modeName} server=${decision.serverKind} rel=$relPath file=${file.name} size=${file.length()} chunked=${if (chunkedFilePut) 1 else 0} featureSource=${facts?.source ?: "unknown"}")
         fun putLocalFile(targetRel: String): PutAttempt = putReplayableLocalFileAttempt(user, pass, baseUrl, targetRel, file)
@@ -3747,7 +3747,7 @@ object WebDavUtil {
             invalidateListCache()
         } else if (decision.direct && decision.knownMissing) {
             if (isAmbiguousPutCode(code)) {
-                infoLog("MANAGED_PUT_FILE_DIRECT_NEW_MISSING_CLEANUP_SKIP rel=$relPath mode=${decision.modeName} afterHttp=$code reason=put-ambiguous-unverified mode=r613")
+                infoLog("MANAGED_PUT_FILE_DIRECT_NEW_MISSING_CLEANUP_SKIP rel=$relPath mode=${decision.modeName} afterHttp=$code reason=put-ambiguous-unverified")
             } else {
                 val cleanupCode = runCatching { deleteCleanup(user, pass, buildRelUrl(baseUrl, relPath), "direct-file-new-failed") }.getOrDefault(0)
                 infoLog("MANAGED_PUT_FILE_DIRECT_NEW_MISSING_CLEANUP rel=$relPath mode=${decision.modeName} code=$cleanupCode afterHttp=$code")
@@ -3837,7 +3837,7 @@ object WebDavUtil {
         val partRel = if (base.isEmpty()) "$name.part" else "$base/$name.part"
         val finalRel = if (base.isEmpty()) name else "$base/$name"
         val bytes = "speedbackup_managed_probe".toByteArray(StandardCharsets.UTF_8)
-        // r610: this probe gates the real tar|zstd -> WebDAV path, so it must prove chunked PUT,
+        // this probe gates the real tar|zstd -> WebDAV path, so it must prove chunked PUT,
         // not merely a fixed Content-Length PUT. The tiny body is replayable only for probing.
         val partUrl = buildRelUrl(baseUrl, partRel)
         val putAttempt = putReplayableChunkedBytesAttempt(user, pass, partUrl, bytes)
@@ -3905,12 +3905,12 @@ object WebDavUtil {
         if (code != 423) return code
         val delays = intArrayOf(1_000, 2_000, 4_000, 8_000)
         for ((idx, delayMs) in delays.withIndex()) {
-            infoLog("WEBDAV_CLEANUP_LOCKED_DEFER reason=$reason http=$code delayMs=$delayMs attempt=${idx + 2} mode=r610")
+            infoLog("WEBDAV_CLEANUP_LOCKED_DEFER reason=$reason http=$code delayMs=$delayMs attempt=${idx + 2}")
             try { Thread.sleep(delayMs.toLong()) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); break }
             code = delete(user, pass, url, maxAttempts = 1)
             if (code != 423) return code
         }
-        infoLog("WEBDAV_CLEANUP_DEFERRED reason=$reason http=$code action=leave-orphan-for-next-cleanup mode=r610")
+        infoLog("WEBDAV_CLEANUP_DEFERRED reason=$reason http=$code action=leave-orphan-for-next-cleanup")
         return code
     }
 
@@ -3928,14 +3928,14 @@ object WebDavUtil {
         } else if (operation == "MOVE") {
             val (srcAfterCode, srcAfter) = statDav(user, pass, srcUrl)
             val sourceGone = srcAfterCode == 404 || srcAfter == null && srcAfterCode !in 200..299
-            infoLog("WEBDAV_MUTATION_VERIFY_SOURCE operation=MOVE sourceHttp=$srcAfterCode sourceGone=${if (sourceGone) 1 else 0} mode=r610")
+            infoLog("WEBDAV_MUTATION_VERIFY_SOURCE operation=MOVE sourceHttp=$srcAfterCode sourceGone=${if (sourceGone) 1 else 0}")
             sourceGone
         } else {
             val srcEtag = srcBefore.etag.trim()
             val dstEtag = dst?.etag?.trim().orEmpty()
             srcEtag.isNotEmpty() && dstEtag.isNotEmpty() && srcEtag == dstEtag
         }
-        infoLog("WEBDAV_MUTATION_VERIFY operation=$operation originalHttp=$code dstHttp=$dstCode expectedBytes=${srcBefore.length} actualBytes=${dst?.length ?: -1} recovered=${if (recovered) 1 else 0} mode=r610")
+        infoLog("WEBDAV_MUTATION_VERIFY operation=$operation originalHttp=$code dstHttp=$dstCode expectedBytes=${srcBefore.length} actualBytes=${dst?.length ?: -1} recovered=${if (recovered) 1 else 0}")
         return recovered
     }
 
@@ -4111,12 +4111,12 @@ object WebDavUtil {
 
 
     private fun classifyListRel(user: String, pass: String, baseUrl: String, relPath: String, depth: Int): Pair<Int, String> {
-        // r612: once the full feature probe proved Depth: infinity is unavailable but a recursive Depth:1 walk is verified,
+        // once the full feature probe proved Depth: infinity is unavailable but a recursive Depth:1 walk is verified,
         // skip the known-failing infinity request and go straight to the bounded recursive walk.
         if (depth < 0) {
             val facts = featureFactsCache[featureFactsKey(baseUrl)]
             if (facts?.supportsDepthInfinity == false && facts.supportsDepth1 == true && facts.supportsRecursiveWalkFallback == true) {
-                infoLog("WEBDAV_LIST_STRATEGY strategy=depth1-walk source=${facts.source} mode=r613")
+                infoLog("WEBDAV_LIST_STRATEGY strategy=depth1-walk source=${facts.source}")
                 return classifyListRelParallelDepth1(user, pass, baseUrl, relPath, 200)
             }
         }
@@ -4131,7 +4131,7 @@ object WebDavUtil {
                 supportsDepthInfinity = false,
                 supportsDepth1 = true,
                 supportsRecursiveWalkFallback = true,
-                source = "runtime-list-fallback-r612"
+                source = "runtime-list-fallback"
             ))
             return classifyListRelParallelDepth1(user, pass, baseUrl, relPath, status)
         }
@@ -4155,7 +4155,7 @@ object WebDavUtil {
     private fun appendClassifiedDavRel(out: StringBuilder, relRaw: String, entry: DavEntry) {
         val rel = relRaw.replace('\\', '/').trim('/')
         if (rel.isEmpty() || rel == ".") return
-        // r568: PROPFIND href/display data is remote-controlled. Never emit TAB/CR/LF or
+        // PROPFIND href/display data is remote-controlled. Never emit TAB/CR/LF or
         // other control chars into tools.sh TSV; skipping is safer than path mutation because
         // a mutated rel would later address the wrong remote object.
         if (!isSafeTsvPath(rel)) return
@@ -4189,7 +4189,7 @@ object WebDavUtil {
         }
         if (topDirs.isEmpty()) {
             val elapsedMs = (System.currentTimeMillis() - startedMs).coerceAtLeast(0L)
-            infoLog("WEBDAV_CLASSIFY_PARALLEL_DONE root=$rootRel workers=1 topDirs=0 visitedDirs=1 rows=${out.toString().lineSequence().count { it.isNotBlank() }} elapsedMs=$elapsedMs status=$rootStatus mode=r671")
+            infoLog("WEBDAV_CLASSIFY_PARALLEL_DONE root=$rootRel workers=1 topDirs=0 visitedDirs=1 rows=${out.toString().lineSequence().count { it.isNotBlank() }} elapsedMs=$elapsedMs status=$rootStatus")
             return rootStatus to out.toString()
         }
 
@@ -4220,12 +4220,12 @@ object WebDavUtil {
             executor.shutdownNow()
         }
         if (failed) {
-            infoLog("WEBDAV_CLASSIFY_PARALLEL_FALLBACK root=$rootRel workers=$workers topDirs=${topDirs.size} status=$finalStatus action=serial-depth1 mode=r671")
+            infoLog("WEBDAV_CLASSIFY_PARALLEL_FALLBACK root=$rootRel workers=$workers topDirs=${topDirs.size} status=$finalStatus action=serial-depth1")
             return classifyListRelDepth1WalkSerial(user, pass, baseUrl, relPath, originalStatus)
         }
         val elapsedMs = (System.currentTimeMillis() - startedMs).coerceAtLeast(0L)
         val rows = out.toString().lineSequence().count { it.isNotBlank() }
-        infoLog("WEBDAV_CLASSIFY_PARALLEL_DONE root=$rootRel workers=$workers topDirs=${topDirs.size} visitedDirs=$visitedDirs rows=$rows elapsedMs=$elapsedMs status=$finalStatus mode=r671")
+        infoLog("WEBDAV_CLASSIFY_PARALLEL_DONE root=$rootRel workers=$workers topDirs=${topDirs.size} visitedDirs=$visitedDirs rows=$rows elapsedMs=$elapsedMs status=$finalStatus")
         return finalStatus to out.toString()
     }
 
@@ -4452,7 +4452,7 @@ object WebDavUtil {
         if (tailIdx >= 0) {
             val candidate = rel.substring(tailIdx + baseRel.length).trimStart('/')
             if (candidate.isNotEmpty()) return candidate
-            // r517: Depth:1 walk receives the directory itself in many PROPFIND responses.
+            // Depth:1 walk receives the directory itself in many PROPFIND responses.
             // When the href ends exactly at baseRel (possibly with a server-side prefix), treat it as self.
             return ""
         }
@@ -4703,7 +4703,7 @@ object WebDavUtil {
         println("  putmanagedrel <user> <pass> <baseUrl> <relPath> <localFile> [auto|atomic|direct|direct-json|known-missing|direct-new-known-missing] [ensureParentMkdir|skipParentMkdir]")
         println("  managedbatchputrelwithparents <user> <pass> <baseUrl> [mode] [ensureParentMkdir|skipParentMkdir]  (stdin: rel<TAB>localFile; Dex prepares parents then managed PUTs files)")
         println("  managedlistclassifyrel <user> <pass> <baseUrl> <relPath> [depth]  (alias of classifylistrel; transport-owned classified facts)")
-        println("  r699 capabilities: webdav.prepare_dirs_full_timing.dex.v1")
+        println("  capabilities: webdav.prepare_dirs_full_timing.dex.v1")
         println("  managed manifest capabilities: webdav.direct_children_manifest.dex.v1 / webdav.download_manifest.dex.v1 / webdav.orphan_roots_manifest.dex.v1")
         println("  directchildrenrel <user> <pass> <baseUrl> <relPath>  (safe one-level D/N names for tools remote menu)")
         println("  downloadmanifestrel <user> <pass> <baseUrl> <baseRel> <destDir>  (stdin: safe item lines; stdout: rel<TAB>localFile)")
@@ -4717,13 +4717,13 @@ object WebDavUtil {
         println("  optionspreflightrel <user> <pass> <baseUrl> <relPath> <mode>")
         println("  quotarel <user> <pass> <baseUrl> <relPath>  (DAV quota-available-bytes / quota-used-bytes; advisory)")
         println("  verifyuploadmaprel <user> <pass> <baseUrl> <rootRel>  (stdin: rel<TAB>expectedBytes; one remote list + size join)")
-        println("  r613 capabilities: webdav.put_verify_after_ambiguous.dex.v1 / webdav.put_405_ambiguous_stat.dex.v1 / webdav.direct_put_verify_before_cleanup.dex.v1")
-        println("  r613 integrity capabilities: webdav.put_2xx_body_semantic_guard.dex.v1 / webdav.put_2xx_stat_verify.dex.v1 / webdav.cloudreve_identity.dex.v1")
-        println("  trace16 identity capability: webdav.speedbackup_identity.dex.v1")
-        println("  r618 identity capability: webdav.sftpgo_identity.dex.v1")
-        println("  r620 NAS identity capability: webdav.zspace_identity.dex.v1")
-        println("  r622 extended NAS identity capability: webdav.nas_identity_extended.dex.v1")
-        println("  r628 profile contract capability: webdav.profile_contract.dex.v1")
+        println("  capabilities: webdav.put_verify_after_ambiguous.dex.v1 / webdav.put_405_ambiguous_stat.dex.v1 / webdav.direct_put_verify_before_cleanup.dex.v1")
+        println("  integrity capabilities: webdav.put_2xx_body_semantic_guard.dex.v1 / webdav.put_2xx_stat_verify.dex.v1 / webdav.cloudreve_identity.dex.v1")
+        println("  identity capability: webdav.speedbackup_identity.dex.v1")
+        println("  identity capability: webdav.sftpgo_identity.dex.v1")
+        println("  NAS identity capability: webdav.zspace_identity.dex.v1")
+        println("  extended NAS identity capability: webdav.nas_identity_extended.dex.v1")
+        println("  profile contract capability: webdav.profile_contract.dex.v1")
         println("  vendor quirks: webdav.vendor_quirks.v1 / webdav.vendor_auto_detect.v1")
         println("  WEBR5 consolidated: webdav.compat_probe.v1 / webdav.atomic_probe.v2 / webdav.pacer_retry_backoff.v1 / webdav.directory_cache.v1 / webdav.propfind_xml_tolerant.v2 / webdav.error_policy_table.v1 / webdav.regression_suite.v1 / webdav.deep_policy_table.dex.v1")
         println("  deleterel <user> <pass> <baseUrl> <relPath>")

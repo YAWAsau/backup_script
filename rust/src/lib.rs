@@ -8,7 +8,30 @@ use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-pub const R550_MARKER: &str = "rust-native-v27-binary-version-marker-r550";
+pub const BUILD_VERSION: &str = env!("SPEEDBACKUP_BUILD_VERSION");
+
+/// Independent functional versions embedded at compile time.
+pub mod versions {
+    pub const CGFREEZER: &str = env!("SPEEDBACKUP_CGFREEZER_VERSION");
+    pub const EVENTWAIT: &str = env!("SPEEDBACKUP_EVENTWAIT_VERSION");
+    pub const FILEWATCH: &str = env!("SPEEDBACKUP_FILEWATCH_VERSION");
+    pub const NETWATCH: &str = env!("SPEEDBACKUP_NETWATCH_VERSION");
+    pub const PROCWAIT: &str = env!("SPEEDBACKUP_PROCWAIT_VERSION");
+    pub const SPEEDSCAN: &str = env!("SPEEDBACKUP_SPEEDSCAN_VERSION");
+    pub const UIDEXEC: &str = env!("SPEEDBACKUP_UIDEXEC_VERSION");
+    pub const UNIXSOCK: &str = env!("SPEEDBACKUP_UNIXSOCK_VERSION");
+}
+
+pub const APPLET_VERSIONS: [(&str, &str); 8] = [
+    ("cgfreezer", versions::CGFREEZER),
+    ("eventwait", versions::EVENTWAIT),
+    ("filewatch", versions::FILEWATCH),
+    ("netwatch", versions::NETWATCH),
+    ("procwait", versions::PROCWAIT),
+    ("speedscan", versions::SPEEDSCAN),
+    ("uidexec", versions::UIDEXEC),
+    ("unixsock", versions::UNIXSOCK),
+];
 pub const PATH_MAX_SAFE: usize = 4096;
 
 pub type CChar = c_char;
@@ -289,7 +312,7 @@ fn eventwait_parent_for_watch(path: &Path) -> Option<PathBuf> {
 /// This matters: the previous fixed 50ms sleep-poll implementation added up
 /// to 50ms of latency to every check and woke the process 20x/second even
 /// when idle, which is exactly the polling behavior eventwait exists to
-/// avoid (see the r504/r509/r513/r528 rounds fixing the same class of issue
+// / avoid (see the /// rounds fixing the same class of issue
 /// in the *-cmd-bounded wrappers this binary's callers rely on).
 pub fn wait_file_condition(kind: &str, path: &Path, arg: &str, timeout_ms: i64, tag: &str) -> i32 {
     if path.as_os_str().is_empty() { return 2; }

@@ -8,7 +8,8 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::time::Instant;
 
-const VERSION: &str = "1.1.1-r572-package-stable-wait-api28-r30-rust-r572";
+const VERSION: &str = speedbackup_native_rs::versions::PROCWAIT;
+use speedbackup_native_rs::BUILD_VERSION;
 const EINTR: i32 = 4;
 const ESRCH: i32 = 3;
 const ENOSYS: i32 = 38;
@@ -351,7 +352,7 @@ pub(crate) fn run() {
     let argv0 = args.get(0).map(|s| s.as_str()).unwrap_or("procwait");
 
     let rc = if args.len() == 2 && args[1] == "--version" {
-        println!("procwait {}", VERSION);
+        println!("procwait {VERSION} build={BUILD_VERSION}");
         0
     } else if args.len() == 2 && (args[1] == "--help" || args[1] == "-h") {
         print_help(argv0);

@@ -770,7 +770,7 @@ object HttpCore {
     fun extractCode(e: Throwable): Int {
         if (e is java.io.FileNotFoundException) return 404
         val msg = e.message ?: return 0
-        // r610 redirect-auth guard messages intentionally contain host/port details.
+        // redirect-auth guard messages intentionally contain host/port details.
         // Never misparse an IPv4 octet (for example 127) or destination port (for example
         // 443/503) as an HTTP response status; this is a local policy rejection, not a server
         // response.  Keep it as transport/policy code 0 for the callers' normal fail path.

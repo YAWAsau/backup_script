@@ -93,7 +93,7 @@ final class DaemonBootstrap {
                               boolean concurrentClients,
                               ClientHandler handler) {
         if (handler == null) throw new IllegalArgumentException("handler is null");
-        // r499: Android Canary can stall before READY inside best-effort daemon hardening
+        // Android Canary can stall before READY inside best-effort daemon hardening
         // (notably Runtime.exec/renice on the root app_process startup path).  Socket bind
         // and READY publication must be the first observable milestone; survival hardening is
         // still useful, but must never block readiness.

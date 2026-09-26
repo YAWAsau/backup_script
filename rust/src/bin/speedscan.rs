@@ -27,7 +27,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Instant;
 
-const VERSION: &str = "r718-api28-r30-restore-trace28-debug-consolidate-v1";
+const VERSION: &str = speedbackup_native_rs::versions::SPEEDSCAN;
+use speedbackup_native_rs::BUILD_VERSION;
 
 struct DirTar {
     idx: usize,
@@ -76,7 +77,7 @@ mod fused_traversal_tests {
     use super::*;
     #[test]
     fn gross_cache_and_tar_share_the_walk() {
-        let root = env::temp_dir().join(format!("r694-fused-{}", std::process::id()));
+        let root = env::temp_dir().join(format!("fused-{}", std::process::id()));
         fs::create_dir_all(root.join("cache")).unwrap();
         fs::create_dir_all(root.join("sub")).unwrap();
         fs::write(root.join("normal"), vec![0; 10001]).unwrap();
@@ -172,7 +173,7 @@ mod fused_traversal_tests {
 
     #[test]
     fn appdetails_seed_index_drops_invalid_files_and_preserves_valid_seed() {
-        let root = env::temp_dir().join(format!("r698-meta-{}", std::process::id()));
+        let root = env::temp_dir().join(format!("meta-{}", std::process::id()));
         for (app, body) in [
             ("Valid", r#"{"Meta":{"PackageName":"p","apk_version":7}}"#),
             (
@@ -222,7 +223,7 @@ mod fused_traversal_tests {
 }
 
 fn usage() {
-    eprintln!("speedscan {}", VERSION);
+    eprintln!("speedscan {VERSION} build={BUILD_VERSION}");
     eprintln!("usage:");
     eprintln!("  speedscan dir-size PATH");
     eprintln!("  speedscan dir-size-map MANIFEST");
@@ -403,7 +404,7 @@ fn scan_root_for_targets_legacy(root: &Path, targets: &[(usize, PathBuf)]) -> (V
     (targets.iter().enumerate().map(|(slot, (idx, _))| (*idx, totals[slot])).collect(), stats)
 }
 
-fn scan_dirsize_tree_r685(
+fn scan_dirsize_tree(
     dir: &Path,
     active_slots: &[usize],
     target_dirs: &HashMap<PathBuf, Vec<usize>>,
@@ -428,7 +429,7 @@ fn scan_dirsize_tree_r685(
         if ft.is_file() {
             // DirEntry::metadata() is no-follow for a symlink DirEntry on Unix; file_type()
             // above also rejects symlinks before this call.  Avoid constructing a full
-            // PathBuf for the common file case: 318k files on the r684 reference run.
+            // PathBuf for the common file case: 318k files on the  reference run.
             let meta = match entry.metadata() { Ok(v) => v, Err(_) => { dir_tar_error(tar, dir); continue; } };
             for acc in tar.iter_mut() { acc.add_file(dir, name.as_os_str().as_bytes(), &meta); }
             let len = meta.len();
@@ -461,15 +462,15 @@ fn scan_dirsize_tree_r685(
                 if !next_active.contains(slot) { next_active.push(*slot); }
             }
             stats.nested_target_activations = stats.nested_target_activations.wrapping_add(add.len() as u64);
-            scan_dirsize_tree_r685(&child, &next_active, target_dirs, target_files, totals, stats, tar);
+            scan_dirsize_tree(&child, &next_active, target_dirs, target_files, totals, stats, tar);
         } else {
-            scan_dirsize_tree_r685(&child, active_slots, target_dirs, target_files, totals, stats, tar);
+            scan_dirsize_tree(&child, active_slots, target_dirs, target_files, totals, stats, tar);
         }
     }
 }
 
 fn scan_root_for_targets(root: &Path, targets: &[(usize, PathBuf)], tar: &mut [DirTar]) -> (Vec<(usize, u64)>, DirSizeScanStats) {
-    // r685: route nested targets when entering directories instead of testing every
+    // route nested targets when entering directories instead of testing every
     // file path against every cache/code_cache target.  The direct root slot stays
     // active for the whole walk; a nested slot becomes active exactly when its
     // directory is entered. This also avoids constructing full paths for files.
@@ -514,13 +515,13 @@ fn scan_root_for_targets(root: &Path, targets: &[(usize, PathBuf)], tar: &mut [D
         stats.file_metadata_calls = 1;
         for slot in &direct_root_slots { totals[*slot] = totals[*slot].wrapping_add(len); }
     } else if root_meta.is_dir() {
-        scan_dirsize_tree_r685(root, &direct_root_slots, &target_dirs, &target_files, &mut totals, &mut stats, tar);
+        scan_dirsize_tree(root, &direct_root_slots, &target_dirs, &target_files, &mut totals, &mut stats, tar);
     }
     (targets.iter().enumerate().map(|(slot, (idx, _))| (*idx, totals[slot])).collect(), stats)
 }
 
 fn dir_size_auto_workers(scan_roots: usize) -> usize {
-    // r668: worker policy is based only on actual top-level scan roots after
+    // worker policy is based only on actual top-level scan roots after
     // nested-target collapse. Auxiliary cache/code_cache rows must not inflate
     // concurrency. An explicit SPEEDSCAN_DIRSIZE_WORKERS still overrides this.
     if scan_roots >= 600 { 16 }
@@ -622,13 +623,13 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
     let scan_roots = root_groups.len();
     let requested = requested_env.unwrap_or_else(|| dir_size_auto_workers(scan_roots));
     let workers = requested.clamp(1, 24).min(scan_roots.max(1));
-    let worker_policy = policy_env.as_deref().unwrap_or_else(|| if requested_env.is_some() { "env" } else { "auto-r668-scanroots" });
+    let worker_policy = policy_env.as_deref().unwrap_or_else(|| if requested_env.is_some() { "env" } else { "auto-scanroots" });
     root_groups.sort_by(|a, b| {
         b.estimate_bytes.cmp(&a.estimate_bytes)
             .then_with(|| dir_size_root_priority(&b.root, b.targets.len()).cmp(&dir_size_root_priority(&a.root, a.targets.len())))
             .then_with(|| a.root.cmp(&b.root))
     });
-    let schedule_policy = if hinted_roots > 0 { "old-size-lpt-r685" } else { "class-fallback-r685" };
+    let schedule_policy = if hinted_roots > 0 { "old-size-lpt" } else { "class-fallback" };
     let plan_elapsed_ms = command_start.elapsed().as_millis();
     let stats_path = env::var("SPEEDSCAN_DIRSIZE_STATS_FILE").ok().filter(|v| !v.is_empty());
     let shared_groups = Arc::new(root_groups);
@@ -759,7 +760,6 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
             let _ = writeln!(sf, "elapsedMs\t{}", elapsed_ms);
             let _ = writeln!(sf, "outputElapsedMs\t{}", output_elapsed_ms);
             let _ = writeln!(sf, "totalElapsedMs\t{}", total_elapsed_ms);
-            let _ = writeln!(sf, "mode\tr685-dirsize-route-schedule");
         }
     }
     rc
@@ -1149,7 +1149,7 @@ fn tree_fixup_walk_rs(path: &Path, uid: u32, gid: u32, do_dir_mode: bool, dir_mo
         res.chown_skipped += 1;
         if is_symlink { res.symlink_owner_skipped += 1; }
     }
-    // r713: lchown updates the link inode itself, including dangling links.
+    // lchown updates the link inode itself, including dangling links.
     // Still skip chmod and traversal: never follow the link to its target.
     if is_symlink {
         res.symlink_skipped += 1;
@@ -1576,7 +1576,7 @@ fn prescan_apk_tar_input_bytes(members: &mut Vec<PrescanApkTarMember>) -> Option
     Some(tar_input::finish(acc.bytes))
 }
 
-// r696: single-process exact-input reducer.  The shell still decides WHICH archive
+// single-process exact-input reducer.  The shell still decides WHICH archive
 // entries are changed; Rust performs all lookup/stat/math in one pass so the hot
 // path has no per-entry awk/stat/decimal helper forks.
 // exact_rows: KIND<TAB>app<TAB>pkg<TAB>entry<TAB>currentSize
@@ -1661,7 +1661,7 @@ fn cmd_backup_prescan_exact_input(exact_rows_s:&str, dir_tar_map_s:&str, pkg_apk
             match dir_map.get(&(r.pkg.clone(),r.entry.clone())){Some(v)=>*v,None=>{eprintln!("speedscan: exact-input missing dir bytes: {} {}",r.pkg,r.entry);return 8;}}
         };
         total=match total.checked_add(bytes){Some(v)=>v,None=>{eprintln!("speedscan: exact-input total overflow");return 9;}};
-        // Preserve r694 cache semantics for every exact entry (APK and DIR):
+        // Preserve  cache semantics for every exact entry (APK and DIR):
         // once exact-input accounting has already covered it, the optional pre-pack
         // debug tree-plan must not re-scan the same entry.
         cache_keys.push_str(&r.pkg);
@@ -1683,7 +1683,7 @@ fn cmd_backup_prescan_exact_input(exact_rows_s:&str, dir_tar_map_s:&str, pkg_apk
     let _=writeln!(stats,"cacheKeys\t{}",cache_keys);
     let _=writeln!(stats,"elapsedMs\t{}",elapsed);
     if stats.flush().is_err(){return 10;}
-    println!("BACKUP_PRESCAN_EXACT_INPUT_BATCH ok=true bytes={} archives={} apkRows={} apkPackages={} apkFiles={} dirRows={} elapsedMs={} mode=r696 schema=speedscan.backup_prescan_exact_input_batch.v1",total,rows.len(),apk_rows,need_apk.len(),apk_files,dir_rows,elapsed);
+    println!("BACKUP_PRESCAN_EXACT_INPUT_BATCH ok=true bytes={} archives={} apkRows={} apkPackages={} apkFiles={} dirRows={} elapsedMs={} schema=speedscan.backup_prescan_exact_input_batch.v1",total,rows.len(),apk_rows,need_apk.len(),apk_files,dir_rows,elapsed);
     0
 }
 
@@ -2459,7 +2459,7 @@ fn cmd_dir_size_manifest(args: &[String]) -> i32 {
         }
     }
     let manifest_rows=primary_rows+auxiliary_rows;
-    println!("DIR_SIZE_MANIFEST packages={} primaryRows={} auxiliaryRows={} manifestRows={} existsRows={} elapsedMs={} mode=r674 schema=speedscan.dir_size_manifest.v1",packages,primary_rows,auxiliary_rows,manifest_rows,primary_rows,start.elapsed().as_millis());
+    println!("DIR_SIZE_MANIFEST packages={} primaryRows={} auxiliaryRows={} manifestRows={} existsRows={} elapsedMs={} schema=speedscan.dir_size_manifest.v1",packages,primary_rows,auxiliary_rows,manifest_rows,primary_rows,start.elapsed().as_millis());
     0
 }
 
@@ -2483,7 +2483,7 @@ fn cmd_backup_entry_presence_map(args: &[String]) -> i32 {
     found.sort(); found.dedup();
     let mut out=match File::create(out_s){Ok(v)=>v,Err(_)=>return 4};
     for (pkg,entry) in found.iter(){ let _=writeln!(out,"{}\t{}",tsv_sanitize(pkg),entry); }
-    println!("BACKUP_ENTRY_PRESENCE_MAP selected={} rows={} mode=r668 schema=speedscan.backup_entry_presence_map.v1",rows.len(),found.len());
+    println!("BACKUP_ENTRY_PRESENCE_MAP selected={} rows={} schema=speedscan.backup_entry_presence_map.v1",rows.len(),found.len());
     0
 }
 
@@ -2502,7 +2502,7 @@ fn cmd_payload_archive_set(args: &[String]) -> i32 {
     rows.sort(); rows.dedup();
     let mut out=match File::create(out_s){Ok(v)=>v,Err(_)=>return 4};
     for (app,entry) in rows.iter(){ let _=writeln!(out,"{}\t{}",tsv_sanitize(app),entry); }
-    println!("PAYLOAD_ARCHIVE_SET rows={} mode=r668 schema=speedscan.payload_archive_set.v1",rows.len());
+    println!("PAYLOAD_ARCHIVE_SET rows={} schema=speedscan.payload_archive_set.v1",rows.len());
     0
 }
 
@@ -2616,7 +2616,7 @@ fn archive_exists_local(backup_root: &str, app: &str, entry: &str) -> bool {
 
 fn rewrite_presize_stats_v4(path: &str, scan_manifest_rows: u64, scan_primary_rows: u64, scan_aux_rows: u64,
                             tiny_rows: u64, tiny_primary_rows: u64, tiny_aux_rows: u64,
-                            presence_ms: u128, archive_ms: u128, planner_ms: u128, tiny_ms: u128, total_ms: u128, mode_value: &str) -> bool {
+                            presence_ms: u128, archive_ms: u128, planner_ms: u128, tiny_ms: u128, total_ms: u128) -> bool {
     let mut rows: Vec<(String,String)> = Vec::new();
     for r in read_tsv_rows(path) {
         if r.len() >= 2 { rows.push((r[0].clone(), r[1].clone())); }
@@ -2636,7 +2636,6 @@ fn rewrite_presize_stats_v4(path: &str, scan_manifest_rows: u64, scan_primary_ro
     set("plannerElapsedMs", planner_ms.to_string());
     set("tinyProbeElapsedMs", tiny_ms.to_string());
     set("totalElapsedMs", total_ms.to_string());
-    set("mode", mode_value.to_string());
     let mut out = match File::create(path) { Ok(v) => v, Err(_) => return false };
     for (k,v) in rows { if writeln!(out, "{}\t{}", k, v).is_err() { return false; } }
     true
@@ -2665,7 +2664,6 @@ fn run_fastskip_presize_plan_v4_after_facts(
     presence_ms: u128,
     archive_ms: u128,
     total_start: Instant,
-    mode_value: &str,
     schema: &str,
     log_prefix: &str,
 ) -> i32 {
@@ -2726,7 +2724,7 @@ fn run_fastskip_presize_plan_v4_after_facts(
     drop(tiny_file);
 
     let manifest_rows=read_tsv_rows(out_manifest);
-    let tmp_manifest=format!("{}.r686tmp",out_manifest);
+    let tmp_manifest=format!("{}.presize-tmp",out_manifest);
     let mut mf=match File::create(&tmp_manifest){Ok(v)=>v,Err(_)=>return 4};
     let mut scan_rows=0u64; let mut scan_primary=0u64; let mut scan_aux=0u64;
     for r in manifest_rows {
@@ -2748,9 +2746,9 @@ fn run_fastskip_presize_plan_v4_after_facts(
     let tiny_aux_rows=tiny_rows.saturating_sub(tiny_primary_rows);
     let tiny_ms=tiny_start.elapsed().as_millis();
     let total_ms=total_start.elapsed().as_millis();
-    if !rewrite_presize_stats_v4(out_stats,scan_rows,scan_primary,scan_aux,tiny_rows,tiny_primary_rows,tiny_aux_rows,presence_ms,archive_ms,planner_ms,tiny_ms,total_ms,mode_value) { return 4; }
-    println!("{}\tOK\tselected={}\tliveRows={}\tarchiveRows={}\tscanRows={}\tscanPrimaryRows={}\tscanAuxiliaryRows={}\ttinyRows={}\ttinyPrimaryRows={}\ttinyAuxiliaryRows={}\tpresenceElapsedMs={}\tarchiveElapsedMs={}\tplannerElapsedMs={}\ttinyProbeElapsedMs={}\ttotalElapsedMs={}\tmode={}\tschema={}",
-        log_prefix,selected_rows.len(),live.len(),read_tsv_rows(out_archives).len(),scan_rows,scan_primary,scan_aux,tiny_rows,tiny_primary_rows,tiny_aux_rows,presence_ms,archive_ms,planner_ms,tiny_ms,total_ms,mode_value,schema);
+    if !rewrite_presize_stats_v4(out_stats,scan_rows,scan_primary,scan_aux,tiny_rows,tiny_primary_rows,tiny_aux_rows,presence_ms,archive_ms,planner_ms,tiny_ms,total_ms) { return 4; }
+    println!("{}\tOK\tselected={}\tliveRows={}\tarchiveRows={}\tscanRows={}\tscanPrimaryRows={}\tscanAuxiliaryRows={}\ttinyRows={}\ttinyPrimaryRows={}\ttinyAuxiliaryRows={}\tpresenceElapsedMs={}\tarchiveElapsedMs={}\tplannerElapsedMs={}\ttinyProbeElapsedMs={}\ttotalElapsedMs={}\tschema={}",
+        log_prefix,selected_rows.len(),live.len(),read_tsv_rows(out_archives).len(),scan_rows,scan_primary,scan_aux,tiny_rows,tiny_primary_rows,tiny_aux_rows,presence_ms,archive_ms,planner_ms,tiny_ms,total_ms,schema);
     0
 }
 
@@ -2800,7 +2798,7 @@ fn cmd_local_fastskip_presize_plan_v4(args: &[String]) -> i32 {
         selected,summary,state,blackset,out_exists,out_archives,out_manifest,out_stats,out_diag,out_tiny,
         backup_mode,backup_obb,backup_user,blacklist_mode,android_root,user_root,user_de_root,
         &selected_rows,&live,presence_ms,archive_ms,total_start,
-        "r675-local-fastskip-presize-plan-v4","speedscan.local_fastskip_presize_plan_v4.v1","LOCAL_FASTSKIP_PRESIZE_PLAN_V4"
+        "speedscan.local_fastskip_presize_plan_v4.v1","LOCAL_FASTSKIP_PRESIZE_PLAN_V4"
     )
 }
 
@@ -2927,8 +2925,7 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
     let _=writeln!(stats,"fullDirsizeRows\t{}",full_dirsize_rows);
     let _=writeln!(stats,"compareRows\t{}",compare_rows);
     let _=writeln!(stats,"planMode\t{}",plan_mode);
-    let _=writeln!(stats,"mode\tr668-local-fastskip-presize-plan-v3");
-    println!("LOCAL_FASTSKIP_PRESIZE_PLAN selected={} candidates={} manifestRows={} primaryRows={} auxiliaryRows={} firstFull={} nonSizeMiss={} fullDirsizeRows={} compareRows={} planMode={} mode=r668 schema=speedscan.local_fastskip_presize_plan_v3.v1",sel.len(),candidates,manifest_rows,primary_rows,auxiliary_rows,first_full,non_size_miss,full_dirsize_rows,compare_rows,plan_mode);
+    println!("LOCAL_FASTSKIP_PRESIZE_PLAN selected={} candidates={} manifestRows={} primaryRows={} auxiliaryRows={} firstFull={} nonSizeMiss={} fullDirsizeRows={} compareRows={} planMode={} schema=speedscan.local_fastskip_presize_plan_v3.v1",sel.len(),candidates,manifest_rows,primary_rows,auxiliary_rows,first_full,non_size_miss,full_dirsize_rows,compare_rows,plan_mode);
     0
 }
 
@@ -3037,7 +3034,7 @@ fn cmd_remote_stream_local_read_final_plan(args:&[String])->i32{
             let key=(pkg.to_string(),entry.to_string());
             if !dexists.contains(&key){return;}
             let cur=lsize.get(&key).cloned().unwrap_or_default();
-            // Preserve r602/r650 small-entry semantics exactly: a trustworthy 0..999-byte
+            // Preserve / small-entry semantics exactly: a trustworthy 0..999-byte
             // current size cannot justify holding app guards for a later local read.
             if !cur.is_empty() && cur.chars().all(|c|c.is_ascii_digit()) && cur.len()<4{skipped_small=skipped_small.wrapping_add(1);return;}
             let old=rsize.get(&(app.to_string(),entry.to_string())).cloned().unwrap_or_default();
@@ -3062,7 +3059,7 @@ fn cmd_remote_stream_local_read_final_plan(args:&[String])->i32{
         }
     }
     let _=writeln!(stats,"{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",sel.len(),actual_entries,final_apps,skipped_unchanged,skipped_small,payload_missing,remote_size_missing,local_size_uncertain,size_mismatch);
-    println!("REMOTE_STREAM_LOCAL_READ_FINAL_PLAN selected={} actualEntries={} finalApps={} skippedUnchanged={} skippedSmall={} payloadMissing={} remoteSizeMissing={} localSizeUncertain={} sizeMismatch={} mode=r669 schema=speedscan.remote_stream_local_read_final_plan.v1",sel.len(),actual_entries,final_apps,skipped_unchanged,skipped_small,payload_missing,remote_size_missing,local_size_uncertain,size_mismatch);
+    println!("REMOTE_STREAM_LOCAL_READ_FINAL_PLAN selected={} actualEntries={} finalApps={} skippedUnchanged={} skippedSmall={} payloadMissing={} remoteSizeMissing={} localSizeUncertain={} sizeMismatch={} schema=speedscan.remote_stream_local_read_final_plan.v1",sel.len(),actual_entries,final_apps,skipped_unchanged,skipped_small,payload_missing,remote_size_missing,local_size_uncertain,size_mismatch);
     0
 }
 
@@ -3157,7 +3154,7 @@ fn read_stream_child_perf(perf: &str) -> (String, String) {
         let cols: Vec<&str> = line.split('\t').collect();
         if cols.len() >= 7 && cols[0] == "child" {
             // tools.sh writes: child<TAB>cmd<TAB>tag<TAB>startMs<TAB>endMs<TAB>elapsedMs<TAB>rc
-            // r590 accidentally read column 4 (endMs), producing epoch-like tarWallMs/zstdWallMs.
+            // accidentally read column 4 (endMs), producing epoch-like tarWallMs/zstdWallMs.
             // Use column 5, the actual elapsed wall time, while preserving the existing output schema.
             if cols[1] == "tar" { tar_ms = cols[5].to_string(); }
             if cols[1] == "zstd" { zstd_ms = cols[5].to_string(); }
@@ -3236,13 +3233,13 @@ fn emit_stream_entry_perf(ctx: &StreamPerfContext, info: Option<WebDavPerfRs>, r
             let server = if w.server.is_empty() { "unknown".to_string() } else { w.server };
             let remote_success = match http.parse::<u16>() { Ok(v) if (200..=299).contains(&v) => "1", _ => "0" };
             let response_confirmed = match http.parse::<u16>() { Ok(v) if v > 0 => "1", _ => "0" };
-            println!("STREAM_ENTRY_PERF app={} package={} entry={} sourcePath={} originBytes={} sentBytes={} compressionRatio={} bodyMs={} postBodyMs={} postBodySemantics=server_processing_plus_optional_publish_until_terminal_result remoteSuccess={} responseConfirmed={} successRule=http_2xx_only server={} tarWallMs={} zstdWallMs={} wireKiBps={} http={} dexTag={} dexRc={} pipelineRc={} comp={} archiveRel={} mode=r600 overlap=1 resolved={} resolver=rust",
+            println!("STREAM_ENTRY_PERF app={} package={} entry={} sourcePath={} originBytes={} sentBytes={} compressionRatio={} bodyMs={} postBodyMs={} postBodySemantics=server_processing_plus_optional_publish_until_terminal_result remoteSuccess={} responseConfirmed={} successRule=http_2xx_only server={} tarWallMs={} zstdWallMs={} wireKiBps={} http={} dexTag={} dexRc={} pipelineRc={} comp={} archiveRel={} overlap=1 resolved={} resolver=rust",
                 stream_log_kv(&ctx.label), stream_log_kv(&ctx.pkg), stream_log_kv(&entry), stream_log_kv(&ctx.source_path),
                 ctx.origin, sent, ratio, body, post_body, remote_success, response_confirmed, stream_log_kv(&server), ctx.tar_ms, ctx.zstd_ms, speed, http, stream_log_kv(&tag), stream_log_kv(&w.rc), ctx.rc, stream_log_kv(&ctx.comp), stream_log_kv(&ctx.rb), resolved);
             true
         }
         None => {
-            println!("STREAM_ENTRY_PERF_UNRESOLVED app={} package={} entry={} sourcePath={} originBytes={} tarWallMs={} zstdWallMs={} pipelineRc={} comp={} archiveRel={} reason=webdav_info_not_found mode=r600 resolver=rust",
+            println!("STREAM_ENTRY_PERF_UNRESOLVED app={} package={} entry={} sourcePath={} originBytes={} tarWallMs={} zstdWallMs={} pipelineRc={} comp={} archiveRel={} reason=webdav_info_not_found resolver=rust",
                 stream_log_kv(&ctx.label), stream_log_kv(&ctx.pkg), stream_log_kv(&entry), stream_log_kv(&ctx.source_path),
                 ctx.origin, ctx.tar_ms, ctx.zstd_ms, ctx.rc, stream_log_kv(&ctx.comp), stream_log_kv(&ctx.rb));
             false
@@ -3276,10 +3273,10 @@ fn cmd_stream_entry_perf_stage(args: &[String]) -> i32 {
             Err(e) => { eprintln!("speedscan: stream-entry-perf-stage pending open failed: {}: {}", pending, c_strerror(&e)); return 4; }
         };
         let _ = writeln!(out, "{}", stream_context_row(&ctx));
-        println!("STREAM_ENTRY_PERF_PENDING app={} package={} entry={} archiveRel={} reason=defer_until_webdav_daemon_flush mode=r600 resolver=rust",
+        println!("STREAM_ENTRY_PERF_PENDING app={} package={} entry={} archiveRel={} reason=defer_until_webdav_daemon_flush resolver=rust",
             stream_log_kv(&ctx.label), stream_log_kv(&ctx.pkg), stream_log_kv(&ctx.entry), stream_log_kv(&ctx.rb));
     } else {
-        println!("STREAM_ENTRY_PERF app={} package={} entry={} sourcePath={} originBytes={} sentBytes=0 compressionRatio=na bodyMs=na postBodyMs=na postBodySemantics=not_webdav remoteSuccess=not_applicable responseConfirmed=not_applicable successRule=not_applicable tarWallMs={} zstdWallMs={} wireKiBps=0 http=0 dexTag=na dexRc=na pipelineRc={} comp={} archiveRel={} mode=r600 overlap=1 resolved=non_webdav resolver=rust",
+        println!("STREAM_ENTRY_PERF app={} package={} entry={} sourcePath={} originBytes={} sentBytes=0 compressionRatio=na bodyMs=na postBodyMs=na postBodySemantics=not_webdav remoteSuccess=not_applicable responseConfirmed=not_applicable successRule=not_applicable tarWallMs={} zstdWallMs={} wireKiBps=0 http=0 dexTag=na dexRc=na pipelineRc={} comp={} archiveRel={} overlap=1 resolved=non_webdav resolver=rust",
             stream_log_kv(&ctx.label), stream_log_kv(&ctx.pkg), stream_log_kv(&ctx.entry), stream_log_kv(&ctx.source_path),
             ctx.origin, ctx.tar_ms, ctx.zstd_ms, ctx.rc, stream_log_kv(&ctx.comp), stream_log_kv(&ctx.rb));
     }
@@ -3299,7 +3296,7 @@ fn cmd_stream_entry_perf_finalize(args: &[String]) -> i32 {
         let w = load_webdav_perf(info, &ctx.rb, &ctx.comp, &ctx.rc);
         if emit_stream_entry_perf(&ctx, w, "final-flush") { resolved = resolved.wrapping_add(1); }
     }
-    println!("STREAM_ENTRY_PERF_FINAL_FLUSH_DONE count={} resolved={} mode=r600 resolver=rust schema=speedbackup.stream_entry_perf_resolver.v1 semantics=post_body", count, resolved);
+    println!("STREAM_ENTRY_PERF_FINAL_FLUSH_DONE count={} resolved={} resolver=rust schema=speedbackup.stream_entry_perf_resolver.v1 semantics=post_body", count, resolved);
     0
 }
 
@@ -3605,7 +3602,7 @@ fn json_object_ordered_pick(obj: &str, keys: &[&str]) -> String {
 }
 
 fn appstate_compact_permission(obj: &str) -> String {
-    json_object_ordered_pick(obj, &["name", "nameCn", "granted", "flags", "runtime", "development", "appOp", "appOpName", "appOpNameCn", "packageMode", "uidMode", "scope", "appOpMode", "appOpModeName", "appOpModeCn"])
+    json_object_ordered_pick(obj, &["name", "nameCn", "granted", "flags", "runtime", "development", "appOp", "appOpName", "appOpNameCn", "packageMode", "uidMode", "scope", "appOpMode", "appOpModeName", "appOpModeCn", "appOpStoredMode", "appOpRestoreMode", "locationEnabled"])
 }
 
 fn appstate_compact_special(obj: &str) -> String {
@@ -3674,7 +3671,7 @@ fn appstate_compact_profile(s: &str) -> Option<AppStateMatchCanon> {
     let record_type = json_raw_value_after_key(s, "recordType").unwrap_or_else(|| "\"snapshot\"".to_string());
     let user_id = json_raw_value_after_key(s, "userId").unwrap_or_else(|| "0".to_string());
     let package_name = json_raw_value_after_key(s, "packageName").unwrap_or_else(|| "null".to_string());
-    // r642 canonical v4:
+    // canonical v4:
     // - installer/source attribution remains excluded from data fast-skip equality.
     // - SSAID is compared with preserve-old semantics: when the current snapshot cannot read
     //   SSAID and reports null, an existing backed-up non-null SSAID must not cause an
@@ -4193,9 +4190,8 @@ fn cmd_appdetails_health_batch(args: &[String]) -> i32 {
         let _ = writeln!(st, "rows	{}", summary_rows);
         let _ = writeln!(st, "elapsedMs	{}", start.elapsed().as_millis());
         let _ = writeln!(st, "schema	speedbackup.appdetails_health_batch.v1");
-        let _ = writeln!(st, "mode	r657");
     }
-    println!("APPDETAILS_HEALTH_BATCH	OK	total={}	ok={}	invalid={}	missing={}	issues={}	hints={}	rows={}	outPrefix={}	elapsedMs={}	mode=r660	schema=speedbackup.appdetails_health_batch.v1",
+    println!("APPDETAILS_HEALTH_BATCH	OK	total={}	ok={}	invalid={}	missing={}	issues={}	hints={}	rows={}	outPrefix={}	elapsedMs={}	schema=speedbackup.appdetails_health_batch.v1",
         total, ok, invalid, missing, issue_rows, hint_rows, summary_rows, tsv_sanitize(out_prefix), start.elapsed().as_millis());
     0
 }
@@ -4404,10 +4400,10 @@ fn cmd_appdetails_seed_index(args: &[String]) -> i32 {
         );
     }
     if ok == 0 {
-        println!("APPDETAILS_SEED_INDEX\tEMPTY\ttotal={}\tok=0\tbad={}\telapsedMs={}\tmode=r698\tschema=speedbackup.appdetails_seed_index.v1", total, bad, elapsed);
+        println!("APPDETAILS_SEED_INDEX\tEMPTY\ttotal={}\tok=0\tbad={}\telapsedMs={}\tschema=speedbackup.appdetails_seed_index.v1", total, bad, elapsed);
         return 5;
     }
-    println!("APPDETAILS_SEED_INDEX\tOK\ttotal={}\tok={}\tbad={}\telapsedMs={}\tmode=r698\tschema=speedbackup.appdetails_seed_index.v1", total, ok, bad, elapsed);
+    println!("APPDETAILS_SEED_INDEX\tOK\ttotal={}\tok={}\tbad={}\telapsedMs={}\tschema=speedbackup.appdetails_seed_index.v1", total, ok, bad, elapsed);
     0
 }
 
@@ -4467,11 +4463,11 @@ fn cmd_appdetails_bundle_manifest(args: &[String]) -> i32 {
     }
     drop(out);
     if let Ok(mut st) = File::create(&stats_file) {
-        let _ = writeln!(st, "{}\t{}\t{}\t{}\t{}\t{}\t{}", total, ok, bad, seen, start.elapsed().as_millis(), "speedbackup.appdetails_bundle_manifest.v1", "r637");
+        let _ = writeln!(st, "{}\t{}\t{}\t{}\t{}\t{}", total, ok, bad, seen, start.elapsed().as_millis(), "speedbackup.appdetails_bundle_manifest.v1");
     }
     if total == 0 || bad > 0 || ok != total {
         let _ = fs::remove_file(&tmp_manifest);
-        println!("APPDETAILS_BUNDLE_MANIFEST\tBLOCK\ttotal={}\tok={}\tbad={}\tseen={}\telapsedMs={}\tmode=r637\tschema=speedbackup.appdetails_bundle_manifest.v1", total, ok, bad, seen, start.elapsed().as_millis());
+        println!("APPDETAILS_BUNDLE_MANIFEST\tBLOCK\ttotal={}\tok={}\tbad={}\tseen={}\telapsedMs={}\tschema=speedbackup.appdetails_bundle_manifest.v1", total, ok, bad, seen, start.elapsed().as_millis());
         return if total == 0 { 5 } else { 6 };
     }
     if fs::rename(&tmp_manifest, &manifest).is_err() {
@@ -4479,7 +4475,7 @@ fn cmd_appdetails_bundle_manifest(args: &[String]) -> i32 {
         return 4;
     }
     if let Ok(mut f) = File::create(&ok_file) { let _ = writeln!(f, "{}", ok); }
-    println!("APPDETAILS_BUNDLE_MANIFEST\tOK\ttotal={}\tok={}\tbad=0\tseen={}\tmanifest={}\telapsedMs={}\tmode=r637\tschema=speedbackup.appdetails_bundle_manifest.v1", total, ok, seen, tsv_sanitize(&manifest.to_string_lossy()), start.elapsed().as_millis());
+    println!("APPDETAILS_BUNDLE_MANIFEST\tOK\ttotal={}\tok={}\tbad=0\tseen={}\tmanifest={}\telapsedMs={}\tschema=speedbackup.appdetails_bundle_manifest.v1", total, ok, seen, tsv_sanitize(&manifest.to_string_lossy()), start.elapsed().as_millis());
     0
 }
 
@@ -4560,7 +4556,7 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
                 }
             },
             Some(_payload) => {
-                // r644: app_details bundle no-shrink is scoped to app payload folders that are
+                // app_details bundle no-shrink is scoped to app payload folders that are
                 // identifiable by current staged JSON and/or the previous seed list.  Extra
                 // WebDAV/NAS roots (folder backups, WiFi/tools roots, stale foreign folders, or
                 // already orphaned app dirs not present in JSON) are diagnostic-only and must not
@@ -4578,7 +4574,7 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
                     let mut required_stage: HashSet<String> = scoped_payload.clone();
                     for app in seed.iter() { required_stage.insert(app.clone()); }
                     missing_stage = set_missing(&required_stage, &stage);
-                    // r695: a previous bundle seed is allowed to grow when the current staging set
+                    // a previous bundle seed is allowed to grow when the current staging set
                     // exactly covers the scoped remote payload, no remote payload was ignored, and
                     // every previously seeded/payload app is present in staging. Payload consistency
                     // is checked below before seedExpansion becomes final.
@@ -4616,7 +4612,7 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
                     let relt = format!("{}/{}.tar", app, entry);
                     if !(rels.contains(&relz) || rels.contains(&relt)) {
                         bad = bad.wrapping_add(1);
-                        let _ = writeln!(badlog, "REMOTE_METADATA_PAYLOAD_STALE app={} package={} entry={} size={} rel={} reason=payload_missing mode=r645", tsv_sanitize(&app), tsv_sanitize(&pkg), tsv_sanitize(entry), tsv_sanitize(&sz), tsv_sanitize(&relz));
+                        let _ = writeln!(badlog, "REMOTE_METADATA_PAYLOAD_STALE app={} package={} entry={} size={} rel={} reason=payload_missing", tsv_sanitize(&app), tsv_sanitize(&pkg), tsv_sanitize(entry), tsv_sanitize(&sz), tsv_sanitize(&relz));
                     }
                 }
             }
@@ -4633,7 +4629,7 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
         let _ = writeln!(st, "stage\tseed\tremotePayloadApps\tremotePayloadTotal\tignoredRemotePayloadApps\tmissingSeed\tmissingStage\tchecked\tbad\treason\tfirstMissing\tallowShrink\tseedlessRepair\tseedlessTainted\tseedExpansion\tignoredRemotePayloadSample\telapsedMs");
         let _ = writeln!(st, "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}", stage.len(), seed_count, payload_count_i, remote_payload_total_i, ignored_remote_count, missing_seed.len(), missing_stage.len(), checked, bad, reason, tsv_sanitize(&first_missing), if allow_shrink {1}else{0}, if seedless_repair {1}else{0}, if seedless_tainted {1}else{0}, if seed_expansion {1}else{0}, tsv_sanitize(&ignored_remote_sample), start.elapsed().as_millis());
     }
-    println!("APPDETAILS_BUNDLE_AUDIT\t{}\tstage={}\tseed={}\tremotePayloadApps={}\tremotePayloadTotal={}\tignoredRemotePayloadApps={}\tignoredRemotePayloadList={}.ignored_remote_payload_apps.lst\tignoredRemotePayloadSample={}\tmissingSeed={}\tmissingStage={}\tchecked={}\tbad={}\treason={}\tfirstMissing={}\tallowShrink={}\tseedlessRepair={}\tseedlessTainted={}\tseedExpansion={}\telapsedMs={}\tmode=r695\tschema=speedbackup.appdetails_bundle_audit.v5",
+    println!("APPDETAILS_BUNDLE_AUDIT\t{}\tstage={}\tseed={}\tremotePayloadApps={}\tremotePayloadTotal={}\tignoredRemotePayloadApps={}\tignoredRemotePayloadList={}.ignored_remote_payload_apps.lst\tignoredRemotePayloadSample={}\tmissingSeed={}\tmissingStage={}\tchecked={}\tbad={}\treason={}\tfirstMissing={}\tallowShrink={}\tseedlessRepair={}\tseedlessTainted={}\tseedExpansion={}\telapsedMs={}\tschema=speedbackup.appdetails_bundle_audit.v5",
         status, stage.len(), seed_count, payload_count_i, remote_payload_total_i, ignored_remote_count, tsv_sanitize(out_prefix), tsv_sanitize(&ignored_remote_sample), missing_seed.len(), missing_stage.len(), checked, bad, tsv_sanitize(&reason), tsv_sanitize(&first_missing), if allow_shrink {1}else{0}, if seedless_repair {1}else{0}, if seedless_tainted {1}else{0}, if seed_expansion {1}else{0}, start.elapsed().as_millis());
     if reason == "ok" { 0 } else { 5 }
 }
@@ -4735,7 +4731,7 @@ fn cmd_selected_apps_map(args: &[String]) -> i32 {
         let _ = writeln!(out, "{}\t{}\t{}\t{}", tsv_sanitize(&app), tsv_sanitize(&pkg), nodata, tsv_sanitize(&ver));
         rows += 1;
     }
-    println!("SELECTED_APPS_MAP\tOK\trows={}\tout={}\telapsedMs={}\tmode=r631\tschema=speedbackup.selected_apps_map.v1", rows, tsv_sanitize(out_s), start.elapsed().as_millis());
+    println!("SELECTED_APPS_MAP\tOK\trows={}\tout={}\telapsedMs={}\tschema=speedbackup.selected_apps_map.v1", rows, tsv_sanitize(out_s), start.elapsed().as_millis());
     0
 }
 
@@ -4766,7 +4762,7 @@ fn cmd_appdetails_summary_map(args: &[String]) -> i32 {
             rows += 1;
         }
     }
-    println!("APPDETAILS_SUMMARY_MAP\tOK\trows={}\troot={}\tout={}\telapsedMs={}\tmode=r631\tschema=speedbackup.appdetails_summary_map.v1", rows, tsv_sanitize(&args[2]), tsv_sanitize(out_s), start.elapsed().as_millis());
+    println!("APPDETAILS_SUMMARY_MAP\tOK\trows={}\troot={}\tout={}\telapsedMs={}\tschema=speedbackup.appdetails_summary_map.v1", rows, tsv_sanitize(&args[2]), tsv_sanitize(out_s), start.elapsed().as_millis());
     0
 }
 
@@ -4830,7 +4826,7 @@ fn cmd_appstate_match_map(args: &[String]) -> i32 {
             rows = rows.wrapping_add(1);
         }
     }
-    println!("APPSTATE_MATCH_MAP\tOK\trows={}\tmatched={}\tcurrent={}\tout={}\telapsedMs={}\tmode=r642\tschema=speedbackup.appstate_match_map.v1\tcanonical=speedbackup.appstate_match_canonical_v4.v1\tssaidPolicy=preserve_old_when_current_null\tssaidCurrentNullAccepted={}", rows, matched, current.len(), tsv_sanitize(out_s), start.elapsed().as_millis(), ssaid_current_null_accepted);
+    println!("APPSTATE_MATCH_MAP\tOK\trows={}\tmatched={}\tcurrent={}\tout={}\telapsedMs={}\tschema=speedbackup.appstate_match_map.v1\tcanonical=speedbackup.appstate_match_canonical_v4.v1\tssaidPolicy=preserve_old_when_current_null\tssaidCurrentNullAccepted={}", rows, matched, current.len(), tsv_sanitize(out_s), start.elapsed().as_millis(), ssaid_current_null_accepted);
     0
 }
 
@@ -4889,7 +4885,7 @@ fn cmd_local_fastskip_presize_bundle_v1(args: &[String]) -> i32 {
     let rc = cmd_selected_apps_map(&selected_args);
     let selected_ms = selected_start.elapsed().as_millis();
     if rc != 0 {
-        println!("LOCAL_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=selected\trc={}\telapsedMs={}\tmode=r677\tschema=speedscan.local_fastskip_presize_bundle_v1.v1", rc, total_start.elapsed().as_millis());
+        println!("LOCAL_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=selected\trc={}\telapsedMs={}\tschema=speedscan.local_fastskip_presize_bundle_v1.v1", rc, total_start.elapsed().as_millis());
         return rc;
     }
 
@@ -4900,7 +4896,7 @@ fn cmd_local_fastskip_presize_bundle_v1(args: &[String]) -> i32 {
     let rc = cmd_appdetails_summary_map(&summary_args);
     let summary_ms = summary_start.elapsed().as_millis();
     if rc != 0 {
-        println!("LOCAL_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=summary\trc={}\telapsedMs={}\tmode=r677\tschema=speedscan.local_fastskip_presize_bundle_v1.v1", rc, total_start.elapsed().as_millis());
+        println!("LOCAL_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=summary\trc={}\telapsedMs={}\tschema=speedscan.local_fastskip_presize_bundle_v1.v1", rc, total_start.elapsed().as_millis());
         return rc;
     }
 
@@ -4915,7 +4911,7 @@ fn cmd_local_fastskip_presize_bundle_v1(args: &[String]) -> i32 {
     };
     let appstate_ms = appstate_start.elapsed().as_millis();
     if rc != 0 {
-        println!("LOCAL_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=appstate\trc={}\telapsedMs={}\tmode=r677\tschema=speedscan.local_fastskip_presize_bundle_v1.v1", rc, total_start.elapsed().as_millis());
+        println!("LOCAL_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=appstate\trc={}\telapsedMs={}\tschema=speedscan.local_fastskip_presize_bundle_v1.v1", rc, total_start.elapsed().as_millis());
         return rc;
     }
 
@@ -4929,16 +4925,16 @@ fn cmd_local_fastskip_presize_bundle_v1(args: &[String]) -> i32 {
     let rc = cmd_local_fastskip_presize_plan_v4(&presize_args);
     let presize_ms = presize_start.elapsed().as_millis();
     if rc != 0 {
-        println!("LOCAL_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=presize\trc={}\telapsedMs={}\tmode=r677\tschema=speedscan.local_fastskip_presize_bundle_v1.v1", rc, total_start.elapsed().as_millis());
+        println!("LOCAL_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=presize\trc={}\telapsedMs={}\tschema=speedscan.local_fastskip_presize_bundle_v1.v1", rc, total_start.elapsed().as_millis());
         return rc;
     }
 
     let total_ms = total_start.elapsed().as_millis();
     if !append_local_presize_bundle_stats(out_stats, selected_ms, summary_ms, appstate_ms, presize_ms, total_ms) {
-        println!("LOCAL_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=stats_append\trc=4\telapsedMs={}\tmode=r677\tschema=speedscan.local_fastskip_presize_bundle_v1.v1", total_ms);
+        println!("LOCAL_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=stats_append\trc=4\telapsedMs={}\tschema=speedscan.local_fastskip_presize_bundle_v1.v1", total_ms);
         return 4;
     }
-    println!("LOCAL_FASTSKIP_PRESIZE_BUNDLE\tOK\tselectedElapsedMs={}\tsummaryElapsedMs={}\tappstateElapsedMs={}\tpresizeElapsedMs={}\ttotalElapsedMs={}\tprocessStarts=1\tmode=r677\tschema=speedscan.local_fastskip_presize_bundle_v1.v1",
+    println!("LOCAL_FASTSKIP_PRESIZE_BUNDLE\tOK\tselectedElapsedMs={}\tsummaryElapsedMs={}\tappstateElapsedMs={}\tpresizeElapsedMs={}\ttotalElapsedMs={}\tprocessStarts=1\tschema=speedscan.local_fastskip_presize_bundle_v1.v1",
         selected_ms, summary_ms, appstate_ms, presize_ms, total_ms);
     0
 }
@@ -4994,12 +4990,12 @@ fn cmd_remote_fastskip_presize_bundle_v1(args: &[String]) -> i32 {
     let selected_start=Instant::now();
     let selected_args=vec![args[0].clone(),"selected-apps-map".to_string(),raw_applist.to_string(),pkg_ver.to_string(),out_selected.to_string()];
     let rc=cmd_selected_apps_map(&selected_args); let selected_ms=selected_start.elapsed().as_millis();
-    if rc!=0 { println!("REMOTE_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=selected\trc={}\telapsedMs={}\tmode=r686\tschema=speedscan.remote_fastskip_presize_bundle_v1.v1",rc,total_start.elapsed().as_millis()); return rc; }
+    if rc!=0 { println!("REMOTE_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=selected\trc={}\telapsedMs={}\tschema=speedscan.remote_fastskip_presize_bundle_v1.v1",rc,total_start.elapsed().as_millis()); return rc; }
 
     let summary_start=Instant::now();
     let summary_args=vec![args[0].clone(),"appdetails-summary-map".to_string(),appdetails_root.to_string(),out_summary.to_string()];
     let rc=cmd_appdetails_summary_map(&summary_args); let summary_ms=summary_start.elapsed().as_millis();
-    if rc!=0 { println!("REMOTE_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=summary\trc={}\telapsedMs={}\tmode=r686\tschema=speedscan.remote_fastskip_presize_bundle_v1.v1",rc,total_start.elapsed().as_millis()); return rc; }
+    if rc!=0 { println!("REMOTE_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=summary\trc={}\telapsedMs={}\tschema=speedscan.remote_fastskip_presize_bundle_v1.v1",rc,total_start.elapsed().as_millis()); return rc; }
 
     let appstate_start=Instant::now();
     let rc=if current_appstate=="-" || current_appstate.is_empty() { match File::create(out_state){Ok(_)=>0,Err(_)=>4} } else {
@@ -5007,19 +5003,19 @@ fn cmd_remote_fastskip_presize_bundle_v1(args: &[String]) -> i32 {
         cmd_appstate_match_map(&state_args)
     };
     let appstate_ms=appstate_start.elapsed().as_millis();
-    if rc!=0 { println!("REMOTE_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=appstate\trc={}\telapsedMs={}\tmode=r686\tschema=speedscan.remote_fastskip_presize_bundle_v1.v1",rc,total_start.elapsed().as_millis()); return rc; }
+    if rc!=0 { println!("REMOTE_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=appstate\trc={}\telapsedMs={}\tschema=speedscan.remote_fastskip_presize_bundle_v1.v1",rc,total_start.elapsed().as_millis()); return rc; }
 
     let presize_total_start=Instant::now();
     let presence_start=Instant::now();
     let presence_args=vec![args[0].clone(),"backup-entry-presence-map".to_string(),out_selected.to_string(),out_exists.to_string(),backup_mode.to_string(),backup_obb.to_string(),backup_user.to_string(),android_root.to_string(),user_root.to_string(),user_de_root.to_string()];
     let rc=cmd_backup_entry_presence_map(&presence_args); let presence_ms=presence_start.elapsed().as_millis();
-    if rc!=0 { println!("REMOTE_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=presence\trc={}\telapsedMs={}\tmode=r686\tschema=speedscan.remote_fastskip_presize_bundle_v1.v1",rc,total_start.elapsed().as_millis()); return rc; }
+    if rc!=0 { println!("REMOTE_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=presence\trc={}\telapsedMs={}\tschema=speedscan.remote_fastskip_presize_bundle_v1.v1",rc,total_start.elapsed().as_millis()); return rc; }
 
     let payload_start=Instant::now();
-    if fs::copy(remote_payload_rels,out_payload_set).is_err() { println!("REMOTE_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=payload_copy\trc=4\telapsedMs={}\tmode=r686\tschema=speedscan.remote_fastskip_presize_bundle_v1.v1",total_start.elapsed().as_millis()); return 4; }
+    if fs::copy(remote_payload_rels,out_payload_set).is_err() { println!("REMOTE_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=payload_copy\trc=4\telapsedMs={}\tschema=speedscan.remote_fastskip_presize_bundle_v1.v1",total_start.elapsed().as_millis()); return 4; }
     let archive_args=vec![args[0].clone(),"payload-archive-set".to_string(),out_payload_set.to_string(),out_archives.to_string()];
     let rc=cmd_payload_archive_set(&archive_args); let payload_ms=payload_start.elapsed().as_millis();
-    if rc!=0 { println!("REMOTE_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=payload_archive\trc={}\telapsedMs={}\tmode=r686\tschema=speedscan.remote_fastskip_presize_bundle_v1.v1",rc,total_start.elapsed().as_millis()); return rc; }
+    if rc!=0 { println!("REMOTE_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=payload_archive\trc={}\telapsedMs={}\tschema=speedscan.remote_fastskip_presize_bundle_v1.v1",rc,total_start.elapsed().as_millis()); return rc; }
 
     let selected_rows=read_tsv_rows(out_selected);
     let mut live:Vec<(String,String)>=read_tsv_rows(out_exists).into_iter().filter(|r|r.len()>=2).map(|r|(r[0].clone(),r[1].clone())).collect();
@@ -5029,14 +5025,14 @@ fn cmd_remote_fastskip_presize_bundle_v1(args: &[String]) -> i32 {
         out_selected,out_summary,out_state,blackset,out_exists,out_archives,out_manifest,out_stats,out_diag,out_tiny,
         backup_mode,backup_obb,backup_user,blacklist_mode,android_root,user_root,user_de_root,
         &selected_rows,&live,presence_ms,payload_ms,presize_total_start,
-        "r686-remote-fastskip-presize-plan-v4","speedscan.remote_fastskip_presize_bundle_v1.v1","REMOTE_FASTSKIP_PRESIZE_PLAN_V4"
+        "speedscan.remote_fastskip_presize_bundle_v1.v1","REMOTE_FASTSKIP_PRESIZE_PLAN_V4"
     );
     let presize_ms=presize_start.elapsed().as_millis();
-    if rc!=0 { println!("REMOTE_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=presize\trc={}\telapsedMs={}\tmode=r686\tschema=speedscan.remote_fastskip_presize_bundle_v1.v1",rc,total_start.elapsed().as_millis()); return rc; }
+    if rc!=0 { println!("REMOTE_FASTSKIP_PRESIZE_BUNDLE\tFAIL\tstage=presize\trc={}\telapsedMs={}\tschema=speedscan.remote_fastskip_presize_bundle_v1.v1",rc,total_start.elapsed().as_millis()); return rc; }
     if !rewrite_remote_presize_diag(out_diag) { return 4; }
     let total_ms=total_start.elapsed().as_millis();
     if !append_remote_presize_bundle_stats(out_stats,selected_ms,summary_ms,appstate_ms,presence_ms,payload_ms,presize_ms,total_ms) { return 4; }
-    println!("REMOTE_FASTSKIP_PRESIZE_BUNDLE\tOK\tselectedElapsedMs={}\tsummaryElapsedMs={}\tappstateElapsedMs={}\tpresenceElapsedMs={}\tpayloadElapsedMs={}\tpresizeElapsedMs={}\ttotalElapsedMs={}\tprocessStarts=1\tmode=r686\tschema=speedscan.remote_fastskip_presize_bundle_v1.v1",selected_ms,summary_ms,appstate_ms,presence_ms,payload_ms,presize_ms,total_ms);
+    println!("REMOTE_FASTSKIP_PRESIZE_BUNDLE\tOK\tselectedElapsedMs={}\tsummaryElapsedMs={}\tappstateElapsedMs={}\tpresenceElapsedMs={}\tpayloadElapsedMs={}\tpresizeElapsedMs={}\ttotalElapsedMs={}\tprocessStarts=1\tschema=speedscan.remote_fastskip_presize_bundle_v1.v1",selected_ms,summary_ms,appstate_ms,presence_ms,payload_ms,presize_ms,total_ms);
     0
 }
 
@@ -5107,7 +5103,7 @@ fn cmd_remote_manifest_plan(args: &[String]) -> i32 {
         let _ = writeln!(f, "remoteApps\tremotePayloadRels\tbundleApps\tfolderWithoutAppdetails\torphanCandidates\tinstalledPkgs\tremoteState\telapsedMs");
         let _ = writeln!(f, "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}", remote_apps.len(), remote_rels.len(), bundle_apps.len(), folder_without_appdetails.len(), orphan_rows.len(), installed.len(), remote_state, start.elapsed().as_millis());
     }
-    println!("REMOTE_MANIFEST_PLAN\tOK\tremoteApps={}\tremotePayloadRels={}\tbundleApps={}\tfolderWithoutAppdetails={}\torphanCandidates={}\tinstalledPkgs={}\tremoteState={}\telapsedMs={}\tmode=r631\tschema=speedbackup.remote_manifest_plan.v1",
+    println!("REMOTE_MANIFEST_PLAN\tOK\tremoteApps={}\tremotePayloadRels={}\tbundleApps={}\tfolderWithoutAppdetails={}\torphanCandidates={}\tinstalledPkgs={}\tremoteState={}\telapsedMs={}\tschema=speedbackup.remote_manifest_plan.v1",
         remote_apps.len(), remote_rels.len(), bundle_apps.len(), folder_without_appdetails.len(), orphan_rows.len(), installed.len(), tsv_sanitize(&remote_state), start.elapsed().as_millis());
     0
 }
@@ -5151,7 +5147,7 @@ fn cmd_restore_payload_plan(args: &[String]) -> i32 {
         let _ = writeln!(f, "package\tapkKind\tapkCount\tsplitCount\tbasePresent\tpayloadCount\telapsedMs");
         let _ = writeln!(f, "{}\t{}\t{}\t{}\t{}\t{}\t{}", tsv_sanitize(&package), apk_kind, apk_count, split_count, if base_present {1}else{0}, payloads.len(), start.elapsed().as_millis());
     }
-    println!("RESTORE_PAYLOAD_PLAN\tOK\tpackage={}\tapkKind={}\tapkCount={}\tsplitCount={}\tbasePresent={}\tpayloadCount={}\telapsedMs={}\tmode=r631\tschema=speedbackup.restore_payload_plan_full.v1",
+    println!("RESTORE_PAYLOAD_PLAN\tOK\tpackage={}\tapkKind={}\tapkCount={}\tsplitCount={}\tbasePresent={}\tpayloadCount={}\telapsedMs={}\tschema=speedbackup.restore_payload_plan_full.v1",
         tsv_sanitize(&package), apk_kind, apk_count, split_count, if base_present {1}else{0}, payloads.len(), start.elapsed().as_millis());
     if apk_count == 0 { 5 } else { 0 }
 }
@@ -5251,7 +5247,7 @@ fn cmd_manifest_diff_cache_index(args: &[String]) -> i32 {
     if let Ok(mut st) = File::create(&stats_out) {
         let _ = writeln!(st, "{}\t{}\t{}\t{}\t{}\t{}\t{}", selected_rows.len(), remote_rows.len(), dir_rows.len(), payload_rows.len(), fast_count, miss_count, payload_missing);
     }
-    println!("MANIFEST_DIFF_CACHE_INDEX\tOK\tselected={}\tremote={}\tdirRows={}\tpayloadRows={}\tfastSkip={}\tmiss={}\tpayloadMissing={}\telapsedMs={}\tmode=r631\tschema=speedbackup.manifest_diff_cache_index.v2",
+    println!("MANIFEST_DIFF_CACHE_INDEX\tOK\tselected={}\tremote={}\tdirRows={}\tpayloadRows={}\tfastSkip={}\tmiss={}\tpayloadMissing={}\telapsedMs={}\tschema=speedbackup.manifest_diff_cache_index.v2",
         selected_rows.len(), remote_rows.len(), dir_rows.len(), payload_rows.len(), fast_count, miss_count, payload_missing, start.elapsed().as_millis());
     0
 }
@@ -5271,7 +5267,7 @@ fn argv_utf8_or_exit() -> Vec<String> {
 }
 
 pub(crate) fn run(){let args:Vec<String>=argv_utf8_or_exit();let rc=match args.get(1).map(|s|s.as_str()){
-Some("--version")|Some("version")=>{println!("speedscan {}",VERSION);0}
+Some("--version")|Some("version")=>{println!("speedscan {VERSION} build={BUILD_VERSION}");0}
         Some("--capabilities") | Some("capabilities") => {
             println!("speedscan.backup_run_model.v1 speedscan.backup_plan_coverage.v1 speedscan.tree_fixup_symlink_owner.v1 speedscan.tar_source_manifest.v1 speedscan.restore_source_verify.v1 speedscan.debug_consolidate.v1 speedscan.payload_stats.v1 speedscan.restore_tree_audit_bytes.v1 speedscan.result_contract.v1 speedscan.remote_orphan_plan.v1 speedscan.restore_tree_manifest_bytes.v1 speedscan.appdetails_seed_index_strict_meta.v1 speedscan.appdetails_seed_index.v1 speedscan.backup_prescan_exact_input_batch.v1 speedscan.tar_input_hardlink_type_safe.v1 speedscan.dir_size_tar_input_map.v1 speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.posix_recursive_scan.v1 speedscan.dir_size_map_workers.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan.v1 speedscan.local_fastskip_presize_plan_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_audit_seed_expansion.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.rust_convergence_source.v1 speedscan.full_convergence_stage3.v1");
             0

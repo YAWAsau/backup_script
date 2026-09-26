@@ -59,7 +59,7 @@ final class HiddenApiRuntimeProbe {
             probeShell(out, "cmd_appops_get_run_any", "cmd appops get --user " + userId + " " + shellQuote(pkg) + " RUN_ANY_IN_BACKGROUND");
             probeShell(out, "am_get_standby_bucket", "am get-standby-bucket --user " + userId + " " + shellQuote(pkg));
         }
-        out.append("HIDDEN_API_PROBE_DONE version=").append(VERSION)
+        out.append("HIDDEN_API_PROBE_DONE")
                 .append(" bootstrapOk=").append(bootstrapOk)
                 .append(" bootstrapRequired=false functionalGate=true")
                 .append(" sdk=").append(Build.VERSION.SDK_INT)

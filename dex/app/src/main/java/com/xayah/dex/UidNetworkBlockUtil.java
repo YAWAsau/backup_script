@@ -119,7 +119,7 @@ final class UidNetworkBlockUtil {
 
     static synchronized String status() {
         StringBuilder out = new StringBuilder();
-        out.append("UID_NET_BLOCK_STATUS version=").append(VERSION)
+        out.append("UID_NET_BLOCK_STATUS")
                 .append(" sessions=").append(SESSIONS.size())
                 .append(" persistentStates=").append(countPersistentStates()).append('\n');
         for (NetBlockSession s : SESSIONS.values()) {
@@ -243,7 +243,7 @@ final class UidNetworkBlockUtil {
     static synchronized String probe(int userId, String packageName) {
         String pkg = safePackage(packageName);
         StringBuilder out = new StringBuilder();
-        out.append("UID_NET_BLOCK_PROBE_BEGIN version=").append(VERSION)
+        out.append("UID_NET_BLOCK_PROBE_BEGIN")
                 .append(" user=").append(userId)
                 .append(" package=").append(pkg).append('\n');
         int uid = -1;
@@ -312,7 +312,7 @@ final class UidNetworkBlockUtil {
         void apply() throws Exception {
             openLog();
             uid = resolveUid(userId, packageName);
-            logLine("UID_NET_BLOCK_START schema=speedbackup.uid_net_block.v1 version=" + VERSION
+            logLine("UID_NET_BLOCK_START schema=speedbackup.uid_net_block.v1"
                     + " user=" + userId + " package=" + packageName + " uid=" + uid
                     + " mode=" + mode + " token=" + token + " ownerToken=" + ownerToken
                     + " ownerKind=" + sanitize(ownerKind));
