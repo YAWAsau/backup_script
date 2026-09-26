@@ -6,10 +6,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 & (Join-Path $PSScriptRoot 'sync_version.ps1') -Check
-$artifacts = [ordered]@{ 'dex_check.sh' = 'dex_check.sh' }
+$runtimePrefix = if (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'tools/tools.sh') -PathType Leaf) { 'tools/' } else { '' }
+$artifacts = [ordered]@{ 'dex_check.sh' = ($runtimePrefix + 'dex_check.sh') }
 if ($Component -in @('All', 'Dex')) { $artifacts['classes.dex'] = 'dex/classes.dex' }
 if ($Component -in @('All', 'Rust')) { $artifacts['speednative'] = 'rust/out/speednative' }
-$scriptPath = Join-Path $PSScriptRoot 'tools.sh'
+$scriptPath = Join-Path $PSScriptRoot ($runtimePrefix + 'tools.sh')
 $body = [IO.File]::ReadAllText($scriptPath)
 foreach ($entry in $artifacts.GetEnumerator()) {
     $path = Join-Path $PSScriptRoot $entry.Value

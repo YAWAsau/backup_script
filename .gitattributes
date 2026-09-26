@@ -1,0 +1,15 @@
+* text=auto eol=lf
+*.bat -text
+*.jar binary
+*.dex binary
+*.apk binary
+*.zip binary
+tools/busybox binary
+tools/cmd binary
+tools/find binary
+tools/jq binary
+tools/keycheck binary
+tools/smbclient binary
+tools/speednative binary
+tools/tar binary
+tools/zstd binary
