@@ -294,6 +294,8 @@ try {
     }
     [IO.File]::WriteAllText((Join-Path $OutDir 'BUILD_INFO.json'), ($info | ConvertTo-Json -Depth 4) + "`n", $utf8)
     $toolsFile = Join-Path (Split-Path -Parent $PSScriptRoot) 'tools.sh'
+    $repositoryTools = Join-Path (Split-Path -Parent $PSScriptRoot) 'tools/tools.sh'
+    if (Test-Path -LiteralPath $repositoryTools -PathType Leaf) { $toolsFile = $repositoryTools }
     if (Test-Path -LiteralPath $toolsFile -PathType Leaf) {
         $text = [IO.File]::ReadAllText($toolsFile)
         $table = [regex]::Match($text, "(?ms)^\tcat <<'SB_TOOL_SHA_TABLE'\r?\n.*?^SB_TOOL_SHA_TABLE\r?$")
