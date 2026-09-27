@@ -1,1 +1,20 @@
 /ci-output/
+
+# Local build and source-package outputs.
+/deliverables/
+/dex/.gradle/
+/dex/.idea/
+/dex/**/build/
+/dex/local.properties
+/dex/classes*.dex
+/dex/*.apk
+/rust/target/
+/rust/out/
+/rust/out-history/
+/tar/out/
+/zstd/out-r30/
+/zstd/android-r30-direct/
+/zstd/host-direct/
+__pycache__/
+*.pyc
+/tools/*.before-*

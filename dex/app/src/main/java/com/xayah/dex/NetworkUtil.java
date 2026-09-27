@@ -3,6 +3,7 @@ package com.xayah.dex;
 import android.content.Context;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManagerHidden;
+import android.os.Build;
 
 import com.google.gson.ExclusionStrategy;
 import com.google.gson.FieldAttributes;
@@ -10,6 +11,9 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
 import java.io.File;
+import java.io.InputStream;
+import java.io.FileInputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Arrays;
@@ -58,6 +62,14 @@ public class NetworkUtil {
             case "restoreNetworks":
                 restoreNetworks(args);
                 break;
+            case "validateNetworks":
+                try {
+                    WifiConfiguration[] n=readNetworks(args[1]); int compatible=0;
+                    for(WifiConfiguration config:n)if(supportedSecurity(config))compatible++;
+                    System.out.println("WIFI_VALID records="+n.length+" supported="+compatible+" unsupported="+(n.length-compatible));
+                }
+                catch(Exception e) { commandError("validateNetworks",e); System.exit(1); }
+                break;
             case "help":
                 onHelp();
                 break;
@@ -68,6 +80,7 @@ public class NetworkUtil {
     }
 
     public static void main(String[] args) {
+        HiddenApiBypassBridge.installExemptionsOnce();
         String cmd;
         if (args != null && args.length > 0) {
             cmd = args[0];
@@ -116,8 +129,7 @@ public class NetworkUtil {
             Gson gson = new Gson();
             human("WiFi JSON備份成功: 共 " + networks.size() + " 筆");
             String json = gson.toJson(networks);
-            // Base64 編碼輸出, 避免 preSharedKey 以明文 JSON 形式直接落地在 wifi.json,
-            // 任何能讀到備份檔的進程/使用者不再能不解碼就看到 WiFi 密碼原文。
+            // Base64 is the legacy wire format, NOT encryption or access control.
             String encoded = Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
             System.out.println(encoded);
             System.exit(0);
@@ -140,6 +152,34 @@ public class NetworkUtil {
         }
     }
 
+    private static WifiConfiguration[] readNetworks(String path) throws Exception {
+        // Consume the complete bounded input before making any system changes.
+        ByteArrayOutputStream bytes=new ByteArrayOutputStream();
+        try (InputStream input="-".equals(path)?System.in:new FileInputStream(path)) {
+            byte[] buffer=new byte[8192]; int count;
+            while((count=input.read(buffer))!=-1) {
+                if(bytes.size()+count>16*1024*1024)throw new IllegalArgumentException("WIFI_INPUT_TOO_LARGE");
+                bytes.write(buffer,0,count);
+            }
+        }
+        String text=new String(bytes.toByteArray(),StandardCharsets.UTF_8).trim();
+        // Keep existing Base64 backups and accept the author's original JSON arrays.
+        String json=text.startsWith("[")?text:new String(Base64.getDecoder().decode(text),StandardCharsets.UTF_8);
+        Gson gson=new GsonBuilder().addDeserializationExclusionStrategy(new NetworkStrategy()).create();
+        WifiConfiguration[] configs=gson.fromJson(json,WifiConfiguration[].class);
+        if(configs==null)throw new IllegalArgumentException("NULL_WIFI_ARRAY");
+        for(WifiConfiguration config:configs) {
+            if(config==null || config.SSID==null || config.SSID.trim().isEmpty() || config.allowedKeyManagement==null)
+                throw new IllegalArgumentException("INVALID_WIFI_RECORD");
+        }
+        return configs;
+    }
+
+    private static boolean supportedSecurity(WifiConfiguration config) throws Exception {
+        String[] known=(String[])WifiConfiguration.KeyMgmt.class.getField("strings").get(null);
+        return known.length>0 && !config.allowedKeyManagement.isEmpty() && config.allowedKeyManagement.nextSetBit(known.length)<0;
+    }
+
     private static void restoreNetworks(String[] args) {
         try {
             int status = 0;
@@ -147,23 +187,24 @@ public class NetworkUtil {
             Context ctx = HiddenApiHelper.getContext();
             WifiManagerHidden wifiManager = Refine.unsafeCast(ctx.getSystemService(Context.WIFI_SERVICE));
             Set<Integer> networkIds = new HashSet<>();
-            Gson gson = new GsonBuilder().addDeserializationExclusionStrategy(new NetworkStrategy()).create();
-            File jsonFile = new File(jsonPath);
-            if (!jsonFile.exists()) {
-                System.out.println(jsonPath + " not exists!");
-                human("WiFi還原失敗: 檔案不存在 " + jsonPath);
-                System.exit(1);
-            }
             try {
-                String fileContent = new String(Files.readAllBytes(jsonFile.toPath()), StandardCharsets.UTF_8);
-                byte[] decoded = Base64.getDecoder().decode(fileContent.trim());
-                String json = new String(decoded, StandardCharsets.UTF_8);
-                WifiConfiguration[] networks = gson.fromJson(json, WifiConfiguration[].class);
+                WifiConfiguration[] networks = readNetworks(jsonPath);
                 for (WifiConfiguration network : networks) {
                     try {
+                        if(!supportedSecurity(network)) {
+                            System.err.println("WIFI_SKIPPED reason=UNSUPPORTED_SECURITY"); status=1; continue;
+                        }
                         int networkId = network.networkId;
                         network.networkId = -1;
-                        wifiManager.addNetwork(network);
+                        int restoredId=wifiManager.addNetwork(network);
+                        if(restoredId<0)throw new IllegalStateException("ADD_NETWORK_FAILED");
+                        android.net.wifi.WifiManager manager=Refine.unsafeCast(wifiManager);
+                        if(!manager.enableNetwork(restoredId,false))throw new IllegalStateException("ENABLE_NETWORK_FAILED");
+                        if(Build.VERSION.SDK_INT>=30) {
+                            boolean autojoin=WifiConfiguration.class.getField("allowAutojoin").getBoolean(network);
+                            manager.getClass().getMethod("allowAutojoin",int.class,boolean.class).invoke(manager,restoredId,autojoin);
+                        }
+                        if(Build.VERSION.SDK_INT<26 && !manager.saveConfiguration())throw new IllegalStateException("SAVE_NETWORK_FAILED");
                         if (!networkIds.contains(networkId)) {
                             networkIds.add(networkId);
                             System.out.println(network.SSID + " restored");

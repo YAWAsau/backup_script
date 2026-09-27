@@ -45,3 +45,7 @@
 -keep class com.xayah.dex.AppInventoryUtil { *; }
 
 # SpeedBackup r201: durable display-timeout transaction and watchdog must survive R8.
+
+-keep class com.xayah.dex.TelephonyUtil { public static void main(java.lang.String[]); }
+
+-keep class com.xayah.dex.FakeContext** { *; }

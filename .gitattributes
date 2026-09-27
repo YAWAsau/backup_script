@@ -13,3 +13,7 @@ tools/smbclient binary
 tools/speednative binary
 tools/tar binary
 tools/zstd binary
+
+# Pinned upstream SHA manifests cover exact bytes.
+tar/upstream/** -text
+zstd/upstream/** -text

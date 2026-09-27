@@ -23,6 +23,7 @@ import android.content.pm.ParceledListSlice;
 /** {@hide} */
 interface INotificationManager {
     void createNotificationChannels(String pkg, in ParceledListSlice channelsList);
+    void createNotificationChannelsForPackage(String pkg, int uid, in ParceledListSlice channelsList);
     void enqueueNotificationWithTag(String pkg, String opPkg, String tag, int id,
             in Notification notification, int userId);
 }

@@ -52,8 +52,8 @@ public class NotificationUtil extends BaseUtil {
     public static final String SHELL_PACKAGE = "com.android.shell";
     public static final int NOTIFICATION_ID = 2020;
 
-    private static final String SYSTEM_NOTIFICATION_CHANNEL_ALERTS = "ALERTS";
 
+    private static final String CHANNEL_COMPLETION_ID = "speedbackup_completion";
     public static final String CHANNEL_PROGRESS_ID = "speedbackup_progress";
     public static final String CHANNEL_RESULT_ID = "speedbackup_result";
     public static final String CHANNEL_ERROR_ID = "speedbackup_error";
@@ -390,6 +390,7 @@ public class NotificationUtil extends BaseUtil {
             final String value = parts.length >= 2 ? parts[1] : "";
             current.touched = true;
             if ("EVENT".equals(key)) current.event = value;
+            else if ("OPERATION_ID".equals(key)) current.operationId = value;
             else if ("TAG".equals(key)) current.tag = value;
             else if ("ID".equals(key)) current.id = parseInt(value, current.id);
             else if ("CHANNEL".equals(key)) current.channelAlias = value;
@@ -441,6 +442,7 @@ public class NotificationUtil extends BaseUtil {
     }
 
     private static void prepareEvent(Context ctx, NotifyEvent ev) {
+        if (ev.isOperationFinish()) return; // Keep the final message free of per-app metrics/history.
         enrichPackage(ctx, ev);
         applyMetrics(ev);
         updateRecentAndErrors(ev);
@@ -529,6 +531,8 @@ public class NotificationUtil extends BaseUtil {
     }
 
     private static boolean shouldThrottle(NotifyEvent ev) {
+        if (ev.isOperationFinish() && !ev.operationId.isEmpty()
+                && ev.operationId.equals(loadState(ev.stateFile()).getProperty("completion.id"))) return true;
         if (ev.throttleMs <= 0 || ev.isUrgent()) return false;
         Properties p = loadState(ev.stateFile());
         long now = System.currentTimeMillis();
@@ -541,6 +545,7 @@ public class NotificationUtil extends BaseUtil {
 
     private static void saveEventState(NotifyEvent ev) {
         Properties p = loadState(ev.stateFile());
+        if (ev.isOperationFinish()) p.setProperty("completion.id", ev.operationId);
         p.setProperty("last.ms", String.valueOf(System.currentTimeMillis()));
         p.setProperty("last.text", ev.text == null ? "" : ev.text);
         p.setProperty("last.progress", String.valueOf(ev.progress));
@@ -550,7 +555,7 @@ public class NotificationUtil extends BaseUtil {
     @SuppressLint("NotificationPermission")
     private static void sendNotifyEvent(Context ctx, int callingUid, NotifyEvent ev) throws Exception {
         final boolean shellCaller = callingUid == SHELL_UID;
-        final String channelId = shellCaller ? resolveChannelId(ev) : SYSTEM_NOTIFICATION_CHANNEL_ALERTS;
+        final String channelId = resolveChannelId(ev);
         Notification.Builder builder;
         if (shellCaller) {
             ensureSpeedBackupChannels(SHELL_PACKAGE);
@@ -558,7 +563,12 @@ public class NotificationUtil extends BaseUtil {
         } else {
             final NotificationManager notificationManager = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
             if (Build.VERSION.SDK_INT >= 26 && notificationManager != null) {
-                notificationManager.createNotificationChannel(makeChannel(channelId, ev.importance()));
+                // Root's Binder UID is 0, but notifications from this context belong
+                // to android/1000. Ordinary creation silently registers android/0.
+                ArrayList<NotificationChannel> channels = new ArrayList<>();
+                channels.add(makeChannel(channelId, ev.importance()));
+                getService().createNotificationChannelsForPackage(ctx.getPackageName(),
+                        ctx.getPackageManager().getPackageUid(ctx.getPackageName(), 0), new ParceledListSlice<>(channels));
             }
             builder = new Notification.Builder(ctx, channelId);
         }
@@ -678,6 +688,7 @@ public class NotificationUtil extends BaseUtil {
 
     private static String resolveChannelId(NotifyEvent ev) {
         String alias = ev.channelAlias == null ? "" : ev.channelAlias.trim().toLowerCase(Locale.ROOT);
+        if ("completion".equals(alias)) return CHANNEL_COMPLETION_ID;
         if ("progress".equals(alias) || CHANNEL_PROGRESS_ID.equals(alias)) return CHANNEL_PROGRESS_ID;
         if ("result".equals(alias) || CHANNEL_RESULT_ID.equals(alias)) return CHANNEL_RESULT_ID;
         if ("error".equals(alias) || CHANNEL_ERROR_ID.equals(alias)) return CHANNEL_ERROR_ID;
@@ -691,16 +702,25 @@ public class NotificationUtil extends BaseUtil {
 
     private static NotificationChannel makeChannel(String id, int importance) {
         String name;
-        if (CHANNEL_PROGRESS_ID.equals(id)) name = "SpeedBackup 進度";
+        if (CHANNEL_COMPLETION_ID.equals(id)) name = "SpeedBackup 結束提示";
+        else if (CHANNEL_PROGRESS_ID.equals(id)) name = "SpeedBackup 進度";
         else if (CHANNEL_RESULT_ID.equals(id)) name = "SpeedBackup 結果";
         else if (CHANNEL_ERROR_ID.equals(id)) name = "SpeedBackup 錯誤";
         else if (CHANNEL_DEBUG_ID.equals(id)) name = "SpeedBackup Debug";
         else name = "SpeedBackup";
-        return new NotificationChannel(id, name, importance);
+        NotificationChannel channel = new NotificationChannel(id, name, importance);
+        if (CHANNEL_COMPLETION_ID.equals(id)) {
+            channel.setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI,
+                    new android.media.AudioAttributes.Builder()
+                            .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
+        }
+        return channel;
     }
 
     static void ensureSpeedBackupChannels(String callingPackage) throws RemoteException {
         final ArrayList<NotificationChannel> channels = new ArrayList<>();
+        channels.add(makeChannel(CHANNEL_COMPLETION_ID, NotificationManager.IMPORTANCE_DEFAULT));
         channels.add(makeChannel(CHANNEL_PROGRESS_ID, NotificationManager.IMPORTANCE_LOW));
         channels.add(makeChannel(CHANNEL_RESULT_ID, NotificationManager.IMPORTANCE_DEFAULT));
         channels.add(makeChannel(CHANNEL_ERROR_ID, NotificationManager.IMPORTANCE_HIGH));
@@ -869,6 +889,7 @@ public class NotificationUtil extends BaseUtil {
     }
 
     private static class NotifyEvent {
+        String operationId = "";
         String event = "INFO";
         String tag = "speedbackup";
         int id = DEFAULT_RESULT_ID;
@@ -911,6 +932,24 @@ public class NotificationUtil extends BaseUtil {
             if (title == null || title.length() == 0) title = "SpeedBackup";
             if (text == null) text = "";
             if (bigText == null || bigText.length() == 0) bigText = text;
+            if (isOperationFinish()) {
+                tag = "speedbackup_main";
+                id = 2020;
+                channelAlias = "completion";
+                importanceAlias = "DEFAULT";
+                text = "OPERATION_BACKUP_FINISH".equals(event) ? "備份結束" : "恢復結束";
+                bigText = text;
+                title = "SpeedBackup";
+                subText = null;
+                ongoing = false;
+                autoCancel = true;
+                onlyAlertOnce = false;
+                hasProgress = false;
+                inbox = false;
+                errorAggregate = false;
+                throttleMs = 0;
+                return;
+            }
             final String up = event.toUpperCase(Locale.ROOT);
             if (channelAlias == null || channelAlias.length() == 0) {
                 if (up.contains("ERROR") || up.contains("WARN") || up.contains("FAIL")) channelAlias = "error";
@@ -946,6 +985,10 @@ public class NotificationUtil extends BaseUtil {
                     autoCancel = true;
                 }
             }
+        }
+
+        boolean isOperationFinish() {
+            return "OPERATION_BACKUP_FINISH".equals(event) || "OPERATION_RESTORE_FINISH".equals(event);
         }
 
         boolean isRootStartEvent() {

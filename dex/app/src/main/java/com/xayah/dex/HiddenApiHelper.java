@@ -88,6 +88,9 @@ public class HiddenApiHelper {
      * <a href="https://github.com/Genymobile/scrcpy/pull/5476">scrcpy #5476</a>
      */
     public static IContentProvider getContentProviderExternal(String name, IBinder token) {
+        return getContentProviderExternal(name, token, 0, false);
+    }
+    public static IContentProvider getContentProviderExternal(String name, IBinder token, int userId, boolean strictUser) {
         try {
             Method method;
             Object[] args;
@@ -96,14 +99,23 @@ public class HiddenApiHelper {
             IInterface am = (IInterface) getDefaultMethod.invoke(null);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 method = am.getClass().getMethod("getContentProviderExternal", String.class, int.class, IBinder.class, String.class);
-                args = new Object[]{name, 0, token, null};
+                args = new Object[]{name, userId, token, null};
             } else {
                 method = am.getClass().getMethod("getContentProviderExternal", String.class, int.class, IBinder.class);
-                args = new Object[]{name, 0, token};
+                args = new Object[]{name, userId, token};
             }
             Object providerHolder = method.invoke(am, args);
             if (providerHolder == null) {
                 return null;
+            }
+            if (strictUser) {
+                android.content.pm.ProviderInfo info=(android.content.pm.ProviderInfo)providerHolder.getClass().getField("info").get(providerHolder);
+                if(info!=null && info.applicationInfo!=null && info.applicationInfo.uid / 100000 != userId
+                        && (info.flags & 0x40000000)!=0
+                        && (name.equals("sms") || name.equals("mms") || name.equals("mms-sms")))
+                    throw new SecurityException("SHARED_MESSAGES_PROVIDER");
+                if(info==null || info.applicationInfo==null || info.applicationInfo.uid / 100000 != userId)
+                    throw new SecurityException("PROVIDER_USER_MISMATCH");
             }
             Field providerField = providerHolder.getClass().getDeclaredField("provider");
             providerField.setAccessible(true);
