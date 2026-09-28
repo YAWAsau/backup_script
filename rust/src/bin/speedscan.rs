@@ -1,3 +1,5 @@
+#[path = "../profile.rs"]
+mod profile;
 #[path = "../restore_safety.rs"]
 mod restore_safety;
 #[path = "../tar_source.rs"]
@@ -13,6 +15,8 @@ use speedbackup_native_rs::*;
 mod tar_input;
 #[path = "../restore_manifest.rs"]
 mod restore_manifest;
+#[path = "../workflow.rs"]
+mod workflow;
 #[path = "../orphan_plan.rs"]
 mod orphan_plan;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -125,7 +129,7 @@ mod fused_traversal_tests {
         assert!(!appdetails_required_meta_ok(
             r#"{"A":{"PackageName":"com.example"},"B":{"apk_version":7}}"#
         ));
-        // jq's contract checks non-null, not truthiness, type or nonempty text.
+        // Metadata validity checks non-null fields, regardless of their type or truthiness.
         assert!(appdetails_required_meta_ok(
             r#"{"Meta":{"PackageName":"","apk_version":false}}"#
         ));
@@ -4289,8 +4293,8 @@ fn appdetails_meta_key(raw: &str) -> Vec<u16> {
 }
 
 fn appdetails_required_meta_ok(body: &str) -> bool {
-    // Match the historical jq contract used by _remote_appdetails_json_ok:
-    //   type=="object" and ([.[] | objects | select(.PackageName != null and .apk_version != null)] | length > 0)
+    // Require an object containing at least one metadata object with both fields present:
+    //   PackageName and apk_version must be non-null in the same child object.
     if !json_document_parse_ok(body) {
         return false;
     }
@@ -4631,6 +4635,14 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
         let _ = writeln!(st, "stage\tseed\tremotePayloadApps\tremotePayloadTotal\tignoredRemotePayloadApps\tmissingSeed\tmissingStage\tchecked\tbad\treason\tfirstMissing\tallowShrink\tseedlessRepair\tseedlessTainted\tseedExpansion\tignoredRemotePayloadSample\telapsedMs");
         let _ = writeln!(st, "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}", stage.len(), seed_count, payload_count_i, remote_payload_total_i, ignored_remote_count, missing_seed.len(), missing_stage.len(), checked, bad, reason, tsv_sanitize(&first_missing), if allow_shrink {1}else{0}, if seedless_repair {1}else{0}, if seedless_tainted {1}else{0}, if seed_expansion {1}else{0}, tsv_sanitize(&ignored_remote_sample), start.elapsed().as_millis());
     }
+    // A fixed line receipt preserves empty fields with shell read (no IFS collapse).
+    let fields = vec![status.to_string(), stage.len().to_string(), seed_count.to_string(),
+        payload_count_i.to_string(), remote_payload_total_i.to_string(), ignored_remote_count.to_string(),
+        missing_seed.len().to_string(), missing_stage.len().to_string(), checked.to_string(), bad.to_string(),
+        tsv_sanitize(&reason), tsv_sanitize(&first_missing), start.elapsed().as_millis().to_string(),
+        (seedless_repair as u8).to_string(), (seedless_tainted as u8).to_string(), (seed_expansion as u8).to_string(),
+        tsv_sanitize(&ignored_remote_sample)];
+    if fs::write(format!("{}.fields", out_prefix), fields.join("\n") + "\n").is_err() { return 3; }
     println!("APPDETAILS_BUNDLE_AUDIT\t{}\tstage={}\tseed={}\tremotePayloadApps={}\tremotePayloadTotal={}\tignoredRemotePayloadApps={}\tignoredRemotePayloadList={}.ignored_remote_payload_apps.lst\tignoredRemotePayloadSample={}\tmissingSeed={}\tmissingStage={}\tchecked={}\tbad={}\treason={}\tfirstMissing={}\tallowShrink={}\tseedlessRepair={}\tseedlessTainted={}\tseedExpansion={}\telapsedMs={}\tschema=speedbackup.appdetails_bundle_audit.v5",
         status, stage.len(), seed_count, payload_count_i, remote_payload_total_i, ignored_remote_count, tsv_sanitize(out_prefix), tsv_sanitize(&ignored_remote_sample), missing_seed.len(), missing_stage.len(), checked, bad, tsv_sanitize(&reason), tsv_sanitize(&first_missing), if allow_shrink {1}else{0}, if seedless_repair {1}else{0}, if seedless_tainted {1}else{0}, if seed_expansion {1}else{0}, start.elapsed().as_millis());
     if reason == "ok" { 0 } else { 5 }
@@ -5274,7 +5286,7 @@ Some("lock-acquire") => restore_safety::lock(&args[2..], false),
 Some("lock-release") => restore_safety::lock(&args[2..], true),
 Some("--version")|Some("version")=>{println!("speedscan {VERSION} build={BUILD_VERSION}");0}
         Some("--capabilities") | Some("capabilities") => {
-            println!("speedscan.app_permissions.v1 speedscan.process_lease.v1 speedscan.backup_run_model.v1 speedscan.backup_plan_coverage.v1 speedscan.tree_fixup_symlink_owner.v1 speedscan.tar_source_manifest.v1 speedscan.restore_source_verify.v1 speedscan.debug_consolidate.v1 speedscan.payload_stats.v1 speedscan.restore_tree_audit_bytes.v1 speedscan.result_contract.v1 speedscan.remote_orphan_plan.v1 speedscan.restore_tree_manifest_bytes.v1 speedscan.appdetails_seed_index_strict_meta.v1 speedscan.appdetails_seed_index.v1 speedscan.backup_prescan_exact_input_batch.v1 speedscan.tar_input_hardlink_type_safe.v1 speedscan.dir_size_tar_input_map.v1 speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.posix_recursive_scan.v1 speedscan.dir_size_map_workers.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan.v1 speedscan.local_fastskip_presize_plan_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_audit_seed_expansion.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.rust_convergence_source.v1 speedscan.full_convergence_stage3.v1");
+            println!("speedscan.json_ops.v1 speedscan.profile_transform.v1 speedscan.bundle_audit_fields.v1 speedscan.app_permissions.v1 speedscan.process_lease.v1 speedscan.backup_run_model.v1 speedscan.backup_plan_coverage.v1 speedscan.tree_fixup_symlink_owner.v1 speedscan.tar_source_manifest.v1 speedscan.restore_source_verify.v1 speedscan.debug_consolidate.v1 speedscan.payload_stats.v1 speedscan.restore_tree_audit_bytes.v1 speedscan.result_contract.v1 speedscan.remote_orphan_plan.v1 speedscan.restore_tree_manifest_bytes.v1 speedscan.appdetails_seed_index_strict_meta.v1 speedscan.appdetails_seed_index.v1 speedscan.backup_prescan_exact_input_batch.v1 speedscan.tar_input_hardlink_type_safe.v1 speedscan.dir_size_tar_input_map.v1 speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.posix_recursive_scan.v1 speedscan.dir_size_map_workers.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan.v1 speedscan.local_fastskip_presize_plan_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_audit_seed_expansion.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.rust_convergence_source.v1 speedscan.full_convergence_stage3.v1");
             0
         }
 Some("dir-size") if args.len()>=3=>cmd_dir_size(&args[2]),
@@ -5328,6 +5340,9 @@ Some("restore-tree-manifest-bytes") if args.len()>=4=>restore_manifest::unix::co
 Some("restore-tree-verify-bytes") if args.len()>=4=>restore_manifest::unix::command(&args[2],&args[3],true),
 Some("app-media-index") if args.len()>=4=>cmd_app_media_index(&args[2],&args[3],args.get(4).map(|s|s.as_str()),args.get(5).map(|s|s.as_str()),args.get(6).map(|s|s.as_str()).unwrap_or("-")),
 Some("selected-apps-map") if args.len()>=5=>cmd_selected_apps_map(&args),
+Some("json") => profile::json_run(&args),
+Some("payload-presence" | "frame-stream") => workflow::run(&args),
+Some("profile") => profile::run(&args),
 Some("appdetails-summary-map") if args.len()>=4=>cmd_appdetails_summary_map(&args),
 	Some("appstate-match-map") if args.len()>=5=>cmd_appstate_match_map(&args),
 Some("appdetails-bundle-audit") if args.len()>=8=>cmd_appdetails_bundle_audit(&args),

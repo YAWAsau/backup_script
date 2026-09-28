@@ -125,7 +125,6 @@ SpeedBackup/
 │   ├── zstd                # 壓縮工具
 │   ├── tar                 # 打包工具
 │   ├── smbclient           # SMB 傳輸
-│   ├── jq                  # JSON 處理
 │   ├── find                # 檔案搜尋
 │   ├── keycheck            # 音量鍵輸入
 │   ├── cmd                 # 系統指令橋接

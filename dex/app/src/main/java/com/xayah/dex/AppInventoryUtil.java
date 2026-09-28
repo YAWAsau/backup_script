@@ -242,6 +242,18 @@ final class AppInventoryUtil {
         }
     }
 
+    static String packageStatusFields(int userId, String packageName, boolean refresh) throws Exception {
+        String json = packageStatusSingle(userId, packageName, refresh).trim();
+        JsonObject status = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
+        if (!"packageStatus".equals(status.get("recordType").getAsString())) throw new IllegalStateException("packageStatus schema");
+        StringBuilder out = new StringBuilder("SPEEDBACKUP_PACKAGE_STATUS_V1\n");
+        for (String key : new String[]{"installed", "uid", "versionCode", "userDataExists", "userDeDataExists", "source", "reason"}) {
+            String value = status.has(key) && !status.get(key).isJsonNull() ? status.get(key).getAsString() : "";
+            out.append(value.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')).append('\n');
+        }
+        return out.append(json).append('\n').toString();
+    }
+
     static synchronized String packageStatusBatch(int userId, String[] packageNames, boolean refresh) throws Exception {
         if (refresh) {
             clearCache();

@@ -2338,7 +2338,7 @@ public class HiddenApiUtil {
 
     private static void appInventoryPackageStatus(String[] args) {
         try {
-            System.out.print(AppInventoryUtil.packageStatusSingle(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args)));
+            System.out.print((java.util.Arrays.asList(args).contains("fields") ? AppInventoryUtil.packageStatusFields(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args)) : AppInventoryUtil.packageStatusSingle(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args))));
             System.exit(0);
         } catch (Throwable t) {
             t.printStackTrace(System.err);
@@ -2348,7 +2348,7 @@ public class HiddenApiUtil {
 
     private static DaemonRunResult appInventoryPackageStatusDaemonCommand(String[] args) {
         try {
-            return new DaemonRunResult(0, AppInventoryUtil.packageStatusSingle(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args)));
+            return new DaemonRunResult(0, (java.util.Arrays.asList(args).contains("fields") ? AppInventoryUtil.packageStatusFields(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args)) : AppInventoryUtil.packageStatusSingle(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args))));
         } catch (Throwable t) {
             t.printStackTrace(System.err);
             return new DaemonRunResult(1, "APP_INVENTORY_PACKAGE_STATUS_FAILED exception=" + sanitizeDiagValue(t.getClass().getName())

@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 REQUIRED_TOOLS = {
-    'busybox', 'classes.dex', 'cmd', 'dex_check.sh', 'find', 'jq',
+    'busybox', 'classes.dex', 'cmd', 'dex_check.sh', 'find',
     'keycheck', 'smbclient', 'speednative', 'tar', 'zstd',
 }
 TEXT_SUFFIXES = {'.sh', '.rs', '.java', '.kt', '.kts', '.ps1', '.toml', '.yml', '.yaml'}
@@ -49,6 +49,7 @@ def runtime_table(script):
 
 
 def verify_runtime(directory):
+    require(not (directory / 'jq').exists(), 'Retired runtime tool must be removed: tools/jq')
     script = (directory / 'tools.sh').read_bytes().decode('utf-8')
     require('\r' not in script, 'tools.sh must use LF')
     entries = runtime_table(script)

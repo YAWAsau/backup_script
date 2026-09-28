@@ -8,8 +8,8 @@ TOOLS_PATH="${TOOLS_PATH:-}"
 TEST_LOG_DIR="${TEST_LOG_DIR:-${PWD:-.}}"
 TEST_LOG_FILE="${TEST_LOG_FILE:-$TEST_LOG_DIR/dex_check.log}"
 TEST_SUMMARY_FILE="${TEST_SUMMARY_FILE:-$TEST_LOG_DIR/dex_full_test.summary}"
-DEX_CHECK_VERSION="v790"
-DEX_CHECK_BUILD="v790"
+DEX_CHECK_VERSION="v797"
+DEX_CHECK_BUILD="v797"
 BACKUP_WIFI_ENABLE="${BACKUP_WIFI_ENABLE:-1}"
 SB_SELFTEST_LEVEL="${SB_SELFTEST_LEVEL:-quick}"
 CHANGELOG_URL="${CHANGELOG_URL:-https://api.github.com/repos/XayahSuSuSu/Android-DataBackup/releases/latest}"
@@ -17,6 +17,7 @@ SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-$DEX_CHECK_VERSION}"
 SPEEDBACKUP_PATCH_BUILD="${SPEEDBACKUP_PATCH_BUILD:-$DEX_CHECK_BUILD}"
 PATH="/data/backup_tools:$(dirname "$CLASSPATH_PATH" 2>/dev/null):$PATH"
 export PATH
+_json_cmd(){ speednative speedscan json "$@"; }
 HIDDEN_CLASS="com.xayah.dex.HiddenApiUtil"
 HTTP_CLASS="com.xayah.dex.HttpUtil"
 CC_CLASS="com.xayah.dex.CCUtil"
@@ -158,196 +159,7 @@ require_text(){
 }
 require_caps_json(){
 	local _file="$1" _label="$2"
-	jq -e '
-		. as $root |
-		def cap($n): any($root.capabilities[]?; .name == $n and .enabled == true);
-		($root.schemaVersion == 2) and
-		((($root.daemonProtocolVersion // 0)) >= 1) and
-		([
-			"dex.capabilities.v1",
-			"dex.machine_stdout.v1",
-			"dex.label_path_segment_safe.v1",
-			"dex.webdav.relpath_traversal_guard.v1",
-			"dex.root_unified_daemon.v1",
-			"dex.root_daemon.ready_before_appstate_init.v1",
-			"dex.root_daemon.ready_before_hiddenapi_init.v1",
-			"dex.root_daemon.ready_before_hardening.v1",
-			"dex.root_daemon.capability_signature.compilefix.v1",
-			"dex.daemon_supervisor.r8_keep.v1",
-			"hiddenapi.daemon.af_unix.v1",
-			"hiddenapi.force_stop_package_batch.daemon.v1",
-			"dex.app_inventory.snapshot.v1",
-			"dex.app_inventory.pkg_uid.single.v1",
-			"dex.app_inventory.package_status.single.v1",
-			"dex.app_inventory.package_filter_batch.v1",
-			"dex.app_inventory.getlist_onecall.v1",
-			"dex.app_inventory.display_label_facts.v1",
-			"dex.cgroup.lock_metrics.v1",
-			"dex.app_inventory.xposed_module_facts.v1",
-			"dex.app_inventory.xposed_runtime_facts.v1",
-			"dex.app_inventory.package_facts.batch.v1",
-			"dex.pm.pre_restore_package_state.batch.v1",
-			"dex.pm.installer_context_facts.v1",
-			"dex.pm.restore_install_plan.v1",
-			"dex.pm.restore_install_plan_batch.v1",
-			"webdav.profile_contract.dex.v1",
-			"webdav.profile_contract_full.dex.v1",
-				"webdav.profile_contract_authoritative.dex.v1",
-				"dex.appstate.android16_17_policy_contract.v1",
-			"dex.hidden_api.bypass_softgate.v1",
-			"appstate.snapshot.batch.v2",
-			"appstate.snapshot.batch.parallel.v1",
-			"appstate.snapshot.direct_files.v1",
-			"appstate.snapshot.direct_files.single_pass.v1",
-			"appstate.snapshot.direct_files.telemetry_v2.v1",
-			"appstate.restore.batch.v4",
-			"appstate.verify.batch.v4",
-			"appstate.run_results.v1",
-			"appstate.result_files.v1",
-			"appstate.ssaid.typed_result.v1",
-			"dex.control_results.v1",
-			"webdav.stream_result.v1",
-			"webdav.chunk_write_coalesced.v1",
-			"dex.result_contract.v1",
-			"appstate.verify.vendor_classification.dex.v1",
-			"appstate.restore.vendor_classification.dex.v1",
-			"appstate.restore.permission_appop_vendor_classification.dex.v1",
-			"appstate.android17_runtime_permission_appop_package_fallback.v1",
-			"appstate.android17_location_appop_policy_classification.v1",
-			"appstate.verify.android17_platform_permission_policy.dex.v1",
-			"appstate.restore.special_access_vendor_classification.dex.v1",
-			"appstate.verify.default_dialer_vendor_classification.dex.v1",
-			"appstate.daemon.af_unix.v1",
-			"appstate.structured_result_codes.v2",
-			"appstate.ssaid.integrated.v1",
-			"appstate.special_access.integrated.v1",
-			"appstate.scoped_appops_fields.v1",
-			"appstate.default_home.v1",
-            "appstate.default_ime.v1",
-            "appstate.default_ime.exec_settings.v1",
-			"dex.settings.exec_shim.v1",
-            "dex.pm.visible_after_install.v1",
-            "dex.pm.visible_after_install.v1",
-			"dex.framework_facts.batch.v1",
-			"dex.device_facts.v1",
-			"dex.device_model_name_map.v1",
-			"dex.build_info.unified_version.v1",
-			"dex.daemon.read_exactly.body_limit.v1",
-			"dex.daemon.token_seed_shared.v1",
-			"dex.notification.peer_credentials_uid.v1",
-			"dex.notification.peer_uid_fail_closed.v1",
-			"dex.ssaid.state_cache_shutdown.v1",
-			"dex.ssaid.state_cache_shutdown_bounded.v1",
-			"dex.daemon_supervisor.pid_starttime.v1",
-			"dex.daemon_supervisor.pid_starttime_cmdline.v1",
-			"dex.cchelper.table_hardening.v1",
-			"dex.device_model_db.entry_count_runtime.v1",
-			"dex.device_model_db.entry_count_selfcheck.v1",
-			"appstate.foreground_state.batch.v1",
-			"appstate.foreground_list.json.v1",
-			"dex.process_observer.global_daemon.v1",
-			"dex.process_observer.target_lifecycle.v1",
-			"dex.process_observer.batch_watchset.v1",
-			"dex.process_observer.batch_stop_safe.v1",
-			"dex.process_observer.batch_persistent_safety.v1",
-			"dex.process_observer.taskstack_package_guard.v1",
-			"dex.process_observer.live_respawn_guard.v1",
-			"dex.process_observer.cgroup_high_risk_only.v1",
-            "dex.process_observer.high_risk_notop_cgroup_freeze.v1",
-            "dex.process_observer.cgroup_freeze_reuse.v1",
-            "dex.process_observer.cgroup_freeze_reuse_all_alive_pids.v1",
-            "dex.process_observer.cgroup_stale_token_prune.v1",
-            "dex.process_observer.cgroup_dead_pid_package_retry.v1",
-            "dex.process_observer.high_risk_top_fast_freeze.v1",
-            "dex.process_observer.restore_freeze_action.v1",
-            "dex.process_observer.restore_session_direct_start.v1",
-            "dex.process_observer.restore_session_facts_cache.v1",
-            "dex.process_observer.restore_action_policy_builder.v1",
-            "dex.process_observer.batch_cleanup_stale.v1",
-            "dex.tmp_state.run_tmpdir_scope.v1",
-            "dex.process_observer.batch_stop_summary_tsv.v1",
-			"dex.app_wake_block.persistent_restore.v1",
-			"dex.app_wake_block.cleanup_restore_failed_retain_state.v1",
-			"dex.app_wake_block.snapshot_unsafe_refuse_apply.v1",
-			"dex.uid_net_block.persistent_restore.v1",
-			"dex.uid_net_block.cleanup_restore_failed_retain_state.v1",
-			"dex.cgroup_freezer.lifecycle.v1",
-			"dex.cgroup_freezer.persistent_batch_session.v1",
-			"dex.cgroup_freezer.native_package_atomic.v1",
-			"dex.cgroup_freezer.primary_app_scope_package_freeze.v1",
-			"dex.cgroup_freezer.primary_app_scope_refresh.v1",
-			"dex.process_observer.primary_cgroup_refresh.v1",
-			"dex.process_observer.wake_block_stop_defer_to_app_scope.v1",
-			"dex.cgroup_freezer.native_package_kill_live_rescan.v1",
-			"dex.cgroup_freezer.native_thaw_uid_emergency.v1",
-			"dex.cgroup_freezer.daemon_parent_control.v1",
-			"dex.display_power.root_daemon.v1",
-			"webdav.rel_only.v1",
-			"webdav.managed_put.v1",
-            "webdav.putstdin.skip_parent_mkdir.v1",
-			"webdav.managed_list_classify.v1",
-			"webdav.classify_depth1_walk_fallback.dex.v1",
-			"webdav.managed_batch_put_with_parents.v1",
-			"webdav.propfind.no_cache.v1",
-			"webdav.stream_heartbeat_error_kind.dex.v1",
-			"webdav.daemon.read_body_limit.v1",
-			"webdav.tsv_output.control_guard.v1",
-			"webdav.direct_children_manifest.dex.v1",
-			"webdav.prepare_dirs_created_only_progress.dex.v1",
-			"webdav.prepare_dirs_full_timing.dex.v1",
-			"webdav.prepare_dirs_parallel_mkcol.dex.v1",
-			"webdav.classify_parallel_depth1.dex.v1",
-			"webdav.profile_visible_compact.dex.v1",
-			"webdav.download_manifest.dex.v1",
-			"webdav.orphan_roots_manifest.dex.v1",
-			"dex.daemon.common_framed_reader.v1",
-			"rust.native_replacement_rc.v1",
-			"webdav.stream_stall_watchdog.dex.v1",
-			"webdav.stream_stall_socket_abort.dex.v1",
-			"webdav.stream_post_body_response_timeout.dex.v1",
-			"webdav.stream_post_body_phase_guard.dex.v1",
-			"webdav.alist_new_payload_direct.dex.v1",
-			"webdav.known_missing_direct_by_fact.dex.v1",
-			"webdav.alist_openlist_sync_put_semantics.dex.v1",
-			"webdav.pathmode_retry_http400.dex.v1",
-			"webdav.backend_profile.dex.v1",
-			"webdav.server_provider_profile.dex.v1",
-			"webdav.redirect_auth_guard.dex.v1",
-			"webdav.feature_profile.dex.v1",
-			"webdav.feature_profile_complete.dex.v1",
-			"webdav.backend_contract_probe.dex.v1",
-			"webdav.list_strategy_by_fact.dex.v1",
-			"webdav.fixed_put_chunked_fallback.dex.v1",
-			"webdav.nas_identity_profile.dex.v1",
-			"webdav.speedbackup_identity.dex.v1",
-			"webdav.sftpgo_identity.dex.v1",
-			"webdav.zspace_identity.dex.v1",
-			"webdav.nas_identity_extended.dex.v1",
-			"webdav.generic_nas_dav5005_identity.dex.v1",
-			"webdav.replayable_put_paths_fact_driven.dex.v1",
-			"webdav.atomic_policy_fact_priority.dex.v1",
-			"webdav.managed_probe_chunked.dex.v1",
-			"webdav.backend_support_tier.dex.v1",
-			"webdav.pacer_retry_after_jitter.dex.v1",
-			"webdav.move_copy_verify_after_ambiguous.dex.v1",
-			"webdav.put_verify_after_ambiguous.dex.v1",
-			"webdav.put_405_ambiguous_stat.dex.v1",
-			"webdav.direct_put_verify_before_cleanup.dex.v1",
-			"webdav.put_2xx_body_semantic_guard.dex.v1",
-			"webdav.put_2xx_stat_verify.dex.v1",
-			"webdav.cloudreve_identity.dex.v1",
-			"webdav.alist_version_security_advisory.dex.v1",
-			"webdav.quota_probe.dex.v1",
-			"webdav.upload_size_verify_batch.dex.v1",
-			"webdav.locked_cleanup_deferred.dex.v1",
-			"webdav.jianguoyun_500m_guard.dex.v1",
-			"webdav.backend_decision_log.dex.v1",
-			"rust.native_primitives.convergence_source.v1",
-			"dex.smb.target_probe.v1",
-			"notification.daemon.af_unix.v1",
-			"notification.inline_small_icon.v1"
-		] | all(.[]; cap(.)))
-	' "$_file" >/dev/null 2>&1 && ok "$_label" "核心能力齊全" || critical_fail "$_label" "缺少必要能力，請重編/替換 classes.dex"
+	_json_cmd -e caps-diagnostic "$_file" >/dev/null 2>&1 && ok "$_label" "核心能力齊全" || critical_fail "$_label" "缺少必要能力，請重編/替換 classes.dex"
 }
 
 log "=================================================="
@@ -558,6 +370,7 @@ if [ -x "$_ss_bin" ]; then
 	_ss_caps="$($_ss_bin capabilities 2>/dev/null | head -n 5)"; _ss_caps_rc=$?
 	printf '%s\n' "$_ss_caps" > "$TEST_LOG_DIR/speedscan_capabilities.txt" 2>/dev/null
 	if [ "$_ss_caps_rc" -eq 0 ] \
+		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.json_ops.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.appdetails_seed_index_strict_meta.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.appdetails_seed_index.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.backup_prescan_exact_input_batch.v1" >/dev/null 2>&1 \
@@ -1010,7 +823,7 @@ require_text "RootDaemon unix socket 入口" "$_appstate_help" "daemonunix"
 section "備份能力" "執行安全 smoke，確認不是只有入口存在"
 _inv_out="$(run_class_stdout "$HIDDEN_CLASS" appInventoryPackageStatus "$USER_ID" "$PKG" refresh 2>/dev/null)"; _inv_rc=$?
 printf '%s\n' "$_inv_out" > "$TEST_LOG_DIR/appinventory_package_status.json" 2>/dev/null
-if [ "$_inv_rc" -eq 0 ] && printf '%s\n' "$_inv_out" | jq -e '.schema=="speedbackup.app_inventory.status.v1" or .schema=="speedbackup.app_inventory.v1" or has("packageName")' >/dev/null 2>&1; then ok "App 安裝狀態讀取" "rc=0"; else warn "App 安裝狀態讀取" "rc=$_inv_rc"; fi
+if [ "$_inv_rc" -eq 0 ] && printf '%s\n' "$_inv_out" | _json_cmd -e inventory-schema >/dev/null 2>&1; then ok "App 安裝狀態讀取" "rc=0"; else warn "App 安裝狀態讀取" "rc=$_inv_rc"; fi
 
 _xposed_getlist_out="$(run_class_stdout "$HIDDEN_CLASS" appInventoryGetlist "$USER_ID" "$PKG" refresh 2>/dev/null)"; _xposed_getlist_rc=$?
 printf '%s\n' "$_xposed_getlist_out" > "$TEST_LOG_DIR/appinventory_xposed_facts.tsv" 2>/dev/null
@@ -1024,7 +837,7 @@ fi
 
 _device_facts_out="$(run_class_stdout "$HIDDEN_CLASS" deviceFacts 2>/dev/null)"; _device_facts_rc=$?
 printf '%s\n' "$_device_facts_out" > "$TEST_LOG_DIR/device_facts.json" 2>/dev/null
-if [ "$_device_facts_rc" -eq 0 ] && printf '%s\n' "$_device_facts_out" | jq -e '.schema=="speedbackup.device_facts.v1" and (.modelNameSource|length>0) and (.marketNameZh|length>0) and (.modelDbEntryCount >= 4000) and (.modelDbSourceLines >= 4000) and ((.modelDbSourceSha256|length)==64)' >/dev/null 2>&1; then ok "Dex 內建機型資料庫" "rc=0"; else warn "Dex 內建機型資料庫" "rc=$_device_facts_rc"; fi
+if [ "$_device_facts_rc" -eq 0 ] && printf '%s\n' "$_device_facts_out" | _json_cmd -e device-diagnostic >/dev/null 2>&1; then ok "Dex 內建機型資料庫" "rc=0"; else warn "Dex 內建機型資料庫" "rc=$_device_facts_rc"; fi
 
 _facts_out="$(run_class_stdout "$HIDDEN_CLASS" appInventoryPackageFactsBatch "$USER_ID" "$PKG" refresh 2>/dev/null)"; _facts_rc=$?
 printf '%s\n' "$_facts_out" > "$TEST_LOG_DIR/appinventory_package_facts.tsv" 2>/dev/null
@@ -1057,7 +870,7 @@ if [ "$_storage_facts_rc" -eq 0 ] && printf '%s\n' "$_storage_facts_out" | grep 
 section "已撤回" "顯示已移除的過時檢測與正式 fallback"
 _settings_out="$(run_class_stdout "$APPSTATE_CLASS" settingsGet "$USER_ID" secure default_input_method 2>/dev/null)"; _settings_rc=$?
 printf '%s\n' "$_settings_out" > "$TEST_LOG_DIR/appstate_settings_get_smoke.ndjson" 2>/dev/null
-if [ "$_settings_rc" -eq 0 ] && printf '%s\n' "$_settings_out" | jq -s -e 'any(.[]; .recordType=="settingsGet" and .source=="exec_settings")' >/dev/null 2>&1; then ok "系統設定 shell fallback" "rc=0"; else warn "系統設定 shell fallback" "rc=$_settings_rc"; fi
+if [ "$_settings_rc" -eq 0 ] && printf '%s\n' "$_settings_out" | _json_cmd -s -e settings-fallback >/dev/null 2>&1; then ok "系統設定 shell fallback" "rc=0"; else warn "系統設定 shell fallback" "rc=$_settings_rc"; fi
 	# Dex display-timeout/settings direct smoke removed. Settings screen_off_timeout is intentionally handled by bounded shell in tools.
 ok "Dex 直接改螢幕逾時已撤回" "正式路徑=bounded-shell"
 

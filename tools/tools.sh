@@ -16,13 +16,13 @@ backup_version="202609272253"
 speedbackup_release_tag="202607232022"
 # Show readiness immediately, before cache/config checks and the UI relay exist.
 if [[ -t 1 ]]; then printf ' -正在準備執行環境，請稍候…\n'; fi
-speedbackup_script_version="v790"
+speedbackup_script_version="v797"
 # Generated from versions.properties. tools_version.log records actual tool
 # versions; operation logs do not repeat release-version markers.
 # Compatibility input alias, independent of the release version.
 SPEEDBACKUP_LEGACY_INSTALL_STRATEGY_ALIAS="r624"
 SPEEDBACKUP_CGROUP_FREEZER_REQUIRED_CAPS="cgroup-v2-uid-root-fallback freeze-package-single-request-v1 freeze-package-refresh-v1 daemon-worker-error-detail-v1 subscribe-peer-close-v1 daemon-worker-admission-v1 daemon-stop-reaped-v1 kill-package-live-rescan-v1 pidfd-signal-optional-v1 cgroup-kill-fastpath-v1 thaw-uid-emergency-v1 daemon-parent-control-v1 daemon-diagnostics-batch-v1 daemon-stats-v1 batch-pid-list-v1 cgroup-wchan-confirm-v1 backend-select-cache-v1"
-SPEEDBACKUP_SPEEDSCAN_REQUIRED_CAPS="speedscan.app_permissions.v1 speedscan.process_lease.v1 speedscan.backup_run_model.v1 speedscan.backup_plan_coverage.v1 speedscan.tree_fixup_symlink_owner.v1 speedscan.tar_source_manifest.v1 speedscan.restore_source_verify.v1 speedscan.debug_consolidate.v1 speedscan.payload_stats.v1 speedscan.restore_tree_audit_bytes.v1 speedscan.result_contract.v1 speedscan.remote_orphan_plan.v1 speedscan.restore_tree_manifest_bytes.v1 speedscan.appdetails_seed_index_strict_meta.v1 speedscan.appdetails_seed_index.v1 speedscan.backup_prescan_exact_input_batch.v1 speedscan.tar_input_hardlink_type_safe.v1 speedscan.dir_size_tar_input_map.v1 speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_audit_seed_expansion.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.full_convergence_stage3.v1"
+SPEEDBACKUP_SPEEDSCAN_REQUIRED_CAPS="speedscan.json_ops.v1 speedscan.profile_transform.v1 speedscan.bundle_audit_fields.v1 speedscan.app_permissions.v1 speedscan.process_lease.v1 speedscan.backup_run_model.v1 speedscan.backup_plan_coverage.v1 speedscan.tree_fixup_symlink_owner.v1 speedscan.tar_source_manifest.v1 speedscan.restore_source_verify.v1 speedscan.debug_consolidate.v1 speedscan.payload_stats.v1 speedscan.restore_tree_audit_bytes.v1 speedscan.result_contract.v1 speedscan.remote_orphan_plan.v1 speedscan.restore_tree_manifest_bytes.v1 speedscan.appdetails_seed_index_strict_meta.v1 speedscan.appdetails_seed_index.v1 speedscan.backup_prescan_exact_input_batch.v1 speedscan.tar_input_hardlink_type_safe.v1 speedscan.dir_size_tar_input_map.v1 speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_audit_seed_expansion.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.full_convergence_stage3.v1"
 # mksh/管線/command substitution 情境下，$$ 不一定是目前實際 shell process。
 # WebDAV daemon owner watch 必須綁真正執行 tools.sh 的 process，否則 owner 誤判死亡會讓 daemon 每次 request 後退出。
 _SPEEDBACKUP_SELF_PID=""
@@ -3792,27 +3792,7 @@ _webdav_feature_contract_probe() {
 	local _body _copy_stat _cleanup
 	local _list_strategy _put_strategy _publish_strategy _verify_strategy _cleanup_policy
 	local _old_tier="${_WEBDAV_PROFILE_SUPPORT_TIER:-}" _old_fsrc="${_WEBDAV_PROFILE_FEATURE_SOURCE:-}"
-	_compat_row="$(jq -r '[.serverProfile,
-		(.supportsChunkedPut|if . then 1 else 0 end),
-		(.supportsFixedPut|if . then 1 else 0 end),
-		(.supportsGetStream|if . then 1 else 0 end),
-		(.supportsMove|if . then 1 else 0 end),
-		(.supportsCopy|if . then 1 else 0 end),
-		(.supportsStat|if . then 1 else 0 end),
-		(.supportsRemoteSize|if . then 1 else 0 end),
-		(.supportsAtomicPublish|if . then 1 else 0 end),
-		(.supportsOverwriteMove|if . then 1 else 0 end),
-		(.supportsMkcol|if . then 1 else 0 end),
-		(.supportsDelete|if . then 1 else 0 end),
-		(.supportsDepthInfinity|if . then 1 else 0 end),
-		(.supportsDepth1|if . then 1 else 0 end),
-		(.supportsRecursiveWalkFallback|if . then 1 else 0 end),
-		(.supportsQuota|if . then 1 else 0 end),
-		(.supportsPacerRetryBackoff|if . then 1 else 0 end),
-		(.supportsDirectoryCache|if . then 1 else 0 end),
-		(.bodyCompareOk|if . then 1 else 0 end),
-		(.copyStatOk|if . then 1 else 0 end),
-		(.cleanupOk|if . then 1 else 0 end)] | map(tostring) | join(" ")' "$_compat_out" 2>/dev/null)"
+	_compat_row="$(_json_cmd -r webdav-contract "$_compat_out" 2>/dev/null)"
 	set -- $_compat_row
 	if [[ $# -eq 21 ]]; then
 		_profile="$1"
@@ -3919,7 +3899,7 @@ _webdav_feature_contract_probe() {
 					;;
 			esac
 		fi
-		_speed_debug_log "WEBDAV_FEATURE_PROFILE_READY context=$_context contractRc=$_compat_rc contractHttp=$_compat_http tier=${_WEBDAV_PROFILE_SUPPORT_TIER:-unknown} source=${_WEBDAV_PROFILE_FEATURE_SOURCE:-unknown} features=$(_speed_debug_kv "${_WEBDAV_PROFILE_FEATURE_SUMMARY:-unknown}") previousTier=${_old_tier:-none} previousSource=${_old_fsrc:-none} profileRefresh=compat-json-single-jq backendProfileRelay=0 putStrategy=${_WEBDAV_PROFILE_PUT_STRATEGY:-unknown} listStrategy=${_WEBDAV_PROFILE_LIST_STRATEGY:-unknown} publishStrategy=${_WEBDAV_PROFILE_PUBLISH_STRATEGY:-unknown} verifyStrategy=${_WEBDAV_PROFILE_VERIFY_STRATEGY:-unknown} cleanupPolicy=${_WEBDAV_PROFILE_CLEANUP_POLICY:-unknown} securityAdvisory=${_WEBDAV_PROFILE_SECURITY_ADVISORY:-none}"
+		_speed_debug_log "WEBDAV_FEATURE_PROFILE_READY context=$_context contractRc=$_compat_rc contractHttp=$_compat_http tier=${_WEBDAV_PROFILE_SUPPORT_TIER:-unknown} source=${_WEBDAV_PROFILE_FEATURE_SOURCE:-unknown} features=$(_speed_debug_kv "${_WEBDAV_PROFILE_FEATURE_SUMMARY:-unknown}") previousTier=${_old_tier:-none} previousSource=${_old_fsrc:-none} profileRefresh=compat-json-rust backendProfileRelay=0 putStrategy=${_WEBDAV_PROFILE_PUT_STRATEGY:-unknown} listStrategy=${_WEBDAV_PROFILE_LIST_STRATEGY:-unknown} publishStrategy=${_WEBDAV_PROFILE_PUBLISH_STRATEGY:-unknown} verifyStrategy=${_WEBDAV_PROFILE_VERIFY_STRATEGY:-unknown} cleanupPolicy=${_WEBDAV_PROFILE_CLEANUP_POLICY:-unknown} securityAdvisory=${_WEBDAV_PROFILE_SECURITY_ADVISORY:-none}"
 	else
 		# Missing/malformed probe facts cannot retain an earlier VERIFIED display.
 		_WEBDAV_PROFILE_SUPPORT_TIER="EXPERIMENTAL"
@@ -4175,33 +4155,37 @@ EOF
 }
 
 # 430: JSON domain helper，所有非 app_details 熱路徑 JSON 也從這裡進出。
-# 原則：仍使用原生 jq；這裡只是集中 shell API，避免 jq 條件散落。
+# JSON operations are fixed Rust contracts, not expression evaluation.
+_json_cmd() {
+	_speedscan_cmd json "$@"
+}
+
 _json_parse_ok() {
 	local _file="$1"
 	[[ -s $_file ]] || return 1
-	jq -e . "$_file" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_json_cmd -e identity "$_file" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
 _json_parse_quiet_ok() {
 	local _file="$1"
 	[[ -s $_file ]] || return 1
-	jq -e . "$_file" >/dev/null 2>&1
+	_json_cmd -e identity "$_file" >/dev/null 2>&1
 }
 _json_string_get() {
 	local _json="$1" _filter="$2"
 	[[ -n $_json && -n $_filter ]] || { printf '\n'; return 1; }
-	# GitHub/API/CDN failures may return HTML/plain text; do not pollute stderr.log with jq parse errors.
-	printf '%s\n' "$_json" | jq -r "$_filter" 2>/dev/null || { printf '\n'; return 1; }
+	# GitHub/API/CDN failures may return HTML/plain text; do not pollute stderr.log with Rust JSON parse errors.
+	printf '%s\n' "$_json" | _json_cmd -r "$_filter" 2>/dev/null || { printf '\n'; return 1; }
 }
 _release_json_tag() {
-	_json_string_get "$1" '.tag_name // ""'
+	_json_string_get "$1" release-tag
 }
 _release_json_asset_urls() {
-	_json_string_get "$1" '.assets[]?.browser_download_url // empty'
+	_json_string_get "$1" release-assets
 }
 _release_json_asset_digest_for_url() {
 	local _json="$1" _url="$2"
 	[[ -n $_json && -n $_url ]] || { printf '\n'; return 1; }
-	printf '%s\n' "$_json" | jq -r --arg url "$_url" '.assets[]? | select(.browser_download_url == $url) | .digest // ""' 2>/dev/null | head -n 1
+	printf '%s\n' "$_json" | _json_cmd -r --arg url "$_url" release-digest 2>/dev/null | head -n 1
 }
 _sb_update_digest_to_sha256() {
 	local _digest="$1" _sha
@@ -4231,7 +4215,7 @@ _sb_update_verify_expected_sha256() {
 	return 0
 }
 _release_json_body() {
-	_json_string_get "$1" '.body // ""'
+	_json_string_get "$1" release-body
 }
 _speedbackup_update_local_tag() {
 	# Prefer the installed build; only old packages fall back to release tag.
@@ -4281,16 +4265,7 @@ _speedbackup_remote_tag_newer() {
 _soc_json_read_info() {
 	local _file="$1" _device="$2" _out="$3"
 	[[ -s $_file && -n $_device && -n $_out ]] || return 1
-	jq -r --arg device "$_device" '
-		(.[$device] // null) as $d |
-		if ($d|type)=="object" then
-			"DEVICE\t處理器:\($d.VENDOR // "null") \($d.NAME // "null")",
-			"RAM\tRAM:\($d.MEMORY // "null") \($d.CHANNELS // "null")"
-		else
-			"DEVICE\t處理器:null",
-			"RAM\tRAM:null"
-		end
-	' "$_file" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_json_cmd -r --arg device "$_device" soc-info "$_file" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
 
 # JSON 覆寫 helper：用 cat 寫回而不是 mv/rename。
@@ -4317,13 +4292,49 @@ _json_cat_replace() {
 }
 
 # JSON 原地更新 helper
-# 用法: jq_inplace <檔案> <jq 表達式> [額外參數...]
-# 例: jq_inplace "$app_details" --arg k "key" '.[$k] = "value"'
-jq_inplace() {
+# 用法: json_inplace <檔案> <固定 JSON 操作> [額外參數...]
+# 例: json_inplace "$app_details" --arg entry "App" --arg key "Size" --arg value "123" set-field
+_metadata_batch_begin() {
+    _metadata_batch_end || return 1
+    _METADATA_BATCH_FILE="$1"
+    _METADATA_BATCH_QUEUE="$TMPDIR/.metadata_edits_${$}"
+    : > "$_METADATA_BATCH_QUEUE"
+}
+_metadata_batch_flush() {
+    [[ -n ${_METADATA_BATCH_QUEUE:-} && -s $_METADATA_BATCH_QUEUE ]] || return 0
+    local _tmp="${_METADATA_BATCH_FILE}.batch_${$}" _bin _METADATA_BATCH_FLUSHING=1
+    _speedscan_path_set || return 1
+    _bin="$_SPEEDSCAN_PATH_RET"
+    if "$_bin" json --arg edits "$_METADATA_BATCH_QUEUE" edit-batch "$_METADATA_BATCH_FILE" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} &&
+        _json_cat_replace "$_tmp" "$_METADATA_BATCH_FILE"; then
+        : > "$_METADATA_BATCH_QUEUE"
+        rm -f "$_tmp"
+        return 0
+    fi
+    rm -f "$_tmp"
+    : > "$TMPDIR/.metadata_batch_failed"
+    return 1
+}
+_metadata_batch_end() {
+    _metadata_batch_flush || return 1
+    [[ -n ${_METADATA_BATCH_QUEUE:-} ]] && rm -f "$_METADATA_BATCH_QUEUE"
+    unset _METADATA_BATCH_FILE _METADATA_BATCH_QUEUE
+    return 0
+}
+
+json_inplace() {
 	local file="$1"; shift
-	local tmp="$TMPDIR/.jq_$$" rc
-	# jq_inplace 目前只用於 app_details.json；輸出使用 pretty JSON，避免本地寫入後被重新壓成單行。
-	if jq "$@" "$file" > "$tmp"; then
+    if [[ -n ${_METADATA_BATCH_FILE:-} && $file = "$_METADATA_BATCH_FILE" && -f $file ]]; then
+        case " $* " in
+        *" set-field "*|*" set-payload "*|*" set-payload-path "*|*" set-apk "*|*" ensure-package "*|*" sync-package "*)
+            printf '%s\0' "$#" "$@" >> "$_METADATA_BATCH_QUEUE" || return 1
+            return 0 ;;
+        esac
+        _metadata_batch_flush || return 1
+    fi
+	local tmp="$TMPDIR/.json_$$" rc
+	# json_inplace 目前只用於 app_details.json；輸出使用 pretty JSON，避免本地寫入後被重新壓成單行。
+	if _json_cmd "$@" "$file" > "$tmp"; then
 		_json_cat_replace "$tmp" "$file"
 		rc=$?
 		rm -f "$tmp" 2>/dev/null
@@ -4404,24 +4415,14 @@ _restore_foreground_record_set() {
 	return 0
 }
 
-# One immutable app_details snapshot per App, six presence decisions per jq.
+# One immutable app_details snapshot per App, six presence decisions per Rust JSON.
 # Unusual/non-object/multi-document input falls back to the existing six reads.
 # Only the presence decision is cached; payload metadata is still read normally.
 _restore_entry_mask_set() {
 	local _file="$1"
 	_RESTORE_ENTRY_MASK=""; _RESTORE_ENTRY_MASK_READY=0
 	[[ -s $_file ]] || { _RESTORE_ENTRY_MASK_READY=1; return 0; }
-	_RESTORE_ENTRY_MASK="$(jq -r -s '
-		if length != 1 or (.[0] | type) != "object" then error("fallback") else .[0] end
-		| . as $d
-		| ["user", "data", "obb", "media", "user_de", "thanox", "hma"]
-		| map(. as $e | (try ($d[$e].Size // "") catch "") as $v
-			| if ($v | type) == "array" or ($v | type) == "object" then error("fallback")
-			  elif ($v | type) == "string" and ($v | contains("\u0000") or contains("\r")) then error("fallback")
-			  else ($v | tostring | sub("\n+$"; "")) as $s
-			    | if $s == "" or $s == "null" then empty else $e end end)
-		| "|" + join("|") + "|"
-	' "$_file" 2>/dev/null)" || { _RESTORE_ENTRY_MASK=""; return 0; }
+	_RESTORE_ENTRY_MASK="$(_json_cmd -r -s restore-mask "$_file" 2>/dev/null)" || { _RESTORE_ENTRY_MASK=""; return 0; }
 	_RESTORE_ENTRY_MASK_READY=1
 	return 0
 }
@@ -4452,6 +4453,15 @@ _speedscan_path() {
 	return 0
 }
 _speedscan_cmd() {
+    # Native readers must observe every preceding mutation, including subshell readers.
+    if [[ ${_METADATA_BATCH_FLUSHING:-0} != 1 && -n ${_METADATA_BATCH_QUEUE:-} && -s $_METADATA_BATCH_QUEUE ]]; then
+        local _batch_arg
+        for _batch_arg in "$@"; do
+            [[ $_batch_arg = "$_METADATA_BATCH_FILE" ]] || continue
+            _metadata_batch_flush || return 1
+            break
+        done
+    fi
 	local _bin
 	_speedscan_path_set 2>/dev/null || return 127
 	_bin="$_SPEEDSCAN_PATH_RET"
@@ -4761,7 +4771,7 @@ _speedscan_batch_stat() {
 	[[ -s $_list && -n $_out ]] || return 1
 	_speedscan_cmd batch-stat "$_list" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	local _rc=$?
-	[[ $_rc = 0 ]] && _eventwait_output_file_stable_ms "$_out" speedscan_batch_stat_ready 50 1000 >/dev/null 2>&1 || true
+	[[ $_rc = 0 ]] && _completed_output_file_ready "$_out" speedscan_batch_stat_ready 50 1000 >/dev/null 2>&1 || true
 	return $_rc
 }
 _speedscan_batch_exists() {
@@ -4769,7 +4779,7 @@ _speedscan_batch_exists() {
 	[[ -s $_list && -n $_out ]] || return 1
 	_speedscan_cmd batch-exists "$_list" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	local _rc=$?
-	[[ $_rc = 0 ]] && _eventwait_output_file_stable_ms "$_out" speedscan_batch_exists_ready 50 1000 >/dev/null 2>&1 || true
+	[[ $_rc = 0 ]] && _completed_output_file_ready "$_out" speedscan_batch_exists_ready 50 1000 >/dev/null 2>&1 || true
 	return $_rc
 }
 _speedscan_batch_chmod() {
@@ -4787,14 +4797,14 @@ _speedscan_manifest() {
 	[[ -d $_root && -n $_out ]] || return 1
 	_summary="${_out}.summary"
 	if _speedscan_cmd scan-summary "$_root" "$_out" > "$_summary" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
-		_eventwait_output_files_stable_ms speedscan_manifest_ready 50 1200 "$_out" "$_summary" >/dev/null 2>&1 || true
+		_completed_output_files_ready speedscan_manifest_ready 50 1200 "$_out" "$_summary" >/dev/null 2>&1 || true
 		_speed_debug_log "SPEEDSCAN_SCAN_SUMMARY_OK root=$_root out=${_out##*/} summary=$(tr '\n' '|' < "$_summary" 2>/dev/null | cut -c1-500) hash=0"
 		return 0
 	fi
 	rm -f "$_summary" 2>/dev/null
 	_speedscan_cmd manifest "$_root" "$_out" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	local _rc=$?
-	[[ $_rc = 0 ]] && _eventwait_output_file_stable_ms "$_out" speedscan_manifest_fallback_ready 50 1200 >/dev/null 2>&1 || true
+	[[ $_rc = 0 ]] && _completed_output_file_ready "$_out" speedscan_manifest_fallback_ready 50 1200 >/dev/null 2>&1 || true
 	return $_rc
 }
 
@@ -5473,6 +5483,47 @@ _backup_prescan_compute_fast_totals() {
 # 在既有 speedscan tree-pack-plan metadata traversal 上計算 GNU tar 真正輸入 bytes。
 # 不讀取檔案內容、不 dry-run tar；成功後把同一 entry 記入 cache，正式 tar 前既有 debug tree-plan 直接復用，
 # 因此正常 changed-entry 路徑不增加第二次 metadata traversal。
+_backup_display_cache_key() {
+	local _pkg="$1" _kind="$2"
+	_BACKUP_DISPLAY_KEY=""
+	case $_pkg in ''|*[!a-zA-Z0-9_.]*) return 1 ;; esac
+	case $_kind in ''|*[!a-zA-Z0-9_]*) return 1 ;; esac
+	# Escape underscores first: dots and underscores must never alias.
+	_pkg=${_pkg//_/_u}; _pkg=${_pkg//./_d}; _kind=${_kind//_/_u}
+	_BACKUP_DISPLAY_KEY="_bdc_${_pkg}__${_kind}"
+}
+_backup_display_cache_clear() {
+	local _key
+	for _key in ${_BACKUP_DISPLAY_CACHE_KEYS:-}; do unset "$_key"; done
+	_BACKUP_DISPLAY_CACHE_KEYS=""
+}
+_backup_display_cache_load() {
+	local _type _app _pkg _kind _bytes _extra _seen _key _BACKUP_DISPLAY_KEY
+	_backup_display_cache_clear
+	[[ -r $1 ]] || return 0
+	while IFS="$SB_TAB" read -r _type _app _pkg _kind _bytes _extra || [[ -n $_type ]]; do
+		_backup_display_cache_key "$_pkg" "$_kind" || continue
+		_key=$_BACKUP_DISPLAY_KEY
+		eval "_seen=\${${_key}+yes}"
+		if [[ $_seen = yes ]]; then eval "$_key=x"; continue; fi
+		_BACKUP_DISPLAY_CACHE_KEYS="${_BACKUP_DISPLAY_CACHE_KEYS:+$_BACKUP_DISPLAY_CACHE_KEYS }$_key"
+		case $_type in DIR|APK) ;; *) _bytes=x ;; esac
+		case $_bytes in ''|*[!0-9]*) _bytes=x ;; esac
+		[[ ${#_bytes} -le 15 && -z $_extra && -n $_app ]] || _bytes=x
+		while [[ $_bytes = 0* && $_bytes != 0 ]]; do _bytes=${_bytes#0}; done
+		# Only generated identifier names and validated decimal bytes reach eval.
+		eval "$_key=$_bytes"
+	done < "$1"
+	return 0
+}
+_backup_display_cache_get() {
+	local _BACKUP_DISPLAY_KEY
+	_BACKUP_DISPLAY_BYTES=""
+	_backup_display_cache_key "$1" "$2" || return 0
+	eval "_BACKUP_DISPLAY_BYTES=\${${_BACKUP_DISPLAY_KEY}:-}"
+	case $_BACKUP_DISPLAY_BYTES in ''|*[!0-9]*) _BACKUP_DISPLAY_BYTES="" ;; esac
+	return 0
+}
 _backup_prescan_packplan_cache_has() {
 	local _key="|${1:-}:${2:-}|"
 	case "${SPEEDBACKUP_PRESCAN_PACKPLAN_KEYS:-|}" in *"$_key"*) return 0 ;; *) return 1 ;; esac
@@ -5558,6 +5609,7 @@ _backup_prescan_exact_payload_plan() {
 	SPEEDBACKUP_PRESCAN_EXACT_INPUT_BYTES=""
 	SPEEDBACKUP_PRESCAN_EXACT_ARCHIVES="0"
 	SPEEDBACKUP_PRESCAN_PACKPLAN_KEYS='|'
+	_backup_display_cache_clear
 	# 支援兩條已具備完整 prescan facts 的 data-plane：純本地、遠端串流。
 	# exact bytes lookup/stat/sum 全部一次交給 speedscan，shell 只產生 changed rows 與接回 cache keys。
 	[[ ! -f ${0%/*}/app_details.json ]] || return 1
@@ -5604,6 +5656,7 @@ _backup_prescan_exact_payload_plan() {
 	case $_count in ''|*[!0-9]*) _speed_debug_log "BACKUP_PRESCAN_EXACT_BATCH_FAIL rc=0 reason=bad-count"; rm -f "$_rows" "$_details" "$_stats" "$_native_out" 2>/dev/null; return 1 ;; esac
 	case $_rust_ms in ''|*[!0-9]*) _rust_ms=0 ;; esac
 	cp -f "$_details" "$TMPDIR/.backup_run.plan" || return 1
+	_backup_display_cache_load "$_details"
 	SPEEDBACKUP_PRESCAN_PACKPLAN_KEYS="${_cache_keys:-|}"
 	rm -f "$_rows" 2>/dev/null
 	if [[ $_keep_debug != 1 ]]; then rm -f "$_details" "$_stats" "$_native_out" 2>/dev/null; fi
@@ -6351,6 +6404,7 @@ _backup_payload_stats_init() {
 	SPEEDBACKUP_PRESCAN_EXACT_INPUT_BYTES=""
 	SPEEDBACKUP_PRESCAN_EXACT_ARCHIVES="0"
 	SPEEDBACKUP_PRESCAN_PACKPLAN_KEYS='|'
+	_backup_display_cache_clear
 	return 0
 }
 _backup_payload_stats_record_success() {
@@ -7245,7 +7299,7 @@ _json_health_check() {
 
 # app_details.json 健全度檢查改由 Rust speedscan 一次性批次完成。
 # 這會同時批次讀 PackageName / apk_version / app_state 欄位，避免遠端 metadata bundle
-# 解壓後仍被 shell+jq 逐檔檢查拖慢；本地備份後 JSON 檢查也走同一路徑。
+# 解壓後仍被 shell+Rust JSON 逐檔檢查拖慢；本地備份後 JSON 檢查也走同一路徑。
 _json_health_check_batch_list_native() {
 	local _list="$1" _root="$2" _suffix="${3:-}" _prefix _out _rc _stats
 	local _total _ok _invalid _missing _issues _hints _rows _line
@@ -7303,9 +7357,9 @@ _json_health_check_batch_list_native() {
 }
 
 # 本地 changed_apps 的 JSON health 改成 batch summary。
-# 正常路徑升級成 speedscan appdetails-health-batch；jq/awk 僅保留舊 native 缺失時 fallback。
+# 正常路徑升級成 speedscan appdetails-health-batch；固定 Rust JSON／awk 路徑提供相容性診斷。
 _json_health_check_batch_list() {
-	local _list="$1" _root="$2" _summary _missing _jf _app _valid=0 _missing_count=0 _rows=0 _jq_rc=0
+	local _list="$1" _root="$2" _summary _missing _jf _app _valid=0 _missing_count=0 _rows=0 _json_rc=0
 	[[ -s $_list && -d $_root ]] || return 1
 	if _json_health_check_batch_list_native "$_list" "$_root" ""; then
 		return 0
@@ -7327,33 +7381,9 @@ _json_health_check_batch_list() {
 		fi
 	done < "$_list"
 	if [[ $_valid -gt 0 ]]; then
-		jq -r "${_APPDETAILS_JQ_DEFS}
-			def appstate_schema_ok:
-				try all(.[] | objects | select(.app_state != null);
-					(.app_state | type) == \"object\" and
-					(.app_state.schemaVersion == 2) and
-					(.app_state.recordType == \"snapshot\") and
-					((.app_state.packageName // \"\") | type) == \"string\" and
-					(.app_state.permissions | type) == \"array\" and
-					(.app_state.specialAccess | type) == \"object\" and
-					(.app_state.otherAppOps | type) == \"array\" and
-					(.app_state.batterySettings | type) == \"object\") catch false;
-			def appstate_items_ok:
-				try all(.[] | objects | select(.app_state != null);
-					all(.app_state.permissions[]?;
-						(.name|type)==\"string\" and (.granted|type)==\"boolean\" and (.flags|type)==\"number\") and
-					all(.app_state.otherAppOps[]?;
-						(.op|type)==\"number\" and (.mode|type)==\"number\")) catch false;
-			def nullable_ok:
-				try all(.[] | objects | select(.app_state != null);
-					(.app_state|has(\"installer\")) and (.app_state|has(\"ssaid\"))) catch false;
-			input_filename as \$f |
-			(\$f|split(\"/\")|.[-2]) as \$app |
-			[\$app, ad_first_pkg, ad_first_apk_version,
-			 (ad_state_count|tostring), (ad_legacy_state_count|tostring), (ad_appstate_ssaid_count|tostring),
-			 (appstate_schema_ok|tostring), (appstate_items_ok|tostring), (nullable_ok|tostring)] | @tsv" "$@" > "$_summary" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		_jq_rc=$?
-		[[ $_jq_rc = 0 ]] || { rm -f "$_summary" "$_missing" 2>/dev/null; return 1; }
+		_json_cmd -r health-row "$@" > "$_summary" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		_json_rc=$?
+		[[ $_json_rc = 0 ]] || { rm -f "$_summary" "$_missing" 2>/dev/null; return 1; }
 		_rows="$(awk 'NF{n++} END{print n+0}' "$_summary" 2>/dev/null)"
 		case $_rows in ''|*[!0-9]*) _rows=0 ;; esac
 		[[ $_rows -eq $_valid ]] || { rm -f "$_summary" "$_missing" 2>/dev/null; return 1; }
@@ -7384,7 +7414,7 @@ _json_health_check_batch_list() {
 		done < "$_missing"
 	fi
 	[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_summary ]] && cp -f "$_summary" "$SPEED_DEBUG_RUN_DIR/json_health_batch_summary.tsv" 2>/dev/null
-	_speed_debug_log "JSON_HEALTH_BATCH_OK total=$((_valid + _missing_count)) valid=$_valid missing=$_missing_count rows=$_rows engine=jq-fallback jq=single awk=single progress=start-end"
+	_speed_debug_log "JSON_HEALTH_BATCH_OK total=$((_valid + _missing_count)) valid=$_valid missing=$_missing_count rows=$_rows engine=rust-json-fallback json=single awk=single progress=start-end"
 	rm -f "$_summary" "$_missing" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	return 0
 }
@@ -7490,8 +7520,8 @@ _json_health_report() {
 _remote_appdetails_json_ok() {
 	local _f="$1"
 	[[ -s $_f ]] || return 1
-	# ad_required_meta_ok is executed by jq; parse errors already return non-zero.
-	# Avoid a separate jq parse pass on every app_details.json.
+	# ad_required_meta_ok is executed by Rust JSON; parse errors already return non-zero.
+	# Avoid a separate Rust JSON parse pass on every app_details.json.
 	_appdetails_has_required_meta "$_f"
 }
 
@@ -7596,48 +7626,36 @@ verify_backup_manifest() {
 			# 已成功上傳的 payload 被誤報 0/全部缺失。
 			echoRgb "核驗遠端檔案 (快速: 本輪上傳成功記錄)..." "3"
 			_speed_debug_log "VERIFY_MANIFEST_REMOTE_NOTE_FAST_BEGIN expect=$_expect source=remote_files_notes strict_relist=0"
-			while read -r _rel; do
-				[[ -z $_rel ]] && continue
-				if ! _remote_files_note_has_any_rel "$_rel$_ext" "$_rel.tar"; then
-					_miss="$_miss$_rel$_ext\n"
-				fi
-			done <<EOF3
-$(cat "$_mf")
-EOF3
-			_miss="$(echo -e "$_miss" | grep -v '^$')"
+			_miss="$(_speedscan_cmd payload-presence remote "$_mf" "$TMPDIR/.remote_files" - - v1 "$_ext")" || return 1
 			_speed_debug_log "VERIFY_MANIFEST_REMOTE_NOTE_FAST_END expect=$_expect miss=$(echo "$_miss" | grep -vc '^$')"
 		else
 			# 遠端核驗: 重抓一次遠端列表 (單連線), 逐項比對存在性
 			echoRgb "核驗遠端檔案 (單次列表)..." "3"
 			_vlist="$TMPDIR/.verify_files"
 			remote_list_files "$(get_backup_dirname)" > "$_vlist" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-			while read -r _rel; do
-				[[ -z $_rel ]] && continue
-				if ! awk -v a="$_rel$_ext" -v b="$_rel.tar" '$0==a||$0==b{f=1;exit} END{exit !f}' "$_vlist" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
-					# 列表沒找到: 單檔下載開頭再確認一次 (smbclient 列表對中文名轉碼毀名, 避免誤報)
-					_head="$(_stream_download "$(get_backup_dirname)/$_rel$_ext" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | head -c 60)"
-					case $_head in
-					""|*NT_STATUS*) _miss="$_miss$_rel$_ext\n" ;;
-					esac
-				fi
-			done <<EOF3
-$(cat "$_mf")
+            local _missing_candidates
+            _missing_candidates="$(_speedscan_cmd payload-presence remote "$_mf" "$_vlist" - - v1 "$_ext")" || return 1
+            while IFS= read -r _rel; do
+                [[ -n $_rel ]] || continue
+                # SMB listings can mis-encode labels; retain the existing direct read fallback.
+                _head="$(_stream_download "$(get_backup_dirname)/$_rel" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | head -c 60)"
+                case $_head in
+                ""|*NT_STATUS*) _miss="$_miss$_rel\n" ;;
+                esac
+            done <<EOF3
+$_missing_candidates
 EOF3
-			_miss="$(echo -e "$_miss" | grep -v '^$')"
+            _miss="$(echo -e "$_miss" | grep -v "^$")"
 			rm -f "$_vlist"
 		fi
 	else
-		# 本地核驗
-		local _rel
-		while read -r _rel; do
-			[[ -z $_rel ]] && continue
-			if [[ ! -f $Backup/$_rel.tar.zst && ! -f $Backup/$_rel.tar ]]; then
-				_miss="$_miss$_rel$_ext\n"
-			fi
-		done <<EOF3
-$(cat "$_mf")
-EOF3
-		_miss="$(echo -e "$_miss" | grep -v '^$')"
+        local _uploaded_list="$TMPDIR/.nonstream_verify_files" _receipts=-
+        : > "$_uploaded_list"
+        if [[ -n ${remote_type:-} && -s "$TMPDIR/.nonstream_uploaded_files" ]]; then
+            _receipts="$TMPDIR/.nonstream_uploaded_files"
+            remote_list_files "$(get_backup_dirname)" > "$_uploaded_list" || : > "$_uploaded_list"
+        fi
+        _miss="$(_speedscan_cmd payload-presence local "$_mf" "$_uploaded_list" "$_receipts" "$Backup" v1 "$_ext")" || return 1
 	fi
 	local _misscnt
 	_misscnt="$(echo "$_miss" | grep -vc '^$')"
@@ -8281,7 +8299,31 @@ _eventwait_file_size_stable_ms() {
 }
 
 # 對本地輸出檔/TSV/map/bundle/manifest 做統一 eventwait 穩定確認。
-# 不改業務判定，只避免 producer 剛退出後 reader 立刻讀到尚未 flush 完的中間檔。
+# 同步輸出依命令完成判定；仍在執行的 producer 才使用下方穩定等待。
+# Only for foreground producers whose command/pipeline has already returned.
+# File visibility follows producer completion; a quiet-size interval adds no
+# durability guarantee. Keep asynchronous producer waits in eventwait helpers.
+_completed_output_file_ready() {
+    local _path="$1" _tag="${2:-completed_output}" _rc=0
+    [[ -n $_path && -e $_path ]] || _rc=2
+    _speed_debug_log "EVENTWAIT_OUTPUT_FILE_STABLE tag=$_tag path=$_path stableMs=0 timeoutMs=0 rc=$_rc completion=foreground-return requestedStableMs=${3:-0}"
+    return $_rc
+}
+_completed_output_files_ready() {
+    local _tag="$1" _stable="$2" _timeout="$3" _path _ok=0 _fail=0
+    shift 3 || return 2
+    for _path in "$@"; do
+        [[ -n $_path ]] || continue
+        if _completed_output_file_ready "$_path" "$_tag" "$_stable" "$_timeout"; then
+            _ok=$((_ok + 1))
+        else
+            _fail=$((_fail + 1))
+        fi
+    done
+    _speed_debug_log "EVENTWAIT_OUTPUT_FILES_STABLE tag=$_tag ok=$_ok fail=$_fail stableMs=0 timeoutMs=0 completion=foreground-return"
+    [[ $_fail -eq 0 ]]
+}
+
 _eventwait_output_file_stable_ms() {
 	local _path="$1" _tag="${2:-output_file_stable}" _stable_ms="${3:-80}" _timeout_ms="${4:-1200}" _rc
 	[[ -n $_path ]] || return 2
@@ -9110,47 +9152,27 @@ scan_webdav_custom() {
 	scan_webdav "${_subnet:-auto}" "$_ports" "$_paths"
 }
 
-# 423/424: app_details shell/jq 統一入口。
-# 原則：Dex 不讀寫 JSON、不處理 jq filter；所有 app_details 規則仍由原生 jq 處理，
+# 423/424: app_details shell/Rust JSON 統一入口。
+# app_details JSON rules are owned by speedscan; Dex owns Android framework access,
 # 但外層主流程應盡量走這些集中函式，避免 SSAID/payload/app_state/統計規則散落各處。
-_appdetails_jq_inplace() {
+_appdetails_json_inplace() {
 	local _file="$1"
 	shift
 	[[ -n $_file ]] || return 1
-	jq_inplace "$_file" "$@"
+	json_inplace "$_file" "$@"
 }
 
-_appdetails_merge_old_new_jq() {
+_appdetails_merge_old_new_native() {
 	local _old="$1" _new="$2" _out="$3"
 	[[ -s $_old && -s $_new && -n $_out ]] || return 1
-	# 遠端舊資料先讀，本地新資料後覆蓋；仍保留 jq 原生語義，不走 Dex。
-	jq -s '.[0] * .[1]' "$_old" "$_new" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-}
-
-_appdetails_put_app_state_file() {
-	local _file="$1" _entry="$2" _state_file="$3"
-	[[ -s $_file && -n $_entry && -s $_state_file ]] || return 1
-	# 432: normal backup 寫入新 AppState 時，若當前快照的 SSAID/installer 是 null，
-	# 不覆蓋舊 app_details 內已有的有效值；避免不同遠端或短暫讀取失敗時把可恢復資訊洗成 null。
-	_appdetails_jq_inplace "$_file" --arg entry "$_entry" --slurpfile state "$_state_file" '
-		def valid($v): ($v != null and ($v|tostring) != "" and ($v|tostring) != "null");
-		(.[$entry] // {}) as $old |
-		($old.app_state.ssaid // $old.Ssaid // null) as $old_ssaid |
-		($old.app_state.installer // $old.installer // null) as $old_installer |
-		($state[0]
-			| if ((valid(.ssaid)|not) and valid($old_ssaid)) then .ssaid = $old_ssaid else . end
-			| if ((valid(.installer)|not) and valid($old_installer)) then .installer = $old_installer else . end
-		) as $merged |
-		.[$entry].app_state = $merged |
-		.[$entry] |= del(.permissions, .special_access, .battery_settings, .battery_opt,
-			.installer, .install_diagnostics, .Ssaid, .permission_policy_v2)
-	'
+	# 遠端舊資料先讀，本地新資料後覆蓋；Rust 保留遞迴物件合併語義。
+	_json_cmd -s merge "$_old" "$_new" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
 
 _appdetails_set_field() {
 	local _file="$1" _entry="$2" _key="$3" _value="$4"
 	[[ -n $_file && -n $_entry && -n $_key ]] || return 1
-	_appdetails_jq_inplace "$_file" --arg entry "$_entry" --arg key "$_key" --arg value "$_value" '.[$entry][$key] = $value'
+	_appdetails_json_inplace "$_file" --arg entry "$_entry" --arg key "$_key" --arg value "$_value" set-field
 }
 _appdetails_set_entry_string() {
 	_appdetails_set_field "$@"
@@ -9161,15 +9183,15 @@ _appdetails_set_payload_success() {
 	[[ -s $_file && -n $_entry ]] || return 1
 	_date_value="$(date "+%Y.%m.%d %H:%M:%S")"
 	if [[ -n $_write_path ]]; then
-		_appdetails_jq_inplace "$_file" --arg e "$_entry" --arg p "$_path_value" --arg s "$_size_value" --arg d "$_date_value" --arg input "$_input" '.[$e].path = $p | .[$e].Size = $s | .["Backup time"].date = $d | if ($input|test("^[1-9][0-9]*$")) then .[$e].archive_input_bytes = $input else del(.[$e].archive_input_bytes) end'
+		_appdetails_json_inplace "$_file" --arg e "$_entry" --arg p "$_path_value" --arg s "$_size_value" --arg d "$_date_value" --arg input "$_input" set-payload-path
 	else
-		_appdetails_jq_inplace "$_file" --arg e "$_entry" --arg s "$_size_value" --arg d "$_date_value" --arg input "$_input" '.[$e].Size = $s | .["Backup time"].date = $d | if ($input|test("^[1-9][0-9]*$")) then .[$e].archive_input_bytes = $input else del(.[$e].archive_input_bytes) end'
+		_appdetails_json_inplace "$_file" --arg e "$_entry" --arg s "$_size_value" --arg d "$_date_value" --arg input "$_input" set-payload
 	fi
 }
 _appdetails_set_apk_meta() {
 	local _file="$1" _entry="$2" _pkg="$3" _apk_version="$4"
 	[[ -s $_file && -n $_entry && -n $_pkg ]] || return 1
-	_appdetails_jq_inplace "$_file" --arg software "$_entry" --arg pkg "$_pkg" --arg apk_version "$_apk_version" --arg input "${_SBB_INPUT_BYTES:-}" '.[$software].PackageName = $pkg | .[$software].apk_version = $apk_version | if ($input|test("^[1-9][0-9]*$")) then .[$software].archive_input_bytes = $input else del(.[$software].archive_input_bytes) end'
+	_appdetails_json_inplace "$_file" --arg software "$_entry" --arg pkg "$_pkg" --arg apk_version "$_apk_version" --arg input "${_SBB_INPUT_BYTES:-}" set-apk
 }
 _appdetails_set_keystore() {
 	local _file="$1" _entry="$2" _value="$3"
@@ -9180,22 +9202,22 @@ _appdetails_set_keystore() {
 _appdetails_ensure_package_name() {
 	local _file="$1" _entry="$2" _pkg="$3"
 	[[ -s $_file && -n $_entry && -n $_pkg ]] || return 1
-	_appdetails_jq_inplace "$_file" --arg software "$_entry" --arg pkg "$_pkg" 'if .[$software] then .[$software].PackageName = $pkg else . end'
+	_appdetails_json_inplace "$_file" --arg software "$_entry" --arg pkg "$_pkg" ensure-package
 }
 _appdetails_sync_package_name_all() {
 	local _file="$1" _pkg="$2"
 	[[ -s $_file && -n $_pkg ]] || return 1
-	_appdetails_jq_inplace "$_file" --arg name2 "$_pkg" 'walk(if type == "object" and .PackageName then .PackageName = $name2 else . end)'
+	_appdetails_json_inplace "$_file" --arg name2 "$_pkg" sync-package
 }
 _appdetails_is_nonempty() {
 	local _file="$1"
 	[[ -f $_file ]] || return 1
-	[[ "$(jq 'length' "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})" != "0" ]]
+	[[ "$(_json_cmd length "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})" != "0" ]]
 }
 _appdetails_remove_if_empty() {
 	local _file="$1"
 	[[ -f $_file ]] || return 0
-	[[ "$(jq 'length' "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})" = "0" ]] && rm -f "$_file"
+	[[ "$(_json_cmd length "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})" = "0" ]] && rm -f "$_file"
 }
 _appdetails_normalize_final() {
 	local _file="$1" _tag="${2:-APPDETAILS_FINAL}"
@@ -9213,56 +9235,34 @@ _appdetails_json_parse_ok() {
 	_json_parse_quiet_ok "$1"
 }
 
-_APPDETAILS_JQ_DEFS='def ad_objects: [.[] | objects];
-def ad_pkg_entries: [to_entries[] | select((.value|type)=="object" and (.value.PackageName? != null))];
-def ad_payload_entry($o):
-	(($o|type)=="object") and (
-		($o|has("Size")) or ($o|has("size")) or ($o|has("path")) or ($o|has("keystore")) or
-		($o|has("apk_size")) or ($o|has("data_size")) or ($o|has("obb_size")) or
-		($o|has("media_size")) or ($o|has("origin_size"))
-	);
-def ad_first_pkg: try ((ad_pkg_entries[0].value.PackageName // "") | tostring) catch "";
-def ad_first_entry_name:
-	try (if (ad_pkg_entries|length)>0 then (ad_pkg_entries[0].key // "") else ((to_entries[0].key // "") | tostring) end) catch "";
-def ad_first_apk_version: try (([.[] | objects | select(.apk_version != null).apk_version] | .[0]) // "") catch "";
-def ad_state_count: try ([.[] | objects | select(.app_state != null)] | length) catch 0;
-def ad_legacy_state_count: try ([.[] | objects | select(.permissions != null or .special_access != null or .battery_settings != null or .Ssaid != null)] | length) catch 0;
-def ad_appstate_ssaid_count: try ([.[] | objects | select(.app_state.ssaid != null)] | length) catch 0;
-def ad_any_ssaid_count: try ([.[] | objects | select((.app_state.ssaid // .Ssaid) != null)] | length) catch 0;
-def ad_required_meta_ok: try (type=="object" and ([.[] | objects | select(.PackageName != null and .apk_version != null)] | length > 0)) catch false;
-def ad_first_ssaid: try ([.[]|objects|((.app_state.ssaid // .Ssaid) // empty)]|.[0]) catch "";'
-_appdetails_jq_common_defs() {
-	printf '%s\n' "$_APPDETAILS_JQ_DEFS"
-}
-
-_appdetails_jq_read() {
+_appdetails_json_read() {
 	local _file="$1" _expr="$2"
 	[[ -s $_file && -n $_expr ]] || { printf '\n'; return 1; }
-	jq -r "${_APPDETAILS_JQ_DEFS} $_expr" "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_json_cmd -r "$_expr" "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
 
-_appdetails_jq_test() {
+_appdetails_json_test() {
 	local _file="$1" _expr="$2"
 	[[ -s $_file && -n $_expr ]] || return 1
-	jq -e "${_APPDETAILS_JQ_DEFS} $_expr" "$_file" >/dev/null 2>&1
+	_json_cmd -e "$_expr" "$_file" >/dev/null 2>&1
 }
 
 _appdetails_get_first_pkg() {
-	_appdetails_jq_read "$1" 'ad_first_pkg'
+	_appdetails_json_read "$1" 'ad_first_pkg'
 }
 
 _appdetails_get_first_entry_name() {
-	_appdetails_jq_read "$1" 'ad_first_entry_name' | head -n 1
+	_appdetails_json_read "$1" 'ad_first_entry_name' | head -n 1
 }
 
 _appdetails_get_first_apk_version() {
-	_appdetails_jq_read "$1" 'ad_first_apk_version'
+	_appdetails_json_read "$1" 'ad_first_apk_version'
 }
 
 _appdetails_get_field() {
 	local _file="$1" _entry="$2" _key="$3"
 	[[ -s $_file && -n $_entry && -n $_key ]] || { printf '\n'; return 1; }
-	jq -r --arg e "$_entry" --arg k "$_key" 'try (.[$e][$k] // "") catch ""' "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_json_cmd -r --arg e "$_entry" --arg k "$_key" entry-field "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
 _appdetails_get_entry_string() {
 	_appdetails_get_field "$@"
@@ -9276,108 +9276,69 @@ _appdetails_get_entry_size() {
 	_appdetails_get_entry_string "$1" "$2" Size
 }
 
-
-_appdetails_get_entry_app_state_file() {
-	local _file="$1" _entry="$2" _out="$3"
-	[[ -s $_file && -n $_entry && -n $_out ]] || return 1
-	jq -c --arg entry "$_entry" 'try (.[$entry].app_state // null) catch null' "$_file" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-}
-
-
 _appdetails_get_first_ssaid() {
-	_appdetails_jq_read "$1" 'ad_first_ssaid'
+	_appdetails_json_read "$1" 'ad_first_ssaid'
 }
 
 _appdetails_count_state() {
-	_appdetails_jq_read "$1" 'ad_state_count'
+	_appdetails_json_read "$1" 'ad_state_count'
 }
 
 _appdetails_count_legacy_state() {
-	_appdetails_jq_read "$1" 'ad_legacy_state_count'
+	_appdetails_json_read "$1" 'ad_legacy_state_count'
 }
 
 _appdetails_count_appstate_ssaid() {
-	_appdetails_jq_read "$1" 'ad_appstate_ssaid_count'
+	_appdetails_json_read "$1" 'ad_appstate_ssaid_count'
 }
 
 _appdetails_count_any_ssaid() {
-	_appdetails_jq_read "$1" 'ad_any_ssaid_count'
+	_appdetails_json_read "$1" 'ad_any_ssaid_count'
 }
 
 _appdetails_has_required_meta() {
-	_appdetails_jq_test "$1" 'ad_required_meta_ok'
+	_appdetails_json_test "$1" 'ad_required_meta_ok'
 }
 
 _appdetails_appstate_schema_ok() {
 	local _file="$1"
 	[[ -s $_file ]] || return 1
-	jq -e '
-		try all(.[] | objects | select(.app_state != null);
-			(.app_state | type) == "object" and
-			(.app_state.schemaVersion == 2) and
-			(.app_state.recordType == "snapshot") and
-			((.app_state.packageName // "") | type) == "string" and
-			(.app_state.permissions | type) == "array" and
-			(.app_state.specialAccess | type) == "object" and
-			(.app_state.otherAppOps | type) == "array" and
-			(.app_state.batterySettings | type) == "object") catch false
-	' "$_file" >/dev/null 2>&1
+	_json_cmd -e state-schema "$_file" >/dev/null 2>&1
 }
 
 _appdetails_appstate_items_ok() {
 	local _file="$1"
 	[[ -s $_file ]] || return 1
-	jq -e '
-		try all(.[] | objects | select(.app_state != null);
-			all(.app_state.permissions[]?;
-				(.name|type)=="string" and (.granted|type)=="boolean" and
-				(.flags|type)=="number") and
-			all(.app_state.otherAppOps[]?;
-				(.op|type)=="number" and (.mode|type)=="number")) catch false
-	' "$_file" >/dev/null 2>&1
+	_json_cmd -e state-items "$_file" >/dev/null 2>&1
 }
 
 _appdetails_has_key() {
 	local _file="$1" _entry="$2" _key="$3"
 	[[ -s $_file && -n $_entry && -n $_key ]] || return 1
-	jq -e --arg e "$_entry" --arg k "$_key" 'try (.[$e] | has($k) and .[$k] != null) catch false' "$_file" >/dev/null 2>&1
+	_json_cmd -e --arg e "$_entry" --arg k "$_key" entry-has "$_file" >/dev/null 2>&1
 }
 
 _appdetails_read_summary() {
 	local _file="$1" _out="$2"
 	[[ -s $_file && -n $_out ]] || return 1
-	jq -r '
-		(try (([.[] | objects | select(.apk_version != null).apk_version] | .[0]) // "") catch ""),
-		(try (([.[] | objects | select(.PackageName != null).PackageName] | .[0]) // "") catch ""),
-		(try (."Backup time".date // "") catch ""),
-		(try (.user.Size // "") catch ""),
-		(try (.data.Size // "") catch ""),
-		(try (.obb.Size // "") catch ""),
-		(try (.user_de.Size // "") catch ""),
-		(try (.media.Size // "") catch "")
-	' "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} > "$_out"
+	_json_cmd -r metadata-summary "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} > "$_out"
 }
 
 _appdetails_release_entry_read() {
 	local _file="$1" _entry="$2" _out="$3"
 	[[ -s $_file && -n $_entry && -n $_out ]] || return 1
-	jq -r --arg e "$_entry" '
-		(try (.[$e].Size // "") catch ""),
-		(try (([.[] | objects | select(.keystore != null).keystore] | .[0]) // "") catch ""),
-		(try (.[$e].path // "") catch ""),
-		(try (.[$e].archive_input_bytes // "") catch "")
-	' "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} > "$_out"
+	_json_cmd -r --arg e "$_entry" payload-summary "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} > "$_out"
 }
 
 _appdetails_get_backup_installer_value() {
 	local _file="$1" _v
 	[[ -s $_file ]] || { printf '\n'; return 1; }
-	_v="$(jq -r 'try (([.[] | objects | select(.app_state != null).app_state | (.installer // .package.installer // .installDiagnostics.installing // "")] | .[0]) // "") catch ""' "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	_v="$(_json_cmd -r installer-state "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 	if [[ -z $_v || $_v = null ]]; then
-		_v="$(jq -r 'try (([.[] | objects | select(.installer != null).installer] | .[0]) // "") catch ""' "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+		_v="$(_json_cmd -r installer-legacy "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 	fi
 	if [[ -z $_v || $_v = null ]]; then
-		_v="$(jq -r 'try (([.[] | objects | select(.install_diagnostics != null).install_diagnostics | (.installer // .installing // "")] | .[0]) // "") catch ""' "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+		_v="$(_json_cmd -r installer-diagnostics "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 	fi
 	printf '%s\n' "$_v"
 }
@@ -9385,57 +9346,17 @@ _appdetails_get_backup_installer_value() {
 _appdetails_validate_schema() {
 	local _file="$1"
 	[[ -s $_file ]] || return 1
-	_appdetails_json_parse_ok "$_file" || return 1
-	_appdetails_has_required_meta "$_file" || return 1
-	_appdetails_appstate_schema_ok "$_file" || return 1
-	_appdetails_appstate_items_ok "$_file" || return 1
-	return 0
+	_json_cmd -e metadata-valid "$_file" >/dev/null 2>&1
 }
 
 _appdetails_nullable_appstate_ok() {
 	local _file="$1"
 	[[ -s $_file ]] || return 1
-	jq -e '
-		try all(.[] | objects | select(.app_state != null);
-			(.app_state|has("installer")) and (.app_state|has("ssaid"))
-		) catch false
-	' "$_file" >/dev/null 2>&1
+	_json_cmd -e state-nullable "$_file" >/dev/null 2>&1
 }
 
 _appdetails_refresh_build_current_json() {
-	local _old_file="$1" _entry="$2" _pkg="$3" _state_file="$4" _out="$5"
-	[[ -s $_old_file && -s $_state_file && -n $_entry && -n $_pkg && -n $_out ]] || return 1
-	jq --arg e "$_entry" --arg p "$_pkg" --slurpfile state "$_state_file" '
-		. as $old |
-		($old[$e] // {}) as $oe |
-		def pick_entry($o):
-			reduce ["Size","size","apk_size","data_size","obb_size","media_size","origin_size","archive_input_bytes","path","keystore","apk_version","versionCode"][] as $k
-			({}; if (($o|type)=="object" and ($o|has($k))) then .[$k]=$o[$k] else . end);
-		def is_payload_entry($o):
-			(($o|type)=="object") and (
-				($o|has("Size")) or ($o|has("size")) or ($o|has("path")) or ($o|has("keystore")) or
-				($o|has("apk_size")) or ($o|has("data_size")) or ($o|has("obb_size")) or
-				($o|has("media_size")) or ($o|has("origin_size"))
-			);
-		def old_ssaid($o): ($o.app_state.ssaid // $o.Ssaid // null);
-		def preserve_ssaid($state; $old_entry):
-			if (old_ssaid($old_entry) != null and (old_ssaid($old_entry)|tostring) != "" and (old_ssaid($old_entry)|tostring) != "null")
-			then ($state | .ssaid = old_ssaid($old_entry))
-			elif (($state|type)=="object" and ($state|has("ssaid"))) then $state
-			else ($state | .ssaid = null) end;
-		({} + (if ($old|has("Backup time")) then {"Backup time": $old["Backup time"]} else {} end)) |
-		reduce ($old|to_entries[]) as $it (.;
-			if ($it.key == "Backup time" or $it.key == $e) then .
-			elif is_payload_entry($it.value) then .[$it.key] = pick_entry($it.value)
-			else . end) |
-		.[$e] = (
-			pick_entry($oe) +
-			{
-				PackageName: ($oe.PackageName // $p),
-				app_state: preserve_ssaid($state[0]; $oe)
-			}
-		)
-	' "$_old_file" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_speedscan_cmd profile refresh "$1" "$2" "$3" "$4" "$5" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
 
 # 463: 啟動只驗證核心工具；高成本/情境工具改為首次使用時驗證一次。
@@ -9444,14 +9365,13 @@ SPEEDBACKUP_TOOL_SHA_VERIFIED=""
 _speedbackup_tool_sha_table() {
 	cat <<'SB_TOOL_SHA_TABLE'
 busybox 88bdc7e3d9d38ced8a51a35e811240e7f4372db61b541943f53cc5f889f1e29b
-classes.dex 5a14bdc0f6ec40c35d57b70560019b0b72b7e4752c2f557cf72154b908ee3c96
+classes.dex e96a89b01ff955a0af4d68fb88ca10f24d416fc392ad728ce41de550fabed898
 cmd 08da8ac23b6e99788fd3ce6c19c7b5a083b2ad48be35963a48d01d6ee7f3bb6d
-dex_check.sh 5b6f2d2b3297d124a26c781b1f075e3d45d5f2a95c70e97b99001298a17a33a9
+dex_check.sh 6f673d06cade7c13e877a95e2777173b3322a93bad6be07ee6a5ecc414d3db8f
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
-jq 6bc62f25981328edd3cfcfe6fe51b073f2d7e7710d7ef7fcdac28d4e384fc3d4
 keycheck 50645ee0e0d2a7d64fb4a1286446df7a4445f3d11aefd49eeeb88515b314c363
 smbclient 9d957125bf01b9465230943f0f40c01de5f10a55107b11cfa2b79aea016b24dd
-speednative 6c783b533713f482a09656736cf971b8a04072f60402865e2e8d36b72575b769
+speednative c0ac72770bc5bf67a5a2d100925b76a6cf803b215c9572bfeb1bf937bedb4878
 tar 45f372224da44d0e2f18da92926ecf9018224337d7f5b046e4a5aacea5701073
 zstd 64155889e13dcdd8fb46a70963234508f2599f8c43ffa03b0e77aea94676ce6f
 SB_TOOL_SHA_TABLE
@@ -9468,7 +9388,7 @@ SB_TOOL_SHA_LOOKUP
 }
 _speedbackup_tool_is_startup_core() {
 	case "$1" in
-	busybox|cmd|dex_check.sh|find|jq|tar|zstd|speednative) return 0 ;;
+	busybox|cmd|dex_check.sh|find|tar|zstd|speednative) return 0 ;;
 	*) return 1 ;;
 	esac
 }
@@ -9480,7 +9400,7 @@ _speedbackup_classes_dex_sha_warn() {
 	_speed_debug_log "WARN_CLASSES_DEX_SHA_MISMATCH allowed=1 path=$_path actual=$_hash expected=$_expected"
 	# This helper is also called inside command substitutions and stdout redirects.
 	# Only print to the terminal when stdout is really interactive; otherwise log only,
-	# so the warning cannot contaminate appList.txt, backup_settings.conf, jq input, etc.
+	# so the warning cannot contaminate appList.txt, backup_settings.conf, Rust JSON input, etc.
 	if [ -t 1 ]; then
 		echoRgb "⚠️ classes.dex SHA-256 與內建值不同，允許繼續；本版以核心 capability smoke 作為有效性驗證" "3"
 	fi
@@ -9678,12 +9598,6 @@ print_tools_version() {
 		which busybox >/dev/null 2>&1 && {
 			echo "[busybox]"
 			busybox 2>&1 | head -1
-			echo ""
-		}
-		# jq
-		which jq >/dev/null 2>&1 && {
-			echo "[jq]"
-			jq --version 2>&1
 			echo ""
 		}
 		# find
@@ -10188,42 +10102,10 @@ _appstate_show_backup_diff_file() {
 	local _ba _bb _ma _mb _mc _md
 	local _kind _key _a _b _c _d _e _f _label _msg _count=0 _flags_a _flags_b _tab
 	[[ -s $_old_file && -s $_new_file ]] || return 0
-	jq -e 'type=="object" and .schemaVersion==2' "$_old_file" >/dev/null 2>&1 || return 0
-	jq -e 'type=="object" and .schemaVersion==2' "$_new_file" >/dev/null 2>&1 || return 0
-	# 424/425: old/new AppState 都用檔案傳給 jq；差異解析也不再呼叫外部 printf。
-	jq -s -r '
-		.[0] as $old | .[1] as $new |
-		def idx($a;$k): reduce ($a[]? | select(type=="object")) as $x ({}; .[($x[$k]|tostring)]=$x);
-		def sv($x): if $x == null then "null" else ($x|tostring) end;
-		($old.permissions // [] | idx(. ;"name")) as $op |
-		($new.permissions // [] | idx(. ;"name")) as $np |
-		(
-			($np|to_entries[] | .key as $k | .value as $n | ($op[$k] // null) as $o |
-				if $o == null then empty
-				elif (($o.granted//null)!=($n.granted//null) or (($o.appOpMode//null)!=($n.appOpMode//null)) or ($o.flags//0)!=($n.flags//0)) then
-					["PERMISSION",$k,sv($o.granted),sv($n.granted),sv($o.appOpMode),sv($n.appOpMode),sv($o.flags//0),sv($n.flags//0)]|@tsv
-				else empty end),
-			($op|to_entries[] | select($np[.key] == null) |
-				["PERMISSION",.key,sv(.value.granted),"missing",sv(.value.appOpMode),"missing",sv(.value.flags//0),"missing"]|@tsv)
-		),
-		($old.specialAccess // {}) as $os |
-		($new.specialAccess // {}) as $ns |
-		($ns|to_entries[] | .key as $k | .value as $n | ($os[$k] // null) as $o |
-			if $o != null and (($o.mode//null)!=($n.mode//null))
-			then ["SPECIAL",$k,sv($o.mode),sv($n.mode),"","","",""]|@tsv else empty end),
-		($old.otherAppOps // [] | idx(. ;"publicName")) as $oo |
-		($new.otherAppOps // [] | idx(. ;"publicName")) as $no |
-		($no|to_entries[] | .key as $k | .value as $n | ($oo[$k]//null) as $o |
-			if $o != null and (($o.mode//null)!=($n.mode//null))
-			then ["APPOP",$k,sv($o.mode),sv($n.mode),"","","",""]|@tsv else empty end),
-		(["RUN_IN_BACKGROUND","RUN_ANY_IN_BACKGROUND"][] as $k |
-			(($old.batterySettings[$k]//null) as $o | ($new.batterySettings[$k]//null) as $n |
-			if $o != null and $n != null and (($o.mode//null)!=($n.mode//null))
-			then ["BATTERY",$k,sv($o.mode),sv($n.mode),"","","",""]|@tsv else empty end)),
-		(if (($old.batterySettings.deviceidleWhitelist//null)!=($new.batterySettings.deviceidleWhitelist//null))
-			then ["BATTERY","deviceidleWhitelist",sv($old.batterySettings.deviceidleWhitelist),sv($new.batterySettings.deviceidleWhitelist),"","","",""]|@tsv else empty end),
-		(if (($old.ssaid//null)!=($new.ssaid//null)) then ["SSAID","value","changed","changed","","","",""]|@tsv else empty end)
-	' "$_old_file" "$_new_file" > "$_diff" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_diff" 2>/dev/null; return 0; }
+	_json_cmd -e schema2 "$_old_file" >/dev/null 2>&1 || return 0
+	_json_cmd -e schema2 "$_new_file" >/dev/null 2>&1 || return 0
+	# 424/425: old/new AppState 都用檔案傳給 Rust JSON；差異解析也不再呼叫外部 printf。
+	_json_cmd -s -r state-diff "$_old_file" "$_new_file" > "$_diff" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_diff" 2>/dev/null; return 0; }
 	[[ -s $_diff ]] || { rm -f "$_diff" 2>/dev/null; return 0; }
 	_tab="$SB_TAB"
 	# One existing Dex request for this display-only diff; raw state is untouched.
@@ -10487,7 +10369,7 @@ kill_Serve() {
     	_speedbackup_lock_cleanup
     	remote_cleanup
     	_speed_debug_disarm_if_run_gone
-	_speedbackup_operation_finish "$_ec"
+    	_speedbackup_operation_finish "$_ec"
     	_cleanup_tmp_files
     	# 最終打包成功後才刪 run_xxx 目錄；失敗則保留 run_xxx。
     	if [[ "${SPEEDBACKUP_ENTRY_QUIET_TRAP:-0}" = 1 ]]; then _speed_debug_log "trap開始建立speed_debug最終包"; else echoRgb "trap開始建立speed_debug最終包" "3"; fi
@@ -10944,9 +10826,32 @@ _remote_debug_seq() {
 # 參數: $1=協議名 $2=成功清單檔 $3=失敗清單檔
 upload_summary() {
 	local proto="$1" ok_list="$2" fail_list="$3"
-	local ok_count=0 fail_count=0
+	local ok_count=0 fail_count=0 _metadata_save_failed=0
 	[[ -f $ok_list ]] && ok_count="$(wc -l < "$ok_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 	[[ -f $fail_list ]] && fail_count="$(wc -l < "$fail_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+	# Keep a receipt before successful non-stream uploads can delete local files.
+	if [[ ${remote_stream:-0} != 1 && ${REMOTE_UPLOAD_CURRENT_BUNDLE_ONLY:-0} != 1 ]]; then
+		if [[ $fail_count -gt 0 ]]; then
+			: > "$TMPDIR/.nonstream_metadata_upload_failed"
+		else
+			local _metadata_file _metadata_rel
+			while IFS= read -r _metadata_file; do
+				case $_metadata_file in "$Backup"/*)
+					printf '%s\n' "${_metadata_file#"$Backup"/}" >> "$TMPDIR/.nonstream_uploaded_files" ;;
+				esac
+				case $_metadata_file in "$Backup"/*/app_details.json)
+					_metadata_rel="${_metadata_file#"$Backup"/}"
+                    local _saved="$TMPDIR/.nonstream_metadata_saved/$_metadata_rel"
+                    if mkdir -p "${_saved%/*}" && cp -f "$_metadata_file" "$_saved"; then
+                        printf '%s\n' "$_metadata_rel" >> "$TMPDIR/.nonstream_metadata_uploaded"
+                    else
+                        : > "$TMPDIR/.nonstream_metadata_upload_failed"
+                        _metadata_save_failed=1
+                    fi ;;
+				esac
+			done < "$ok_list"
+		fi
+	fi
 	ok_count=${ok_count:-0}
 	fail_count=${fail_count:-0}
 	# 計算總耗時
@@ -10974,7 +10879,7 @@ upload_summary() {
 		echoRgb "remote_keep_local=$remote_keep_local 本地檔案保留" "3"
 		;;
 	*)
-		if [[ $fail_count -eq 0 && $ok_count -gt 0 ]]; then
+		if [[ $fail_count -eq 0 && $_metadata_save_failed = 0 && $ok_count -gt 0 ]]; then
 			echoRgb "全部上傳成功,清除本地已上傳檔案與空應用資料夾 (保留 tools/ 跟入口腳本)" "1"
 			while read -r f; do
 				[[ -z $f ]] && continue
@@ -10993,6 +10898,8 @@ upload_summary() {
 			done < "$ok_list"
 			# 刪除上傳後留下的空 log/ 與 app 目錄；保留 Backup 根目錄本身
 			find "$Backup" -mindepth 1 -type d -empty -delete 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+		elif [[ $_metadata_save_failed != 0 ]]; then
+            echoRgb "metadata 暫存失敗，本地檔案保留；本輪備份尚未完成" 0
 		elif [[ $fail_count -gt 0 ]]; then
 			echoRgb "部分上傳失敗,本地檔案全部保留 (含已上傳的)" "0"
 			remote_log "部分失敗,本地檔案全部保留"
@@ -11001,7 +10908,7 @@ upload_summary() {
 	esac
 	rm -f "$ok_list" "$fail_list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	unset UPLOAD_START_TS
-	[[ $fail_count -eq 0 ]]
+	[[ $fail_count -eq 0 && $_metadata_save_failed = 0 ]]
 }
 
 # 計算速度顯示字串
@@ -11498,7 +11405,7 @@ upload_smb() {
 	done
 	# REMOTE_APPDETAILS_FILE: 主體上傳完成後，若無失敗則上傳 app_details.json
 	if [[ -n $REMOTE_APPDETAILS_FILE && -f $REMOTE_APPDETAILS_FILE ]]; then
-		# 非串流遠端最後上傳 app_details 前再收斂，避免本地後續 jq_inplace/merge 遺留格式漂移。
+		# 非串流遠端最後上傳 app_details 前再收斂，避免本地後續 json_inplace/merge 遺留格式漂移。
 		_app_details_normalize_restore_profile_file "$REMOTE_APPDETAILS_FILE" || _speed_debug_log "APPDETAILS_REMOTE_FINAL_PRETTY_FAIL file=$REMOTE_APPDETAILS_FILE proto=SMB"
 		if [[ ! -s $fail_list ]]; then
 			let idx++
@@ -11771,7 +11678,7 @@ upload_remote() {
 	fi
 	# REMOTE_APPDETAILS_FILE: 主體上傳完成後，若無失敗則上傳 app_details.json
 	if [[ -n $REMOTE_APPDETAILS_FILE && -f $REMOTE_APPDETAILS_FILE ]]; then
-		# 非串流遠端最後上傳 app_details 前再收斂，避免本地後續 jq_inplace/merge 遺留格式漂移。
+		# 非串流遠端最後上傳 app_details 前再收斂，避免本地後續 json_inplace/merge 遺留格式漂移。
 		_app_details_normalize_restore_profile_file "$REMOTE_APPDETAILS_FILE" || _speed_debug_log "APPDETAILS_REMOTE_FINAL_PRETTY_FAIL file=$REMOTE_APPDETAILS_FILE proto=WebDAV"
 		if [[ ! -s $fail_list ]]; then
 			let idx++
@@ -12479,7 +12386,7 @@ _appdetails_bundle_seed_state_set() {
 _appdetails_bundle_audit_guard() {
 	# app_details bundle safety/consistency is owned by Rust speedscan.
 	# It performs payload set-cover guard and stale JSON payload consistency in one pass,
-	# so tools no longer keeps duplicate awk/sort/jq decision engines for this critical path.
+	# so tools no longer keeps duplicate awk/sort/Rust JSON decision engines for this critical path.
 	[[ ${remote_stream:-0} = 1 && -n ${remote_type:-} ]] || return 0
 	local _root="$1" _rel="${2:-app_details_bundle.tar.zst}" _remote_files="${TMPDIR:-/data/local/tmp}/.remote_files"
 	local _seed_list _seed_state _seed_count _prefix _out _rc _status _stage _seed _payload _remote_payload_total _ignored_remote_payload _missing_seed _missing_stage _checked _bad _reason _first _allow _elapsed _seedless_repair _seedless_tainted _seed_expansion _ignored_sample _ignored_debug _taint_file _taint_list
@@ -12501,23 +12408,29 @@ _appdetails_bundle_audit_guard() {
 	fi
 	_out="$(_speedscan_cmd appdetails-bundle-audit "$_root" "$_remote_files" "$_seed_list" "$_seed_state" "$_seed_count" "$_prefix" "$_allow" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 	_rc=$?
-	_status="$(printf '%s\n' "$_out" | awk -F '\t' '$1=="APPDETAILS_BUNDLE_AUDIT"{print $2;exit}' 2>/dev/null)"
-	_stage="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^stage=/){sub(/^stage=/,"",$i); print $i; exit}}' 2>/dev/null)"
-	_seed="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^seed=/){sub(/^seed=/,"",$i); print $i; exit}}' 2>/dev/null)"
-	_payload="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^remotePayloadApps=/){sub(/^remotePayloadApps=/,"",$i); print $i; exit}}' 2>/dev/null)"
-	_remote_payload_total="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^remotePayloadTotal=/){sub(/^remotePayloadTotal=/,"",$i); print $i; exit}}' 2>/dev/null)"
-	_ignored_remote_payload="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^ignoredRemotePayloadApps=/){sub(/^ignoredRemotePayloadApps=/,"",$i); print $i; exit}}' 2>/dev/null)"
-	_missing_seed="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^missingSeed=/){sub(/^missingSeed=/,"",$i); print $i; exit}}' 2>/dev/null)"
-	_missing_stage="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^missingStage=/){sub(/^missingStage=/,"",$i); print $i; exit}}' 2>/dev/null)"
-	_checked="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^checked=/){sub(/^checked=/,"",$i); print $i; exit}}' 2>/dev/null)"
-	_bad="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^bad=/){sub(/^bad=/,"",$i); print $i; exit}}' 2>/dev/null)"
-	_reason="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^reason=/){sub(/^reason=/,"",$i); print $i; exit}}' 2>/dev/null)"
-	_first="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^firstMissing=/){sub(/^firstMissing=/,"",$i); print $i; exit}}' 2>/dev/null)"
-	_elapsed="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^elapsedMs=/){sub(/^elapsedMs=/,"",$i); print $i; exit}}' 2>/dev/null)"
-	_seedless_repair="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^seedlessRepair=/){sub(/^seedlessRepair=/,"",$i); print $i; exit}}' 2>/dev/null)"
-	_seedless_tainted="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^seedlessTainted=/){sub(/^seedlessTainted=/,"",$i); print $i; exit}}' 2>/dev/null)"
-	_seed_expansion="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^seedExpansion=/){sub(/^seedExpansion=/,"",$i); print $i; exit}}' 2>/dev/null)"
-	_ignored_sample="$(printf '%s\n' "$_out" | awk -F '\t' '{for(i=1;i<=NF;i++) if($i ~ /^ignoredRemotePayloadSample=/){sub(/^ignoredRemotePayloadSample=/,"",$i); print $i; exit}}' 2>/dev/null)"
+	if ! {
+		IFS= read -r _status &&
+		IFS= read -r _stage &&
+		IFS= read -r _seed &&
+		IFS= read -r _payload &&
+		IFS= read -r _remote_payload_total &&
+		IFS= read -r _ignored_remote_payload &&
+		IFS= read -r _missing_seed &&
+		IFS= read -r _missing_stage &&
+		IFS= read -r _checked &&
+		IFS= read -r _bad &&
+		IFS= read -r _reason &&
+		IFS= read -r _first &&
+		IFS= read -r _elapsed &&
+		IFS= read -r _seedless_repair &&
+		IFS= read -r _seedless_tainted &&
+		IFS= read -r _seed_expansion &&
+		IFS= read -r _ignored_sample
+	} < "${_prefix}.fields"; then
+		_speed_debug_log "APPDETAILS_BUNDLE_AUDIT_FIELDS_FAIL"
+		return 1
+	fi
+	rm -f "${_prefix}.fields"
 	case $_stage in ''|*[!0-9]*) _stage=0 ;; esac
 	case $_seed in ''|*[!0-9]*) _seed=0 ;; esac
 	case $_payload in -1) ;; ''|*[!0-9]*) _payload=-1 ;; esac
@@ -12618,7 +12531,7 @@ _appdetails_bundle_stage_one() {
 }
 _appdetails_bundle_build_manifest() {
 	# app_details bundle manifest/preupload check is Rust-owned.
-	# This removes the old live jq + stat + sha256sum + awk pipeline from the hot path.
+	# This removes the old live Rust JSON + stat + sha256sum + awk pipeline from the hot path.
 	local _root="$1" _manifest _prefix _out _rc _stats _diag _count _bad _total _seen
 	[[ -d $_root ]] || return 1
 	rm -f "$(_appdetails_bundle_preupload_ok_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -12651,7 +12564,7 @@ _appdetails_bundle_build_manifest() {
 	[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_diag ]] && cp -f "$_diag" "$SPEED_DEBUG_RUN_DIR/appdetails_bundle_preupload_rust_fail.tsv" 2>/dev/null
 	if [[ $_rc = 0 && -s $_manifest && $_bad -eq 0 && $_count -eq $_total ]]; then
 		printf '%s\n' "$_count" > "$(_appdetails_bundle_preupload_ok_file)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
-		_eventwait_output_files_stable_ms appdetails_bundle_manifest_ready 50 1200 "$_manifest" "$(_appdetails_bundle_preupload_ok_file)" >/dev/null 2>&1 || true
+		_completed_output_files_ready appdetails_bundle_manifest_ready 50 1200 "$_manifest" "$(_appdetails_bundle_preupload_ok_file)" >/dev/null 2>&1 || true
 		_speedbackup_progress_step "$_total" "$_total" "app_details bundle 批量預檢完成" "appdetails_bundle_preupload_json" "107"
 		_speed_debug_log "APPDETAILS_BUNDLE_PREUPLOAD_BATCH_OK count=$_count total=$_total rc=$_rc map=rust-appdetails-bundle-manifest out=$(_speed_debug_kv "$_out")"
 		_speed_debug_log "APPDETAILS_BUNDLE_MANIFEST_READY count=$_count file=$_manifest"
@@ -12715,6 +12628,58 @@ _appdetails_bundle_upload_stream() {
 	return 1
 }
 
+_appdetails_bundle_publish_nonstream() {
+	[[ -n ${remote_type:-} ]] || return 0
+	[[ ! -e "$TMPDIR/.nonstream_metadata_upload_failed" ]] || return 1
+	# Only metadata uses the existing streamed bundle publisher. Payloads remain local-first.
+	local remote_stream=1 REMOTE_BACKUP_ROOT_MISSING=0
+	local _subdir="${_BACKUP_DIRNAME_CACHED:-$(get_backup_dirname)}" _root _files _rel _name _tmp _has_bundle=0 _count=0
+	_root="$(_appdetails_bundle_stage_root)"
+	_files="$TMPDIR/.nonstream_metadata_files"
+	_tmp="$TMPDIR/.nonstream_metadata_download.json"
+	remote_list_files "$_subdir" > "$_files" || return 1
+	[[ -s $_files ]] || return 1
+	# Refresh the audit snapshot after uploads; do not use the pre-backup listing.
+	cp -f "$_files" "$TMPDIR/.remote_files" || return 1
+	_remote_filelist_context_write "$_subdir"
+	if grep -Fxq "$(_appdetails_bundle_rel)" "$_files"; then
+		_has_bundle=1
+		_appdetails_bundle_seed_remote_json_cache "$_subdir" "$_root" || return 1
+	else
+		mkdir -p "$_root" || return 1
+		_appdetails_bundle_seed_state_reset
+		_appdetails_bundle_seed_state_set missing 0
+	fi
+	while IFS= read -r _rel; do
+		case $_rel in */app_details.json) ;; *) continue ;; esac
+		_name="${_rel%/app_details.json}"
+		case $_name in ''|*/*|tools|log|wifi|communications) continue ;; esac
+		_remote_download_item_safe metadata "$_name" || return 1
+		# A canonical bundle owns untouched Apps. Old flat JSON must never overwrite them.
+		# Without a bundle, import every legacy flat JSON to retain the existing backup set.
+		if [[ $_has_bundle = 1 ]] && ! grep -Fxq "$_rel" "$TMPDIR/.nonstream_metadata_uploaded" 2>/dev/null; then
+			continue
+		fi
+        if [[ -f "$TMPDIR/.nonstream_metadata_saved/$_rel" ]] && grep -Fxq "$_rel" "$TMPDIR/.nonstream_metadata_uploaded" 2>/dev/null; then
+            cp -f "$TMPDIR/.nonstream_metadata_saved/$_rel" "$_tmp" || return 1
+            _speed_debug_log "METADATA_REUSE_UPLOAD_RECEIPT rel=$_rel avoided_get=1"
+        else
+            _stream_download "$_subdir/$_rel" > "$_tmp" || return 1
+        fi
+        if ! _json_parse_ok "$_tmp"; then
+			rm -f "$_tmp"
+			return 1
+		fi
+		_appdetails_bundle_stage_one "$_name" "" "$_tmp" || return 1
+		_count=$((_count + 1))
+	done < "$_files"
+	rm -f "$_tmp"
+	[[ $_has_bundle = 1 || $_count -gt 0 ]] || return 0
+	_appdetails_bundle_upload_stream || return 1
+	echoRgb "非串流備份 metadata bundle 已就緒" "1"
+	return 0
+}
+
 # 功能7「單獨上傳當前備份」用本地備份根目錄內現有 app_details.json
 # 重新彙總成根層 app_details_bundle.tar.zst。bundle 內容保持 flat layout：
 # manifest.tsv 與 <目錄名>/app_details.json 直接在 tar 根層，下載後可在備份根目錄同級解包。
@@ -12761,7 +12726,7 @@ _appdetails_bundle_build_local_for_current_upload() {
 	fi
 	rm -rf "$_stage" "$_list" "$_bundle.part" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	if [[ $_ok = 1 ]]; then
-		_eventwait_output_file_stable_ms "$_bundle" appdetails_current_upload_bundle_ready 150 3000 >/dev/null 2>&1 || true
+		_completed_output_file_ready "$_bundle" appdetails_current_upload_bundle_ready 150 3000 >/dev/null 2>&1 || true
 		_speed_debug_log "APPDETAILS_BUNDLE_CURRENT_UPLOAD_BUILD_OK rel=$(_appdetails_bundle_rel) file=$_bundle count=$_count total=$_total layout=flat"
 		echoRgb "app_details 已彙總為 $(_appdetails_bundle_rel) ($_count 個 JSON)" "1"
 		return 0
@@ -12836,10 +12801,24 @@ _remote_download_metadata_selected() {
 
 # JSON and generated wrappers are not evidence of downloaded backup data.
 _remote_download_has_payload() {
-	local _file
+	local _file _kind _found=0
 	# Wi-Fi backups are loose configuration files, not App tar archives.
 	if [[ ${1##*/} = wifi ]]; then
 		dir_has_files "$1"
+		return $?
+	fi
+	# Communications use immutable sbcomm generations and current pointers.
+	# They are not tar archives; require every present pointer to resolve locally.
+	if [[ ${1##*/} = communications ]]; then
+		for _kind in messages calls; do
+			[[ -e $1/$_kind.current ]] || continue
+			_file="$(cat "$1/$_kind.current")" || return 1
+			case "$_file" in "$_kind".*.sbcomm) ;; *) return 1 ;; esac
+			case "$_file" in *[!a-zA-Z0-9.]*|*..*) return 1 ;; esac
+			[[ ${#_file} -le 160 && -s $1/$_file ]] || return 1
+			_found=1
+		done
+		[[ $_found = 1 ]]
 		return $?
 	fi
 	for _file in "$1"/*.tar "$1"/*.tar.zst; do
@@ -12916,7 +12895,7 @@ _appdetails_bundle_remote_rel_resolve() {
 		_files="${TMPDIR:-/data/local/tmp}/.appdetails_bundle_resolve_${$}_$RANDOM"
 		rm -f "$_files" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		remote_list_files "$_subdir" > "$_files" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
-		_eventwait_output_file_stable_ms "$_files" appdetails_bundle_resolve_filelist_ready 80 1500 >/dev/null 2>&1 || true
+		_completed_output_file_ready "$_files" appdetails_bundle_resolve_filelist_ready 80 1500 >/dev/null 2>&1 || true
 	fi
 	_found="$(awk -v b="$_canon" -v lb="$_legacy" '
 		{ rel=$1; base=rel; sub(/^.*\//, "", base); if (base==b) {print b; exit} if (base==lb && old=="") old=lb }
@@ -13012,7 +12991,7 @@ _appdetails_bundle_seed_remote_json_cache() {
 		return 1
 	fi
 	# validate/index the extracted bundle once in Rust.  This replaces the
-	# 110-file jq argv batch + shell rescan/sort/grep path.  Invalid JSON files are
+	# 110-file Rust JSON argv batch + shell rescan/sort/grep path.  Invalid JSON files are
 	# removed from the temporary stage by speedscan, matching the historical drop
 	# semantics while producing the canonical seed list directly.
 	_seed_list="$(_appdetails_bundle_seed_app_list_file)"
@@ -14540,7 +14519,7 @@ per_app_upload_and_cleanup() {
 		[[ -s $remote_app_details ]] && {
 			# 合併遠端數據到本地（本地數據優先，但保留遠端已有的字段）
 			local merged="$TMPDIR/.merged_app_details_$$"
-			if _appdetails_merge_old_new_jq "$remote_app_details" "$local_app_details" "$merged" && [[ -s $merged ]]; then
+			if _appdetails_merge_old_new_native "$remote_app_details" "$local_app_details" "$merged" && [[ -s $merged ]]; then
 				cat "$merged" > "$local_app_details"
 			fi
 			rm -f "$merged"
@@ -14563,6 +14542,7 @@ per_app_upload_and_cleanup() {
 	esac
 	# 清除標記
 	unset REMOTE_TRIGGER REMOTE_SKIP_FIXED REMOTE_APPLIST REMOTE_APPDETAILS_SKIP REMOTE_QUIET REMOTE_APPDETAILS_FILE
+	[[ $_upload_rc = 0 ]] || : > "$TMPDIR/.nonstream_metadata_upload_failed"
 	return $_upload_rc
 }
 
@@ -14995,14 +14975,7 @@ _app_network_media_payload_stem() {
 _app_network_media_json_keys_extract() {
 	local _json="$1" _out="$2"
 	[[ -s $_json && -n $_out ]] || return 1
-	jq -r '
-		to_entries[]
-		| select(.key != "Backup time")
-		| select(.key != "PackageName")
-		| select(.key != "app_state")
-		| select(.value|type == "object")
-		| .key
-	' "$_json" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort -u > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_json_cmd -r media-keys "$_json" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort -u > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	[[ -s $_out ]]
 }
 
@@ -15586,6 +15559,51 @@ _remote_download_appdetails_bundle() {
 	return 1
 }
 
+_remote_download_selection_items() {
+	awk '
+		{
+			body=$0; sub(/^\357\273\277/, "", body); sub(/\r$/, "", body)
+			sub(/^[[:space:]]+/, "", body); sub(/[[:space:]]+$/, "", body)
+			if (body == "" || body ~ /^[#＃]/) next
+			if (body ~ /^@telephony:/) {
+				token=body; sub(/[[:space:]].*$/, "", token)
+				rest=substr(body,length(token)+1); sub(/^[[:space:]]+/, "", rest)
+				if ((token != "@telephony:messages" && token != "@telephony:calls") || (rest != "" && rest !~ /^[#＃]/)) { bad=1; next }
+				body=token
+			}
+			if (!seen[body]++) print body
+		}
+		END { if (bad) exit 2 }
+	' "$1"
+}
+
+_remote_download_telephony_item() {
+	local _base="$1" _dest="$2/communications" _kind="${3#@telephony:}" _pointer _payload _generation _rc=1
+	case $_kind in messages|calls) ;; *) return 1 ;; esac
+	mkdir -p "$_dest" || return 1
+	_pointer="$_dest/.$_kind.current.download.${$}.$RANDOM"
+	_payload="$_pointer.payload"
+	if _stream_download "$_base/communications/$_kind.current" > "$_pointer"; then
+		_generation="$(cat "$_pointer")"
+		case $_generation in
+			"$_kind".*.sbcomm)
+				case $_generation in *[!a-zA-Z0-9.]*|*..*) _generation="" ;; esac ;;
+			*) _generation="" ;;
+		esac
+		if [[ -n $_generation && ${#_generation} -le 160 ]] &&
+			_stream_download "$_base/communications/$_generation" > "$_payload" &&
+			_telephony_cmd validate "$_kind" < "$_payload" &&
+			mv -f "$_payload" "$_dest/$_generation" &&
+			mv -f "$_pointer" "$_dest/$_kind.current"; then
+			_rc=0
+		fi
+	fi
+	rm -f "$_pointer" "$_payload"
+	if [[ $_rc = 0 ]]; then echoRgb "✓ 通訊備份下載並驗證完成: $_kind" "1"
+	else echoRgb "✗ 通訊備份下載或驗證失敗: $_kind，上次成功索引保留" "0"; fi
+	return "$_rc"
+}
+
 # 依 appList_network.txt 下載備份到 $MODDIR/Backup_*_$user
 remote_download_backup() {
 	show_conf remote
@@ -15621,7 +15639,12 @@ remote_download_backup() {
 	fi
 	# 解析清單 (去除註解/空行)
 	local items_file="$TMPDIR/.dl_items"
-	grep -Ev '^[[:space:]]*[#＃]|^[[:space:]]*$' "$list" > "$items_file"
+	if ! _remote_download_selection_items "$list" > "$items_file"; then
+		echoRgb "通訊下載清單格式錯誤，請使用 @telephony:messages 或 @telephony:calls；尾端說明需以 # 開頭" "0"
+		rm -f "$items_file"
+		_remote_netwatch_finish
+		return 1
+	fi
 	if [[ ! -s $items_file ]]; then
 		echoRgb "清單為空,沒有東西需要下載" "0"
 		rm -f "$items_file"
@@ -15705,6 +15728,10 @@ _remote_download_smb() {
 		fi
 		let idx++
 		echoRgb "[$idx/$total_items] $(progress_bar $((idx * 100 / total_items))) 下載 $item" "3"
+		case $item in @telephony:*)
+			_remote_download_telephony_item "$chosen" "$dest" "$item" || fail_total=$((fail_total + 1))
+			continue ;;
+		esac
 		local out
 		if ! _smb_reject_unsafe_path download_item "$item" || ! _smb_reject_unsafe_path download_dest "$dest" || ! _smb_reject_unsafe_path download_base "$base"; then
 			fail_total=$((fail_total + 1))
@@ -15890,6 +15917,10 @@ _remote_download_webdav() {
 			_pct=0
 		fi
 		echoRgb "[$idx/$total_items] $(progress_bar $_pct) 下載 $item" "3"
+		case $item in @telephony:*)
+			_remote_download_telephony_item "$chosen" "$dest" "$item" || fail_total=$((fail_total + 1))
+			continue ;;
+		esac
 		item_list="$TMPDIR/.wdav_item_files_${idx}_$$"
 		: > "$item_list"
 		item_fail=0
@@ -16142,7 +16173,7 @@ remote_cleanup() {
     							_remote_health_record_appdetails_drop "$_ra" "$_rk" invalid "$_rfile"
     						fi ;;
     					*)
-    						# 本輪 app_details.json 由 tools 生成且 managed PUT 已回 2xx；預設信任 staged 檔存在，避免 100% 後每 App 再 jq/required-meta。
+    						# 本輪 app_details.json 由 tools 生成且 managed PUT 已回 2xx；預設信任 staged 檔存在，避免 100% 後每 App 再 Rust JSON/required-meta。
     						let _jok++
     						_speed_debug_log "STREAM_JSON_HEALTH_TRUSTED_FAST_OK app=$_ra key=$_rk reason=managed-put-trusted-local-json mode=no-parse" ;;
     					esac
@@ -16206,9 +16237,10 @@ remote_cleanup() {
 		# 設置 REMOTE_APPLIST 為變更的應用列表
 		REMOTE_APPLIST="$(_applist_home_last_text "$(sort -u "$TMPDIR/.changed_apps")" "remote_changed_apps")"
 	fi
+	local _nonstream_upload_rc=0
 	case $remote_type in
-	webdav) upload_remote "webdav" ;;
-	smb) upload_remote "smb" ;;
+	webdav) upload_remote "webdav" || _nonstream_upload_rc=$? ;;
+	smb) upload_remote "smb" || _nonstream_upload_rc=$? ;;
 	*)
 		_remote_netwatch_finish
 		return 0
@@ -16223,6 +16255,17 @@ remote_cleanup() {
 		return 0
 	fi
 	REMOTE_SKIP_APPDATA=0
+	if [[ $_nonstream_upload_rc != 0 ]]; then
+		unset REMOTE_APPLIST
+		_remote_netwatch_finish
+		return 1
+	fi
+	if ! _appdetails_bundle_publish_nonstream; then
+		echoRgb "非串流 metadata bundle 發布失敗，遠端備份尚未完成；請保留本地備份並重試" "0"
+		unset REMOTE_APPLIST
+		_remote_netwatch_finish
+		return 1
+	fi
 	# 遠端json健全度檢查: 下載剛上傳的 app_details.json 逐一驗證 (確保傳輸/合併過程沒有損壞欄位)
 	# 優先用 .changed_apps (本次實際變更上傳的app, 覆蓋面較廣); 無則 fallback REMOTE_APPLIST
 	local _health_src
@@ -16278,7 +16321,7 @@ hms() {
 _speedbackup_device_facts_json_field() {
 	local _file="$1" _key="$2"
 	[[ -s $_file ]] || return 1
-	jq -r --arg k "$_key" '.[$k] // empty' "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | head -1
+	_json_cmd -r --arg k "$_key" root-field "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | head -1
 }
 
 _speedbackup_device_facts_collect() {
@@ -16289,13 +16332,12 @@ _speedbackup_device_facts_collect() {
 	# `_dex_raw: inaccessible or not found`，造成 deviceFacts 永遠 fallback。
 	_dex_exec_unfiltered com.xayah.dex.HiddenApiUtil deviceFacts >"$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_rc=$?
-	if [[ $_rc = 0 ]] && jq -e '.schema=="speedbackup.device_facts.v1"' "$_out" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+	if [[ $_rc = 0 ]] && _json_cmd -e device-schema "$_out" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
 		if [[ -d ${SPEED_DEBUG_RUN_DIR:-} ]]; then
 			cp -f "$_out" "$SPEED_DEBUG_RUN_DIR/device_facts.json" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 		fi
-		# Read all diagnostic fields in one jq process; query the device anew.
-		_dbg="$(jq -r 'def f($k): (.[$k] // "" | tostring | (split("\n")[0] // ""));
-			"marketZh=\(f("marketNameZh")) rawModel=\(f("model")) source=\(f("modelNameSource")) confidence=\(f("modelNameConfidence")) matchedField=\(f("matchedField")) matchedKey=\(f("matchedKey")) dbEntries=\(f("modelDbEntryCount")) dbLines=\(f("modelDbSourceLines"))"' "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
+		# Read all diagnostic fields in one Rust JSON process; query the device anew.
+		_dbg="$(_json_cmd -r device-log "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 		_speed_debug_log "DEVICE_FACTS_DEX_OK schema=speedbackup.device_facts.v1 $_dbg"
 		printf '%s\n' "$_out"
 		return 0
@@ -16343,7 +16385,7 @@ Device_market=""
 Device_model_source=""
 if [[ -n $_device_facts_file && -s $_device_facts_file ]]; then
 	_device_names_file="${_device_facts_file}.names"
-	if jq -r '(.model // ""), (.marketNameZh // ""), (.marketName // ""), (.modelNameSource // "") | tostring | (split("\n")[0] // "")' "$_device_facts_file" > "$_device_names_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+	if _json_cmd -r device-names "$_device_facts_file" > "$_device_names_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
 		{
 			IFS= read -r _model
 			IFS= read -r Device_name
@@ -17672,131 +17714,7 @@ _appstate_text_has_dex_runtime_error() {
 _appstate_capabilities_missing_summary() {
 	local _out="$1"
 	[[ -s $_out ]] || { printf 'capabilities-json-empty-or-missing\n'; return 1; }
-	jq -r '
-		. as $root |
-		def cap($n): any($root.capabilities[]?; .name == $n and .enabled == true);
-		[
-			"dex.capabilities.v1",
-			"dex.machine_stdout.v1",
-			"dex.root_unified_daemon.v1",
-			"hiddenapi.daemon.af_unix.v1",
-			"hiddenapi.force_stop_package_batch.daemon.v1",
-			"dex.app_inventory.snapshot.v1",
-			"dex.app_inventory.pkg_uid.single.v1",
-			"dex.app_inventory.package_status.single.v1",
-			"dex.app_inventory.getlist_onecall.v1",
-			"dex.app_inventory.display_label_facts.v1",
-			"dex.cgroup.lock_metrics.v1",
-			"dex.app_inventory.xposed_module_facts.v1",
-			"dex.app_inventory.xposed_runtime_facts.v1",
-			"dex.app_inventory.package_facts.batch.v1",
-			"dex.pm.pre_restore_package_state.batch.v1",
-			"dex.pm.installer_context_facts.v1",
-			"dex.pm.post_install_facts_batch.v1",
-			"dex.settings.exec_shim.v1",
-			"dex.pm.visible_after_install.v1",
-			"dex.framework_facts.batch.v1",
-			"appstate.snapshot.batch.v2",
-			"appstate.restore.batch.v4",
-			"appstate.verify.batch.v4",
-			"appstate.run_results.v1",
-			"appstate.result_files.v1",
-			"appstate.ssaid.typed_result.v1",
-			"dex.control_results.v1",
-			"webdav.stream_result.v1",
-			"webdav.chunk_write_coalesced.v1",
-			"dex.result_contract.v1",
-			"appstate.verify.vendor_classification.dex.v1",
-			"appstate.daemon.af_unix.v1",
-			"appstate.structured_result_codes.v2",
-			"appstate.ssaid.integrated.v1",
-			"appstate.special_access.integrated.v1",
-			"appstate.scoped_appops_fields.v1",
-			"appstate.default_home.v1",
-			"appstate.foreground_state.batch.v1",
-			"appstate.foreground_list.json.v1",
-			"dex.process_observer.global_daemon.v1",
-			"dex.process_observer.target_lifecycle.v1",
-			"dex.process_observer.batch_watchset.v1",
-			"dex.process_observer.batch_stop_safe.v1",
-			"dex.process_observer.taskstack_package_guard.v1",
-			"dex.app_wake_block.persistent_restore.v1",
-			"dex.app_wake_block.cleanup_restore_failed_retain_state.v1",
-			"dex.app_wake_block.snapshot_unsafe_refuse_apply.v1",
-			"dex.daemon.read_exactly.body_limit.v1",
-			"dex.uid_net_block.persistent_restore.v1",
-			"dex.uid_net_block.cleanup_restore_failed_retain_state.v1",
-			"dex.cgroup_freezer.lifecycle.v1",
-			"dex.cgroup_freezer.persistent_batch_session.v1",
-			"dex.cgroup_freezer.native_package_atomic.v1",
-			"dex.cgroup_freezer.primary_app_scope_package_freeze.v1",
-			"dex.cgroup_freezer.native_package_kill_live_rescan.v1",
-			"dex.cgroup_freezer.native_thaw_uid_emergency.v1",
-			"dex.cgroup_freezer.daemon_parent_control.v1",
-			"dex.display_power.root_daemon.v1",
-			"webdav.rel_only.v1",
-			"webdav.relpath.strict_gate.v1",
-			"webdav.managed_put.v1",
-			"webdav.managed_list_classify.v1",
-			"webdav.managed_batch_put_with_parents.v1",
-			"webdav.propfind.no_cache.v1",
-			"webdav.stream_heartbeat_error_kind.dex.v1",
-			"webdav.daemon.read_body_limit.v1",
-			"webdav.tsv_output.control_guard.v1",
-			"webdav.direct_children_manifest.dex.v1",
-			"webdav.prepare_dirs_created_only_progress.dex.v1",
-			"webdav.prepare_dirs_full_timing.dex.v1",
-			"webdav.profile_visible_compact.dex.v1",
-			"webdav.download_manifest.dex.v1",
-			"webdav.orphan_roots_manifest.dex.v1",
-			"dex.daemon.common_framed_reader.v1",
-			"rust.native_replacement_rc.v1",
-			"webdav.stream_stall_watchdog.dex.v1",
-			"webdav.stream_stall_socket_abort.dex.v1",
-			"webdav.stream_post_body_response_timeout.dex.v1",
-			"webdav.stream_post_body_phase_guard.dex.v1",
-			"webdav.alist_new_payload_direct.dex.v1",
-			"webdav.known_missing_direct_by_fact.dex.v1",
-			"webdav.alist_openlist_sync_put_semantics.dex.v1",
-			"webdav.pathmode_retry_http400.dex.v1",
-			"webdav.backend_profile.dex.v1",
-			"webdav.server_provider_profile.dex.v1",
-			"webdav.redirect_auth_guard.dex.v1",
-			"webdav.feature_profile.dex.v1",
-			"webdav.feature_profile_complete.dex.v1",
-			"webdav.backend_contract_probe.dex.v1",
-			"webdav.list_strategy_by_fact.dex.v1",
-			"webdav.fixed_put_chunked_fallback.dex.v1",
-			"webdav.nas_identity_profile.dex.v1",
-			"webdav.speedbackup_identity.dex.v1",
-			"webdav.sftpgo_identity.dex.v1",
-			"webdav.zspace_identity.dex.v1",
-			"webdav.nas_identity_extended.dex.v1",
-			"webdav.replayable_put_paths_fact_driven.dex.v1",
-			"webdav.atomic_policy_fact_priority.dex.v1",
-			"webdav.managed_probe_chunked.dex.v1",
-			"webdav.backend_support_tier.dex.v1",
-			"webdav.pacer_retry_after_jitter.dex.v1",
-			"webdav.move_copy_verify_after_ambiguous.dex.v1",
-			"webdav.put_verify_after_ambiguous.dex.v1",
-			"webdav.put_405_ambiguous_stat.dex.v1",
-			"webdav.direct_put_verify_before_cleanup.dex.v1",
-			"webdav.put_2xx_body_semantic_guard.dex.v1",
-			"webdav.put_2xx_stat_verify.dex.v1",
-			"webdav.cloudreve_identity.dex.v1",
-			"webdav.alist_version_security_advisory.dex.v1",
-			"webdav.quota_probe.dex.v1",
-			"webdav.upload_size_verify_batch.dex.v1",
-			"webdav.locked_cleanup_deferred.dex.v1",
-			"webdav.jianguoyun_500m_guard.dex.v1",
-			"webdav.backend_decision_log.dex.v1",
-			"rust.native_primitives.convergence_source.v1",
-			"dex.smb.target_probe.v1",
-			"notification.daemon.af_unix.v1",
-			"notification.inline_small_icon.v1"
-		] as $req |
-		[$req[] | select(cap(.) | not)] | join(",")
-	' "$_out" 2>/dev/null | cut -c1-700
+	_json_cmd -r caps-missing "$_out" 2>/dev/null | cut -c1-700
 }
 
 _appstate_capability_diagnose_transport() {
@@ -17867,142 +17785,17 @@ _root_appstate_call() {
 _dex_capabilities_contract_ok() {
 	local _out="$1"
 	[[ -s $_out ]] || return 1
-	jq -e '
-		. as $root |
-		def cap($n): any($root.capabilities[]?; .name == $n and .enabled == true);
-		($root.schemaVersion == 2) and
-		((($root.daemonProtocolVersion // 0)) >= 1) and
-		([
-			"dex.capabilities.v1",
-			"dex.machine_stdout.v1",
-			"dex.root_unified_daemon.v1",
-			"hiddenapi.daemon.af_unix.v1",
-			"hiddenapi.force_stop_package_batch.daemon.v1",
-			"dex.app_inventory.snapshot.v1",
-			"dex.app_inventory.pkg_uid.single.v1",
-			"dex.app_inventory.package_status.single.v1",
-			"dex.app_inventory.getlist_onecall.v1",
-			"dex.app_inventory.display_label_facts.v1",
-			"dex.cgroup.lock_metrics.v1",
-			"dex.app_inventory.xposed_module_facts.v1",
-			"dex.app_inventory.xposed_runtime_facts.v1",
-			"dex.app_inventory.package_facts.batch.v1",
-			"dex.pm.pre_restore_package_state.batch.v1",
-			"dex.pm.installer_context_facts.v1",
-			"dex.pm.post_install_facts_batch.v1",
-			"dex.settings.exec_shim.v1",
-			"dex.pm.visible_after_install.v1",
-			"dex.framework_facts.batch.v1",
-			"appstate.snapshot.batch.v2",
-			"appstate.restore.batch.v4",
-			"appstate.verify.batch.v4",
-			"appstate.run_results.v1",
-			"appstate.result_files.v1",
-			"appstate.ssaid.typed_result.v1",
-			"dex.control_results.v1",
-			"webdav.stream_result.v1",
-			"webdav.chunk_write_coalesced.v1",
-			"dex.result_contract.v1",
-			"appstate.verify.vendor_classification.dex.v1",
-			"appstate.daemon.af_unix.v1",
-			"appstate.structured_result_codes.v2",
-			"appstate.ssaid.integrated.v1",
-			"appstate.special_access.integrated.v1",
-			"appstate.scoped_appops_fields.v1",
-			"appstate.default_home.v1",
-			"appstate.foreground_state.batch.v1",
-			"appstate.foreground_list.json.v1",
-			"dex.process_observer.global_daemon.v1",
-			"dex.process_observer.target_lifecycle.v1",
-			"dex.process_observer.batch_watchset.v1",
-			"dex.process_observer.batch_stop_safe.v1",
-			"dex.process_observer.taskstack_package_guard.v1",
-			"dex.app_wake_block.persistent_restore.v1",
-			"dex.app_wake_block.cleanup_restore_failed_retain_state.v1",
-			"dex.app_wake_block.snapshot_unsafe_refuse_apply.v1",
-			"dex.daemon.read_exactly.body_limit.v1",
-			"dex.uid_net_block.persistent_restore.v1",
-			"dex.uid_net_block.cleanup_restore_failed_retain_state.v1",
-			"dex.cgroup_freezer.lifecycle.v1",
-			"dex.cgroup_freezer.persistent_batch_session.v1",
-			"dex.cgroup_freezer.native_package_atomic.v1",
-			"dex.cgroup_freezer.primary_app_scope_package_freeze.v1",
-			"dex.cgroup_freezer.native_package_kill_live_rescan.v1",
-			"dex.cgroup_freezer.native_thaw_uid_emergency.v1",
-			"dex.cgroup_freezer.daemon_parent_control.v1",
-			"dex.display_power.root_daemon.v1",
-			"webdav.rel_only.v1",
-			"webdav.relpath.strict_gate.v1",
-			"webdav.managed_put.v1",
-			"webdav.managed_list_classify.v1",
-			"webdav.managed_batch_put_with_parents.v1",
-			"webdav.propfind.no_cache.v1",
-			"webdav.stream_heartbeat_error_kind.dex.v1",
-			"webdav.daemon.read_body_limit.v1",
-			"webdav.tsv_output.control_guard.v1",
-			"webdav.direct_children_manifest.dex.v1",
-			"webdav.prepare_dirs_created_only_progress.dex.v1",
-			"webdav.prepare_dirs_full_timing.dex.v1",
-			"webdav.profile_visible_compact.dex.v1",
-			"webdav.download_manifest.dex.v1",
-			"webdav.orphan_roots_manifest.dex.v1",
-			"dex.daemon.common_framed_reader.v1",
-			"rust.native_replacement_rc.v1",
-			"webdav.stream_stall_watchdog.dex.v1",
-			"webdav.stream_stall_socket_abort.dex.v1",
-			"webdav.stream_post_body_response_timeout.dex.v1",
-			"webdav.stream_post_body_phase_guard.dex.v1",
-			"webdav.alist_new_payload_direct.dex.v1",
-			"webdav.known_missing_direct_by_fact.dex.v1",
-			"webdav.alist_openlist_sync_put_semantics.dex.v1",
-			"webdav.pathmode_retry_http400.dex.v1",
-			"webdav.backend_profile.dex.v1",
-			"webdav.server_provider_profile.dex.v1",
-			"webdav.redirect_auth_guard.dex.v1",
-			"webdav.feature_profile.dex.v1",
-			"webdav.feature_profile_complete.dex.v1",
-			"webdav.backend_contract_probe.dex.v1",
-			"webdav.list_strategy_by_fact.dex.v1",
-			"webdav.fixed_put_chunked_fallback.dex.v1",
-			"webdav.nas_identity_profile.dex.v1",
-			"webdav.speedbackup_identity.dex.v1",
-			"webdav.sftpgo_identity.dex.v1",
-			"webdav.zspace_identity.dex.v1",
-			"webdav.nas_identity_extended.dex.v1",
-			"webdav.replayable_put_paths_fact_driven.dex.v1",
-			"webdav.atomic_policy_fact_priority.dex.v1",
-			"webdav.managed_probe_chunked.dex.v1",
-			"webdav.backend_support_tier.dex.v1",
-			"webdav.pacer_retry_after_jitter.dex.v1",
-			"webdav.move_copy_verify_after_ambiguous.dex.v1",
-			"webdav.put_verify_after_ambiguous.dex.v1",
-			"webdav.put_405_ambiguous_stat.dex.v1",
-			"webdav.direct_put_verify_before_cleanup.dex.v1",
-			"webdav.put_2xx_body_semantic_guard.dex.v1",
-			"webdav.put_2xx_stat_verify.dex.v1",
-			"webdav.cloudreve_identity.dex.v1",
-			"webdav.alist_version_security_advisory.dex.v1",
-			"webdav.quota_probe.dex.v1",
-			"webdav.upload_size_verify_batch.dex.v1",
-			"webdav.locked_cleanup_deferred.dex.v1",
-			"webdav.jianguoyun_500m_guard.dex.v1",
-			"webdav.backend_decision_log.dex.v1",
-			"rust.native_primitives.convergence_source.v1",
-			"dex.smb.target_probe.v1",
-			"notification.daemon.af_unix.v1",
-			"notification.inline_small_icon.v1"
-		] | all(.[]; cap(.)))
-	' "$_out" >/dev/null 2>&1
+	_json_cmd -e caps-contract "$_out" >/dev/null 2>&1
 }
 _dex_capabilities_version() {
 	local _out="$1"
 	[[ -s $_out ]] || { printf 'unknown\n'; return 1; }
-	jq -r '.dexVersion // "unknown"' "$_out" 2>/dev/null | head -n 1
+	_json_cmd -r dex-version "$_out" 2>/dev/null | head -n 1
 }
 _dex_capabilities_enabled_summary() {
 	local _out="$1"
 	[[ -s $_out ]] || { printf 'unknown\n'; return 1; }
-	jq -r '[.capabilities[]? | select(.enabled==true) | .name] | join(",")' "$_out" 2>/dev/null | cut -c1-600
+	_json_cmd -r caps-enabled "$_out" 2>/dev/null | cut -c1-600
 }
 
 # 透過 unified root daemon / AppState namespace 驗證機器可讀核心能力。
@@ -18030,17 +17823,17 @@ _appstate_capabilities_check() {
 	fi
 	if _dex_capabilities_contract_ok "$_out"; then
 		_APPSTATE_CAPABILITY_STATE=1
-		if jq -e 'any(.capabilities[]?; .name == "appstate.snapshot.direct_files.v1" and .enabled == true)' "$_out" >/dev/null 2>&1; then
+		if _json_cmd -e caps-direct "$_out" >/dev/null 2>&1; then
 			_APPSTATE_SNAPSHOT_DIRECT_FILES_CAP=1
 		else
 			_APPSTATE_SNAPSHOT_DIRECT_FILES_CAP=0
 		fi
-		if jq -e 'any(.capabilities[]?; .name == "appstate.snapshot.direct_files.single_pass.v1" and .enabled == true)' "$_out" >/dev/null 2>&1; then
+		if _json_cmd -e caps-single "$_out" >/dev/null 2>&1; then
 			_APPSTATE_SNAPSHOT_DIRECT_FILES_SINGLE_PASS_CAP=1
 		else
 			_APPSTATE_SNAPSHOT_DIRECT_FILES_SINGLE_PASS_CAP=0
 		fi
-		if jq -e 'any(.capabilities[]?; .name == "appstate.snapshot.direct_files.telemetry_v2.v1" and .enabled == true)' "$_out" >/dev/null 2>&1; then
+		if _json_cmd -e caps-telemetry "$_out" >/dev/null 2>&1; then
 			_APPSTATE_SNAPSHOT_DIRECT_FILES_TELEMETRY_CAP=1
 		else
 			_APPSTATE_SNAPSHOT_DIRECT_FILES_TELEMETRY_CAP=0
@@ -18181,14 +17974,14 @@ _appstate_direct_publish_maps() {
 		return 1
 	fi
 	_speed_time_refresh; _end="${SPEEDBACKUP_NOW_MS:-0}"
-	_APPSTATE_SNAPSHOT_REDUCE_JQ_MS=0
+	_APPSTATE_SNAPSHOT_REDUCE_JSON_MS=0
 	_APPSTATE_SNAPSHOT_REDUCE_SPLIT_MS=0
 	_APPSTATE_SNAPSHOT_PUBLISH_MS=$((_end - _start))
 	_APPSTATE_SNAPSHOT_REDUCE_ENGINE=dex-direct-files-v1
 	return 0
 }
 
-# AppState NDJSON 解析集中入口：所有 restore/verify/foreground/snapshot 結果讀取都走這裡，避免 jq 條件散落。
+# AppState NDJSON 解析集中入口：所有 restore/verify/foreground/snapshot 結果讀取都走這裡，避免 Rust JSON 條件散落。
 # common receipt: SBRESULT, schema, operation, state, then typed fields.
 _appstate_result_read() {
 	local _file="$1" _kind="$2" _magic _schema _op _state _total _restored _same _failed _checked _n
@@ -18217,80 +18010,52 @@ _appstate_ndjson_has_summary() {
 _appstate_ndjson_has_snapshot_ok_summary() {
 	local _file="$1"
 	[[ -s $_file ]] || return 1
-	jq -s -e '
-		any(.[];
-			.recordType == "summary" and
-			.command == "snapshotAppStateBatch" and
-			.schemaVersion == 2 and
-			(.result.name == "OK" or .result.name == "PARTIAL"))
-	' "$_file" >/dev/null 2>&1
+	_json_cmd -s -e snapshot-summary "$_file" >/dev/null 2>&1
 }
 
 _appstate_ndjson_snapshot_to_map_files() {
 	local _ndjson="$1" _states="$2" _errors="$3"
 	[[ -s $_ndjson && -n $_states && -n $_errors ]] || return 1
-	jq -r '
-		select(.recordType=="snapshot" and (.result.name=="OK" or .result.name=="PARTIAL"))
-		| select((.packageName // "") != "")
-		| [.packageName, (.|tojson)] | @tsv
-	' "$_ndjson" > "$_states" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
-	jq -r '
-		select((.recordType=="snapshot" and .result.name != "OK") or .recordType=="error")
-		| [(.packageName // "-"), (.result.name // "UNKNOWN"), (.result.message // ""), ((.errors // [])|tojson)] | @tsv
-	' "$_ndjson" > "$_errors" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
+	_json_cmd -r snapshot-states "$_ndjson" > "$_states" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
+	_json_cmd -r snapshot-errors "$_ndjson" > "$_errors" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
 	return 0
 }
 
 _appstate_ndjson_get_foreground_active() {
 	local _file="$1" _pkg="$2"
 	[[ -s $_file && -n $_pkg ]] || { printf '\n'; return 1; }
-	jq -r --arg p "$_pkg" 'select(.recordType=="foregroundState" and .packageName==$p) | .active' "$_file" 2>/dev/null | tail -n 1
+	_json_cmd -r --arg p "$_pkg" foreground-active "$_file" 2>/dev/null | tail -n 1
 }
 _appstate_ndjson_foreground_active_packages() {
 	local _file="$1"
 	[[ -s $_file ]] || return 1
-	jq -r 'select(.recordType=="foregroundState" and .active==true) | .packageName' "$_file" 2>/dev/null | awk 'NF && !seen[$0]++'
+	_json_cmd -r foreground-packages "$_file" 2>/dev/null | awk 'NF && !seen[$0]++'
 }
 
 _appstate_snapshot_json_ok() {
 	local _file="$1"
 	[[ -s $_file ]] || return 1
-	jq -e 'type=="object" and .schemaVersion==2 and .recordType=="snapshot"' "$_file" >/dev/null 2>&1
-}
-_appstate_snapshot_persistable_ok() {
-	local _file="$1"
-	[[ -s $_file ]] || return 1
-	jq -e '
-		type == "object" and .recordType == "snapshot" and .schemaVersion == 2 and
-		.packageName != null and (.permissions|type)=="array" and
-		(.specialAccess|type)=="object" and (.otherAppOps|type)=="array" and
-		(.batterySettings|type)=="object"
-	' "$_file" >/dev/null 2>&1
-}
-_appstate_ndjson_remove_package_file() {
-	local _file="$1" _pkg="$2" _out="$3"
-	[[ -s $_file && -n $_pkg && -n $_out ]] || return 1
-	jq -c --arg pkg "$_pkg" 'select((.packageName // "") != $pkg)' "$_file" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_json_cmd -e snapshot-schema "$_file" >/dev/null 2>&1
 }
 _appstate_snapshot_ssaid_only_file() {
 	local _record="$1" _out="$2"
 	[[ -s $_record && -n $_out ]] || return 1
-	jq -c 'select(.ssaid != null and (.ssaid|tostring)!="" and (.ssaid|tostring)!="null")' "$_record" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_json_cmd -c snapshot-ssaid "$_record" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
 
-# snapshot NDJSON one-pass reducer.  A single jq parse emits tagged STATE/ERROR/SUMMARY
+# snapshot NDJSON one-pass reducer.  A single Rust JSON parse emits tagged STATE/ERROR/SUMMARY
 # rows, then mksh/busybox builtin read routes them into the two existing canonical map files.
-# PARTIAL rows intentionally emit BOTH STATE and ERROR, matching the legacy two-jq behavior.
+# PARTIAL rows intentionally emit BOTH STATE and ERROR, matching the legacy two-Rust JSON behavior.
 _APPSTATE_SNAPSHOT_BATCH_WORKERS=unknown
 _APPSTATE_SNAPSHOT_BATCH_ELAPSED=unknown
 _APPSTATE_SNAPSHOT_BATCH_POLICY=unknown
 _APPSTATE_SNAPSHOT_BATCH_ORDER=unknown
-_APPSTATE_SNAPSHOT_REDUCE_JQ_MS=0
+_APPSTATE_SNAPSHOT_REDUCE_JSON_MS=0
 _APPSTATE_SNAPSHOT_REDUCE_SPLIT_MS=0
 _APPSTATE_SNAPSHOT_PUBLISH_MS=0
 _APPSTATE_SNAPSHOT_REDUCE_ENGINE=unknown
 _appstate_ndjson_snapshot_reduce_onepass() {
-	local _ndjson="$1" _states="$2" _errors="$3" _mux _meta _jq_start _jq_end _split_start _split_end
+	local _ndjson="$1" _states="$2" _errors="$3" _mux _meta _json_start _json_end _split_start _split_end
 	local _line _rest _a _b _c _d
 	[[ -s $_ndjson && -n $_states && -n $_errors ]] || return 1
 	_mux="${_states}.mux"
@@ -18298,24 +18063,17 @@ _appstate_ndjson_snapshot_reduce_onepass() {
 	rm -f "$_mux" "$_meta" "$_states" "$_errors" 2>/dev/null
 	: > "$_states" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
 	: > "$_errors" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_states"; return 1; }
-	_speed_time_refresh; _jq_start="${SPEEDBACKUP_NOW_MS:-0}"
-	if ! jq -r '
-		(if (.recordType=="snapshot" and (.result.name=="OK" or .result.name=="PARTIAL") and ((.packageName // "") != ""))
-		 then ["STATE", .packageName, (.|tojson)] | @tsv else empty end),
-		(if ((.recordType=="snapshot" and .result.name != "OK") or .recordType=="error")
-		 then ["ERROR", (.packageName // "-"), (.result.name // "UNKNOWN"), (.result.message // ""), ((.errors // [])|tojson)] | @tsv else empty end),
-		(if (.recordType=="summary" and .command=="snapshotAppStateBatch" and .schemaVersion==2 and (.result.name=="OK" or .result.name=="PARTIAL"))
-		 then ["SUMMARY", (.batchWorkers // "unknown"), (.batchElapsedMs // "unknown"), (.batchWorkerPolicy // "unknown"), (.batchOrder // "unknown"), (.result.name // "unknown")] | @tsv else empty end)
-	' "$_ndjson" > "$_mux" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+	_speed_time_refresh; _json_start="${SPEEDBACKUP_NOW_MS:-0}"
+	if ! _json_cmd -r snapshot-reduce "$_ndjson" > "$_mux" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
 		rm -f "$_mux" "$_meta" "$_states" "$_errors" 2>/dev/null
 		return 1
 	fi
-	_speed_time_refresh; _jq_end="${SPEEDBACKUP_NOW_MS:-0}"
-	_APPSTATE_SNAPSHOT_REDUCE_JQ_MS=$((_jq_end - _jq_start))
+	_speed_time_refresh; _json_end="${SPEEDBACKUP_NOW_MS:-0}"
+	_APPSTATE_SNAPSHOT_REDUCE_JSON_MS=$((_json_end - _json_start))
 	_speed_time_refresh; _split_start="${SPEEDBACKUP_NOW_MS:-0}"
 	# route the tagged mux in one awk process.  used a shell while/read
 	# loop and reopened the destination on every row; on Android mksh that cost
-	# ~246ms for the ~983KB snapshot.  The jq @tsv stream already escapes embedded
+	# ~246ms for the ~983KB snapshot.  The Rust JSON @tsv stream already escapes embedded
 	# tabs/newlines, so literal TAB remains a safe record-field separator here.
 	if ! awk -F '\t' -v states="$_states" -v errors="$_errors" -v meta="$_meta" '
 		BEGIN { summary = 0; bad = 0 }
@@ -18381,7 +18139,7 @@ _appstate_snapshot_to_maps_legacy() {
 	mv -f "$_states" "$TMPDIR/.pkg_appstate" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_base"* 2>/dev/null; return 1; }
 	mv -f "$_errors" "$TMPDIR/.appstate_snapshot_errors" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_base"* 2>/dev/null; return 1; }
 	_eventwait_output_files_stable_ms appstate_snapshot_maps_ready_legacy 50 1200 "$TMPDIR/.pkg_appstate" "$TMPDIR/.appstate_snapshot_errors" >/dev/null 2>&1 || true
-	_APPSTATE_SNAPSHOT_REDUCE_ENGINE=legacy-jq
+	_APPSTATE_SNAPSHOT_REDUCE_ENGINE=rust-json-two-pass
 	return 0
 }
 
@@ -18398,7 +18156,7 @@ _appstate_snapshot_to_maps() {
 	_APPSTATE_SNAPSHOT_BATCH_ELAPSED=unknown
 	_APPSTATE_SNAPSHOT_BATCH_POLICY=unknown
 	_APPSTATE_SNAPSHOT_BATCH_ORDER=unknown
-	_APPSTATE_SNAPSHOT_REDUCE_JQ_MS=0
+	_APPSTATE_SNAPSHOT_REDUCE_JSON_MS=0
 	_APPSTATE_SNAPSHOT_REDUCE_SPLIT_MS=0
 	_APPSTATE_SNAPSHOT_PUBLISH_MS=0
 	_APPSTATE_SNAPSHOT_REDUCE_ENGINE=unknown
@@ -18413,11 +18171,11 @@ _appstate_snapshot_to_maps() {
 		fi
 		_speed_time_refresh; _pub_end="${SPEEDBACKUP_NOW_MS:-0}"
 		_APPSTATE_SNAPSHOT_PUBLISH_MS=$((_pub_end - _pub_start))
-		_APPSTATE_SNAPSHOT_REDUCE_ENGINE=onepass-jq
-		_speed_debug_log "APPSTATE_SNAPSHOT_REDUCE_ONEPASS jqMs=$_APPSTATE_SNAPSHOT_REDUCE_JQ_MS splitMs=$_APPSTATE_SNAPSHOT_REDUCE_SPLIT_MS publishMs=$_APPSTATE_SNAPSHOT_PUBLISH_MS stableWaitMs=0 publish=atomic-mv fallback=legacy-jq splitEngine=awk-onepass timer=nofork-direct-v1 schema=speedbackup.appstate_snapshot_reduce_onepass.v3"
+		_APPSTATE_SNAPSHOT_REDUCE_ENGINE=rust-json-onepass
+		_speed_debug_log "APPSTATE_SNAPSHOT_REDUCE_ONEPASS jsonMs=$_APPSTATE_SNAPSHOT_REDUCE_JSON_MS splitMs=$_APPSTATE_SNAPSHOT_REDUCE_SPLIT_MS publishMs=$_APPSTATE_SNAPSHOT_PUBLISH_MS stableWaitMs=0 publish=atomic-mv fallback=rust-json-two-pass splitEngine=awk-onepass timer=nofork-direct-v1 schema=speedbackup.appstate_snapshot_reduce_onepass.v4"
 		return 0
 	fi
-	_speed_debug_log "APPSTATE_SNAPSHOT_REDUCE_ONEPASS_FAIL action=fallback=legacy-jq splitEngine=awk-onepass timer=nofork-direct-v1 schema=speedbackup.appstate_snapshot_reduce_onepass.v3"
+	_speed_debug_log "APPSTATE_SNAPSHOT_REDUCE_ONEPASS_FAIL action=fallback=rust-json-two-pass splitEngine=awk-onepass timer=nofork-direct-v1 schema=speedbackup.appstate_snapshot_reduce_onepass.v4"
 	rm -f "$_base"* 2>/dev/null
 	_appstate_snapshot_to_maps_legacy "$_ndjson"
 }
@@ -18643,23 +18401,27 @@ _pkg_uid_map_set_one() {
 }
 
 _app_inventory_package_status_call() {
-	local _pkg="$1" _refresh="${2:-refresh}" _body _out _rc
+	local _pkg="$1" _refresh="${2:-refresh}" _body _out _rc _format="${3:-}"
 	[[ -n $_pkg ]] || return 1
 	_body="$(_webdav_tmp_path root_inventory_pkgstatus_args)"
 	_out="$(_webdav_tmp_path root_inventory_pkgstatus_out)"
 	{
 		printf '%s\n' "${USER_ID:-${user:-0}}"
 		printf '%s\n' "$_pkg"
+		[[ $_format = fields ]] && printf '%s\n' fields
 		[[ -n $_refresh ]] && printf '%s\n' "$_refresh"
 	} > "$_body"
 	_root_daemon_call_file_hot hiddenapi appInventoryPackageStatus "$_body" "$_out"
 	_rc=$?
 	if [[ $_rc = 125 ]]; then
 		_speed_debug_log "APP_INVENTORY_PACKAGE_STATUS_ROOT_DAEMON_FALLBACK package=$_pkg"
-		_dex_raw com.xayah.dex.HiddenApiUtil appInventoryPackageStatus "${USER_ID:-${user:-0}}" "$_pkg" $_refresh > "$_out"
+		_dex_raw com.xayah.dex.HiddenApiUtil appInventoryPackageStatus "${USER_ID:-${user:-0}}" "$_pkg" $_format $_refresh > "$_out"
 		_rc=$?
 	fi
-	if [[ $_rc = 0 ]] && jq -e 'type=="object" and .recordType=="packageStatus"' "$_out" >/dev/null 2>&1; then
+	if [[ $_rc = 0 && $_format = fields ]]; then
+		cat "$_out"; rm -f "$_body" "$_out"; return 0
+	fi
+	if [[ $_rc = 0 ]] && _json_cmd -e status-schema "$_out" >/dev/null 2>&1; then
 		cat "$_out" 2>/dev/null
 		rm -f "$_body" "$_out" 2>/dev/null
 		return 0
@@ -19040,12 +18802,17 @@ _telephony_restore_one() {
     case "$_file" in "$_kind".*.sbcomm) ;; *) echoRgb '通訊備份索引格式錯誤' 0; return 1;; esac
     case "$_file" in *[!a-zA-Z0-9.]*|*..*) echoRgb '通訊備份索引路徑錯誤' 0; return 1;; esac
     [[ ${#_file} -le 160 ]] || return 1
-    # First pass validates the complete stream and attachment hashes without writes.
-    # Second pass merges records. Neither pass creates a local payload file.
+    # One Dex process, two independently framed passes. The second pass cannot
+    # write anything until the first archive has been completely validated.
     echoRgb "檢查通訊備份完整性: $_kind" 2
-    ( set -o pipefail; _telephony_read "$_mode" "$_dir/$_file" | _telephony_cmd validate "$_kind" ) || return 1
     echoRgb "合併恢復通訊資料: $_kind (保留既有紀錄，跳過重複)" 2
-    ( set -o pipefail; _telephony_read "$_mode" "$_dir/$_file" | _telephony_cmd restore "$_kind" )
+    (
+        set -o pipefail
+        {
+            _telephony_read "$_mode" "$_dir/$_file" | _speedscan_cmd frame-stream &&
+            _telephony_read "$_mode" "$_dir/$_file" | _speedscan_cmd frame-stream
+        } | _telephony_cmd restore-session "$_kind"
+    )
     _rc=$?
     if [[ $_rc != 0 ]]; then echoRgb "通訊恢復中斷: $_kind，可能已有部分紀錄匯入；可重試，既有紀錄不清除" 0
     else echoRgb "通訊恢復完成: $_kind（已跳過重複紀錄）" 1; fi
@@ -19778,7 +19545,6 @@ _sb_update_stage_is_full_release() {
 		tools/tools.sh \
 		tools/dex_check.sh \
 		tools/classes.dex \
-		tools/jq \
 		tools/tar \
 		tools/zstd \
 		tools/smbclient \
@@ -20920,7 +20686,7 @@ prepare_app_state_prescan_batch() {
 			[[ $_snapshot_total -gt 0 ]] && _speedbackup_progress_step "$_snapshot_total" "$_snapshot_total" "應用狀態預掃完成" "prepare_appstate_prescan" "107"
 			_speed_time_refresh; _progress_end_end="${SPEEDBACKUP_NOW_MS:-0}"
 			_progress_end_ms=$((_progress_end_end - _debug_end))
-			case ${_APPSTATE_SNAPSHOT_REDUCE_ENGINE:-} in onepass-jq|dex-direct-files-v1) _stable_wait_field=0 ;; esac
+			case ${_APPSTATE_SNAPSHOT_REDUCE_ENGINE:-} in rust-json-onepass|dex-direct-files-v1) _stable_wait_field=0 ;; esac
 			if [[ $_direct_mode = 1 ]]; then
 				_speed_debug_log "APPSTATE_PRESCAN_DIRECT_FILES_OK snapshotBytes=${_APPSTATE_DIRECT_SNAPSHOT_BYTES:-0} stateRows=${_APPSTATE_DIRECT_STATE_ROWS:-0} errorRows=${_APPSTATE_DIRECT_ERROR_ROWS:-0} relayBody=compact-summary singlePass=${_APPSTATE_SNAPSHOT_DIRECT_FILES_SINGLE_PASS_CAP:-0} snapshotCoreMs=${_APPSTATE_DIRECT_SNAPSHOT_CORE_MS:-0} snapshotSerializeMs=${_APPSTATE_DIRECT_SNAPSHOT_SERIALIZE_MS:-0} directSnapshotWriteMs=${_APPSTATE_DIRECT_DEX_SNAPSHOT_WRITE_MS:-0} directStateWriteMs=${_APPSTATE_DIRECT_DEX_STATE_WRITE_MS:-0} directErrorWriteMs=${_APPSTATE_DIRECT_DEX_ERROR_WRITE_MS:-0} dexPersistMs=${_APPSTATE_DIRECT_DEX_PERSIST_MS:-0} dexPersistOtherMs=${_APPSTATE_DIRECT_DEX_PERSIST_OTHER_MS:-0} directPublishMs=${_APPSTATE_DIRECT_DEX_PUBLISH_MS:-0} directTotalMs=${_APPSTATE_DIRECT_DEX_TOTAL_MS:-0} publishMs=${_APPSTATE_SNAPSHOT_PUBLISH_MS:-0} stableWaitMs=0 fallback=relay-reducer"
 			fi
@@ -20931,7 +20697,7 @@ prepare_app_state_prescan_batch() {
 			_internal_total_ms=$((_fn_end - _fn_start))
 			_accounted_ms=$((_prelude_ms + _pkg_prep_ms + _progress_begin_ms + _cache_check_ms + _daemon_call_ms + _reduce_total_ms + _parallel_log_ms + _debug_persist_ms + _progress_end_ms + _cleanup_ms))
 			_unaccounted_ms=$((_internal_total_ms - _accounted_ms)); [[ $_unaccounted_ms -lt 0 ]] && _unaccounted_ms=0
-			_speed_debug_log "APPSTATE_PRESCAN_WRAPPER_TIMING preludeMs=$_prelude_ms packagePrepMs=$_pkg_prep_ms progressBeginMs=$_progress_begin_ms cacheCheckMs=$_cache_check_ms daemonCallMs=$_daemon_call_ms dexBatchElapsedMs=$_appstate_batch_elapsed daemonNonDexMs=$_daemon_non_dex_ms reduceTotalMs=$_reduce_total_ms reduceJqMs=${_APPSTATE_SNAPSHOT_REDUCE_JQ_MS:-0} reduceSplitMs=${_APPSTATE_SNAPSHOT_REDUCE_SPLIT_MS:-0} publishMs=${_APPSTATE_SNAPSHOT_PUBLISH_MS:-0} stableWaitMs=$_stable_wait_field parallelLogMs=$_parallel_log_ms debugPersistMs=$_debug_persist_ms debugPersistMode=$_debug_mode progressEndMs=$_progress_end_ms cleanupMs=$_cleanup_ms accountedMs=$_accounted_ms unaccountedMs=$_unaccounted_ms internalTotalMs=$_internal_total_ms reducer=${_APPSTATE_SNAPSHOT_REDUCE_ENGINE:-unknown} directMode=$_direct_mode directSnapshotBytes=${_APPSTATE_DIRECT_SNAPSHOT_BYTES:-0} directStateRows=${_APPSTATE_DIRECT_STATE_ROWS:-0} directErrorRows=${_APPSTATE_DIRECT_ERROR_ROWS:-0} snapshotCoreMs=${_APPSTATE_DIRECT_SNAPSHOT_CORE_MS:-0} snapshotSerializeMs=${_APPSTATE_DIRECT_SNAPSHOT_SERIALIZE_MS:-0} directSnapshotWriteMs=${_APPSTATE_DIRECT_DEX_SNAPSHOT_WRITE_MS:-0} directStateWriteMs=${_APPSTATE_DIRECT_DEX_STATE_WRITE_MS:-0} directErrorWriteMs=${_APPSTATE_DIRECT_DEX_ERROR_WRITE_MS:-0} dexDirectPersistMs=${_APPSTATE_DIRECT_DEX_PERSIST_MS:-0} dexDirectPersistOtherMs=${_APPSTATE_DIRECT_DEX_PERSIST_OTHER_MS:-0} directPublishMs=${_APPSTATE_DIRECT_DEX_PUBLISH_MS:-0} directTotalMs=${_APPSTATE_DIRECT_DEX_TOTAL_MS:-0} daemonProtocolMs=$_daemon_protocol_ms daemonEnsureMs=$_daemon_ensure_ms daemonWorkerMs=$_daemon_worker_ms daemonRelayMs=$_daemon_relay_ms daemonStatusParseMs=$_daemon_status_ms daemonDebugSizeMs=$_daemon_debug_size_ms daemonRetries=$_daemon_retries daemonEnsureMode=$_daemon_ensure_mode requestBodyBytes=$_snapshot_body_len splitEngine=awk-onepass timer=nofork-direct-v1 schema=speedbackup.appstate_prescan_wrapper_timing.v7"
+			_speed_debug_log "APPSTATE_PRESCAN_WRAPPER_TIMING preludeMs=$_prelude_ms packagePrepMs=$_pkg_prep_ms progressBeginMs=$_progress_begin_ms cacheCheckMs=$_cache_check_ms daemonCallMs=$_daemon_call_ms dexBatchElapsedMs=$_appstate_batch_elapsed daemonNonDexMs=$_daemon_non_dex_ms reduceTotalMs=$_reduce_total_ms reduceJsonMs=${_APPSTATE_SNAPSHOT_REDUCE_JSON_MS:-0} reduceSplitMs=${_APPSTATE_SNAPSHOT_REDUCE_SPLIT_MS:-0} publishMs=${_APPSTATE_SNAPSHOT_PUBLISH_MS:-0} stableWaitMs=$_stable_wait_field parallelLogMs=$_parallel_log_ms debugPersistMs=$_debug_persist_ms debugPersistMode=$_debug_mode progressEndMs=$_progress_end_ms cleanupMs=$_cleanup_ms accountedMs=$_accounted_ms unaccountedMs=$_unaccounted_ms internalTotalMs=$_internal_total_ms reducer=${_APPSTATE_SNAPSHOT_REDUCE_ENGINE:-unknown} directMode=$_direct_mode directSnapshotBytes=${_APPSTATE_DIRECT_SNAPSHOT_BYTES:-0} directStateRows=${_APPSTATE_DIRECT_STATE_ROWS:-0} directErrorRows=${_APPSTATE_DIRECT_ERROR_ROWS:-0} snapshotCoreMs=${_APPSTATE_DIRECT_SNAPSHOT_CORE_MS:-0} snapshotSerializeMs=${_APPSTATE_DIRECT_SNAPSHOT_SERIALIZE_MS:-0} directSnapshotWriteMs=${_APPSTATE_DIRECT_DEX_SNAPSHOT_WRITE_MS:-0} directStateWriteMs=${_APPSTATE_DIRECT_DEX_STATE_WRITE_MS:-0} directErrorWriteMs=${_APPSTATE_DIRECT_DEX_ERROR_WRITE_MS:-0} dexDirectPersistMs=${_APPSTATE_DIRECT_DEX_PERSIST_MS:-0} dexDirectPersistOtherMs=${_APPSTATE_DIRECT_DEX_PERSIST_OTHER_MS:-0} directPublishMs=${_APPSTATE_DIRECT_DEX_PUBLISH_MS:-0} directTotalMs=${_APPSTATE_DIRECT_DEX_TOTAL_MS:-0} daemonProtocolMs=$_daemon_protocol_ms daemonEnsureMs=$_daemon_ensure_ms daemonWorkerMs=$_daemon_worker_ms daemonRelayMs=$_daemon_relay_ms daemonStatusParseMs=$_daemon_status_ms daemonDebugSizeMs=$_daemon_debug_size_ms daemonRetries=$_daemon_retries daemonEnsureMode=$_daemon_ensure_mode requestBodyBytes=$_snapshot_body_len splitEngine=awk-onepass timer=nofork-direct-v1 schema=speedbackup.appstate_prescan_wrapper_timing.v8"
 			return 0
 		fi
 	fi
@@ -20948,7 +20714,7 @@ prepare_app_state_prescan_batch() {
 prepare_pkg_uid_map() {
 	: > "$TMPDIR/.pkg_uid" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	appinventory pkgUidMap all 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} >> "$TMPDIR/.pkg_uid"
-	_eventwait_output_file_stable_ms "$TMPDIR/.pkg_uid" pkg_uid_map_ready 50 1200 >/dev/null 2>&1 || true
+	_completed_output_file_ready "$TMPDIR/.pkg_uid" pkg_uid_map_ready 50 1200 >/dev/null 2>&1 || true
 	if [[ -s "$TMPDIR/.pkg_uid" ]]; then
 		_speed_debug_log "APP_INVENTORY_UID_MAP_OK rows=$(wc -l < "$TMPDIR/.pkg_uid" 2>/dev/null | tr -d ' ')"
 		return 0
@@ -21157,7 +20923,7 @@ _restore_package_compare_build() {
 		cp -f "$_summary" "$SPEED_DEBUG_RUN_DIR/restore_package_compare_summary.txt" 2>/dev/null || true
 		cp -f "$_remote" "$SPEED_DEBUG_RUN_DIR/restore_package_compare_remote_map.tsv" 2>/dev/null || true
 	}
-	_eventwait_output_files_stable_ms restore_package_compare_outputs_ready 50 1200 "$_out" "$_summary" >/dev/null 2>&1 || true
+	_completed_output_files_ready restore_package_compare_outputs_ready 50 1200 "$_out" "$_summary" >/dev/null 2>&1 || true
 	_speed_debug_log "RESTORE_PACKAGE_COMPARE_MAP_OK total=$_total selected=${_selected:-0} localInstalled=$_installed localMissing=$_missing remoteNewer=$_remote_newer localNewer=$_local_newer payloadMissing=$_payload_missing systemOrUpdated=$_system defaultHomeHints=$_default_home defaultImeHints=$_default_ime elapsedMs=$_elapsed report_only=1"
 	rm -f "$_meta" "$_remote" "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	return 0
@@ -21398,7 +21164,7 @@ _restore_package_facts_extract_from_stage() {
 	_count="$(wc -l < "$_tmp" 2>/dev/null | tr -d ' ')"; case $_count in ''|*[!0-9]*) _count=0 ;; esac
 	if [[ $_count -gt 0 ]]; then
 		cat "$_tmp" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		_eventwait_output_file_stable_ms "$_out" restore_package_facts_stage_pkgs_ready 50 1200 >/dev/null 2>&1 || true
+		_completed_output_file_ready "$_out" restore_package_facts_stage_pkgs_ready 50 1200 >/dev/null 2>&1 || true
 		[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f "$_out" "$SPEED_DEBUG_RUN_DIR/package_facts_prefetch_pkgs_stage.tsv" 2>/dev/null || true
 		_speed_debug_log "RESTORE_PACKAGE_FACTS_EXTRACT_STAGE_OK count=$_count stage=$_stage source=appdetails-summary-map"
 		rm -f "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -21440,7 +21206,7 @@ _restore_package_facts_extract_list() {
 		' 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort -u > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	fi
 	if [[ -s $_out ]]; then
-		_eventwait_output_file_stable_ms "$_out" restore_package_facts_list_pkgs_ready 50 1200 >/dev/null 2>&1 || true
+		_completed_output_file_ready "$_out" restore_package_facts_list_pkgs_ready 50 1200 >/dev/null 2>&1 || true
 		_stage_count="$(wc -l < "$_out" 2>/dev/null | tr -d ' ')"; case $_stage_count in ''|*[!0-9]*) _stage_count=0 ;; esac
 		_speed_debug_log "RESTORE_PACKAGE_FACTS_EXTRACT_LIST_OK count=$_stage_count source=app_list"
 		return 0
@@ -21473,7 +21239,7 @@ _restore_package_facts_prefetch() {
 		awk -F '\t' '$1=="OK" && $3=="true" && $2!="" {print $2}' "$_facts" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort -u > "$TMPDIR/.installed_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 		awk -F '\t' '$1=="OK" && $3=="true" && $2!="" && $4 ~ /^[0-9]+$/ {print $2 "\t" $4}' "$_facts" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort -u > "$TMPDIR/.pkg_uid" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 		awk -F '\t' '$1=="OK" && $3=="true" && $2!="" && $5 ~ /^[0-9]+$/ {print $2 "\t" $5}' "$_facts" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort -u > "$TMPDIR/.pkg_ver" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
-		_eventwait_output_files_stable_ms restore_package_facts_maps_ready 50 1200 "$_facts" "$TMPDIR/.installed_pkgs" "$TMPDIR/.pkg_uid" "$TMPDIR/.pkg_ver" >/dev/null 2>&1 || true
+		_completed_output_files_ready restore_package_facts_maps_ready 50 1200 "$_facts" "$TMPDIR/.installed_pkgs" "$TMPDIR/.pkg_uid" "$TMPDIR/.pkg_ver" >/dev/null 2>&1 || true
 		_speed_time_refresh; _elapsed="$(( ${SPEEDBACKUP_NOW_MS:-0} - _t0 ))"
 		[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f "$_facts" "$SPEED_DEBUG_RUN_DIR/package_facts_map.tsv" 2>/dev/null || true
 		_speed_debug_log "RESTORE_PACKAGE_FACTS_PREFETCH_OK requested=$_count factsTotal=${_facts_total:-0} selected=${_selected:-0} installed=${_ok:-0} missing=${_missing:-0} elapsedMs=$_elapsed source=${_facts_source:-unknown}"
@@ -21554,24 +21320,20 @@ _restore_package_status_refresh() {
 	if _restore_package_status_from_facts_cache "$_pkg" "$_reason"; then
 		return 0
 	fi
-	_json="$(_app_inventory_package_status_call "$_pkg" refresh 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})" || _json=""
-	_tmp="$TMPDIR/.package_status_${$}_$RANDOM.json"
-	printf '%s\n' "$_json" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	if ! jq -e 'type=="object" and .recordType=="packageStatus"' "$_tmp" >/dev/null 2>&1; then
-		_speed_debug_log "RESTORE_PACKAGE_STATUS_FAIL package=$_pkg reason=$_reason source=appinventory_package_status"
-		rm -f "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		return 1
+	_tmp="$TMPDIR/.package_status_${$}_$RANDOM.fields"
+	if ! _app_inventory_package_status_call "$_pkg" refresh fields > "$_tmp"; then
+		rm -f "$_tmp"; return 1
 	fi
-	[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cat "$_tmp" >> "$SPEED_DEBUG_RUN_DIR/package_status.ndjson" 2>/dev/null
-	_installed="$(jq -r '.installed // false' "$_tmp" 2>/dev/null)"
-	_uid="$(jq -r '.uid // empty' "$_tmp" 2>/dev/null | tr -d ' 	
-')"
-	_ver="$(jq -r '.versionCode // empty' "$_tmp" 2>/dev/null | tr -d ' 	
-')"
-	_ud="$(jq -r '.userDataExists // false' "$_tmp" 2>/dev/null)"
-	_de="$(jq -r '.userDeDataExists // false' "$_tmp" 2>/dev/null)"
-	_src="$(jq -r '.source // "packageManager"' "$_tmp" 2>/dev/null)"
-	_why="$(jq -r '.reason // ""' "$_tmp" 2>/dev/null)"
+	local _schema
+	if ! {
+		IFS= read -r _schema && IFS= read -r _installed && IFS= read -r _uid &&
+		IFS= read -r _ver && IFS= read -r _ud && IFS= read -r _de &&
+		IFS= read -r _src && IFS= read -r _why && IFS= read -r _json
+	} < "$_tmp" || [[ $_schema != SPEEDBACKUP_PACKAGE_STATUS_V1 ]]; then
+		_speed_debug_log "RESTORE_PACKAGE_STATUS_FAIL package=$_pkg reason=invalid_fields"
+		rm -f "$_tmp"; return 1
+	fi
+	[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && printf '%s\n' "$_json" >> "$SPEED_DEBUG_RUN_DIR/package_status.ndjson"
 	RESTORE_PKG_INSTALLED="$_installed"
 	RESTORE_PKG_PREINSTALLED="$_installed"
 	RESTORE_PKG_UID="$_uid"
@@ -22832,7 +22594,7 @@ prepare_remote_filelist() {
 		_speed_debug_log "WEBDAV_REMOTE_FILELIST_OK rows=$(grep -vc '^$' "$TMPDIR/.remote_files" 2>/dev/null) source=classified-snapshot"
 	else
 		remote_list_files "$_remote_list_path" > "$TMPDIR/.remote_files" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		_eventwait_output_file_stable_ms "$TMPDIR/.remote_files" remote_filelist_ready 80 1500 >/dev/null 2>&1 || true
+		_completed_output_file_ready "$TMPDIR/.remote_files" remote_filelist_ready 80 1500 >/dev/null 2>&1 || true
 		if [[ $remote_type = webdav ]]; then
 			if [[ -f $TMPDIR/.remote_webdav_last_list_ok ]]; then
 				REMOTE_FILELIST_HTTP_CODE=207
@@ -23029,9 +22791,8 @@ _remote_files_note_has_any_rel() {
 	# It must not require .remote_filelist_ok: WebDAV initial classify/list may be empty or fail
 	# on a fresh remote, while successful PUT notes are still authoritative for this run.
 	local _a="$1" _b="$2"
-	[[ $remote_stream = 1 ]] || return 1
-	[[ -f $TMPDIR/.remote_files ]] || return 1
-	awk -v a="$_a" -v b="$_b" '$0==a||$0==b{f=1;exit} END{exit f?0:1}' "$TMPDIR/.remote_files" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+    _speedscan_cmd payload-presence any "${remote_stream:-0}" "${_RESTORE_STREAM:-0}" "$TMPDIR/.remote_files" "$_a
+$_b" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
 
 _selected_apps_map_build() {
@@ -23052,7 +22813,7 @@ _selected_apps_map_build() {
 }
 
 _remote_appdetails_summary_map_build() {
-	# app_details summary map is Rust-owned; jq canonical summary fallback is removed.
+	# app_details summary map is Rust-owned; Rust JSON canonical summary fallback is removed.
 	local _out="$1" _root _log _rc
 	[[ -n $_out ]] || return 1
 	if ! _speedscan_have_capability speedscan.appdetails_summary_map.v1 >/dev/null 2>&1; then
@@ -23247,7 +23008,7 @@ prepare_remote_fast_skip_map() {
 		fi
 		case $_skip_rows in ''|*[!0-9]*) _skip_rows=0 ;; esac
 		[[ $_selected_rows -gt 0 ]] && _speedbackup_progress_step "$_selected_rows" "$_selected_rows" "遠端批量比對完成" "prepare_remote_fast_skip_map" "107"
-		_eventwait_output_files_stable_ms remote_fast_skip_map_ready 50 1200 "$_map" "$_missing" >/dev/null 2>&1 || true
+		_completed_output_files_ready remote_fast_skip_map_ready 50 1200 "$_map" "$_missing" >/dev/null 2>&1 || true
 		_remote_fast_skip_cache_refresh
 		_remote_payload_missing_cache_refresh
 		[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_diag ]] && cp -f "$_diag" "$SPEED_DEBUG_RUN_DIR/remote_fast_skip_batch.tsv" 2>/dev/null
@@ -23359,7 +23120,7 @@ EOF_STREAM_FAST_SKIP_COLLAPSE
 
 # 純本地 fast-skip 的 selected/app_details/AppState equality maps 由 Rust speedscan 產生；tools 只保留流程 glue。
 _local_appdetails_summary_map_build() {
-	# local app_details summary map is Rust-owned; jq summary fallback removed.
+	# local app_details summary map is Rust-owned; Rust JSON summary fallback removed.
 	local _out="$1" _root="${2:-$Backup}" _log _rc
 	[[ -n $_out && -d $_root ]] || return 1
 	if ! _speedscan_have_capability speedscan.appdetails_summary_map.v1 >/dev/null 2>&1; then
@@ -23373,7 +23134,7 @@ _local_appdetails_summary_map_build() {
 }
 
 _local_appstate_match_map_build() {
-	# AppState equality map is speedscan-owned.  This removes the live jq canonical-equality engine from tools.
+	# AppState equality map is speedscan-owned.  This removes the live Rust JSON canonical-equality engine from tools.
 	local _out="$1" _root="${2:-$Backup}" _src="${3:-$TMPDIR/.pkg_appstate}" _log _rc
 	[[ -n $_out && -d $_root && -s $_src ]] || return 1
 	if ! _speedscan_have_capability speedscan.appstate_match_map.v1 >/dev/null 2>&1 || ! _speedscan_have_capability speedscan.appstate_match_canonical_v4.v1 >/dev/null 2>&1; then
@@ -23469,10 +23230,10 @@ prepare_local_fast_skip_map() {
 		fi
 		case $_fast_rows in ''|*[!0-9]*) _fast_rows=0 ;; esac
 		[[ $_selected_rows -gt 0 ]] && _speedbackup_progress_step "$_selected_rows" "$_selected_rows" "本地批量比對完成" "prepare_local_fast_skip_map" "107"
-		_eventwait_output_file_stable_ms "$_map" local_fast_skip_map_ready 50 1200 >/dev/null 2>&1 || true
+		_completed_output_file_ready "$_map" local_fast_skip_map_ready 50 1200 >/dev/null 2>&1 || true
 		_local_fast_skip_cache_refresh
 		[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_diag ]] && cp -f "$_diag" "$SPEED_DEBUG_RUN_DIR/local_fast_skip_batch.tsv" 2>/dev/null
-		_speed_debug_log "LOCAL_FAST_SKIP_BATCH_OK selected=${_selected_rows:-0} summary=${_summary_rows:-0} stateMatch=${_state_rows:-0} dirExists=${_exists_rows:-0} archives=${_archive_rows:-0} fastSkip=${_fast_rows:-0} miss=${_miss_rows:-0} missApps=${_miss_apps:-0} missReasons=${_miss_rows:-0} mapReuse=$_presize_reuse maps=6 join=rust-stats-v2 appstateEq=rust-jq-parity-canonical-v4 lookup=rust-cache"
+		_speed_debug_log "LOCAL_FAST_SKIP_BATCH_OK selected=${_selected_rows:-0} summary=${_summary_rows:-0} stateMatch=${_state_rows:-0} dirExists=${_exists_rows:-0} archives=${_archive_rows:-0} fastSkip=${_fast_rows:-0} miss=${_miss_rows:-0} missApps=${_miss_apps:-0} missReasons=${_miss_rows:-0} mapReuse=$_presize_reuse maps=6 join=rust-stats-v2 appstateEq=rust-json-canonical-v4 lookup=rust-cache"
 		return 0
 	else
 		# Rust fast-skip join is now a required + speedscan capability.
@@ -24263,7 +24024,7 @@ release_details_read() {
 	local file="$1" entry="$2"
 	REL_SIZE=""; REL_KEYSTORE=""; REL_PATH=""; REL_ARCHIVE_INPUT_BYTES=""
 	[[ ! -f $file ]] && return
-	local tmpf="$TMPDIR/.rel_jq_$$"
+	local tmpf="$TMPDIR/.rel_json_$$"
 	_appdetails_release_entry_read "$file" "$entry" "$tmpf"
 	exec 3< "$tmpf"
 	read -r REL_SIZE <&3
@@ -24377,12 +24138,27 @@ size_with_bytes() {
 partition_info() {
 	unset Skip
 	Occupation_status="$(df -B1 "$(_resolve_real_mount "${1%/*}")" | sed -n 's|% /.*|%|p' | awk '{print $(NF-1)}')"
-	Filesize2="$(size "$Filesize")"
+	# Presentation only: incremental comparison, Size metadata and the existing
+	# local-space guard retain Filesize. Reuse the prescan plan; never rescan here.
+	local _display_size _display_bytes="$Filesize" _display_note="" _BACKUP_DISPLAY_BYTES=""
+	if [[ -n ${3:-} ]]; then
+		_backup_display_cache_get "${4:-}" "${5:-}"
+		if [[ -n $_BACKUP_DISPLAY_BYTES ]]; then
+			_display_bytes="$_BACKUP_DISPLAY_BYTES"
+			_display_note=" (排除後預估封裝，含 tar 標頭)"
+		else
+			_display_note=" (目錄總量，排除後大小未知)"
+		fi
+	fi
+	# Format both values in the existing single formatter process.
+	IFS="$SB_TAB" read -r Filesize2 _display_size <<EOF_SIZE
+$(_size_format_batch "$Filesize" "$_display_bytes")
+EOF_SIZE
 	# 串流模式: 數據不落地本機, 本機剩餘空間跟這次備份無關, 不顯示 (避免誤導使用者以為是遠端容量)
 	if [[ $remote_stream = 1 ]]; then
-		_speedbackup_ui_echo " -$2大小:$Filesize2"
+		_speedbackup_ui_echo " -$2大小:$_display_size$_display_note"
 	else
-		_speedbackup_ui_echo " -$2大小:$Filesize2 剩餘大小:$(size "$Occupation_status")"
+		_speedbackup_ui_echo " -$2大小:$_display_size$_display_note 剩餘大小:$(size "$Occupation_status")"
 	fi
 	if [[ $remote_stream != 1 && -n $Filesize ]]; then
 		if [[ $(_decimal_cmp_uint "$Filesize" "$Occupation_status") = 1 ]]; then
@@ -25964,11 +25740,7 @@ _process_observer_batch_capability_ok() {
 			_cap="$_out"
 		fi
 	fi
-	if [[ -s $_cap ]] && jq -e '
-		. as $root |
-		def cap($n): any($root.capabilities[]?; .name == $n and .enabled == true);
-		cap("dex.process_observer.batch_watchset.v1") and cap("dex.process_observer.batch_stop_safe.v1") and cap("dex.process_observer.batch_persistent_safety.v1")
-	' "$_cap" >/dev/null 2>&1; then
+	if [[ -s $_cap ]] && _json_cmd -e caps-observer "$_cap" >/dev/null 2>&1; then
 		PROCESS_OBSERVER_BATCH_CAP_OK=1
 		_speed_debug_log "PROCESS_OBSERVER_BATCH_CAP_OK required=dex.process_observer.batch_watchset.v1,dex.process_observer.batch_stop_safe.v1,dex.process_observer.batch_persistent_safety.v1"
 		_rc=0
@@ -26322,7 +26094,7 @@ _process_observer_restore_session_build_spec() {
 	: > "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
 	_process_observer_restore_session_enabled || { _speed_debug_log "RESTORE_GUARD_SESSION_SKIP reason=disabled_or_missing_capability"; return 1; }
 	[[ -n ${txt:-} ]] || { _speed_debug_log "RESTORE_GUARD_SESSION_SKIP reason=empty_applist"; return 1; }
-	# compare map 已在恢復前建立，直接用 label/package TSV 建 session，避免逐 App jq 讀 app_details 導致守護 session 啟動卡數十秒。
+	# compare map 已在恢復前建立，直接用 label/package TSV 建 session，避免逐 App Rust JSON 讀 app_details 導致守護 session 啟動卡數十秒。
 	if _process_observer_restore_session_build_from_compare_map "$_spec" "$_pkgs"; then
 		return 0
 	fi
@@ -26390,13 +26162,7 @@ _process_observer_restore_session_direct_capability_ok() {
 			_cap="$_out"
 		fi
 	fi
-	if [[ -s $_cap ]] && jq -e '
-		. as $root |
-		(any($root.capabilities[]?; .name == "dex.process_observer.restore_session_direct_start.v1" and .enabled == true)) and
-		(any($root.capabilities[]?; .name == "dex.process_observer.restore_session_facts_cache.v1" and .enabled == true)) and
-		(any($root.capabilities[]?; .name == "dex.process_observer.restore_action_policy_builder.v1" and .enabled == true)) and
-		(any($root.capabilities[]?; .name == "dex.process_observer.batch_stop_summary_tsv.v1" and .enabled == true))
-	' "$_cap" >/dev/null 2>&1; then
+	if [[ -s $_cap ]] && _json_cmd -e caps-session "$_cap" >/dev/null 2>&1; then
 		case "$_out" in "$TMPDIR"/*) rm -f "$_out" 2>/dev/null ;; esac
 		case "$_in" in "$TMPDIR"/*) rm -f "$_in" 2>/dev/null ;; esac
 		return 0
@@ -28439,7 +28205,7 @@ _backup_apk_impl() {
 		unset Filesize
 		Filesize="$(calc_dir_size "$apk_path2")"
 		_archive_cleanup "$Backup_folder/apk"
-		partition_info "$Backup" "$name1 apk"
+		partition_info "$Backup" "$name1 apk" "$name1/apk" "$name2" apk
 		if [[ $Skip != 1 ]]; then
 			#備份apk
 			echoRgb "$1"
@@ -28462,164 +28228,53 @@ _backup_apk_impl() {
 # 壓縮持久化 AppState：Dex 可輸出完整診斷快照，但 app_details.json 只保存恢復必要欄位 + 快速查看 cn 欄位。
 # 目的：移除 engineVersion/dexVersion/package uid/installDiagnostics/result/json_refresh 等 debug/診斷資料。
 # 注意：raw 欄位仍完整保留；nameCn/modeCn/keyCn 等 cn 欄位保留作快速查看，不參與恢復判斷。
-_appstate_compact_jq_defs() {
-	cat <<'JQ'
-def addif($o; $k): if (($o|type) == "object" and ($o|has($k))) then {($k): $o[$k]} else {} end;
-def notnull: with_entries(select(.value != null));
-def perm($p): (
-	{} + addif($p;"name") + addif($p;"nameCn") + addif($p;"granted") + addif($p;"flags") +
-	addif($p;"runtime") + addif($p;"development") + addif($p;"appOp") +
-	addif($p;"appOpName") + addif($p;"appOpNameCn") + addif($p;"packageMode") + addif($p;"uidMode") +
-	addif($p;"scope") + addif($p;"appOpMode") + addif($p;"appOpModeName") + addif($p;"appOpModeCn") +
-	addif($p;"appOpStoredMode") + addif($p;"appOpRestoreMode") + addif($p;"locationEnabled")
-) | notnull;
-def special($s): (
-	{} + addif($s;"keyCn") + addif($s;"publicName") + addif($s;"publicNameCn") + addif($s;"manifestPermission") +
-	addif($s;"manifestPermissionCn") + addif($s;"requested") + addif($s;"supported") + addif($s;"op") +
-	addif($s;"packageMode") + addif($s;"uidMode") + addif($s;"scope") +
-	addif($s;"mode") + addif($s;"modeName") + addif($s;"modeCn")
-) | notnull;
-def opobj($o): (
-	{} + addif($o;"op") + addif($o;"publicName") + addif($o;"publicNameCn") + addif($o;"supported") +
-	addif($o;"packageMode") + addif($o;"uidMode") + addif($o;"scope") +
-	addif($o;"mode") + addif($o;"modeName") + addif($o;"modeCn")
-) | notnull;
-def compact_state($s): {
-	schemaVersion: ($s.schemaVersion // 2),
-	recordType: ($s.recordType // "snapshot"),
-	userId: ($s.userId // 0),
-	packageName: ($s.packageName // null),
-	installer: ($s.installer // $s.package.installer // $s.installDiagnostics.installer // $s.installDiagnostics.installing // null),
-	permissions: [($s.permissions // [])[] | perm(.)],
-	specialAccess: (($s.specialAccess // {}) | with_entries(.value = special(.value))),
-	batterySettings: (($s.batterySettings // {}) | with_entries(if (.value|type)=="object" then .value = opobj(.value) else . end)),
-	otherAppOps: [($s.otherAppOps // [])[] | opobj(.)],
-	ssaid: ($s.ssaid // null)
-};
-JQ
-}
-_appstate_persist_compact() {
-	jq -c "$(_appstate_compact_jq_defs)
-compact_state(.)" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-}
-
-_appstate_persist_compact_file() {
-	local _in="$1" _out="$2"
-	[[ -s $_in && -n $_out ]] || return 1
-	_appstate_persist_compact < "$_in" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-}
 
 # 將 app_details.json 收斂成唯一 canonical restore profile；保留快速查看 cn 欄位。
 # 正常備份與「重生現有備份JSON」都必須走同一個出口，避免兩邊 app_state/app entry/root metadata 結構不一致。
-# 輸出固定使用 jq pretty JSON；所有正常備份/JSON重生出口都應保持同一格式。
+# Rust 輸出維持既有 Rust JSON pretty JSON 格式；備份與 JSON 重生共用。
 _app_details_normalize_restore_profile_file() {
-	local _file="$1" _tmp _jq _rc
+	local _file="$1" _tmp="${1}.canon_${$}_$RANDOM" _rc
 	[[ -s $_file ]] || return 1
-	_tmp="${_file}.canon_${$}_$RANDOM"
-	_jq="${_tmp}.jq"
-	_appstate_compact_jq_defs > "$_jq" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_tmp" "$_jq" 2>/dev/null; return 1; }
-	cat >> "$_jq" <<'JQ'
-def pick_entry($e):
-	reduce ["keystore","path","Size","size","apk_size","data_size","obb_size","media_size","origin_size","archive_input_bytes","apk_version","versionCode","PackageName"][] as $k
-	({}; if (($e|type)=="object" and ($e|has($k))) then .[$k]=$e[$k] else . end);
-def is_payload_entry($e):
-	(($e|type)=="object") and (
-		($e|has("Size")) or ($e|has("size")) or ($e|has("path")) or ($e|has("keystore")) or
-		($e|has("apk_size")) or ($e|has("data_size")) or ($e|has("obb_size")) or
-		($e|has("media_size")) or ($e|has("origin_size"))
-	);
-def entry($e): (
-	pick_entry($e) +
-	{PackageName: ($e.PackageName // $e.app_state.packageName // null)} +
-	(if (($e.app_state // null)|type) == "object" then {app_state: compact_state($e.app_state)} else {} end)
-) | notnull;
-def payload_entry($e): (pick_entry($e)) | notnull;
-. as $root |
-({}
- + (if ($root|has("Backup time")) then {"Backup time": $root["Backup time"]} else {} end)
-) as $base |
-reduce ($root|to_entries[]) as $it ($base;
-	if ($it.key == "Backup time") then .
-	elif (($it.value|type)=="object" and ($it.value.PackageName != null or $it.value.app_state.packageName != null)) then .[$it.key] = entry($it.value)
-	elif is_payload_entry($it.value) then .[$it.key] = payload_entry($it.value)
-	else . end)
-JQ
-	jq -f "$_jq" "$_file" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_tmp" "$_jq" 2>/dev/null; return 1; }
-	_json_cat_replace "$_tmp" "$_file"
-	_rc=$?
-	if [[ $_rc = 0 ]]; then
-		# 438: canonical profile 仍由既有 shell/jq API 產生；Dex 只負責 AppState snapshot/restore/verify，不接管 app_details JSON。
-		rm -f "$_file.pre360.bak" "$_file".pre*.bak 2>/dev/null
-	fi
-	rm -f "$_tmp" "$_jq" 2>/dev/null
+	_speedscan_cmd profile normalize "$_file" "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_tmp"; return 1; }
+	_json_cat_replace "$_tmp" "$_file"; _rc=$?
+	[[ $_rc = 0 ]] && rm -f "$_file.pre360.bak" "$_file".pre*.bak
+	rm -f "$_tmp"
 	return $_rc
 }
 
 # 寫入每個 App 的唯一 canonical AppState 快照。
 # 權限、AppOps、特殊存取、電池與 SSAID 均已包含在同一份 schema v2 JSON。
 Backup_AppState() {
-	local _state_raw_file _state_file _old_file _old_cmp_file _missing=0 _state_ok=0
-	_state_raw_file="$TMPDIR/.appstate_raw_${$}_$RANDOM.json"
-	_state_file="$TMPDIR/.appstate_compact_${$}_$RANDOM.json"
-	_old_file="$TMPDIR/.appstate_old_${$}_$RANDOM.json"
-	_old_cmp_file="$TMPDIR/.appstate_old_cmp_${$}_$RANDOM.json"
-	rm -f "$_state_raw_file" "$_state_file" "$_old_file" "$_old_cmp_file" 2>/dev/null
-	if ! _kv_file_get_to_file "$TMPDIR/.pkg_appstate" "$name2" "$_state_raw_file" || [[ ! -s $_state_raw_file ]]; then
+	local _prefix="$TMPDIR/.appstate_backup_${$}_$RANDOM" _missing _changed _rc=0
+	if ! _kv_file_get_to_file "$TMPDIR/.pkg_appstate" "$name2" "$_prefix.raw" || [[ ! -s $_prefix.raw ]]; then
 		echoRgb "AppState快照缺失或格式錯誤: $name2" "0"
 		_speed_debug_log "APPSTATE_BACKUP_SKIP package=$name2 reason=missing_or_invalid_canonical_snapshot_file"
-		rm -f "$_state_raw_file" "$_state_file" "$_old_file" "$_old_cmp_file" 2>/dev/null
-		return 1
+		rm -f "$_prefix.raw"; return 1
 	fi
-	if ! _appstate_snapshot_persistable_ok "$_state_raw_file"; then
-		echoRgb "AppState快照缺失或格式錯誤: $name2" "0"
-		_speed_debug_log "APPSTATE_BACKUP_SKIP package=$name2 reason=missing_or_invalid_canonical_snapshot"
-		rm -f "$_state_raw_file" "$_state_file" "$_old_file" "$_old_cmp_file" 2>/dev/null
-		return 1
-	fi
-	if ! _appstate_persist_compact < "$_state_raw_file" > "$_state_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+	if ! _speedscan_cmd profile backup "$app_details" "$name1" "$_prefix.raw" "$_prefix" > "$_prefix.fields" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
 		echoRgb "AppState持久化裁剪失敗: $name2" "0"
-		_speed_debug_log "APPSTATE_BACKUP_SKIP package=$name2 reason=persist_compact_failed"
-		rm -f "$_state_raw_file" "$_state_file" "$_old_file" "$_old_cmp_file" 2>/dev/null
-		return 1
+		_speed_debug_log "APPSTATE_BACKUP_SKIP package=$name2 reason=profile_transform_failed"
+		rm -f "$_prefix".*; return 1
 	fi
-	if ! _appstate_snapshot_persistable_ok "$_state_file"; then
-		echoRgb "AppState持久化裁剪失敗: $name2" "0"
-		_speed_debug_log "APPSTATE_BACKUP_SKIP package=$name2 reason=persist_compact_failed"
-		rm -f "$_state_raw_file" "$_state_file" "$_old_file" "$_old_cmp_file" 2>/dev/null
-		return 1
+	if ! { IFS= read -r _missing && IFS= read -r _changed; } < "$_prefix.fields"; then
+		rm -f "$_prefix".*; return 1
 	fi
-	app_details_has_key "$app_details" "$name1" "app_state" || _missing=1
-	_appdetails_get_entry_app_state_file "$app_details" "$name1" "$_old_file" || printf '%s\n' null > "$_old_file"
-	# 432: 比對前先把舊 app_state 也壓成同一個 persist/canonical profile，
-	# 避免舊 SMB 備份中的 allowed/診斷欄位/顯示欄位造成「允許→允許」假變更。
-	if [[ $_missing = 0 ]] && _appstate_snapshot_persistable_ok "$_old_file" && _appstate_persist_compact_file "$_old_file" "$_old_cmp_file"; then
-		:
-	else
-		cat "$_old_file" > "$_old_cmp_file" 2>/dev/null || printf '%s\n' null > "$_old_cmp_file"
-	fi
-	if [[ $_missing = 1 ]] || ! cmp -s "$_old_cmp_file" "$_state_file" 2>/dev/null; then
-		[[ $_missing = 0 ]] && _appstate_show_backup_diff_file "$_old_cmp_file" "$_state_file"
-		if _appdetails_put_app_state_file "$app_details" "$name1" "$_state_file"; then
-			if _app_details_normalize_restore_profile_file "$app_details"; then
-				_speed_debug_log "APPDETAILS_CANONICAL_PROFILE_OK source=normal_backup app=$name1 package=$name2"
-			else
-				_speed_debug_log "APPDETAILS_CANONICAL_PROFILE_FAIL source=normal_backup app=$name1 package=$name2"
-			fi
-			# echo_log 依賴上一條命令退出碼；不能放在 [[ $_missing = 1 ]] && echoRgb 後面，
-			# 否則 app_state 已成功寫入但 _missing=0 時會被誤報失敗。
+	case "$_missing:$_changed" in 0:0|0:1|1:1) ;; *) rm -f "$_prefix".*; return 1 ;; esac
+	if [[ $_changed = 1 ]]; then
+		[[ $_missing = 0 ]] && _appstate_show_backup_diff_file "$_prefix.old" "$_prefix.new"
+		if _json_cat_replace "$_prefix.out" "$app_details"; then
+			_speed_debug_log "APPDETAILS_CANONICAL_PROFILE_OK source=normal_backup app=$name1 package=$name2 engine=rust"
+			true
 			echo_log "備份統一AppState快照"
 			[[ $_missing = 1 ]] && echoRgb "寫入統一AppState快照" "2"
 			_mark_changed
-			rm -f "$_state_raw_file" "$_state_file" "$_old_file" "$_old_cmp_file" 2>/dev/null
-			return 0
+		else
+			result=1; _rc=1
+			_speed_debug_log "APPSTATE_BACKUP_UPDATE_FAILED package=$name2 app_details=$app_details engine=rust"
 		fi
-		result=1
-		_speed_debug_log "APPSTATE_BACKUP_JQ_UPDATE_FAILED package=$name2 app_details=$app_details"
-		rm -f "$_state_raw_file" "$_state_file" "$_old_file" "$_old_cmp_file" 2>/dev/null
-		return 1
 	fi
-	rm -f "$_state_raw_file" "$_state_file" "$_old_file" "$_old_cmp_file" 2>/dev/null
-	return 0
+	rm -f "$_prefix".*
+	return $_rc
 }
 # 每個 app metadata 只寫一次 canonical app_state；不再拆成 permissions/AppOps/特殊存取/電池/SSAID 多份欄位。
 Backup_metadata_once() {
@@ -28690,7 +28345,7 @@ _backup_data_impl() {
 	MODDIR_NAME="${MODDIR_NAME##*/}"
 	# 取舊 Size:
 	# - 應用備份 ($1 = user/data/obb/user_de): 直接讀 app_details_read 預讀的變數
-	# - 媒體備份 ($1 = 動態資料夾名 Download/DCIM/...): 預讀變數沒有, fallback 用 jq 即時查
+	# - 媒體備份 ($1 = 動態資料夾名 Download/DCIM/...): 預讀變數沒有, fallback 用 Rust JSON 即時查
 	# - 其他 (thanox 等): 同 fallback
 	Size=""
 	case $1 in
@@ -28905,7 +28560,7 @@ _backup_data_impl() {
 				;;
 			esac
 			_archive_cleanup "$Backup_folder/$1"
-			partition_info "$Backup" "$1"
+			partition_info "$Backup" "$1" "$name1/$1" "$name2" "$1"
 			if [[ $Skip != 1 ]]; then
 				echoRgb "備份$1數據"
 				# 判斷是否超過 1KB (太小的數據不值得備份, 可能是空目錄)
@@ -29209,7 +28864,7 @@ Release_data_traced_impl() {
 	case ${FILE_NAME##*.} in
 	zst | tar)
 		unset FILE_PATH Size Selinux_state
-		# 一次 jq 抓 Size / keystore / path (取代 3 個獨立 jq fork)
+		# 一次 Rust JSON 抓 Size / keystore / path (取代 3 個獨立 Rust JSON fork)
 		release_details_read "$app_details" "$FILE_NAME2"
 		_restore_trace_mark details_read
 		Size="$REL_SIZE"
@@ -30544,7 +30199,7 @@ _restore_pm_install_existing_for_user() {
 # 安裝 apk (含 split apk 處理), 自動繞過安裝驗證
 installapk() {
 	local _TAR_PROGRESS_EXTRACT_TOTAL=""
-	_TAR_PROGRESS_EXTRACT_TOTAL="$(jq -r '[.[] | objects | select(.PackageName != null) | (.archive_input_bytes // .apk_size // .Size // empty)] | .[0] // empty' "$app_details" 2>/dev/null)"
+	_TAR_PROGRESS_EXTRACT_TOTAL="$(_json_cmd -r apk-input-size "$app_details" 2>/dev/null)"
 	_restore_source_prefix
 	local _source_prefix="$_RESTORE_SOURCE_PREFIX"
 	local _apk_stage _apk_total_start _apk_extract_start _apk_install_start _apk_extract_ms=0 _apk_install_ms=0 _apk_commit_ms=0 _apk_bytes=0
@@ -32021,171 +31676,15 @@ Set_screen_pause_seconds () {
 # Any miss, invalid modern state or parse error retries the original converter.
 _appstate_record_v2_fast() {
 	local _json="$1" _entry="$2" _pkg="$3" _out="$4"
-	jq -c --arg entry "$_entry" --arg pkg "$_pkg" '
-		def ensure_scoped:
-			if type != "object" then . else
-				(if has("packageMode") then . else . + {packageMode:null} end) |
-				(if has("uidMode") then . else . + {uidMode:null} end) |
-				(if has("scope") then . else . + {scope:"default"} end)
-			end;
-		def normalize_appstate_v2:
-			.permissions=[(.permissions // [])[] | if (((.appOp // -1)|tonumber? // -1) >= 0) then ensure_scoped else . end] |
-			.specialAccess=((.specialAccess // {}) | with_entries(.value |= ensure_scoped)) |
-			.otherAppOps=[(.otherAppOps // [])[] | ensure_scoped] |
-			.batterySettings=((.batterySettings // {}) |
-				(if has("RUN_IN_BACKGROUND") then .RUN_IN_BACKGROUND |= ensure_scoped else . end) |
-				(if has("RUN_ANY_IN_BACKGROUND") then .RUN_ANY_IN_BACKGROUND |= ensure_scoped else . end));
-		(.[$entry].app_state // ([.[]|objects|select(.app_state!=null).app_state]|.[0]) // null) as $state |
-		select($state != null) |
-			$state | normalize_appstate_v2 | .schemaVersion=2 | .recordType="snapshot" | .packageName=$pkg |
-		select((.permissions|type)=="array" and (.specialAccess|type)=="object" and
-		       (.otherAppOps|type)=="array" and (.batterySettings|type)=="object")
-	' "$_json" > "$_out" 2>/dev/null && [[ -s $_out ]]
+	_json_cmd -c --arg entry "$_entry" --arg pkg "$_pkg" state-v2 "$_json" > "$_out" 2>/dev/null && [[ -s $_out ]]
 }
 
 _appstate_record_from_app_details() {
 	local _json="$1" _entry="$2" _pkg="$3" _out="$4"
 	[[ -s $_json && -n $_pkg && -n $_out ]] || return 1
 	_appstate_record_v2_fast "$_json" "$_entry" "$_pkg" "$_out" && return 0
-	jq -c --arg entry "$_entry" --arg pkg "$_pkg" '
-		def mode_num($v):
-			if $v == null then 3
-			elif ($v|type) == "number" then $v
-			else ($v|tostring|ascii_downcase) as $s |
-				if ($s|test("^[0-9]+$")) then ($s|tonumber)
-				elif ($s=="allow" or $s=="allowed" or $s=="true") then 0
-				elif ($s=="ignore" or $s=="ignored" or $s=="false") then 1
-				elif ($s=="deny" or $s=="denied" or $s=="error" or $s=="errored") then 2
-				elif $s=="foreground" then 4 else 3 end
-			end;
-		def mode_name($m):
-			if $m==0 then "allow" elif $m==1 then "ignored" elif $m==2 then "errored"
-			elif $m==3 then "default" elif $m==4 then "foreground" else "mode_\($m)" end;
-		def ensure_scoped:
-			if type != "object" then . else
-				(if has("packageMode") then . else . + {packageMode:null} end) |
-				(if has("uidMode") then . else . + {uidMode:null} end) |
-				(if has("scope") then . else . + {scope:"default"} end)
-			end;
-		def normalize_appstate_v2:
-			.permissions=[(.permissions // [])[] | if (((.appOp // -1)|tonumber? // -1) >= 0) then ensure_scoped else . end] |
-			.specialAccess=((.specialAccess // {}) | with_entries(.value |= ensure_scoped)) |
-			.otherAppOps=[(.otherAppOps // [])[] | ensure_scoped] |
-			.batterySettings=((.batterySettings // {}) |
-				(if has("RUN_IN_BACKGROUND") then .RUN_IN_BACKGROUND |= ensure_scoped else . end) |
-				(if has("RUN_ANY_IN_BACKGROUND") then .RUN_ANY_IN_BACKGROUND |= ensure_scoped else . end));
-		def pparts($v): ($v|tostring|split(" "));
-		def pflag($v): ((pparts($v)|map(select(startswith("pflags=")))|.[0]//"pflags=0")|sub("^pflags=";"")|tonumber? // 0);
-		def merged_objects($xs): reduce ($xs[]? | select(type=="object")) as $x ({}; . * $x);
-		def first_value($xs): ([$xs[]? | select(. != null)] | .[0] // null);
-		def special_meta:
-			{SYSTEM_ALERT_WINDOW:{publicName:"android:system_alert_window",permission:"android.permission.SYSTEM_ALERT_WINDOW"},
-			 PICTURE_IN_PICTURE:{publicName:"android:picture_in_picture",permission:null},
-			 MANAGE_EXTERNAL_STORAGE:{publicName:"android:manage_external_storage",permission:"android.permission.MANAGE_EXTERNAL_STORAGE"},
-			 WRITE_SETTINGS:{publicName:"android:write_settings",permission:"android.permission.WRITE_SETTINGS"},
-			 REQUEST_INSTALL_PACKAGES:{publicName:"android:request_install_packages",permission:"android.permission.REQUEST_INSTALL_PACKAGES"},
-			 GET_USAGE_STATS:{publicName:"android:get_usage_stats",permission:"android.permission.PACKAGE_USAGE_STATS"},
-			 USE_FULL_SCREEN_INTENT:{publicName:"android:use_full_screen_intent",permission:"android.permission.USE_FULL_SCREEN_INTENT"},
-			 SCHEDULE_EXACT_ALARM:{publicName:"android:schedule_exact_alarm",permission:"android.permission.SCHEDULE_EXACT_ALARM"},
-			 ACCESS_NOTIFICATION_POLICY:{publicName:"android:access_notification_policy",permission:"android.permission.ACCESS_NOTIFICATION_POLICY"}};
-		def special_key($k;$v):
-			(($v.publicName // "")|tostring) as $n |
-			(($k // "")|tostring|ascii_upcase) as $u |
-			(special_meta) as $m |
-			([$m|to_entries[] | select(.value.publicName==$n or .key==$u) | .key] | .[0] // "");
-		def special_public($key): (special_meta[$key].publicName // "");
-		def special_permission($key): (special_meta[$key].permission // null);
-		def canonical_special_state($key;$v):
-			($v // {}) as $x |
-			mode_num($x.mode // $x.effectiveMode // $x.packageMode // 3) as $m |
-			(($x.op // -1)|tonumber? // -1) as $op |
-			{publicName:(($x.publicName // special_public($key))|tostring),
-			 manifestPermission:($x.manifestPermission // $x.permission // special_permission($key)),
-			 requested:($x.requested // true), supported:($x.supported // ($op >= 0)), op:$op,
-			 source:"legacy-migrated", packageMode:(if $x.packageMode==null then $m else mode_num($x.packageMode) end),
-			 uidMode:(if $x.uidMode==null then null else mode_num($x.uidMode) end),
-			 scope:($x.scope // "package"), mode:$m, modeName:mode_name($m), allowed:($m==0 or $m==4)};
-		def legacy_permissions($p):
-			[$p|to_entries[]? | select(.key|startswith("android.permission.")) |
-			 (pparts(.value)) as $v |
-			 {name:.key, granted:($v[0]=="true"), flags:pflag(.value), runtime:true, development:false,
-			  appOp:(if ($v|length)>=3 then ($v[1]|tonumber? // -1) else -1 end),
-			  appOpMode:(if ($v|length)>=3 then mode_num($v[2]) else 3 end),
-			  appOpModeName:mode_name(if ($v|length)>=3 then mode_num($v[2]) else 3 end),
-			  packageMode:(if ($v|length)>=3 then mode_num($v[2]) else null end), uidMode:null, scope:"package"}];
-		def special_from_permissions($p):
-			reduce ($p|to_entries[]?) as $e ({};
-				(special_key($e.key; {publicName:$e.key})) as $key |
-				if $key=="" then . else
-					(pparts($e.value)) as $v |
-					(($v[1]|tonumber? // -1)) as $op |
-					(mode_num($v[2] // 3)) as $m |
-					.[$key]=canonical_special_state($key; {publicName:$e.key,op:$op,mode:$m,packageMode:$m,requested:true,supported:($op>=0)})
-				end);
-		def normalize_special($raw):
-			reduce (($raw // {})|to_entries[]?) as $e ({};
-				(special_key($e.key; $e.value)) as $key |
-				if $key=="" then . else .[$key]=canonical_special_state($key;$e.value) end);
-		def legacy_battery($b; $bo):
-			($b//{}) as $x |
-			def opstate($k): (($x[$k]//"")|tostring|split(" ")) as $v |
-				if ($v|length)>=2 then (mode_num($v[1])) as $m |
-					{supported:true,op:($v[0]|tonumber? // -1),mode:$m,modeName:mode_name($m),packageMode:$m,uidMode:null,scope:"package"}
-				else {supported:false,op:-1,mode:3,modeName:"default",packageMode:null,uidMode:null,scope:"none"} end;
-			(mode_num($bo)) as $bom |
-			{RUN_IN_BACKGROUND:opstate("BATTERY:RUN_IN_BACKGROUND"),
-			 RUN_ANY_IN_BACKGROUND:(if ($x|has("BATTERY:RUN_ANY_IN_BACKGROUND")) then opstate("BATTERY:RUN_ANY_IN_BACKGROUND")
-				else {supported:($bo!=null and ($bo|tostring)!=""),op:-1,mode:$bom,modeName:mode_name($bom),packageMode:null,uidMode:null,scope:"legacy"} end),
-			 deviceidleWhitelist:(((($x["BATTERY:deviceidle_whitelist"] // $x["BATTERY:idle_whitelist"] // $x["BATTERY:doze_whitelist"] // false)|tostring|ascii_downcase)) == "true")};
-		def legacy_ops($p;$special;$battery):
-			([$special[]? | .op | select(type=="number" and .>=0)] +
-			 [$battery[]? | objects | .op | select(type=="number" and .>=0)]) as $handled |
-			[$p|to_entries[]? | select((.key|startswith("android:")) or (.key|startswith("EXTRA_OP_"))) |
-			 (pparts(.value)) as $v |
-			 {publicName:.key,
-			  op:(if (.key|startswith("EXTRA_OP_")) then ($v[0]|tonumber? // -1) else ($v[1]|tonumber? // -1) end),
-			  mode:(if (.key|startswith("EXTRA_OP_")) then mode_num($v[1]) else mode_num($v[2]) end)} |
-			 . as $item | select($item.op>=0 and (($handled|index($item.op))==null)) | $item |
-			 .modeName=mode_name(.mode) | .allowed=(.mode==0 or .mode==4) |
-			 .packageMode=.mode | .uidMode=null | .scope="package"] | unique_by(.op);
-		(.[$entry].app_state // ([.[]|objects|select(.app_state!=null).app_state]|.[0]) // null) as $state |
-		if $state != null then
-			$state | normalize_appstate_v2 | .schemaVersion=2 | .recordType="snapshot" | .packageName=$pkg
-		else
-			[.[]|objects] as $objects |
-			($objects|map(select(.PackageName==$pkg))|.[0] // $objects[0] // {}) as $meta |
-			merged_objects($objects|map(.permissions)) as $p |
-			merged_objects($objects|map(.special_access)) as $raw_special |
-			merged_objects($objects|map(.battery_settings)) as $battery_raw |
-			first_value($objects|map(.battery_opt)) as $battery_opt |
-			first_value($objects|map(.install_diagnostics)) as $install_diag |
-			first_value($objects|map(.installer)) as $installer |
-			first_value($objects|map(.Ssaid)) as $ssaid |
-			((special_from_permissions($p)) * (normalize_special($raw_special))) as $special |
-			(legacy_battery($battery_raw;$battery_opt)) as $battery |
-			{schemaVersion:2,recordType:"snapshot",packageName:$pkg,userId:0,
-			 package:{installer:($installer//$install_diag.installer//$install_diag.installing//null),
-			          versionCode:($meta.apk_version//null)},
-			 installDiagnostics:($install_diag//{}),
-			 permissions:legacy_permissions($p), specialAccess:$special,
-			 otherAppOps:legacy_ops($p;$special;$battery), batterySettings:$battery,
-			 ssaid:($ssaid//null), sourceFormat:"legacy-app-details-migrated"}
-		end |
-		select((.permissions|type)=="array" and (.specialAccess|type)=="object" and
-		       (.otherAppOps|type)=="array" and (.batterySettings|type)=="object")
-	' "$_json" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_json_cmd -c --arg entry "$_entry" --arg pkg "$_pkg" state-migrate "$_json" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	[[ -s $_out ]]
-}
-
-# Same last-package-wins order and jq representation, one process on success.
-# Fall back to the established filter+append path on parse/read failure.
-_appstate_ndjson_upsert_file() {
-	local _queue="$1" _pkg="$2" _record="$3" _out="$4"
-	if jq -c --arg pkg "$_pkg" --arg record "$_record" 'select(input_filename==$record or (.packageName // "")!=$pkg)' "$_queue" "$_record" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
-		return 0
-	fi
-	_appstate_ndjson_remove_package_file "$_queue" "$_pkg" "$_out" || : > "$_out"
-	cat "$_record" >> "$_out"
 }
 
 restore_appstate() {
@@ -32205,13 +31704,8 @@ restore_appstate() {
 	fi
 	[[ -n ${name2:-} ]] && printf '%s	%s
 ' "$name2" "${name1:-$name2}" >> "$TMPDIR/.appstate_label_map" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	# 同 package 只保留最後一筆，避免重複恢復。
-	if [[ -s $TMPDIR/.batch_appstate_ndjson ]]; then
-		_appstate_ndjson_upsert_file "$TMPDIR/.batch_appstate_ndjson" "$name2" "$_record" "$TMPDIR/.batch_appstate_ndjson.tmp"
-		mv -f "$TMPDIR/.batch_appstate_ndjson.tmp" "$TMPDIR/.batch_appstate_ndjson"
-	else
-		cat "$_record" > "$TMPDIR/.batch_appstate_ndjson"
-	fi
+	# Defer last-package-wins reduction until flush; do not reread a growing queue.
+	cat "$_record" >> "$TMPDIR/.batch_appstate_ndjson" || return 1
 	rm -f "$_record" 2>/dev/null
 	if [[ $_restore_appstate_autoflush = 1 ]]; then
 		flush_batch_appstate
@@ -32278,7 +31772,7 @@ _appstate_label_for_pkg() {
 	# r81: 批量恢復流程中 cleanup_tmpdir_contents 可能在 flush 前被多次呼叫；若 label map 不完整，
 	# 從仍在場的 canonical AppState queue 回讀 package.label，避免 SSAID 報告退回全包名。
 	if [[ -z $_label && -s $_queue ]]; then
-		_label="$(jq -r --arg p "$_pkg" 'select(.packageName==$p) | (.package.label // empty)' "$_queue" 2>/dev/null | tail -n 1)"
+		_label="$(_json_cmd -r --arg p "$_pkg" queue-label "$_queue" 2>/dev/null | tail -n 1)"
 	fi
 	[[ -n $_label ]] && printf '%s\n' "$_label" || printf '%s\n' "$_pkg"
 }
@@ -32338,6 +31832,8 @@ flush_batch_appstate() {
 	local _restore_ok _restore_partial _restore_failed _verify_ok _verify_vendor _verify_mismatch _verify_failed
 	local _APPSTATE_RUN_DIR="${SPEED_DEBUG_RUN_DIR:-$TMPDIR}/appstate_run_$$_$_APPSTATE_FLUSH_SEQUENCE" _APPSTATE_RUN_SEQ=0
 	[[ -s $_queue ]] || return 0
+	_speedscan_cmd profile queue "$_queue" "$_queue.unique" || return 1
+	mv -f "$_queue.unique" "$_queue" || return 1
 	_appstate_capabilities_check || return 1
 	mkdir -p "$_APPSTATE_RUN_DIR" || return 1
 	cp -f "$_queue" "$_APPSTATE_RUN_DIR/queue" || return 1
@@ -32450,11 +31946,11 @@ _action_foreground_dex_display() {
 	: > "$_in" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 0
 	if _root_appstate_call foregroundListJson "$_in" "$_out"; then
 		_speed_time_refresh; _t1="${SPEEDBACKUP_NOW_MS:-0}"; _ms=$((_t1-_t0))
-		_line="$(jq -r '([.top[]?, .foreground[]?, .active[]?, .foreground_service[]?, .background[]?] | .[0] // empty) | [(.label // ""), (.packageName // "")] | @tsv' "$_out" 2>/dev/null | awk -F '\t' 'NF>=2 && $2!=""{print; exit}')"
+		_line="$(_json_cmd -r foreground-first "$_out" 2>/dev/null | awk -F '\t' 'NF>=2 && $2!=""{print; exit}')"
 		_label="${_line%%	*}"
 		_pkg="${_line#*	}"
 		[[ $_line = "$_pkg" ]] && _label=""
-		_shown="$(jq -r '.counts.shown // 0' "$_out" 2>/dev/null | awk 'NR==1{print}')"
+		_shown="$(_json_cmd -r foreground-count "$_out" 2>/dev/null | awk 'NR==1{print}')"
 		case $_shown in ''|*[!0-9]*) _shown=0 ;; esac
 		_safe_action="$(printf '%s' "$_action" | tr -cd 'A-Za-z0-9_一-龥')"
 		[[ -z $_safe_action ]] && _safe_action="action"
@@ -32525,10 +32021,10 @@ _default_home_pkg_ensure() {
 	_out="$TMPDIR/.default_home_out_${$}_$RANDOM"
 	: > "$_in" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
 	if _root_appstate_call defaultHome "$_in" "$_out"; then
-		_pkg="$(jq -r 'select(.recordType=="defaultHome") | select((.result.name // "") == "OK") | select((.isResolver // true) == false) | (.packageName // empty)' "$_out" 2>/dev/null | awk 'NF{print; exit}')"
-		_label="$(jq -r 'select(.recordType=="defaultHome") | (.label // empty)' "$_out" 2>/dev/null | awk 'NF{print; exit}')"
-		_source="$(jq -r 'select(.recordType=="defaultHome") | (.source // empty)' "$_out" 2>/dev/null | awk 'NF{print; exit}')"
-		_resolver="$(jq -r 'select(.recordType=="defaultHome") | (.isResolver // false)' "$_out" 2>/dev/null | awk 'NF{print; exit}')"
+		_pkg="$(_json_cmd -r home-package "$_out" 2>/dev/null | awk 'NF{print; exit}')"
+		_label="$(_json_cmd -r home-label "$_out" 2>/dev/null | awk 'NF{print; exit}')"
+		_source="$(_json_cmd -r home-source "$_out" 2>/dev/null | awk 'NF{print; exit}')"
+		_resolver="$(_json_cmd -r home-resolver "$_out" 2>/dev/null | awk 'NF{print; exit}')"
 		if ! _default_home_pkg_valid "$_pkg"; then
 			_pkg=""
 		fi
@@ -32604,9 +32100,9 @@ _default_ime_pkg_ensure() {
 	_out="$TMPDIR/.default_ime_out_${$}_$RANDOM"
 	: > "$_in" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
 	if _root_appstate_call defaultIme "$_in" "$_out"; then
-		_pkg="$(jq -r 'select(.recordType=="defaultIme") | select((.result.name // "") == "OK") | (.packageName // empty)' "$_out" 2>/dev/null | awk 'NF{print; exit}')"
-		_label="$(jq -r 'select(.recordType=="defaultIme") | (.label // empty)' "$_out" 2>/dev/null | awk 'NF{print; exit}')"
-		_source="$(jq -r 'select(.recordType=="defaultIme") | (.source // empty)' "$_out" 2>/dev/null | awk 'NF{print; exit}')"
+		_pkg="$(_json_cmd -r ime-package "$_out" 2>/dev/null | awk 'NF{print; exit}')"
+		_label="$(_json_cmd -r ime-label "$_out" 2>/dev/null | awk 'NF{print; exit}')"
+		_source="$(_json_cmd -r ime-source "$_out" 2>/dev/null | awk 'NF{print; exit}')"
 		_default_ime_pkg_valid "$_pkg" || _pkg=""
 		[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f "$_out" "$SPEED_DEBUG_RUN_DIR/default_ime_last.json" 2>/dev/null
 		if [[ -n $_pkg ]]; then
@@ -32901,47 +32397,13 @@ backup() {
 		echoRgb "檢查備份列表中是否存在已經卸載應用" "3"
 		_applist_filter_installed "$txt" || { echoRgb "備份名單篩選失敗，原名單已保留" "0"; return 1; }
 	fi
-	[[ $Update_backup = true ]] && {
-	echoRgb "檢查備份列表中已經更新應用" "3"
-	# 用暫存檔取代 here-string (mksh 不支援 <<<)
-	local _upd_tmp="$TMPDIR/.update_check_$$"
-	grep -Ev '^[#＃!]' "$txt" | awk '{print $1 ":" $2}' > "$_upd_tmp"
-	# 預掃 pkg→version map (若還沒掃過), 取代每 app fork pm
-	[[ ! -f $TMPDIR/.pkg_ver ]] && prepare_pkg_ver_map
-	while read -r apk; do
-		_apk_label="${apk%%:*}"
-		_apk_pkg="${apk#*:}"
-		_safe_apk_label="$(_backup_path_safe_name "$_apk_label" "$_apk_pkg")"
-		Backup_folder="$Backup/$_safe_apk_label"
-		app_details="$Backup_folder/app_details.json"
-		if [[ -d $Backup_folder ]]; then
-			# 讀本地同步副本 (串流模式上傳成功後 cp 到本地, 記錄上次成功備份的版本)
-			# 與實機比對才有意義; 遠端快取是給 apk 跳過比對用的, 職責不同
-				apk_version="$(_appdetails_get_first_apk_version "$app_details" | tr -d ' \t\r\n')"
-			# 從預掃 map 查 versionCode (取代每 app fork pm)
-			local _pkg
-			_pkg="$_apk_pkg"
-			apk_version2="$(get_current_apk_version_code "$_pkg")"
-			# debug: 比對版本失敗時印出來。map/fallback 仍命中失敗時，不把空值當版本變化，避免誤觸發整批重備 APK。
-			if [[ -z $apk_version2 || $apk_version2 = unknown ]]; then
-				echoRgb "${apk%%:*} 當前版本讀取失敗，略過版本變化判斷" "0"
-				SpeedDebug_log "WARN: update_backup_version_map_miss package=$_pkg oldVersion=$apk_version"
-			elif [[ $apk_version != $apk_version2 ]]; then
-				echoRgb "$(echo "$apk" | cut -d':' -f1) 版本變化: $apk_version → $apk_version2" "3"
-				_safe_apk_line="$_safe_apk_label $_pkg"
-				[[ $Tmplist2 = "" ]] && Tmplist2="$_safe_apk_line" || Tmplist2="$Tmplist2\n$_safe_apk_line"
-				# 記錄包名: 本輪強制重備 apk (遠端 json 可能被失敗輪汙染成新版本號而 apk 仍是舊檔)
-				echo "$_pkg" >> "$TMPDIR/.listver_changed"
-			fi
-
-		fi
-	done < "$_upd_tmp"
-	rm -f "$_upd_tmp"
-	}
+	if [[ $Update_backup = true ]]; then
+		_backup_select_updated_apps "$txt" || return 1
+	fi
 	if [[ $Tmplist2 != "" ]]; then
 		txt="$(_applist_home_last_text "$(echo "$Tmplist2" | sort)" "backup_update_only")"
 	else
-		[[ $Update_backup != "" ]] && echoRgb "應用目前無更新" "0" && exit 0
+		[[ $Update_backup != "" ]] && echoRgb "已完成版本比對：沒有版本變更的應用（未備份項目請使用功能 2）" "2" && return 0
 	fi
 	if [[ ! -f $txt ]]; then
 		[[ $(echo "$txt") != "" ]] && txt="$(_applist_home_last_text "$(echo "$txt" | sed -e '/^$/d')" "backup_effective_text")"
@@ -33015,7 +32477,7 @@ backup() {
 		# 單獨備份模式: 只預掃這一個 app 的權限
 		local _single_pkg
 		_single_pkg="$(_appdetails_get_first_pkg "${0%/*}/app_details.json")"
-		# 單獨備份也走批量同一套預掃/解析邏輯，避免 inline jq 解析差異導致 permissions 漏寫。
+		# 單獨備份也走批量同一套預掃/解析邏輯，避免 inline Rust JSON 解析差異導致 permissions 漏寫。
 		if _prepare_timed prepare_app_state_prescan_batch "$_single_pkg"; then
 			:
 		else
@@ -33184,15 +32646,15 @@ backup() {
     					_remote_json_file="$(_appdetails_bundle_remote_json_path "$name1")"
     					[[ -s $_remote_json_file ]] && \
     					cp "$_remote_json_file" "$app_details" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-					# 種子可能是舊版/從未經過新增分支寫入的 json, 缺 PackageName 會導致串流恢復失敗;
-    					# 在此補上 (不影響其他欄位, 用 jq 確認該 key 存在才寫, 避免空 json 結構錯誤)
+    					# 種子可能是舊版/從未經過新增分支寫入的 json, 缺 PackageName 會導致串流恢復失敗;
+    					# 在此補上 (不影響其他欄位, 用 Rust JSON 確認該 key 存在才寫, 避免空 json 結構錯誤)
     					if [[ -s $app_details ]] && [[ "$(_appdetails_get_entry_string "$app_details" "$name1" PackageName)" = "" ]]; then
     					    _appdetails_ensure_package_name "$app_details" "$name1" "$name2" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
     					fi
     				fi
     			fi
 			# 一次讀取 app_details.json 的 APK／包名／時間／大小欄位；App 狀態只讀 app_state
-			# 取代後續每個函數內各自 fork jq
+			# 取代後續每個函數內各自 fork Rust JSON
 			app_details_read "$app_details"
 			if [[ -f $app_details ]]; then
 				PackageName="$PKG_NAME"
@@ -33262,6 +32724,7 @@ backup() {
     			# metadata 不應綁死 user data 備份；APK-only / 不備份 user data 也要補寫。
     			[[ $result = 0 && -f $app_details ]] && Backup_metadata_once
     			if [[ $result = 0 && $No_backupdata = "" ]]; then
+                _metadata_batch_begin "$app_details" || return 1
     				if [[ $Backup_Mode = true ]]; then
     					if [[ $Backup_obb_data = true ]]; then
     						if [[ $name2 != bin.mt.plus ]]; then
@@ -33289,7 +32752,7 @@ backup() {
     			fi
     			[[ -f $Backup_folder/${name2}.sh ]] && rm -rf "$Backup_folder/${name2}.sh"
     			# 入口腳本:
-			# 467/r21: 串流備份不再只用遠端 recover.sh 當哨兵值跳過三個 per-app wrapper。
+    			# 467/r21: 串流備份不再只用遠端 recover.sh 當哨兵值跳過三個 per-app wrapper。
     			# 468/r27: 但每個未變更 app 都覆蓋 3 個小 wrapper 會造成 WebDAV/SMB 每 app 約 1~2 秒停頓。
     			# 因此策略調整為：本輪有變更或任一 wrapper 缺失才重傳；未變更且三個 wrapper 已存在則跳過。
     			if [[ $remote_stream = 1 ]]; then
@@ -33304,7 +32767,8 @@ backup() {
     				[[ ! -f $Backup_folder/upload.sh ]] && touch_shell "5" "$Backup_folder/upload.sh"
     			fi
 			fi
-			# App app_details 最終出口：所有 APK/data/keystore/PackageName jq_inplace 寫入後，再統一收斂一次。
+            _metadata_batch_end || { echoRgb "metadata 批次提交失敗，停止本輪備份" 0; exit 1; }
+			# App app_details 最終出口：所有 APK/data/keystore/PackageName json_inplace 寫入後，再統一收斂一次。
 			# 這是 370 判斷錯誤後補上的真正 final writer；不能放在 Backup_AppState 中間，否則後續 Size/path 更新仍會覆寫格式。
 			if [[ -f $app_details ]]; then
 				_appdetails_normalize_final "$app_details" "APPDETAILS_FINAL"
@@ -33628,6 +33092,12 @@ backup() {
 	# 遠端非串流且本輪無實際備份變更時，本地 app_details 可能只補到權限/通知等增量欄位；
 	# 此時應以上傳後遠端 app_details 驗證為準，避免誤報缺 PackageName/apk_version。
 	local _skip_local_json_health=0
+	if [[ -n $remote_type && $remote_stream != 1 && ${remote_upload_per_app:-0} = 1 ]]; then
+		case ${remote_keep_local:-0} in
+		1|true|True|TRUE) ;;
+		*) _skip_local_json_health=1; _speed_debug_log "POST_JSON_LOCAL_HEALTH_SKIP reason=uploaded-local-files-removed" ;;
+		esac
+	fi
 	if [[ -n $remote_type && $remote_stream != 1 && ${backup_has_changes:-0} = 0 ]]; then
 		_skip_local_json_health=1
 		_speed_debug_log "POST_JSON_LOCAL_HEALTH_SKIP reason=remote_nonstream_no_payload_change"
@@ -33643,7 +33113,7 @@ backup() {
 			_speedbackup_progress_step "$_jchk_total" "$_jchk_total" "本地 JSON 批量檢查完成" "post_json_health_verify"
 			echoRgb "檢查完成 $_jchk_total/$_jchk_total" "1"
 		else
-			_speed_debug_log "JSON_HEALTH_BATCH_FALLBACK total=$_jchk_total reason=native-and-jq-batch-fail"
+			_speed_debug_log "JSON_HEALTH_BATCH_FALLBACK total=$_jchk_total reason=native-and-json-batch-fail"
 			while read -r _japp; do
 				local _jf="$Backup/$_japp/app_details.json"
 				_speedbackup_progress_step "$_jchk_i" "$_jchk_total" "檢查本地 JSON $_japp" "post_json_health_verify"
@@ -33657,7 +33127,8 @@ backup() {
 	_json_health_report
 	REMOTE_TRIGGER=1
 	# subshell 環境下 trap EXIT 在主 shell 不會觸發, 這裡直接呼叫
-	remote_cleanup
+	local _backup_remote_cleanup_rc=0
+	remote_cleanup || _backup_remote_cleanup_rc=$?
 	# remote_cleanup 可能是最後一個觀察到遠端中斷的階段；先刷新 fatal，再決定是否顯示統計，避免失敗輪誤報 exact。
 	if [[ $remote_stream = 1 && -n $remote_type && $_backup_stream_fatal_rc = 0 ]] && _remote_stream_fatal_active; then
 		_backup_stream_fatal_rc="$(_remote_stream_fatal_exit_rc)"
@@ -33671,6 +33142,7 @@ backup() {
 	# 正常備份完成點主動建立 final 包並刪除 run_xxx。
 	# 仍會先建 snapshot；若 EXIT trap 在單獨入口 / pipeline subshell 未觸發，也不會留下 run 目錄。
 	_backup_final_rc="${_backup_stream_fatal_rc:-0}"
+	[[ ${_backup_remote_cleanup_rc:-0} != 0 && $_backup_final_rc = 0 ]] && _backup_final_rc=1
 	[[ ${_backup_telephony_rc:-0} != 0 && $_backup_final_rc = 0 ]] && _backup_final_rc=1
 	case $_backup_final_rc in ''|*[!0-9]*) _backup_final_rc=0 ;; esac
 	if [[ $_backup_final_rc = 0 && ${_backup_manifest_verify_rc:-0} != 0 ]]; then
@@ -33685,6 +33157,74 @@ backup() {
 }
 # 增量備份: 只備份版本號有更新的 app
 # 對照 app_details.json 內舊版本, 沒變動的跳過
+# 功能 3 以成功備份的 metadata 比對版本；真串流不可依賴本地 Backup 目錄。
+_backup_select_updated_apps() {
+	local _list="$1" _root="$Backup" _source=local _stage="" _input="$TMPDIR/.update_check_$$"
+	local _label _pkg _rest _safe _json _old _current _record_pkg _checked=0 _missing=0 _changed=0 _failed=0
+	Tmplist2=""
+	: > "$TMPDIR/.listver_changed" || return 1
+	echoRgb "檢查備份列表中已經更新應用" "3"
+	if stream_enabled; then
+		_source=remote-bundle
+		backup_finalize_remote_setup_if_deferred || return 1
+		stream_enabled || { echoRgb "遠端初始化失敗，無法比對已備份版本" "0"; return 1; }
+		_stage="$TMPDIR/.update_bundle_$$"
+		mkdir -p "$_stage" || return 1
+		if ! _appdetails_bundle_download_extract_direct_known "${_BACKUP_DIRNAME_CACHED:-$(get_backup_dirname)}" "$_stage" "update-check"; then
+			echoRgb "無法讀取遠端備份版本：metadata bundle 缺失、損壞或連線失敗；已中止，未判定為無更新。首次備份請使用功能 2" "0"
+			_speed_debug_log "UPDATE_BACKUP_COMPARE_FAIL source=$_source reason=bundle_unavailable"
+			rm -rf "$_stage"
+			return 1
+		fi
+		_root="$_stage"
+	fi
+	awk 'NF>=2 && $0 !~ /^[[:space:]]*[#＃!！]/ {print $1, $2}' "$_list" > "$_input" || return 1
+	[[ -f $TMPDIR/.pkg_ver ]] || prepare_pkg_ver_map
+	while read -r _label _pkg _rest; do
+		_safe="$(_backup_path_safe_name "$_label" "$_pkg")"
+		_json="$_root/$_safe/app_details.json"
+		if [[ ! -s $_json ]]; then
+			_missing=$((_missing + 1))
+			_speed_debug_log "UPDATE_BACKUP_SKIP package=$_pkg source=$_source reason=no_backup_metadata"
+			continue
+		fi
+		# One parse returns both fields; invalid metadata retains the fail-closed path.
+		local _identity
+		if ! _identity="$(_json_cmd -r metadata-identity "$_json" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"; then
+			_failed=$((_failed + 1))
+			_speed_debug_log "UPDATE_BACKUP_COMPARE_FAIL package=$_pkg source=$_source reason=invalid_metadata"
+			continue
+		fi
+		_record_pkg="${_identity%%$'\n'*}"
+		_old="$(printf '%s' "${_identity#*$'\n'}" | tr -d ' \t\r\n')"
+		_current="$(get_current_apk_version_code "$_pkg")"
+		case $_old:$_current in
+		:*|*:|*[!0-9:]*) _failed=$((_failed + 1)); _speed_debug_log "UPDATE_BACKUP_COMPARE_FAIL package=$_pkg source=$_source reason=invalid_version"; continue ;;
+		esac
+		if [[ $_record_pkg != "$_pkg" ]]; then
+			_failed=$((_failed + 1))
+			_speed_debug_log "UPDATE_BACKUP_COMPARE_FAIL package=$_pkg source=$_source reason=package_mismatch"
+			continue
+		fi
+		_checked=$((_checked + 1))
+		if [[ $_old != "$_current" ]]; then
+			echoRgb "$_label 版本變化: $_old → $_current" "3"
+			[[ -z $Tmplist2 ]] && Tmplist2="$_safe $_pkg" || Tmplist2="$Tmplist2\n$_safe $_pkg"
+			printf '%s\n' "$_pkg" >> "$TMPDIR/.listver_changed"
+			_changed=$((_changed + 1))
+		fi
+	done < "$_input"
+	rm -f "$_input"
+	[[ -n $_stage ]] && rm -rf "$_stage"
+	_speed_debug_log "UPDATE_BACKUP_COMPARE_SUMMARY source=$_source checked=$_checked changed=$_changed missing=$_missing failed=$_failed"
+	echoRgb "版本比對：已比對 $_checked、版本變更 $_changed、未有備份紀錄 $_missing、無法判定 $_failed" "2"
+	if [[ $_failed -gt 0 ]]; then
+		echoRgb "部分備份版本無法可靠比對，已中止；請查看日誌，不會視為無更新" "0"
+		Tmplist2=""
+		return 1
+	fi
+	return 0
+}
 backup_update_apk() {
 	_speedbackup_operation_begin backup
 	Update_backup='true'
@@ -33745,40 +33285,11 @@ _appdetails_protected_signature() {
 	# 只鎖定「備份判斷用」欄位：root Backup time 與 app entry 直層 Size/版本欄位。
 	# 不掃整份 JSON 的所有 versionCode，避免新 Dex AppState 內的 package/installDiagnostics
 	# versionCode 被誤判成舊備份 APK 版本遭更新。
-	jq -c '
-		. as $root |
-		def pick_entry($o):
-			reduce ["Size","size","apk_size","data_size","obb_size","media_size","origin_size","archive_input_bytes","path","keystore","apk_version","versionCode"][] as $k
-			({}; if (($o|type)=="object" and ($o|has($k))) then .[$k]=$o[$k] else . end);
-		def is_payload_entry($o):
-			(($o|type)=="object") and (
-				($o|has("Size")) or ($o|has("size")) or ($o|has("path")) or ($o|has("keystore")) or
-				($o|has("apk_size")) or ($o|has("data_size")) or ($o|has("obb_size")) or
-				($o|has("media_size")) or ($o|has("origin_size"))
-			);
-		def backup_entries:
-			to_entries[] |
-			select(.value|type=="object") |
-			select(.key != "Backup time") |
-			select(.value.PackageName != null or .value.app_state.packageName != null) |
-			{key:.key, packageName:(.value.PackageName // .value.app_state.packageName // ""), protected:(pick_entry(.value) + (if ((.value.app_state.ssaid // .value.Ssaid // null) != null) then {ssaid:(.value.app_state.ssaid // .value.Ssaid)} else {} end))};
-		def payload_entries:
-			to_entries[] |
-			select(.value|type=="object") |
-			select(.key != "Backup time") |
-			select((.value.PackageName == null) and (.value.app_state.packageName == null)) |
-			select(is_payload_entry(.value)) |
-			{key:.key, protected:pick_entry(.value)};
-		{backup_time:($root["Backup time"] // null), entries:[backup_entries], payloads:[payload_entries]}
-	' "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_json_cmd -c protected-signature "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
 _appdetails_entry_pkg_line() {
 	local _file="$1"
-	jq -r 'try (to_entries[] |
-		select(.value|type=="object") |
-		select(.key != "Backup time") |
-		select(.value.PackageName != null or .value.app_state.packageName != null) |
-		[.key, (.value.PackageName // .value.app_state.packageName // "")] | @tsv) catch empty' "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | head -n 1
+	_json_cmd -r entry-packages "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | head -n 1
 }
 _appdetails_refresh_scan_root() {
 	local _scan_dir
@@ -33836,20 +33347,7 @@ _appdetails_refresh_regenerate_one_file() {
 		_speed_debug_log "JSON_REGENERATE_SKIP_NO_DEX_STATE label=$_label package=$_pkg file=$_file"
 		return 2
 	fi
-	if ! _appstate_persist_compact < "$_state_raw_tmp" > "$_state_tmp" || \
-		! _appstate_snapshot_json_ok "$_state_tmp"; then
-		rm -f "$_tmp"* 2>/dev/null
-		echoRgb "跳過: $_label ($_pkg) AppState持久化裁剪失敗" "0"
-		_speed_debug_log "JSON_REGENERATE_SKIP_COMPACT_FAILED label=$_label package=$_pkg file=$_file"
-		return 1
-	fi
-	_appdetails_refresh_build_current_json "$_file" "$_entry" "$_pkg" "$_state_tmp" "$_out" || { rm -f "$_tmp"* 2>/dev/null; echoRgb "重新生成失敗: $_label" "0"; return 1; }
-	if ! _app_details_normalize_restore_profile_file "$_out"; then
-		rm -f "$_tmp"* 2>/dev/null
-		echoRgb "重新生成 canonical profile 失敗: $_label" "0"
-		_speed_debug_log "JSON_REGENERATE_CANONICAL_PROFILE_FAIL label=$_label package=$_pkg file=$_file"
-		return 1
-	fi
+	_appdetails_refresh_build_current_json "$_file" "$_entry" "$_pkg" "$_state_raw_tmp" "$_out" || { rm -f "$_tmp"*; echoRgb "重新生成失敗: $_label" "0"; return 1; }
 	_new_sig="$(_appdetails_protected_signature "$_out")"
 	if [[ $_old_sig != "$_new_sig" ]]; then
 		rm -f "$_tmp"* 2>/dev/null
@@ -33911,7 +33409,7 @@ Json_refresh_remote() {
 	# 遠端已是 app_details_bundle-only；不可再逐 App 下載 app_details.json。
 	# 直接下載 bundle -> 原地重生 -> 重新打包上傳 bundle。
 	_speed_debug_log "JSON_REFRESH_REMOTE_BUNDLE_BEGIN subdir=$_target_dir"
-	if ! _appdetails_bundle_download_extract "$_target_dir" "$_stage" "json-refresh-remote"; then
+	if ! _appdetails_bundle_seed_remote_json_cache "$_target_dir" "$_stage"; then
 		echoRgb "遠端缺少或無法解析 app_details_bundle.tar.zst；無法重新生成遠端 JSON" "0"
 		_speed_debug_log "JSON_REFRESH_REMOTE_BUNDLE_FAIL subdir=$_target_dir reason=download_extract_failed"
 		rm -rf "$_stage" "$_jsons" "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -33966,6 +33464,7 @@ Json_refresh_remote() {
 	rm -rf "$_stage" "$_jsons" "$_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	endtime 1
 	echoRgb "遠端JSON重生完成: 成功=$_ok 跳過=$_skip 失敗=$_fail，所有 Size/apk版本/備份時間/SSAID未更新" "1"
+	[[ $_fail -eq 0 ]]
 }
 
 Json_refresh_menu() {
@@ -34079,7 +33578,7 @@ Remote_Backup_Stats() {
 	echoRgb "正在掃描遠端檔案列表 (單次連線)..." "3"
 	local _filelist="$TMPDIR/.remote_stats_files"
 	remote_list_files "$target_dir" > "$_filelist" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	_eventwait_output_file_stable_ms "$_filelist" remote_stats_filelist_ready 80 1500 >/dev/null 2>&1 || true
+	_completed_output_file_ready "$_filelist" remote_stats_filelist_ready 80 1500 >/dev/null 2>&1 || true
 	if [[ ! -s $_filelist ]]; then
 		echoRgb "遠端目錄不存在或無檔案: $target_dir" "0"
 		rm -f "$_filelist"
@@ -34346,15 +33845,7 @@ _restore_stream_media_list_from_appdetails() {
 	[[ -s $_json && -n $_out && -s $_remote_list ]] || return 1
 	_entries="$_out.entries.$$"
 	_tmp="$_out.tmp.$$"
-	jq -r '
-		to_entries[]
-		| select(.key != "Backup time")
-		| select(.key != "PackageName")
-		| select(.key != "app_state")
-		| select(.value|type == "object")
-		| select(((.value.Size // .value.size // .value.path // "")|tostring) != "")
-		| .key
-	' "$_json" > "$_entries" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_entries" "$_tmp"; return 1; }
+	_json_cmd -r media-payload-keys "$_json" > "$_entries" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_entries" "$_tmp"; return 1; }
 	: > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_entries" "$_tmp"; return 1; }
 	while IFS= read -r _entry; do
 		_entry="$(printf '%s\n' "$_entry" | sed -e 's/[[:space:]]*$//')"
@@ -34835,7 +34326,7 @@ Restore() {
 				# 不再逐 App 下載 $_RESTORE_SUBDIR/$name1/app_details.json。
 				_speed_debug_log "STREAM_RESTORE_APPDETAILS_BUNDLE_USE app=$name1 file=$Backup_folder/app_details.json mode=single-stage"
 				# 下載內容可能為空/非合法 json (遠端檔案不存在、傳輸中斷等), 先驗證再解析,
-				# 避免 jq parse error 把 name2 弄成空值後整輪 exit 1 砍掉還沒處理的其餘 app。
+				# 避免 Rust JSON parse error 把 name2 弄成空值後整輪 exit 1 砍掉還沒處理的其餘 app。
 				if [[ ! -s "$Backup_folder/app_details.json" ]] || ! _appdetails_json_parse_ok "$Backup_folder/app_details.json"; then
 					if grep -Eq 'NT_STATUS_OBJECT_NAME_NOT_FOUND|NT_STATUS_OBJECT_PATH_NOT_FOUND|does not exist' "$Backup_folder/app_details.json" 2>/dev/null; then
 						echoRgb "$name1 遠端不存在 (清單可能未更新), 跳過此應用" "0"
@@ -36228,9 +35719,17 @@ wifi() {
 	[[ ! -d $Backup/tools ]] && cp -r "$tools_path" "$Backup"
 	[[ ! -f $Backup/start.sh ]] && touch_shell "2" "$Backup/start.sh"
 	[[ ! -f $Backup/restore_settings.conf ]] && update_Restore_settings_conf>"$Backup/restore_settings.conf"
-	local _wifi_result=0
-	backup_wifi "$Backup/wifi" || _wifi_result=1
+	local _wifi_result=0 _wifi_dir="$Backup/wifi"
+	if [[ $remote_stream = 1 && -n $remote_type ]]; then
+		_wifi_dir="$TMPDIR/.stream_stage/wifi"
+	fi
+	backup_wifi "$_wifi_dir" || _wifi_result=1
 	[[ -n $remote_type ]] && REMOTE_UPLOAD_WIFI=1
+	if [[ $_wifi_result = 0 ]]; then
+		REMOTE_TRIGGER=1
+		remote_cleanup || _wifi_result=1
+		_remote_stream_fatal_active && _wifi_result=1
+	fi
 	return "$_wifi_result"
 }
 # ======================================================
@@ -36350,7 +35849,7 @@ SPEEDBACKUP_STEPS_BACKUP
 		commands_data="$(cat <<'SPEEDBACKUP_COMMANDS_BACKUP'
 Getlist
 backup; exit
-backup_update_apk; exit
+backup_update_apk; exit $?
 backup_media; _rc=$?; _speed_debug_normal_finish_pack $_rc; exit $_rc
 wifi; _rc=$?; _speed_debug_normal_finish_pack $_rc; exit $_rc
 remote_test_menu

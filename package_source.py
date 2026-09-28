@@ -19,7 +19,7 @@ FORBIDDEN_PARTS = {
     "ci-output", "deliverables", "evidence", "validation",
 }
 RUNTIME_BINARIES = {
-    "busybox", "classes.dex", "cmd", "find", "jq", "keycheck",
+    "busybox", "classes.dex", "cmd", "find", "keycheck",
     "smbclient", "speednative", "tar", "zstd",
 }
 APPLETS = ("cgfreezer", "eventwait", "filewatch", "netwatch", "procwait",
@@ -56,6 +56,7 @@ def source_path(name: str) -> Path:
 
 
 def collect() -> tuple[dict[str, bytes], dict[str, str]]:
+    require(not (ROOT / "tools/jq").exists(), "Retired runtime tool must be removed: tools/jq")
     inventory = json.loads((ROOT / INVENTORY).read_text(encoding="utf-8"))
     require(inventory.get("schema") == 1, "Unsupported source-package.json schema")
     names = inventory["files"]
@@ -80,6 +81,8 @@ def collect() -> tuple[dict[str, bytes], dict[str, str]]:
             + ", ".join(sorted(required - set(names))))
     files = {}
     for name in sorted(names):
+        require(PurePosixPath(name).name.lower() not in {"jq", "jq.exe"},
+                f"Retired JSON tool is not a source input: {name}")
         require(name != "SOURCE_SHA256SUMS.txt", "Checksum file is generated, not an input")
         # Pinned upstream snapshots retain their exact file sets, including licences.
         if not name.startswith(("tar/upstream/", "zstd/upstream/")):

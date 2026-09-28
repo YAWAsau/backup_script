@@ -241,6 +241,45 @@ public final class TelephonyUtil {
             @Override public ContentResolver getContentResolver() { return resolver; }
         };
     }
+    /** Two bounded frames allow validation and restore in one process without spooling
+     * an archive to disk. EOF or a producer failure cannot become a successful frame. */
+    static final class FramedInput extends InputStream {
+        final InputStream source;
+        int remaining;
+        boolean ended;
+        FramedInput(InputStream source) { this.source=source; }
+        @Override public int read() throws IOException {
+            byte[] b=new byte[1];return read(b,0,1)<0?-1:b[0]&255;
+        }
+        @Override public int read(byte[] b,int off,int len) throws IOException {
+            if(len==0)return 0;
+            if(ended)return -1;
+            if(remaining==0) {
+                int a=source.read(),c=source.read(),d=source.read(),e=source.read();
+                if((a|c|d|e)<0)throw new EOFException("FRAME_TRUNCATED");
+                long n=((long)a<<24)|((long)c<<16)|((long)d<<8)|e;
+                if(n>65536)throw new IOException("FRAME_TOO_LARGE");
+                if(n==0) { ended=true;return -1; }
+                remaining=(int)n;
+            }
+            int n=source.read(b,off,Math.min(len,remaining));
+            if(n<0)throw new EOFException("FRAME_TRUNCATED");
+            remaining-=n;return n;
+        }
+        void finish() throws IOException { byte[] b=new byte[65536];while(read(b)!=-1){} }
+    }
+    static void restoreSession(InputStream input,String group) throws Exception {
+        // The same user-bound resolver is used for both phases; never switch users.
+        FramedInput checked=new FramedInput(input);
+        consume(checked,group,false);
+        checked.finish();
+        System.err.println("TELEPHONY_SESSION_VALIDATED group="+group);
+        FramedInput restore=new FramedInput(input);
+        inserted=0;skipped=0;verifyOnly=false;
+        consume(restore,group,true);
+        restore.finish();
+        if(input.read()!=-1)throw new IOException("EXTRA_FRAME");
+    }
     public static void main(String[] args) {
         int rc=0;
         try {
@@ -260,6 +299,7 @@ public final class TelephonyUtil {
                 case "backup": exportArchive(group,System.out); break;
                 case "validate": consume(System.in,group,false); break;
                 case "restore": consume(System.in,group,true); break;
+                case "restore-session": restoreSession(System.in,group); break;
                 case "verify": verifyOnly=true; consume(System.in,group,true); break;
                 case "probe":
                     for(String k:group.equals("messages")?fields("sms mms"):fields("calls"))try(Cursor c=query(path(k),null,null)) { System.out.println("PROVIDER_OK kind="+k); }

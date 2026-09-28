@@ -902,7 +902,7 @@ public final class AppStateEngine {
                         writeStartNs = System.nanoTime();
                         statesOut.write(tsvEscape(packageName));
                         statesOut.write('\t');
-                        // Legacy jq emits [.packageName,(.|tojson)]|@tsv, so the JSON
+                        // Each row contains a package name and JSON as TSV fields, so the JSON
                         // string itself must receive TSV escaping (not merely raw JSON output).
                         statesOut.write(tsvEscape(rawLine));
                         statesOut.write('\n');
@@ -991,7 +991,7 @@ public final class AppStateEngine {
         }
     }
 
-    /** Mirrors jq @tsv escaping for one field: backslash, TAB, LF and CR. */
+    /** Escapes one TSV field: backslash, TAB, LF and CR. */
     private static String tsvEscape(String value) {
         if (value == null || value.isEmpty()) return value == null ? "" : value;
         StringBuilder out = new StringBuilder(value.length() + 16);
