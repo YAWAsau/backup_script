@@ -254,7 +254,8 @@ object SmbScanUtil {
     private fun autoCidr24(): String? {
         val ifaces = runCatching { Collections.list(NetworkInterface.getNetworkInterfaces()) }.getOrNull().orEmpty()
         val candidates = ArrayList<Inet4Address>()
-        for (iface in ifaces) {
+        for (iface in ifaces.sortedBy { if (it.name.startsWith("wlan") || it.name.startsWith("eth")) 0 else 1 }) {
+            if (!Regex("^(wlan|wifi|eth|en|ap|swlan|usb|rndis).*", RegexOption.IGNORE_CASE).matches(iface.name)) continue
             if (runCatching { !iface.isUp || iface.isLoopback || iface.isVirtual }.getOrDefault(true)) continue
             for (addr in Collections.list(iface.inetAddresses)) {
                 val v4 = addr as? Inet4Address ?: continue

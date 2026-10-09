@@ -1,8 +1,8 @@
 package com.xayah.dex.compat;
 
 import java.lang.reflect.Method;
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.concurrent.ConcurrentHashMap;
+
 import java.util.Map;
 import java.util.Set;
 
@@ -11,9 +11,9 @@ import java.util.Set;
  * signature fallbacks out of the command entry class.
  */
 public final class HiddenApiReflection {
-    private static final Map<String, Class<?>> CLASS_CACHE = new HashMap<>();
-    private static final Map<String, Method> METHOD_CACHE = new HashMap<>();
-    private static final Set<String> METHOD_MISS_CACHE = new HashSet<>();
+    private static final Map<String, Class<?>> CLASS_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, Method> METHOD_CACHE = new ConcurrentHashMap<>();
+    private static final Set<String> METHOD_MISS_CACHE = ConcurrentHashMap.newKeySet();
 
     private HiddenApiReflection() {
     }

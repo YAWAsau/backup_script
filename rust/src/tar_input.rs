@@ -1,7 +1,17 @@
 // GNU tar default (gnu format, blocking-factor=20) accounting.
-pub fn round512(n: u64) -> u64 { n.div_ceil(512) * 512 }
-pub fn long_extra(n: usize) -> u64 { if n > 100 { 512 + round512(n as u64 + 1) } else { 0 } }
-pub fn finish(n: u64) -> u64 { (n + 1024).div_ceil(10240) * 10240 }
+pub fn round512(n: u64) -> u64 {
+    n.div_ceil(512) * 512
+}
+pub fn long_extra(n: usize) -> u64 {
+    if n > 100 {
+        512 + round512(n as u64 + 1)
+    } else {
+        0
+    }
+}
+pub fn finish(n: u64) -> u64 {
+    (n + 1024).div_ceil(10240) * 10240
+}
 #[derive(Default)]
 pub struct Accumulator {
     pub bytes: u64,
@@ -9,7 +19,9 @@ pub struct Accumulator {
 }
 impl Accumulator {
     pub fn add(&mut self, member: &[u8], kind: u8, size: u64, dev: u64, ino: u64, nlink: u64) {
-        if kind == b's' { return; }
+        if kind == b's' {
+            return;
+        }
         self.bytes += 512 + long_extra(member.len());
         if matches!(kind, b'f' | b'l') && nlink > 1 {
             if let Some(first_len) = self.links.get(&(dev, ino)) {
@@ -18,8 +30,11 @@ impl Accumulator {
             }
             self.links.insert((dev, ino), member.len());
         }
-        if kind == b'f' { self.bytes += round512(size); }
-        else if kind == b'l' { self.bytes += long_extra(size as usize); }
+        if kind == b'f' {
+            self.bytes += round512(size);
+        } else if kind == b'l' {
+            self.bytes += long_extra(size as usize);
+        }
     }
 }
 pub fn excluded(member: &[u8], root: &[u8], external: bool) -> bool {
@@ -27,13 +42,29 @@ pub fn excluded(member: &[u8], root: &[u8], external: bool) -> bool {
     // Literal root/component patterns match at any component boundary.
     let mut previous: Option<&[u8]> = None;
     for c in member.split(|b| *b == b'/') {
-        if external && c.starts_with(b"Backup_") { return true; }
+        if external && c.starts_with(b"Backup_") {
+            return true;
+        }
         let parent_matches = previous == Some(root);
         previous = Some(c);
-        if !parent_matches { continue; }
+        if !parent_matches {
+            continue;
+        }
         if external {
-            if c.starts_with(b".") || [b"cache".as_slice(), b"QQ", b"Telegram"].contains(&c) { return true; }
-        } else if [b".ota".as_slice(), b"cache", b"lib", b"code_cache", b"no_backup"].contains(&c) { return true; }
+            if c.starts_with(b".") || [b"cache".as_slice(), b"QQ", b"Telegram"].contains(&c) {
+                return true;
+            }
+        } else if [
+            b".ota".as_slice(),
+            b"cache",
+            b"lib",
+            b"code_cache",
+            b"no_backup",
+        ]
+        .contains(&c)
+        {
+            return true;
+        }
     }
     false
 }
@@ -61,7 +92,7 @@ mod tests {
     #[test]
     fn hardlink_longlink_and_special_members() {
         let mut a = Accumulator::default();
-        a.add(&vec![b'x'; 101], b'f', 513, 1, 2, 2);
+        a.add(&[b'x'; 101], b'f', 513, 1, 2, 2);
         assert_eq!(a.bytes, 2560);
         a.add(b"short", b'f', 513, 1, 2, 2);
         assert_eq!(a.bytes, 4096);
@@ -76,7 +107,7 @@ mod tests {
     #[test]
     fn fifo_hardlinks_each_keep_their_own_member_header() {
         let mut a = Accumulator::default();
-        a.add(&vec![b'x'; 105], b'p', 0, 7, 11, 2);
+        a.add(&[b'x'; 105], b'p', 0, 7, 11, 2);
         a.add(b"f", b'p', 0, 7, 11, 2);
         // FIFO entries are never entered in GNU tar's hardlink table:
         // long name record + first header + second header.

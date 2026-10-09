@@ -17,7 +17,7 @@ fn bytes(s: &str) -> io::Result<Vec<u8>> {
     if s == "-" {
         return Ok(Vec::new());
     }
-    if s.len() % 2 != 0 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+    if !s.len().is_multiple_of(2) || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(bad("invalid hex"));
     }
     (0..s.len())
@@ -212,10 +212,48 @@ fn transfer(
     }
     Ok(data)
 }
+fn allowed_top(path: &[u8], expected: &str) -> bool {
+    if path.is_empty() { return true; }
+    let top = path.split(|b| *b == b'/').next().unwrap_or_default();
+    match expected {
+        "thanos*" => top.starts_with(b"thanos"),
+        "hide_my_applist_*" => top.starts_with(b"hide_my_applist_"),
+        "@apk" => !path.contains(&b'/') && top.ends_with(b".apk"),
+        _ => top == expected.as_bytes(),
+    }
+}
+fn check_member_scope(m: &Member, expected: &str, prior: &BTreeMap<Vec<u8>, Member>) -> io::Result<()> {
+    if expected.is_empty() || expected.contains('/') || expected == "." || expected == ".." {
+        return Err(bad("invalid expected top directory"));
+    }
+    if !allowed_top(&m.path, expected) { return Err(bad("member outside expected top directory")); }
+    // Never let a previously extracted symlink redirect a later member.
+    for (i, byte) in m.path.iter().enumerate() {
+        if *byte == b'/' && prior.get(&m.path[..i]).is_some_and(|v| matches!(v.kind, b'1' | b'2')) {
+            return Err(bad("member beneath symlink"));
+        }
+    }
+    if m.kind == b'1' {
+        let target = clean(&m.link)?;
+        if target.is_empty() || !allowed_top(&target, expected) { return Err(bad("link outside expected top directory")); }
+        if prior.get(&target).is_some_and(|v| v.kind == b'2') { return Err(bad("hardlink to symlink")); }
+        for (i, byte) in target.iter().enumerate() {
+            if *byte == b'/' && prior.get(&target[..i]).is_some_and(|v| v.kind == b'2') {
+                return Err(bad("link target beneath symlink"));
+            }
+        }
+    }
+    Ok(())
+}
+#[cfg(test)]
+fn capture(r: &mut impl Read, w: &mut impl Write) -> io::Result<(BTreeMap<Vec<u8>, Member>, usize)> {
+    capture_scoped(r, w, None)
+}
 /// Returns unique final member facts and the count of unsupported metadata fields.
-fn capture(
+fn capture_scoped(
     r: &mut impl Read,
     w: &mut impl Write,
+    expected: Option<&str>,
 ) -> io::Result<(BTreeMap<Vec<u8>, Member>, usize)> {
     let mut members = BTreeMap::new();
     let mut global = BTreeMap::new();
@@ -337,13 +375,14 @@ fn capture(
         if m.path.is_empty() && kind != b'5' {
             return Err(bad("non-directory archive root"));
         }
+        if let Some(expected) = expected { check_member_scope(&m, expected, &members)?; }
         w.write_all(&h)?;
         transfer(r, w, m.size, false)?;
         transfer(r, w, (512 - m.size % 512) % 512, false)?;
         members.insert(m.path.clone(), m);
     }
 }
-pub fn capture_command(prefix: &str) -> i32 {
+pub fn capture_command(prefix: &str, expected: &str) -> i32 {
     let run = || -> io::Result<()> {
         let marker = format!("{prefix}.source");
         match fs::remove_file(&marker) {
@@ -351,9 +390,10 @@ pub fn capture_command(prefix: &str) -> i32 {
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => return Err(e),
         }
-        let (rows, limited) = capture(
+        let (rows, limited) = capture_scoped(
             &mut io::stdin().lock(),
             &mut io::BufWriter::with_capacity(131072, io::stdout().lock()),
+            Some(expected),
         )?;
         let mut out = io::BufWriter::new(fs::File::create(format!("{prefix}.manifest.tmp"))?);
         writeln!(out, "{HEADER}")?;
@@ -537,6 +577,49 @@ pub fn verify_command(root: &str, prefix: &str, mode: &str, owner: &str, mtime: 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn expected_top_rejects_siblings_and_escaping_links() {
+        for (name, kind, link) in [
+            (b"other/file".as_slice(), b'0', b"".as_slice()),
+            (b"pkg/link", b'1', b"other/file"),
+        ] {
+            let a = archive(name, kind, b"", link);
+            let mut out = Vec::new();
+            assert!(capture_scoped(&mut a.as_slice(), &mut out, Some("pkg")).is_err());
+            assert!(out.is_empty());
+        }
+        for target in [b"../other/file".as_slice(), b"/data/data/com.termux/files/usr"] {
+            let mut a = archive(b"pkg/link", b'2', b"", target);
+            a.resize(a.len() + 1024, 0);
+            assert!(capture_scoped(&mut a.as_slice(), &mut Vec::new(), Some("pkg")).is_ok());
+        }
+        for (name, expected) in [(b"pkg/file".as_slice(), "pkg"), (b"thanos/a", "thanos*"), (b"base.apk", "@apk")] {
+            let mut a = archive(name, b'0', b"ok", b"");
+            a.resize(a.len() + 1024, 0);
+            assert!(capture_scoped(&mut a.as_slice(), &mut Vec::new(), Some(expected)).is_ok());
+        }
+    }
+
+    #[test]
+    fn expected_top_rejects_member_through_symlink() {
+        let link = archive(b"pkg/link", b'2', b"", b"target");
+        let child = archive(b"pkg/link/file", b'0', b"bad", b"");
+        let mut a = link[..512].to_vec();
+        a.extend_from_slice(&child);
+        a.resize(a.len() + 1024, 0);
+        assert!(capture_scoped(&mut a.as_slice(), &mut Vec::new(), Some("pkg")).is_err());
+    }
+    #[test]
+    fn expected_top_rejects_hardlink_alias_escape() {
+        let mut a = archive(b"pkg/link", b'2', b"", b"/outside");
+        a.extend(archive(b"pkg/alias", b'1', b"", b"pkg/link"));
+        a.resize(a.len() + 1024, 0);
+        assert!(capture_scoped(&mut a.as_slice(), &mut Vec::new(), Some("pkg")).is_err());
+        let mut a = archive(b"pkg/alias", b'1', b"", b"pkg/later");
+        a.extend(archive(b"pkg/alias/file", b'0', b"bad", b""));
+        a.resize(a.len() + 1024, 0);
+        assert!(capture_scoped(&mut a.as_slice(), &mut Vec::new(), Some("pkg")).is_err());
+    }
     fn archive(name: &[u8], kind: u8, data: &[u8], link: &[u8]) -> Vec<u8> {
         let mut h = [0u8; 512];
         h[..name.len()].copy_from_slice(name);
@@ -624,17 +707,56 @@ mod tests {
     }
     #[test]
     fn symlink_owner_is_required_without_weakening_target_or_type_checks() {
-        let m = Member { path: b"link".to_vec(), kind: b'2', size: 0,
-            mode: 0o777, uid: 10001, gid: 10001, mtime: 1,
-            link: b"/old/target".to_vec(), major: 0, minor: 0 };
+        let m = Member {
+            path: b"link".to_vec(),
+            kind: b'2',
+            size: 0,
+            mode: 0o777,
+            uid: 10001,
+            gid: 10001,
+            mtime: 1,
+            link: b"/old/target".to_vec(),
+            major: 0,
+            minor: 0,
+        };
         let mut actual = m.clone();
-        assert!(!matches_source(&m, &actual, true, true, Some((10002, 10002)), false));
-        actual.uid = 10002; actual.gid = 10002;
-        assert!(matches_source(&m, &actual, true, true, Some((10002, 10002)), false));
+        assert!(!matches_source(
+            &m,
+            &actual,
+            true,
+            true,
+            Some((10002, 10002)),
+            false
+        ));
+        actual.uid = 10002;
+        actual.gid = 10002;
+        assert!(matches_source(
+            &m,
+            &actual,
+            true,
+            true,
+            Some((10002, 10002)),
+            false
+        ));
         actual.link = b"/wrong/target".to_vec();
-        assert!(!matches_source(&m, &actual, true, true, Some((10002, 10002)), false));
-        actual.link = m.link.clone(); actual.kind = b'0';
-        assert!(!matches_source(&m, &actual, true, true, Some((10002, 10002)), false));
+        assert!(!matches_source(
+            &m,
+            &actual,
+            true,
+            true,
+            Some((10002, 10002)),
+            false
+        ));
+        actual.link = m.link.clone();
+        actual.kind = b'0';
+        assert!(!matches_source(
+            &m,
+            &actual,
+            true,
+            true,
+            Some((10002, 10002)),
+            false
+        ));
     }
     #[test]
     fn policy_and_source_mismatch() {

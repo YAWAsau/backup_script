@@ -21,7 +21,7 @@ pub fn unhex(text: &str) -> Option<Vec<u8>> {
             _ => None,
         }
     }
-    if text.is_empty() || text.len() % 2 != 0 {
+    if text.is_empty() || !text.len().is_multiple_of(2) {
         return None;
     }
     let mut bytes = Vec::with_capacity(text.len() / 2);
@@ -168,6 +168,7 @@ pub mod unix {
     }
 
     fn walk(root: &Path, dir: &Path, out: &mut impl Write) -> io::Result<()> {
+        let _depth = speedbackup_native_rs::WalkDepthGuard::enter()?;
         for entry in fs::read_dir(dir)? {
             let path = entry?.path();
             let meta = fs::symlink_metadata(&path)?;
@@ -208,10 +209,17 @@ pub mod unix {
         })
     }
 
-    /// One process, independent snapshot and re-stat passes; never self-comparison.
+    /// Compare an existing expected snapshot with the current tree; never create the expected data here.
     pub fn audit(root: &str, path: &str) -> i32 {
         let started = std::time::Instant::now();
-        let result = manifest(Path::new(root), Path::new(path));
+        let result = if Path::new(path).is_file() {
+            Ok(())
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "expected manifest required; use restore-tree-manifest-bytes before the operation",
+            ))
+        };
         let snapshot_ms = started.elapsed().as_millis();
         let manifest_rc = if result.is_ok() { 0 } else { 3 };
         let mut out = io::BufWriter::new(io::stdout().lock());

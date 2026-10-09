@@ -357,7 +357,7 @@ fn battery(b: &V, bo: &V) -> V {
         opstate(b, "BATTERY:RUN_ANY_IN_BACKGROUND")
     } else {
         object(vec![
-            ("supported", boolean(!null(bo) && raw(bo) != "")),
+            ("supported", boolean(!null(bo) && !raw(bo).is_empty())),
             ("op", atom("-1")),
             ("mode", m.clone()),
             ("modeName", mode_name(&m)),
@@ -378,8 +378,7 @@ fn battery(b: &V, bo: &V) -> V {
                     g(b, "BATTERY:doze_whitelist"),
                     boolean(false),
                 ]))
-                .to_ascii_lowercase()
-                    == "true",
+                .eq_ignore_ascii_case("true"),
             ),
         ),
     ])
@@ -478,7 +477,17 @@ pub(super) fn convert(v: &V, a: &Vars, fast: bool) -> Result<Vec<V>, String> {
         ("schemaVersion", atom("2")),
         ("recordType", string("snapshot")),
         ("packageName", string(pkg)),
-        ("userId", atom("0")),
+        (
+            "userId",
+            num(
+                &fallback(&[
+                    firstval("userId"),
+                    firstval("user_id"),
+                    string(var(a, "user")),
+                ]),
+                "0",
+            ),
+        ),
         (
             "package",
             object(vec![

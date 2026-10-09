@@ -108,24 +108,52 @@ public final class TelephonyUtil {
         long n=0;
         for(String kind:group.equals("messages")?fields("sms mms"):fields("calls")) {
             try(Cursor c=query(path(kind),null,null)) { while(c.moveToNext()) {
-                JsonObject r=record(kind,c,true); JsonObject wire=r.deepCopy();
-                if(kind.equals("mms"))for(JsonElement p:wire.getAsJsonArray("parts"))p.getAsJsonObject().remove("source");
-                json(z,"r/"+n+".json",wire);
-                if(kind.equals("mms")) {
-                    JsonArray parts=r.getAsJsonArray("parts");
-                    for(int i=0;i<parts.size();i++) { JsonObject p=parts.get(i).getAsJsonObject(); if(!p.get("binary").getAsBoolean())continue;
+                // Snapshot each MMS attachment once into a private bounded-on-disk spool.
+                // The checksum and exported bytes now describe the same captured generation.
+                JsonObject r=record(kind,c,false);
+                List<File> spool=new ArrayList<>(); File spoolDir=null;
+                try {
+                    if(kind.equals("mms")) {
+                        File parent=new File("/data/.speedbackup_telephony");
+                        if(!parent.exists() && !parent.mkdir())throw new IOException("SPOOL_CREATE_FAILED");
+                        android.system.StructStat st=android.system.Os.lstat(parent.getPath());
+                        if(st.st_uid!=0 || !android.system.OsConstants.S_ISDIR(st.st_mode))throw new IOException("SPOOL_PARENT_INVALID");
+                        android.system.Os.chmod(parent.getPath(),0700);
+                        spoolDir=java.nio.file.Files.createTempDirectory(parent.toPath(),"mms-").toFile();
+                        android.system.Os.chmod(spoolDir.getPath(),0700);
+                        JsonArray parts=r.getAsJsonArray("parts");
+                        for(int i=0;i<parts.size();i++) {
+                            JsonObject part=parts.get(i).getAsJsonObject();
+                            File file=new File(spoolDir,Integer.toString(i)); spool.add(file);
+                            if(!part.get("binary").getAsBoolean())continue;
+                            try(InputStream in=resolver.openInputStream(uri("mms/part/"+str(part,"source")));
+                                OutputStream captured=new BufferedOutputStream(new FileOutputStream(file),65536)) {
+                                if(in==null)throw new IOException("MMS_PART_UNREADABLE");
+                                part.addProperty("sha256",digest(in,captured));
+                            }
+                        }
+                    }
+                    JsonObject wire=r.deepCopy();
+                    if(kind.equals("mms"))for(JsonElement part:wire.getAsJsonArray("parts"))part.getAsJsonObject().remove("source");
+                    json(z,"r/"+n+".json",wire);
+                    for(int i=0;i<spool.size();i++) {
+                        File file=spool.get(i); if(!file.isFile())continue;
                         z.putNextEntry(new ZipEntry("p/"+n+"/"+i));
-                        try(InputStream in=resolver.openInputStream(uri("mms/part/"+str(p,"source")))) {
-                            if(in==null || !digest(in,z).equals(str(p,"sha256")))throw new IOException("MMS_PART_CHANGED");
+                        try(InputStream captured=new FileInputStream(file)) {
+                            byte[] buffer=new byte[65536]; int count;
+                            while((count=captured.read(buffer))!=-1)z.write(buffer,0,count);
                         }
                         z.closeEntry();
                     }
+                } finally {
+                    for(File file:spool)java.nio.file.Files.deleteIfExists(file.toPath());
+                    if(spoolDir!=null)java.nio.file.Files.deleteIfExists(spoolDir.toPath());
                 }
                 n++;
             }}
         }
         JsonObject end=new JsonObject(); end.addProperty("records",n); json(z,"complete.json",end);
-        z.finish(); z.flush(); System.err.println("TELEPHONY_BACKUP_OK group="+group+" records="+n);
+        z.finish(); z.flush(); DiagnosticInfo.write("TELEPHONY_BACKUP_OK group="+group+" records="+n);
     }
     static byte[] readJson(InputStream in) throws Exception {
         ByteArrayOutputStream b=new ByteArrayOutputStream(); byte[] buf=new byte[8192]; int n;
@@ -165,10 +193,33 @@ public final class TelephonyUtil {
         Uri u=resolver.insert(uri(p),values(o)); if(u==null)throw new IOException("INSERT_NULL"); return u;
     }
     static String id(Uri u) throws Exception { String id=u.getLastPathSegment(); if(id==null || !id.matches("[0-9]+"))throw new IOException("INSERT_ID_INVALID"); return id; }
-    static Map<String,Integer> inventory(String group) throws Exception {
+    static String metadataIdentity(JsonObject r) throws Exception {
+        JsonObject copy=r.deepCopy();
+        for(JsonElement part:copy.getAsJsonArray("parts")) part.getAsJsonObject().remove("sha256");
+        return identity(copy);
+    }
+    static void resolveMmsCandidates(JsonObject record, Map<String,List<JsonObject>> lazy, Map<String,Integer> existing) throws Exception {
+        List<JsonObject> candidates=lazy.remove(metadataIdentity(record));
+        if(candidates==null)return;
+        for(JsonObject candidate:candidates) {
+            for(JsonElement element:candidate.getAsJsonArray("parts")) {
+                JsonObject part=element.getAsJsonObject(); if(!part.get("binary").getAsBoolean())continue;
+                try(InputStream in=resolver.openInputStream(uri("mms/part/"+str(part,"source")))) {
+                    if(in==null)throw new IOException("MMS_PART_UNREADABLE");
+                    part.addProperty("sha256",digest(in,null));
+                }
+            }
+            String key=identity(candidate); existing.put(key,existing.getOrDefault(key,0)+1);
+        }
+    }
+    static Map<String,Integer> inventory(String group, Map<String,List<JsonObject>> lazyMms) throws Exception {
         Map<String,Integer> ids=new HashMap<>();
         for(String k:group.equals("messages")?fields("sms mms"):fields("calls"))try(Cursor c=query(path(k),null,null)) {
-            while(c.moveToNext()) { String h=identity(record(k,c,true)); ids.put(h,ids.getOrDefault(h,0)+1); }
+            while(c.moveToNext()) {
+                JsonObject r=record(k,c,false);
+                if(k.equals("mms")) { lazyMms.computeIfAbsent(metadataIdentity(r), key -> new ArrayList<>()).add(r); }
+                else { String h=identity(r); ids.put(h,ids.getOrDefault(h,0)+1); }
+            }
         }
         return ids;
     }
@@ -188,12 +239,14 @@ public final class TelephonyUtil {
         }
         ZipInputStream z=new ZipInputStream(new BufferedInputStream(input,65536)); entry(z,"header.json"); JsonObject h=object(z);
         if(!str(h,"format").equals("SpeedBackup.Telephony") || h.get("version").getAsInt()!=1 || !str(h,"group").equals(group))throw new IOException("FORMAT_INVALID");
-        Map<String,Integer> existing=restore?inventory(group):new HashMap<>(); Map<String,Integer> seen=new HashMap<>(); long n=0;
+        Map<String,List<JsonObject>> lazyMms=new HashMap<>();
+        Map<String,Integer> existing=restore?inventory(group,lazyMms):new HashMap<>(); Map<String,Integer> seen=new HashMap<>(); long n=0;
         while(true) {
             ZipEntry e=z.getNextEntry(); if(e==null)throw new IOException("COMPLETION_MISSING");
             if(e.getName().equals("complete.json")) { if(object(z).get("records").getAsLong()!=n)throw new IOException("COUNT_MISMATCH"); break; }
             if(!e.getName().equals("r/"+n+".json"))throw new IOException("RECORD_ORDER_INVALID");
             JsonObject r=object(z); validateRecord(r,group); String key=identity(r), kind=str(r,"kind");
+            if(restore && kind.equals("mms"))resolveMmsCandidates(r,lazyMms,existing);
             int occurrence=seen.getOrDefault(key,0)+1; seen.put(key,occurrence);
             boolean add=restore && occurrence>existing.getOrDefault(key,0); Uri created=null;
             if(verifyOnly && add)throw new IOException("VERIFY_RECORD_MISSING");

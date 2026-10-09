@@ -157,11 +157,23 @@ final class ProcessObserverUtil {
         }
     }
 
+    static synchronized void stopOwnedSessions() {
+        for (Integer token : new java.util.ArrayList<>(SESSIONS.keySet())) {
+            try { stopAsync(token); } catch (Throwable ignored) { }
+        }
+    }
+
     static synchronized String stopAsync(int token) {
         return stopAsync(token, -1, "");
     }
 
     static synchronized String stopAsync(int token, int expectedUserId, String expectedPackageName) {
+        WatchSession existing = SESSIONS.get(token);
+        if (existing != null && ((expectedUserId >= 0 && existing.userId != expectedUserId)
+                || (expectedPackageName != null && !expectedPackageName.isEmpty()
+                    && !existing.packageName.equals(expectedPackageName)))) {
+            return "PROCESS_OBSERVER_STOP_REJECTED token=" + token + " stateRetained=true reason=identity_mismatch\n";
+        }
         WatchSession session = SESSIONS.remove(token);
         if (session == null) {
             return "PROCESS_OBSERVER_STOP_MISSING token=" + token
@@ -262,6 +274,10 @@ final class ProcessObserverUtil {
                         continue;
                     }
                     factsRows += appendRestoreSessionFactRow(factsOut, realPm, pmHidden, userId, "PKG", "RESTORE", pkg, label, decision.action, decision.reason, "compare-map");
+                    if (AudioPlaybackGuard.blocks(userId, pkg)) {
+                        out.append("PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_SKIP package=").append(pkg).append(" reason=audio_playback_guard\n");
+                        continue;
+                    }
                     int token = NEXT_TOKEN.incrementAndGet();
                     WatchSession session = null;
                     try {
@@ -605,6 +621,10 @@ final class ProcessObserverUtil {
                             .append(" reason=empty_package label=").append(sanitize(label)).append('\n');
                     continue;
                 }
+                if (AudioPlaybackGuard.blocks(userId, pkg)) {
+                    out.append("PROCESS_OBSERVER_BATCH_START_SKIP package=").append(pkg).append(" reason=audio_playback_guard\n");
+                    continue;
+                }
                 int token = NEXT_TOKEN.incrementAndGet();
                 WatchSession session = null;
                 try {
@@ -716,9 +736,12 @@ final class ProcessObserverUtil {
                 }
                 long stopT0 = System.currentTimeMillis();
                 try {
+                    if ((expectedUserId >= 0 && session.userId != expectedUserId) || !session.packageName.equals(pkg))
+                        throw new java.io.IOException("batch token identity mismatch");
                     String summary = session.finish("batch-stop-token-" + token);
                     long stopMs = Math.max(0L, System.currentTimeMillis() - stopT0);
                     SESSIONS.remove(token);
+                    if (!BackupGuardRelease.observerRestored(summary)) throw new java.io.IOException("batch guard restore incomplete");
                     boolean deleted = deleteBatchState(token);
                     if (deleted) {
                         stopped++;
@@ -994,6 +1017,41 @@ final class ProcessObserverUtil {
                 + " topActivity=" + (top == null ? "" : sanitize(top.activityName))
                 + " source=" + (top == null ? "none" : sanitize(top.source))
                 + " directTopCheck=1 dumpsys=0\n";
+    }
+
+    static boolean resumePausedPids(int userId, String pkg, String csv) {
+        if (csv.equals("-")) return true;
+        java.util.HashSet<Integer> live = new java.util.HashSet<>();
+        for (PidInfo p : findAliveProcesses(userId, pkg, -1)) live.add(p.pid);
+        boolean ok = true;
+        for (String raw : csv.split(",")) {
+            int pid = Integer.parseInt(raw);
+            if (!live.contains(pid)) continue; // Exited or reused PID must never receive SIGCONT.
+            try { android.system.Os.kill(pid, android.system.OsConstants.SIGCONT); }
+            catch (android.system.ErrnoException e) { if (e.errno != android.system.OsConstants.ESRCH) ok = false; }
+        }
+        return ok;
+    }
+
+    static String wchanStatus(int userId, String packageName, String expect) {
+        String pkg = safePackage(packageName);
+        if (userId < 0 || !pkg.matches("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
+                || !(expect.equals("frozen") || expect.equals("thawed") || expect.equals("not-frozen") || expect.equals("any"))) {
+            return "PROCESS_OBSERVER_WCHAN_ERROR reason=bad_args\n";
+        }
+        try {
+            // Same fresh package PID scan as foregroundStatus; top activity is
+            // irrelevant to WCHAN, so no ActivityTask query is necessary.
+            String pids = pidCsv(findAliveProcesses(userId, pkg, -1));
+            String nativeOut = pids.isEmpty() ? "" : CgroupFreezeUtil.wchanPidList(userId, pids, expect);
+            if (!pids.isEmpty() && !nativeOut.contains("CGFREEZER_WCHAN_DONE ")) {
+                return "PROCESS_OBSERVER_WCHAN_ERROR reason=native_response\n";
+            }
+            return nativeOut + "\nPROCESS_OBSERVER_WCHAN_READY user=" + userId + " package=" + pkg
+                    + " expect=" + expect + " pids=" + (pids.isEmpty() ? "none" : pids) + "\n";
+        } catch (Throwable t) {
+            return "PROCESS_OBSERVER_WCHAN_ERROR reason=" + t.getClass().getSimpleName() + "\n";
+        }
     }
 
     static String foregroundStatus(int userId, String[] args, int start) {
@@ -1456,6 +1514,7 @@ final class ProcessObserverUtil {
         if (timeoutMs < 100) timeoutMs = 100;
         if (timeoutMs > 3000) timeoutMs = 3000;
         if (pkg.isEmpty()) return "FORCE_STOP_VERIFY ok=false reason=bad_package user=" + userId + "\n";
+        if (AudioPlaybackGuard.blocks(userId, pkg)) return "FORCE_STOP_VERIFY ok=false reason=audio_playback_guard user=" + userId + "\n";
         TopSnapshot beforeTop = findTopApp(userId);
         int uid = resolveTargetUid(userId, pkg);
         List<PidInfo> before = findAliveProcesses(userId, pkg, uid);
@@ -1698,6 +1757,7 @@ final class ProcessObserverUtil {
     }
 
     private static final class WatchSession {
+        private final StringBuilder stopDetails = new StringBuilder();
         final int userId;
         final String packageName;
         final long durationMs;
@@ -1800,7 +1860,7 @@ final class ProcessObserverUtil {
             if (log != null) {
                 try { log.flush(); log.close(); } catch (Throwable ignored) {}
             }
-            return summary;
+            return summary + stopDetails;
         }
 
         void onNativeLogdLine(String rawLine) {
@@ -1955,6 +2015,10 @@ final class ProcessObserverUtil {
 
         private synchronized void performAction(String callback, int pid, int uid, String processName) {
             if (!running.get()) return;
+            if (AudioPlaybackGuard.blocks(userId, packageName)) {
+                logLine("PROCESS_OBSERVER_AUDIO_SKIP callback=" + sanitize(callback) + " package=" + packageName);
+                return;
+            }
             if ("monitor".equals(action) || "log".equals(action)) {
                 return;
             }
@@ -2108,6 +2172,7 @@ final class ProcessObserverUtil {
         }
 
         private synchronized boolean tryFastCgroupFreezeTopTarget(String callback, List<PidInfo> alive) {
+            if (AudioPlaybackGuard.blocks(userId, packageName)) return true;
             if (!cgroupFreezerPreferredForAction(packageName, action)) return false;
             if (alive == null || alive.isEmpty()) return false;
             if (refreshPrimaryCgroupIfActive(callback, alive, "top-fast")) return true;
@@ -2194,6 +2259,7 @@ final class ProcessObserverUtil {
         }
 
         private void startIntegratedWakeBlockIfNeeded() {
+            if (AudioPlaybackGuard.blocks(userId, packageName)) return;
             if (wakeBlockMode == null || wakeBlockMode.isEmpty()) {
                 return;
             }
@@ -2214,6 +2280,7 @@ final class ProcessObserverUtil {
             if (CgroupFreezeUtil.hasActivePrimaryAppScopeSession(userId, packageName, -1)) {
                 result = AppWakeBlockUtil.deferStopToPrimaryScope(token, userId, packageName,
                         "process_observer_stop_defer_primary_cgroup_" + safeWord(reason));
+                stopDetails.append(result).append('\n');
                 logLine("PROCESS_OBSERVER_WAKE_BLOCK_STOP_DEFER integrated=1 mode=" + wakeBlockMode
                         + " token=" + token
                         + " reason=" + sanitize(reason)
@@ -2221,6 +2288,7 @@ final class ProcessObserverUtil {
                 return;
             }
             result = AppWakeBlockUtil.stop(token);
+            stopDetails.append(result).append('\n');
             logLine("PROCESS_OBSERVER_WAKE_BLOCK_STOP integrated=1 mode=" + wakeBlockMode
                     + " token=" + token
                     + " reason=" + sanitize(reason)
@@ -2240,6 +2308,7 @@ final class ProcessObserverUtil {
                 if (CgroupFreezeUtil.hasActivePrimaryAppScopeSession(userId, packageName, token)) {
                     String result = CgroupFreezeUtil.deferProcessObserverTokenToPrimaryScope(token, userId, packageName, reason);
                     if (result != null && result.contains("CGROUP_FREEZE_STOP_PROCESS_OBSERVER_DEFER_OK")) {
+                        stopDetails.append(result).append('\n');
                         logLine("PROCESS_OBSERVER_CGROUP_FREEZER_STOP_DEFER integrated=1 token=" + token
                                 + " reason=" + sanitize(reason)
                                 + " result=" + sanitize(result));
@@ -2250,6 +2319,7 @@ final class ProcessObserverUtil {
                             + " result=" + sanitize(result));
                 }
                 String result = CgroupFreezeUtil.stop(token, userId, packageName);
+                stopDetails.append(result).append('\n');
                 logLine("PROCESS_OBSERVER_CGROUP_FREEZER_STOP integrated=1 token=" + token
                         + " reason=" + sanitize(reason)
                         + " result=" + sanitize(result));
@@ -2534,6 +2604,11 @@ final class ProcessObserverUtil {
     private static GuardResult runGuardStop(int userId, String packageName, int targetUid, String action,
                                            String callback, int eventPid, int eventUid, String eventProcess) {
         GuardResult result = new GuardResult();
+        if (AudioPlaybackGuard.blocks(userId, packageName)) {
+            result.finalAlive = true;
+            result.lines.add("ACTION_RESULT stage=audio-playback-guard skipped=true noForceStop=true noCgroup=true");
+            return result;
+        }
         String normalized = normalizeAction(action);
         boolean cgroupFallbackInstantKill = false;
         int uid = targetUid;
@@ -3007,12 +3082,14 @@ final class ProcessObserverUtil {
             String name = entry.getName();
             int pid = parsePositiveInt(name, -1);
             if (pid <= 0) continue;
+            // Most PIDs are unrelated. Read UID/status only after the same
+            // package-name test; retain same-user isolated/shared UID processes
+            // and the existing unknown-UID behavior (do not filter by targetUid).
+            String cmd = readCmdline(pid);
+            if (!cmd.equals(packageName) && !cmd.startsWith(packageName + ":")) continue;
             int uid = readStatusUid(pid);
             if (uid >= 0 && userIdFromUid(uid) != userId) continue;
-            String cmd = readCmdline(pid);
-            if (cmd.equals(packageName) || cmd.startsWith(packageName + ":")) {
-                list.add(new PidInfo(pid, uid, cmd));
-            }
+            list.add(new PidInfo(pid, uid, cmd));
         }
         return list;
     }

@@ -252,6 +252,8 @@ const ENTRY: &[&str] = &[
     "media_size",
     "origin_size",
     "archive_input_bytes",
+    "change_fingerprint",
+    "timeline_archive",
     "apk_version",
     "versionCode",
     "PackageName",
@@ -265,6 +267,8 @@ const REFRESH: &[&str] = &[
     "media_size",
     "origin_size",
     "archive_input_bytes",
+    "change_fingerprint",
+    "timeline_archive",
     "path",
     "keystore",
     "apk_version",
@@ -441,6 +445,48 @@ fn backup(old: &V, entry: &str, state: &V, prefix: &str) -> Result<(), String> {
 fn write(p: &str, v: &V, pretty: bool) -> Result<(), String> {
     fs::write(p, format!("{}\n", v.emit(pretty, 0))).map_err(|e| e.to_string())
 }
+
+// Publish a complete validated document beside its destination. Never truncate
+// the existing document if writing the replacement fails.
+fn publish_document(path: &str, body: &[u8]) -> Result<(), String> {
+    let dst = std::path::Path::new(path);
+    let parent = dst.parent().ok_or("missing parent")?;
+    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    if fs::symlink_metadata(dst).map(|m| m.file_type().is_symlink()).unwrap_or(false) {
+        return Err("refuse symlink document".into());
+    }
+    let tmp = parent.join(format!(".profile-publish-{}-{}", std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| e.to_string())?.as_nanos()));
+    let result = (|| {
+        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp).map_err(|e| e.to_string())?;
+        if let Ok(m) = fs::metadata(dst) { f.set_permissions(m.permissions()).map_err(|e| e.to_string())?; }
+        std::io::Write::write_all(&mut f, body).map_err(|e| e.to_string())?;
+        drop(f);
+        fs::rename(&tmp, dst).map_err(|e| e.to_string())
+    })();
+    if result.is_err() { let _ = fs::remove_file(&tmp); }
+    result
+}
+
+fn finalize_stage(source: &str, target: &str) -> Result<(), String> {
+    let original = read(source)?;
+    if !original.object() { return Err("profile must be object".into()); }
+    let normalized = normalize(&original)?;
+    if matches!(&normalized, V::Object(fields) if fields.is_empty()) {
+        println!("SBRESULT\t1\tprofile-stage\tempty\t0\t0");
+        return Ok(());
+    }
+    let body = format!("{}\n", normalized.emit(true, 0));
+    // Validate serialized bytes before either publication.
+    parse(&body)?;
+    let changed = fs::read(target).map(|v| v != body.as_bytes()).unwrap_or(true);
+    if fs::read(source).map_err(|e| e.to_string())? != body.as_bytes() {
+        publish_document(source, body.as_bytes())?;
+    }
+    if target != source && changed { publish_document(target, body.as_bytes())?; }
+    println!("SBRESULT\t1\tprofile-stage\tok\t{}\t{}", body.len(), changed as u8);
+    Ok(())
+}
 fn refresh(old: &V, entry: &str, pkg: &str, state: &V) -> Result<V, String> {
     let empty = obj();
     let oe = old.get(entry).unwrap_or(&empty);
@@ -513,6 +559,7 @@ pub(super) fn run(args: &[String]) -> i32 {
             Some("normalize") if args.len() == 5 => {
                 write(&args[4], &normalize(&read(&args[3])?)?, true)
             }
+            Some("finalize-stage") if args.len() == 5 => finalize_stage(&args[3], &args[4]),
             Some("backup") if args.len() == 7 => {
                 backup(&read(&args[3])?, &args[4], &read(&args[5])?, &args[6])
             }
@@ -535,4 +582,58 @@ pub(super) fn run(args: &[String]) -> i32 {
 
 #[path = "json_ops.rs"]
 mod json_ops;
-pub(super) fn json_run(args: &[String]) -> i32 { json_ops::run(args) }
+pub(super) fn json_run(args: &[String]) -> i32 {
+    json_ops::run(args)
+}
+
+pub(super) fn persistable_json(raw: &str) -> bool {
+    parse(raw)
+        .map(|v| {
+            persistable(&v)
+                && v.get("packageName")
+                    .and_then(V::text)
+                    .map(|s| !s.is_empty())
+                    .unwrap_or(false)
+        })
+        .unwrap_or(false)
+}
+
+pub(super) fn entry_fingerprints(raw: &str) -> String {
+    let value = parse(raw).ok();
+    ["user", "user_de", "data", "obb", "media"]
+        .iter()
+        .map(|entry| {
+            value
+                .as_ref()
+                .and_then(|v| v.get(entry))
+                .and_then(|e| e.get("change_fingerprint"))
+                .and_then(V::text)
+                .unwrap_or("")
+                .to_owned()
+        })
+        .collect::<Vec<_>>()
+        .join("\t")
+}
+
+/// Decode a JSON string using the same validated Unicode parser as profiles.
+pub fn string_value(raw: &str) -> Option<String> {
+    match parse(raw).ok()? {
+        V::String(s) => Some(s),
+        _ => None,
+    }
+}
+
+pub(super) fn top_string(body: &str, keys: &[&str]) -> Option<String> {
+    let root = parse(body).ok()?;
+    let direct = |value: &V| keys.iter().find_map(|key| match value.get(key) {
+        Some(V::String(value)) => Some(value.clone()),
+        _ => None,
+    });
+    direct(&root).or_else(|| match &root {
+        V::Object(entries) => entries.iter().find_map(|(_, value)| match value {
+            V::Object(_) => direct(value),
+            _ => None,
+        }),
+        _ => None,
+    })
+}

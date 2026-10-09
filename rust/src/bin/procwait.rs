@@ -3,7 +3,7 @@
 // "pidfd only, never fall back to polling for the `pid` subcommand" design
 // are reproduced exactly against c/procwait.c.
 
-use speedbackup_native_rs::{syscall, poll, c_strerror, PollFd, POLLIN, SYS_PIDFD_OPEN};
+use speedbackup_native_rs::{c_strerror, poll, syscall, PollFd, POLLIN, SYS_PIDFD_OPEN};
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::time::Instant;
@@ -39,14 +39,20 @@ fn wait_child(command: &[String]) -> i32 {
 
     let child = unsafe { fork() };
     if child < 0 {
-        eprintln!("procwait: fork: {}", c_strerror(&std::io::Error::last_os_error()));
+        eprintln!(
+            "procwait: fork: {}",
+            c_strerror(&std::io::Error::last_os_error())
+        );
         return 1;
     }
     if child == 0 {
         unsafe {
             execvp(cstrings[0].as_ptr(), argv.as_ptr());
         }
-        eprintln!("procwait: execvp: {}", c_strerror(&std::io::Error::last_os_error()));
+        eprintln!(
+            "procwait: execvp: {}",
+            c_strerror(&std::io::Error::last_os_error())
+        );
         unsafe { _exit(127) }
     }
 
@@ -59,7 +65,10 @@ fn wait_child(command: &[String]) -> i32 {
         if result < 0 && errno_now() == EINTR {
             continue;
         }
-        eprintln!("procwait: waitpid: {}", c_strerror(&std::io::Error::last_os_error()));
+        eprintln!(
+            "procwait: waitpid: {}",
+            c_strerror(&std::io::Error::last_os_error())
+        );
         return 1;
     }
 
@@ -99,11 +108,18 @@ fn wait_pidfd(pid: i32) -> i32 {
             eprintln!("procwait: 此核心不支援 pidfd_open；不使用輪詢 fallback");
             return 3;
         }
-        eprintln!("procwait: pidfd_open: {}", c_strerror(&std::io::Error::last_os_error()));
+        eprintln!(
+            "procwait: pidfd_open: {}",
+            c_strerror(&std::io::Error::last_os_error())
+        );
         return 1;
     }
 
-    let mut pfd = PollFd { fd, events: POLLIN, revents: 0 };
+    let mut pfd = PollFd {
+        fd,
+        events: POLLIN,
+        revents: 0,
+    };
     loop {
         let result = unsafe { poll(&mut pfd as *mut PollFd, 1, -1) };
         if result > 0 {
@@ -112,7 +128,10 @@ fn wait_pidfd(pid: i32) -> i32 {
         if result < 0 && errno_now() == EINTR {
             continue;
         }
-        eprintln!("procwait: poll: {}", c_strerror(&std::io::Error::last_os_error()));
+        eprintln!(
+            "procwait: poll: {}",
+            c_strerror(&std::io::Error::last_os_error())
+        );
         unsafe { close(fd) };
         return 1;
     }
@@ -132,21 +151,31 @@ fn read_cmdline_first(pid: i32) -> Option<String> {
     let mut f = std::fs::File::open(format!("/proc/{}/cmdline", pid)).ok()?;
     let mut raw = [0u8; 511]; // C cmd[512] reads cap-1 bytes once.
     let n = f.read(&mut raw).ok()?;
-    if n == 0 { return None; }
+    if n == 0 {
+        return None;
+    }
     let end = raw[..n].iter().position(|&b| b == 0).unwrap_or(n);
     Some(String::from_utf8_lossy(&raw[..end]).into_owned())
 }
 
 fn append_pid_capped(out: &mut String, token: &str) {
     const CAP: usize = 2048;
-    let used = out.as_bytes().len();
-    if CAP <= used + 2 { return; }
-    let frag = if used == 0 { token.to_string() } else { format!(",{}", token) };
+    let used = out.len();
+    if CAP <= used + 2 {
+        return;
+    }
+    let frag = if used == 0 {
+        token.to_string()
+    } else {
+        format!(",{}", token)
+    };
     let room = CAP - used;
-    if frag.as_bytes().len() >= room {
+    if frag.len() >= room {
         let take = room - 1;
         out.push_str(&String::from_utf8_lossy(&frag.as_bytes()[..take]));
-    } else { out.push_str(&frag); }
+    } else {
+        out.push_str(&frag);
+    }
 }
 
 /// Faithful port of cmdline_matches_package(): cmd == pkg, or cmd starts with
@@ -165,7 +194,7 @@ fn cmdline_matches_package(cmd: &str, pkg: &str) -> bool {
 /// Faithful port of scan_package_pids(): walk /proc, match each numeric PID's
 /// cmdline[0] against the package name. Returns (pids, count); pids is a
 /// comma-joined list capped the same way the C 2048-byte buffer effectively is.
-fn scan_package_pids(pkg: &str) -> Result<(String, usize), i32> {
+fn scan_package_pids(pkg: &str, user: u32) -> Result<(String, usize), i32> {
     let mut out = String::new();
     let mut count = 0usize;
     let entries = match std::fs::read_dir("/proc") {
@@ -181,6 +210,13 @@ fn scan_package_pids(pkg: &str) -> Result<(String, usize), i32> {
             Ok(v) if v > 0 && v <= i32::MAX as i64 => v,
             _ => continue,
         };
+        use std::os::unix::fs::MetadataExt;
+        if std::fs::symlink_metadata(format!("/proc/{pid}"))
+            .map(|m| m.uid() / 100000 != user)
+            .unwrap_or(true)
+        {
+            continue;
+        }
         let cmd = match read_cmdline_first(pid as i32) {
             Some(v) => v,
             None => continue,
@@ -230,7 +266,7 @@ fn scan_uid_pids(uid: u32) -> Result<(String, usize), i32> {
 ///   GONE kind=... target=... stableMs=... elapsedMs=...
 ///   TIMEOUT kind=... target=... count=... pids=... timeoutMs=... stableMs=... elapsedMs=...
 ///   PROCWAIT_SCAN_FAIL kind=... target=... errno=...
-fn wait_scan_gone(kind: &str, target: &str, timeout_ms: i64, stable_ms: i64) -> i32 {
+fn wait_scan_gone(kind: &str, target: &str, timeout_ms: i64, stable_ms: i64, user: u32) -> i32 {
     let timeout_ms = timeout_ms.max(0);
     let stable_ms = stable_ms.max(0);
     let start = Instant::now();
@@ -248,15 +284,21 @@ fn wait_scan_gone(kind: &str, target: &str, timeout_ms: i64, stable_ms: i64) -> 
             match scan_uid_pids(uid) {
                 Ok(v) => v,
                 Err(e) => {
-                    println!("PROCWAIT_SCAN_FAIL kind={} target={} errno={}", kind, target, e);
+                    println!(
+                        "PROCWAIT_SCAN_FAIL kind={} target={} errno={}",
+                        kind, target, e
+                    );
                     return 1;
                 }
             }
         } else {
-            match scan_package_pids(target) {
+            match scan_package_pids(target, user) {
                 Ok(v) => v,
                 Err(e) => {
-                    println!("PROCWAIT_SCAN_FAIL kind={} target={} errno={}", kind, target, e);
+                    println!(
+                        "PROCWAIT_SCAN_FAIL kind={} target={} errno={}",
+                        kind, target, e
+                    );
                     return 1;
                 }
             }
@@ -294,13 +336,18 @@ fn wait_scan_gone(kind: &str, target: &str, timeout_ms: i64, stable_ms: i64) -> 
 }
 
 fn trim_c_strtol_prefix(s: &str) -> &str {
-    s.trim_start_matches(|c: char| c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\u{000b}' || c == '\u{000c}')
+    s.trim_start_matches([' ', '\t', '\r', '\n', '\u{000b}', '\u{000c}'])
 }
 
 fn parse_long_arg(text: Option<&String>, min_v: i64, max_v: i64, fallback: i64) -> i64 {
-    let raw = match text { Some(v) if !v.is_empty() => v.as_str(), _ => return fallback };
+    let raw = match text {
+        Some(v) if !v.is_empty() => v.as_str(),
+        _ => return fallback,
+    };
     let left = trim_c_strtol_prefix(raw);
-    if left.is_empty() { return fallback; }
+    if left.is_empty() {
+        return fallback;
+    }
     match left.parse::<i64>() {
         Ok(v) if v >= min_v && v <= max_v => v,
         _ => fallback,
@@ -309,7 +356,9 @@ fn parse_long_arg(text: Option<&String>, min_v: i64, max_v: i64, fallback: i64) 
 
 fn parse_pid_main_arg(s: &str) -> Option<i32> {
     let left = trim_c_strtol_prefix(s);
-    if left.is_empty() { return None; }
+    if left.is_empty() {
+        return None;
+    }
     match left.parse::<i64>() {
         Ok(v) if v > 0 && v <= i32::MAX as i64 => Some(v as i32),
         _ => None,
@@ -319,17 +368,33 @@ fn parse_pid_main_arg(s: &str) -> Option<i32> {
 fn parse_uid_strtoul_like(s: &str) -> Option<u32> {
     let b = s.as_bytes();
     let mut i = 0usize;
-    while i < b.len() && matches!(b[i], b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c) { i += 1; }
-    if i >= b.len() { return None; }
-    let neg = if b[i] == b'+' { i += 1; false } else if b[i] == b'-' { i += 1; true } else { false };
+    while i < b.len() && matches!(b[i], b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c) {
+        i += 1;
+    }
+    if i >= b.len() {
+        return None;
+    }
+    let neg = if b[i] == b'+' {
+        i += 1;
+        false
+    } else if b[i] == b'-' {
+        i += 1;
+        true
+    } else {
+        false
+    };
     let start = i;
     let mut v: u128 = 0;
     while i < b.len() && b[i].is_ascii_digit() {
         v = v.saturating_mul(10).saturating_add((b[i] - b'0') as u128);
-        if v > u64::MAX as u128 { return None; }
+        if v > u64::MAX as u128 {
+            return None;
+        }
         i += 1;
     }
-    if i == start || i != b.len() { return None; }
+    if i == start || i != b.len() {
+        return None;
+    }
     let u = v as u64;
     let final_u = if neg { 0u64.wrapping_sub(u) } else { u };
     Some(final_u as u32)
@@ -349,7 +414,7 @@ fn print_help(program: &str) {
 
 pub(crate) fn run() {
     let args: Vec<String> = crate::multicall::args().collect();
-    let argv0 = args.get(0).map(|s| s.as_str()).unwrap_or("procwait");
+    let argv0 = args.first().map(|s| s.as_str()).unwrap_or("procwait");
 
     let rc = if args.len() == 2 && args[1] == "--version" {
         println!("procwait {VERSION} build={BUILD_VERSION}");
@@ -368,15 +433,17 @@ pub(crate) fn run() {
             }
         }
     } else if args.len() >= 4 && (args[1] == "pkg-gone" || args[1] == "pkg-stable") {
-        // args[2] (user id) is accepted for CLI compatibility but, like the C
-        // reference, is not actually used to filter the /proc scan.
+        let user = match args[2].parse::<u32>() {
+            Ok(n) => n,
+            Err(_) => std::process::exit(2),
+        };
         let timeout_ms = parse_long_arg(args.get(4), 0, 600000, 700);
         let stable_ms = parse_long_arg(args.get(5), 0, 600000, 120);
-        wait_scan_gone("pkg", &args[3], timeout_ms, stable_ms)
+        wait_scan_gone("pkg", &args[3], timeout_ms, stable_ms, user)
     } else if args.len() >= 3 && args[1] == "uid-gone" {
         let timeout_ms = parse_long_arg(args.get(3), 0, 600000, 700);
         let stable_ms = parse_long_arg(args.get(4), 0, 600000, 120);
-        wait_scan_gone("uid", &args[2], timeout_ms, stable_ms)
+        wait_scan_gone("uid", &args[2], timeout_ms, stable_ms, 0)
     } else {
         print_help(argv0);
         2

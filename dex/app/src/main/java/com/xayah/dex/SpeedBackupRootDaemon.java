@@ -56,6 +56,8 @@ public final class SpeedBackupRootDaemon {
         System.out.println("  capability: dex.root_daemon.ready_before_hiddenapi_init.v1");
         System.out.println("  capability: dex.root_daemon.ready_before_hardening.v1");
         System.out.println("  capability: dex.display_power.root_daemon.v1");
+        System.out.println("  capability: dex.display_timeout.root_daemon.v1");
+        System.out.println("  capability: dex.audio_playback.guard_callbacks.v1");
         System.out.println("  capability: dex.app_inventory.snapshot.v1");
         System.out.println("  capability: dex.app_inventory.daemon_cache.v1");
         System.out.println("  capability: dex.app_inventory.pkg_uid.single.v1");
@@ -189,6 +191,7 @@ public final class SpeedBackupRootDaemon {
 
     private static void handleClient(LocalSocket client) throws Exception {
         try (LocalSocket c = client) {
+            if (peerUid(c, -1) != 0) throw new SecurityException("root peer required");
             InputStream in = c.getInputStream();
             OutputStream out = c.getOutputStream();
             String namespace = DaemonBootstrap.readUtf8Line(in).trim();
@@ -197,12 +200,11 @@ public final class SpeedBackupRootDaemon {
                 return;
             }
             if ("hiddenapi".equals(namespace)) {
-                HiddenApiBypassBridge.installExemptionsOnce();
-                handleHot(out, in, true, peerUid(c, 0));
+                handleHot(out, in, true, peerUid(c, -1));
                 return;
             }
             if ("notify".equals(namespace) || "notification".equals(namespace)) {
-                handleHot(out, in, false, peerUid(c, 0));
+                handleHot(out, in, false, peerUid(c, -1));
                 return;
             }
             if ("appstate".equals(namespace)) {
@@ -227,6 +229,12 @@ public final class SpeedBackupRootDaemon {
         }
         byte[] bodyBytes = bodyLength == -1L ? DaemonBootstrap.readAll(in) : DaemonBootstrap.readExactly(in, bodyLength);
         if (hiddenApi) {
+            if (DisplayTimeoutSettings.accepts(command)) {
+                DisplayTimeoutSettings.Result result = DisplayTimeoutSettings.run(command, bodyBytes);
+                writeResult(out, result.rc, result.name, result.body);
+                return;
+            }
+            HiddenApiBypassBridge.installExemptionsOnce();
             HiddenApiUtil.DaemonRunResult result = HiddenApiUtil.runDaemonCommand(command, bodyBytes);
             writeResult(out, result.rc, result.rc == 0 ? "OK" : "FAIL", result.stdout);
         } else {

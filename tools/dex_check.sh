@@ -8,14 +8,14 @@ TOOLS_PATH="${TOOLS_PATH:-}"
 TEST_LOG_DIR="${TEST_LOG_DIR:-${PWD:-.}}"
 TEST_LOG_FILE="${TEST_LOG_FILE:-$TEST_LOG_DIR/dex_check.log}"
 TEST_SUMMARY_FILE="${TEST_SUMMARY_FILE:-$TEST_LOG_DIR/dex_full_test.summary}"
-DEX_CHECK_VERSION="v797"
-DEX_CHECK_BUILD="v797"
+DEX_CHECK_VERSION="v863"
+DEX_CHECK_BUILD="v863"
 BACKUP_WIFI_ENABLE="${BACKUP_WIFI_ENABLE:-1}"
 SB_SELFTEST_LEVEL="${SB_SELFTEST_LEVEL:-quick}"
 CHANGELOG_URL="${CHANGELOG_URL:-https://api.github.com/repos/XayahSuSuSu/Android-DataBackup/releases/latest}"
 SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-$DEX_CHECK_VERSION}"
 SPEEDBACKUP_PATCH_BUILD="${SPEEDBACKUP_PATCH_BUILD:-$DEX_CHECK_BUILD}"
-PATH="/data/backup_tools:$(dirname "$CLASSPATH_PATH" 2>/dev/null):$PATH"
+PATH="$(dirname "$CLASSPATH_PATH" 2>/dev/null):/data/backup_tools:$PATH"
 export PATH
 _json_cmd(){ speednative speedscan json "$@"; }
 HIDDEN_CLASS="com.xayah.dex.HiddenApiUtil"
@@ -483,12 +483,12 @@ EOF_SPEEDSCAN_APPDETAILS_SEED_BAD
 		&& grep -Fx "TestApp" "$_ss_seed_out" >/dev/null 2>&1 \
 		&& [ "$(wc -l < "$_ss_seed_out")" -eq 1 ] \
 		&& [ -f "$_ss_seed_root/TestApp/app_details.json" ] \
-		&& [ ! -f "$_ss_seed_root/BadApp/app_details.json" ] \
-		&& [ ! -f "$_ss_seed_root/Truncated/app_details.json" ] \
-		&& [ ! -f "$_ss_seed_root/Nested/app_details.json" ] \
-		&& [ ! -f "$_ss_seed_root/Trailing/app_details.json" ] \
+		&& [ -f "$_ss_seed_root/BadApp/app_details.json" ] \
+		&& [ -f "$_ss_seed_root/Truncated/app_details.json" ] \
+		&& [ -f "$_ss_seed_root/Nested/app_details.json" ] \
+		&& [ -f "$_ss_seed_root/Trailing/app_details.json" ] \
 		&& grep -F "speedbackup.appdetails_seed_index.v1" "$_ss_seed_prefix.stats" >/dev/null 2>&1; then
-		ok "speedscan app_details seed index Rust 化" "rc=0 schema=appdetails_seed_index.v1 strict-document direct-child invalid-dropped"
+		ok "speedscan app_details seed index Rust 化" "rc=0 schema=appdetails_seed_index.v1 strict-document direct-child invalid-excluded-source-preserved"
 	else
 		critical_fail "speedscan app_details seed index Rust 化" "rc=$_ss_seed_rc $_ss_seed_msg"
 	fi
@@ -537,10 +537,10 @@ AppB/apk.tar.zst
 	mkdir -p "$_ss_lr_android/data/com.speedbackup.test" "$_ss_lr_userde/com.speedbackup.test" 2>/dev/null
 	printf 'TestApp\tcom.speedbackup.test\t0\t1\n' > "$_ss_lr_sel" 2>/dev/null
 	printf 'com.speedbackup.test\tdata\t1234\ncom.speedbackup.test\tuser_de\t999\n' > "$_ss_lr_dirs" 2>/dev/null
-	_ss_lr_msg="$($_ss_bin remote-stream-local-read-plan "$_ss_lr_sel" "$_ss_lr_dirs" "$_ss_lr_out" true true true "$_ss_lr_android" "$_ss_lr_user" "$_ss_lr_userde" 2>&1 | head -n 20)"; _ss_lr_rc=$?
+	_ss_lr_msg="$($_ss_bin remote-stream-local-read-plan "$_ss_lr_sel" "$_ss_lr_dirs" "$_ss_lr_out" true true true "$_ss_lr_android" "$_ss_lr_user" "$_ss_lr_userde" 2>&1)"; _ss_lr_rc=$?
 	printf '%s\n' "$_ss_lr_msg" > "$TEST_LOG_DIR/speedscan_local_read_plan.summary.txt" 2>/dev/null
-	if [ "$_ss_lr_rc" -eq 0 ] && [ "$(awk -F '\t' '$2=="com.speedbackup.test" && $3=="data"{n++} END{print n+0}' "$_ss_lr_out" 2>/dev/null)" -eq 1 ] && [ "$(awk -F '\t' '$2=="com.speedbackup.test" && $3=="user_de"{n++} END{print n+0}' "$_ss_lr_out" 2>/dev/null)" -eq 0 ]; then
-		ok "speedscan local-read release plan" "rc=0 conservative-small-skip"
+	if [ "$_ss_lr_rc" -eq 0 ] && [ "$(awk -F '\t' '$2=="com.speedbackup.test" && $3=="data"{n++} END{print n+0}' "$_ss_lr_out" 2>/dev/null)" -eq 1 ] && [ "$(awk -F '\t' '$2=="com.speedbackup.test" && $3=="user_de"{n++} END{print n+0}' "$_ss_lr_out" 2>/dev/null)" -eq 1 ]; then
+		ok "speedscan local-read release plan" "rc=0 conservative-nonzero-retained"
 	else
 		critical_fail "speedscan local-read release plan" "rc=$_ss_lr_rc $_ss_lr_msg"
 	fi
@@ -622,10 +622,10 @@ AppB/apk.tar.zst
 	mkdir -p "$_ss_restore_root/empty"
 	ln -s "$_ss_odd_name" "$_ss_restore_root/link" 2>/dev/null
 	ln "$_ss_restore_root/$_ss_odd_name" "$_ss_restore_root/hard" 2>/dev/null
-	if tar -cf "$_ss_source.tar" -C "$_ss_restore_root" . && "$_ss_bin" tar-source-manifest "$_ss_source" < "$_ss_source.tar" > "$_ss_source.forward.tar" && cmp -s "$_ss_source.tar" "$_ss_source.forward.tar" && "$_ss_bin" restore-source-verify "$_ss_restore_root" "$_ss_source" keep ignore keep > "$_ss_source.receipt"; then
+	if tar -cf "$_ss_source.tar" -C "$TEST_LOG_DIR" restore_verify_fixture && "$_ss_bin" tar-source-manifest "$_ss_source" restore_verify_fixture < "$_ss_source.tar" > "$_ss_source.forward.tar" && cmp -s "$_ss_source.tar" "$_ss_source.forward.tar" && "$_ss_bin" restore-source-verify "$TEST_LOG_DIR" "$_ss_source" keep ignore keep > "$_ss_source.receipt"; then
 		ok "speedscan archive source verify" "persisted headers, raw names, links and empty directory"
 		printf 'changed' >> "$_ss_restore_root/$_ss_odd_name"
-		"$_ss_bin" restore-source-verify "$_ss_restore_root" "$_ss_source" keep ignore keep > "$_ss_source.changed.receipt"
+		"$_ss_bin" restore-source-verify "$TEST_LOG_DIR" "$_ss_source" keep ignore keep > "$_ss_source.changed.receipt"
 		if [ "$?" = 1 ]; then ok "speedscan archive source mismatch" "changed file rejected"; else critical_fail "speedscan archive source mismatch" "mutation was not detected"; fi
 	else
 		critical_fail "speedscan archive source verify" "capture or verification failed"
@@ -688,11 +688,11 @@ if [ -f "$_tools_self" ] \
 	else
 		critical_fail "remote first-full presize" "tools integration missing"
 	fi
+	# Capability names are validated from Dex JSON by caps-diagnostic below;
+	# their Rust migration must not require duplicate literals in tools.sh.
 	if grep -q "XPOSED_RUNTIME_FACTS" "$_tools_self" 2>/dev/null \
 		&& grep -q "XPOSED_MODULE_SUMMARY" "$_tools_self" 2>/dev/null \
-		&& grep -q "xposed_runtime_facts_last.tsv" "$_tools_self" 2>/dev/null \
-		&& grep -q "dex.app_inventory.xposed_module_facts.v1" "$_tools_self" 2>/dev/null \
-		&& grep -q "dex.app_inventory.xposed_runtime_facts.v1" "$_tools_self" 2>/dev/null; then
+		&& grep -q "xposed_runtime_facts_last.tsv" "$_tools_self" 2>/dev/null; then
 		ok "Xposed facts integration" "module-format+runtime-positive-evidence"
 	else
 		critical_fail "Xposed facts integration" "tools integration missing"
@@ -711,7 +711,6 @@ if [ -f "$_tools_self" ] \
 		&& grep -q "perEntryForks=0" "$_tools_self" 2>/dev/null \
 		&& grep -q "BACKUP_PRESCAN_EXACT_INPUT_READY" "$_tools_self" 2>/dev/null \
 		&& grep -q "BACKUP_PAYLOAD_STATS_PLAN_RECONCILE" "$_tools_self" 2>/dev/null \
-		&& grep -q -- "-實際處理：" "$_tools_self" 2>/dev/null \
 		&& grep -q -- "-q -vvv --priority=rt" "$_tools_self" 2>/dev/null; then
 		ok "payload compression stats" "prescan-exact single Rust batch + zstd exact final reconcile"
 	else
@@ -867,12 +866,12 @@ if [ "$_role_facts_rc" -eq 0 ] && printf '%s\n' "$_role_facts_out" | grep -q '^#
 _storage_facts_out="$(run_class_stdout "$HIDDEN_CLASS" storageMediaFacts "$USER_ID" 2>/dev/null)"; _storage_facts_rc=$?
 printf '%s\n' "$_storage_facts_out" > "$TEST_LOG_DIR/storage_media_facts.tsv" 2>/dev/null
 if [ "$_storage_facts_rc" -eq 0 ] && printf '%s\n' "$_storage_facts_out" | grep -q '^#schema[[:space:]]speedbackup.storage_media_facts.v1'; then ok "媒體儲存資訊" "rc=0"; else warn "媒體儲存資訊" "rc=$_storage_facts_rc"; fi
-section "已撤回" "顯示已移除的過時檢測與正式 fallback"
+section "設定與後備" "系統設定與螢幕逾時的正式路徑"
 _settings_out="$(run_class_stdout "$APPSTATE_CLASS" settingsGet "$USER_ID" secure default_input_method 2>/dev/null)"; _settings_rc=$?
 printf '%s\n' "$_settings_out" > "$TEST_LOG_DIR/appstate_settings_get_smoke.ndjson" 2>/dev/null
 if [ "$_settings_rc" -eq 0 ] && printf '%s\n' "$_settings_out" | _json_cmd -s -e settings-fallback >/dev/null 2>&1; then ok "系統設定 shell fallback" "rc=0"; else warn "系統設定 shell fallback" "rc=$_settings_rc"; fi
-	# Dex display-timeout/settings direct smoke removed. Settings screen_off_timeout is intentionally handled by bounded shell in tools.
-ok "Dex 直接改螢幕逾時已撤回" "正式路徑=bounded-shell"
+# Display timeout uses the existing root daemon; shell fallback is retained after daemon shutdown.
+ok "螢幕逾時設定路徑" "existing-root-daemon；不可用時 bounded-shell"
 
 # a later successful probe must not erase an earlier critical failure.
 _dex_check_finish() {

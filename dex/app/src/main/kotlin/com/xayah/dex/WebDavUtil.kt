@@ -14,8 +14,6 @@ import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.IOException
-import java.net.InetSocketAddress
-import java.net.ServerSocket
 import java.net.Socket
 import java.net.URL
 import java.net.URLDecoder
@@ -424,6 +422,21 @@ object WebDavUtil {
 
     @JvmStatic
     fun main(args: Array<String>) {
+        try {
+            runCommand(args)
+        } catch (e: IllegalArgumentException) {
+            System.err.println("WebDAV invalid arguments: ${e.javaClass.simpleName}")
+            exitProcess(2)
+        } catch (e: Exception) {
+            // app_process's uncaught-exception handler kills the VM (137). Network
+            // failures are ordinary CLI errors; never mix diagnostics into GET bytes
+            // or expose URLs, credentials or response bodies from exception messages.
+            System.err.println("WebDAV operation failed: ${e.javaClass.simpleName}")
+            exitProcess(1)
+        }
+    }
+
+    private fun runCommand(args: Array<String>) {
         if (args.isEmpty()) {
             printUsage()
             exitProcess(2)
@@ -476,13 +489,7 @@ object WebDavUtil {
     // ---------------------------------------------------------------- daemon ----
 
     private fun cmdDaemon(args: Array<String>) {
-        require(args.size >= 2) { "daemon <port> [idleTimeoutSec] [ownerPid]" }
-        val port = args[1].toIntOrNull() ?: run { println("bad port"); exitProcess(2) }
-        require(port in 1..65535) { "bad port" }
-        val idleTimeoutMs = ((args.getOrNull(2)?.toLongOrNull()) ?: 1800L) * 1000L
-        require(idleTimeoutMs > 0) { "idleTimeoutSec must be > 0" }
-        val ownerPid = parseOptionalOwnerPid(args.getOrNull(3))
-        runDaemon(TcpDaemonListener(port), "DAEMON_READY $port", idleTimeoutMs, ownerPid)
+        throw SecurityException("TCP daemon disabled; use authenticated AF_UNIX")
     }
 
     private fun cmdDaemonUnix(args: Array<String>) {
@@ -554,7 +561,9 @@ object WebDavUtil {
 
         try {
             while (true) {
-                val client = try { listener.accept() } catch (_: Exception) {
+                val client = try { listener.accept() } catch (_: SecurityException) {
+                    continue
+                } catch (_: Exception) {
                     if (listener.isClosed) break else continue
                 }
                 lastActivity.set(System.currentTimeMillis())
@@ -586,31 +595,6 @@ object WebDavUtil {
         fun accept(): DaemonConnection
     }
 
-    private class TcpDaemonListener(port: Int) : DaemonListener {
-        private val server = ServerSocket().apply {
-            reuseAddress = true
-            bind(InetSocketAddress("127.0.0.1", port))
-        }
-
-        override val isClosed: Boolean
-            get() = server.isClosed
-
-        override fun accept(): DaemonConnection = TcpDaemonConnection(server.accept())
-
-        override fun close() {
-            server.close()
-        }
-    }
-
-    private class TcpDaemonConnection(private val socket: Socket) : DaemonConnection {
-        override val input: InputStream = socket.getInputStream()
-        override val output: OutputStream = socket.getOutputStream()
-
-        override fun close() {
-            socket.close()
-        }
-    }
-
     private class UnixDaemonListener(path: String) : DaemonListener {
         val socketPath: String
         private val closed = AtomicBoolean(false)
@@ -630,6 +614,7 @@ object WebDavUtil {
                 "socketPath is too long (max $UNIX_PATH_MAX_BYTES UTF-8 bytes)"
             }
 
+            DaemonBootstrap.requirePrivateSocketParent(socketFile)
             val parent = socketFile.parentFile ?: throw IOException("socketPath has no parent")
             if (!parent.isDirectory && !parent.mkdirs()) {
                 throw IOException("cannot create socket parent: ${parent.absolutePath}")
@@ -641,7 +626,7 @@ object WebDavUtil {
             try {
                 bindSocket.bind(LocalSocketAddress(socketPath, LocalSocketAddress.Namespace.FILESYSTEM))
                 server = LocalServerSocket(bindSocket.fileDescriptor)
-                runCatching { Os.chmod(socketPath, UNIX_SOCKET_MODE) }
+                Os.chmod(socketPath, UNIX_SOCKET_MODE)
             } catch (e: Throwable) {
                 runCatching { bindSocket.close() }
                 runCatching { socketFile.delete() }
@@ -665,6 +650,12 @@ object WebDavUtil {
     }
 
     private class UnixDaemonConnection(private val socket: LocalSocket) : DaemonConnection {
+        init {
+            if (socket.peerCredentials.uid != 0) {
+                socket.close()
+                throw SecurityException("root peer required")
+            }
+        }
         override val input: InputStream = socket.inputStream
         override val output: OutputStream = socket.outputStream
 
@@ -879,7 +870,7 @@ object WebDavUtil {
                 result.first
             }
             "getrel" -> if (expectExtra(2, "relPath<TAB>localFile")) httpCode = safe {
-                FileOutputStream(extra2()).use { out -> getTo(user, pass, relUrl(), out) }
+                getFileAtomically(user, pass, relUrl(), File(extra2()))
             }
             "getstdoutrel" -> if (expectExtra(1, "relPath")) httpCode = safe {
                 streamDaemonGet(user, pass, relUrl(), output) { chunkOutput ->
@@ -887,7 +878,10 @@ object WebDavUtil {
                     streamingChunkOutput = chunkOutput
                 }
             }
-            "deleterel" -> if (expectExtra(1, "relPath")) httpCode = safe { delete(user, pass, relUrl()).also { if (it in 200..299) invalidateListCache() } }
+            "deleterel" -> if (expectExtra(1, "relPath")) httpCode = safe {
+                require(sanitizeRelPath(extra1()).isNotEmpty()) { "refusing to delete remote root" }
+                delete(user, pass, relUrl()).also { if (it in 200..299) invalidateListCache() }
+            }
             "moverel" -> if (expectExtra(3, "srcRel<TAB>dstRel<TAB>overwrite")) httpCode = safe { move(user, pass, buildRelUrl(url, extra1()), buildRelUrl(url, extra2()), overwrite = extra3().ifEmpty { "T" } != "F").also { if (it in 200..299) invalidateListCache() } }
             "copyrel" -> if (expectExtra(3, "srcRel<TAB>dstRel<TAB>overwrite")) httpCode = safe { copy(user, pass, buildRelUrl(url, extra1()), buildRelUrl(url, extra2()), overwrite = extra3().ifEmpty { "T" } != "F").also { if (it in 200..299) invalidateListCache() } }
             "propfindrel" -> if (expectExtra(2, "relPath<TAB>depth")) {
@@ -1274,10 +1268,27 @@ object WebDavUtil {
         finish(result.first)
     }
 
+    private fun getFileAtomically(user: String, pass: String, url: String, destination: File): Int {
+        val parent = destination.absoluteFile.parentFile ?: throw IOException("missing destination parent")
+        val staging = File.createTempFile(".speedbackup-get-", ".partial", parent)
+        try {
+            Os.chmod(staging.path, 384) // 0600
+            val code = FileOutputStream(staging).use { out ->
+                val result = getTo(user, pass, url, out)
+                if (result in 200..299) { out.flush(); out.fd.sync() }
+                result
+            }
+            if (code in 200..299) Os.rename(staging.path, destination.absolutePath)
+            return code
+        } finally {
+            staging.delete()
+        }
+    }
+
     private fun cmdGetRel(args: Array<String>) {
         require(args.size >= 6) { "getrel <user> <pass> <baseUrl> <relPath> <localFile>" }
         val code = runCatching {
-            FileOutputStream(args[5]).use { out -> getTo(args[1], args[2], buildRelUrl(args[3], args[4]), out) }
+            getFileAtomically(args[1], args[2], buildRelUrl(args[3], args[4]), File(args[5]))
         }.getOrElse { HttpCore.extractCode(it) }
         finish(code)
     }
@@ -1292,6 +1303,7 @@ object WebDavUtil {
 
     private fun cmdDeleteRel(args: Array<String>) {
         require(args.size >= 5) { "deleterel <user> <pass> <baseUrl> <relPath>" }
+        require(sanitizeRelPath(args[4]).isNotEmpty()) { "refusing to delete remote root" }
         finish(runCatching { delete(args[1], args[2], buildRelUrl(args[3], args[4])) }.getOrElse { HttpCore.extractCode(it) })
     }
 
@@ -1383,7 +1395,7 @@ object WebDavUtil {
         val out = ArrayList<String>()
         val ctrl = Regex("[\\u0000-\\u001F\\u007F]")
         for (partRaw in raw.split('/')) {
-            val part = partRaw.trim()
+            val part = partRaw
             require(part.isNotEmpty() && part != ".") { "WEBDAV_REL_PATH_REJECT empty_component" }
             val decoded = runCatching { HttpCore.percentDecodePath(part) }.getOrElse { part }
             require(part != ".." && decoded != "..") { "WEBDAV_REL_PATH_REJECT traversal" }
@@ -4485,11 +4497,12 @@ object WebDavUtil {
         else -> false
     }
 
+    private val timelinePayloadName = Regex("timeline_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.sbtimeline")
     private fun isReservedAppPayloadName(name: String): Boolean = when (name) {
         "apk.tar", "apk.tar.zst", "data.tar", "data.tar.zst", "user.tar", "user.tar.zst",
         "user_de.tar", "user_de.tar.zst", "obb.tar", "obb.tar.zst", "hma.tar", "hma.tar.zst",
         "thanox.tar", "thanox.tar.zst" -> true
-        else -> false
+        else -> timelinePayloadName.matches(name)
     }
 
     private fun sanitizeTsv(value: String): String = value.replace('\t', ' ').replace('\r', ' ').replace('\n', ' ')
@@ -4736,7 +4749,7 @@ object WebDavUtil {
         println("  classifylistrel <user> <pass> <baseUrl> <relPath> [depth]  (TSV kind\trel\tsize\tmtime\tname)")
         println("  encodepath <text>")
         println("  decodepath <text>")
-        println("  daemon <port> [idleTimeoutSec] [ownerPid]          (persistent mode, TCP loopback)")
+        println("  daemon TCP mode is disabled; use daemon-unix")
         println("  daemonunix <socketPath> [idleTimeoutSec] [ownerPid] (persistent mode, AF_UNIX filesystem socket)")
     }
 

@@ -46,7 +46,7 @@ public final class AppStateLocalization {
         BUILTIN.put("op_mode_onetime", "每次都詢問");
         BUILTIN.put("op_mode_unspecified", "尚未設定");
         BUILTIN.put("op_mode_unknown", "未知 (%1$d)");
-        BUILTIN.put("op_mode_default_description", "系統設定或應用程式資訊中的設定控制。]]>");
+        BUILTIN.put("op_mode_default_description", "系統設定或應用程式資訊中的設定控制。");
         BUILTIN.put("permission_group_clipboard", "剪貼簿");
         BUILTIN.put("permission_group_device_identifiers", "裝置識別碼");
         BUILTIN.put("op_name_QUERY_ALL_PACKAGES", "查詢所有套件");

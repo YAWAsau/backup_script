@@ -11,6 +11,7 @@ import java.nio.file.Files;
 final class BatchResultFiles {
     final String kind;
     int total, ok, vendor, warn, failed;
+    int powerProblems;
     int restored, same, ssaidFailed, checked;
     final StringBuilder issues = new StringBuilder();
     final StringBuilder ssaid = new StringBuilder();
@@ -25,12 +26,25 @@ final class BatchResultFiles {
         // Escaping is for diagnostics only; package and SSAID keys are validated upstream.
         return s.replace("\\", "\\\\").replace("\t", "\\t").replace("\r", "\\r").replace("\n", "\\n");
     }
+    private static boolean sharedUidOnlyPartial(JsonObject row) {
+        if (!text(row.getAsJsonObject("result"), "name").equals("PARTIAL")
+                || !row.has("items") || (row.has("errors") && row.getAsJsonArray("errors").size() > 0)) return false;
+        boolean seen = false;
+        for (JsonElement e : row.getAsJsonArray("items")) {
+            JsonObject r = e.getAsJsonObject().getAsJsonObject("result");
+            if (text(r, "name").equals("OK")) continue;
+            if (!text(r, "name").equals("PARTIAL") || !text(r, "message").equals("shared UID: preserved other packages' UID mode")) return false;
+            seen = true;
+        }
+        return seen;
+    }
     void accept(JsonObject row) {
         total++;
         JsonObject result = row.getAsJsonObject("result");
         String name = text(result, "name");
         String pkg = text(row, "packageName");
         boolean verify = kind.equals("verify");
+        if (!verify && !name.equals("OK") && !sharedUidOnlyPartial(row)) powerProblems++;
         if (name.equals("OK")) ok++;
         else if (verify && name.equals("VERIFY_VENDOR_CONSTRAINED")) vendor++;
         else if (name.equals("VERIFY_MISMATCH") || (!verify && name.equals("PARTIAL"))) warn++;
@@ -80,6 +94,7 @@ final class BatchResultFiles {
         }
         Files.write(new File(prefix + ".issues").toPath(), issues.toString().getBytes(StandardCharsets.UTF_8));
         Files.write(new File(prefix + ".ssaid").toPath(), ssaid.toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(new File(prefix + ".power").toPath(), (powerProblems + "\n").getBytes(StandardCharsets.UTF_8));
         // The summary is the completion marker and is published only after both sidecars.
         File temp = new File(prefix + ".summary.tmp");
         Files.write(temp.toPath(), summary(code).getBytes(StandardCharsets.UTF_8));

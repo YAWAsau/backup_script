@@ -72,7 +72,7 @@ public class CCUtil {
         } else {
             CCHelper ccHelper = new CCHelper();
             try {
-                if (System.in.available() > 0) {
+                if (true) /* stdin mode reads until EOF, including delayed pipe writers */ {
                     try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
                         String line;
                         while ((line = reader.readLine()) != null) {
@@ -108,7 +108,7 @@ public class CCUtil {
         } else {
             CCHelper ccHelper = new CCHelper();
             try {
-                if (System.in.available() > 0) {
+                if (true) /* stdin mode reads until EOF, including delayed pipe writers */ {
                     try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
                         String line;
                         while ((line = reader.readLine()) != null) {
@@ -142,7 +142,7 @@ public class CCUtil {
         } else {
             CCHelper ccHelper = new CCHelper();
             try {
-                if (System.in.available() > 0) {
+                if (true) /* stdin mode reads until EOF, including delayed pipe writers */ {
                     try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
                         String line;
                         while ((line = reader.readLine()) != null) {

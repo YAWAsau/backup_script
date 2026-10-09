@@ -37,7 +37,10 @@ const EEXIST: i32 = 17;
 /// not literally "0" enables debug output. Deliberately NOT a whitelist.
 fn debug_enabled() -> bool {
     match env::var_os("UIDEXEC_DEBUG") {
-        Some(v) => { let b = v.as_os_str().as_bytes(); !b.is_empty() && b != b"0" },
+        Some(v) => {
+            let b = v.as_os_str().as_bytes();
+            !b.is_empty() && b != b"0"
+        }
         None => false,
     }
 }
@@ -68,24 +71,59 @@ fn usage(prog: &str) {
 /// Faithful port of parse_long(): rejects negatives, requires the whole
 /// string consumed, exits(2) on any parse failure exactly like the C version.
 fn parse_long(s: Option<&String>, name: &str) -> u32 {
-    let s = match s { Some(v) => v, None => { eprintln!("bad {}: (null)", name); std::process::exit(2); } };
+    let s = match s {
+        Some(v) => v,
+        None => {
+            eprintln!("bad {}: (null)", name);
+            std::process::exit(2);
+        }
+    };
     let b = s.as_bytes();
     let mut i = 0usize;
-    while i < b.len() && matches!(b[i], b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c) { i += 1; }
-    let neg = if i < b.len() && b[i] == b'+' { i += 1; false } else if i < b.len() && b[i] == b'-' { i += 1; true } else { false };
+    while i < b.len() && matches!(b[i], b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c) {
+        i += 1;
+    }
+    let neg = if i < b.len() && b[i] == b'+' {
+        i += 1;
+        false
+    } else if i < b.len() && b[i] == b'-' {
+        i += 1;
+        true
+    } else {
+        false
+    };
     let start = i;
     let mut value: u128 = 0;
-    let limit = if neg { (i64::MAX as u128) + 1 } else { i64::MAX as u128 };
+    let limit = if neg {
+        (i64::MAX as u128) + 1
+    } else {
+        i64::MAX as u128
+    };
     while i < b.len() && b[i].is_ascii_digit() {
-        value = value.saturating_mul(10).saturating_add((b[i] - b'0') as u128);
-        if value > limit { break; }
+        value = value
+            .saturating_mul(10)
+            .saturating_add((b[i] - b'0') as u128);
+        if value > limit {
+            break;
+        }
         i += 1;
     }
     let valid = i > start && i == b.len() && value <= limit;
     let signed = if valid && neg {
-        if value == (i64::MAX as u128) + 1 { i64::MIN } else { -(value as i64) }
-    } else if valid { value as i64 } else { -1 };
-    if !valid || signed < 0 { eprintln!("bad {}: {}", name, s); std::process::exit(2); }
+        if value == (i64::MAX as u128) + 1 {
+            i64::MIN
+        } else {
+            -(value as i64)
+        }
+    } else if valid {
+        value as i64
+    } else {
+        -1
+    };
+    if !valid || signed < 0 {
+        eprintln!("bad {}: {}", name, s);
+        std::process::exit(2);
+    }
     signed as u32
 }
 
@@ -97,13 +135,21 @@ fn cstr(s: &str) -> CString {
 }
 
 fn setenv_checked(name: &str, value: &str, overwrite: i32, die_name: Option<&str>) {
-    let n = cstr(name); let v = cstr(value);
+    let n = cstr(name);
+    let v = cstr(value);
     if unsafe { setenv(n.as_ptr(), v.as_ptr(), overwrite) } != 0 {
-        if let Some(msg) = die_name { die(msg); }
+        if let Some(msg) = die_name {
+            die(msg);
+        }
     }
 }
 
-fn unsetenv_ignored(name: &str) { let n = cstr(name); unsafe { unsetenv(n.as_ptr()); } }
+fn unsetenv_ignored(name: &str) {
+    let n = cstr(name);
+    unsafe {
+        unsetenv(n.as_ptr());
+    }
+}
 
 fn make_tmpdir(android_data: &str, uid: u32, gid: u32) {
     let tmpdir = format!("{}/tmp", android_data);
@@ -122,10 +168,16 @@ fn make_tmpdir(android_data: &str, uid: u32, gid: u32) {
     // caller environments fail merely because ownership/mode cannot be
     // adjusted on a special directory.
     if unsafe { chown(c_tmpdir.as_ptr(), uid, gid) } != 0 && debug_enabled() {
-        eprintln!("warn: chown TMPDIR failed: {}", c_strerror(&std::io::Error::last_os_error()));
+        eprintln!(
+            "warn: chown TMPDIR failed: {}",
+            c_strerror(&std::io::Error::last_os_error())
+        );
     }
     if unsafe { chmod(c_tmpdir.as_ptr(), 0o700) } != 0 && debug_enabled() {
-        eprintln!("warn: chmod TMPDIR failed: {}", c_strerror(&std::io::Error::last_os_error()));
+        eprintln!(
+            "warn: chmod TMPDIR failed: {}",
+            c_strerror(&std::io::Error::last_os_error())
+        );
     }
     setenv_checked("TMPDIR", &tmpdir, 1, Some("setenv TMPDIR"));
 }
@@ -184,7 +236,7 @@ fn exec_command(cmd: &[String]) -> ! {
 
 pub(crate) fn run() {
     let args: Vec<String> = crate::multicall::args().collect();
-    let prog = args.get(0).map(|s| s.as_str()).unwrap_or("uidexec");
+    let prog = args.first().map(|s| s.as_str()).unwrap_or("uidexec");
 
     if args.len() == 2 && (args[1] == "--version" || args[1] == "version") {
         println!("uidexec {VERSION} build={BUILD_VERSION}");
@@ -231,7 +283,12 @@ pub(crate) fn run() {
 
     harden_process();
 
-    setenv_checked("ANDROID_DATA", &android_data, 1, Some("setenv ANDROID_DATA"));
+    setenv_checked(
+        "ANDROID_DATA",
+        &android_data,
+        1,
+        Some("setenv ANDROID_DATA"),
+    );
     match &classpath {
         Some(cp) if !cp.is_empty() => setenv_checked("CLASSPATH", cp, 1, Some("setenv CLASSPATH")),
         _ => unsetenv_ignored("CLASSPATH"),
@@ -250,7 +307,9 @@ pub(crate) fn run() {
     drop_identity(uid, gid);
 
     if debug_enabled() {
-        eprintln!("running as uid={} gid={}", unsafe { getuid() }, unsafe { getgid() });
+        eprintln!("running as uid={} gid={}", unsafe { getuid() }, unsafe {
+            getgid()
+        });
     }
 
     exec_command(&args[cmd_index..]);

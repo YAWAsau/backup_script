@@ -34,6 +34,16 @@ final class DaemonBootstrap {
     private DaemonBootstrap() {
     }
 
+    static void requirePrivateSocketParent(File socket) throws Exception {
+        File parent = socket.getAbsoluteFile().getParentFile();
+        if (parent == null || !parent.getCanonicalPath().equals(parent.getAbsolutePath()))
+            throw new IOException("unsafe socket parent");
+        android.system.StructStat st = Os.lstat(parent.getPath());
+        if (!android.system.OsConstants.S_ISDIR(st.st_mode) || st.st_uid != android.os.Process.myUid()
+                || (st.st_mode & 0777) != 0700)
+            throw new IOException("socket parent must be daemon-owned mode 0700");
+    }
+
     static int tokenSeed(int floor) {
         int safeFloor = Math.max(1, floor);
         long seed = (Math.abs(System.currentTimeMillis() % 100000L) * 1000L)
@@ -110,6 +120,7 @@ final class DaemonBootstrap {
         File socketFile = null;
         try {
             socketFile = validateSocketPath(socketPath);
+            requirePrivateSocketParent(socketFile);
             File parent = socketFile.getParentFile();
             if (parent == null) throw new IllegalArgumentException("socketPath has no parent");
             if (!parent.isDirectory() && !parent.mkdirs()) {
@@ -122,13 +133,13 @@ final class DaemonBootstrap {
             bindSocket = new LocalSocket(LocalSocket.SOCKET_STREAM);
             bindSocket.bind(new LocalSocketAddress(socketFile.getAbsolutePath(), LocalSocketAddress.Namespace.FILESYSTEM));
             server = new LocalServerSocket(bindSocket.getFileDescriptor());
-            try { Os.chmod(socketFile.getAbsolutePath(), UNIX_SOCKET_MODE); } catch (Throwable ignored) {}
+            Os.chmod(socketFile.getAbsolutePath(), UNIX_SOCKET_MODE);
 
             final LocalSocket finalBind = bindSocket;
             final LocalServerSocket finalServer = server;
             final File finalSocketFile = socketFile;
             final AtomicBoolean finalClosed = closed;
-            Runnable closeResources = () -> closeDaemon(finalClosed, finalServer, finalBind, finalSocketFile);
+            Runnable closeResources = () -> closeDaemon(finalClosed, finalServer, finalBind, finalSocketFile, false);
             Runtime.getRuntime().addShutdownHook(new Thread(closeResources));
 
             final Long ownerStart = ownerPid > 1 ? readProcStarttime(ownerPid) : null;
@@ -141,7 +152,7 @@ final class DaemonBootstrap {
                     boolean idle = activeRequests.get() == 0
                             && System.currentTimeMillis() - lastActivity.get() > timeoutMs;
                     if (ownerGone || idle) {
-                        closeResources.run();
+                        closeDaemon(finalClosed, finalServer, finalBind, finalSocketFile, ownerGone);
                         System.exit(0);
                     }
                 }
@@ -224,8 +235,14 @@ final class DaemonBootstrap {
         return socketFile;
     }
 
-    private static void closeDaemon(AtomicBoolean closed, LocalServerSocket server, LocalSocket bindSocket, File socketFile) {
+    private static void closeDaemon(AtomicBoolean closed, LocalServerSocket server, LocalSocket bindSocket, File socketFile, boolean ownerGone) {
         if (!closed.compareAndSet(false, true)) return;
+        if (ownerGone) {
+        try { ProcessObserverUtil.stopOwnedSessions(); } catch (Throwable ignored) {}
+        try { AppWakeBlockUtil.stopOwnedSessions(); } catch (Throwable ignored) {}
+        try { UidNetworkBlockUtil.stopOwnedSessions(); } catch (Throwable ignored) {}
+        try { CgroupFreezeUtil.stopOwnedSessions(); } catch (Throwable ignored) {}
+        }
         try { SsaidUtil.shutdownStateCache("daemon-close"); } catch (Throwable ignored) {}
         try { server.close(); } catch (Throwable ignored) {}
         try { bindSocket.close(); } catch (Throwable ignored) {}

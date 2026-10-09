@@ -35,7 +35,10 @@ fn main() {
                     }
                     Some("--versions") => {
                         for (name, version) in speedbackup_native_rs::APPLET_VERSIONS {
-                            println!("{name} {version} build={}", speedbackup_native_rs::BUILD_VERSION);
+                            println!(
+                                "{name} {version} build={}",
+                                speedbackup_native_rs::BUILD_VERSION
+                            );
                         }
                         return;
                     }

@@ -45,6 +45,15 @@ const EINTR: i32 = 4;
 
 static G_STOP: AtomicBool = AtomicBool::new(false);
 
+#[cfg(all(target_os = "android", target_pointer_width = "64"))]
+#[repr(C)]
+struct Sigaction {
+    sa_flags: c_int,
+    sa_handler: extern "C" fn(c_int),
+    sa_mask: [u64; 1],
+    sa_restorer: usize,
+}
+#[cfg(not(all(target_os = "android", target_pointer_width = "64")))]
 #[repr(C)]
 struct Sigaction {
     sa_handler: extern "C" fn(c_int),
@@ -69,7 +78,13 @@ extern "C" {
     fn sigaction(signum: c_int, act: *const Sigaction, oldact: *mut Sigaction) -> c_int;
     fn socket(domain: c_int, ty: c_int, protocol: c_int) -> c_int;
     fn bind(fd: c_int, addr: *const c_void, addrlen: u32) -> c_int;
-    fn setsockopt(fd: c_int, level: c_int, optname: c_int, optval: *const c_void, optlen: u32) -> c_int;
+    fn setsockopt(
+        fd: c_int,
+        level: c_int,
+        optname: c_int,
+        optval: *const c_void,
+        optlen: u32,
+    ) -> c_int;
     fn recv(fd: c_int, buf: *mut c_void, len: usize, flags: c_int) -> isize;
     fn close(fd: c_int) -> c_int;
     fn getpid() -> i32;
@@ -86,7 +101,12 @@ fn errno_now() -> i32 {
 }
 
 fn install_signal_handlers() -> bool {
-    let act = Sigaction { sa_handler: handle_signal, sa_mask: [0u64; 16], sa_flags: 0, sa_restorer: 0 };
+    let act = Sigaction {
+        sa_handler: handle_signal,
+        sa_mask: Default::default(),
+        sa_flags: 0,
+        sa_restorer: 0,
+    };
     for sig in [SIGINT, SIGTERM, SIGHUP] {
         if unsafe { sigaction(sig, &act as *const Sigaction, std::ptr::null_mut()) } != 0 {
             return false;
@@ -115,18 +135,28 @@ fn resolve_interface_name(index: u32) -> String {
     cstr.to_string_lossy().into_owned()
 }
 
-fn u16_at(b: &[u8], off: usize) -> u16 { u16::from_ne_bytes(b[off..off + 2].try_into().unwrap()) }
+fn u16_at(b: &[u8], off: usize) -> u16 {
+    u16::from_ne_bytes(b[off..off + 2].try_into().unwrap())
+}
 
 fn flush_stdout_line() {
     let _ = std::io::stdout().flush();
 }
 
-fn u32_at(b: &[u8], off: usize) -> u32 { u32::from_ne_bytes(b[off..off + 4].try_into().unwrap()) }
-fn i32_at(b: &[u8], off: usize) -> i32 { i32::from_ne_bytes(b[off..off + 4].try_into().unwrap()) }
+fn u32_at(b: &[u8], off: usize) -> u32 {
+    u32::from_ne_bytes(b[off..off + 4].try_into().unwrap())
+}
+fn i32_at(b: &[u8], off: usize) -> i32 {
+    i32::from_ne_bytes(b[off..off + 4].try_into().unwrap())
+}
 
 /// Walk an rtattr chain starting at `msg[attr_off..]`, bounded by `payload_len`
 /// bytes, matching RTA_OK/RTA_NEXT semantics (4-byte aligned records).
-fn walk_rtattrs(msg: &[u8], attr_off: usize, payload_len: usize) -> Vec<(u16, std::ops::Range<usize>)> {
+fn walk_rtattrs(
+    msg: &[u8],
+    attr_off: usize,
+    payload_len: usize,
+) -> Vec<(u16, std::ops::Range<usize>)> {
     let mut out = Vec::new();
     let mut off = attr_off;
     let mut remaining = payload_len as isize;
@@ -174,7 +204,11 @@ fn print_link_event(msg: &[u8]) {
     }
     println!(
         "{} ifindex={} ifname={} flags=0x{:x} change=0x{:x}",
-        message_type_name(nlmsg_type), ifi_index, ifname, ifi_flags, ifi_change
+        message_type_name(nlmsg_type),
+        ifi_index,
+        ifname,
+        ifi_flags,
+        ifi_change
     );
     flush_stdout_line();
 }
@@ -216,16 +250,29 @@ fn print_address_event(msg: &[u8]) {
         if start + 4 <= msg.len() {
             let mut out = [0 as c_char; 16]; // INET_ADDRSTRLEN
             let ptr = unsafe {
-                inet_ntop(AF_INET as c_int, msg[start..start + 4].as_ptr() as *const c_void, out.as_mut_ptr(), out.len() as u32)
+                inet_ntop(
+                    AF_INET as c_int,
+                    msg[start..start + 4].as_ptr() as *const c_void,
+                    out.as_mut_ptr(),
+                    out.len() as u32,
+                )
             };
             if !ptr.is_null() {
-                address = unsafe { std::ffi::CStr::from_ptr(out.as_ptr()) }.to_string_lossy().into_owned();
+                address = unsafe { std::ffi::CStr::from_ptr(out.as_ptr()) }
+                    .to_string_lossy()
+                    .into_owned();
             }
         }
     }
     println!(
         "{} ifindex={} ifname={} address={} prefixlen={} scope={} flags=0x{:x}",
-        message_type_name(nlmsg_type), ifa_index, ifname, address, ifa_prefixlen, ifa_scope, ifa_flags
+        message_type_name(nlmsg_type),
+        ifa_index,
+        ifname,
+        address,
+        ifa_prefixlen,
+        ifa_scope,
+        ifa_flags
     );
     flush_stdout_line();
 }
@@ -242,28 +289,38 @@ fn process_netlink_buffer(buffer: &[u8], received_length: usize) -> Result<(), (
         let msg = &buffer[offset..];
         let message_length = u32_at(msg, 0) as usize;
         let aligned_length = (message_length + 3) & !3;
-        if message_length < NLMSGHDR_LEN || message_length > remaining || aligned_length > remaining {
+        if message_length < NLMSGHDR_LEN || message_length > remaining || aligned_length > remaining
+        {
             eprintln!("netwatch: malformed netlink message");
             return Err(());
         }
         let nlmsg_type = u16_at(msg, 4);
         match nlmsg_type {
             NLMSG_NOOP | NLMSG_DONE => {}
-            NLMSG_OVERRUN => { println!("NETLINK_OVERRUN"); flush_stdout_line(); },
+            NLMSG_OVERRUN => {
+                println!("NETLINK_OVERRUN");
+                flush_stdout_line();
+            }
             NLMSG_ERROR => {
                 // NLMSG_PAYLOAD(header,0) = nlmsg_len - 16; nlmsgerr starts with a 4-byte error field.
-                if message_length < NLMSGHDR_LEN + 20 { // sizeof(struct nlmsgerr)
+                if message_length < NLMSGHDR_LEN + 20 {
+                    // sizeof(struct nlmsgerr)
                     eprintln!("netwatch: malformed NLMSG_ERROR");
                     return Err(());
                 }
                 let error = i32_at(msg, NLMSGHDR_LEN);
                 if error != 0 {
-                    eprintln!("netwatch: netlink error: {}", c_strerror(&std::io::Error::from_raw_os_error(-error)));
+                    eprintln!(
+                        "netwatch: netlink error: {}",
+                        c_strerror(&std::io::Error::from_raw_os_error(-error))
+                    );
                     return Err(());
                 }
             }
             RTM_NEWLINK | RTM_DELLINK => print_link_event(&msg[..message_length.max(NLMSGHDR_LEN)]),
-            RTM_NEWADDR | RTM_DELADDR => print_address_event(&msg[..message_length.max(NLMSGHDR_LEN)]),
+            RTM_NEWADDR | RTM_DELADDR => {
+                print_address_event(&msg[..message_length.max(NLMSGHDR_LEN)])
+            }
             _ => {}
         }
         remaining -= aligned_length;
@@ -279,14 +336,19 @@ fn process_netlink_buffer(buffer: &[u8], received_length: usize) -> Result<(), (
 fn run_watcher() -> i32 {
     let socket_fd = unsafe { socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE) };
     if socket_fd < 0 {
-        eprintln!("netwatch: socket: {}", c_strerror(&std::io::Error::last_os_error()));
+        eprintln!(
+            "netwatch: socket: {}",
+            c_strerror(&std::io::Error::last_os_error())
+        );
         return 1;
     }
 
     let receive_buffer_bytes: i32 = 256 * 1024;
     unsafe {
         setsockopt(
-            socket_fd, SOL_SOCKET, SO_RCVBUF,
+            socket_fd,
+            SOL_SOCKET,
+            SO_RCVBUF,
             &receive_buffer_bytes as *const i32 as *const c_void,
             std::mem::size_of::<i32>() as u32,
         );
@@ -306,19 +368,32 @@ fn run_watcher() -> i32 {
         )
     };
     if bind_rc != 0 {
-        eprintln!("netwatch: bind: {}", c_strerror(&std::io::Error::last_os_error()));
+        eprintln!(
+            "netwatch: bind: {}",
+            c_strerror(&std::io::Error::last_os_error())
+        );
         unsafe { close(socket_fd) };
         return 1;
     }
 
     let mut buffer = vec![0u8; RECEIVE_BUFFER_SIZE];
     while !G_STOP.load(Ordering::SeqCst) {
-        let received_length = unsafe { recv(socket_fd, buffer.as_mut_ptr() as *mut c_void, buffer.len(), 0) };
+        let received_length = unsafe {
+            recv(
+                socket_fd,
+                buffer.as_mut_ptr() as *mut c_void,
+                buffer.len(),
+                0,
+            )
+        };
         if received_length < 0 {
             if errno_now() == EINTR {
                 continue;
             }
-            eprintln!("netwatch: recv: {}", c_strerror(&std::io::Error::last_os_error()));
+            eprintln!(
+                "netwatch: recv: {}",
+                c_strerror(&std::io::Error::last_os_error())
+            );
             unsafe { close(socket_fd) };
             return 1;
         }
@@ -344,7 +419,7 @@ pub(crate) fn run() {
     let _ = CString::new(""); // keep std::ffi::CString import used across builds
 
     let args: Vec<String> = crate::multicall::args().collect();
-    let argv0 = args.get(0).map(|s| s.as_str()).unwrap_or("netwatch");
+    let argv0 = args.first().map(|s| s.as_str()).unwrap_or("netwatch");
 
     if args.len() > 2 {
         print_help(argv0);
@@ -365,7 +440,10 @@ pub(crate) fn run() {
     }
 
     if !install_signal_handlers() {
-        eprintln!("netwatch: sigaction: {}", c_strerror(&std::io::Error::last_os_error()));
+        eprintln!(
+            "netwatch: sigaction: {}",
+            c_strerror(&std::io::Error::last_os_error())
+        );
         std::process::exit(1);
     }
     std::process::exit(run_watcher());

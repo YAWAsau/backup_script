@@ -424,6 +424,18 @@ object HttpCore {
         private fun urlHasNonAscii(url: String): Boolean = url.any { it.code > 0x7f }
 
         fun getTo(url: String, out: OutputStream, user: String = "", pass: String = "", followRedirects: Boolean = true): Int {
+            var outputStarted = false
+            val guardedOut = object : OutputStream() {
+                override fun write(value: Int) {
+                    outputStarted = true
+                    out.write(value)
+                }
+                override fun write(buffer: ByteArray, offset: Int, length: Int) {
+                    if (length <= 0) return
+                    outputStarted = true
+                    out.write(buffer, offset, length)
+                }
+            }
             return request(
                 method = "GET",
                 url = url,
@@ -431,9 +443,10 @@ object HttpCore {
                 pass = pass,
                 headers = linkedMapOf("Accept-Encoding" to "gzip, deflate"),
                 followRedirects = followRedirects,
-                canReplayBody = true
+                canReplayBody = true,
+                retryOnConnectionFailure = { !outputStarted }
             ) { code, headers, input ->
-                if (code in 200..299) readResponseBody(headers, input, out, decodeContent = true) else discardResponseBody(headers, input)
+                if (code in 200..299) readResponseBody(headers, input, guardedOut, decodeContent = true) else discardResponseBody(headers, input)
             }
         }
 
@@ -626,8 +639,9 @@ object HttpCore {
         val out = ByteArrayOutputStream(128)
         while (true) {
             val b = input.read()
-            if (b == -1) break
+            if (b == -1) throw EOFException("truncated HTTP line")
             if (b == '\n'.code) break
+            if (out.size() >= 65536) throw java.io.IOException("HTTP line too long")
             if (b != '\r'.code) out.write(b)
         }
         return out.toString("ISO-8859-1")
@@ -638,23 +652,55 @@ object HttpCore {
     }
 
     fun readResponseBody(headers: Map<String, List<String>>, input: InputStream, out: OutputStream, decodeContent: Boolean = false) {
-        val rawOut = if (decodeContent) ByteArrayOutputStream() else null
-        val targetOut = rawOut ?: out
         val te = headers.firstHeader("transfer-encoding")?.lowercase(Locale.US) ?: ""
         val len = headers.firstHeader("content-length")?.toLongOrNull()
-        when {
-            te.split(',').map { it.trim() }.contains("chunked") -> readChunked(input, targetOut)
-            len != null -> readFixed(input, len, targetOut)
-            else -> input.copyToBuffer(targetOut)
-        }
-        if (decodeContent && rawOut != null) {
-            val encoding = headers.firstHeader("content-encoding")?.lowercase(Locale.US) ?: ""
-            val rawBytes = rawOut.toByteArray()
-            when {
-                encoding.contains("gzip") -> GZIPInputStream(rawBytes.inputStream()).use { it.copyToBuffer(out) }
-                encoding.contains("deflate") -> InflaterInputStream(rawBytes.inputStream()).use { it.copyToBuffer(out) }
-                else -> out.write(rawBytes)
+        if (len != null && len < 0) throw java.io.IOException("negative content length")
+        val chunked = te.split(',').any { it.trim() == "chunked" }
+        val encoding = if (decodeContent) headers.firstHeader("content-encoding")?.lowercase(Locale.US) ?: "" else ""
+        if (encoding == "gzip" || encoding == "deflate") {
+            // Decode over a bounded framing reader, never buffering the entire payload.
+            val framed = object : InputStream() {
+                var remaining = if (chunked) 0L else len ?: Long.MAX_VALUE
+                var ended = false
+                var terminator = false
+                override fun read(): Int { val one = ByteArray(1); return if (read(one, 0, 1) < 0) -1 else one[0].toInt() and 255 }
+                override fun read(buffer: ByteArray, offset: Int, count: Int): Int {
+                    if (count == 0) return 0
+                    if (ended) return -1
+                    if (chunked && remaining == 0L) {
+                        if (terminator && readHttpLine(input).isNotEmpty()) throw java.io.IOException("invalid chunk terminator")
+                        val size = readHttpLine(input).substringBefore(';').trim().toLongOrNull(16)
+                            ?: throw java.io.IOException("bad chunk size")
+                        if (size < 0) throw java.io.IOException("negative chunk size")
+                        remaining = size
+                        if (size == 0L) {
+                            var trailers = 0
+                            while (readHttpLine(input).isNotEmpty()) { if (++trailers > 256) throw java.io.IOException("too many trailers") }
+                            ended = true; return -1
+                        }
+                        terminator = true
+                    }
+                    if (remaining == 0L) { ended = true; return -1 }
+                    val n = input.read(buffer, offset, minOf(count.toLong(), remaining).toInt())
+                    if (n < 0) {
+                        if (chunked || len != null) throw EOFException("truncated encoded body")
+                        ended = true; return -1
+                    }
+                    if (chunked || len != null) remaining -= n
+                    return n
+                }
             }
+            val decoded = if (encoding == "gzip") GZIPInputStream(framed) else InflaterInputStream(framed)
+            decoded.use {
+                it.copyToBuffer(out)
+                framed.copyToBuffer(NullOutputStream) // validate the complete HTTP frame
+            }
+            return
+        }
+        when {
+            chunked -> readChunked(input, out)
+            len != null -> readFixed(input, len, out)
+            else -> input.copyToBuffer(out)
         }
     }
 
@@ -692,19 +738,21 @@ object HttpCore {
         while (true) {
             val sizeLine = readHttpLine(input)
             val sizeText = sizeLine.substringBefore(';').trim()
-            val size = sizeText.toIntOrNull(16) ?: throw java.io.IOException("bad chunk size: $sizeLine")
-            if (size == 0) {
-                while (readHttpLine(input).isNotEmpty()) Unit
+            val size = sizeText.toLongOrNull(16) ?: throw java.io.IOException("bad chunk size: $sizeLine")
+            if (size < 0) throw java.io.IOException("negative chunk size")
+            if (size == 0L) {
+                var trailers = 0
+                while (readHttpLine(input).isNotEmpty()) { if (++trailers > 256) throw java.io.IOException("too many trailers") }
                 return
             }
             var remaining = size
             while (remaining > 0) {
-                val n = input.read(buf, 0, minOf(buf.size, remaining))
+                val n = input.read(buf, 0, minOf(buf.size.toLong(), remaining).toInt())
                 if (n <= 0) throw EOFException("unexpected EOF in chunk")
                 out.write(buf, 0, n)
                 remaining -= n
             }
-            readHttpLine(input)
+            if (readHttpLine(input).isNotEmpty()) throw java.io.IOException("invalid chunk terminator")
         }
     }
 
@@ -775,7 +823,7 @@ object HttpCore {
         // 443/503) as an HTTP response status; this is a local policy rejection, not a server
         // response.  Keep it as transport/policy code 0 for the callers' normal fail path.
         if (msg.startsWith("HTTP_REDIRECT_AUTH_")) return 0
-        val m = Regex("""\b([1-5][0-9]{2})\b""").find(msg) ?: return 0
+        val m = Regex("""(?i)(?:HTTP(?:/\d(?:\.\d)?)?\s+(?:status\s*)?[:=]?\s*|response code:\s*)([1-5][0-9]{2})\b""").find(msg) ?: return 0
         return m.groupValues[1].toIntOrNull() ?: 0
     }
 }

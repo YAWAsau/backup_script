@@ -17,6 +17,8 @@ public interface SettingsState {
         return (type << SETTINGS_TYPE_SHIFT) | userId;
     }
 
+    void persistSyncLocked();
+
     Setting getSettingLocked(String name);
 
     boolean insertSettingLocked(String name, String value, String tag, boolean makeDefault, String packageName);

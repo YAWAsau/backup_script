@@ -1,4 +1,5 @@
 -keep class com.xayah.dex.HiddenApiUtil { public static void main(java.lang.String[]); }
+-keep class com.xayah.dex.TimelineUtil { public static void main(java.lang.String[]); }
 -keep class com.xayah.dex.NotificationUtil { public static void main(java.lang.String[]); }
 -keep class com.xayah.dex.NetworkUtil { public static void main(java.lang.String[]); }
 -keep class com.xayah.dex.SsaidUtil { public static void main(java.lang.String[]); }
@@ -25,6 +26,7 @@
 
 -keepattributes *Annotation*,InnerClasses,EnclosingMethod
 -dontobfuscate
+-keep class com.xayah.dex.GuardLifecycle { public static void main(java.lang.String[]); }
 -dontwarn **
 
 -keep class com.xayah.dex.SmbScanUtil { public static void main(java.lang.String[]); }
@@ -49,3 +51,8 @@
 -keep class com.xayah.dex.TelephonyUtil { public static void main(java.lang.String[]); }
 
 -keep class com.xayah.dex.FakeContext** { *; }
+
+-keep class com.xayah.dex.PowerNotifyUtil { public static void main(java.lang.String[]); }
+
+# Preserve isolated protocol conformance entry without exposing another CLI command.
+-keepclassmembers class com.xayah.dex.PowerNotifyUtil { static java.lang.String execute(java.lang.String[], java.io.File); }

@@ -61,7 +61,22 @@ def verify_runtime(directory):
     print(f'Runtime SHA: {len(entries)} files match')
 
 
+def check_diagnostic_capabilities():
+    """Reject stale startup gates before they can ship and block first launch."""
+    rust = (ROOT / 'rust/src/json_caps.rs').read_text(encoding='utf-8')
+    contract = re.search(r'const CAPS_DIAGNOSTIC:.*?=\s*&\[(.*?)\];', rust, re.S)
+    require(contract is not None, 'Missing Rust diagnostic capability contract')
+    required = set(re.findall(r'"([^"]+)"', contract.group(1)))
+    require(bool(required), 'Empty diagnostic capability contract')
+    java = (ROOT / 'dex/app/src/main/java/com/xayah/dex/AppStateEngine.java').read_text(encoding='utf-8')
+    enabled = set(re.findall(r'addCapability\(capabilities,\s*"([^"]+)",\s*true\s*,', java))
+    missing = sorted(required - enabled)
+    require(not missing, f'Diagnostic capabilities missing from Dex declarations: {missing}')
+    print(f'Diagnostic capability declarations: {len(required)} match')
+
+
 def check_versions():
+    check_diagnostic_capabilities()
     config = ROOT / 'versions.properties'
     if not config.exists():
         print('Versions: existing legacy scheme (no versions.properties)')

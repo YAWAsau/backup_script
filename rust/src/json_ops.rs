@@ -246,7 +246,7 @@ fn ad(v: &V, op: &str) -> Result<V, String> {
             entries(v)
                 .iter()
                 .find(|(_, v)| v.object() && !null(&g(v, "PackageName")))
-                .or_else(|| None)
+                .or(None)
                 .map(|(k, _)| k.clone())
                 .or_else(|| entries(v).first().map(|(k, _)| k.clone()))
                 .unwrap_or_default(),
@@ -495,6 +495,7 @@ fn execute(op: &str, v: &V, a: &Vars, file: &str) -> Result<Vec<V>, String> {
             v.truth() && ad(v, "ad_required_meta_ok")?.truth() && state_schema(v) && state_items(v),
         )),
         "metadata-identity" => Ok(vec![ad(v, "ad_first_pkg")?, ad(v, "ad_first_apk_version")?]),
+        "restore-metadata-plan" => restore_metadata_plan(v, a),
         "health-row" => {
             let app = Path::new(file)
                 .parent()
@@ -518,6 +519,10 @@ fn execute(op: &str, v: &V, a: &Vars, file: &str) -> Result<Vec<V>, String> {
             ]);
             one(tsv(&xs)?)
         }
+        "payload-comparison" => one(tsv(&[
+            fallback(&[path(v, &[&var(a, "e"), "Size"]), string("")]),
+            fallback(&[path(v, &[&var(a, "e"), "change_fingerprint"]), string("")]),
+        ])?),
         "metadata-summary" => {
             let mut xs = vec![
                 fallback(&[first(v, "apk_version"), empty.clone()]),
@@ -526,6 +531,12 @@ fn execute(op: &str, v: &V, a: &Vars, file: &str) -> Result<Vec<V>, String> {
             ];
             for k in ["user", "data", "obb", "user_de", "media"] {
                 xs.push(fallback(&[path(v, &[k, "Size"]), empty.clone()]))
+            }
+            for entry in ["user", "data", "obb", "user_de", "media"] {
+                xs.push(fallback(&[
+                    path(v, &[entry, "change_fingerprint"]),
+                    string(""),
+                ]));
             }
             Ok(xs)
         }
@@ -550,27 +561,65 @@ fn execute(op: &str, v: &V, a: &Vars, file: &str) -> Result<Vec<V>, String> {
             one(fallback(&[g(&d, "installer"), g(&d, "installing"), empty]))
         }
         "edit-batch" => {
-            if !v.object() { return Err("expected metadata object".into()); }
+            if !v.object() {
+                return Err("expected metadata object".into());
+            }
             let bytes = fs::read(var(a, "edits")).map_err(|_| "edit journal unavailable")?;
             let text = std::str::from_utf8(&bytes).map_err(|_| "invalid edit journal encoding")?;
-            if !text.is_empty() && !text.ends_with('\0') { return Err("truncated edit journal".into()); }
-            let fields: Vec<_> = text.split_terminator('\0').collect();
-            let mut p=0; let mut value=v.clone(); let mut count=0;
-            while p<fields.len() {
-                let n:usize=fields[p].parse().map_err(|_| "invalid edit argument count")?;p+=1;
-                if n==0 || n>128 || p+n>fields.len() { return Err("truncated edit record".into()); }
-                let end=p+n; let mut args=Vars::new(); let mut op=None;
-                while p<end {
-                    if fields[p]=="--arg" && p+2<end { args.insert(fields[p+1].into(),fields[p+2].into());p+=3; }
-                    else if op.is_none() { op=Some(fields[p]);p+=1; }
-                    else { return Err("invalid edit arguments".into()); }
-                }
-                let op=op.ok_or("missing edit operation")?;
-                if !matches!(op,"set-field"|"set-payload-path"|"set-payload"|"set-apk"|"ensure-package"|"sync-package") { return Err("unsupported edit operation".into()); }
-                value=execute(op,&value,&args,file)?.into_iter().next().ok_or("empty edit result")?;
-                count+=1;
+            if !text.is_empty() && !text.ends_with('\0') {
+                return Err("truncated edit journal".into());
             }
-            eprintln!("JSON_BATCH edits={count}");
+            let fields: Vec<_> = text.split_terminator('\0').collect();
+            let mut p = 0;
+            let mut value = v.clone();
+            let mut count = 0;
+            while p < fields.len() {
+                let n: usize = fields[p]
+                    .parse()
+                    .map_err(|_| "invalid edit argument count")?;
+                p += 1;
+                if n == 0 || n > 128 || p + n > fields.len() {
+                    return Err("truncated edit record".into());
+                }
+                let end = p + n;
+                let mut args = Vars::new();
+                let mut op = None;
+                while p < end {
+                    if fields[p] == "--arg" && p + 2 < end {
+                        args.insert(fields[p + 1].into(), fields[p + 2].into());
+                        p += 3;
+                    } else if op.is_none() {
+                        op = Some(fields[p]);
+                        p += 1;
+                    } else {
+                        return Err("invalid edit arguments".into());
+                    }
+                }
+                let op = op.ok_or("missing edit operation")?;
+                if !matches!(
+                    op,
+                    "set-field"
+                        | "set-payload-path"
+                        | "set-payload"
+                        | "set-apk"
+                        | "ensure-package"
+                        | "sync-package"
+                ) {
+                    return Err("unsupported edit operation".into());
+                }
+                value = execute(op, &value, &args, file)?
+                    .into_iter()
+                    .next()
+                    .ok_or("empty edit result")?;
+                count += 1;
+            }
+            let info = format!("JSON_BATCH edits={count}");
+            let logged = std::env::var_os("SPEEDBACKUP_INFO_LOG")
+                .filter(|p| !p.is_empty())
+                .and_then(|p| std::fs::OpenOptions::new().create(true).append(true).open(p).ok())
+                .map(|mut f| std::io::Write::write_all(&mut f, format!("{info}\n").as_bytes()).is_ok())
+                .unwrap_or(false);
+            if !logged { eprintln!("{info}"); }
             one(value)
         }
         "set-field" | "set-payload-path" | "set-payload" | "set-apk" | "ensure-package"
@@ -619,6 +668,11 @@ fn execute(op: &str, v: &V, a: &Vars, file: &str) -> Result<Vec<V>, String> {
                             put_path(&mut o, &[&k, "path"], string(var(a, "p")))?
                         }
                         put_path(&mut o, &[&k, "Size"], string(var(a, "s")))?;
+                        put_path(
+                            &mut o,
+                            &[&k, "change_fingerprint"],
+                            string(var(a, "fingerprint")),
+                        )?;
                         put_path(&mut o, &["Backup time", "date"], string(var(a, "d")))?
                     }
                     let input = var(a, "input");
@@ -868,12 +922,13 @@ fn execute(op: &str, v: &V, a: &Vars, file: &str) -> Result<Vec<V>, String> {
                 !matches!(k.as_str(), "Backup time" | "PackageName" | "app_state")
                     && x.object()
                     && (op == "media-keys"
-                        || raw(&fallback(&[
+                        || !raw(&fallback(&[
                             g(x, "Size"),
                             g(x, "size"),
                             g(x, "path"),
                             string(""),
-                        ])) != "")
+                        ]))
+                        .is_empty())
             })
             .map(|(k, _)| string(k))
             .collect()),
@@ -941,9 +996,9 @@ fn execute(op: &str, v: &V, a: &Vars, file: &str) -> Result<Vec<V>, String> {
         )),
         "device-diagnostic" => one(boolean(
             is(v, "schema", "speedbackup.device_facts.v1")
-                && raw(&g(v, "modelNameSource")).len() > 0
+                && !raw(&g(v, "modelNameSource")).is_empty()
                 && !null(&g(v, "modelNameSource"))
-                && raw(&g(v, "marketNameZh")).len() > 0
+                && !raw(&g(v, "marketNameZh")).is_empty()
                 && !null(&g(v, "marketNameZh"))
                 && ["modelDbEntryCount", "modelDbSourceLines"].iter().all(|k| {
                     raw(&g(v, k))
@@ -1089,6 +1144,49 @@ fn state_diff(v: &V) -> Result<Vec<V>, String> {
     }
     Ok(out)
 }
+// Private fixed-line protocol for one immutable Restore App scope. Keep the
+// existing JSON operations as the authority; unusual values use their original
+// shell consumers instead of inventing escaping/flattening rules here.
+fn restore_metadata_plan(v: &V, a: &Vars) -> Result<Vec<V>, String> {
+    let V::Array(docs) = v else { return Err("plan requires slurp".into()) };
+    if docs.len() != 1 || !docs[0].object() {
+        return Err("fallback".into());
+    }
+    let doc = &docs[0];
+    let scalar = |v: &V| -> Result<String, String> {
+        if v.object() || array(v) || raw(v).contains(['\0', '\r', '\n']) {
+            return Err("fallback".into());
+        }
+        Ok(raw(v))
+    };
+    let pkg = scalar(&ad(doc, "ad_first_pkg")?)?;
+    if pkg.is_empty() { return Err("fallback".into()); }
+    let version = scalar(&ad(doc, "ad_first_apk_version")?)?;
+    let mut installer = String::new();
+    for op in ["installer-state", "installer-legacy", "installer-diagnostics"] {
+        installer = scalar(&execute(op, doc, a, "")?[0])?;
+        if !installer.is_empty() && installer != "null" { break; }
+    }
+    let mask = scalar(&execute("restore-mask", v, a, "")?[0])?;
+    let mut out = vec![string("RESTORE_METADATA_PLAN_1"), string(&pkg),
+        string(version), string(installer), string(mask)];
+    for entry in ["user", "data", "obb", "media", "user_de", "thanox", "hma"] {
+        let vars = Vars::from([("e".into(), entry.into())]);
+        for field in execute("payload-summary", doc, &vars, "")? {
+            out.push(string(scalar(&field)?));
+        }
+    }
+    // Only reuse the exact modern converter output, scoped by entry + package.
+    // Missing/invalid modern state still goes through the existing migration.
+    let state_vars = Vars::from([("entry".into(), var(a, "entry")), ("pkg".into(), pkg)]);
+    let state = legacy::convert(doc, &state_vars, true).ok()
+        .filter(|rows| rows.len() == 1)
+        .map(|rows| rows[0].emit(false, 0)).unwrap_or_default();
+    out.push(string(state));
+    out.push(string("END_RESTORE_METADATA_PLAN_1"));
+    Ok(out)
+}
+
 fn documents(s: &str) -> Result<Vec<V>, String> {
     let mut p = 0;
     let mut out = vec![];
@@ -1268,5 +1366,64 @@ mod tests {
             ad(&v, "ad_first_apk_version").unwrap().emit(false, 0)
         );
         assert!(execute("metadata-valid", &v, &Vars::new(), "").unwrap()[0].truth());
+    }
+    #[test]
+    fn restore_metadata_plan_matches_existing_readers() {
+        let doc = parse(r#"{"Example":{"PackageName":"pkg.test","apk_version":9223372036854775807,"keystore":true,"app_state":{"installer":"store.state"}},"user":{"Size":"  12 KB\t","path":"/data/a b","archive_input_bytes":18446744073709551615},"data":{"Size":false,"path":null},"hma":{"Size":0}}"#).unwrap();
+        let vars = Vars::from([("entry".into(), "Example".into())]);
+        let slurp = V::Array(vec![doc.clone()]);
+        let rows = execute("restore-metadata-plan", &slurp, &vars, "").unwrap();
+        assert_eq!(rows.len(), 35);
+        assert_eq!(raw(&rows[0]), "RESTORE_METADATA_PLAN_1");
+        assert_eq!(raw(&rows[34]), "END_RESTORE_METADATA_PLAN_1");
+        assert_eq!(raw(&rows[1]), raw(&ad(&doc, "ad_first_pkg").unwrap()));
+        assert_eq!(raw(&rows[2]), raw(&ad(&doc, "ad_first_apk_version").unwrap()));
+        assert_eq!(raw(&rows[3]), "store.state");
+        assert_eq!(raw(&rows[4]), raw(&execute("restore-mask", &slurp, &vars, "").unwrap()[0]));
+        for (i, entry) in ["user", "data", "obb", "media", "user_de", "thanox", "hma"].iter().enumerate() {
+            let args = Vars::from([("e".into(), (*entry).into())]);
+            let old = execute("payload-summary", &doc, &args, "").unwrap();
+            for j in 0..4 { assert_eq!(raw(&rows[5 + i * 4 + j]), raw(&old[j])); }
+        }
+    }
+    #[test]
+    fn restore_metadata_plan_preserves_installer_precedence() {
+        for (state, legacy, diag, expected) in [
+            ("store.state", "store.legacy", "store.diag", "store.state"),
+            ("", "store.legacy", "store.diag", "store.legacy"),
+            ("null", "", "store.diag", "store.diag"),
+            ("", "null", "", ""),
+        ] {
+            let doc = parse(&format!(r#"{{"Example":{{"PackageName":"pkg.test","app_state":{{"installer":"{state}"}},"installer":"{legacy}","install_diagnostics":{{"installer":"{diag}"}}}}}}"#)).unwrap();
+            let rows = restore_metadata_plan(&V::Array(vec![doc]), &Vars::new()).unwrap();
+            assert_eq!(raw(&rows[3]), expected);
+        }
+    }
+    #[test]
+    fn restore_metadata_plan_unusual_inputs_require_fallback() {
+        for text in [r#"null"#, r#"false"#, r#"[]"#, r#"{}"#,
+            r#"{"App":{"PackageName":"pkg.test","apk_version":"9\n"}}"#,
+            r#"{"App":{"PackageName":"pkg.test","apk_version":{"n":9}}}"#,
+            r#"{"App":{"PackageName":"pkg.test"},"user":{"Size":"1\r"}}"#,
+            r#"{"App":{"PackageName":"pkg.test"},"user":{"path":"a\u0000b"}}"#,
+            r#"{"App":{"PackageName":"pkg.test","installer":["store"]}}"#,
+        ] {
+            let doc = parse(text).unwrap();
+            assert!(restore_metadata_plan(&V::Array(vec![doc]), &Vars::new()).is_err(), "{text}");
+        }
+        let doc = parse(r#"{"App":{"PackageName":"pkg.test"}}"#).unwrap();
+        assert!(restore_metadata_plan(&doc, &Vars::new()).is_err());
+        assert!(restore_metadata_plan(&V::Array(vec![doc.clone(), doc]), &Vars::new()).is_err());
+    }
+    #[test]
+    fn restore_metadata_plan_modern_state_is_exact_converter_output() {
+        let doc = parse(r#"{"Example":{"PackageName":"pkg.test","app_state":{"schemaVersion":2,"recordType":"snapshot","packageName":"old.pkg","permissions":[],"ssaid":"0123","package":{"label":"a\nb"}}}}"#).unwrap();
+        let vars = Vars::from([("entry".into(), "Example".into()), ("pkg".into(), "pkg.test".into())]);
+        let rows = restore_metadata_plan(&V::Array(vec![doc.clone()]), &vars).unwrap();
+        let old = execute("state-v2", &doc, &vars, "").unwrap();
+        assert_eq!(raw(&rows[33]), old[0].emit(false, 0));
+        let legacy = parse(r#"{"Example":{"PackageName":"pkg.test","app_ops":[]}}"#).unwrap();
+        let rows = restore_metadata_plan(&V::Array(vec![legacy]), &vars).unwrap();
+        assert_eq!(raw(&rows[33]), "");
     }
 }

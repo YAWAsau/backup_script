@@ -301,8 +301,13 @@ public class SettingsStateApi26 implements SettingsState {
         // If dirty then we have a write already scheduled.
         if (!mDirty) {
             mDirty = true;
-            doWriteState();
+            persistSyncLocked();
         }
+    }
+
+    public void persistSyncLocked() {
+        mHandler.removeMessages(MyHandler.MSG_PERSIST_SETTINGS);
+        if (mDirty) doWriteState();
     }
 
     private void writeStateAsyncLocked() {

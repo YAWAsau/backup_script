@@ -500,8 +500,79 @@ final class AppInventoryUtil {
         return out.toString();
     }
 
+    // Install decisions only need these live PackageManager fields. Keep label
+    // resources, APK/Xposed inspection and inventory categorization out of the
+    // per-install path; the full inventory APIs continue to use toItem().
+    private static final class InstallPackageFacts {
+        int uid;
+        long versionCode;
+        boolean enabled;
+        boolean installed;
+    }
+
+    private static InstallPackageFacts installPackageFacts(PackageInfo pkg) {
+        try {
+            if (pkg == null || pkg.applicationInfo == null || pkg.packageName == null) return null;
+            InstallPackageFacts facts = new InstallPackageFacts();
+            facts.uid = pkg.applicationInfo.uid;
+            facts.versionCode = longVersionCode(pkg);
+            facts.enabled = pkg.applicationInfo.enabled;
+            facts.installed = true;
+            return facts;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    // A single install preparation sees one fresh PM snapshot. This object is
+    // request-local: never cache installer UID or target visibility across apps.
+    private static final class InstallFactsSnapshot {
+        final int userId;
+        final PackageManager pm;
+        final PackageManagerHidden hidden;
+        final java.util.HashMap<String, PackageInfo> infos = new java.util.HashMap<>();
+        final java.util.HashMap<String, Throwable> failures = new java.util.HashMap<>();
+
+        InstallFactsSnapshot(int userId) throws Exception {
+            this.userId = userId;
+            pm = PackageManagerUtil.getPackageManager(HiddenApiHelper.getContext()).packageManager();
+            hidden = Refine.unsafeCast(pm);
+        }
+
+        PackageInfo packageInfo(String pkg) throws Throwable {
+            if (failures.containsKey(pkg)) throw failures.get(pkg);
+            if (infos.containsKey(pkg)) return infos.get(pkg);
+            try {
+                PackageInfo info = hidden.getPackageInfoAsUser(pkg, PackageManager.GET_META_DATA, userId);
+                infos.put(pkg, info);
+                return info;
+            } catch (Throwable failure) {
+                failures.put(pkg, failure);
+                throw failure;
+            }
+        }
+    }
+
+    static synchronized String restoreInstallFacts(int userId, String targetPackage, String apkKind, String backupInstaller, String policy, boolean refresh) throws Exception {
+        if (refresh) clearCache();
+        String target = targetPackage == null ? "" : targetPackage.trim();
+        String installer = backupInstaller == null ? "" : backupInstaller.trim();
+        InstallFactsSnapshot snapshot = target.isEmpty() ? null : new InstallFactsSnapshot(userId);
+        String plan = restoreInstallPlan(userId, targetPackage, apkKind, backupInstaller, policy, snapshot);
+        // Shell only considers the recorded Play installer for UID hybrid. Do
+        // not add context/PM work for other stores or an empty installer.
+        String context = "com.android.vending".equals(installer)
+                ? installerContextFacts(userId, targetPackage, installer, snapshot) : "";
+        return "#schema\tspeedbackup.restore_install_facts.v1\n#section\tplan\n"
+                + plan + "#section\tcontext\n" + context;
+    }
+
     static synchronized String installerContextFacts(int userId, String targetPackage, String installerPackage, boolean refresh) throws Exception {
         if (refresh) clearCache();
+        return installerContextFacts(userId, targetPackage, installerPackage, (InstallFactsSnapshot) null);
+    }
+
+    private static String installerContextFacts(int userId, String targetPackage, String installerPackage, InstallFactsSnapshot snapshot) throws Exception {
         String target = targetPackage == null ? "" : targetPackage.trim();
         String installer = installerPackage == null ? "" : installerPackage.trim();
         StringBuilder out = new StringBuilder();
@@ -512,19 +583,18 @@ final class AppInventoryUtil {
                     .append("\tfalse\t\tfalse\tfalse\t-1\t\t\t-1\tfalse\tfalse\tfalse\tBAD_ARGS\n");
             return out.toString();
         }
-        Context ctx = HiddenApiHelper.getContext();
-        PackageManager pm = PackageManagerUtil.getPackageManager(ctx).packageManager();
-        PackageManagerHidden pmHidden = Refine.unsafeCast(pm);
+        if (snapshot == null) snapshot = new InstallFactsSnapshot(userId);
+        PackageManager pm = snapshot.pm;
         String targetInstaller = "";
         boolean targetInstalled = false;
         try {
-            PackageInfo targetPi = pmHidden.getPackageInfoAsUser(target, PackageManager.GET_META_DATA, userId);
+            PackageInfo targetPi = snapshot.packageInfo(target);
             targetInstalled = targetPi != null && targetPi.applicationInfo != null;
             try { targetInstaller = pm.getInstallerPackageName(target); } catch (Throwable ignored) { targetInstaller = ""; }
         } catch (Throwable ignored) {}
         try {
-            PackageInfo pi = pmHidden.getPackageInfoAsUser(installer, PackageManager.GET_META_DATA, userId);
-            Item item = toItem(pm, pi, userId);
+            PackageInfo pi = snapshot.packageInfo(installer);
+            InstallPackageFacts item = installPackageFacts(pi);
             if (item == null) throw new IllegalStateException("ITEM_NULL");
             String dataDir = "/data/user/" + userId + "/" + installer;
             String deDataDir = "/data/user_de/" + userId + "/" + installer;
@@ -553,10 +623,13 @@ final class AppInventoryUtil {
 
     static synchronized String restoreInstallPlan(int userId, String targetPackage, String apkKind, String backupInstaller, String policy, boolean refresh) throws Exception {
         if (refresh) clearCache();
+        return restoreInstallPlan(userId, targetPackage, apkKind, backupInstaller, policy, null);
+    }
+
+    private static String restoreInstallPlan(int userId, String targetPackage, String apkKind, String backupInstaller, String policy, InstallFactsSnapshot snapshot) throws Exception {
         String target = targetPackage == null ? "" : targetPackage.trim();
         String kind = apkKind == null ? "" : apkKind.trim().toLowerCase(Locale.US);
         String installer = backupInstaller == null ? "" : backupInstaller.trim();
-        String reqPolicy = policy == null || policy.trim().isEmpty() ? "auto" : policy.trim();
         StringBuilder out = new StringBuilder();
         out.append("#schema\tspeedbackup.restore_install_plan.v1\n");
         out.append("#fields\tstatus\tpackage\tuserId\tapkKind\tbackupInstaller\tinstallRoute\tlegacyPmInstall\tinstallCreate\tinstallWrite\tinstallCommit\tbypassLowTargetSdkBlock\ttestFlag\tinstallerArg\tinstallerUid\tusableForUidHybrid\texistingInstalled\texistingVersionCode\treason\n");
@@ -565,14 +638,12 @@ final class AppInventoryUtil {
                     .append("\tsession\tfalse\ttrue\ttrue\ttrue\ttrue\ttrue\t\t-1\tfalse\tfalse\t-1\tBAD_ARGS\n");
             return out.toString();
         }
-        Context ctx = HiddenApiHelper.getContext();
-        PackageManager pm = PackageManagerUtil.getPackageManager(ctx).packageManager();
-        PackageManagerHidden pmHidden = Refine.unsafeCast(pm);
+        if (snapshot == null) snapshot = new InstallFactsSnapshot(userId);
         boolean existingInstalled = false;
         long existingVersion = -1L;
         try {
-            PackageInfo pi = pmHidden.getPackageInfoAsUser(target, PackageManager.GET_META_DATA, userId);
-            Item item = toItem(pm, pi, userId);
+            PackageInfo pi = snapshot.packageInfo(target);
+            InstallPackageFacts item = installPackageFacts(pi);
             if (item != null) {
                 existingInstalled = item.installed;
                 existingVersion = item.versionCode;
@@ -584,8 +655,8 @@ final class AppInventoryUtil {
         String reason = "session_all_sdk";
         if (!installer.isEmpty() && !"null".equalsIgnoreCase(installer) && "com.android.vending".equals(installer)) {
             try {
-                PackageInfo ipi = pmHidden.getPackageInfoAsUser(installer, PackageManager.GET_META_DATA, userId);
-                Item i = toItem(pm, ipi, userId);
+                PackageInfo ipi = snapshot.packageInfo(installer);
+                InstallPackageFacts i = installPackageFacts(ipi);
                 if (i != null && i.enabled && i.uid >= 0) {
                     installerArg = installer;
                     installerUid = i.uid;

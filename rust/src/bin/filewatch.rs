@@ -3,7 +3,7 @@
 // Ported 1:1 against c/filewatch.c behavior: same exit codes, same stdout/stderr
 // formats, same event mask sets, same parent-disappeared detection.
 
-use speedbackup_native_rs::{access, close, c_strerror, F_OK};
+use speedbackup_native_rs::{access, c_strerror, close, F_OK};
 use std::os::raw::{c_char, c_int, c_void};
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
@@ -31,6 +31,15 @@ const FD_CLOEXEC: c_int = 1;
 
 static G_STOP: AtomicBool = AtomicBool::new(false);
 
+#[cfg(all(target_os = "android", target_pointer_width = "64"))]
+#[repr(C)]
+struct Sigaction {
+    sa_flags: c_int,
+    sa_handler: extern "C" fn(c_int),
+    sa_mask: [u64; 1],
+    sa_restorer: usize,
+}
+#[cfg(not(all(target_os = "android", target_pointer_width = "64")))]
 #[repr(C)]
 struct Sigaction {
     sa_handler: extern "C" fn(c_int),
@@ -75,7 +84,7 @@ const SIGHUP: c_int = 1;
 fn install_signals() -> bool {
     let act = Sigaction {
         sa_handler: on_signal,
-        sa_mask: [0u64; 16],
+        sa_mask: Default::default(),
         sa_flags: 0,
         sa_restorer: 0,
     };
@@ -107,17 +116,39 @@ fn open_inotify() -> c_int {
 }
 
 fn event_name(mask: u32) -> &'static str {
-    if mask & IN_CREATE != 0 { return "CREATE"; }
-    if mask & IN_CLOSE_WRITE != 0 { return "CLOSE_WRITE"; }
-    if mask & IN_MOVED_TO != 0 { return "MOVED_TO"; }
-    if mask & IN_MOVED_FROM != 0 { return "MOVED_FROM"; }
-    if mask & IN_DELETE != 0 { return "DELETE"; }
-    if mask & IN_MODIFY != 0 { return "MODIFY"; }
-    if mask & IN_ATTRIB != 0 { return "ATTRIB"; }
-    if mask & IN_DELETE_SELF != 0 { return "DELETE_SELF"; }
-    if mask & IN_MOVE_SELF != 0 { return "MOVE_SELF"; }
-    if mask & IN_IGNORED != 0 { return "IGNORED"; }
-    if mask & IN_Q_OVERFLOW != 0 { return "OVERFLOW"; }
+    if mask & IN_CREATE != 0 {
+        return "CREATE";
+    }
+    if mask & IN_CLOSE_WRITE != 0 {
+        return "CLOSE_WRITE";
+    }
+    if mask & IN_MOVED_TO != 0 {
+        return "MOVED_TO";
+    }
+    if mask & IN_MOVED_FROM != 0 {
+        return "MOVED_FROM";
+    }
+    if mask & IN_DELETE != 0 {
+        return "DELETE";
+    }
+    if mask & IN_MODIFY != 0 {
+        return "MODIFY";
+    }
+    if mask & IN_ATTRIB != 0 {
+        return "ATTRIB";
+    }
+    if mask & IN_DELETE_SELF != 0 {
+        return "DELETE_SELF";
+    }
+    if mask & IN_MOVE_SELF != 0 {
+        return "MOVE_SELF";
+    }
+    if mask & IN_IGNORED != 0 {
+        return "IGNORED";
+    }
+    if mask & IN_Q_OVERFLOW != 0 {
+        return "OVERFLOW";
+    }
     "OTHER"
 }
 
@@ -126,8 +157,12 @@ fn event_name(mask: u32) -> &'static str {
 /// c/filewatch.c exactly including the "no slash -> parent=." and
 /// "leading slash only -> parent=/" special cases.
 fn split_parent_base(path: &str) -> Result<(String, String), c_int> {
-    if path.is_empty() { return Err(EINVAL); }
-    if path.as_bytes().len() >= PATH_MAX { return Err(ENAMETOOLONG); }
+    if path.is_empty() {
+        return Err(EINVAL);
+    }
+    if path.len() >= PATH_MAX {
+        return Err(ENAMETOOLONG);
+    }
     let mut copy: Vec<u8> = path.as_bytes().to_vec();
     let mut length = copy.len();
     while length > 1 && copy[length - 1] == b'/' {
@@ -138,21 +173,33 @@ fn split_parent_base(path: &str) -> Result<(String, String), c_int> {
     match slash_pos {
         None => {
             let base = String::from_utf8_lossy(&copy).into_owned();
-            if base.as_bytes().len() > NAME_MAX { return Err(ENAMETOOLONG); }
-            if base.is_empty() { return Err(EINVAL); }
+            if base.len() > NAME_MAX {
+                return Err(ENAMETOOLONG);
+            }
+            if base.is_empty() {
+                return Err(EINVAL);
+            }
             Ok((".".to_string(), base))
         }
         Some(0) => {
             let base = String::from_utf8_lossy(&copy[1..]).into_owned();
-            if base.as_bytes().len() > NAME_MAX { return Err(ENAMETOOLONG); }
-            if base.is_empty() { return Err(EINVAL); }
+            if base.len() > NAME_MAX {
+                return Err(ENAMETOOLONG);
+            }
+            if base.is_empty() {
+                return Err(EINVAL);
+            }
             Ok(("/".to_string(), base))
         }
         Some(pos) => {
             let parent = String::from_utf8_lossy(&copy[..pos]).into_owned();
             let base = String::from_utf8_lossy(&copy[pos + 1..]).into_owned();
-            if parent.as_bytes().len() >= PATH_MAX || base.as_bytes().len() > NAME_MAX { return Err(ENAMETOOLONG); }
-            if base.is_empty() { return Err(EINVAL); }
+            if parent.len() >= PATH_MAX || base.len() > NAME_MAX {
+                return Err(ENAMETOOLONG);
+            }
+            if base.is_empty() {
+                return Err(EINVAL);
+            }
             Ok((parent, base))
         }
     }
@@ -180,23 +227,35 @@ fn wait_exists(path: &str) -> i32 {
     let (parent, base) = match split_parent_base(path) {
         Ok(v) => v,
         Err(errno) => {
-            eprintln!("filewatch: split path: {}", c_strerror(&std::io::Error::from_raw_os_error(errno)));
+            eprintln!(
+                "filewatch: split path: {}",
+                c_strerror(&std::io::Error::from_raw_os_error(errno))
+            );
             return 1;
         }
     };
     let fd = open_inotify();
     if fd < 0 {
-        eprintln!("filewatch: inotify_init: {}", c_strerror(&std::io::Error::last_os_error()));
+        eprintln!(
+            "filewatch: inotify_init: {}",
+            c_strerror(&std::io::Error::last_os_error())
+        );
         return 1;
     }
     let parent_c = match cstring_or_bail(&parent) {
         Some(v) => v,
-        None => { unsafe { close(fd) }; return 1; }
+        None => {
+            unsafe { close(fd) };
+            return 1;
+        }
     };
     let mask = IN_CREATE | IN_CLOSE_WRITE | IN_MOVED_TO | IN_ATTRIB | IN_DELETE_SELF | IN_MOVE_SELF;
     let wd = unsafe { inotify_add_watch(fd, parent_c.as_ptr(), mask) };
     if wd < 0 {
-        eprintln!("filewatch: inotify_add_watch: {}", c_strerror(&std::io::Error::last_os_error()));
+        eprintln!(
+            "filewatch: inotify_add_watch: {}",
+            c_strerror(&std::io::Error::last_os_error())
+        );
         unsafe { close(fd) };
         return 1;
     }
@@ -216,8 +275,13 @@ fn wait_exists(path: &str) -> i32 {
         }
         let received = unsafe { read(fd, buffer.as_mut_ptr() as *mut c_void, buffer.len()) };
         if received < 0 {
-            if errno_now() == EINTR { continue; }
-            eprintln!("filewatch: read: {}", c_strerror(&std::io::Error::last_os_error()));
+            if errno_now() == EINTR {
+                continue;
+            }
+            eprintln!(
+                "filewatch: read: {}",
+                c_strerror(&std::io::Error::last_os_error())
+            );
             unsafe { close(fd) };
             return 1;
         }
@@ -226,7 +290,8 @@ fn wait_exists(path: &str) -> i32 {
         const HDR: usize = 16; // struct inotify_event header: wd,mask,cookie,len (4 x u32/i32)
         while offset + HDR <= received {
             let mask_val = u32::from_ne_bytes(buffer[offset + 4..offset + 8].try_into().unwrap());
-            let len_val = u32::from_ne_bytes(buffer[offset + 12..offset + 16].try_into().unwrap()) as usize;
+            let len_val =
+                u32::from_ne_bytes(buffer[offset + 12..offset + 16].try_into().unwrap()) as usize;
             let record_size = HDR + len_val;
             if record_size == 0 || offset + record_size > received {
                 eprintln!("filewatch: malformed inotify event");
@@ -259,18 +324,34 @@ fn wait_exists(path: &str) -> i32 {
 fn watch_path(path: &str, once: bool) -> i32 {
     let fd = open_inotify();
     if fd < 0 {
-        eprintln!("filewatch: inotify_init: {}", c_strerror(&std::io::Error::last_os_error()));
+        eprintln!(
+            "filewatch: inotify_init: {}",
+            c_strerror(&std::io::Error::last_os_error())
+        );
         return 1;
     }
     let path_c = match cstring_or_bail(path) {
         Some(v) => v,
-        None => { unsafe { close(fd) }; return 1; }
+        None => {
+            unsafe { close(fd) };
+            return 1;
+        }
     };
-    let mask = IN_CREATE | IN_CLOSE_WRITE | IN_MOVED_TO | IN_MOVED_FROM | IN_DELETE
-        | IN_MODIFY | IN_ATTRIB | IN_DELETE_SELF | IN_MOVE_SELF;
+    let mask = IN_CREATE
+        | IN_CLOSE_WRITE
+        | IN_MOVED_TO
+        | IN_MOVED_FROM
+        | IN_DELETE
+        | IN_MODIFY
+        | IN_ATTRIB
+        | IN_DELETE_SELF
+        | IN_MOVE_SELF;
     let wd = unsafe { inotify_add_watch(fd, path_c.as_ptr(), mask) };
     if wd < 0 {
-        eprintln!("filewatch: inotify_add_watch: {}", c_strerror(&std::io::Error::last_os_error()));
+        eprintln!(
+            "filewatch: inotify_add_watch: {}",
+            c_strerror(&std::io::Error::last_os_error())
+        );
         unsafe { close(fd) };
         return 1;
     }
@@ -283,8 +364,13 @@ fn watch_path(path: &str, once: bool) -> i32 {
         }
         let received = unsafe { read(fd, buffer.as_mut_ptr() as *mut c_void, buffer.len()) };
         if received < 0 {
-            if errno_now() == EINTR { continue; }
-            eprintln!("filewatch: read: {}", c_strerror(&std::io::Error::last_os_error()));
+            if errno_now() == EINTR {
+                continue;
+            }
+            eprintln!(
+                "filewatch: read: {}",
+                c_strerror(&std::io::Error::last_os_error())
+            );
             unsafe { close(fd) };
             return 1;
         }
@@ -293,8 +379,10 @@ fn watch_path(path: &str, once: bool) -> i32 {
         const HDR: usize = 16;
         while offset + HDR <= received {
             let mask_val = u32::from_ne_bytes(buffer[offset + 4..offset + 8].try_into().unwrap());
-            let cookie_val = u32::from_ne_bytes(buffer[offset + 8..offset + 12].try_into().unwrap());
-            let len_val = u32::from_ne_bytes(buffer[offset + 12..offset + 16].try_into().unwrap()) as usize;
+            let cookie_val =
+                u32::from_ne_bytes(buffer[offset + 8..offset + 12].try_into().unwrap());
+            let len_val =
+                u32::from_ne_bytes(buffer[offset + 12..offset + 16].try_into().unwrap()) as usize;
             let record_size = HDR + len_val;
             if record_size == 0 || offset + record_size > received {
                 eprintln!("filewatch: malformed inotify event");
@@ -308,7 +396,13 @@ fn watch_path(path: &str, once: bool) -> i32 {
             } else {
                 "-".to_string()
             };
-            println!("{} mask=0x{:x} cookie={} name={}", event_name(mask_val), mask_val, cookie_val, name);
+            println!(
+                "{} mask=0x{:x} cookie={} name={}",
+                event_name(mask_val),
+                mask_val,
+                cookie_val,
+                name
+            );
             if once {
                 unsafe { close(fd) };
                 return 0;
@@ -335,11 +429,14 @@ fn print_help(program: &str) {
 
 pub(crate) fn run() {
     if !install_signals() {
-        eprintln!("filewatch: sigaction: {}", c_strerror(&std::io::Error::last_os_error()));
+        eprintln!(
+            "filewatch: sigaction: {}",
+            c_strerror(&std::io::Error::last_os_error())
+        );
         std::process::exit(1);
     }
     let args: Vec<String> = crate::multicall::args().collect();
-    let argv0 = args.get(0).map(|s| s.as_str()).unwrap_or("filewatch");
+    let argv0 = args.first().map(|s| s.as_str()).unwrap_or("filewatch");
 
     let rc = if args.len() == 2 && args[1] == "--version" {
         println!("filewatch {VERSION} build={BUILD_VERSION}");

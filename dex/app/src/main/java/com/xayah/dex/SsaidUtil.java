@@ -269,6 +269,7 @@ final class SsaidUtil {
         int forced = 0;
         for (SsaidStateHolder holder : STATE_CACHE.values()) {
             if (holder == null || holder.thread == null) continue;
+            synchronized (holder.lock) { holder.state.persistSyncLocked(); }
             HandlerThread thread = holder.thread;
             try {
                 thread.quitSafely();
@@ -354,9 +355,10 @@ final class SsaidUtil {
         }
     }
 
-    static SsaidWriteResult writeSsaidValue(int userId, String packageName, String ssaid,
+    static synchronized SsaidWriteResult writeSsaidValue(int userId, String packageName, String ssaid,
                                             PackageManagerHidden pmHidden) throws Exception {
         String normalized = normalizeSsaidForRestore(ssaid);
+        shutdownStateCache("reload-before-write");
         SsaidAccessInfo accessInfo = resolveAccessInfo(userId, packageName, pmHidden);
         SsaidStateHolder holder = getSettingsStateHolder(userId);
         FileMetadata beforeMeta = FileMetadata.capture(holder.file);
@@ -364,6 +366,7 @@ final class SsaidUtil {
         synchronized (holder.lock) {
             holder.state.insertSettingLocked(
                     accessInfo.keyName, normalized, null, true, packageName);
+            holder.state.persistSyncLocked();
             SettingsState.Setting setting = holder.state.getSettingLocked(accessInfo.keyName);
             readBack = setting == null ? null : setting.getValue();
         }

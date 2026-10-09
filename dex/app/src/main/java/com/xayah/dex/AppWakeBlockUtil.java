@@ -100,6 +100,12 @@ final class AppWakeBlockUtil {
         }
     }
 
+    static synchronized void stopOwnedSessions() {
+        for (Integer token : new java.util.ArrayList<>(SESSIONS.keySet())) {
+            try { stop(token); } catch (Throwable ignored) { }
+        }
+    }
+
     static synchronized String stop(int token) {
         return stop(token, -1, "");
     }
@@ -1578,22 +1584,24 @@ final class AppWakeBlockUtil {
         Process process = null;
         try {
             process = new ProcessBuilder("sh", "-c", command).redirectErrorStream(true).start();
-            StringBuilder out = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                int lines = 0;
-                while ((line = reader.readLine()) != null && lines < 80) {
-                    if (out.length() > 0) out.append(" | ");
-                    out.append(line);
-                    lines++;
-                }
-            }
+            StringBuffer out = new StringBuffer();
+            final Process running = process;
+            Thread drain = new Thread(() -> {
+                try (java.io.Reader reader = new InputStreamReader(running.getInputStream(), StandardCharsets.UTF_8)) {
+                    char[] buffer = new char[2048]; int n;
+                    while ((n = reader.read(buffer)) != -1) {
+                        synchronized (out) {
+                            int keep = Math.min(n, 16384 - out.length());
+                            if (keep > 0) out.append(buffer, 0, keep);
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }, "speedbackup-shell-drain");
+            drain.setDaemon(true); drain.start();
             boolean finished = process.waitFor(2500L, TimeUnit.MILLISECONDS);
-            if (!finished) {
-                try { process.destroy(); } catch (Throwable ignored) {}
-                return new ShellResult(124, out.toString());
-            }
-            return new ShellResult(process.exitValue(), out.toString());
+            if (!finished) process.destroyForcibly();
+            drain.join(200L);
+            return new ShellResult(finished ? process.exitValue() : 124, out.toString());
         } catch (Throwable t) {
             return new ShellResult(125, t.getClass().getName() + ":" + t.getMessage());
         } finally {

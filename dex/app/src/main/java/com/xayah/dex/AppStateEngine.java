@@ -260,6 +260,11 @@ public final class AppStateEngine {
                     return snapshot(userId, parsePackageLines(body));
                 case "snapshotfiles":
                     return snapshotToFiles(userId, parsePackageLines(body), extra);
+                case "snapshotpublish": {
+                    int separator=extra.lastIndexOf('|');
+                    if(separator<0)throw new IllegalArgumentException("expected package count missing");
+                    return snapshotToFiles(userId,parsePackageLines(body),extra.substring(0,separator),true,Integer.parseInt(extra.substring(separator+1)));
+                }
                 case "foregroundstate":
                     return foregroundState(userId, parsePackageLines(body));
                 case "foregroundrunning":
@@ -837,12 +842,17 @@ public final class AppStateEngine {
      * line split, or JsonParser reparse in the direct path.
      *
      * Safety boundary: callers may only target the per-run SpeedBackup directory directly
-     * below /data/local/tmp.  Files are first written to private temp names and renamed to
+     * below the private run base. Files are first written to private temp names and renamed to
      * fixed staging names.  The shell publishes .pkg_appstate last, so legacy maps remain
      * untouched if this command fails.
      */
     static EngineResponse snapshotToFiles(int userId, List<String> packageNames, String outputDirRaw) {
+        return snapshotToFiles(userId,packageNames,outputDirRaw,false,-1);
+    }
+
+    static EngineResponse snapshotToFiles(int userId, List<String> packageNames, String outputDirRaw,boolean publish,int expected) {
         List<String> packages = dedupePackages(packageNames);
+        if(publish && (expected<=0 || packages.size()!=expected))return errorResponse(ResultCode.BAD_REQUEST,"snapshotAppStateBatchPublish",null,"package count mismatch");
         if (packages.isEmpty()) {
             return batchSummaryOnly("snapshotAppStateBatchFiles", ResultCode.BAD_REQUEST, 0, 0, 0, 0,
                     "no packages");
@@ -942,6 +952,12 @@ public final class AppStateEngine {
             atomicReplace(snapshotTmp, snapshotTarget);
             atomicReplace(errorsTmp, errorsTarget);
             atomicReplace(statesTmp, statesTarget);
+            if(publish) {
+                // Canonical state map is the readiness barrier, and is published last.
+                atomicReplace(errorsTarget,new File(dir,".appstate_snapshot_errors"));
+                try { atomicReplace(statesTarget,new File(dir,".pkg_appstate")); }
+                catch(Throwable failure){deleteQuietly(new File(dir,".appstate_snapshot_errors"));throw failure;}
+            }
             long directPublishMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - publishStartNs);
             long directTotalMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - directStartNs);
             long directSnapshotWriteMs = TimeUnit.NANOSECONDS.toMillis(directSnapshotWriteNs);
@@ -955,7 +971,7 @@ public final class AppStateEngine {
                     + "\t" + snapshotBytes + "\t" + stateRows + "\t" + errorRows
                     + "\t" + directPersistMs + "\t" + directPublishMs + "\t" + directTotalMs
                     + "\t" + batch.snapshotCoreMs + "\t" + batch.snapshotSerializeMs
-                    + "\t" + directSnapshotWriteMs + "\t" + directStateWriteMs + "\t" + directErrorWriteMs + "\n";
+                    + "\t" + directSnapshotWriteMs + "\t" + directStateWriteMs + "\t" + directErrorWriteMs + (publish ? "\tpublished=1" : "") + "\n";
             return new EngineResponse(batch.overall, directSummary);
         } catch (SecurityException e) {
             cleanupSnapshotDirectFiles(snapshotTmp, statesTmp, errorsTmp, snapshotTarget, statesTarget, errorsTarget);
@@ -972,7 +988,8 @@ public final class AppStateEngine {
         String path = dir.getPath();
         if (!dir.isDirectory()) throw new IllegalArgumentException("output dir not directory");
         File parent = dir.getParentFile() == null ? null : dir.getParentFile().getCanonicalFile();
-        if (parent == null || !"/data/local/tmp".equals(parent.getPath())
+        if (parent == null || !("/data/.speedbackup_tmp".equals(parent.getPath())
+                || "/data/local/tmp".equals(parent.getPath()))
                 || !dir.getName().startsWith(".speedbackup_run_")) {
             throw new SecurityException("output dir outside SpeedBackup run tmpdir");
         }
@@ -2495,6 +2512,7 @@ public final class AppStateEngine {
     private static JsonObject restorePackageState(PackageManager realPm, PackageManagerHidden pmHidden,
                                                   AppOpsManagerHidden appOps, UserHandle user, int userId,
                                                   String packageName, JsonObject desired) throws Exception {
+        UID_SCOPE_CACHE.get().clear();
         PackageInfo packageInfo = pmHidden.getPackageInfoAsUser(packageName, snapshotPackageFlags(), userId);
         if (packageInfo == null || packageInfo.applicationInfo == null) {
             throw new PackageManager.NameNotFoundException(packageName);
@@ -2539,7 +2557,7 @@ public final class AppStateEngine {
             if (name.isEmpty()) continue;
             boolean runtime = booleanMember(permission, "runtime", false);
             boolean development = booleanMember(permission, "development", false);
-            int op = intMember(permission, "appOp", AppOpsManagerHidden.OP_NONE);
+            int op = savedOp(permission, "appOp");
             boolean specialAccessOp = isSpecialAccessOp(op);
             boolean changeableGrant = isChangeablePermissionGrant(realPm, name, runtime, development);
             if (!requestedPermissions.contains(name)) {
@@ -2616,7 +2634,7 @@ public final class AppStateEngine {
             for (JsonElement element : deferredLocationAppOps) {
                 JsonObject permission = element.getAsJsonObject();
                 restoreRuntimePermissionAppOp(appOps, uid, packageName, permission,
-                        intMember(permission, "appOp", AppOpsManagerHidden.OP_NONE),
+                        savedOp(permission, "appOp"),
                         "permissionAppOp", stringMember(permission, "name"), report);
             }
         }
@@ -2627,7 +2645,7 @@ public final class AppStateEngine {
             JsonObject state = entry.getValue().getAsJsonObject();
             if (!booleanMember(state, "supported", true)
                     || !booleanMember(state, "requested", false)) continue;
-            int op = intMember(state, "op", AppOpsManagerHidden.OP_NONE);
+            int op = savedOp(state, "op");
             if (op == AppOpsManagerHidden.OP_NONE) {
                 report.note("specialAccess", entry.getKey(), ResultCode.UNSUPPORTED, "AppOp unavailable");
                 continue;
@@ -2640,8 +2658,12 @@ public final class AppStateEngine {
         for (JsonElement element : otherOps) {
             if (!element.isJsonObject()) continue;
             JsonObject state = element.getAsJsonObject();
-            int op = intMember(state, "op", AppOpsManagerHidden.OP_NONE);
-            if (op == AppOpsManagerHidden.OP_NONE) continue;
+            int op = savedOp(state, "op");
+            if (op == AppOpsManagerHidden.OP_NONE) {
+                report.note("otherAppOp", stringMember(state, "publicName"),
+                        ResultCode.UNSUPPORTED, "Saved AppOp has no supported public name on this device");
+                continue;
+            }
             String opName = publicOpName(op);
             if (isNonRestorableOtherAppOp(op, opName)) {
                 report.success("otherAppOp", opName,
@@ -2701,7 +2723,7 @@ public final class AppStateEngine {
                                          JsonObject battery, String key, OperationReport report) {
         JsonObject state = objectMember(battery, key);
         if (state == null || !booleanMember(state, "supported", true)) return;
-        int op = intMember(state, "op", AppOpsManagerHidden.OP_NONE);
+        int op = savedOp(state, "op");
         if (op == AppOpsManagerHidden.OP_NONE) return;
         restoreScopedAppOp(appOps, uid, packageName, state, op, "mode", "battery", key, true, report);
     }
@@ -2817,8 +2839,13 @@ public final class AppStateEngine {
                                                       OperationReport report) {
         try {
             int expectedEffective = runtimePermissionExpectedMode(state, op);
-            AppOpsCompat.setRuntimePermissionUidMode(appOps, op, uid, expectedEffective,
-                    packageName, AppStateEngine::publicOpName);
+            if (exclusiveAppUid(uid, packageName)) {
+                AppOpsCompat.setRuntimePermissionUidMode(appOps, op, uid, expectedEffective,
+                        packageName, AppStateEngine::publicOpName);
+            } else {
+                AppOpsCompat.setPackageModeIfNeeded(appOps, op, uid, packageName, expectedEffective);
+                report.note(category, key, ResultCode.PARTIAL, "shared UID: preserved other packages' UID mode");
+            }
             int actualEffective = getEffectiveOpMode(appOps, op, uid, packageName);
             if (reportRestoredLocationConstraint(appOps, uid, packageName, state, op, category, key,
                     expectedEffective, actualEffective, report)) {
@@ -2903,10 +2930,10 @@ public final class AppStateEngine {
             if (packageMode != null) {
                 AppOpsCompat.setPackageModeIfNeeded(appOps, op, uid, packageName, packageMode);
             }
-            if (uidMode != null) {
+            if (uidMode != null && exclusiveAppUid(uid, packageName)) {
                 AppOpsCompat.setUidModeIfNeeded(appOps, op, uid, uidMode,
                         AppStateEngine::publicOpName);
-            } else if (mirrorUidWhenUnknown) {
+            } else if (mirrorUidWhenUnknown && exclusiveAppUid(uid, packageName)) {
                 // Android 16/vendor battery AppOps may be uid-authoritative even when getUidMode
                 // is hidden. Mirror the desired effective mode, matching the proven legacy path.
                 AppOpsCompat.setUidModeIfNeeded(appOps, op, uid, expectedEffective,
@@ -3232,7 +3259,7 @@ public final class AppStateEngine {
         for (Map.Entry<String, JsonObject> entry : expected.entrySet()) {
             String name = entry.getKey();
             JsonObject e = entry.getValue();
-            int op = intMember(e, "appOp", AppOpsManagerHidden.OP_NONE);
+            int op = savedOp(e, "appOp");
             boolean runtime = booleanMember(e, "runtime", false);
             boolean development = booleanMember(e, "development", false);
             boolean legacySpecialOrNonSnapshot = isSpecialAccessOp(op)
@@ -3308,7 +3335,7 @@ public final class AppStateEngine {
                 continue;
             }
             if (isLegacySpecialAccessPackageFallback("specialAccess", entry.getKey(), e,
-                    intMember(e, "op", AppOpsManagerHidden.OP_NONE))
+                    savedOp(e, "op"))
                     && nullableModeEquivalent(AppOpsManagerHidden.MODE_ALLOWED, nullableIntMember(a, "packageMode"))
                     && intMember(a, "mode", AppOpsManagerHidden.MODE_DEFAULT) == AppOpsManagerHidden.MODE_ALLOWED) {
                 // A package-only migration is intentional; source UID was unknown.
@@ -3400,7 +3427,7 @@ public final class AppStateEngine {
 
     private static void compareOpState(JsonArray mismatches, String path, JsonObject expected,
                                        JsonObject actual, String effectiveField, JsonArray notes) {
-        int op = intMember(expected, "op", intMember(expected, "appOp", AppOpsManagerHidden.OP_NONE));
+        int op = savedOp(expected, expected.has("appOp") ? "appOp" : "op");
         boolean packageCompared = false;
         boolean packageOk = true;
         boolean uidCompared = false;
@@ -3538,7 +3565,7 @@ public final class AppStateEngine {
         if (permissions != null) {
             for (JsonElement element : permissions) {
                 if (!element.isJsonObject()) continue;
-                addExpectedOp(out, intMember(element.getAsJsonObject(), "appOp", AppOpsManagerHidden.OP_NONE));
+                addExpectedOp(out, savedOp(element.getAsJsonObject(), "appOp"));
             }
         }
         JsonObject special = desired.getAsJsonObject("specialAccess");
@@ -3548,7 +3575,7 @@ public final class AppStateEngine {
                     JsonObject state = entry.getValue().getAsJsonObject();
                     if (booleanMember(state, "supported", true)
                             && booleanMember(state, "requested", false)) {
-                        addExpectedOp(out, intMember(state, "op", AppOpsManagerHidden.OP_NONE));
+                        addExpectedOp(out, savedOp(state, "op"));
                     }
                 }
             }
@@ -3557,7 +3584,7 @@ public final class AppStateEngine {
         if (other != null) {
             for (JsonElement element : other) {
                 if (!element.isJsonObject()) continue;
-                int op = intMember(element.getAsJsonObject(), "op", AppOpsManagerHidden.OP_NONE);
+                int op = savedOp(element.getAsJsonObject(), "op");
                 if (!isNonRestorableOtherAppOp(op, publicOpName(op))) addExpectedOp(out, op);
             }
         }
@@ -3565,7 +3592,7 @@ public final class AppStateEngine {
         if (battery != null) {
             for (String key : Arrays.asList("RUN_IN_BACKGROUND", "RUN_ANY_IN_BACKGROUND")) {
                 JsonObject state = objectMember(battery, key);
-                if (state != null) addExpectedOp(out, intMember(state, "op", AppOpsManagerHidden.OP_NONE));
+                if (state != null) addExpectedOp(out, savedOp(state, "op"));
             }
         }
         return out;
@@ -4268,6 +4295,34 @@ public final class AppStateEngine {
         return getOpMode(appOps, op, uid, packageName);
     }
 
+    private static int savedOp(JsonObject state, String numericKey) {
+        String name = stringMember(state, "publicName");
+        if (name.isEmpty()) name = stringMember(state, "appOpPublicName");
+        if (name.isEmpty() && "appOp".equals(numericKey)) {
+            try { name = android.app.AppOpsManager.permissionToOp(stringMember(state, "name")); }
+            catch (Throwable ignored) {}
+        }
+        if (name == null || !name.startsWith("android:")) return AppOpsManagerHidden.OP_NONE;
+        int resolved = resolveOp(name);
+        if (resolved != AppOpsManagerHidden.OP_NONE) return resolved;
+        // A vendor code is usable only when this ROM exposes the same saved name.
+        try {
+            int numeric = state.get(numericKey).getAsInt();
+            if (numeric >= 0 && name.equals(publicOpName(numeric))) return numeric;
+        } catch (Throwable ignored) { }
+        return AppOpsManagerHidden.OP_NONE;
+    }
+
+    private static final ThreadLocal<Map<Integer,Boolean>> UID_SCOPE_CACHE = ThreadLocal.withInitial(HashMap::new);
+    private static boolean exclusiveAppUid(int uid, String packageName) {
+        Boolean cached=UID_SCOPE_CACHE.get().get(uid); if(cached!=null)return cached;
+        try {
+            String[] packages = runtimeServices().packageManager.getPackagesForUid(uid);
+            boolean exclusive=packages != null && packages.length == 1 && packageName.equals(packages[0]);
+            UID_SCOPE_CACHE.get().put(uid,exclusive); return exclusive;
+        } catch (Throwable ignored) { return false; }
+    }
+
     private static int resolveOp(String publicName) {
         Integer cached = OP_CACHE.get(publicName);
         if (cached != null) return cached;
@@ -4825,6 +4880,7 @@ public final class AppStateEngine {
         switch (value) {
             case "snapshotappstatebatch": return "snapshot";
             case "snapshotappstatebatchfiles": return "snapshotfiles";
+            case "snapshotappstatebatchpublish": return "snapshotpublish";
             case "foreground":
             case "foregroundstate":
             case "foregroundstatebatch":

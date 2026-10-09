@@ -94,6 +94,12 @@ final class UidNetworkBlockUtil {
         }
     }
 
+    static synchronized void stopOwnedSessions() {
+        for (Integer token : new java.util.ArrayList<>(SESSIONS.keySet())) {
+            try { stop(token); } catch (Throwable ignored) { }
+        }
+    }
+
     static synchronized String stop(int token) {
         return stop(token, -1, "");
     }

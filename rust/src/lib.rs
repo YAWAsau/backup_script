@@ -72,18 +72,28 @@ extern "C" {
     pub fn access(path: *const c_char, mode: c_int) -> c_int;
 }
 
-pub fn monotonic_ms(start: &Instant) -> u128 { start.elapsed().as_millis() }
+pub fn monotonic_ms(start: &Instant) -> u128 {
+    start.elapsed().as_millis()
+}
 pub fn wall_ms() -> u128 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
 }
 
 /// C parity for eventwait parse_int(): strtol base10, allow leading
 /// whitespace, require full suffix consumption, accept 0..=86400000 only.
 /// Invalid input returns the caller supplied fallback.
 pub fn parse_eventwait_int(s: Option<&str>, fallback: i64) -> i64 {
-    let raw = match s { Some(v) if !v.is_empty() => v, _ => return fallback };
-    let left = raw.trim_start_matches(|c: char| c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\u{000b}' || c == '\u{000c}');
-    if left.is_empty() { return fallback; }
+    let raw = match s {
+        Some(v) if !v.is_empty() => v,
+        _ => return fallback,
+    };
+    let left = raw.trim_start_matches([' ', '\t', '\r', '\n', '\u{000b}', '\u{000c}']);
+    if left.is_empty() {
+        return fallback;
+    }
     match left.parse::<i64>() {
         Ok(v) if (0..=86_400_000).contains(&v) => v,
         _ => fallback,
@@ -94,63 +104,124 @@ pub fn parse_eventwait_int(s: Option<&str>, fallback: i64) -> i64 {
 /// printed error text matches C exactly.
 pub fn c_strerror(e: &std::io::Error) -> String {
     let s = e.to_string();
-    if let Some(pos) = s.find(" (os error ") { s[..pos].to_string() } else { s }
+    if let Some(pos) = s.find(" (os error ") {
+        s[..pos].to_string()
+    } else {
+        s
+    }
 }
 pub fn parse_u64_default(s: Option<&str>, fallback: u64) -> u64 {
-    let raw = match s { Some(v) if !v.is_empty() && v != "-" => v.as_bytes(), _ => return fallback };
+    let raw = match s {
+        Some(v) if !v.is_empty() && v != "-" => v.as_bytes(),
+        _ => return fallback,
+    };
     let mut i = 0usize;
-    while i < raw.len() && matches!(raw[i], b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c) { i += 1; }
-    if i >= raw.len() { return fallback; }
-    let neg = if raw[i] == b'+' { i += 1; false } else if raw[i] == b'-' { i += 1; true } else { false };
+    while i < raw.len() && matches!(raw[i], b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c) {
+        i += 1;
+    }
+    if i >= raw.len() {
+        return fallback;
+    }
+    let neg = if raw[i] == b'+' {
+        i += 1;
+        false
+    } else if raw[i] == b'-' {
+        i += 1;
+        true
+    } else {
+        false
+    };
     let start = i;
     let mut v: u128 = 0;
     while i < raw.len() && raw[i].is_ascii_digit() {
         v = v.saturating_mul(10).saturating_add((raw[i] - b'0') as u128);
-        if v > u64::MAX as u128 { return fallback; }
+        if v > u64::MAX as u128 {
+            return fallback;
+        }
         i += 1;
     }
-    if i == start || i != raw.len() { return fallback; }
+    if i == start || i != raw.len() {
+        return fallback;
+    }
     let u = v as u64;
-    if neg { 0u64.wrapping_sub(u) } else { u }
+    if neg {
+        0u64.wrapping_sub(u)
+    } else {
+        u
+    }
 }
 
 pub fn tsv_sanitize(s: &str) -> String {
-    s.chars().map(|c| if c == '\t' || c == '\n' || c == '\r' { '_' } else { c }).collect()
+    s.chars()
+        .map(|c| {
+            if c == '\t' || c == '\n' || c == '\r' {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect()
 }
 pub fn shell_sanitize(s: &str) -> String {
     // cgfreezer.c sanitize_print() is byte-oriented and caps at 1800 input
     // bytes. Every non-printable/non-ASCII byte becomes one underscore, so a
     // multi-byte UTF-8 character intentionally expands to multiple '_'.
-    if s.is_empty() { return "-".to_string(); }
-    let mut out=String::new();
+    if s.is_empty() {
+        return "-".to_string();
+    }
+    let mut out = String::new();
     for &c in s.as_bytes().iter().take(1800) {
-        if c==b'\n'||c==b'\r'||c==b'\t'||c==b' ' { out.push('_'); }
-        else if (0x21..=0x7e).contains(&c) { out.push(c as char); }
-        else { out.push('_'); }
+        if c == b'\n' || c == b'\r' || c == b'\t' || c == b' ' {
+            out.push('_');
+        } else if (0x21..=0x7e).contains(&c) {
+            out.push(c as char);
+        } else {
+            out.push('_');
+        }
     }
     out
 }
 pub fn cstring_path(path: &Path) -> io::Result<CString> {
-    CString::new(path.as_os_str().as_bytes()).map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "nul in path"))
+    CString::new(path.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "nul in path"))
 }
 
-pub fn file_exists(path: &Path) -> bool { fs::symlink_metadata(path).is_ok() }
-pub fn file_nonempty(path: &Path) -> bool { fs::metadata(path).map(|m| m.len() > 0).unwrap_or(false) }
-pub fn socket_ready(path: &Path) -> bool { fs::symlink_metadata(path).map(|m| m.file_type().is_socket()).unwrap_or(false) }
+pub fn file_exists(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok()
+}
+pub fn file_nonempty(path: &Path) -> bool {
+    fs::metadata(path).map(|m| m.len() > 0).unwrap_or(false)
+}
+pub fn socket_ready(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .map(|m| m.file_type().is_socket())
+        .unwrap_or(false)
+}
 pub fn pid_alive(pid: i32) -> bool {
-    if pid <= 0 { return false; }
+    if pid <= 0 {
+        return false;
+    }
     let rc = unsafe { kill(pid, 0) };
     rc == 0 || io::Error::last_os_error().raw_os_error() == Some(1)
 }
 pub fn pidfd_open(pid: i32) -> io::Result<c_int> {
-    if pid <= 0 { return Err(io::Error::new(io::ErrorKind::InvalidInput, "bad pid")); }
+    if pid <= 0 {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "bad pid"));
+    }
     let fd = unsafe { syscall(SYS_PIDFD_OPEN, pid as c_int, 0 as c_int) } as c_int;
-    if fd < 0 { Err(io::Error::last_os_error()) } else { Ok(fd) }
+    if fd < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(fd)
+    }
 }
 
 pub fn wait_pid_exit_pidfd(pid: i32, timeout_ms: i64, tag: &str) -> Option<i32> {
     let safe_tag = if tag.is_empty() { "pid_exit" } else { tag };
-    let fd = match pidfd_open(pid) { Ok(fd) => fd, Err(_) => return None };
+    let fd = match pidfd_open(pid) {
+        Ok(fd) => fd,
+        Err(_) => return None,
+    };
     let start = Instant::now();
     loop {
         let wait_ms = if timeout_ms > 0 {
@@ -161,8 +232,14 @@ pub fn wait_pid_exit_pidfd(pid: i32, timeout_ms: i64, tag: &str) -> Option<i32> 
                 return Some(124);
             }
             (timeout_ms - elapsed) as i32
-        } else { -1 };
-        let mut pfd = PollFd { fd, events: POLLIN, revents: 0 };
+        } else {
+            -1
+        };
+        let mut pfd = PollFd {
+            fd,
+            events: POLLIN,
+            revents: 0,
+        };
         let r = unsafe { poll(&mut pfd as *mut PollFd, 1, wait_ms) };
         if r > 0 {
             unsafe { close(fd) };
@@ -175,16 +252,25 @@ pub fn wait_pid_exit_pidfd(pid: i32, timeout_ms: i64, tag: &str) -> Option<i32> 
             return Some(124);
         }
         let e = io::Error::last_os_error();
-        if e.kind() == io::ErrorKind::Interrupted { continue; }
+        if e.kind() == io::ErrorKind::Interrupted {
+            continue;
+        }
         unsafe { close(fd) };
         return None;
     }
 }
 pub fn wait_pid_exit_poll(pid: i32, timeout_ms: i64, tag: &str) -> i32 {
     let safe_tag = if tag.is_empty() { "pid_exit" } else { tag };
-    if pid <= 0 { return 2; }
-    if !pid_alive(pid) { println!("done\t0\t{}\tpid-exit", safe_tag); return 0; }
-    if let Some(rc) = wait_pid_exit_pidfd(pid, timeout_ms, safe_tag) { return rc; }
+    if pid <= 0 {
+        return 2;
+    }
+    if !pid_alive(pid) {
+        println!("done\t0\t{}\tpid-exit", safe_tag);
+        return 0;
+    }
+    if let Some(rc) = wait_pid_exit_pidfd(pid, timeout_ms, safe_tag) {
+        return rc;
+    }
 
     let start = Instant::now();
     let proc_path = format!("/proc/{}", pid);
@@ -193,31 +279,49 @@ pub fn wait_pid_exit_poll(pid: i32, timeout_ms: i64, tag: &str) -> i32 {
         let fd = unsafe { inotify_init1(IN_NONBLOCK | IN_CLOEXEC) };
         if fd >= 0 {
             ifd = fd;
-            unsafe { inotify_add_watch(ifd, pc.as_ptr(), IN_DELETE_SELF | IN_ATTRIB | IN_MOVE_SELF | IN_IGNORED) };
+            unsafe {
+                inotify_add_watch(
+                    ifd,
+                    pc.as_ptr(),
+                    IN_DELETE_SELF | IN_ATTRIB | IN_MOVE_SELF | IN_IGNORED,
+                )
+            };
         }
     }
     loop {
         let now = start.elapsed().as_millis() as i64;
         let mut wait_ms: i64 = 1000;
         if !pid_alive(pid) {
-            if ifd >= 0 { unsafe { close(ifd) }; }
+            if ifd >= 0 {
+                unsafe { close(ifd) };
+            }
             println!("done\t0\t{}\tpid-exit", safe_tag);
             return 0;
         }
         if timeout_ms > 0 {
             if now >= timeout_ms {
-                if ifd >= 0 { unsafe { close(ifd) }; }
+                if ifd >= 0 {
+                    unsafe { close(ifd) };
+                }
                 println!("timeout\t124\t{}\ttimeout", safe_tag);
                 return 124;
             }
-            if timeout_ms - now < wait_ms { wait_ms = timeout_ms - now; }
+            if timeout_ms - now < wait_ms {
+                wait_ms = timeout_ms - now;
+            }
         }
         if ifd >= 0 {
-            let mut pfd = PollFd { fd: ifd, events: POLLIN, revents: 0 };
+            let mut pfd = PollFd {
+                fd: ifd,
+                events: POLLIN,
+                revents: 0,
+            };
             let prc = unsafe { poll(&mut pfd as *mut PollFd, 1, wait_ms as i32) };
             if prc < 0 {
                 let e = io::Error::last_os_error();
-                if e.kind() == io::ErrorKind::Interrupted { continue; }
+                if e.kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
                 unsafe { close(ifd) };
                 return 4;
             }
@@ -226,26 +330,42 @@ pub fn wait_pid_exit_poll(pid: i32, timeout_ms: i64, tag: &str) -> i32 {
                 unsafe { read(ifd, evbuf.as_mut_ptr() as *mut c_void, evbuf.len()) };
             }
         } else {
-            std::thread::sleep(Duration::from_millis(if wait_ms > 0 { wait_ms as u64 } else { 100 }));
+            std::thread::sleep(Duration::from_millis(if wait_ms > 0 {
+                wait_ms as u64
+            } else {
+                100
+            }));
         }
     }
 }
 pub fn file_contains(path: &Path, needle: &str) -> bool {
-    if needle.is_empty() { return false; }
-    let mut f = match File::open(path) { Ok(f) => f, Err(_) => return false };
+    if needle.is_empty() {
+        return false;
+    }
+    let mut f = match File::open(path) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
     let n = needle.as_bytes();
     let keep = n.len().saturating_sub(1).min(511);
     let mut buf = [0u8; 4096];
     let mut tail_len = 0usize;
     loop {
         let room = 4095usize.saturating_sub(tail_len);
-        let nr = match f.read(&mut buf[tail_len..tail_len + room]) { Ok(v) => v, Err(_) => return false };
+        let nr = match f.read(&mut buf[tail_len..tail_len + room]) {
+            Ok(v) => v,
+            Err(_) => return false,
+        };
         let total = tail_len + nr;
         // C writes a terminating NUL then calls strstr(), so embedded NUL bytes
         // terminate the searchable portion of this iteration.
         let searchable = buf[..total].iter().position(|&b| b == 0).unwrap_or(total);
-        if n.len() <= searchable && buf[..searchable].windows(n.len()).any(|w| w == n) { return true; }
-        if nr == 0 { break; }
+        if n.len() <= searchable && buf[..searchable].windows(n.len()).any(|w| w == n) {
+            return true;
+        }
+        if nr == 0 {
+            break;
+        }
         if keep > 0 {
             tail_len = total.min(keep);
             buf.copy_within(total - tail_len..total, 0);
@@ -290,19 +410,22 @@ fn condition_met(kind: &str, path: &Path, arg: &str) -> bool {
     }
 }
 
-
 fn eventwait_parent_for_watch(path: &Path) -> Option<PathBuf> {
     // C parent_dir_of()+basename_of() both use PATH_MAX-sized output buffers.
     // basename is only a gate; wait_path_condition() watches the parent path.
     let raw = path.as_os_str().as_bytes();
-    if raw.is_empty() { return None; }
+    if raw.is_empty() {
+        return None;
+    }
     let slash = raw.iter().rposition(|&b| b == b'/');
     let (parent_b, base_b): (&[u8], &[u8]) = match slash {
         None => (b"." as &[u8], raw),
         Some(0) => (b"/" as &[u8], &raw[1..]),
         Some(pos) => (&raw[..pos], &raw[pos + 1..]),
     };
-    if parent_b.len() + 1 > PATH_MAX_SAFE || base_b.len() + 1 > PATH_MAX_SAFE { return None; }
+    if parent_b.len() + 1 > PATH_MAX_SAFE || base_b.len() + 1 > PATH_MAX_SAFE {
+        return None;
+    }
     Some(PathBuf::from(std::ffi::OsStr::from_bytes(parent_b)))
 }
 
@@ -315,10 +438,16 @@ fn eventwait_parent_for_watch(path: &Path) -> Option<PathBuf> {
 // / avoid (see the /// rounds fixing the same class of issue
 /// in the *-cmd-bounded wrappers this binary's callers rely on).
 pub fn wait_file_condition(kind: &str, path: &Path, arg: &str, timeout_ms: i64, tag: &str) -> i32 {
-    if path.as_os_str().is_empty() { return 2; }
+    if path.as_os_str().is_empty() {
+        return 2;
+    }
     let tag = if tag.is_empty() { "eventwait" } else { tag };
     let start = Instant::now();
-    let stable_ms = if kind == "file-size-stable" { parse_eventwait_int(Some(arg), 500) } else { 0 };
+    let stable_ms = if kind == "file-size-stable" {
+        parse_eventwait_int(Some(arg), 500)
+    } else {
+        0
+    };
     let mut last_size: i64 = -1;
     // None == C's "last_change == 0" (not yet initialized); Some(ms) is
     // relative-to-start elapsed time, matching C's absolute monotonic
@@ -352,20 +481,29 @@ pub fn wait_file_condition(kind: &str, path: &Path, arg: &str, timeout_ms: i64, 
         let fd = unsafe { inotify_init1(IN_NONBLOCK | IN_CLOEXEC) };
         if fd >= 0 {
             ifd = fd;
-            let dir_mask = IN_CREATE | IN_MOVED_TO | IN_CLOSE_WRITE
-                | IN_MODIFY | IN_ATTRIB | IN_DELETE_SELF | IN_MOVE_SELF;
+            let dir_mask = IN_CREATE
+                | IN_MOVED_TO
+                | IN_CLOSE_WRITE
+                | IN_MODIFY
+                | IN_ATTRIB
+                | IN_DELETE_SELF
+                | IN_MOVE_SELF;
             unsafe { inotify_add_watch(ifd, pc.as_ptr(), dir_mask) };
             if file_exists(path) {
                 if let Ok(fc) = CString::new(path.as_os_str().as_bytes()) {
-                    let file_mask = IN_CLOSE_WRITE | IN_MODIFY | IN_ATTRIB
-                        | IN_DELETE_SELF | IN_MOVE_SELF;
+                    let file_mask =
+                        IN_CLOSE_WRITE | IN_MODIFY | IN_ATTRIB | IN_DELETE_SELF | IN_MOVE_SELF;
                     wd_file = unsafe { inotify_add_watch(ifd, fc.as_ptr(), file_mask) };
                 }
             }
         }
     }
 
-    let finish = |ifd: c_int| { if ifd >= 0 { unsafe { close(ifd) }; } };
+    let finish = |ifd: c_int| {
+        if ifd >= 0 {
+            unsafe { close(ifd) };
+        }
+    };
 
     loop {
         let now = start.elapsed().as_millis() as i64;
@@ -377,7 +515,9 @@ pub fn wait_file_condition(kind: &str, path: &Path, arg: &str, timeout_ms: i64, 
                 println!("timeout\t124\t{}\ttimeout", tag);
                 return 124;
             }
-            if timeout_ms - elapsed < wait_ms { wait_ms = timeout_ms - elapsed; }
+            if timeout_ms - elapsed < wait_ms {
+                wait_ms = timeout_ms - elapsed;
+            }
         }
 
         if kind == "file-size-stable" {
@@ -396,7 +536,9 @@ pub fn wait_file_condition(kind: &str, path: &Path, arg: &str, timeout_ms: i64, 
             }
             if let Some(lc) = last_change_ms {
                 let to_stable = stable_ms - (now - lc);
-                if to_stable >= 0 && to_stable < wait_ms { wait_ms = to_stable + 1; }
+                if to_stable >= 0 && to_stable < wait_ms {
+                    wait_ms = to_stable + 1;
+                }
             }
         } else if condition_met(kind, path, arg) {
             finish(ifd);
@@ -405,11 +547,17 @@ pub fn wait_file_condition(kind: &str, path: &Path, arg: &str, timeout_ms: i64, 
         }
 
         if ifd >= 0 {
-            let mut pfd = PollFd { fd: ifd, events: POLLIN, revents: 0 };
+            let mut pfd = PollFd {
+                fd: ifd,
+                events: POLLIN,
+                revents: 0,
+            };
             let prc = unsafe { poll(&mut pfd as *mut PollFd, 1, wait_ms.max(0) as c_int) };
             if prc < 0 {
                 let e = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
-                if e == 4 { continue; } // EINTR
+                if e == 4 {
+                    continue;
+                } // EINTR
                 finish(ifd);
                 return 4;
             }
@@ -418,19 +566,25 @@ pub fn wait_file_condition(kind: &str, path: &Path, arg: &str, timeout_ms: i64, 
                 unsafe { read(ifd, evbuf.as_mut_ptr() as *mut c_void, evbuf.len()) };
                 if wd_file < 0 && file_exists(path) {
                     if let Ok(fc) = CString::new(path.as_os_str().as_bytes()) {
-                        let file_mask = IN_CLOSE_WRITE | IN_MODIFY | IN_ATTRIB
-                            | IN_DELETE_SELF | IN_MOVE_SELF;
+                        let file_mask =
+                            IN_CLOSE_WRITE | IN_MODIFY | IN_ATTRIB | IN_DELETE_SELF | IN_MOVE_SELF;
                         wd_file = unsafe { inotify_add_watch(ifd, fc.as_ptr(), file_mask) };
                     }
                 }
             }
         } else {
-            std::thread::sleep(Duration::from_millis(if wait_ms > 0 { wait_ms as u64 } else { 100 }));
+            std::thread::sleep(Duration::from_millis(if wait_ms > 0 {
+                wait_ms as u64
+            } else {
+                100
+            }));
         }
     }
 }
 pub fn trim_line(mut s: String) -> String {
-    while s.ends_with('\n') || s.ends_with('\r') { s.pop(); }
+    while s.ends_with('\n') || s.ends_with('\r') {
+        s.pop();
+    }
     s
 }
 pub fn read_lines(path: &Path) -> io::Result<Vec<String>> {
@@ -445,8 +599,12 @@ pub fn read_lines(path: &Path) -> io::Result<Vec<String>> {
     loop {
         buf.clear();
         let n = br.read_until(b'\n', &mut buf)?;
-        if n == 0 { break; }
-        while matches!(buf.last(), Some(b'\n' | b'\r')) { buf.pop(); }
+        if n == 0 {
+            break;
+        }
+        while matches!(buf.last(), Some(b'\n' | b'\r')) {
+            buf.pop();
+        }
         out.push(String::from_utf8_lossy(&buf).into_owned());
     }
     Ok(out)
@@ -455,74 +613,137 @@ pub fn load_set(path: &str) -> HashSet<String> {
     // C load_set_file(): trim only CR/LF, preserve all other leading/trailing
     // whitespace, and skip lines whose very first byte is '#' or 0xef.
     let mut set = HashSet::new();
-    if path.is_empty() || path == "-" { return set; }
+    if path.is_empty() || path == "-" {
+        return set;
+    }
     if let Ok(lines) = read_lines(Path::new(path)) {
         for l in lines {
-            if l.is_empty() { continue; }
+            if l.is_empty() {
+                continue;
+            }
             let b0 = l.as_bytes()[0];
-            if b0 == b'#' || b0 == 0xef { continue; }
+            if b0 == b'#' || b0 == 0xef {
+                continue;
+            }
             set.insert(l);
         }
     }
     set
 }
 #[derive(Default, Clone)]
-pub struct ScanResult { pub bytes: u64, pub files: u64, pub dirs: u64, pub links: u64, pub specials: u64, pub errors: u64, pub max_mtime: u64, pub blocks512: u64, pub rows: u64, pub truncated: u64 }
+pub struct ScanResult {
+    pub bytes: u64,
+    pub files: u64,
+    pub dirs: u64,
+    pub links: u64,
+    pub specials: u64,
+    pub errors: u64,
+    pub max_mtime: u64,
+    pub blocks512: u64,
+    pub rows: u64,
+    pub truncated: u64,
+}
 
 pub fn stat_kind(meta: &fs::Metadata) -> &'static str {
     let ft = meta.file_type();
-    if ft.is_file() { "file" }
-    else if ft.is_dir() { "dir" }
-    else if ft.is_symlink() { "link" }
-    else if ft.is_char_device() { "char" }
-    else if ft.is_block_device() { "block" }
-    else if ft.is_fifo() { "fifo" }
-    else if ft.is_socket() { "sock" }
-    else { "other" }
+    if ft.is_file() {
+        "file"
+    } else if ft.is_dir() {
+        "dir"
+    } else if ft.is_symlink() {
+        "link"
+    } else if ft.is_char_device() {
+        "char"
+    } else if ft.is_block_device() {
+        "block"
+    } else if ft.is_fifo() {
+        "fifo"
+    } else if ft.is_socket() {
+        "sock"
+    } else {
+        "other"
+    }
 }
-pub fn mode_octal(meta: &fs::Metadata) -> u32 { meta.mode() & 0o7777 }
+pub fn mode_octal(meta: &fs::Metadata) -> u32 {
+    meta.mode() & 0o7777
+}
 pub fn note_stat(res: &mut ScanResult, meta: &fs::Metadata) {
     // C casts st_mtime to uint64_t and uses ordinary unsigned arithmetic.
     let mtime = meta.mtime() as u64;
-    if mtime > res.max_mtime { res.max_mtime = mtime; }
+    if mtime > res.max_mtime {
+        res.max_mtime = mtime;
+    }
     let ft = meta.file_type();
-    if ft.is_file() { res.bytes = res.bytes.wrapping_add(meta.len()); res.files = res.files.wrapping_add(1); res.blocks512 = res.blocks512.wrapping_add(meta.blocks()); }
-    else if ft.is_dir() { res.dirs = res.dirs.wrapping_add(1); }
-    else if ft.is_symlink() { res.links = res.links.wrapping_add(1); }
-    else { res.specials = res.specials.wrapping_add(1); }
+    if ft.is_file() {
+        res.bytes = res.bytes.wrapping_add(meta.len());
+        res.files = res.files.wrapping_add(1);
+        res.blocks512 = res.blocks512.wrapping_add(meta.blocks());
+    } else if ft.is_dir() {
+        res.dirs = res.dirs.wrapping_add(1);
+    } else if ft.is_symlink() {
+        res.links = res.links.wrapping_add(1);
+    } else {
+        res.specials = res.specials.wrapping_add(1);
+    }
 }
-pub fn walk_no_follow<F>(root: &Path, path: &Path, depth: usize, max_depth: Option<usize>, res: &mut ScanResult, f: &mut F) -> io::Result<()>
-where F: FnMut(&Path, &fs::Metadata, usize, &mut ScanResult) -> io::Result<()> {
-    let meta = match fs::symlink_metadata(path) { Ok(m) => m, Err(e) => { res.errors += 1; return Err(e); } };
+pub fn walk_no_follow<F>(
+    root: &Path,
+    path: &Path,
+    depth: usize,
+    max_depth: Option<usize>,
+    res: &mut ScanResult,
+    f: &mut F,
+) -> io::Result<()>
+where
+    F: FnMut(&Path, &fs::Metadata, usize, &mut ScanResult) -> io::Result<()>,
+{
+    let _depth = WalkDepthGuard::enter().inspect_err(|_e| {
+        res.errors += 1;
+    })?;
+    let meta = match fs::symlink_metadata(path) {
+        Ok(m) => m,
+        Err(e) => {
+            res.errors += 1;
+            return Err(e);
+        }
+    };
     note_stat(res, &meta);
     f(path, &meta, depth, res)?;
     if meta.file_type().is_dir() && max_depth.map(|m| depth < m).unwrap_or(true) {
-        let rd = match fs::read_dir(path) { Ok(r) => r, Err(e) => { res.errors += 1; return Err(e); } };
-        for ent in rd {
-            match ent {
-                Ok(ent) => {
-                    // Every C recursive walker builds child in char child[PATH_MAX]
-                    // through join_path(), including its deliberately conservative
-                    // +1 separator allowance even when the parent ends in '/'.
-                    let blen = path.as_os_str().as_bytes().len();
-                    let nlen = ent.file_name().as_os_str().as_bytes().len();
-                    if blen + 1 + nlen + 1 > PATH_MAX_SAFE { res.errors = res.errors.wrapping_add(1); continue; }
-                    let _ = walk_no_follow(root, &ent.path(), depth + 1, max_depth, res, f);
-                }
-                // C's readdir() loop has no post-loop errno check; an iterator-level
-                // entry error therefore must not create an extra counted error here.
-                Err(_) => {}
+        let rd = match fs::read_dir(path) {
+            Ok(r) => r,
+            Err(e) => {
+                res.errors += 1;
+                return Err(e);
             }
+        };
+        for ent in rd.flatten() {
+            // Every C recursive walker builds child in char child[PATH_MAX]
+            // through join_path(), including its deliberately conservative
+            // +1 separator allowance even when the parent ends in '/'.
+            let blen = path.as_os_str().as_bytes().len();
+            let nlen = ent.file_name().as_os_str().as_bytes().len();
+            if blen + 1 + nlen + 1 > PATH_MAX_SAFE {
+                res.errors = res.errors.wrapping_add(1);
+                continue;
+            }
+            let _ = walk_no_follow(root, &ent.path(), depth + 1, max_depth, res, f);
         }
     }
     let _ = root;
     Ok(())
 }
 pub fn rel_path(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root).unwrap_or(path).to_string_lossy().trim_start_matches('/').to_string()
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .trim_start_matches('/')
+        .to_string()
 }
 pub fn ensure_parent(path: &Path) -> io::Result<()> {
-    if let Some(p) = path.parent() { fs::create_dir_all(p)?; }
+    if let Some(p) = path.parent() {
+        fs::create_dir_all(p)?;
+    }
     Ok(())
 }
 pub fn write_file(path: &Path, body: &str) -> io::Result<()> {
@@ -534,10 +755,16 @@ pub fn write_file(path: &Path, body: &str) -> io::Result<()> {
 pub fn lchown_path(path: &Path, uid: u32, gid: u32) -> io::Result<()> {
     let c = cstring_path(path)?;
     let rc = unsafe { lchown(c.as_ptr(), uid, gid) };
-    if rc == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
 }
 pub fn has_prefix_path(path: &Path, prefix: &str) -> bool {
-    if prefix.is_empty() || prefix == "-" { return false; }
+    if prefix.is_empty() || prefix == "-" {
+        return false;
+    }
     let b = path.as_os_str().as_bytes();
     let p = prefix.as_bytes();
     b.starts_with(p) && (b.len() == p.len() || b.get(p.len()) == Some(&b'/'))
@@ -548,15 +775,29 @@ pub fn fnv1a64_file(path: &Path) -> io::Result<u64> {
     let mut buf = [0u8; 8192];
     loop {
         let n = f.read(&mut buf)?;
-        if n == 0 { break; }
-        for b in &buf[..n] { h ^= *b as u64; h = h.wrapping_mul(1099511628211); }
+        if n == 0 {
+            break;
+        }
+        for b in &buf[..n] {
+            h ^= *b as u64;
+            h = h.wrapping_mul(1099511628211);
+        }
     }
     Ok(h)
 }
 
 pub fn proc_cmdline(pid: i32) -> String {
     let p = format!("/proc/{}/cmdline", pid);
-    fs::read(p).map(|mut b| { for x in &mut b { if *x == 0 { *x = b' '; } }; String::from_utf8_lossy(&b).trim().to_string() }).unwrap_or_default()
+    fs::read(p)
+        .map(|mut b| {
+            for x in &mut b {
+                if *x == 0 {
+                    *x = b' ';
+                }
+            }
+            String::from_utf8_lossy(&b).trim().to_string()
+        })
+        .unwrap_or_default()
 }
 /// Faithful port of what C's read_cmdline() actually returns: only the
 /// bytes up to (not including) the first NUL in /proc/PID/cmdline. This
@@ -581,7 +822,9 @@ pub fn proc_cmdline_argv0(pid: i32) -> String {
 pub fn proc_status_value(pid: i32, key: &str) -> Option<String> {
     let body = fs::read_to_string(format!("/proc/{}/status", pid)).ok()?;
     for line in body.lines() {
-        if let Some(rest) = line.strip_prefix(key) { return Some(rest.trim_start_matches(':').trim().to_string()); }
+        if let Some(rest) = line.strip_prefix(key) {
+            return Some(rest.trim_start_matches(':').trim().to_string());
+        }
     }
     None
 }
@@ -594,7 +837,9 @@ pub fn list_pids() -> Vec<i32> {
     let mut v = Vec::new();
     if let Ok(rd) = fs::read_dir("/proc") {
         for e in rd.flatten() {
-            if let Ok(pid) = e.file_name().to_string_lossy().parse::<i32>() { v.push(pid); }
+            if let Ok(pid) = e.file_name().to_string_lossy().parse::<i32>() {
+                v.push(pid);
+            }
         }
     }
     v
@@ -603,11 +848,17 @@ pub fn is_valid_pkg_name(pkg: &str) -> bool {
     // Faithful port of is_valid_pkg_name()/is_pkg_char(): 3-128 chars,
     // only [a-zA-Z0-9._], and must contain at least one '.'.
     let len = pkg.len();
-    if !(3..=128).contains(&len) { return false; }
+    if !(3..=128).contains(&len) {
+        return false;
+    }
     let mut dot = false;
     for c in pkg.chars() {
-        if c == '.' { dot = true; }
-        if !(c.is_ascii_alphanumeric() || c == '.' || c == '_') { return false; }
+        if c == '.' {
+            dot = true;
+        }
+        if !(c.is_ascii_alphanumeric() || c == '.' || c == '_') {
+            return false;
+        }
     }
     dot
 }
@@ -622,21 +873,28 @@ pub fn pid_matches_pkg(pid: i32, pkg: &str, user: i32) -> bool {
     // prefix/substring). For a tool whose job is "which PIDs get frozen
     // or killed", this is a real safety bug, not a cosmetic one.
     let cmd = proc_cmdline_argv0(pid);
-    if cmd.is_empty() || pkg.is_empty() { return false; }
-    let matches = cmd == pkg || (cmd.starts_with(pkg) && cmd.as_bytes().get(pkg.len()) == Some(&b':'));
-    if !matches { return false; }
+    if cmd.is_empty() || pkg.is_empty() {
+        return false;
+    }
+    let matches =
+        cmd == pkg || (cmd.starts_with(pkg) && cmd.as_bytes().get(pkg.len()) == Some(&b':'));
+    if !matches {
+        return false;
+    }
     if user >= 0 {
         if let Some(uid) = proc_uid(pid) {
             let appid = uid % 100000;
             let u = uid / 100000;
-            if uid >= 10000 && (u as i32) != user { return false; }
-            if appid < 10000 && uid >= 10000 { return false; }
+            if uid >= 10000 && (u as i32) != user {
+                return false;
+            }
+            if appid < 10000 && uid >= 10000 {
+                return false;
+            }
         }
     }
     true
 }
-
-
 
 pub fn parse_app_line(line: &str) -> Option<(String, String, bool)> {
     // Faithful port of parse_app_line() in speedscan.c: format is
@@ -645,44 +903,89 @@ pub fn parse_app_line(line: &str) -> Option<(String, String, bool)> {
     // on '|' instead of space, which doesn't match the C reference format
     // at all and would silently drop every line of a real applist file.
     let s = line.trim_end_matches(['\n', '\r']);
-    if s.is_empty() || s.starts_with('#') || s.as_bytes().first() == Some(&0xef) { return None; }
+    if s.is_empty() || s.starts_with('#') || s.starts_with('＃') {
+        return None;
+    }
     let sp = s.find(' ')?;
     let mut name = &s[..sp];
     let mut rest = s[sp + 1..].trim_start_matches(' ');
     let pkg_end = rest.find(' ').unwrap_or(rest.len());
     let pkg = &rest[..pkg_end];
     let _ = &mut rest;
-    if name.is_empty() || pkg.is_empty() { return None; }
+    if name.is_empty() || pkg.is_empty() {
+        return None;
+    }
     let mut no_data = false;
-    if let Some(r) = name.strip_prefix('!') { no_data = true; name = r; }
-    else if let Some(r) = name.strip_prefix('！') { no_data = true; name = r; }
+    if let Some(r) = name.strip_prefix('!') {
+        no_data = true;
+        name = r;
+    } else if let Some(r) = name.strip_prefix('！') {
+        no_data = true;
+        name = r;
+    }
     // C checks name/pkg emptiness before removing the nodata marker and does
     // not check name again afterwards. Thus a line like "! pkg" is valid and
     // leaves an empty name for safe_name_for_backup() to fall back to pkg.
     Some((name.to_string(), pkg.to_string(), no_data))
 }
 pub fn safe_name_for_backup(name: &str, pkg: &str) -> String {
-    // C writes into char safe[PATH_MAX]: byte-wise replacement with at most
-    // PATH_MAX-1 payload bytes. Keep valid UTF-8 char boundaries while applying
-    // the same byte budget for normal Android app-name strings.
-    const CAP: usize = PATH_MAX_SAFE;
-    let src = if !name.is_empty() { name } else if !pkg.is_empty() { pkg } else { "app" };
-    let mut s = String::new();
-    for c in src.chars() {
-        let out_c = if matches!(c, '\t'|'\n'|'\r'|'/'|'\\'|':'|'*'|'?'|'"'|'<'|'>'|'|') { '_' } else { c };
-        let need = out_c.len_utf8();
-        if s.len().saturating_add(need) >= CAP { break; }
-        s.push(out_c);
-    }
-    if s.is_empty() {
-        let fallback = if !pkg.is_empty() { pkg } else { "app" };
-        let mut out = String::new();
-        for c in fallback.chars() {
-            if out.len().saturating_add(c.len_utf8()) >= CAP { break; }
-            out.push(c);
+    let source = if name.is_empty() {
+        if pkg.is_empty() {
+            "app"
+        } else {
+            pkg
         }
-        out
-    } else { s }
+    } else {
+        name
+    };
+    let bad = "/\\ :\t\r\n\"`$;|&()<>!*?[]{}=#~^'";
+    let mut out: String = source
+        .chars()
+        .map(|c| {
+            if bad.contains(c) || c.is_control() {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    out = out.replace("..", "__");
+    if out == "." {
+        out = "_".into();
+    }
+    if ["media", "log", "tools", "wifi", "communications"]
+        .contains(&out.to_ascii_lowercase().as_str())
+    {
+        out = format!("app_{out}");
+    }
+    out
 }
 
+#[cfg(target_arch = "aarch64")]
+pub const O_NOFOLLOW_NATIVE: i32 = 0o100000;
+#[cfg(not(target_arch = "aarch64"))]
+pub const O_NOFOLLOW_NATIVE: i32 = 0o400000;
 
+thread_local! { static WALK_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+pub struct WalkDepthGuard;
+impl WalkDepthGuard {
+    pub fn enter() -> io::Result<Self> {
+        WALK_DEPTH.with(|d| {
+            let n = d.get();
+            if n >= 256 {
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "directory depth exceeds 256",
+                ))
+            } else {
+                d.set(n + 1);
+                Ok(Self)
+            }
+        })
+    }
+}
+impl Drop for WalkDepthGuard {
+    fn drop(&mut self) {
+        WALK_DEPTH.with(|d| d.set(d.get() - 1));
+    }
+}

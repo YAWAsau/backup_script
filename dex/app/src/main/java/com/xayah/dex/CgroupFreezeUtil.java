@@ -79,6 +79,69 @@ final class CgroupFreezeUtil {
 
     private CgroupFreezeUtil() {}
 
+    /** Timeline-only whole-UID extension; general app freezer policy is unchanged. */
+    static synchronized int startTimelineScope(int userId, int uid) throws Exception {
+        final String pkg = "com.google.android.gms";
+        if (findNativeHelper() == null) throw new java.io.IOException("timeline_native_freezer_required");
+        if (uid / 100000 != userId || uid % 100000 < 10000 || uid % 100000 >= 99000)
+            throw new java.io.IOException("timeline_uid_invalid");
+        String parentPath = CGROUP_ROOT + "/apps/uid_" + uid + "/cgroup.freeze";
+        File parent = new File(parentPath);
+        if (!"0".equals(readFileTrim(parent, 64)))
+            throw new java.io.IOException("timeline_uid_already_frozen_or_unavailable");
+        for (FreezeSession prior : SESSIONS.values()) {
+            if (prior.userId == userId && pkg.equals(prior.packageName))
+                throw new java.io.IOException("timeline_other_freeze_session_active");
+        }
+        for (FreezeSession prior : readAllPersistentSessions()) {
+            if (prior.userId == userId && pkg.equals(prior.packageName))
+                throw new java.io.IOException("timeline_persisted_freeze_requires_cleanup");
+        }
+        String result = startLocked(userId, pkg, -1, 1000, "timeline");
+        int token = OperationResult.token(result, "cgroup-start");
+        try {
+            String[] receipt = OperationResult.read(result, "cgroup-start");
+            if (receipt == null || !"ok".equals(receipt[3]) || !receipt[6].equals(receipt[7])
+                    || !result.contains("stateWritten=true"))
+                throw new java.io.IOException("timeline_complete_freeze_required");
+            FreezeSession session = SESSIONS.get(token);
+            if (session == null || session.entries.isEmpty())
+                throw new java.io.IOException("timeline_freeze_session_missing");
+            for (FreezeEntry e : session.entries) {
+                if (e.uid != uid || !e.path.startsWith(parent.getParent() + "/"))
+                    throw new java.io.IOException("timeline_process_outside_uid_scope");
+            }
+            FreezeEntry scope = new FreezeEntry();
+            scope.token = token; scope.userId = userId; scope.packageName = pkg;
+            scope.pid = -1; scope.uid = uid; scope.processName = pkg;
+            scope.path = parentPath; scope.originalFreeze = "0"; scope.originalFrozen = "0";
+            scope.startedAt = session.startedAt; scope.owner = "timeline";
+            session.entries.add(0, scope);
+            FreezeSession delta = new FreezeSession(); delta.entries.add(scope);
+            if (!writePersistentSession(delta, new StringBuilder()))
+                throw new java.io.IOException("timeline_scope_state_write_failed");
+            // Persist release instructions before changing the UID parent.
+            try (FileOutputStream state = new FileOutputStream(STATE_FILE, true)) { state.getFD().sync(); }
+            writeFileText(parent, "1\n");
+            if (!waitFrozenValue(parentPath, "1", 1000, new StringBuilder(), "TIMELINE_UID"))
+                throw new java.io.IOException("timeline_uid_freeze_timeout");
+            return token;
+        } catch (Exception failure) {
+            if (token >= 0) stopLocked(token, userId, pkg);
+            throw failure;
+        }
+    }
+
+    static synchronized void checkTimelineScope(int token, int userId, int uid) throws Exception {
+        FreezeSession session = SESSIONS.get(token);
+        if (session == null || session.userId != userId || !"timeline".equals(session.owner))
+            throw new java.io.IOException("timeline_guard_expired");
+        String root = CGROUP_ROOT + "/apps/uid_" + uid;
+        if (!"1".equals(readFileTrim(new File(root, "cgroup.freeze"), 64))
+                || !"1".equals(parseEventsValue(readFileTrim(new File(root, "cgroup.events"), 1024), "frozen")))
+            throw new java.io.IOException("timeline_uid_not_frozen");
+    }
+
 
     static String start(int userId, String packageName, int explicitPid, int timeoutMs, String owner) {
         return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "start",
@@ -106,6 +169,11 @@ final class CgroupFreezeUtil {
             return out.toString();
         }
 
+        if (AudioPlaybackGuard.blocks(userId, pkg)) {
+            out.append("CGROUP_FREEZE_START_UNAVAILABLE reason=audio_playback_guard available=false\n");
+            out.append(doneLine("START", false, -1, 0, 0, 0, "audio_playback_guard", startMs));
+            return out.toString();
+        }
         CgroupRootInfo rootInfo = inspectCgroupRoot();
         out.append("CGROUP_FREEZE_CHECK exists=").append(rootInfo.rootExists)
                 .append(" controllersFile=").append(rootInfo.controllersFileExists)
@@ -220,6 +288,14 @@ final class CgroupFreezeUtil {
         return out.toString();
     }
 
+    static void stopOwnedSessions() {
+        synchronized (CgroupFreezeUtil.class) {
+            for (Integer token : new java.util.ArrayList<>(SESSIONS.keySet())) {
+                try { stop(token, -1, ""); } catch (Throwable ignored) { }
+            }
+        }
+    }
+
     static String stop(int token, int expectedUserId, String expectedPackageName) {
         return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "stop",
                 () -> stopLocked(token, expectedUserId, expectedPackageName));
@@ -312,6 +388,7 @@ final class CgroupFreezeUtil {
     }
 
     private static String refreshPrimaryAppScopePackageFreezeLocked(int userId, String packageName, String reason, int timeoutMs) {
+        if (AudioPlaybackGuard.blocks(userId, packageName)) return new OperationResult("cgroup-refresh", false).appendTo("CGROUP_FREEZE_PRIMARY_REFRESH_DONE ok=false reason=audio_playback_guard\n");
         long startMs = System.currentTimeMillis();
         String pkg = safePackage(packageName);
         String safeReason = safeWord(reason == null || reason.trim().isEmpty() ? "manual-refresh" : reason.trim());
@@ -1046,6 +1123,8 @@ final class CgroupFreezeUtil {
     }
 
     private static Boolean tryNativeRestorePath(FreezeEntry e, String target, int timeoutMs, StringBuilder out, String tagPrefix) {
+        // UID parent records have no Binder endpoint; restore them directly first.
+        if (e.pid < 0 && "timeline".equals(e.owner)) return null;
         String helper = findNativeHelper();
         if (helper == null || helper.isEmpty()) return null;
         long startMs = System.currentTimeMillis();
@@ -1140,6 +1219,7 @@ final class CgroupFreezeUtil {
 
     private static String killPackageLocked(int userId, String packageName, int eventPid,
                                            int timeoutMs, String owner) {
+        if (AudioPlaybackGuard.blocks(userId, packageName)) return "CGROUP_NATIVE_KILL_DONE ok=false reason=audio_playback_guard remain=-1\n";
         long startMs = System.currentTimeMillis();
         String pkg = safePackage(packageName);
         int safeEventPid = eventPid > 0 ? eventPid : -1;
@@ -1334,6 +1414,23 @@ final class CgroupFreezeUtil {
         return false;
     }
 
+    // Read-only query against the current run's existing daemon. Do not start
+    // a daemon here: the shell retains the established fallback path.
+    static String wchanPidList(int userId, String pids, String expect) throws Exception {
+        return runNativeDaemonCommand("WCHAN_PID_LIST " + userId + " " + pids + " " + expect, 1500).output;
+    }
+
+    static String correctiveThawPackage(int userId, String pkg) throws Exception {
+        return correctiveThawPackage(userId,pkg,700);
+    }
+
+    static String correctiveThawPackage(int userId, String pkg,int timeoutMs) throws Exception {
+        int uid = resolvePackageUid(userId, pkg, new StringBuilder(), "GUARD_CORRECTIVE_UID");
+        if (uid < 10000) throw new IllegalArgumentException("non-app uid");
+        String out = runNativeDaemonCommand("THAW_UID " + uid + " " + timeoutMs, Math.max(1500,timeoutMs+500)).output;
+        return out + "\n" + restorePersistedPackage(userId, pkg, "local-read-corrective");
+    }
+
     static NativeRun runNativeDaemonCommand(String command, int timeoutMs) throws Exception {
         LocalSocket socket = new LocalSocket();
         ByteArrayOutputStream out = new ByteArrayOutputStream(4096);
@@ -1426,7 +1523,9 @@ final class CgroupFreezeUtil {
 
     private static StopStats restoreSession(FreezeSession session, int timeoutMs, StringBuilder out, String tagPrefix) {
         StopStats stats = new StopStats();
-        for (FreezeEntry e : session.entries) {
+        List<FreezeEntry> ordered = new ArrayList<>(session.entries);
+        if ("timeline".equals(session.owner)) ordered.sort((a, b) -> Boolean.compare(b.pid < 0, a.pid < 0));
+        for (FreezeEntry e : ordered) {
             boolean v1Entry = isV1FreezerPath(e.path);
             File f = new File(e.path == null ? "" : e.path);
             if (!v1Entry && !f.exists()) {
