@@ -7,6 +7,42 @@ import java.util.*;
 
 /** Run-scoped guard release and confirmed token retirement. Shell owns phase selection. */
 public final class GuardLifecycle {
+    private static File fallbackRun;
+    static synchronized String fallbackRunDirectory() {
+        try {
+            if (android.os.Process.myUid() != 0) throw new IOException("root required");
+            File parent = new File("/data/.speedbackup_tmp");
+            try { Files.createDirectory(parent.toPath(), java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                    java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"))); }
+            catch (FileAlreadyExistsException ignored) { }
+            android.system.StructStat stat = android.system.Os.lstat(parent.getPath());
+            if (!parent.getCanonicalFile().equals(parent) || !android.system.OsConstants.S_ISDIR(stat.st_mode)
+                    || stat.st_uid != 0 || (stat.st_mode & 0077) != 0) throw new IOException("unsafe fallback parent");
+            if (fallbackRun == null) {
+                File pending = Files.createTempDirectory(parent.toPath(), ".dex_pending_",
+                        java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                                java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"))).toFile();
+                try {
+                    String proc = new String(Files.readAllBytes(Paths.get("/proc/self/stat")), StandardCharsets.UTF_8);
+                    String[] fields = proc.substring(proc.lastIndexOf(") ") + 2).trim().split("\\s+");
+                    String boot = new String(Files.readAllBytes(Paths.get("/proc/sys/kernel/random/boot_id")), StandardCharsets.UTF_8).trim();
+                    if (fields.length <= 19 || !fields[19].matches("[0-9]+") || boot.isEmpty()) throw new IOException("process identity");
+                    Files.write(new File(pending,"owner.pid").toPath(), (android.os.Process.myPid()+"\n").getBytes(StandardCharsets.UTF_8));
+                    Files.write(new File(pending,"owner.identity").toPath(), (boot+":"+fields[19]+"\n").getBytes(StandardCharsets.UTF_8));
+                    File target = new File(parent,".speedbackup_run_dex_"+android.os.Process.myPid()+"_"+UUID.randomUUID());
+                    Files.move(pending.toPath(),target.toPath(),StandardCopyOption.ATOMIC_MOVE);
+                    fallbackRun = target;
+                } finally {
+                    if (pending.isDirectory()) {
+                        Files.deleteIfExists(new File(pending,"owner.pid").toPath());
+                        Files.deleteIfExists(new File(pending,"owner.identity").toPath());
+                        Files.deleteIfExists(pending.toPath());
+                    }
+                }
+            }
+            return runDirectory(fallbackRun).getPath();
+        } catch (Exception e) { throw new IllegalStateException("unsafe fallback run directory", e); }
+    }
     private static final String[] MAPS={".speedbackup_process_observer_tokens",".speedbackup_cgroup_freezer_tokens",".speedbackup_uid_netblock_tokens"};
     public static void main(String[] args) {
         String result=run(args.length==1?args[0]:"");
@@ -17,6 +53,9 @@ public final class GuardLifecycle {
         if(!canonical.equals(dir.getAbsoluteFile()) || !canonical.isDirectory()
                 || !canonical.getName().startsWith(".speedbackup_run_")
                 || !(canonical.getParent().equals("/data/.speedbackup_tmp") || canonical.getParent().equals("/data/local/tmp"))) throw new IOException("run directory");
+        android.system.StructStat stat=android.system.Os.lstat(canonical.getPath());
+        if(stat.st_uid!=android.os.Process.myUid() || (stat.st_mode & 0077)!=0)
+            throw new IOException("run directory ownership or permissions");
         return canonical;
     }
     static File child(File run,String raw) throws Exception {

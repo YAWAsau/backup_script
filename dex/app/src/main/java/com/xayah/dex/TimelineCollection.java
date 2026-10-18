@@ -35,7 +35,17 @@ final class TimelineCollection {
     }
     static String sources(File file)throws Exception {
         try(ZipFile zip=new ZipFile(file)){
-            JSONObject root=index(zip);if(root==null)return "";
+            JSONObject root=index(zip);
+            if(root==null){
+                ZipEntry entry=zip.getEntry("manifest.json");
+                require(entry!=null&&entry.getSize()>0&&entry.getSize()<=32768,"timeline_manifest_invalid");
+                byte[] bytes=new byte[(int)entry.getSize()];
+                try(DataInputStream in=new DataInputStream(zip.getInputStream(entry))){in.readFully(bytes);require(in.read()==-1,"timeline_manifest_invalid");}
+                JSONObject manifest=new JSONObject(new String(bytes,StandardCharsets.UTF_8));
+                require(manifest.getInt("format")==1,"timeline_format_invalid");
+                String id=manifest.getString("account");require(id.matches("[a-f0-9]{64}"),"account_selector_invalid");
+                return id+"\t"+GoogleAccountNames.clean(manifest.optString("source_display_name","來源帳號名稱未知"))+"\n";
+            }
             StringBuilder out=new StringBuilder();JSONArray accounts=root.getJSONArray("accounts");
             for(int i=0;i<accounts.length();i++){JSONObject a=accounts.getJSONObject(i);out.append(a.getString("selector")).append('\t').append(GoogleAccountNames.clean(a.optString("display_name","來源帳號名稱未知"))).append('\n');}
             return out.toString();
@@ -43,7 +53,12 @@ final class TimelineCollection {
     }
     static File select(File source,File work,String selected)throws Exception {
         try(ZipFile zip=new ZipFile(source)){
-            JSONObject root=index(zip);if(root==null)return source;
+            JSONObject root=index(zip);
+            if(root==null){
+                if(selected!=null&&!selected.isEmpty())
+                    require(sources(source).startsWith(selected+"\t"),"timeline_source_selection_mismatch");
+                return source;
+            }
             JSONArray accounts=root.getJSONArray("accounts");JSONObject chosen=null;
             for(int i=0;i<accounts.length();i++){JSONObject a=accounts.getJSONObject(i);if(a.getString("selector").equals(selected)||((selected==null||selected.isEmpty())&&accounts.length()==1))chosen=a;}
             require(chosen!=null,"timeline_source_selection_required");
@@ -60,6 +75,8 @@ final class TimelineCollection {
         require(!destination.exists(),"backup_destination_exists");JSONArray list=new JSONArray();
         for(GoogleAccountNames.Account a:accounts){File p=part(work,a.selector);list.put(new JSONObject().put("selector",a.selector).put("display_name",GoogleAccountNames.label(a)).put("bytes",p.length()).put("sha256",TimelineDatabase.hash(p)));}
         byte[] indexBytes=new JSONObject().put("format",2).put("accounts",list).toString().getBytes(StandardCharsets.UTF_8);
+        require(accounts.size()>0&&accounts.size()<=32,"timeline_collection_count_invalid");
+        require(indexBytes.length>0&&indexBytes.length<=32768,"timeline_collection_index_invalid");
         File tmp=Files.createTempFile(destination.getAbsoluteFile().getParentFile().toPath(),".timeline-",".partial").toFile();
         try{
             android.system.Os.chmod(tmp.getPath(),0600);
@@ -69,6 +86,7 @@ final class TimelineCollection {
                 zip.finish();zip.flush();output.getFD().sync();
             }
             require(tmp.renameTo(destination),"backup_publish_failed");
+            TimelineUtil.syncDirectory(destination.getAbsoluteFile().getParentFile());
             // Inner archives already report their source bytes; count only the
             // collection's new index, not a second copy of the compressed parts.
             return indexBytes.length;

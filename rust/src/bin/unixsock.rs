@@ -57,6 +57,10 @@ extern "C" {
     fn connect(fd: i32, addr: *const std::os::raw::c_void, len: u32) -> i32;
     fn close(fd: i32) -> i32;
     fn fork() -> i32;
+    fn getpid() -> i32;
+    fn getppid() -> i32;
+    fn kill(pid: i32, sig: i32) -> i32;
+    fn prctl(option: i32, a: std::os::raw::c_ulong, b: std::os::raw::c_ulong, c: std::os::raw::c_ulong, d: std::os::raw::c_ulong) -> i32;
     fn waitpid(pid: i32, status: *mut i32, options: i32) -> i32;
     fn signal(sig: i32, handler: usize) -> usize;
     fn _exit(status: i32) -> !;
@@ -146,6 +150,13 @@ fn parse_relay_args(args: &[String], start: usize) -> Result<(Option<String>, bo
 /// distinguished via the `Protocol` error kind (matches C's errno=EPROTO on
 /// EOF-before-newline, vs Ok(None) semantics used only by the plain-response
 /// fallback path which needs to distinguish "no second line at all").
+#[derive(Debug)]
+struct HeaderEof(Vec<u8>);
+impl std::fmt::Display for HeaderEof {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "EPROTO") }
+}
+impl std::error::Error for HeaderEof {}
+
 fn read_header_line<R: Read>(r: &mut R) -> io::Result<Vec<u8>> {
     let mut buf = Vec::with_capacity(64);
     loop {
@@ -154,7 +165,7 @@ fn read_header_line<R: Read>(r: &mut R) -> io::Result<Vec<u8>> {
         }
         let mut byte = [0u8; 1];
         match r.read(&mut byte) {
-            Ok(0) => return Err(io::Error::other("EPROTO")),
+            Ok(0) => return Err(io::Error::other(HeaderEof(buf))),
             Ok(_) => {}
             Err(ref e) if e.kind() == ErrorKind::Interrupted => continue,
             Err(e) => return Err(e),
@@ -613,7 +624,7 @@ fn relay_response(
             }
             Ok(line1) => match read_header_line(&mut reader) {
                 Err(e) if allow_plain_response && is_protocol_eof(&e) => {
-                    if let Err(werr) = write_response_header_file(hf, &line1, b"-1\n") {
+                    if let Err(werr) = write_response_header_file(hf, &line1, b"-1") {
                         eprintln!(
                             "unixsock: cannot write header file {}: {}",
                             hf,
@@ -622,7 +633,8 @@ fn relay_response(
                         response_result = -1;
                     } else {
                         body_mode = -1;
-                        if write_plain_stdout_exact(&mut stdout, &[&line1, b"\n"]).is_err() {
+                        let partial = e.get_ref().and_then(|e| e.downcast_ref::<HeaderEof>()).map(|e| e.0.as_slice()).unwrap_or(&[]);
+                        if write_plain_stdout_exact(&mut stdout, &[&line1, b"\n", partial]).is_err() {
                             response_result = -1;
                         }
                     }
@@ -647,7 +659,7 @@ fn relay_response(
                         }
                     }
                     None if allow_plain_response => {
-                        if let Err(werr) = write_response_header_file(hf, &line1, b"-1\n") {
+                        if let Err(werr) = write_response_header_file(hf, &line1, b"-1") {
                             eprintln!(
                                 "unixsock: cannot write header file {}: {}",
                                 hf,
@@ -699,6 +711,10 @@ fn relay_response(
         }
     }
 
+    if let Err(e) = stdout.flush() {
+        if e.kind() == ErrorKind::BrokenPipe { consumer_closed = true; }
+        else { eprintln!("unixsock: response flush failed: {}", describe_err(&e)); response_result = -1; }
+    }
     drop(reader);
     (response_result, consumer_closed)
 }
@@ -833,6 +849,7 @@ fn relay_connection(
     unsafe {
         signal(SIGPIPE, SIG_IGN);
     }
+    let parent_pid = unsafe { getpid() };
     let writer_pid = unsafe { fork() };
     if writer_pid < 0 {
         eprintln!(
@@ -842,6 +859,10 @@ fn relay_connection(
         return 4;
     }
     if writer_pid == 0 {
+        // Die with the owning relay, including death between fork and prctl.
+        if unsafe { prctl(1, 9, 0, 0, 0) } != 0 || unsafe { getppid() } != parent_pid {
+            unsafe { _exit(4) }
+        }
         let mut result = copy_request_to_socket(&mut conn);
         if let Err(e) = conn.shutdown(Shutdown::Write) {
             let er = e.raw_os_error().unwrap_or(0);
@@ -855,6 +876,7 @@ fn relay_connection(
 
     let (response_result, consumer_closed) =
         relay_response(conn, header_file, allow_plain_response);
+    if response_result != 0 || consumer_closed { unsafe { kill(writer_pid, 9); } }
     let mut writer_status = 0i32;
     loop {
         let wr = unsafe { waitpid(writer_pid, &mut writer_status, 0) };
@@ -888,6 +910,56 @@ fn describe_err(e: &io::Error) -> String {
         "Protocol error".to_string()
     } else {
         c_strerror(e)
+    }
+}
+
+// Read-only stat precheck: retain the same live Dex PROPFIND, but validate
+// its framed receipt in one process without status/error temporary files.
+fn dav_precheck(path: &str) -> i32 {
+    let timing_start = std::time::Instant::now();
+    let mut stamps = [0u128; 4];
+    let result = (|| -> Result<(u16, bool), i32> {
+        let mut request=Vec::new();
+        io::stdin().take(65537).read_to_end(&mut request).map_err(|_|2)?;
+        if request.len()>65536 { return Err(2); }
+        let text=std::str::from_utf8(&request).map_err(|_|2)?;
+        let lines:Vec<&str>=text.split('\n').collect();
+        if lines.len()!=7 || lines[0]!="statrel" || lines[5]!="0" || lines[6]!=""
+            || lines.iter().any(|s|s.contains('\r') || s.contains('\0'))
+            || lines[4].contains('\t') { return Err(2); }
+        stamps[0] = timing_start.elapsed().as_micros();
+        let mut conn=connect_unix_socket(path).map_err(|_|3)?;
+        stamps[1] = timing_start.elapsed().as_micros();
+        // Preserve relay-unix timing: Dex owns HTTP deadlines and cancellation.
+        // A separate shorter deadline here could kill a still-valid remote stat.
+        conn.write_all(&request).map_err(|_|5)?;
+        conn.shutdown(Shutdown::Write).map_err(|_|5)?;
+        stamps[2] = timing_start.elapsed().as_micros();
+        let mut r=BufReader::new(conn);
+        let header=read_header_line(&mut r).map_err(|_|5)?;
+        stamps[3] = timing_start.elapsed().as_micros();
+        let header=std::str::from_utf8(&header).map_err(|_|5)?;
+        let code=header.strip_prefix("HTTP ").ok_or(5)?.parse::<u16>().map_err(|_|5)?;
+        if code>599 { return Err(5); }
+        let size=read_header_line(&mut r).map_err(|_|5)?;
+        let size=parse_body_mode_bytes(&size).filter(|n| (0..=65536).contains(n)).ok_or(5)? as usize;
+        let mut body=vec![0;size];r.read_exact(&mut body).map_err(|_|5)?;
+        let mut extra=[0u8;1];if r.read(&mut extra).map_err(|_|5)?!=0 {return Err(5);}
+        let body=std::str::from_utf8(&body).map_err(|_|5)?;
+        let row=body.trim_end_matches('\n');
+        let fields:Vec<&str>=row.split('\t').collect();
+        let valid=fields.len()>=3 && !fields[0].is_empty() && fields[2]=="F"
+            && !row.contains('\n') && !row.contains('\r')
+            && fields[1].parse::<u64>().is_ok_and(|n|n>0);
+        Ok((code,valid))
+    })();
+    eprintln!("DAV_PRECHECK_TIMING inputUs={} connectUs={} writeUs={} responseWaitUs={} parseUs={} totalUs={} complete={}",
+        stamps[0], stamps[1].saturating_sub(stamps[0]), stamps[2].saturating_sub(stamps[1]),
+        stamps[3].saturating_sub(stamps[2]), timing_start.elapsed().as_micros().saturating_sub(stamps[3]),
+        timing_start.elapsed().as_micros(), result.is_ok());
+    match result {
+        Ok((http,file))=>{let ok=(200..300).contains(&http)&&file;println!("DAV_PRECHECK http={http} file={file} ok={ok}");if ok {0}else{1}},
+        Err(rc)=>{eprintln!("DAV_PRECHECK transport_or_protocol_rc={rc}");rc}
     }
 }
 
@@ -962,6 +1034,8 @@ pub(crate) fn run() {
                 },
             }
         }
+    } else if args[1] == "dav-precheck-unix" && args.len() == 3 {
+        dav_precheck(&args[2])
     } else if args[1] == "relay-unix" || args[1] == "relay" {
         match parse_relay_args(&args, 3) {
             Err(rc) => {

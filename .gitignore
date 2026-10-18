@@ -7,6 +7,7 @@
 /dex/**/build/
 /dex/local.properties
 /dex/classes*.dex
+/dex/BUILD_INFO.json
 /dex/*.apk
 /rust/target/
 /rust/out/

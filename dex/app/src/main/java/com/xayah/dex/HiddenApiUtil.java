@@ -107,104 +107,115 @@ public class HiddenApiUtil {
     }
 
     private static void onHelp() {
-        System.out.println("HiddenApiUtil 指令說明:");
-        System.out.println("  help  顯示此說明");
-        System.out.println("  version / --version / -v  顯示版本資訊");
-        System.out.println("  AppState daemon: app_process /system/bin com.xayah.dex.AppStateUtil daemonunix SOCKET [idleSec] [ownerPid]");
-        System.out.println("  HiddenApi daemon: app_process /system/bin com.xayah.dex.HiddenApiUtil daemonunix SOCKET [idleSec] [ownerPid]");
-        System.out.println();
-        System.out.println("  getPackageLabel USER_ID PACKAGE PACKAGE PACKAGE ...  取得應用名稱");
-        System.out.println();
-        System.out.println("  getPackageArchiveInfo APK_FILE  讀取 APK 檔案資訊");
-        System.out.println();
-        System.out.println("  hiddenApiBypassStatus  初始化並顯示 AndroidHiddenApiBypass softgate 狀態（狀態失敗不代表功能失敗）");
-        System.out.println("  hiddenApiRuntimeProbe [USER_ID PACKAGE]  依官方 non-SDK 限制邊界做 Hidden API runtime probe；可附 package 檢查 appops/standby shell 行為");
-        System.out.println("  cgroupFreezeStart USER_ID PACKAGE [PID|-1] [TIMEOUT_MS] [OWNER]  daemon 內啟動 cgroup freezer lifecycle guard；backup/restore app-scope 會在 Dex 內強制 package-scope，processObserver 仍可用 pid-scope");
-        System.out.println("  cgroupFreezeRefreshPrimary USER_ID PACKAGE [REASON] [TIMEOUT_MS]  primary app-scope 活躍時重新掃描/凍結全部目前存活 pid，避免高風險 App 在 payload 期間恢復可互動");
-        System.out.println("  cgroupFreezeStop TOKEN [USER_ID PACKAGE]  停止 cgroup freezer guard 並驗證還原原始 frozen 狀態");
-        System.out.println("  cgroupFreezeStatus  列出 daemon 內 cgroup freezer guard 狀態");
-        System.out.println("  cgroupFreezeDaemonEnsure [REASON]  批次開始前啟動/確認 native cgfreezerd 持久 session；daemon 不隨每 App 關閉，每 App 只快速 SCAN/FREEZE/THAW/KILL");
-        System.out.println("  cgroupFreezeRestorePackage USER_ID PACKAGE  依 package 還原 cgroup freezer persistent state");
-        System.out.println("  cgroupFreezeRestoreAll [REASON]  還原所有 cgroup freezer persistent state");
-        System.out.println("  cgroupFreezeCleanupStale [REASON] [TTL_MS]  還原並清理過期 cgroup freezer persistent state");
-        System.out.println("  daemon-only commands: getPackageUid / appInventoryPkgUid / appInventoryPackageStatus / appInventoryPackageStatusBatch / appInventoryPackageFactsBatch / preRestorePackageStateBatch / installerContextFacts / restoreInstallFacts / restoreInstallPlan / restoreInstallPlanBatch / appInventoryPostInstallFactsBatch / appKillGuard / appWakeBlockStart / appWakeBlockStop / appWakeBlockStatus / appWakeBlockHold / appWakeBlockRestoreObserverToken / appWakeBlockRestorePackage / appWakeBlockRestoreAll / appWakeBlockCleanupStale / uidNetBlockStart / uidNetBlockStop / uidNetBlockStatus / uidNetBlockRestorePackage / uidNetBlockRestoreAll / uidNetBlockCleanupStale / uidNetBlockProbe / cgroupFreezeStart / cgroupFreezeRefreshPrimary / cgroupFreezeStop / cgroupFreezeStatus / cgroupFreezeDaemonEnsure / cgroupFreezeRestorePackage / cgroupFreezeRestoreAll / cgroupFreezeCleanupStale / processObserverWatch / processObserverStart / processObserverStop / processObserverBatchStart / processObserverBatchStop / processObserverBatchCleanupStale / processObserverRestoreSessionStart / processObserverStatus / processObserverTop / processObserverForeground / uidLiveState / uidObserverProbe / uidObserverWatch / packageLiveState / packageInstallSnapshot / packageRestrictionSnapshot / forceStopPackageVerify / hiddenApiRuntimeProbe / getInstallSourceInfo / installSessionCreate / installSessionCommit / forceStopPackageBatch");
-        System.out.println("    上述熱路徑只能透過 HiddenApi daemon socket 呼叫，不再提供單次 app_process CLI fallback");
-        System.out.println();
-        System.out.println("  getInstalledPackagesAsUser USER_ID FILTER_FLAG(user|system|xposed) FORMAT(label|pkgName|flag)  取得安裝清單");
-        System.out.println("  appInventorySnapshot USER_ID [jsonl|appinfo|pkgName|pkgVerMap|pkgUidMap] [user|system|xposed|all] [refresh]  一次取得 package/label/uid/version/source/flag 與 Xposed module facts inventory");
-        System.out.println("  appInventoryGetlist USER_ID [targetPackageCsv] [refresh]  單次輸出 appList 所需 user/xposed + 白名單/system HOME/IME + Xposed framework/module metadata");
-        System.out.println("  appInventoryPkgUid USER_ID PACKAGE [refresh]  單包取得 PackageManager 當下 UID，供 restore install 後 chown refresh");
-        System.out.println("  appInventoryPackageStatus USER_ID PACKAGE [refresh]  單包取得 PackageManager 當下 installed/uid/version/source/dataDir 狀態");
-        System.out.println("  appInventoryPackageStatusBatch USER_ID PACKAGE [PACKAGE...] [refresh]  批量取得 PackageManager packageStatus NDJSON");
-        System.out.println("  appInventoryPackageFactsBatch USER_ID PACKAGE [PACKAGE...] [refresh]  批量取得 PackageManager/installer/source/split/dataDir TSV facts");
-        System.out.println("  preRestorePackageStateBatch USER_ID PACKAGE [PACKAGE...] [refresh]  恢復前批量取得 user-installed/any-user/hidden/suspended/installer TSV facts");
-        System.out.println("  installerContextFacts USER_ID TARGET_PACKAGE INSTALLER_PACKAGE [refresh]  取得 installer package 是否可用、UID、dataDir 與安裝來源 context facts");
-        System.out.println("  restoreInstallFacts USER_ID PACKAGE APK_KIND BACKUP_INSTALLER [POLICY] [refresh]  同次安裝 plan/context facts，request-local snapshot");
-        System.out.println("  restoreInstallPlan USER_ID PACKAGE APK_KIND BACKUP_INSTALLER [POLICY] [refresh]  Dex install plan facts，session-only policy");
-        System.out.println("  restoreInstallPlanBatch USER_ID PACKAGE APK_KIND BACKUP_INSTALLER [PACKAGE APK_KIND BACKUP_INSTALLER...] [POLICY] [refresh]  批量 install plan facts");
-        System.out.println("  packageFacts USER_ID PACKAGE [refresh]  單包 PackageManager facts TSV，給 shell 替代 pm path/list/get uid");
-        System.out.println("  packageInstalledUsers PACKAGE [MAX_USER_ID] [refresh]  掃描 package 已安裝 user facts TSV");
-        System.out.println("  packageVisibleAfterInstall USER_ID PACKAGE [refresh]  安裝後 bounded 可見性 facts TSV");
-        System.out.println("  appInventoryPostInstallFactsBatch USER_ID PACKAGE [PACKAGE...] [refresh]  安裝提交後批量重新取得 PackageManager facts TSV");
-        System.out.println("  defaultRoleFacts USER_ID  批量輸出 HOME/DIALER/SMS/BROWSER/ASSISTANT role holders facts TSV");
-        System.out.println("  storageMediaFacts USER_ID  輸出 emulated/data/media/storage facts TSV");
-        System.out.println("  storageVolumeFacts USER_ID [PATH]  輸出 File/StorageManager volume facts TSV");
-        System.out.println("  homeImeLauncherFacts USER_ID [refresh]  輸出 default HOME/IME 與 launcher candidates facts TSV");
-        System.out.println("  uidNetBlockStart USER_ID PACKAGE [netpolicy|auto|netd|none] [LOG_PATH]  daemon 內啟動高風險 App per-UID 網路封鎖；優先 INetworkPolicyManager direct，netd 為手動 hard mode");
-        System.out.println("  uidNetBlockStop TOKEN [USER_ID PACKAGE]  停止 per-UID 網路封鎖並驗證還原");
-        System.out.println("  uidNetBlockStatus  列出 daemon 內 UID 網路封鎖狀態");
-        System.out.println("  uidNetBlockRestorePackage USER_ID PACKAGE  從 Dex persistent snapshot 依 package 還原 UID 網路封鎖");
-        System.out.println("  uidNetBlockRestoreAll [REASON]  還原所有 UID 網路封鎖 snapshot");
-        System.out.println("  uidNetBlockCleanupStale [REASON] [TTL_MS]  清理超過 TTL 的 UID 網路封鎖 snapshot，清理前先嘗試還原");
-        System.out.println("  uidNetBlockProbe USER_ID PACKAGE  診斷 netpolicy/netd direct Binder 能力與實際 policy 常數");
-        System.out.println("  processObserverWatch USER_ID PACKAGE DURATION_MS [monitor|cgroup-freeze|stop-app|guard-stop|guard-stop-appops|guard-stop-restricted|kill|kill-stop|guard-kill|guard-kill-restricted] [LOG_PATH]  debug only：限時阻塞測試；tools 主流程請用 Start/Stop token lifecycle");
-        System.out.println("  processObserverStart USER_ID PACKAGE [monitor|cgroup-freeze|stop-app|guard-stop|guard-stop-appops|guard-stop-restricted|kill|kill-stop|guard-kill|guard-kill-restricted] [LOG_PATH]  daemon 內新增 global observer target；正式 tools app lifecycle 使用，Stop 時自動恢復 wake-block");
-        System.out.println("  processObserverStop TOKEN  停止 daemon 內 process observer");
-        System.out.println("  processObserverBatchStart USER_ID SPEC_FILE  從 tab spec 一次新增多個 process observer target，降低 per-app root/unixsock round-trip");
-        System.out.println("  processObserverBatchStop STATE_FILE [USER_ID] [SUMMARY_OUT]  依 tools 保存的 batch token state 一次停止多個 observer target，可輸出每 package summary TSV");
-        System.out.println("  processObserverBatchCleanupStale [REASON] [TTL_MS]  還原並清理過期 batch persistent safety state，TTL=0 可在正常收尾時全清");
-        System.out.println("  processObserverRestoreSessionStart USER_ID COMPARE_MAP PKGS_OUT [POLICY] [LOG_PATH] [HOME_PKG] [IME_PKG] [FACTS_OUT]  Dex 直接從恢復 compare map 建立 restore guard session，輸出 facts cache，跳過 shell 逐 App spec builder");
-        System.out.println("  processObserverStatus  列出 daemon 內 process observer 狀態");
-        System.out.println("  processObserverTop USER_ID  直接查 IActivityTaskManager TOP，不跑 dumpsys，不接管 planner");
-        System.out.println("  processObserverForeground USER_ID PACKAGE [PACKAGE...]  輸出 top/alive/active 狀態，不接管 backup/restore decision");
-        System.out.println("  packageLiveState USER_ID PACKAGE [PACKAGE...]  合併 PM installed/uid/version 與 ProcessObserver top/alive，facts-only，不算 hash");
-        System.out.println("  packageInstallSnapshot USER_ID PACKAGE [PACKAGE...]  讀取 installer/sourceDir/dataDir/MATCH_UNINSTALLED/packagesForUid，facts-only，不算 hash");
-        System.out.println("  packageRestrictionSnapshot USER_ID PACKAGE [PACKAGE...]  讀取 standby/hibernation/auto-revoke/AppOps 限制狀態，facts-only，不算 hash");
-        System.out.println("  deviceFacts  輸出 Dex 內建機型映射後的設備 facts JSON；Device_List 不再外置");
-        System.out.println("  uidLiveState USER_ID PACKAGE [PACKAGE...]  以 IUidObserver API probe + running process snapshot 輸出 UID active/procState，facts-only，不算 hash");
-        System.out.println("  uidObserverProbe  探測 IActivityManager.registerUidObserver hidden API 是否存在，不註冊長駐 observer");
-        System.out.println("  uidObserverWatch USER_ID PACKAGE [DURATION_MS]  短時間註冊 IUidObserver 收集 UID 事件，debug only，planner=0");
-        System.out.println("  forceStopPackageVerify USER_ID PACKAGE [TIMEOUT_MS]  force-stop 後直接驗證 alive/top 狀態，失敗交 native kill fallback");
-        System.out.println("  appKillGuard USER_ID PACKAGE [stop-app|guard-stop|kill-stop|guard-kill]  單次執行 force-stop/killUid/killProcessGroup 並輸出 top-check/verify/killState");
-        System.out.println("  appWakeBlockStart USER_ID PACKAGE [normal|appops|restricted] [LOG_PATH]  daemon 內啟動短窗口喚醒阻擋，保存 AppOps/standby 原狀態");
-        System.out.println("  appWakeBlockStop TOKEN  恢復 appWakeBlockStart 保存的 AppOps/standby 狀態");
-        System.out.println("  appWakeBlockStatus  列出 daemon 內 wake-block 狀態");
-        System.out.println("  appWakeBlockHold USER_ID PACKAGE DURATION_MS [normal|appops|restricted] [LOG_PATH]  單次測試：套 wake-block、等待、再自動恢復");
-        System.out.println("  appWakeBlockRestoreObserverToken TOKEN  從 Dex persistent snapshot 依 processObserver token 還原 wake-block");
-        System.out.println("  appWakeBlockRestorePackage USER_ID PACKAGE  從 Dex persistent snapshot 依 package 還原 wake-block");
-        System.out.println("  appWakeBlockRestoreAll  還原所有 Dex persistent wake-block snapshot");
-        System.out.println("  appWakeBlockCleanupStale [REASON] [TTL_MS]  清理超過 TTL 的 Dex persistent wake-block snapshot，清理前先嘗試還原");
-        System.out.println();
-        System.out.println("  forceStopPackage USER_ID PACKAGE PACKAGE PACKAGE ...  透過 ActivityManager hidden API 批量停止套件，用於備份前 soft freeze");
-        System.out.println("  forceStopPackageBatch USER_ID --stdin  從 stdin 批量讀取套件名稱並停止");
-        System.out.println();
-        System.out.println("  appOpsScopeDetail USER_ID [PACKAGE OP OP ...] ...  單次 JVM 讀取 package/uid/effective AppOps scope 診斷");
-        System.out.println();
-        System.out.println("  setDisplayPowerMode MODE(POWER_MODE_OFF: 0, POWER_MODE_NORMAL: 2)  設定螢幕電源模式");
-        System.out.println();
+        DaemonOutput.current().println("HiddenApiUtil 指令說明:");
+        DaemonOutput.current().println("  help  顯示此說明");
+        DaemonOutput.current().println("  version / --version / -v  顯示版本資訊");
+        DaemonOutput.current().println("  AppState daemon: app_process /system/bin com.xayah.dex.AppStateUtil daemonunix SOCKET [idleSec] [ownerPid]");
+        DaemonOutput.current().println("  HiddenApi daemon: app_process /system/bin com.xayah.dex.HiddenApiUtil daemonunix SOCKET [idleSec] [ownerPid]");
+        DaemonOutput.current().println();
+        DaemonOutput.current().println("  getPackageLabel USER_ID PACKAGE PACKAGE PACKAGE ...  取得應用名稱");
+        DaemonOutput.current().println();
+        DaemonOutput.current().println("  getPackageArchiveInfo APK_FILE  讀取 APK 檔案資訊");
+        DaemonOutput.current().println();
+        DaemonOutput.current().println("  hiddenApiBypassStatus  初始化並顯示 AndroidHiddenApiBypass softgate 狀態（狀態失敗不代表功能失敗）");
+        DaemonOutput.current().println("  hiddenApiRuntimeProbe [USER_ID PACKAGE]  依官方 non-SDK 限制邊界做 Hidden API runtime probe；可附 package 檢查 appops/standby shell 行為");
+        DaemonOutput.current().println("  cgroupFreezeStart USER_ID PACKAGE [PID|-1] [TIMEOUT_MS] [OWNER]  daemon 內啟動 cgroup freezer lifecycle guard；backup/restore app-scope 會在 Dex 內強制 package-scope，processObserver 仍可用 pid-scope");
+        DaemonOutput.current().println("  cgroupFreezeRefreshPrimary USER_ID PACKAGE [REASON] [TIMEOUT_MS]  primary app-scope 活躍時重新掃描/凍結全部目前存活 pid，避免高風險 App 在 payload 期間恢復可互動");
+        DaemonOutput.current().println("  cgroupFreezeStop TOKEN [USER_ID PACKAGE]  停止 cgroup freezer guard 並驗證還原原始 frozen 狀態");
+        DaemonOutput.current().println("  cgroupFreezeStatus  列出 daemon 內 cgroup freezer guard 狀態");
+        DaemonOutput.current().println("  cgroupFreezeDaemonEnsure [REASON]  批次開始前啟動/確認 native cgfreezerd 持久 session；daemon 不隨每 App 關閉，每 App 只快速 SCAN/FREEZE/THAW/KILL");
+        DaemonOutput.current().println("  cgroupFreezeRestorePackage USER_ID PACKAGE  依 package 還原 cgroup freezer persistent state");
+        DaemonOutput.current().println("  cgroupFreezeRestoreAll [REASON]  還原所有 cgroup freezer persistent state");
+        DaemonOutput.current().println("  cgroupFreezeCleanupStale [REASON] [TTL_MS]  還原並清理過期 cgroup freezer persistent state");
+        DaemonOutput.current().println("  daemon-only commands: getPackageUid / appInventoryPkgUid / appInventoryPackageStatus / appInventoryPackageStatusBatch / appInventoryPackageFactsBatch / preRestorePackageStateBatch / installerContextFacts / restoreInstallFacts / restoreInstallPlan / restoreInstallPlanBatch / appInventoryPostInstallFactsBatch / appKillGuard / appWakeBlockStart / appWakeBlockStop / appWakeBlockStatus / appWakeBlockHold / appWakeBlockRestoreObserverToken / appWakeBlockRestorePackage / appWakeBlockRestoreAll / appWakeBlockCleanupStale / uidNetBlockStart / uidNetBlockStop / uidNetBlockStatus / uidNetBlockRestorePackage / uidNetBlockRestoreAll / uidNetBlockCleanupStale / uidNetBlockProbe / cgroupFreezeStart / cgroupFreezeRefreshPrimary / cgroupFreezeStop / cgroupFreezeStatus / cgroupFreezeDaemonEnsure / cgroupFreezeRestorePackage / cgroupFreezeRestoreAll / cgroupFreezeCleanupStale / processObserverWatch / processObserverStart / processObserverStop / processObserverBatchStart / processObserverBatchStop / processObserverBatchCleanupStale / processObserverRestoreSessionStart / processObserverStatus / processObserverTop / processObserverForeground / uidLiveState / uidObserverProbe / uidObserverWatch / packageLiveState / packageInstallSnapshot / packageRestrictionSnapshot / forceStopPackageVerify / hiddenApiRuntimeProbe / getInstallSourceInfo / installSessionCreate / installSessionCommit / forceStopPackageBatch");
+        DaemonOutput.current().println("    上述熱路徑只能透過 HiddenApi daemon socket 呼叫，不再提供單次 app_process CLI fallback");
+        DaemonOutput.current().println();
+        DaemonOutput.current().println("  getInstalledPackagesAsUser USER_ID FILTER_FLAG(user|system|xposed) FORMAT(label|pkgName|flag)  取得安裝清單");
+        DaemonOutput.current().println("  appInventorySnapshot USER_ID [jsonl|appinfo|pkgName|pkgVerMap|pkgUidMap] [user|system|xposed|all] [refresh]  一次取得 package/label/uid/version/source/flag 與 Xposed module facts inventory");
+        DaemonOutput.current().println("  appInventoryGetlist USER_ID [targetPackageCsv] [refresh]  單次輸出 appList 所需 user/xposed + 白名單/system HOME/IME + Xposed framework/module metadata");
+        DaemonOutput.current().println("  appInventoryPkgUid USER_ID PACKAGE [refresh]  單包取得 PackageManager 當下 UID，供 restore install 後 chown refresh");
+        DaemonOutput.current().println("  appInventoryPackageStatus USER_ID PACKAGE [refresh]  單包取得 PackageManager 當下 installed/uid/version/source/dataDir 狀態");
+        DaemonOutput.current().println("  appInventoryPackageStatusBatch USER_ID PACKAGE [PACKAGE...] [refresh]  批量取得 PackageManager packageStatus NDJSON");
+        DaemonOutput.current().println("  appInventoryPackageFactsBatch USER_ID PACKAGE [PACKAGE...] [refresh]  批量取得 PackageManager/installer/source/split/dataDir TSV facts");
+        DaemonOutput.current().println("  preRestorePackageStateBatch USER_ID PACKAGE [PACKAGE...] [refresh]  恢復前批量取得 user-installed/any-user/hidden/suspended/installer TSV facts");
+        DaemonOutput.current().println("  installerContextFacts USER_ID TARGET_PACKAGE INSTALLER_PACKAGE [refresh]  取得 installer package 是否可用、UID、dataDir 與安裝來源 context facts");
+        DaemonOutput.current().println("  restoreInstallFacts USER_ID PACKAGE APK_KIND BACKUP_INSTALLER [POLICY] [refresh]  同次安裝 plan/context facts，request-local snapshot");
+        DaemonOutput.current().println("  restoreInstallPlan USER_ID PACKAGE APK_KIND BACKUP_INSTALLER [POLICY] [refresh]  Dex install plan facts，session-only policy");
+        DaemonOutput.current().println("  restoreInstallPlanBatch USER_ID PACKAGE APK_KIND BACKUP_INSTALLER [PACKAGE APK_KIND BACKUP_INSTALLER...] [POLICY] [refresh]  批量 install plan facts");
+        DaemonOutput.current().println("  packageFacts USER_ID PACKAGE [refresh]  單包 PackageManager facts TSV，給 shell 替代 pm path/list/get uid");
+        DaemonOutput.current().println("  packageInstalledUsers PACKAGE [MAX_USER_ID] [refresh]  掃描 package 已安裝 user facts TSV");
+        DaemonOutput.current().println("  packageVisibleAfterInstall USER_ID PACKAGE [refresh]  安裝後 bounded 可見性 facts TSV");
+        DaemonOutput.current().println("  appInventoryPostInstallFactsBatch USER_ID PACKAGE [PACKAGE...] [refresh]  安裝提交後批量重新取得 PackageManager facts TSV");
+        DaemonOutput.current().println("  defaultRoleFacts USER_ID  批量輸出 HOME/DIALER/SMS/BROWSER/ASSISTANT role holders facts TSV");
+        DaemonOutput.current().println("  storageMediaFacts USER_ID  輸出 emulated/data/media/storage facts TSV");
+        DaemonOutput.current().println("  storageVolumeFacts USER_ID [PATH]  輸出 File/StorageManager volume facts TSV");
+        DaemonOutput.current().println("  homeImeLauncherFacts USER_ID [refresh]  輸出 default HOME/IME 與 launcher candidates facts TSV");
+        DaemonOutput.current().println("  uidNetBlockStart USER_ID PACKAGE [netpolicy|auto|netd|none] [LOG_PATH]  daemon 內啟動高風險 App per-UID 網路封鎖；優先 INetworkPolicyManager direct，netd 為手動 hard mode");
+        DaemonOutput.current().println("  uidNetBlockStop TOKEN [USER_ID PACKAGE]  停止 per-UID 網路封鎖並驗證還原");
+        DaemonOutput.current().println("  uidNetBlockStatus  列出 daemon 內 UID 網路封鎖狀態");
+        DaemonOutput.current().println("  uidNetBlockRestorePackage USER_ID PACKAGE  從 Dex persistent snapshot 依 package 還原 UID 網路封鎖");
+        DaemonOutput.current().println("  uidNetBlockRestoreAll [REASON]  還原所有 UID 網路封鎖 snapshot");
+        DaemonOutput.current().println("  uidNetBlockCleanupStale [REASON] [TTL_MS]  清理超過 TTL 的 UID 網路封鎖 snapshot，清理前先嘗試還原");
+        DaemonOutput.current().println("  uidNetBlockProbe USER_ID PACKAGE  診斷 netpolicy/netd direct Binder 能力與實際 policy 常數");
+        DaemonOutput.current().println("  processObserverWatch USER_ID PACKAGE DURATION_MS [monitor|cgroup-freeze|stop-app|guard-stop|guard-stop-appops|guard-stop-restricted|kill|kill-stop|guard-kill|guard-kill-restricted] [LOG_PATH]  debug only：限時阻塞測試；tools 主流程請用 Start/Stop token lifecycle");
+        DaemonOutput.current().println("  processObserverStart USER_ID PACKAGE [monitor|cgroup-freeze|stop-app|guard-stop|guard-stop-appops|guard-stop-restricted|kill|kill-stop|guard-kill|guard-kill-restricted] [LOG_PATH]  daemon 內新增 global observer target；正式 tools app lifecycle 使用，Stop 時自動恢復 wake-block");
+        DaemonOutput.current().println("  processObserverStop TOKEN  停止 daemon 內 process observer");
+        DaemonOutput.current().println("  processObserverBatchStart USER_ID SPEC_FILE  從 tab spec 一次新增多個 process observer target，降低 per-app root/unixsock round-trip");
+        DaemonOutput.current().println("  processObserverBatchStop STATE_FILE [USER_ID] [SUMMARY_OUT]  依 tools 保存的 batch token state 一次停止多個 observer target，可輸出每 package summary TSV");
+        DaemonOutput.current().println("  processObserverBatchCleanupStale [REASON] [TTL_MS]  還原並清理過期 batch persistent safety state，TTL=0 可在正常收尾時全清");
+        DaemonOutput.current().println("  processObserverRestoreSessionStart USER_ID COMPARE_MAP PKGS_OUT [POLICY] [LOG_PATH] [HOME_PKG] [IME_PKG] [FACTS_OUT]  Dex 直接從恢復 compare map 建立 restore guard session，輸出 facts cache，跳過 shell 逐 App spec builder");
+        DaemonOutput.current().println("  processObserverStatus  列出 daemon 內 process observer 狀態");
+        DaemonOutput.current().println("  processObserverTop USER_ID  直接查 IActivityTaskManager TOP，不跑 dumpsys，不接管 planner");
+        DaemonOutput.current().println("  processObserverForeground USER_ID PACKAGE [PACKAGE...]  輸出 top/alive/active 狀態，不接管 backup/restore decision");
+        DaemonOutput.current().println("  packageLiveState USER_ID PACKAGE [PACKAGE...]  合併 PM installed/uid/version 與 ProcessObserver top/alive，facts-only，不算 hash");
+        DaemonOutput.current().println("  packageInstallSnapshot USER_ID PACKAGE [PACKAGE...]  讀取 installer/sourceDir/dataDir/MATCH_UNINSTALLED/packagesForUid，facts-only，不算 hash");
+        DaemonOutput.current().println("  packageRestrictionSnapshot USER_ID PACKAGE [PACKAGE...]  讀取 standby/hibernation/auto-revoke/AppOps 限制狀態，facts-only，不算 hash");
+        DaemonOutput.current().println("  deviceFacts  輸出 Dex 內建機型映射後的設備 facts JSON；Device_List 不再外置");
+        DaemonOutput.current().println("  uidLiveState USER_ID PACKAGE [PACKAGE...]  以 IUidObserver API probe + running process snapshot 輸出 UID active/procState，facts-only，不算 hash");
+        DaemonOutput.current().println("  uidObserverProbe  探測 IActivityManager.registerUidObserver hidden API 是否存在，不註冊長駐 observer");
+        DaemonOutput.current().println("  uidObserverWatch USER_ID PACKAGE [DURATION_MS]  短時間註冊 IUidObserver 收集 UID 事件，debug only，planner=0");
+        DaemonOutput.current().println("  forceStopPackageVerify USER_ID PACKAGE [TIMEOUT_MS]  force-stop 後直接驗證 alive/top 狀態，失敗交 native kill fallback");
+        DaemonOutput.current().println("  appKillGuard USER_ID PACKAGE [stop-app|guard-stop|kill-stop|guard-kill]  單次執行 force-stop/killUid/killProcessGroup 並輸出 top-check/verify/killState");
+        DaemonOutput.current().println("  appWakeBlockStart USER_ID PACKAGE [normal|appops|restricted] [LOG_PATH]  daemon 內啟動短窗口喚醒阻擋，保存 AppOps/standby 原狀態");
+        DaemonOutput.current().println("  appWakeBlockStop TOKEN  恢復 appWakeBlockStart 保存的 AppOps/standby 狀態");
+        DaemonOutput.current().println("  appWakeBlockStatus  列出 daemon 內 wake-block 狀態");
+        DaemonOutput.current().println("  appWakeBlockHold USER_ID PACKAGE DURATION_MS [normal|appops|restricted] [LOG_PATH]  單次測試：套 wake-block、等待、再自動恢復");
+        DaemonOutput.current().println("  appWakeBlockRestoreObserverToken TOKEN  從 Dex persistent snapshot 依 processObserver token 還原 wake-block");
+        DaemonOutput.current().println("  appWakeBlockRestorePackage USER_ID PACKAGE  從 Dex persistent snapshot 依 package 還原 wake-block");
+        DaemonOutput.current().println("  appWakeBlockRestoreAll  還原所有 Dex persistent wake-block snapshot");
+        DaemonOutput.current().println("  appWakeBlockCleanupStale [REASON] [TTL_MS]  清理超過 TTL 的 Dex persistent wake-block snapshot，清理前先嘗試還原");
+        DaemonOutput.current().println();
+        DaemonOutput.current().println("  forceStopPackage USER_ID PACKAGE PACKAGE PACKAGE ...  透過 ActivityManager hidden API 批量停止套件，用於備份前 soft freeze");
+        DaemonOutput.current().println("  forceStopPackageBatch USER_ID --stdin  從 stdin 批量讀取套件名稱並停止");
+        DaemonOutput.current().println();
+        DaemonOutput.current().println("  appOpsScopeDetail USER_ID [PACKAGE OP OP ...] ...  單次 JVM 讀取 package/uid/effective AppOps scope 診斷");
+        DaemonOutput.current().println();
+        DaemonOutput.current().println("  setDisplayPowerMode MODE(POWER_MODE_OFF: 0, POWER_MODE_NORMAL: 2)  設定螢幕電源模式");
+        DaemonOutput.current().println();
     }
 
     private static void printVersion() {
-        System.out.println(DexBuildInfo.VERSION_DISPLAY);
+        DaemonOutput.current().println(DexBuildInfo.VERSION_DISPLAY);
     }
 
     private static void onCommand(String cmd, String[] args) {
         switch (cmd) {
             case "googleAccountGreeting":
-                System.out.print(GoogleAccountNames.greeting(parseIntArg(args,1,0)));
+                DaemonOutput.current().print(GoogleAccountNames.greeting(parseIntArg(args,1,0)));
                 break;
             case "getPackageLabel":
                 getPackageLabel(args);
+                break;
+            case "restoreInternalClearQuiet":
+            case "restoreInternalClear":
+            case "restoreInternalPermissions":
+                internalFileOperation(args);
+                break;
+            case "getAppRestorePolicy":
+                getAppRestorePolicy(args);
+                break;
+            case "externalRestorePolicy":
+                ExternalRestorePolicy.command(args);
                 break;
             case "getPackageArchiveInfo":
                 getPackageArchiveInfo(args);
@@ -300,7 +311,7 @@ public class HiddenApiUtil {
                 processObserverTop(args);
                 break;
             case "audioPlaybackState":
-                System.out.print(AudioPlaybackGuard.status(parseIntArg(args, 1, 0), args.length > 2 ? args[2] : ""));
+                DaemonOutput.current().print(AudioPlaybackGuard.status(parseIntArg(args, 1, 0), args.length > 2 ? args[2] : ""));
                 break;
             case "processObserverForeground":
                 processObserverForeground(args);
@@ -430,7 +441,7 @@ public class HiddenApiUtil {
                 onHelp();
                 break;
             default:
-                System.out.println("UNKNOWN_COMMAND " + sanitizeDiagValue(cmd));
+                DaemonOutput.current().println("UNKNOWN_COMMAND " + sanitizeDiagValue(cmd));
                 System.exit(1);
         }
     }
@@ -455,7 +466,7 @@ public class HiddenApiUtil {
     }
 
     private static void deviceFacts() {
-        System.out.print(DeviceFactsUtil.json());
+        DaemonOutput.current().print(DeviceFactsUtil.json());
     }
 
     private static final int DAEMON_PROTOCOL_VERSION = 1;
@@ -516,6 +527,10 @@ public class HiddenApiUtil {
     }
 
     static synchronized DaemonRunResult runDaemonCommand(String command, byte[] bodyBytes) {
+        AppInventoryUtil.clearCache(); // Inventory is shared only within this request.
+        sPackageInfoCache.clear();
+        sPackageUidCache.clear();
+        sPackageLabelCache.clear();
         if (command == null) command = "";
         command = command.trim();
         String body = new String(bodyBytes == null ? new byte[0] : bodyBytes, StandardCharsets.UTF_8);
@@ -523,9 +538,10 @@ public class HiddenApiUtil {
         argsList.add(command);
         if (!body.isEmpty()) {
             String[] lines = body.split("\\n", -1);
-            for (String line : lines) {
+            for (int i = 0; i < lines.length - (body.endsWith("\n") ? 1 : 0); i++) {
+                String line = lines[i];
                 if (line.endsWith("\r")) line = line.substring(0, line.length() - 1);
-                if (line.length() > 0) argsList.add(line);
+                argsList.add(line);
             }
         }
         String[] cmdArgs = argsList.toArray(new String[0]);
@@ -576,6 +592,10 @@ public class HiddenApiUtil {
         }
         if ("packageInstalledUsers".equals(command)) {
             return packageInstalledUsersDaemonCommand(cmdArgs);
+        }
+        if ("restorePackageVisible".equals(command)) {
+            try { return restorePackageVisible(cmdArgs); }
+            catch (Throwable e) { return new DaemonRunResult(125,"RESTORE_PACKAGE_MAPS_UNSAFE retry=false\n"); }
         }
         if ("packageVisibleAfterInstall".equals(command)) {
             return packageVisibleAfterInstallDaemonCommand(cmdArgs);
@@ -761,13 +781,22 @@ public class HiddenApiUtil {
             return hiddenApiRuntimeProbeDaemonCommand(cmdArgs);
         }
 
-        PrintStream oldOut = System.out;
+        PrintStream oldOut = null;
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         int rc = 1;
         try {
-            System.setOut(new PrintStream(baos, true, "UTF-8"));
+            oldOut = DaemonOutput.begin(baos);
             if ("getPackageUid".equals(command)) {
                 rc = getPackageUidCommand(cmdArgs);
+            } else if ("restoreInternalClearQuiet".equals(command) || "restoreInternalClear".equals(command) || "restoreInternalPermissions".equals(command)) {
+                internalFileOperation(cmdArgs);
+                rc = 0;
+            } else if ("getAppRestorePolicy".equals(command)) {
+                getAppRestorePolicy(cmdArgs);
+                rc = 0;
+            } else if ("externalRestorePolicy".equals(command)) {
+                ExternalRestorePolicy.command(cmdArgs);
+                rc = 0;
             } else if ("installSessionCreate".equals(command)) {
                 rc = installSessionCreateCommand(cmdArgs);
             } else if ("installSessionCommit".equals(command)) {
@@ -775,17 +804,17 @@ public class HiddenApiUtil {
             } else if ("getInstallSourceInfo".equals(command)) {
                 rc = getInstallSourceInfoCommand(cmdArgs);
             } else {
-                System.out.println("UNKNOWN_COMMAND " + sanitizeDiagValue(command));
+                DaemonOutput.current().println("UNKNOWN_COMMAND " + sanitizeDiagValue(command));
                 rc = 2;
             }
         } catch (Throwable t) {
-            System.out.println("HIDDENAPI_DAEMON_COMMAND_FAILED command=" + sanitizeDiagValue(command)
+            DaemonOutput.current().println("HIDDENAPI_DAEMON_COMMAND_FAILED command=" + sanitizeDiagValue(command)
                     + " exception=" + t.getClass().getName() + " message=" + sanitizeDiagValue(t.getMessage()));
             t.printStackTrace(System.err);
             rc = 1;
         } finally {
-            System.out.flush();
-            System.setOut(oldOut);
+            DaemonOutput.current().flush();
+            DaemonOutput.end(oldOut);
         }
         return new DaemonRunResult(rc, baos.toString());
     }
@@ -817,9 +846,9 @@ public class HiddenApiUtil {
             int userId = Integer.parseInt(args[1]);
             for (String packageName : collectPackageNames(args, 2)) {
                 try {
-                    System.out.println(getPackageUidCached(pmHidden, packageName, userId));
+                    DaemonOutput.current().println(getPackageUidCached(pmHidden, packageName, userId));
                 } catch (Exception e) {
-                    System.out.println("PACKAGE_UID_FAILED_SKIP package=" + sanitizeDiagValue(packageName) + " reason=" + failureReason(e));
+                    DaemonOutput.current().println("PACKAGE_UID_FAILED_SKIP package=" + sanitizeDiagValue(packageName) + " reason=" + failureReason(e));
                 }
             }
             return 0;
@@ -837,15 +866,84 @@ public class HiddenApiUtil {
             int userId = Integer.parseInt(args[1]);
             for (String packageName : collectPackageNames(args, 2)) {
                 try {
-                    System.out.println(getPackageLabelCached(pm, pmHidden, packageName, userId));
+                    DaemonOutput.current().println(getPackageLabelCached(pm, pmHidden, packageName, userId));
                 } catch (Exception e) {
-                    System.out.println("PACKAGE_LABEL_FAILED_SKIP package=" + sanitizeDiagValue(packageName) + " reason=" + failureReason(e));
+                    DaemonOutput.current().println("PACKAGE_LABEL_FAILED_SKIP package=" + sanitizeDiagValue(packageName) + " reason=" + failureReason(e));
                 }
             }
             System.exit(0);
         } catch (Exception e) {
             e.printStackTrace(System.err);
             System.exit(1);
+        }
+    }
+
+    private static String[] appRestorePolicy(String[] args) {
+        try {
+            if (args.length != 3 && args.length != 4) throw new IllegalArgumentException("getAppRestorePolicy USER PACKAGE [user|user_de]");
+            int user = Integer.parseInt(args[1]);
+            if (user < 0) throw new IllegalArgumentException("negative user");
+            PackageManager pm = PackageManagerUtil.getPackageManager(HiddenApiHelper.getContext()).packageManager();
+            PackageManagerHidden hidden = Refine.unsafeCast(pm);
+            PackageInfo info = hidden.getPackageInfoAsUser(args[2], 0, user);
+            if (info == null || info.applicationInfo == null) throw new IllegalStateException("package unavailable");
+            ApplicationInfo app = info.applicationInfo;
+            if (args.length == 4) {
+                if (!"user".equals(args[3]) && !"user_de".equals(args[3])) throw new IllegalArgumentException("invalid internal kind");
+                if (app.uid % 100000 < 10000 || app.uid % 100000 >= 90000) throw new IllegalStateException("unsupported app UID");
+                // A legacy sharedUserId declaration is safe here only when this is
+                // the sole installed package for the full per-user UID.
+                String[] peers = pm.getPackagesForUid(app.uid);
+                if (peers == null || peers.length != 1 || !args[2].equals(peers[0]))
+                    throw new IllegalStateException("shared UID internal clear refused");
+                android.os.UserManager users = (android.os.UserManager)HiddenApiHelper.getContext().getSystemService(Context.USER_SERVICE);
+                if ("user".equals(args[3]) && !users.isUserUnlocked(android.os.UserHandleHidden.of(user)))
+                    throw new IllegalStateException("CE user locked or stopped");
+            }
+
+            java.lang.reflect.Field base = ApplicationInfo.class.getDeclaredField("seInfo");
+            base.setAccessible(true);
+            String seinfo = (String)base.get(app);
+            if (seinfo == null || seinfo.isEmpty()) throw new IllegalStateException("seInfo unavailable");
+            // Match the full per-user seinfo passed by PackageManager to installd.
+            java.lang.reflect.Field extra = ApplicationInfo.class.getDeclaredField("seInfoUser");
+            extra.setAccessible(true);
+            String suffix = (String)extra.get(app);
+            if (suffix != null) seinfo += suffix;
+            if (app.uid < 0 || app.uid / 100000 != user || seinfo.indexOf('\t') >= 0 || seinfo.indexOf('\n') >= 0 || seinfo.indexOf('\r') >= 0)
+                throw new IllegalStateException("invalid package policy");
+            return new String[]{Integer.toString(app.uid),seinfo};
+        } catch (Throwable e) {
+            System.err.println("APP_RESTORE_POLICY_FAILED " + e.getClass().getSimpleName());
+            throw new IllegalStateException("Cannot obtain live app restore policy", e);
+        }
+    }
+
+    private static void getAppRestorePolicy(String[] args) {
+        String[] policy = appRestorePolicy(args);
+        DaemonOutput.current().println(policy[0] + "\t" + policy[1]);
+    }
+
+    /** Combines the live PackageManager gate and the native mutation in one Dex request. */
+    private static void internalFileOperation(String[] args) {
+        try {
+            if ("restoreInternalClear".equals(args[0]) || "restoreInternalClearQuiet".equals(args[0])) {
+                if (args.length != 5) throw new IllegalArgumentException("restoreInternalClear USER PACKAGE KIND TARGET");
+                String[] policy=appRestorePolicy(new String[]{"getAppRestorePolicy",args[1],args[2],args[3]});
+                String target="/data/"+args[3]+"/"+Integer.parseInt(args[1])+"/"+args[2];
+                if (!target.equals(args[4])) throw new IllegalArgumentException("internal target mismatch");
+                NativeFileClient.run("restoreInternalClearQuiet".equals(args[0]) ? "internal-tree-clear-quiet" : "internal-tree-clear",target,policy[0],args[3],args[2]);
+            } else {
+                if (args.length != 6) throw new IllegalArgumentException("restoreInternalPermissions USER PACKAGE UID OLD_UID TARGET");
+                String[] policy=appRestorePolicy(new String[]{"getAppRestorePolicy",args[1],args[2]});
+                if (!policy[0].equals(args[3])) throw new IllegalStateException("live UID changed");
+                String suffix="/"+Integer.parseInt(args[1])+"/"+args[2];
+                if (!("/data/user"+suffix).equals(args[5]) && !("/data/user_de"+suffix).equals(args[5]))
+                    throw new IllegalArgumentException("internal target mismatch");
+                NativeFileClient.run("app-permissions",policy[0],args[4],args[5],policy[1]);
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("Internal file operation incomplete; do not retry",e);
         }
     }
 
@@ -859,7 +957,7 @@ public class HiddenApiUtil {
             if (packageInfo != null && packageInfo.applicationInfo != null) {
                 packageInfo.applicationInfo.sourceDir = file;
                 packageInfo.applicationInfo.publicSourceDir = file;
-                System.out.println(removeSpaces(packageInfo.applicationInfo.loadLabel(pm).toString()) + " " + packageInfo.packageName);
+                DaemonOutput.current().println(removeSpaces(packageInfo.applicationInfo.loadLabel(pm).toString()) + " " + packageInfo.packageName);
             } else {
                 throw new PackageManager.NameNotFoundException("unable to parse APK package info");
             }
@@ -873,7 +971,7 @@ public class HiddenApiUtil {
     }
 
 
-    // Dex APK install executor removed from public/daemon dispatch.
+    // APK install-session commands remain available to the authenticated root daemon.
     // APK restore execution is intentionally back on shell pm session for source fidelity and speed; Dex only supplies facts.
 
     private static int installSessionCreateCommand(String[] args) {
@@ -891,19 +989,19 @@ public class HiddenApiUtil {
             Context installerCtx = createPackageContextForUser(ctx, "com.android.vending", userId);
             PackageManager realPm = installerCtx.getPackageManager();
             PackageInstaller packageInstaller = realPm.getPackageInstaller();
-            System.out.println(packageName + " INSTALL_SESSION_CREATE options " + options.toSummaryString());
-            System.out.println(packageName + " INSTALL_SESSION_CREATE totalBytes " + totalBytes);
-            System.out.println(packageName + " INSTALL_SESSION_CREATE installerContext " + installerCtx.getPackageName());
+            DaemonOutput.current().println(packageName + " INSTALL_SESSION_CREATE options " + options.toSummaryString());
+            DaemonOutput.current().println(packageName + " INSTALL_SESSION_CREATE totalBytes " + totalBytes);
+            DaemonOutput.current().println(packageName + " INSTALL_SESSION_CREATE installerContext " + installerCtx.getPackageName());
             PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(options.mode);
             params.setAppPackageName(packageName);
             applyInstallSessionOptions(params, packageName, totalBytes, options);
             int sessionId = packageInstaller.createSession(params);
-            System.out.println(packageName + " INSTALL_SESSION_CREATE sessionId " + sessionId);
+            DaemonOutput.current().println(packageName + " INSTALL_SESSION_CREATE sessionId " + sessionId);
             human(packageName, "已由 Play UID 建立安裝 session: " + sessionId);
             return 0;
         } catch (Exception e) {
             String pkg = args != null && args.length > 2 ? args[2] : "unknown";
-            System.out.println(pkg + " INSTALL_SESSION_CREATE failed " + e.getClass().getName()
+            DaemonOutput.current().println(pkg + " INSTALL_SESSION_CREATE failed " + e.getClass().getName()
                     + " " + sanitizeDiagValue(e.getMessage()));
             human(pkg, "建立安裝 session 失敗: " + e.getClass().getSimpleName() + " " + sanitizeDiagValue(e.getMessage()));
             printInstallFailureTranslation(pkg, e, e.getMessage());
@@ -928,8 +1026,8 @@ public class HiddenApiUtil {
             PackageManager realPm = installerCtx.getPackageManager();
             PackageManagerHidden pmHidden = Refine.unsafeCast(realPm);
             PackageInstaller packageInstaller = realPm.getPackageInstaller();
-            System.out.println(packageName + " INSTALL_SESSION_COMMIT options " + options.toSummaryString());
-            System.out.println(packageName + " INSTALL_SESSION_COMMIT installerContext " + installerCtx.getPackageName());
+            DaemonOutput.current().println(packageName + " INSTALL_SESSION_COMMIT options " + options.toSummaryString());
+            DaemonOutput.current().println(packageName + " INSTALL_SESSION_COMMIT installerContext " + installerCtx.getPackageName());
             session = packageInstaller.openSession(sessionId);
 
             int flags = PendingIntent.FLAG_UPDATE_CURRENT;
@@ -945,7 +1043,7 @@ public class HiddenApiUtil {
             Intent statusIntent = new Intent("com.xayah.dex.INSTALL_SESSION_STATUS." + sessionId);
             statusIntent.setPackage("com.android.vending");
             PendingIntent pendingIntent = PendingIntent.getBroadcast(installerCtx, sessionId, statusIntent, flags);
-            System.out.println(packageName + " INSTALL_SESSION_COMMIT statusReceiver flags " + flags);
+            DaemonOutput.current().println(packageName + " INSTALL_SESSION_COMMIT statusReceiver flags " + flags);
             PackageInfo beforeCommit = null;
             try { beforeCommit = pmHidden.getPackageInfoAsUser(packageName, 0, userId); }
             catch (Throwable ignored) { }
@@ -953,7 +1051,7 @@ public class HiddenApiUtil {
             session.commit(pendingIntent.getIntentSender());
             session.close();
             session = null;
-            System.out.println(packageName + " INSTALL_SESSION_COMMIT committed " + sessionId);
+            DaemonOutput.current().println(packageName + " INSTALL_SESSION_COMMIT committed " + sessionId);
             human(packageName, "已由 Play UID 提交安裝 session，等待系統完成安裝");
 
             long waitStart = System.currentTimeMillis();
@@ -974,9 +1072,9 @@ public class HiddenApiUtil {
                     if (info != null && packageInstaller.getSessionInfo(sessionId) == null
                             && (beforeUpdate < 0L || info.lastUpdateTime > beforeUpdate)) {
                         found = true;
-                        System.out.println(packageName + " INSTALL_SESSION packageFound versionCode "
+                        DaemonOutput.current().println(packageName + " INSTALL_SESSION packageFound versionCode "
                                 + getLongVersionCodeCompat(info));
-                        System.out.println(packageName + " INSTALL_SESSION_COMMIT packageFound versionCode "
+                        DaemonOutput.current().println(packageName + " INSTALL_SESSION_COMMIT packageFound versionCode "
                                 + getLongVersionCodeCompat(info));
                         human(packageName, "安裝完成: 已找到套件，versionCode=" + getLongVersionCodeCompat(info));
                         try {
@@ -987,7 +1085,7 @@ public class HiddenApiUtil {
                             printInstallSourceDiagnostics(realPm, pmHidden, userId, packageName, playStoreSnapshot, playServicesSnapshot);
                         } catch (Throwable diagError) {
                             debugThrowable("installSessionCommit post-verify getInstallSourceInfo " + packageName, diagError);
-                            System.out.println(packageName + " INSTALL_SESSION sourceVerifyFailed "
+                            DaemonOutput.current().println(packageName + " INSTALL_SESSION sourceVerifyFailed "
                                     + diagError.getClass().getName() + " " + sanitizeDiagValue(diagError.getMessage()));
                         }
                         break;
@@ -1002,8 +1100,8 @@ public class HiddenApiUtil {
                 }
             }
             if (!found) {
-                System.out.println(packageName + " INSTALL_SESSION packageNotFoundAfterWait");
-                System.out.println(packageName + " INSTALL_SESSION_COMMIT packageNotFoundAfterWait");
+                DaemonOutput.current().println(packageName + " INSTALL_SESSION packageNotFoundAfterWait");
+                DaemonOutput.current().println(packageName + " INSTALL_SESSION_COMMIT packageNotFoundAfterWait");
                 human(packageName, "安裝提交後逾時仍找不到套件，請查看失敗原因與 PackageInstaller/logcat");
                 try {
                     printSessionInfoDiagnostics(packageInstaller, sessionId, packageName);
@@ -1020,7 +1118,7 @@ public class HiddenApiUtil {
                 try { session.close(); } catch (Throwable ignored) {}
             }
             String pkg = args != null && args.length > 2 ? args[2] : "unknown";
-            System.out.println(pkg + " INSTALL_SESSION_COMMIT failed " + e.getClass().getName()
+            DaemonOutput.current().println(pkg + " INSTALL_SESSION_COMMIT failed " + e.getClass().getName()
                     + " " + sanitizeDiagValue(e.getMessage()));
             human(pkg, "提交安裝 session 失敗: " + e.getClass().getSimpleName() + " " + sanitizeDiagValue(e.getMessage()));
             printInstallFailureTranslation(pkg, e, e.getMessage());
@@ -1143,7 +1241,7 @@ public class HiddenApiUtil {
             } else if (key.equals("human-log") || key.equals("human") || key.equals("zh-log")) {
                 options.humanLog = parseBoolean(value);
             } else {
-                System.out.println("unknown INSTALL_SESSION warnUnknownOption " + sanitizeDiagValue(arg));
+                DaemonOutput.current().println("unknown INSTALL_SESSION warnUnknownOption " + sanitizeDiagValue(arg));
             }
         }
         return options;
@@ -1239,9 +1337,9 @@ public class HiddenApiUtil {
     private static void tryCall(Object target, String methodName, Object value, String packageName) {
         try {
             invokeFlexible(target, methodName, value);
-            System.out.println(packageName + " INSTALL_SESSION param " + methodName + "=" + sanitizeDiagValue(String.valueOf(value)));
+            DaemonOutput.current().println(packageName + " INSTALL_SESSION param " + methodName + "=" + sanitizeDiagValue(String.valueOf(value)));
         } catch (Throwable e) {
-            System.out.println(packageName + " INSTALL_SESSION warnParamUnsupported " + methodName + " " + sanitizeDiagValue(e.getClass().getSimpleName()));
+            DaemonOutput.current().println(packageName + " INSTALL_SESSION warnParamUnsupported " + methodName + " " + sanitizeDiagValue(e.getClass().getSimpleName()));
             debugThrowable("SessionParams." + methodName, e);
         }
     }
@@ -1255,25 +1353,25 @@ public class HiddenApiUtil {
             for (String token : options.installFlagTokens) {
                 Integer bit = resolveInstallFlag(token);
                 if (bit == null) {
-                    System.out.println(packageName + " INSTALL_SESSION warnUnknownInstallFlag " + sanitizeDiagValue(token));
+                    DaemonOutput.current().println(packageName + " INSTALL_SESSION warnUnknownInstallFlag " + sanitizeDiagValue(token));
                     continue;
                 }
                 flags |= bit;
-                System.out.println(packageName + " INSTALL_SESSION installFlagAdd " + sanitizeDiagValue(token) + "=" + bit);
+                DaemonOutput.current().println(packageName + " INSTALL_SESSION installFlagAdd " + sanitizeDiagValue(token) + "=" + bit);
             }
             for (String token : options.clearInstallFlagTokens) {
                 Integer bit = resolveInstallFlag(token);
                 if (bit == null) {
-                    System.out.println(packageName + " INSTALL_SESSION warnUnknownClearInstallFlag " + sanitizeDiagValue(token));
+                    DaemonOutput.current().println(packageName + " INSTALL_SESSION warnUnknownClearInstallFlag " + sanitizeDiagValue(token));
                     continue;
                 }
                 flags &= ~bit;
-                System.out.println(packageName + " INSTALL_SESSION installFlagClear " + sanitizeDiagValue(token) + "=" + bit);
+                DaemonOutput.current().println(packageName + " INSTALL_SESSION installFlagClear " + sanitizeDiagValue(token) + "=" + bit);
             }
             field.setInt(params, flags);
-            System.out.println(packageName + " INSTALL_SESSION installFlags original=" + original + " final=" + flags);
+            DaemonOutput.current().println(packageName + " INSTALL_SESSION installFlags original=" + original + " final=" + flags);
         } catch (Throwable e) {
-            System.out.println(packageName + " INSTALL_SESSION warnInstallFlagsUnsupported " + sanitizeDiagValue(e.getClass().getName()));
+            DaemonOutput.current().println(packageName + " INSTALL_SESSION warnInstallFlagsUnsupported " + sanitizeDiagValue(e.getClass().getName()));
             debugThrowable("SessionParams.installFlags", e);
         }
     }
@@ -1373,9 +1471,9 @@ public class HiddenApiUtil {
                     state = getPackageInstallerConstant("PERMISSION_STATE_DEFAULT", 0);
                 }
                 invokeFlexible(params, "setPermissionState", perm, state);
-                System.out.println(packageName + " INSTALL_SESSION permissionState " + sanitizeDiagValue(perm) + "=" + state);
+                DaemonOutput.current().println(packageName + " INSTALL_SESSION permissionState " + sanitizeDiagValue(perm) + "=" + state);
             } catch (Throwable e) {
-                System.out.println(packageName + " INSTALL_SESSION warnPermissionStateUnsupported " + sanitizeDiagValue(token));
+                DaemonOutput.current().println(packageName + " INSTALL_SESSION warnPermissionStateUnsupported " + sanitizeDiagValue(token));
                 debugThrowable("SessionParams.setPermissionState", e);
             }
         }
@@ -1393,7 +1491,7 @@ public class HiddenApiUtil {
         try {
             java.lang.reflect.Field f = object.getClass().getDeclaredField(fieldName);
             f.setAccessible(true);
-            System.out.println(packageName + " INSTALL_SESSION " + prefix + "." + fieldName + "=" + f.getInt(object));
+            DaemonOutput.current().println(packageName + " INSTALL_SESSION " + prefix + "." + fieldName + "=" + f.getInt(object));
         } catch (Throwable ignored) {
         }
     }
@@ -1403,7 +1501,7 @@ public class HiddenApiUtil {
             java.lang.reflect.Field f = object.getClass().getDeclaredField(fieldName);
             f.setAccessible(true);
             Object v = f.get(object);
-            System.out.println(packageName + " INSTALL_SESSION " + prefix + "." + fieldName + "=" + sanitizeDiagValue(String.valueOf(v)));
+            DaemonOutput.current().println(packageName + " INSTALL_SESSION " + prefix + "." + fieldName + "=" + sanitizeDiagValue(String.valueOf(v)));
         } catch (Throwable ignored) {
         }
     }
@@ -1413,7 +1511,7 @@ public class HiddenApiUtil {
         try {
             Object info = invokeFlexible(packageInstaller, "getSessionInfo", sessionId);
             if (info == null) {
-                System.out.println(packageName + " INSTALL_SESSION sessionInfo null");
+                DaemonOutput.current().println(packageName + " INSTALL_SESSION sessionInfo null");
                 return;
             }
             String[] getters = new String[] {
@@ -1424,7 +1522,7 @@ public class HiddenApiUtil {
             for (String getter : getters) {
                 try {
                     Object v = invokeFlexible(info, getter);
-                    System.out.println(packageName + " INSTALL_SESSION sessionInfo." + getter + "=" + sanitizeDiagValue(String.valueOf(v)));
+                    DaemonOutput.current().println(packageName + " INSTALL_SESSION sessionInfo." + getter + "=" + sanitizeDiagValue(String.valueOf(v)));
                 } catch (Throwable ignored) {
                 }
             }
@@ -1465,9 +1563,9 @@ public class HiddenApiUtil {
             code = "VERIFICATION_FAILED";
             hint = "SYSTEM_VERIFIER_REJECTED_CHECK_LOGCAT_VERIFIER_PACKAGEINSTALLER";
         }
-        System.out.println(packageName + " INSTALL_SESSION failureCode " + code);
-        System.out.println(packageName + " INSTALL_ERROR_CLASS pkg=" + sanitizeDiagValue(packageName) + " class=" + code + " hint=" + sanitizeDiagValue(hint));
-        System.out.println(packageName + " INSTALL_SESSION failureHint " + sanitizeDiagValue(hint));
+        DaemonOutput.current().println(packageName + " INSTALL_SESSION failureCode " + code);
+        DaemonOutput.current().println(packageName + " INSTALL_ERROR_CLASS pkg=" + sanitizeDiagValue(packageName) + " class=" + code + " hint=" + sanitizeDiagValue(hint));
+        DaemonOutput.current().println(packageName + " INSTALL_SESSION failureHint " + sanitizeDiagValue(hint));
         human(packageName, "安裝失敗原因: " + hint + " (" + code + ")");
     }
 
@@ -1483,6 +1581,9 @@ public class HiddenApiUtil {
         } catch (Throwable e) {
             debugThrowable("createPackageContextAsUser " + packageName + " user=" + userId, e);
         }
+        Object contextUser = invokeFlexible(base, "getUserId");
+        if (!(contextUser instanceof Number) || ((Number) contextUser).intValue() != userId)
+            throw new IllegalStateException("Cannot create context for user " + userId);
         return base.createPackageContext(packageName, Context.CONTEXT_IGNORE_SECURITY);
     }
 
@@ -1531,7 +1632,7 @@ public class HiddenApiUtil {
                 try {
                     printInstallSourceDiagnostics(realPm, pmHidden, userId, packageName, playStoreSnapshot, playServicesSnapshot);
                 } catch (Exception e) {
-                    System.out.println("INSTALL_SOURCE_FAILED_SKIP package=" + sanitizeDiagValue(packageName) + " reason=" + failureReason(e));
+                    DaemonOutput.current().println("INSTALL_SOURCE_FAILED_SKIP package=" + sanitizeDiagValue(packageName) + " reason=" + failureReason(e));
                     human(packageName, "讀取安裝來源失敗: " + humanizeException(e));
                 }
             }
@@ -1592,7 +1693,7 @@ public class HiddenApiUtil {
     }
 
     private static void printInstallDiag(String packageName, String key, String value) {
-        System.out.println(packageName + " INSTALL_DIAG " + key + " " + sanitizeDiagValue(value));
+        DaemonOutput.current().println(packageName + " INSTALL_DIAG " + key + " " + sanitizeDiagValue(value));
     }
 
     private static String sanitizeDiagValue(String value) {
@@ -1795,7 +1896,7 @@ public class HiddenApiUtil {
 
     private static void appInventoryPkgUid(String[] args) {
         try {
-            System.out.print(AppInventoryUtil.pkgUidSingle(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args)));
+            DaemonOutput.current().print(AppInventoryUtil.pkgUidSingle(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args)));
             System.exit(0);
         } catch (Throwable t) {
             t.printStackTrace(System.err);
@@ -1817,7 +1918,7 @@ public class HiddenApiUtil {
     private static void hiddenApiRuntimeProbe(String[] args) {
         int userId = parseIntArg(args, 1, 0);
         String pkg = args != null && args.length > 2 ? argAt(args, 2) : "";
-        System.out.print(HiddenApiRuntimeProbe.run(userId, pkg));
+        DaemonOutput.current().print(HiddenApiRuntimeProbe.run(userId, pkg));
         System.exit(0);
     }
 
@@ -1831,7 +1932,7 @@ public class HiddenApiUtil {
         int userId = parseIntArg(args, 1, 0);
         String pkg = argAt(args, 2);
         String action = args != null && args.length > 3 ? argAt(args, 3) : "guard-stop";
-        System.out.print(ProcessObserverUtil.killGuardOnce(userId, pkg, action));
+        DaemonOutput.current().print(ProcessObserverUtil.killGuardOnce(userId, pkg, action));
         System.exit(0);
     }
 
@@ -1847,7 +1948,7 @@ public class HiddenApiUtil {
         String pkg = argAt(args, 2);
         String mode = args != null && args.length > 3 ? argAt(args, 3) : "normal";
         String logPath = args != null && args.length > 4 ? argAt(args, 4) : "-";
-        System.out.print(AppWakeBlockUtil.start(userId, pkg, mode, logPath));
+        DaemonOutput.current().print(AppWakeBlockUtil.start(userId, pkg, mode, logPath));
         System.exit(0);
     }
 
@@ -1855,12 +1956,13 @@ public class HiddenApiUtil {
         int token = parseIntArg(args, 1, -1);
         int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
         String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
-        System.out.print(AppWakeBlockUtil.stop(token, expectedUser, expectedPkg));
-        System.exit(0);
+        String result = AppWakeBlockUtil.stop(token, expectedUser, expectedPkg);
+        DaemonOutput.current().print(result);
+        System.exit(OperationResult.exitCode(result, "wake-stop"));
     }
 
     private static void appWakeBlockStatus() {
-        System.out.print(AppWakeBlockUtil.status());
+        DaemonOutput.current().print(AppWakeBlockUtil.status());
         System.exit(0);
     }
 
@@ -1870,7 +1972,7 @@ public class HiddenApiUtil {
         long durationMs = parseLongArg(args, 3, 60000L);
         String mode = args != null && args.length > 4 ? argAt(args, 4) : "normal";
         String logPath = args != null && args.length > 5 ? argAt(args, 5) : "-";
-        System.out.print(AppWakeBlockUtil.hold(userId, pkg, durationMs, mode, logPath));
+        DaemonOutput.current().print(AppWakeBlockUtil.hold(userId, pkg, durationMs, mode, logPath));
         System.exit(0);
     }
 
@@ -1878,28 +1980,31 @@ public class HiddenApiUtil {
         int token = parseIntArg(args, 1, -1);
         int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
         String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
-        System.out.print(AppWakeBlockUtil.restorePersistedObserverToken(token, "cli-observer-token-" + token, expectedUser, expectedPkg));
+        DaemonOutput.current().print(AppWakeBlockUtil.restorePersistedObserverToken(token, "cli-observer-token-" + token, expectedUser, expectedPkg));
         System.exit(0);
     }
 
     private static void appWakeBlockRestorePackage(String[] args) {
         int userId = parseIntArg(args, 1, 0);
         String pkg = argAt(args, 2);
-        System.out.print(AppWakeBlockUtil.restorePersistedPackage(userId, pkg, "cli-package"));
-        System.exit(0);
+        String out = AppWakeBlockUtil.restorePersistedPackage(userId, pkg, "cli-package");
+        DaemonOutput.current().print(out);
+        System.exit(OperationResult.exitCode(out, "wake-restore-package"));
     }
 
     private static void appWakeBlockRestoreAll(String[] args) {
         String reason = args != null && args.length > 1 ? argAt(args, 1) : "cli-all";
-        System.out.print(AppWakeBlockUtil.restorePersistedAll(reason));
-        System.exit(0);
+        String out = AppWakeBlockUtil.restorePersistedAll(reason);
+        DaemonOutput.current().print(out);
+        System.exit(OperationResult.exitCode(out, "wake-restore-all"));
     }
 
     private static void appWakeBlockCleanupStale(String[] args) {
         String reason = args != null && args.length > 1 ? argAt(args, 1) : "cli-cleanup-stale";
         long ttlMs = args != null && args.length > 2 ? parseLongArg(args, 2, 24L * 60L * 60L * 1000L) : 24L * 60L * 60L * 1000L;
-        System.out.print(AppWakeBlockUtil.cleanupStalePersistentStates(reason, ttlMs));
-        System.exit(0);
+        String out = AppWakeBlockUtil.cleanupStalePersistentStates(reason, ttlMs);
+        DaemonOutput.current().print(out);
+        System.exit(OperationResult.exitCode(out, "wake-cleanup"));
     }
 
     private static DaemonRunResult appWakeBlockStartDaemonCommand(String[] args) {
@@ -1914,7 +2019,8 @@ public class HiddenApiUtil {
         int token = parseIntArg(args, 1, -1);
         int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
         String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
-        return new DaemonRunResult(0, AppWakeBlockUtil.stop(token, expectedUser, expectedPkg));
+        String result = AppWakeBlockUtil.stop(token, expectedUser, expectedPkg);
+        return new DaemonRunResult(OperationResult.exitCode(result, "wake-stop"), result);
     }
 
     private static DaemonRunResult appWakeBlockHoldDaemonCommand(String[] args) {
@@ -1936,18 +2042,21 @@ public class HiddenApiUtil {
     private static DaemonRunResult appWakeBlockRestorePackageDaemonCommand(String[] args) {
         int userId = parseIntArg(args, 1, 0);
         String pkg = argAt(args, 2);
-        return new DaemonRunResult(0, AppWakeBlockUtil.restorePersistedPackage(userId, pkg, "daemon-package"));
+        String out = AppWakeBlockUtil.restorePersistedPackage(userId, pkg, "daemon-package");
+        return new DaemonRunResult(OperationResult.exitCode(out, "wake-restore-package"), out);
     }
 
     private static DaemonRunResult appWakeBlockRestoreAllDaemonCommand(String[] args) {
         String reason = args != null && args.length > 1 ? argAt(args, 1) : "daemon-all";
-        return new DaemonRunResult(0, AppWakeBlockUtil.restorePersistedAll(reason));
+        String out = AppWakeBlockUtil.restorePersistedAll(reason);
+        return new DaemonRunResult(OperationResult.exitCode(out, "wake-restore-all"), out);
     }
 
     private static DaemonRunResult appWakeBlockCleanupStaleDaemonCommand(String[] args) {
         String reason = args != null && args.length > 1 ? argAt(args, 1) : "daemon-cleanup-stale";
         long ttlMs = args != null && args.length > 2 ? parseLongArg(args, 2, 24L * 60L * 60L * 1000L) : 24L * 60L * 60L * 1000L;
-        return new DaemonRunResult(0, AppWakeBlockUtil.cleanupStalePersistentStates(reason, ttlMs));
+        String out = AppWakeBlockUtil.cleanupStalePersistentStates(reason, ttlMs);
+        return new DaemonRunResult(OperationResult.exitCode(out, "wake-cleanup"), out);
     }
 
     private static void uidNetBlockStart(String[] args) {
@@ -1956,7 +2065,7 @@ public class HiddenApiUtil {
         String mode = args != null && args.length > 3 ? argAt(args, 3) : "netpolicy";
         String logPath = args != null && args.length > 4 ? argAt(args, 4) : "-";
         String out = UidNetworkBlockUtil.start(userId, pkg, mode, logPath);
-        System.out.print(out);
+        DaemonOutput.current().print(out);
         System.exit(OperationResult.exitCode(out, "uidnet-start"));
     }
 
@@ -1965,39 +2074,42 @@ public class HiddenApiUtil {
         int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
         String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
         String out = UidNetworkBlockUtil.stop(token, expectedUser, expectedPkg);
-        System.out.print(out);
+        DaemonOutput.current().print(out);
         System.exit(OperationResult.exitCode(out, "uidnet-stop"));
     }
 
     private static void uidNetBlockStatus() {
-        System.out.print(UidNetworkBlockUtil.status());
+        DaemonOutput.current().print(UidNetworkBlockUtil.status());
         System.exit(0);
     }
 
     private static void uidNetBlockRestorePackage(String[] args) {
         int userId = parseIntArg(args, 1, 0);
         String pkg = argAt(args, 2);
-        System.out.print(UidNetworkBlockUtil.restorePersistedPackage(userId, pkg, "cli-package"));
-        System.exit(0);
+        String out = UidNetworkBlockUtil.restorePersistedPackage(userId, pkg, "cli-package");
+        DaemonOutput.current().print(out);
+        System.exit(OperationResult.exitCode(out, "uidnet-stop"));
     }
 
     private static void uidNetBlockRestoreAll(String[] args) {
         String reason = args != null && args.length > 1 ? argAt(args, 1) : "cli-all";
-        System.out.print(UidNetworkBlockUtil.restorePersistedAll(reason));
-        System.exit(0);
+        String out = UidNetworkBlockUtil.restorePersistedAll(reason);
+        DaemonOutput.current().print(out);
+        System.exit(OperationResult.exitCode(out, "uidnet-restore-all"));
     }
 
     private static void uidNetBlockCleanupStale(String[] args) {
         String reason = args != null && args.length > 1 ? argAt(args, 1) : "cli-cleanup-stale";
         long ttlMs = args != null && args.length > 2 ? parseLongArg(args, 2, 24L * 60L * 60L * 1000L) : 24L * 60L * 60L * 1000L;
-        System.out.print(UidNetworkBlockUtil.cleanupStalePersistentStates(reason, ttlMs));
-        System.exit(0);
+        String out = UidNetworkBlockUtil.cleanupStalePersistentStates(reason, ttlMs);
+        DaemonOutput.current().print(out);
+        System.exit(OperationResult.exitCode(out, "uidnet-cleanup"));
     }
 
     private static void uidNetBlockProbe(String[] args) {
         int userId = parseIntArg(args, 1, 0);
         String pkg = argAt(args, 2);
-        System.out.print(UidNetworkBlockUtil.probe(userId, pkg));
+        DaemonOutput.current().print(UidNetworkBlockUtil.probe(userId, pkg));
         System.exit(0);
     }
 
@@ -2021,18 +2133,21 @@ public class HiddenApiUtil {
     private static DaemonRunResult uidNetBlockRestorePackageDaemonCommand(String[] args) {
         int userId = parseIntArg(args, 1, 0);
         String pkg = argAt(args, 2);
-        return new DaemonRunResult(0, UidNetworkBlockUtil.restorePersistedPackage(userId, pkg, "daemon-package"));
+        String out = UidNetworkBlockUtil.restorePersistedPackage(userId, pkg, "daemon-package");
+        return new DaemonRunResult(OperationResult.exitCode(out, "uidnet-stop"), out);
     }
 
     private static DaemonRunResult uidNetBlockRestoreAllDaemonCommand(String[] args) {
         String reason = args != null && args.length > 1 ? argAt(args, 1) : "daemon-all";
-        return new DaemonRunResult(0, UidNetworkBlockUtil.restorePersistedAll(reason));
+        String out = UidNetworkBlockUtil.restorePersistedAll(reason);
+        return new DaemonRunResult(OperationResult.exitCode(out, "uidnet-restore-all"), out);
     }
 
     private static DaemonRunResult uidNetBlockCleanupStaleDaemonCommand(String[] args) {
         String reason = args != null && args.length > 1 ? argAt(args, 1) : "daemon-cleanup-stale";
         long ttlMs = args != null && args.length > 2 ? parseLongArg(args, 2, 24L * 60L * 60L * 1000L) : 24L * 60L * 60L * 1000L;
-        return new DaemonRunResult(0, UidNetworkBlockUtil.cleanupStalePersistentStates(reason, ttlMs));
+        String out = UidNetworkBlockUtil.cleanupStalePersistentStates(reason, ttlMs);
+        return new DaemonRunResult(OperationResult.exitCode(out, "uidnet-cleanup"), out);
     }
 
     private static DaemonRunResult uidNetBlockProbeDaemonCommand(String[] args) {
@@ -2048,7 +2163,7 @@ public class HiddenApiUtil {
         int timeoutMs = parseIntArg(args, 4, 1500);
         String owner = args != null && args.length > 5 ? argAt(args, 5) : "manual";
         String out = CgroupFreezeUtil.start(userId, pkg, pid, timeoutMs, owner);
-        System.out.print(out);
+        DaemonOutput.current().print(out);
         System.exit(OperationResult.exitCode(out, "cgroup-start"));
     }
 
@@ -2058,7 +2173,7 @@ public class HiddenApiUtil {
         String reason = args != null && args.length > 3 ? argAt(args, 3) : "cli-refresh";
         int timeoutMs = parseIntArg(args, 4, 1000);
         String out = CgroupFreezeUtil.refreshPrimaryAppScopePackageFreeze(userId, pkg, reason, timeoutMs);
-        System.out.print(out);
+        DaemonOutput.current().print(out);
         System.exit(OperationResult.exitCode(out, "cgroup-refresh"));
     }
 
@@ -2067,19 +2182,19 @@ public class HiddenApiUtil {
         int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
         String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
         String out = CgroupFreezeUtil.stop(token, expectedUser, expectedPkg);
-        System.out.print(out);
+        DaemonOutput.current().print(out);
         System.exit(OperationResult.exitCode(out, "cgroup-stop"));
     }
 
     private static void cgroupFreezeStatus() {
-        System.out.print(CgroupFreezeUtil.status());
+        DaemonOutput.current().print(CgroupFreezeUtil.status());
         System.exit(0);
     }
 
     private static void cgroupFreezeDaemonEnsure(String[] args) {
         String reason = args != null && args.length > 1 ? argAt(args, 1) : "cli-batch";
         String out = CgroupFreezeUtil.ensureNativeDaemonForBatch(reason);
-        System.out.print(out);
+        DaemonOutput.current().print(out);
         System.exit(OperationResult.exitCode(out, "cgroup-daemon-ensure"));
     }
 
@@ -2087,21 +2202,23 @@ public class HiddenApiUtil {
         int userId = parseIntArg(args, 1, 0);
         String pkg = argAt(args, 2);
         String out = CgroupFreezeUtil.restorePersistedPackage(userId, pkg, "cli-package");
-        System.out.print(out);
+        DaemonOutput.current().print(out);
         System.exit(OperationResult.exitCode(out, "cgroup-restore-package"));
     }
 
     private static void cgroupFreezeRestoreAll(String[] args) {
         String reason = args != null && args.length > 1 ? argAt(args, 1) : "cli-all";
-        System.out.print(CgroupFreezeUtil.restorePersistedAll(reason));
-        System.exit(0);
+        String out = CgroupFreezeUtil.restorePersistedAll(reason);
+        DaemonOutput.current().print(out);
+        System.exit(OperationResult.exitCode(out, "cgroup-restore-all"));
     }
 
     private static void cgroupFreezeCleanupStale(String[] args) {
         String reason = args != null && args.length > 1 ? argAt(args, 1) : "cli-cleanup-stale";
         long ttlMs = args != null && args.length > 2 ? parseLongArg(args, 2, 24L * 60L * 60L * 1000L) : 24L * 60L * 60L * 1000L;
-        System.out.print(CgroupFreezeUtil.cleanupStalePersistentStates(reason, ttlMs));
-        System.exit(0);
+        String out = CgroupFreezeUtil.cleanupStalePersistentStates(reason, ttlMs);
+        DaemonOutput.current().print(out);
+        System.exit(OperationResult.exitCode(out, "cgroup-cleanup"));
     }
 
     private static DaemonRunResult cgroupFreezeStartDaemonCommand(String[] args) {
@@ -2140,13 +2257,15 @@ public class HiddenApiUtil {
 
     private static DaemonRunResult cgroupFreezeRestoreAllDaemonCommand(String[] args) {
         String reason = args != null && args.length > 1 ? argAt(args, 1) : "daemon-all";
-        return new DaemonRunResult(0, CgroupFreezeUtil.restorePersistedAll(reason));
+        String out = CgroupFreezeUtil.restorePersistedAll(reason);
+        return new DaemonRunResult(OperationResult.exitCode(out, "cgroup-restore-all"), out);
     }
 
     private static DaemonRunResult cgroupFreezeCleanupStaleDaemonCommand(String[] args) {
         String reason = args != null && args.length > 1 ? argAt(args, 1) : "daemon-cleanup-stale";
         long ttlMs = args != null && args.length > 2 ? parseLongArg(args, 2, 24L * 60L * 60L * 1000L) : 24L * 60L * 60L * 1000L;
-        return new DaemonRunResult(0, CgroupFreezeUtil.cleanupStalePersistentStates(reason, ttlMs));
+        String out = CgroupFreezeUtil.cleanupStalePersistentStates(reason, ttlMs);
+        return new DaemonRunResult(OperationResult.exitCode(out, "cgroup-cleanup"), out);
     }
 
     private static void processObserverStart(String[] args) {
@@ -2155,7 +2274,7 @@ public class HiddenApiUtil {
         String action = args != null && args.length > 3 ? argAt(args, 3) : "monitor";
         String logPath = args != null && args.length > 4 ? argAt(args, 4) : "-";
         String out = ProcessObserverUtil.startAsync(userId, pkg, action, logPath);
-        System.out.print(out);
+        DaemonOutput.current().print(out);
         System.exit(OperationResult.exitCode(out, "observer-start"));
     }
 
@@ -2163,7 +2282,7 @@ public class HiddenApiUtil {
         int token = parseIntArg(args, 1, -1);
         int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
         String expectedPkg = args != null && args.length > 3 ? argAt(args, 3) : "";
-        System.out.print(ProcessObserverUtil.stopAsync(token, expectedUser, expectedPkg));
+        DaemonOutput.current().print(ProcessObserverUtil.stopAsync(token, expectedUser, expectedPkg));
         System.exit(0);
     }
 
@@ -2172,7 +2291,7 @@ public class HiddenApiUtil {
         int userId = parseIntArg(args, 1, 0);
         String specPath = argAt(args, 2);
         String out = ProcessObserverUtil.startBatchAsync(userId, specPath);
-        System.out.print(out);
+        DaemonOutput.current().print(out);
         System.exit(OperationResult.exitCode(out, "observer-batch-start"));
     }
 
@@ -2181,7 +2300,7 @@ public class HiddenApiUtil {
         int expectedUser = args != null && args.length > 2 ? parseIntArg(args, 2, -1) : -1;
         String summaryPath = args != null && args.length > 3 ? argAt(args, 3) : "";
         String out = ProcessObserverUtil.stopBatchAsync(statePath, expectedUser, summaryPath);
-        System.out.print(out);
+        DaemonOutput.current().print(out);
         System.exit(OperationResult.exitCode(out, "observer-batch-stop"));
     }
 
@@ -2189,8 +2308,9 @@ public class HiddenApiUtil {
     private static void processObserverBatchCleanupStale(String[] args) {
         String reason = args != null && args.length > 1 ? argAt(args, 1) : "cli-batch-cleanup-stale";
         long ttlMs = args != null && args.length > 2 ? parseLongArg(args, 2, 24L * 60L * 60L * 1000L) : 24L * 60L * 60L * 1000L;
-        System.out.print(ProcessObserverUtil.cleanupStalePersistentStates(reason, ttlMs));
-        System.exit(0);
+        String out = ProcessObserverUtil.cleanupStalePersistentStates(reason, ttlMs);
+        DaemonOutput.current().print(out);
+        System.exit(OperationResult.exitCode(out, "observer-cleanup"));
     }
 
 
@@ -2204,64 +2324,64 @@ public class HiddenApiUtil {
         String imePkg = args != null && args.length > 7 ? argAt(args, 7) : "";
         String factsOut = args != null && args.length > 8 ? argAt(args, 8) : "";
         String out = ProcessObserverUtil.startRestoreSessionFromCompareMap(userId, compareMap, pkgsOut, policy, logPath, homePkg, imePkg, factsOut);
-        System.out.print(out);
+        DaemonOutput.current().print(out);
         System.exit(OperationResult.exitCode(out, "observer-restore-start"));
     }
 
     private static void processObserverStatus() {
-        System.out.print(ProcessObserverUtil.status());
+        DaemonOutput.current().print(ProcessObserverUtil.status());
         System.exit(0);
     }
 
     private static void processObserverTop(String[] args) {
         int userId = parseIntArg(args, 1, 0);
-        System.out.print(ProcessObserverUtil.topStatus(userId));
+        DaemonOutput.current().print(ProcessObserverUtil.topStatus(userId));
         System.exit(0);
     }
 
     private static void processObserverForeground(String[] args) {
         int userId = parseIntArg(args, 1, 0);
-        System.out.print(ProcessObserverUtil.foregroundStatus(userId, args, 2));
+        DaemonOutput.current().print(ProcessObserverUtil.foregroundStatus(userId, args, 2));
         System.exit(0);
     }
     private static void packageLiveState(String[] args) {
         int userId = parseIntArg(args, 1, 0);
-        System.out.print(ProcessObserverUtil.packageLiveState(userId, args, 2));
+        DaemonOutput.current().print(ProcessObserverUtil.packageLiveState(userId, args, 2));
         System.exit(0);
     }
 
     private static void uidLiveState(String[] args) {
         int userId = parseIntArg(args, 1, 0);
-        System.out.print(ProcessObserverUtil.uidLiveState(userId, args, 2));
+        DaemonOutput.current().print(ProcessObserverUtil.uidLiveState(userId, args, 2));
         System.exit(0);
     }
 
     private static void packageInstallSnapshot(String[] args) {
         int userId = parseIntArg(args, 1, 0);
-        System.out.print(ProcessObserverUtil.packageInstallSnapshot(userId, args, 2));
+        DaemonOutput.current().print(ProcessObserverUtil.packageInstallSnapshot(userId, args, 2));
         System.exit(0);
     }
 
     private static void packageRestrictionSnapshot(String[] args) {
         int userId = parseIntArg(args, 1, 0);
-        System.out.print(ProcessObserverUtil.packageRestrictionSnapshot(userId, args, 2));
+        DaemonOutput.current().print(ProcessObserverUtil.packageRestrictionSnapshot(userId, args, 2));
         System.exit(0);
     }
 
     private static void uidObserverProbe() {
-        System.out.print(ProcessObserverUtil.uidObserverProbe());
+        DaemonOutput.current().print(ProcessObserverUtil.uidObserverProbe());
         System.exit(0);
     }
 
     private static void uidObserverWatch(String[] args) {
         int userId = parseIntArg(args, 1, 0);
-        System.out.print(ProcessObserverUtil.uidObserverWatch(userId, args, 2));
+        DaemonOutput.current().print(ProcessObserverUtil.uidObserverWatch(userId, args, 2));
         System.exit(0);
     }
 
     private static void forceStopPackageVerify(String[] args) {
         int userId = parseIntArg(args, 1, 0);
-        System.out.print(ProcessObserverUtil.forceStopPackageVerify(userId, args, 2));
+        DaemonOutput.current().print(ProcessObserverUtil.forceStopPackageVerify(userId, args, 2));
         System.exit(0);
     }
 
@@ -2343,7 +2463,8 @@ public class HiddenApiUtil {
     private static DaemonRunResult processObserverBatchCleanupStaleDaemonCommand(String[] args) {
         String reason = args != null && args.length > 1 ? argAt(args, 1) : "daemon-batch-cleanup-stale";
         long ttlMs = args != null && args.length > 2 ? parseLongArg(args, 2, 24L * 60L * 60L * 1000L) : 24L * 60L * 60L * 1000L;
-        return new DaemonRunResult(0, ProcessObserverUtil.cleanupStalePersistentStates(reason, ttlMs));
+        String out = ProcessObserverUtil.cleanupStalePersistentStates(reason, ttlMs);
+        return new DaemonRunResult(OperationResult.exitCode(out, "observer-cleanup"), out);
     }
 
 
@@ -2368,7 +2489,7 @@ public class HiddenApiUtil {
             long durationMs = parseLongArg(args, 3, 60000L);
             String action = args != null && args.length > 4 ? argAt(args, 4) : "monitor";
             String logPath = args != null && args.length > 5 ? argAt(args, 5) : "-";
-            System.out.print(ProcessObserverUtil.watchBlocking(userId, pkg, durationMs, action, logPath));
+            DaemonOutput.current().print(ProcessObserverUtil.watchBlocking(userId, pkg, durationMs, action, logPath));
             System.exit(0);
         } catch (Throwable t) {
             t.printStackTrace(System.err);
@@ -2402,7 +2523,7 @@ public class HiddenApiUtil {
 
     private static void appInventoryPackageStatus(String[] args) {
         try {
-            System.out.print((java.util.Arrays.asList(args).contains("fields") ? AppInventoryUtil.packageStatusFields(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args)) : AppInventoryUtil.packageStatusSingle(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args))));
+            DaemonOutput.current().print((java.util.Arrays.asList(args).contains("enabled") ? AppInventoryUtil.packageEnabledSingle(parseIntArg(args, 1, 0), argAt(args, 2)) : java.util.Arrays.asList(args).contains("fields") ? AppInventoryUtil.packageStatusFields(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args)) : AppInventoryUtil.packageStatusSingle(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args))));
             System.exit(0);
         } catch (Throwable t) {
             t.printStackTrace(System.err);
@@ -2412,7 +2533,7 @@ public class HiddenApiUtil {
 
     private static DaemonRunResult appInventoryPackageStatusDaemonCommand(String[] args) {
         try {
-            return new DaemonRunResult(0, (java.util.Arrays.asList(args).contains("fields") ? AppInventoryUtil.packageStatusFields(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args)) : AppInventoryUtil.packageStatusSingle(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args))));
+            return new DaemonRunResult(0, (java.util.Arrays.asList(args).contains("enabled") ? AppInventoryUtil.packageEnabledSingle(parseIntArg(args, 1, 0), argAt(args, 2)) : java.util.Arrays.asList(args).contains("fields") ? AppInventoryUtil.packageStatusFields(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args)) : AppInventoryUtil.packageStatusSingle(parseIntArg(args, 1, 0), argAt(args, 2), hasRefreshArg(args))));
         } catch (Throwable t) {
             t.printStackTrace(System.err);
             return new DaemonRunResult(1, "APP_INVENTORY_PACKAGE_STATUS_FAILED exception=" + sanitizeDiagValue(t.getClass().getName())
@@ -2424,7 +2545,7 @@ public class HiddenApiUtil {
         try {
             int userId = parseIntArg(args, 1, 0);
             String[] pkgs = args == null || args.length <= 2 ? new String[0] : java.util.Arrays.copyOfRange(args, 2, args.length);
-            System.out.print(AppInventoryUtil.packageStatusBatch(userId, pkgs, hasRefreshArg(args)));
+            DaemonOutput.current().print(AppInventoryUtil.packageStatusBatch(userId, pkgs, hasRefreshArg(args)));
             System.exit(0);
         } catch (Throwable t) {
             t.printStackTrace(System.err);
@@ -2448,7 +2569,7 @@ public class HiddenApiUtil {
         try {
             int userId = parseIntArg(args, 1, 0);
             String[] pkgs = args == null || args.length <= 2 ? new String[0] : java.util.Arrays.copyOfRange(args, 2, args.length);
-            System.out.print(AppInventoryUtil.packageFactsBatch(userId, pkgs, hasRefreshArg(args)));
+            DaemonOutput.current().print(AppInventoryUtil.packageFactsBatch(userId, pkgs, hasRefreshArg(args)));
             System.exit(0);
         } catch (Throwable t) {
             t.printStackTrace(System.err);
@@ -2473,7 +2594,7 @@ public class HiddenApiUtil {
         try {
             int userId = parseIntArg(args, 1, 0);
             String[] pkgs = packageArgsWithoutRefresh(args, 2);
-            System.out.print(AppInventoryUtil.preRestorePackageStateBatch(userId, pkgs, hasRefreshArg(args)));
+            DaemonOutput.current().print(AppInventoryUtil.preRestorePackageStateBatch(userId, pkgs, hasRefreshArg(args)));
             System.exit(0);
         } catch (Throwable t) {
             t.printStackTrace(System.err);
@@ -2497,7 +2618,7 @@ public class HiddenApiUtil {
         try {
             int userId = parseIntArg(args, 1, 0);
             if (args == null || args.length < 4) throw new IllegalArgumentException("installerContextFacts USER_ID TARGET_PACKAGE INSTALLER_PACKAGE [refresh]");
-            System.out.print(AppInventoryUtil.installerContextFacts(userId, args[2], args[3], hasRefreshArg(args)));
+            DaemonOutput.current().print(AppInventoryUtil.installerContextFacts(userId, args[2], args[3], hasRefreshArg(args)));
             System.exit(0);
         } catch (Throwable t) {
             System.err.println("INSTALLER_CONTEXT_FACTS_FAILED\texception=" + sanitizeMachineValue(t.getClass().getName())
@@ -2517,7 +2638,7 @@ public class HiddenApiUtil {
 
     private static void restoreInstallFacts(String[] args) {
         DaemonRunResult result = restoreInstallFactsDaemonCommand(args);
-        System.out.print(result.stdout);
+        DaemonOutput.current().print(result.stdout);
         System.exit(result.rc);
     }
 
@@ -2534,7 +2655,7 @@ public class HiddenApiUtil {
         try {
             int userId = parseIntArg(args, 1, 0);
             if (args == null || args.length < 5) throw new IllegalArgumentException("restoreInstallPlan USER_ID PACKAGE APK_KIND BACKUP_INSTALLER [POLICY] [refresh]");
-            System.out.print(AppInventoryUtil.restoreInstallPlan(userId, args[2], args[3], args[4], argAt(args, 5), hasRefreshArg(args)));
+            DaemonOutput.current().print(AppInventoryUtil.restoreInstallPlan(userId, args[2], args[3], args[4], argAt(args, 5), hasRefreshArg(args)));
             System.exit(0);
         } catch (Throwable t) {
             System.err.println("RESTORE_INSTALL_PLAN_FAILED\texception=" + sanitizeMachineValue(t.getClass().getName())
@@ -2564,7 +2685,7 @@ public class HiddenApiUtil {
                 if ("auto".equalsIgnoreCase(v) || "session".equalsIgnoreCase(v) || "session-only".equalsIgnoreCase(v)) { policy = v; continue; }
                 specs.add(v);
             }
-            System.out.print(AppInventoryUtil.restoreInstallPlanBatch(userId, specs.toArray(new String[0]), policy, hasRefreshArg(args)));
+            DaemonOutput.current().print(AppInventoryUtil.restoreInstallPlanBatch(userId, specs.toArray(new String[0]), policy, hasRefreshArg(args)));
             System.exit(0);
         } catch (Throwable t) {
             System.err.println("RESTORE_INSTALL_PLAN_BATCH_FAILED\texception=" + sanitizeMachineValue(t.getClass().getName())
@@ -2610,7 +2731,7 @@ public class HiddenApiUtil {
         try {
             int userId = parseIntArg(args, 1, 0);
             String[] pkgs = packageArgsWithoutRefresh(args, 2);
-            System.out.print(AppInventoryUtil.packageFactsBatch(userId, pkgs, true));
+            DaemonOutput.current().print(AppInventoryUtil.packageFactsBatch(userId, pkgs, true));
             System.exit(0);
         } catch (Throwable t) {
             t.printStackTrace(System.err);
@@ -2695,7 +2816,7 @@ public class HiddenApiUtil {
 
     private static void defaultRoleFacts(String[] args) {
         int userId = parseIntArg(args, 1, 0);
-        System.out.print(defaultRoleFactsOutput(userId));
+        DaemonOutput.current().print(defaultRoleFactsOutput(userId));
         System.exit(0);
     }
 
@@ -2709,7 +2830,7 @@ public class HiddenApiUtil {
         try {
             int userId = parseIntArg(args, 1, 0);
             if (args == null || args.length < 3) throw new IllegalArgumentException("packageFacts USER_ID PACKAGE [refresh]");
-            System.out.print(AppInventoryUtil.packageFactsSingle(userId, args[2], hasRefreshArg(args)));
+            DaemonOutput.current().print(AppInventoryUtil.packageFactsSingle(userId, args[2], hasRefreshArg(args)));
             System.exit(0);
         } catch (Throwable t) {
             System.err.println("PACKAGE_FACTS_FAILED\texception=" + sanitizeMachineValue(t.getClass().getName())
@@ -2732,7 +2853,7 @@ public class HiddenApiUtil {
         try {
             if (args == null || args.length < 2) throw new IllegalArgumentException("packageInstalledUsers PACKAGE [MAX_USER_ID] [refresh]");
             int maxUser = parseIntArg(args, 2, 15);
-            System.out.print(AppInventoryUtil.packageInstalledUsersFacts(args[1], maxUser, hasRefreshArg(args)));
+            DaemonOutput.current().print(AppInventoryUtil.packageInstalledUsersFacts(args[1], maxUser, hasRefreshArg(args)));
             System.exit(0);
         } catch (Throwable t) {
             System.err.println("PACKAGE_INSTALLED_USERS_FAILED\texception=" + sanitizeMachineValue(t.getClass().getName())
@@ -2746,11 +2867,34 @@ public class HiddenApiUtil {
         catch (Throwable t) { return new DaemonRunResult(1, "PACKAGE_INSTALLED_USERS_FAILED\t" + sanitizeMachineValue(t.getClass().getName()) + "\n"); }
     }
 
+    private static DaemonRunResult restorePackageVisible(String[] args) throws Exception {
+        if (args.length!=5 || !"refresh".equals(args[3])) throw new IllegalArgumentException("restorePackageVisible USER PACKAGE refresh MAP_ROOT");
+        String run=System.getenv("SPEEDBACKUP_RUN_TMPDIR");
+        if (run==null || !run.equals(args[4])) throw new IllegalArgumentException("package map root mismatch");
+        int user=Integer.parseInt(args[1]);
+        String facts;
+        try { facts=AppInventoryUtil.packageVisibleAfterInstallFacts(user,args[2],true); }
+        catch(Exception e){return new DaemonRunResult(1,"RESTORE_PACKAGE_VISIBLE_MISS\n");}
+        for (String line:facts.split("\n")) {
+            String[] f=line.split("\t",-1);
+            if (f.length==11 && "OK".equals(f[0]) && args[2].equals(f[1])
+                    && Integer.toString(user).equals(f[2]) && "true".equals(f[3]) && "true".equals(f[4])) {
+                try {NativeFileClient.run("restore-package-maps",run,args[2],f[5],f[7]);}
+                catch(NativeFileClient.OperationFailure e){
+                    if(e.code==3)return new DaemonRunResult(3,facts);
+                    throw e;
+                }
+                break;
+            }
+        }
+        return new DaemonRunResult(0,facts);
+    }
+
     private static void packageVisibleAfterInstall(String[] args) {
         try {
             int userId = parseIntArg(args, 1, 0);
             if (args == null || args.length < 3) throw new IllegalArgumentException("packageVisibleAfterInstall USER_ID PACKAGE [refresh]");
-            System.out.print(AppInventoryUtil.packageVisibleAfterInstallFacts(userId, args[2], hasRefreshArg(args)));
+            DaemonOutput.current().print(AppInventoryUtil.packageVisibleAfterInstallFacts(userId, args[2], hasRefreshArg(args)));
             System.exit(0);
         } catch (Throwable t) {
             System.err.println("PACKAGE_VISIBLE_AFTER_INSTALL_FAILED\texception=" + sanitizeMachineValue(t.getClass().getName())
@@ -2791,7 +2935,7 @@ public class HiddenApiUtil {
     private static void storageVolumeFacts(String[] args) {
         int userId = parseIntArg(args, 1, 0);
         String path = argAt(args, 2);
-        System.out.print(AppInventoryUtil.storageVolumeFactsOutput(userId, path));
+        DaemonOutput.current().print(AppInventoryUtil.storageVolumeFactsOutput(userId, path));
         System.exit(0);
     }
 
@@ -2803,7 +2947,7 @@ public class HiddenApiUtil {
     private static void homeImeLauncherFacts(String[] args) {
         try {
             int userId = parseIntArg(args, 1, 0);
-            System.out.print(AppInventoryUtil.homeImeLauncherFactsOutput(userId, hasRefreshArg(args)));
+            DaemonOutput.current().print(AppInventoryUtil.homeImeLauncherFactsOutput(userId, hasRefreshArg(args)));
             System.exit(0);
         } catch (Throwable t) {
             System.err.println("HOME_IME_LAUNCHER_FACTS_FAILED\texception=" + sanitizeMachineValue(t.getClass().getName())
@@ -2819,7 +2963,7 @@ public class HiddenApiUtil {
 
     private static void storageMediaFacts(String[] args) {
         int userId = parseIntArg(args, 1, 0);
-        System.out.print(storageMediaFactsOutput(userId));
+        DaemonOutput.current().print(storageMediaFactsOutput(userId));
         System.exit(0);
     }
 
@@ -2851,7 +2995,7 @@ public class HiddenApiUtil {
 
     private static void appInventoryGetlist(String[] args) {
         try {
-            System.out.print(AppInventoryUtil.runGetlistCommand(args));
+            DaemonOutput.current().print(AppInventoryUtil.runGetlistCommand(args));
             System.exit(0);
         } catch (Throwable t) {
             t.printStackTrace(System.err);
@@ -2871,7 +3015,7 @@ public class HiddenApiUtil {
 
     private static void appInventorySnapshot(String[] args) {
         try {
-            System.out.print(AppInventoryUtil.runCommand(args));
+            DaemonOutput.current().print(AppInventoryUtil.runCommand(args));
             System.exit(0);
         } catch (Throwable t) {
             t.printStackTrace(System.err);
@@ -2956,7 +3100,7 @@ public class HiddenApiUtil {
                     }
                     String item = out.toString().trim();
                     if (!item.isEmpty()) {
-                        System.out.println(item);
+                        DaemonOutput.current().println(item);
                     }
                 }
             }
@@ -3076,7 +3220,7 @@ public class HiddenApiUtil {
                         int uidMode = AppOpsCompat.getUidModeRaw(appOpsManager, op, uid, HiddenApiUtil::getPublicName);
                         int effectiveMode = getOpMode(appOpsManager, op, uid, packageName);
                         String note = classifyScopeNote(op, packageMode, uidMode, effectiveMode);
-                        System.out.println("APPOPS_SCOPE package=" + sanitizeDiagValue(packageName)
+                        DaemonOutput.current().println("APPOPS_SCOPE package=" + sanitizeDiagValue(packageName)
                                 + " op=" + op
                                 + " name=" + sanitizeDiagValue(getPublicName(op))
                                 + " package_mode=" + packageMode
@@ -3086,10 +3230,10 @@ public class HiddenApiUtil {
                         ops++;
                     }
                 } catch (Exception e) {
-                    System.out.println("APPOPS_SCOPE_PACKAGE_FAILED_SKIP package=" + sanitizeDiagValue(packageName) + " reason=" + failureReason(e));
+                    DaemonOutput.current().println("APPOPS_SCOPE_PACKAGE_FAILED_SKIP package=" + sanitizeDiagValue(packageName) + " reason=" + failureReason(e));
                 }
             }
-            System.out.println("APPOPS_SCOPE_DETAIL_OK packages=" + packages + " ops=" + ops);
+            DaemonOutput.current().println("APPOPS_SCOPE_DETAIL_OK packages=" + packages + " ops=" + ops);
             System.exit(0);
         } catch (Exception e) {
             e.printStackTrace(System.err);
@@ -3115,10 +3259,10 @@ public class HiddenApiUtil {
                     continue;
                 }
                 if (ActivityCompat.forceStopPackageNoThrow(packageName, userId)) {
-                    System.out.println("FORCE_STOP_OK package=" + sanitizeDiagValue(packageName) + " user=" + userId);
+                    DaemonOutput.current().println("FORCE_STOP_OK package=" + sanitizeDiagValue(packageName) + " user=" + userId);
                     human(packageName, "備份前停止完成");
                 } else {
-                    System.out.println("FORCE_STOP_FAILED_SKIP package=" + sanitizeDiagValue(packageName) + " user=" + userId);
+                    DaemonOutput.current().println("FORCE_STOP_FAILED_SKIP package=" + sanitizeDiagValue(packageName) + " user=" + userId);
                     human(packageName, "備份前停止失敗，已略過");
                 }
             }
@@ -3193,25 +3337,25 @@ public class HiddenApiUtil {
             int failed = 0;
             for (String packageName : packages) {
                 if (AudioPlaybackGuard.blocks(userId, packageName)) {
-                    System.out.println("FORCE_STOP_FAILED_SKIP reason=audio_playback_guard package=" + sanitizeDiagValue(packageName));
+                    DaemonOutput.current().println("FORCE_STOP_FAILED_SKIP reason=audio_playback_guard package=" + sanitizeDiagValue(packageName));
                     failed++;
                     continue;
                 }
                 if (ActivityCompat.forceStopPackageNoThrow(packageName, userId)) {
-                    System.out.println("FORCE_STOP_OK package=" + sanitizeDiagValue(packageName) + " user=" + userId);
+                    DaemonOutput.current().println("FORCE_STOP_OK package=" + sanitizeDiagValue(packageName) + " user=" + userId);
                 } else {
-                    System.out.println("FORCE_STOP_FAILED_SKIP package=" + sanitizeDiagValue(packageName) + " user=" + userId);
+                    DaemonOutput.current().println("FORCE_STOP_FAILED_SKIP package=" + sanitizeDiagValue(packageName) + " user=" + userId);
                     failed++;
                 }
             }
             boolean ok = !packages.isEmpty() && failed == 0;
-            System.out.print(new OperationResult("force-stop", ok)
+            DaemonOutput.current().print(new OperationResult("force-stop", ok)
                     .counts(packages.size(), packages.size() - failed, 0, failed, 0)
                     .identity(userId, packages.size() == 1 ? packages.get(0) : "-").line());
             return ok ? 0 : 1;
         } catch (Exception e) {
             e.printStackTrace(System.err);
-            System.out.print(new OperationResult("force-stop", false).line());
+            DaemonOutput.current().print(new OperationResult("force-stop", false).line());
             return 1;
         }
     }
@@ -3222,7 +3366,7 @@ public class HiddenApiUtil {
 
     public static void setDisplayPowerMode(String[] args) {
         DaemonRunResult result = setDisplayPowerModeCommand(args, false);
-        System.out.print(result.stdout);
+        DaemonOutput.current().print(result.stdout);
         System.exit(result.rc);
     }
 
@@ -3364,45 +3508,13 @@ public class HiddenApiUtil {
     }
 
     private static String execShellCapture(String command) {
-        StringBuilder output = new StringBuilder();
-        Process process = null;
         try {
-            ProcessBuilder builder = new ProcessBuilder("sh", "-c", command);
-            builder.redirectErrorStream(true);
-            process = builder.start();
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-            try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream()))) {
-                String line;
-                while (true) {
-                    while (reader.ready() && (line = reader.readLine()) != null) {
-                        output.append(line).append('\n');
-                    }
-                    if (!process.isAlive()) {
-                        break;
-                    }
-                    if (System.nanoTime() >= deadline) {
-                        process.destroy();
-                        if (!process.waitFor(200, TimeUnit.MILLISECONDS)) {
-                            process.destroyForcibly();
-                        }
-                        break;
-                    }
-                    Thread.sleep(20L);
-                }
-                while ((line = reader.readLine()) != null) {
-                    output.append(line).append('\n');
-                }
-            }
-            process.waitFor(200, TimeUnit.MILLISECONDS);
-        } catch (Throwable ignored) {
-            if (process != null) {
-                try {
-                    process.destroy();
-                } catch (Throwable ignoredDestroy) {
-                }
-            }
-        }
-        return output.toString();
+            BoundedShell.Result result = BoundedShell.run(command, 5000);
+            return result.code == 0 ? result.output : "";
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return "";
+        } catch (Exception e) { return ""; }
     }
 
     private static Class<?> classForNameCached(String name) throws ClassNotFoundException {

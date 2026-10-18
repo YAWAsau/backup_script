@@ -32,7 +32,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
+import java.io.OutputStreamWriter;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -77,39 +77,39 @@ public class NotificationUtil extends BaseUtil {
     }
 
     private static void onHelp() {
-        System.out.println("NotificationUtil commands:");
-        System.out.println("  help");
-        System.out.println();
-        System.out.println("  daemonunix SOCKET [idleSec] [ownerPid]");
-        System.out.println();
-        System.out.println("daemon-only command: notifyBatch");
-        System.out.println("notifyBatch stdin sections:");
-        System.out.println("  EVENT|BACKUP_PROGRESS|RESTORE_PROGRESS|BACKUP_DONE|RESTORE_DONE|ERROR|WARN|DEBUG");
-        System.out.println("  TAG|speedbackup");
-        System.out.println("  ID|1001");
-        System.out.println("  CHANNEL|progress|result|error|debug");
-        System.out.println("  TITLE|SpeedBackup");
-        System.out.println("  TEXT|current task");
-        System.out.println("  BIGTEXT|expanded text");
-        System.out.println("  SUBTEXT|small status line");
-        System.out.println("  PACKAGE|jp.naver.line.android        # app label / large icon");
-        System.out.println("  PROGRESS|100|50|0                    # max|progress|indeterminate(0/1)");
-        System.out.println("  ITEMS|50|100                         # done|total, for speed/ETA");
-        System.out.println("  BYTES|1048576|10485760               # done|total, for speed/ETA");
-        System.out.println("  THROTTLE_MS|500                      # skip non-urgent repeat updates inside window");
-        System.out.println("  INBOX|1                              # recent event list");
-        System.out.println("  ERROR_AGGREGATE|1                    # aggregate ERROR/WARN notifications");
-        System.out.println("  LOG_PATH|/data/speed_debug/run_x/main.log     # metadata only, no notification action");
-        System.out.println("  DIR_PATH|/data/speed_debug/run_x              # metadata only, no notification action");
-        System.out.println("  ONGOING|1");
-        System.out.println("  AUTO_CANCEL|0");
-        System.out.println("  ONLY_ALERT_ONCE|1");
-        System.out.println("  END");
-        System.out.println();
-        System.out.println("notes:");
-        System.out.println("  no notification buttons/actions are created; this build is pure classes.dex notifyBatch without companion APK dependency.");
-        System.out.println("  TAG/ID are normalized: main= speedbackup_main/2020, error= speedbackup_error/2021, debug= speedbackup_debug/2023.");
-        System.out.println("  notifyBatch is daemon-only; single app_process notifyBatch CLI fallback is intentionally removed.");
+        DaemonOutput.current().println("NotificationUtil commands:");
+        DaemonOutput.current().println("  help");
+        DaemonOutput.current().println();
+        DaemonOutput.current().println("  daemonunix SOCKET [idleSec] [ownerPid]");
+        DaemonOutput.current().println();
+        DaemonOutput.current().println("daemon-only command: notifyBatch");
+        DaemonOutput.current().println("notifyBatch stdin sections:");
+        DaemonOutput.current().println("  EVENT|BACKUP_PROGRESS|RESTORE_PROGRESS|BACKUP_DONE|RESTORE_DONE|ERROR|WARN|DEBUG");
+        DaemonOutput.current().println("  TAG|speedbackup");
+        DaemonOutput.current().println("  ID|1001");
+        DaemonOutput.current().println("  CHANNEL|progress|result|error|debug");
+        DaemonOutput.current().println("  TITLE|SpeedBackup");
+        DaemonOutput.current().println("  TEXT|current task");
+        DaemonOutput.current().println("  BIGTEXT|expanded text");
+        DaemonOutput.current().println("  SUBTEXT|small status line");
+        DaemonOutput.current().println("  PACKAGE|jp.naver.line.android        # app label / large icon");
+        DaemonOutput.current().println("  PROGRESS|100|50|0                    # max|progress|indeterminate(0/1)");
+        DaemonOutput.current().println("  ITEMS|50|100                         # done|total, for speed/ETA");
+        DaemonOutput.current().println("  BYTES|1048576|10485760               # done|total, for speed/ETA");
+        DaemonOutput.current().println("  THROTTLE_MS|500                      # skip non-urgent repeat updates inside window");
+        DaemonOutput.current().println("  INBOX|1                              # recent event list");
+        DaemonOutput.current().println("  ERROR_AGGREGATE|1                    # aggregate ERROR/WARN notifications");
+        DaemonOutput.current().println("  LOG_PATH|/data/speed_debug/run_x/main.log     # metadata only, no notification action");
+        DaemonOutput.current().println("  DIR_PATH|/data/speed_debug/run_x              # metadata only, no notification action");
+        DaemonOutput.current().println("  ONGOING|1");
+        DaemonOutput.current().println("  AUTO_CANCEL|0");
+        DaemonOutput.current().println("  ONLY_ALERT_ONCE|1");
+        DaemonOutput.current().println("  END");
+        DaemonOutput.current().println();
+        DaemonOutput.current().println("notes:");
+        DaemonOutput.current().println("  no notification buttons/actions are created; this build is pure classes.dex notifyBatch without companion APK dependency.");
+        DaemonOutput.current().println("  TAG/ID are normalized: main= speedbackup_main/2020, error= speedbackup_error/2021, debug= speedbackup_debug/2023.");
+        DaemonOutput.current().println("  notifyBatch is daemon-only; single app_process notifyBatch CLI fallback is intentionally removed.");
     }
 
     private static boolean isSupportedCommand(String cmd) {
@@ -117,7 +117,7 @@ public class NotificationUtil extends BaseUtil {
     }
 
     private static void rejectUnknownCommand(String cmd) {
-        System.out.println("UNKNOWN_COMMAND " + cmd);
+        DaemonOutput.current().println("UNKNOWN_COMMAND " + cmd);
         System.exit(1);
     }
 
@@ -132,7 +132,7 @@ public class NotificationUtil extends BaseUtil {
             case "version":
             case "--version":
             case "-v":
-                System.out.println(DexBuildInfo.VERSION_DISPLAY);
+                DaemonOutput.current().println(DexBuildInfo.VERSION_DISPLAY);
                 break;
             default:
                 rejectUnknownCommand(mCmd);
@@ -148,7 +148,6 @@ public class NotificationUtil extends BaseUtil {
         }
 
         mCmd = args[0];
-        mArgPos = 1;
 
         // Legacy single-notify entry is intentionally removed.  Reject unknown
         // commands before touching notification service so dex_check can verify
@@ -162,7 +161,7 @@ public class NotificationUtil extends BaseUtil {
             System.exit(0);
         }
         if ("version".equals(mCmd) || "--version".equals(mCmd) || "-v".equals(mCmd)) {
-            System.out.println(DexBuildInfo.VERSION_DISPLAY);
+            DaemonOutput.current().println(DexBuildInfo.VERSION_DISPLAY);
             System.exit(0);
         }
 
@@ -175,7 +174,7 @@ public class NotificationUtil extends BaseUtil {
 
         getService();
         if (sService == null) {
-            System.out.println("NOTIFICATION_NOTIFY_FAILED reason=no_notification_service");
+            DaemonOutput.current().println("NOTIFICATION_NOTIFY_FAILED reason=no_notification_service");
             human("通知發送失敗: 無法取得 notification service");
             System.exit(1);
         }
@@ -264,24 +263,24 @@ public class NotificationUtil extends BaseUtil {
         if ("ping".equals(command)) {
             return new DaemonRunResult(0, "PONG\n");
         }
-        PrintStream oldOut = System.out;
+        PrintStream oldOut = null;
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         int rc;
         try {
-            System.setOut(new PrintStream(baos, true, "UTF-8"));
+            oldOut = DaemonOutput.begin(baos);
             if ("notifyBatch".equals(command)) {
-                rc = notifyBatchCommand(new ByteArrayInputStream(request == null ? new byte[0] : request), callingUid, false);
+                rc = notifyBatchCommand(new ByteArrayInputStream(request == null ? new byte[0] : request), callingUid);
             } else {
-                System.out.println("UNKNOWN_COMMAND " + command);
+                DaemonOutput.current().println("UNKNOWN_COMMAND " + command);
                 rc = 2;
             }
         } catch (Throwable t) {
-            System.out.println("NOTIFICATION_DAEMON_COMMAND_FAILED command=" + command + " exception=" + t.getClass().getName());
+            DaemonOutput.current().println("NOTIFICATION_DAEMON_COMMAND_FAILED command=" + command + " exception=" + t.getClass().getName());
             t.printStackTrace(System.err);
             rc = 1;
         } finally {
-            try { System.out.flush(); } catch (Throwable ignored) {}
-            System.setOut(oldOut);
+            try { DaemonOutput.current().flush(); } catch (Throwable ignored) {}
+            DaemonOutput.end(oldOut);
         }
         return new DaemonRunResult(rc, baos.toString());
     }
@@ -308,26 +307,7 @@ public class NotificationUtil extends BaseUtil {
         try { return Long.parseLong(raw == null ? "" : raw.trim()); } catch (Throwable ignored) { return fallback; }
     }
 
-    @SuppressLint("NotificationPermission")
-    private static void notifyBatch(int callingUid) {
-        System.exit(notifyBatchCommand(System.in, callingUid, true));
-    }
-
-    private static int notifyBatchCommand(InputStream requestInput, int callingUid, boolean parseOptions) {
-        boolean stdin = !parseOptions;
-        String opt;
-        while (parseOptions && (opt = getNextOption()) != null) {
-            if ("--stdin".equals(opt)) {
-                stdin = true;
-            } else {
-                System.out.println("NOTIFICATION_BATCH_FAILED reason=bad_option option=" + opt);
-                return 1;
-            }
-        }
-        if (!stdin) {
-            onHelp();
-            return 1;
-        }
+    private static int notifyBatchCommand(InputStream requestInput, int callingUid) {
         int events = 0;
         int sent = 0;
         int skipped = 0;
@@ -341,29 +321,29 @@ public class NotificationUtil extends BaseUtil {
                     prepareEvent(ctx, ev);
                     if (shouldThrottle(ev)) {
                         skipped++;
-                        System.out.println("NOTIFICATION_EVENT_SKIPPED reason=throttle event=" + safeLog(ev.event)
+                        DaemonOutput.current().println("NOTIFICATION_EVENT_SKIPPED reason=throttle event=" + safeLog(ev.event)
                                 + " tag=" + safeLog(ev.tag) + " id=" + ev.id);
                         continue;
                     }
                     sendNotifyEvent(ctx, callingUid, ev);
                     saveEventState(ev);
                     sent++;
-                    System.out.println("NOTIFICATION_EVENT_OK event=" + safeLog(ev.event)
+                    DaemonOutput.current().println("NOTIFICATION_EVENT_OK event=" + safeLog(ev.event)
                             + " tag=" + safeLog(ev.tag) + " id=" + ev.id
                             + " channel=" + safeLog(ev.channelAlias)
                             + " actions=0");
                 } catch (Throwable t) {
                     failed++;
-                    System.out.println("NOTIFICATION_EVENT_FAILED event=" + safeLog(ev.event)
+                    DaemonOutput.current().println("NOTIFICATION_EVENT_FAILED event=" + safeLog(ev.event)
                             + " reason=" + t.getClass().getSimpleName());
                     t.printStackTrace(System.err);
                 }
             }
-            System.out.println("NOTIFICATION_BATCH_OK events=" + events + " sent=" + sent + " skipped=" + skipped + " failed=" + failed);
+            DaemonOutput.current().println("NOTIFICATION_BATCH_OK events=" + events + " sent=" + sent + " skipped=" + skipped + " failed=" + failed);
             return failed == 0 ? 0 : 1;
         } catch (Exception e) {
             human("批量通知工具失敗: " + e.getMessage());
-            System.out.println("NOTIFICATION_BATCH_FAILED reason=" + e.getClass().getSimpleName());
+            DaemonOutput.current().println("NOTIFICATION_BATCH_FAILED reason=" + e.getClass().getSimpleName());
             e.printStackTrace(System.err);
             return 1;
         }
@@ -387,7 +367,8 @@ public class NotificationUtil extends BaseUtil {
                 current = new NotifyEvent();
                 continue;
             }
-            final String value = parts.length >= 2 ? parts[1] : "";
+            final int delimiter = line.indexOf('|');
+            final String value = delimiter >= 0 ? line.substring(delimiter + 1) : "";
             current.touched = true;
             if ("EVENT".equals(key)) current.event = value;
             else if ("OPERATION_ID".equals(key)) current.operationId = value;
@@ -728,7 +709,10 @@ public class NotificationUtil extends BaseUtil {
         sService.createNotificationChannels(callingPackage, new ParceledListSlice<>(channels));
     }
 
-    private static File stateDir() {
+    private static File fallbackStateDir;
+
+    private static synchronized File stateDir() {
+        try {
         String env = System.getenv("SPEEDBACKUP_NOTIFY_STATE_DIR");
         String base = env;
         if (base == null || base.length() == 0) {
@@ -737,12 +721,60 @@ public class NotificationUtil extends BaseUtil {
                 String tmp = System.getenv("TMPDIR");
                 if (tmp != null && tmp.contains(".speedbackup_run_")) run = tmp;
             }
-            if (run == null || run.length() == 0) run = "/data/local/tmp/.speedbackup_run_dex_" + android.os.Process.myPid();
+            if (run == null || run.length() == 0) {
+                if (fallbackStateDir == null) {
+                    fallbackStateDir = java.nio.file.Files.createTempDirectory(
+                            new File("/data/local/tmp").toPath(), ".speedbackup_notify_",
+                            java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                                    java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"))).toFile();
+                }
+                return checkedStateDir(fallbackStateDir);
+            }
             base = new File(run, ".speedbackup_notify_state").getAbsolutePath();
         }
-        File dir = new File(base);
-        try { dir.mkdirs(); } catch (Throwable ignored) {}
+        File dir = new File(base).getAbsoluteFile();
+        GuardLifecycle.runDirectory(dir.getParentFile());
+        try {
+            java.nio.file.Files.createDirectory(dir.toPath(),
+                    java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                            java.nio.file.attribute.PosixFilePermissions.fromString("rwx------")));
+        } catch (java.nio.file.FileAlreadyExistsException existing) { /* Validate below. */ }
+        return checkedStateDir(dir);
+        } catch (Exception e) {
+            throw new IllegalStateException("unsafe notification state directory", e);
+        }
+    }
+
+    private static File checkedStateDir(File dir) throws Exception {
+        android.system.StructStat st = android.system.Os.lstat(dir.getPath());
+        if (!dir.getCanonicalFile().equals(dir.getAbsoluteFile())
+                || !android.system.OsConstants.S_ISDIR(st.st_mode)
+                || st.st_uid != android.os.Process.myUid() || (st.st_mode & 0077) != 0)
+            throw new IOException("notification state directory");
         return dir;
+    }
+
+    private static java.io.FileDescriptor stateDescriptor(File file, boolean write) throws Exception {
+        checkedStateDir(file.getParentFile());
+        int flags = android.system.OsConstants.O_NOFOLLOW | android.system.OsConstants.O_CLOEXEC
+                | android.system.OsConstants.O_NONBLOCK;
+        flags |= write ? android.system.OsConstants.O_WRONLY | android.system.OsConstants.O_CREAT
+                : android.system.OsConstants.O_RDONLY;
+        java.io.FileDescriptor fd = android.system.Os.open(file.getPath(), flags, 0600);
+        try {
+            android.system.StructStat st = android.system.Os.fstat(fd);
+            if (!android.system.OsConstants.S_ISREG(st.st_mode) || st.st_nlink != 1
+                    || st.st_uid != android.os.Process.myUid() || (!write && st.st_size > 1024 * 1024))
+                throw new IOException("notification state file");
+            if (write) {
+                android.system.Os.fchmod(fd, 0600);
+                android.system.Os.ftruncate(fd, 0);
+            }
+            return fd;
+        } catch (Exception e) {
+            android.system.Os.close(fd);
+            throw e;
+        }
     }
 
     private static File recentFile() { return new File(stateDir(), "recent.log"); }
@@ -751,15 +783,13 @@ public class NotificationUtil extends BaseUtil {
 
     private static Properties loadState(File file) {
         Properties p = new Properties();
-        try (FileInputStream in = new FileInputStream(file)) { p.load(in); } catch (Throwable ignored) {}
+        try (FileInputStream in = new FileInputStream(stateDescriptor(file, false))) { p.load(in); } catch (Throwable ignored) {}
         return p;
     }
 
     private static void saveState(File file, Properties p) {
         try {
-            File parent = file.getParentFile();
-            if (parent != null) parent.mkdirs();
-            try (FileOutputStream out = new FileOutputStream(file)) { p.store(out, "SpeedBackup notification state"); }
+            try (FileOutputStream out = new FileOutputStream(stateDescriptor(file, true))) { p.store(out, "SpeedBackup notification state"); }
         } catch (Throwable ignored) {}
     }
 
@@ -776,9 +806,7 @@ public class NotificationUtil extends BaseUtil {
         try {
             List<String> lines = tailLines(file, Math.max(0, max - 1));
             lines.add(line);
-            File parent = file.getParentFile();
-            if (parent != null) parent.mkdirs();
-            try (FileWriter w = new FileWriter(file, false)) {
+            try (OutputStreamWriter w = new OutputStreamWriter(new FileOutputStream(stateDescriptor(file, true)), StandardCharsets.UTF_8)) {
                 for (String s : lines) {
                     w.write(s);
                     w.write('\n');
@@ -790,7 +818,7 @@ public class NotificationUtil extends BaseUtil {
     private static List<String> tailLines(File file, int max) {
         ArrayList<String> out = new ArrayList<>();
         if (max <= 0 || file == null || !file.exists()) return out;
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(stateDescriptor(file, false)), StandardCharsets.UTF_8))) {
             String line;
             while ((line = br.readLine()) != null) {
                 if (line.length() == 0) continue;

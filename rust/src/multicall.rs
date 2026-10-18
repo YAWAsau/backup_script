@@ -49,7 +49,10 @@ pub fn args_os() -> std::vec::IntoIter<OsString> {
 
 pub fn args() -> std::vec::IntoIter<String> {
     args_os()
-        .map(|s| s.into_string().expect("non-UTF-8 argument"))
+        .map(|s| s.into_string().unwrap_or_else(|_| {
+            eprintln!("speednative: non-UTF-8 argument");
+            std::process::exit(2);
+        }))
         .collect::<Vec<_>>()
         .into_iter()
 }

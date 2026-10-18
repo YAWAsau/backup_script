@@ -63,6 +63,12 @@ final class AudioPlaybackGuard {
         String audioError="-",mediaError="-";
         volatile Snapshot snapshot=new Snapshot(false,new HashSet<>());
         File file; String lastWritten="";
+        IBinder audioBinder,mediaBinder;
+        final Runnable retryPublish=this::publish;
+        final Runnable reconnect=this::start;
+        final IBinder.DeathRecipient audioDeath=()->{synchronized(Watch.this){audioOk=false;publish();scheduleReconnect();}};
+        final IBinder.DeathRecipient mediaDeath=()->{synchronized(Watch.this){mediaOk=false;publish();scheduleReconnect();}};
+        void scheduleReconnect() { handler.removeCallbacks(reconnect);handler.postDelayed(reconnect,5000); }
         final AudioManager.AudioPlaybackCallback audioListener=new AudioManager.AudioPlaybackCallback() {
             @Override public void onPlaybackConfigChanged(List<AudioPlaybackConfiguration> configs) { updateAudio(configs); }
         };
@@ -83,13 +89,18 @@ final class AudioPlaybackGuard {
             thread.start(); handler=new Handler(thread.getLooper());
         }
         synchronized void start() {
+            handler.removeCallbacks(reconnect);
+            if(audioBinder!=null) { try{audioBinder.unlinkToDeath(audioDeath,0);}catch(Throwable ignored){} audioBinder=null; }
+            if(mediaBinder!=null) { try{mediaBinder.unlinkToDeath(mediaDeath,0);}catch(Throwable ignored){} mediaBinder=null; }
             // Register before reading initial state; callbacks serialize on this monitor.
             try {
+                try { audio.unregisterAudioPlaybackCallback(audioListener); } catch(Throwable ignored) { }
                 audio.registerAudioPlaybackCallback(audioListener,handler);
                 updateAudio(audio.getActivePlaybackConfigurations());
-                binder("audio").linkToDeath(() -> { synchronized(Watch.this) { audioOk=false; publish(); } },0);
+                audioBinder=binder("audio");audioBinder.linkToDeath(audioDeath,0);
             } catch(Throwable e) { audioOk=false; audioError=error(e); }
             try {
+                try { media.removeOnActiveSessionsChangedListener(mediaListener); } catch(Throwable ignored) { }
                 try {
                     MediaSessionManager.class.getMethod("addOnActiveSessionsChangedListener",MediaSessionManager.OnActiveSessionsChangedListener.class,ComponentName.class,int.class,Handler.class)
                             .invoke(media,mediaListener,null,user,handler);
@@ -109,9 +120,10 @@ final class AudioPlaybackGuard {
                 List<MediaController> list=new ArrayList<>();
                 for(Object controller:(List<?>)result) list.add((MediaController)controller);
                 updateSessions(list);
-                binder("media_session").linkToDeath(() -> { synchronized(Watch.this) { mediaOk=false; publish(); } },0);
+                mediaBinder=binder("media_session");mediaBinder.linkToDeath(mediaDeath,0);
             } catch(Throwable e) { mediaOk=false; mediaError=error(e); }
             publish();
+            if(!audioOk || !mediaOk)scheduleReconnect();
         }
         IBinder binder(String name) throws Exception {
             return (IBinder)Class.forName("android.os.ServiceManager").getMethod("getService",String.class).invoke(null,name);
@@ -123,10 +135,13 @@ final class AudioPlaybackGuard {
                 Method stateMethod=AudioPlaybackConfiguration.class.getDeclaredMethod("getPlayerState");
                 uidMethod.setAccessible(true); stateMethod.setAccessible(true);
                 for(AudioPlaybackConfiguration config:configs) {
+                    // Inactive anonymized entries cannot be playing. Active
+                    // anonymous entries remain unknown, never falsely idle.
+                    if (((Integer)stateMethod.invoke(config)) != 2) continue;
                     int uid=(Integer)uidMethod.invoke(config);
                     if(uid<0) throw new IllegalStateException("anonymized playback");
                     // PLAYER_STATE_STARTED=2: protect playback even when muted by volume/app-ops.
-                    if(uid/100000!=user || ((Integer)stateMethod.invoke(config))!=2) continue;
+                    if(uid/100000!=user) continue;
                     String[] packages=context.getPackageManager().getPackagesForUid(uid);
                     if(packages==null) throw new IllegalStateException("unknown active uid");
                     Collections.addAll(next,packages);
@@ -171,11 +186,18 @@ final class AudioPlaybackGuard {
             StringBuilder b=new StringBuilder("AUDIO_PLAYBACK_V1 ").append(android.os.Process.myPid()).append(' ').append(user).append(' ').append(snapshot.ready?"ready":"unknown").append('\n');
             for(String pkg:sorted) b.append(pkg).append('\n');
             String text=b.toString(); if(text.equals(lastWritten)) return;
-            File tmp=new File(file.getPath()+".new");
+            File tmp=null;
             try {
-                try(FileOutputStream stream=new FileOutputStream(tmp)) { Os.chmod(tmp.getPath(),0600); stream.write(text.getBytes(StandardCharsets.UTF_8)); }
+                tmp=java.nio.file.Files.createTempFile(file.getParentFile().toPath(),".audio-",".tmp",
+                    java.nio.file.attribute.PosixFilePermissions.asFileAttribute(java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"))).toFile();
+                try(FileOutputStream stream=new FileOutputStream(tmp)) { stream.write(text.getBytes(StandardCharsets.UTF_8)); }
                 Os.rename(tmp.getPath(),file.getPath()); lastWritten=text;
-            } catch(Throwable e) { snapshot=new Snapshot(false,playing); lastWritten=""; file.delete(); tmp.delete(); }
+                handler.removeCallbacks(retryPublish);
+            } catch(Throwable e) {
+                snapshot=new Snapshot(false,playing); lastWritten=""; file.delete();
+                if(tmp!=null)tmp.delete();
+                handler.removeCallbacks(retryPublish);handler.postDelayed(retryPublish,2000);
+            }
         }
     }
 }

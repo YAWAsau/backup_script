@@ -393,8 +393,10 @@ public class SettingsStateApi26 implements SettingsState {
                     Log.i(LOG_TAG, "[PERSIST END]");
                 }
             } catch (Throwable t) {
-                Log.wtf(LOG_TAG, "Failed to write settings, restoring backup", t);
+                Log.e(LOG_TAG, "Failed to write settings, restoring backup", t);
                 destination.failWrite(out);
+                synchronized (mLock) { mDirty = true; }
+                throw new IllegalStateException("Settings persistence failed", t);
             } finally {
                 IoUtils.closeQuietly(out);
             }
@@ -476,26 +478,21 @@ public class SettingsStateApi26 implements SettingsState {
 
     private void readStateSyncLocked() {
         FileInputStream in;
-        if (!mStatePersistFile.exists()) {
-            Log.i(LOG_TAG, "No settings state " + mStatePersistFile);
-            addHistoricalOperationLocked(HISTORICAL_OPERATION_INITIALIZE, null);
-            return;
-        }
         try {
             in = new AtomicFile(mStatePersistFile).openRead();
         } catch (FileNotFoundException fnfe) {
             String message = "No settings state " + mStatePersistFile;
-            Log.wtf(LOG_TAG, message);
+            Log.e(LOG_TAG, message);
             Log.i(LOG_TAG, message);
             return;
         }
         try {
-            XmlPullParser parser = Xml.newPullParser();
+            XmlPullParser parser = new com.xayah.dex.xml.KXmlParser();
             parser.setInput(in, StandardCharsets.UTF_8.name());
             parseStateLocked(parser);
         } catch (XmlPullParserException | IOException e) {
             String message = "Failed parsing settings file: " + mStatePersistFile;
-            Log.wtf(LOG_TAG, message);
+            Log.e(LOG_TAG, message);
             throw new IllegalStateException(message, e);
         } finally {
             IoUtils.closeQuietly(in);
@@ -555,6 +552,9 @@ public class SettingsStateApi26 implements SettingsState {
                 }
             }
         }
+        if (type != XmlPullParser.END_TAG || parser.getDepth() != outerDepth) {
+            throw new XmlPullParserException("Truncated settings container", parser, null);
+        }
     }
 
     private final class MyHandler extends Handler {
@@ -569,7 +569,11 @@ public class SettingsStateApi26 implements SettingsState {
             switch (message.what) {
                 case MSG_PERSIST_SETTINGS: {
                     Runnable callback = (Runnable) message.obj;
-                    doWriteState();
+                    try { doWriteState(); }
+                    catch (IllegalStateException failure) {
+                        Log.e(LOG_TAG, "Asynchronous settings persistence failed; state remains dirty", failure);
+                        return;
+                    }
                     if (callback != null) {
                         callback.run();
                     }

@@ -1,3 +1,58 @@
+
+// Ancestor descriptors change while an interactive app is running. A closed
+// descriptor is not an unreadable live descriptor. Never print private targets.
+fn proc_fd_no_termux(args: &[String]) -> i32 {
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::MetadataExt;
+    let check = (|| -> std::io::Result<(usize, usize)> {
+        let bad = || std::io::Error::other("unreadable_or_changed_process");
+        if args.len()!=1 {return Err(bad());}
+        let pid=args[0].parse::<u32>().map_err(|_|bad())?;
+        if pid<=1 {return Err(bad());}
+        let root=std::path::PathBuf::from(format!("/proc/{pid}"));
+        let identity = || -> std::io::Result<(u32,String)> {
+            let stat=std::fs::read_to_string(root.join("stat"))?;
+            let tail=stat.rsplit_once(") ").ok_or_else(bad)?.1;
+            let start=tail.split_whitespace().nth(19).ok_or_else(bad)?;
+            Ok((std::fs::metadata(&root)?.uid(),start.to_string()))
+        };
+        let before=identity()?;
+        let mut checked=0;let mut vanished=0;
+        for entry in std::fs::read_dir(root.join("fd"))? {
+            let entry=entry?;
+            if checked+vanished>=65536 {return Err(bad());}
+            match std::fs::read_link(entry.path()) {
+                Ok(target)=>{
+                    if target.as_os_str().as_bytes().windows(10).any(|x|x==b"com.termux") {
+                        return Err(std::io::Error::other("termux_dependency"));
+                    }
+                    checked+=1;
+                },
+                Err(e) if e.kind()==std::io::ErrorKind::NotFound => {
+                    match std::fs::symlink_metadata(entry.path()) {
+                        Err(e) if e.kind()==std::io::ErrorKind::NotFound => vanished+=1,
+                        _=>return Err(bad()),
+                    }
+                },
+                Err(_)=>return Err(bad()),
+            }
+        }
+        if identity()?!=before {return Err(bad());}
+        Ok((checked,vanished))
+    })();
+    match check {
+        Ok((checked,vanished))=>{println!("PROC_FD_GUARD safe=true checked={checked} vanished={vanished}");0},
+        Err(e)=>{eprintln!("PROC_FD_GUARD safe=false reason={e}");1}
+    }
+}
+#[path = "../internal_tree.rs"]
+mod internal_tree;
+#[path = "../external_tree.rs"]
+mod external_tree;
+#[path = "../device_flash.rs"]
+mod device_flash;
+#[path = "../stream_bench.rs"]
+mod stream_bench;
 #[path = "../command_lifecycle.rs"]
 mod command_lifecycle;
 #[path = "../backup_run.rs"]
@@ -12,6 +67,10 @@ mod profile;
 mod restore_apk_inventory;
 #[path = "../restore_safety.rs"]
 mod restore_safety;
+#[path = "../android_policy.rs"]
+mod android_policy;
+#[path = "../external_policy.rs"]
+mod external_policy;
 #[path = "../restore_package_maps.rs"]
 mod restore_package_maps;
 #[path = "../tar_source.rs"]
@@ -294,7 +353,7 @@ mod fused_traversal_tests {
             prefix.to_string_lossy().into_owned(),
         ];
         assert_eq!(cmd_appdetails_seed_index(&args), 0);
-        assert_eq!(fs::read_to_string(&seed).unwrap(), "Valid\n");
+        assert_eq!(fs::read_to_string(&seed).unwrap(), "Nested\nTruncated\nValid\n");
         assert!(root.join("Valid/app_details.json").is_file());
         assert!(root.join("Truncated/app_details.json").is_file());
         assert!(root.join("Nested/app_details.json").is_file());
@@ -302,8 +361,8 @@ mod fused_traversal_tests {
             .unwrap()
             .starts_with("3\t1\t2\t3\t"));
         fs::remove_file(root.join("Valid/app_details.json")).unwrap();
-        assert_eq!(cmd_appdetails_seed_index(&args), 5);
-        assert_eq!(fs::read_to_string(&seed).unwrap(), "");
+        assert_eq!(cmd_appdetails_seed_index(&args), 0);
+        assert_eq!(fs::read_to_string(&seed).unwrap(), "Nested\nTruncated\n");
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -312,7 +371,8 @@ mod fused_traversal_tests {
         assert!(appdetails_seed_expansion_allowed(119, 119, 9, 0, 0, 0));
         assert!(!appdetails_seed_expansion_allowed(118, 119, 9, 0, 0, 0));
         assert!(!appdetails_seed_expansion_allowed(119, 119, 9, 1, 0, 0));
-        assert!(!appdetails_seed_expansion_allowed(119, 119, 9, 0, 1, 0));
+        assert!(appdetails_seed_expansion_allowed(119, 119, 9, 0, 1, 0));
+        assert!(appdetails_seed_expansion_allowed(120, 119, 9, 0, 1, 0));
         assert!(!appdetails_seed_expansion_allowed(119, 119, 9, 0, 0, 1));
         assert!(!appdetails_seed_expansion_allowed(119, 119, 0, 0, 0, 0));
     }
@@ -333,9 +393,6 @@ fn usage() {
     eprintln!("  speedscan batch-stat LIST");
     eprintln!("  speedscan batch-exists LIST");
     eprintln!("  speedscan batch-chmod MODE LIST");
-    eprintln!("  speedscan batch-chown UID GID LIST");
-    eprintln!("  speedscan tree-chown UID GID ROOT");
-    eprintln!("  speedscan tree-fixup UID GID ROOT [DIR_MODE|-] [FILE_MODE|-]");
     eprintln!("  speedscan has-files ROOT");
     eprintln!("  speedscan manifest ROOT OUT");
     eprintln!("  speedscan scan-summary ROOT [MANIFEST_OUT|-]");
@@ -376,16 +433,23 @@ fn usage() {
     eprintln!("  speedscan restore-tree-manifest-bytes ROOT MANIFEST");
     eprintln!("  speedscan restore-tree-verify-bytes ROOT MANIFEST");
     eprintln!("  speedscan app-media-index ROOT OUT [MAXDEPTH|-] [MAX_ROWS|-] [EXCLUDE_FILE|-]");
-    eprintln!("  speedscan appdetails-bundle-audit ROOT REMOTE_FILES|- SEED_APPS|- SEED_STATE SEED_COUNT OUT_PREFIX [ALLOW_SHRINK]");
+    eprintln!("  speedscan appdetails-bundle-audit ROOT REMOTE_FILES|- SEED_APPS|- SEED_STATE SEED_COUNT OUT_PREFIX [ALLOW_SHRINK] [BASELINE_TSV|-]");
     eprintln!("  speedscan appdetails-health-batch APP_LIST ROOT OUT_PREFIX [LABEL_SUFFIX]");
-    eprintln!("  speedscan appdetails-bundle-manifest ROOT OUT_PREFIX");
+    eprintln!("  speedscan appdetails-bundle-manifest ROOT OUT_PREFIX [BASELINE_TSV|-]");
     eprintln!("  speedscan appdetails-seed-index ROOT SEED_OUT OUT_PREFIX");
     eprintln!("  speedscan remote-manifest-plan REMOTE_FILES|- BUNDLE_ROOT|- INSTALLED_PACKAGES|- OUT_PREFIX");
     eprintln!("  speedscan restore-payload-plan APP_DIR APP_DETAILS|- OUT_PREFIX");
-    eprintln!("  speedscan manifest-diff-cache-index SELECTED REMOTE_SUMMARY DIRSIZES PAYLOAD_SET CHANGED OUT_PREFIX BACKUP_MODE BACKUP_OBB BACKUP_USER");
+    eprintln!("  speedscan manifest-diff-cache-index SELECTED REMOTE_SUMMARY DIRSIZES PAYLOAD_SET CHANGED OUT_PREFIX BACKUP_MODE BACKUP_OBB BACKUP_USER [STATE_MAP|-]");
     eprintln!("  speedscan capabilities");
 }
 
+static COMMAND_IO_FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+fn note_io<T>(value: io::Result<T>) -> Option<T> {
+    match value { Ok(v) => Some(v), Err(e) => {
+        COMMAND_IO_FAILED.store(true, Ordering::Relaxed);
+        eprintln!("speedscan: I/O failure: {e}"); None
+    }}
+}
 fn next_c_line_lossy<R: BufRead>(br: &mut R, buf: &mut Vec<u8>) -> Option<String> {
     buf.clear();
     match br.read_until(b'\n', buf) {
@@ -396,7 +460,7 @@ fn next_c_line_lossy<R: BufRead>(br: &mut R, buf: &mut Vec<u8>) -> Option<String
             }
             Some(String::from_utf8_lossy(buf).into_owned())
         }
-        Err(_) => None,
+        Err(e) => { note_io::<()>(Err(e)); None },
     }
 }
 
@@ -410,8 +474,9 @@ fn cmd_dir_size(path: &str) -> i32 {
     if path.is_empty() {
         return 2;
     }
-    println!("{}", scan(Path::new(path)).bytes);
-    0
+    let result = scan(Path::new(path));
+    println!("{}", result.bytes);
+    if result.errors == 0 { 0 } else { 1 }
 }
 fn path_nested_collapse_safe(ancestor: &Path, target: &Path) -> bool {
     if ancestor == target {
@@ -450,6 +515,7 @@ fn path_nested_collapse_safe(ancestor: &Path, target: &Path) -> bool {
 
 #[derive(Default, Clone, Copy)]
 struct DirSizeScanStats {
+    errors: u64,
     files: u64,
     bytes: u64,
     target_checks: u64,
@@ -526,6 +592,7 @@ fn scan_root_for_targets_legacy(
         Ok(())
     };
     let _ = walk_no_follow(root, root, 0, None, &mut res, &mut f);
+    stats.errors += res.errors;
     (
         targets
             .iter()
@@ -548,13 +615,17 @@ fn scan_dirsize_tree(
     let _depth = match WalkDepthGuard::enter() {
         Ok(g) => g,
         Err(_) => {
-            dir_tar_error(tar, dir);
+            stats.errors += 1; dir_tar_error(tar, dir);
             return;
         }
     };
+    // Vanished entries make this root's archive fingerprint unusable, but
+    // do not discard size estimates for every other application. Real I/O
+    // and permission errors still reject the map.
     let rd = match fs::read_dir(dir) {
         Ok(v) => v,
-        Err(_) => {
+        Err(e) => {
+            if e.kind() != io::ErrorKind::NotFound { stats.errors += 1; }
             dir_tar_error(tar, dir);
             return;
         }
@@ -563,7 +634,8 @@ fn scan_dirsize_tree(
     for item in rd {
         let entry = match item {
             Ok(v) => v,
-            Err(_) => {
+            Err(e) => {
+                if e.kind() != io::ErrorKind::NotFound { stats.errors += 1; }
                 dir_tar_error(tar, dir);
                 continue;
             }
@@ -571,12 +643,13 @@ fn scan_dirsize_tree(
         stats.dir_entries = stats.dir_entries.wrapping_add(1);
         let name = entry.file_name();
         if dir_len + 1 + name.as_os_str().as_bytes().len() + 1 > PATH_MAX_SAFE {
-            dir_tar_error(tar, dir);
+            stats.errors += 1; dir_tar_error(tar, dir);
             continue;
         }
         let ft = match entry.file_type() {
             Ok(v) => v,
-            Err(_) => {
+            Err(e) => {
+                if e.kind() != io::ErrorKind::NotFound { stats.errors += 1; }
                 dir_tar_error(tar, dir);
                 continue;
             }
@@ -585,7 +658,7 @@ fn scan_dirsize_tree(
             let child = entry.path();
             match entry.metadata() {
                 Ok(m) => dir_tar_add(tar, &child, &m),
-                Err(_) => dir_tar_error(tar, &child),
+                Err(e) => { if e.kind() != io::ErrorKind::NotFound { stats.errors += 1; } dir_tar_error(tar, &child); },
             }
         }
         if ft.is_symlink() {
@@ -597,7 +670,8 @@ fn scan_dirsize_tree(
             // PathBuf for the common file case: 318k files on the  reference run.
             let meta = match entry.metadata() {
                 Ok(v) => v,
-                Err(_) => {
+                Err(e) => {
+                    if e.kind() != io::ErrorKind::NotFound { stats.errors += 1; }
                     dir_tar_error(tar, dir);
                     continue;
                 }
@@ -681,6 +755,7 @@ fn scan_root_for_targets(
     let mut direct_root_slots: Vec<usize> = Vec::new();
     let mut target_dirs: HashMap<PathBuf, Vec<usize>> = HashMap::new();
     let mut target_files: HashMap<PathBuf, HashMap<Vec<u8>, Vec<usize>>> = HashMap::new();
+    let mut target_errors = 0;
     for (slot, (_, target)) in targets.iter().enumerate() {
         if target.as_path() == root {
             direct_root_slots.push(slot);
@@ -700,6 +775,7 @@ fn scan_root_for_targets(
             Ok(m) if m.is_dir() => {
                 target_dirs.entry(target.clone()).or_default().push(slot);
             }
+            Err(e) if e.kind() != io::ErrorKind::NotFound => { target_errors += 1; },
             _ => {}
         }
     }
@@ -710,6 +786,7 @@ fn scan_root_for_targets(
         return scan_root_for_targets_legacy(root, targets);
     }
     let mut stats = DirSizeScanStats {
+        errors: target_errors,
         direct_root_targets: direct_root_slots.len() as u64,
         nested_targets: targets.len().saturating_sub(direct_root_slots.len()) as u64,
         ..Default::default()
@@ -717,7 +794,7 @@ fn scan_root_for_targets(
     let root_meta = match fs::symlink_metadata(root) {
         Ok(v) => v,
         Err(_) => {
-            dir_tar_error(tar, root);
+            stats.errors += 1; dir_tar_error(tar, root);
             return (targets.iter().map(|(idx, _)| (*idx, 0)).collect(), stats);
         }
     };
@@ -1042,6 +1119,7 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
                 }
             }
             if let Ok(mut total) = stats_ref.lock() {
+                total.errors += stats.errors;
                 total.files = total.files.wrapping_add(stats.files);
                 total.bytes = total.bytes.wrapping_add(stats.bytes);
                 total.target_checks = total.target_checks.wrapping_add(stats.target_checks);
@@ -1092,6 +1170,11 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
         Ok(v) => *v,
         Err(_) => DirSizeScanStats::default(),
     };
+    if final_stats.errors != 0 || COMMAND_IO_FAILED.load(Ordering::Relaxed) {
+        eprintln!("DIRSIZE_MAP_FAILED errors={} policy=no-partial-size-map", final_stats.errors);
+        return 5;
+    }
+
     let mut root_stats_vec = match root_stats.lock() {
         Ok(v) => v.clone(),
         Err(_) => Vec::new(),
@@ -1107,9 +1190,9 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
         .filter(|v| !v.is_empty());
     if let Some(path) = &root_stats_path {
         if let Ok(mut rf) = File::create(path) {
-            let _ = writeln!(rf, "root\ttargets\testimateBytes\tdispatchIndex\tfiles\tbytes\ttargetChecks\trouteDirLookups\tfilePathBuildsAvoided\telapsedMs");
+            note_io(writeln!(rf, "root\ttargets\testimateBytes\tdispatchIndex\tfiles\tbytes\ttargetChecks\trouteDirLookups\tfilePathBuildsAvoided\telapsedMs"));
             for r in &root_stats_vec {
-                let _ = writeln!(
+                note_io(writeln!(
                     rf,
                     "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
                     tsv_sanitize(&r.root),
@@ -1122,7 +1205,7 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
                     r.route_dir_lookups,
                     r.file_path_builds_avoided,
                     r.elapsed_ms
-                );
+                ));
             }
         }
     }
@@ -1187,53 +1270,53 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
     let total_elapsed_ms = command_start.elapsed().as_millis();
     if let Some(stats_path) = stats_path {
         if let Ok(mut sf) = File::create(&stats_path) {
-            let _ = writeln!(sf, "manifestRows\t{}", rows.len());
-            let _ = writeln!(sf, "outputRows\t{}", rows.len());
-            let _ = writeln!(sf, "scanRoots\t{}", scan_roots);
-            let _ = writeln!(
+            note_io(writeln!(sf, "manifestRows\t{}", rows.len()));
+            note_io(writeln!(sf, "outputRows\t{}", rows.len()));
+            note_io(writeln!(sf, "scanRoots\t{}", scan_roots));
+            note_io(writeln!(
                 sf,
                 "nestedCollapsed\t{}",
                 rows.len().saturating_sub(scan_roots)
-            );
-            let _ = writeln!(sf, "workers\t{}", workers);
-            let _ = writeln!(sf, "requestedWorkers\t{}", requested);
-            let _ = writeln!(sf, "workerPolicy\t{}", worker_policy);
-            let _ = writeln!(sf, "schedulePolicy\t{}", schedule_policy);
-            let _ = writeln!(sf, "hintRows\t{}", hint_rows);
-            let _ = writeln!(sf, "hintedRoots\t{}", hinted_roots);
-            let _ = writeln!(sf, "files\t{}", final_stats.files);
-            let _ = writeln!(sf, "bytes\t{}", final_stats.bytes);
-            let _ = writeln!(sf, "targetChecks\t{}", final_stats.target_checks);
-            let _ = writeln!(sf, "directRootTargets\t{}", final_stats.direct_root_targets);
-            let _ = writeln!(sf, "nestedTargets\t{}", final_stats.nested_targets);
-            let _ = writeln!(sf, "routeDirLookups\t{}", final_stats.route_dir_lookups);
-            let _ = writeln!(
+            ));
+            note_io(writeln!(sf, "workers\t{}", workers));
+            note_io(writeln!(sf, "requestedWorkers\t{}", requested));
+            note_io(writeln!(sf, "workerPolicy\t{}", worker_policy));
+            note_io(writeln!(sf, "schedulePolicy\t{}", schedule_policy));
+            note_io(writeln!(sf, "hintRows\t{}", hint_rows));
+            note_io(writeln!(sf, "hintedRoots\t{}", hinted_roots));
+            note_io(writeln!(sf, "files\t{}", final_stats.files));
+            note_io(writeln!(sf, "bytes\t{}", final_stats.bytes));
+            note_io(writeln!(sf, "targetChecks\t{}", final_stats.target_checks));
+            note_io(writeln!(sf, "directRootTargets\t{}", final_stats.direct_root_targets));
+            note_io(writeln!(sf, "nestedTargets\t{}", final_stats.nested_targets));
+            note_io(writeln!(sf, "routeDirLookups\t{}", final_stats.route_dir_lookups));
+            note_io(writeln!(
                 sf,
                 "nestedTargetActivations\t{}",
                 final_stats.nested_target_activations
-            );
-            let _ = writeln!(sf, "fileMetadataCalls\t{}", final_stats.file_metadata_calls);
-            let _ = writeln!(
+            ));
+            note_io(writeln!(sf, "fileMetadataCalls\t{}", final_stats.file_metadata_calls));
+            note_io(writeln!(
                 sf,
                 "filePathBuildsAvoided\t{}",
                 final_stats.file_path_builds_avoided
-            );
-            let _ = writeln!(sf, "dirEntries\t{}", final_stats.dir_entries);
-            let _ = writeln!(
+            ));
+            note_io(writeln!(sf, "dirEntries\t{}", final_stats.dir_entries));
+            note_io(writeln!(
                 sf,
                 "legacyFallbackRoots\t{}",
                 final_stats.legacy_fallback_roots
-            );
+            ));
             if let Some(path) = &root_stats_path {
-                let _ = writeln!(sf, "rootStatsFile\t{}", path);
+                note_io(writeln!(sf, "rootStatsFile\t{}", path));
             }
             for (idx, r) in root_stats_vec.iter().take(8).enumerate() {
-                let _ = writeln!(sf, "rootTop{}\telapsedMs={};files={};bytes={};targetChecks={};routeDirLookups={};targets={};estimateBytes={};dispatchIndex={};root={}", idx + 1, r.elapsed_ms, r.files, r.bytes, r.target_checks, r.route_dir_lookups, r.targets, r.estimate_bytes, r.dispatch_index, dir_size_stat_token(&r.root));
+                note_io(writeln!(sf, "rootTop{}\telapsedMs={};files={};bytes={};targetChecks={};routeDirLookups={};targets={};estimateBytes={};dispatchIndex={};root={}", idx + 1, r.elapsed_ms, r.files, r.bytes, r.target_checks, r.route_dir_lookups, r.targets, r.estimate_bytes, r.dispatch_index, dir_size_stat_token(&r.root)));
             }
-            let _ = writeln!(sf, "planElapsedMs\t{}", plan_elapsed_ms);
-            let _ = writeln!(sf, "elapsedMs\t{}", elapsed_ms);
-            let _ = writeln!(sf, "outputElapsedMs\t{}", output_elapsed_ms);
-            let _ = writeln!(sf, "totalElapsedMs\t{}", total_elapsed_ms);
+            note_io(writeln!(sf, "planElapsedMs\t{}", plan_elapsed_ms));
+            note_io(writeln!(sf, "elapsedMs\t{}", elapsed_ms));
+            note_io(writeln!(sf, "outputElapsedMs\t{}", output_elapsed_ms));
+            note_io(writeln!(sf, "totalElapsedMs\t{}", total_elapsed_ms));
         }
     }
     rc
@@ -1466,9 +1549,7 @@ fn chmod_direct(path: &Path, mode: u32) -> Result<(), i32> {
         .map_err(|e| e.raw_os_error().unwrap_or(-1))
 }
 
-fn lchown_direct(path: &Path, uid: u32, gid: u32) -> Result<(), i32> {
-    lchown_path(path, uid, gid).map_err(|e| e.raw_os_error().unwrap_or(-1))
-}
+
 
 fn cmd_batch_chmod(mode_s: &str, list: &str) -> i32 {
     let mode = match parse_octal_mode_strict(mode_s) {
@@ -1553,206 +1634,11 @@ fn cmd_batch_chmod(mode_s: &str, list: &str) -> i32 {
     }
     rc
 }
-fn cmd_batch_chown(uid_s: &str, gid_s: &str, list: &str) -> i32 {
-    let uid = match parse_uint_id_strict(uid_s) {
-        Some(v) => v,
-        None => return 2,
-    };
-    let gid = match parse_uint_id_strict(gid_s) {
-        Some(v) => v,
-        None => return 2,
-    };
-    if list.is_empty() {
-        return 2;
-    }
-    let lines = match read_lines(Path::new(list)) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("speedscan: open list failed: {}: {}", list, c_strerror(&e));
-            return 3;
-        }
-    };
-    let mut rc = 0;
-    for p in lines {
-        if p.is_empty() {
-            continue;
-        }
-        let path = Path::new(&p);
-        let before = match fs::symlink_metadata(path) {
-            Ok(m) => m,
-            Err(e) => {
-                let errno = e.raw_os_error().unwrap_or(-1);
-                println!(
-                    "{}\t0\tchown\t0\t0\t{}\t{}\t{}\t{}",
-                    p,
-                    uid,
-                    gid,
-                    errno,
-                    errno_text(errno)
-                );
-                rc = 1;
-                continue;
-            }
-        };
-        if let Err(errno) = lchown_direct(path, uid, gid) {
-            println!(
-                "{}\t0\tchown\t{}\t{}\t{}\t{}\t{}\t{}",
-                p,
-                before.uid(),
-                before.gid(),
-                uid,
-                gid,
-                errno,
-                errno_text(errno)
-            );
-            rc = 1;
-            continue;
-        }
-        let after = match fs::symlink_metadata(path) {
-            Ok(m) => m,
-            Err(e) => {
-                let errno = e.raw_os_error().unwrap_or(-1);
-                println!(
-                    "{}\t0\tchown\t{}\t{}\t{}\t{}\t{}\t{}",
-                    p,
-                    before.uid(),
-                    before.gid(),
-                    uid,
-                    gid,
-                    errno,
-                    errno_text(errno)
-                );
-                rc = 1;
-                continue;
-            }
-        };
-        println!(
-            "{}\t1\tchown\t{}\t{}\t{}\t{}\t0\tOK",
-            p,
-            before.uid(),
-            before.gid(),
-            after.uid(),
-            after.gid()
-        );
-    }
-    rc
-}
 
-fn tree_chown_walk_rs(path: &Path, uid: u32, gid: u32, changed: &mut u64, errors: &mut u64) -> i32 {
-    let _depth = match WalkDepthGuard::enter() {
-        Ok(g) => g,
-        Err(_) => {
-            *errors += 1;
-            return 1;
-        }
-    };
-    if path.as_os_str().is_empty() {
-        return 2;
-    }
-    let meta = match fs::symlink_metadata(path) {
-        Ok(m) => m,
-        Err(_) => {
-            *errors += 1;
-            return 1;
-        }
-    };
-    let mut rc = 0;
-    if lchown_direct(path, uid, gid).is_err() {
-        *errors += 1;
-        rc = 1;
-    } else {
-        *changed += 1;
-    }
-    if !meta.file_type().is_dir() {
-        return rc;
-    }
-    let rd = match fs::read_dir(path) {
-        Ok(r) => r,
-        Err(_) => {
-            *errors += 1;
-            return 1;
-        }
-    };
-    for ent in rd {
-        match ent {
-            Ok(ent) => {
-                let name = ent.file_name();
-                if !path_len_c_join_ok(path, &name) {
-                    *errors += 1;
-                    rc = 1;
-                    continue;
-                }
-                if tree_chown_walk_rs(&ent.path(), uid, gid, changed, errors) != 0 {
-                    rc = 1;
-                }
-            }
-            Err(_) => { /* C readdir() loop does not inspect errno after NULL. */ }
-        }
-    }
-    rc
-}
 
-fn cmd_tree_chown(uid_s: &str, gid_s: &str, root_s: &str) -> i32 {
-    let uid = match parse_uint_id_strict(uid_s) {
-        Some(v) => v,
-        None => return 2,
-    };
-    let gid = match parse_uint_id_strict(gid_s) {
-        Some(v) => v,
-        None => return 2,
-    };
-    if root_s.is_empty() {
-        return 2;
-    }
-    let mut changed = 0u64;
-    let mut errors = 0u64;
-    let rc = tree_chown_walk_rs(Path::new(root_s), uid, gid, &mut changed, &mut errors);
-    println!(
-        "TREE_CHOWN_SUMMARY changed={}\terrors={}\thash=0\tpolicy=facts-only",
-        changed, errors
-    );
-    rc
-}
 
-/// Faithful port of parse_uint_id(): strtoul(s, &end, 10) with
-/// complete suffix consumption. This intentionally follows C semantics,
-/// including leading C whitespace, optional +/- sign, and uid_t truncation
-/// after unsigned-long parsing; it must not be a stricter Rust digit-only
-/// parser because that rejects argv C would accept.
-fn parse_uint_id_strict(s: &str) -> Option<u32> {
-    let b = s.as_bytes();
-    let mut i = 0usize;
-    while i < b.len() && matches!(b[i], b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c) {
-        i += 1;
-    }
-    if i >= b.len() {
-        return None;
-    }
-    let neg = if b[i] == b'+' {
-        i += 1;
-        false
-    } else if b[i] == b'-' {
-        i += 1;
-        true
-    } else {
-        false
-    };
-    let start = i;
-    let mut v: u128 = 0;
-    while i < b.len() && b[i].is_ascii_digit() {
-        v = v.saturating_mul(10).saturating_add((b[i] - b'0') as u128);
-        if v > u64::MAX as u128 {
-            return None;
-        }
-        i += 1;
-    }
-    if i == start || i != b.len() {
-        return None;
-    }
-    let u = v as u64;
-    let final_u = if neg { 0u64.wrapping_sub(u) } else { u };
-    Some(final_u as u32)
-}
+
+
 
 /// Faithful port of parse_octal_mode(): strtol(s, &end, 8), complete
 /// suffix consumption, C leading whitespace and optional sign accepted,
@@ -1799,12 +1685,7 @@ fn parse_octal_mode_strict(s: &str) -> Option<u32> {
 /// Faithful port of parse_optional_mode(): "-"/"none"/empty means disabled
 /// (Ok(None)); anything else must be a valid strict octal mode or the
 /// whole command is rejected (Err).
-fn parse_optional_mode_strict(s: &str) -> Result<Option<u32>, ()> {
-    if s.is_empty() || s == "-" || s == "none" {
-        return Ok(None);
-    }
-    parse_octal_mode_strict(s).map(Some).ok_or(())
-}
+
 
 fn parse_c_strtoull_prefix(s: &str) -> u64 {
     let b = s.as_bytes();
@@ -1894,260 +1775,41 @@ fn parse_u64_strict_default(s: &str, fallback: u64) -> u64 {
     speedbackup_native_rs::parse_u64_default(Some(s), fallback)
 }
 
-#[derive(Default)]
-struct FixupResultRs {
-    visited: u64,
-    chown_changed: u64,
-    chown_skipped: u64,
-    chmod_changed: u64,
-    chmod_skipped: u64,
-    type_skipped: u64,
-    symlink_skipped: u64,
-    symlink_owner_changed: u64,
-    symlink_owner_skipped: u64,
-    errors: u64,
-    chown_ms: u128,
-    chmod_ms: u128,
-}
 
-struct TreeFixupWalkRsArgs<'a> {
-    path: &'a Path,
-    uid: u32,
-    gid: u32,
-    do_dir_mode: bool,
-    dir_mode: u32,
-    do_file_mode: bool,
-    file_mode: u32,
-    res: &'a mut FixupResultRs,
-}
 
-fn tree_fixup_walk_rs(args: TreeFixupWalkRsArgs<'_>) -> i32 {
-    let TreeFixupWalkRsArgs {
-        path,
-        uid,
-        gid,
-        do_dir_mode,
-        dir_mode,
-        do_file_mode,
-        file_mode,
-        res,
-    } = args;
-    let _depth = match WalkDepthGuard::enter() {
-        Ok(g) => g,
-        Err(_) => {
-            res.errors += 1;
-            return 1;
-        }
-    };
-    if path.as_os_str().is_empty() {
-        return 2;
-    }
-    let meta = match fs::symlink_metadata(path) {
-        Ok(m) => m,
-        Err(_) => {
-            res.errors += 1;
-            return 1;
-        }
-    };
-    let mut rc = 0;
-    res.visited += 1;
-    let is_symlink = meta.file_type().is_symlink();
-    if meta.uid() != uid || meta.gid() != gid {
-        let op_start = Instant::now();
-        if lchown_direct(path, uid, gid).is_err() {
-            res.errors += 1;
-            rc = 1;
-        } else {
-            res.chown_changed += 1;
-            if is_symlink {
-                res.symlink_owner_changed += 1;
-            }
-        }
-        res.chown_ms += op_start.elapsed().as_millis();
-    } else {
-        res.chown_skipped += 1;
-        if is_symlink {
-            res.symlink_owner_skipped += 1;
-        }
-    }
-    // lchown updates the link inode itself, including dangling links.
-    // Still skip chmod and traversal: never follow the link to its target.
-    if is_symlink {
-        res.symlink_skipped += 1;
-        return rc;
-    }
-    let cur_mode = meta.permissions().mode() & 0o7777;
-    if meta.file_type().is_dir() && do_dir_mode {
-        if cur_mode != (dir_mode & 0o7777) {
-            let op_start = Instant::now();
-            if chmod_direct(path, dir_mode & 0o7777).is_err() {
-                res.errors += 1;
-                rc = 1;
-            } else {
-                res.chmod_changed += 1;
-            }
-            res.chmod_ms += op_start.elapsed().as_millis();
-        } else {
-            res.chmod_skipped += 1;
-        }
-    } else if meta.file_type().is_file() && do_file_mode {
-        if cur_mode != (file_mode & 0o7777) {
-            let op_start = Instant::now();
-            if chmod_direct(path, file_mode & 0o7777).is_err() {
-                res.errors += 1;
-                rc = 1;
-            } else {
-                res.chmod_changed += 1;
-            }
-            res.chmod_ms += op_start.elapsed().as_millis();
-        } else {
-            res.chmod_skipped += 1;
-        }
-    } else {
-        res.type_skipped += 1;
-    }
-    if !meta.file_type().is_dir() {
-        return rc;
-    }
-    let rd = match fs::read_dir(path) {
-        Ok(r) => r,
-        Err(_) => {
-            res.errors += 1;
-            return 1;
-        }
-    };
-    for ent in rd {
-        match ent {
-            Ok(ent) => {
-                let name = ent.file_name();
-                if !path_len_c_join_ok(path, &name) {
-                    res.errors += 1;
-                    rc = 1;
-                    continue;
-                }
-                if tree_fixup_walk_rs(TreeFixupWalkRsArgs {
-                    path: &ent.path(),
-                    uid,
-                    gid,
-                    do_dir_mode,
-                    dir_mode,
-                    do_file_mode,
-                    file_mode,
-                    res,
-                }) != 0
-                {
-                    rc = 1;
-                }
-            }
-            Err(_) => { /* C readdir() loop does not inspect errno after NULL. */ }
-        }
-    }
-    rc
-}
 
-fn cmd_tree_fixup(
-    uid_s: &str,
-    gid_s: &str,
-    root_s: &str,
-    dir_mode_s: &str,
-    file_mode_s: &str,
-) -> i32 {
-    let uid = match parse_uint_id_strict(uid_s) {
-        Some(v) => v,
-        None => return 2,
-    };
-    let gid = match parse_uint_id_strict(gid_s) {
-        Some(v) => v,
-        None => return 2,
-    };
-    if root_s.is_empty() {
-        return 2;
-    }
-    let dm = match parse_optional_mode_strict(dir_mode_s) {
-        Ok(v) => v,
-        Err(()) => return 2,
-    };
-    let fm = match parse_optional_mode_strict(file_mode_s) {
-        Ok(v) => v,
-        Err(()) => return 2,
-    };
-    let start = Instant::now();
-    let mut res = FixupResultRs::default();
-    let rc = tree_fixup_walk_rs(TreeFixupWalkRsArgs {
-        path: Path::new(root_s),
-        uid,
-        gid,
-        do_dir_mode: dm.is_some(),
-        dir_mode: dm.unwrap_or(0),
-        do_file_mode: fm.is_some(),
-        file_mode: fm.unwrap_or(0),
-        res: &mut res,
-    });
-    println!(
-        "TREE_FIXUP_SUMMARY visited={}\tchownChanged={}\tchownSkipped={}\tchmodChanged={}\tchmodSkipped={}\ttypeSkipped={}\tsymlinkSkipped={}\tmetadataNoop={}\tskipped={}\terrors={}\tchownMs={}\tchmodMs={}\tdirMode={}\tfileMode={}\thash=0\tpolicy=no-symlink-follow\telapsedMs={}\tsymlinkOwnerChanged={}\tsymlinkOwnerSkipped={}\tsymlinkPolicy=lchown-link-only",
-        res.visited, res.chown_changed, res.chown_skipped, res.chmod_changed, res.chmod_skipped, res.type_skipped, res.symlink_skipped,
-        res.chown_skipped + res.chmod_skipped, res.symlink_skipped, res.errors, res.chown_ms, res.chmod_ms,
-        if dm.is_some() { dir_mode_s } else { "-" }, if fm.is_some() { file_mode_s } else { "-" },
-        start.elapsed().as_millis(), res.symlink_owner_changed, res.symlink_owner_skipped
-    );
-    rc
-}
 
-fn has_files_walk_rs(path: &Path) -> bool {
-    let _depth = match WalkDepthGuard::enter() {
-        Ok(g) => g,
-        Err(_) => {
-            return false;
+
+
+
+
+fn has_files_walk_rs(path: &Path) -> io::Result<bool> {
+    let meta = fs::symlink_metadata(path)?;
+    if meta.is_file() { return Ok(true); }
+    if !meta.is_dir() { return Ok(false); }
+    for ent in fs::read_dir(path)? {
+        let ent = ent?;
+        if !path_len_c_join_ok(path, &ent.file_name()) {
+            return Err(io::ErrorKind::InvalidData.into());
         }
-    };
-    if path.as_os_str().is_empty() {
-        return false;
+        if has_files_walk_rs(&ent.path())? { return Ok(true); }
     }
-    let meta = match fs::symlink_metadata(path) {
-        Ok(m) => m,
-        Err(_) => return false,
-    };
-    if meta.is_file() {
-        return true;
-    }
-    if !meta.is_dir() {
-        return false;
-    }
-    let rd = match fs::read_dir(path) {
-        Ok(r) => r,
-        Err(_) => return false,
-    };
-    for ent in rd {
-        let ent = match ent {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        let name = ent.file_name();
-        if !path_len_c_join_ok(path, &name) {
-            continue;
-        }
-        if has_files_walk_rs(&ent.path()) {
-            return true;
-        }
-    }
-    false
+    Ok(false)
 }
 fn cmd_has_files(root_s: &str) -> i32 {
-    let hit = has_files_walk_rs(Path::new(root_s));
-    println!("{}", if hit { 1 } else { 0 });
-    if hit {
-        0
-    } else {
-        1
+    match has_files_walk_rs(Path::new(root_s)) {
+        Ok(hit) => { println!("{}", if hit { 1 } else { 0 }); if hit { 0 } else { 1 } }
+        Err(e) => { eprintln!("has-files: {}", e); 2 }
     }
 }
+
 fn write_manifest(root_s: &str, out_s: &str) -> i32 {
     if root_s.is_empty() || out_s.is_empty() {
         return 2;
     }
     let root = Path::new(root_s);
     let mut out = match File::create(out_s) {
-        Ok(f) => f,
+        Ok(f) => BufWriter::with_capacity(64 * 1024, f),
         Err(e) => {
             eprintln!(
                 "speedscan: open manifest output failed: {}: {}",
@@ -2160,7 +1822,7 @@ fn write_manifest(root_s: &str, out_s: &str) -> i32 {
     let mut res = ScanResult::default();
     let mut f = |p: &Path, m: &fs::Metadata, depth: usize, _: &mut ScanResult| {
         if depth > 0 {
-            let _ = writeln!(
+            writeln!(
                 out,
                 "{}\t{}\t{:04o}\t{}\t{}\t{}\t{}",
                 rel_path(root, p),
@@ -2170,11 +1832,12 @@ fn write_manifest(root_s: &str, out_s: &str) -> i32 {
                 m.gid(),
                 m.len(),
                 m.mtime()
-            );
+            )?;
         }
         Ok(())
     };
     let _ = walk_no_follow(root, root, 0, None, &mut res, &mut f);
+    if out.flush().is_err() { res.errors += 1; }
     if res.errors == 0 {
         0
     } else {
@@ -2199,10 +1862,10 @@ fn cmd_facts(root_s: &str, facts_out: Option<&str>) -> i32 {
             return 1;
         }
     };
-    let mut maybe_out: Option<File> = None;
+    let mut maybe_out: Option<BufWriter<File>> = None;
     if let Some(p) = facts_out.filter(|p| !p.is_empty() && *p != "-") {
         match File::create(p) {
-            Ok(f) => maybe_out = Some(f),
+            Ok(f) => maybe_out = Some(BufWriter::with_capacity(64 * 1024, f)),
             Err(e) => {
                 eprintln!(
                     "speedscan: open facts output failed: {}: {}",
@@ -2218,7 +1881,7 @@ fn cmd_facts(root_s: &str, facts_out: Option<&str>) -> i32 {
         if let Some(out) = maybe_out.as_mut() {
             let rel = rel_path(root, p);
             if !rel.is_empty() {
-                let _ = writeln!(
+                writeln!(
                     out,
                     "FACT_ROW\t{}\t{}\t{:04o}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
                     rel,
@@ -2231,12 +1894,13 @@ fn cmd_facts(root_s: &str, facts_out: Option<&str>) -> i32 {
                     m.dev(),
                     m.ino(),
                     m.nlink()
-                );
+                )?;
             }
         }
         Ok(())
     };
     let _ = walk_no_follow(root, root, 0, None, &mut res, &mut f);
+    if maybe_out.as_mut().is_some_and(|out| out.flush().is_err()) { res.errors += 1; }
     let rc = if res.errors == 0 { 0 } else { 1 };
     println!(
         "FACTS_SUMMARY ok={} root={} exists=1 type={} bytes={} files={} dirs={} hasFiles={} maxMtime={} errors={} hash=0 policy=facts-only elapsedMs={}",
@@ -2258,11 +1922,11 @@ fn cmd_scan_summary(root_s: &str, manifest_out: Option<&str>, label: &str) -> i3
             return 1;
         }
     };
-    let mut maybe_out: Option<File> = None;
+    let mut maybe_out: Option<BufWriter<File>> = None;
     if let Some(p) = manifest_out {
         if !p.is_empty() && p != "-" {
             match File::create(p) {
-                Ok(f) => maybe_out = Some(f),
+                Ok(f) => maybe_out = Some(BufWriter::with_capacity(64 * 1024, f)),
                 Err(e) => {
                     eprintln!(
                         "speedscan: open scan-summary manifest failed: {}: {}",
@@ -2278,7 +1942,7 @@ fn cmd_scan_summary(root_s: &str, manifest_out: Option<&str>, label: &str) -> i3
     let mut f = |p: &Path, m: &fs::Metadata, depth: usize, _: &mut ScanResult| {
         if depth > 0 {
             if let Some(out) = maybe_out.as_mut() {
-                let _ = writeln!(
+                writeln!(
                     out,
                     "{}\t{}\t{:04o}\t{}\t{}\t{}\t{}",
                     rel_path(root, p),
@@ -2288,12 +1952,13 @@ fn cmd_scan_summary(root_s: &str, manifest_out: Option<&str>, label: &str) -> i3
                     m.gid(),
                     m.len(),
                     m.mtime()
-                );
+                )?;
             }
         }
         Ok(())
     };
     let _ = walk_no_follow(root, root, 0, None, &mut res, &mut f);
+    if maybe_out.as_mut().is_some_and(|out| out.flush().is_err()) { res.errors += 1; }
     let rc = if res.errors == 0 { 0 } else { 1 };
     println!("{}_SUMMARY ok={} root={} exists=1 type={} bytes={} files={} dirs={} hasFiles={} maxMtime={} errors={} hash=0 policy=facts-only elapsedMs={}", label, if rc==0 {"true"}else{"false"}, root_s, stat_kind(&meta), res.bytes, res.files, res.dirs, if res.files>0 {1}else{0}, res.max_mtime, res.errors, start.elapsed().as_millis());
     rc
@@ -2700,11 +2365,68 @@ fn parse_atoi_like(s: Option<&str>, fallback: i32) -> i32 {
     }
 }
 
+// UI-only size facts: match stat without -L and the existing truncated binary units.
+// Missing files remain zero-sized for display; no restore success decision uses this output.
+fn cmd_file_size_human_batch(paths: &[String]) -> i32 {
+    let mut output = String::new();
+    for (i, path) in paths.iter().enumerate() {
+        let n = match fs::symlink_metadata(path) {
+            Ok(m) => m.len(),
+            Err(e) => { eprintln!("speedscan: size fact unavailable: {}: {}", path, e); 0 }
+        };
+        if i != 0 { output.push('\t'); }
+        if n < 1024 { output.push_str(&format!("{} bytes", n)); continue; }
+        let (unit, label) = if n < 1 << 20 { (1u64 << 10, "KB") }
+            else if n < 1 << 30 { (1u64 << 20, "MB") }
+            else if n < 1 << 40 { (1u64 << 30, "GB") }
+            else { (1u64 << 40, "TB") };
+        let hundredths = (n as u128 * 100) / unit as u128;
+        output.push_str(&format!("{}.{:02} {}", hundredths / 100, hundredths % 100, label));
+    }
+    let mut out = io::stdout().lock();
+    if writeln!(out, "{}", output).is_ok() { 0 } else { 1 }
+}
+
+fn collect_appdetails_path(paths: &mut Vec<Vec<u8>>, path_bytes: &mut usize, bytes: &[u8]) -> io::Result<()> {
+    if bytes.contains(&b'\n') || bytes.contains(&b'\r')
+        || paths.len() >= 100_000 || path_bytes.saturating_add(bytes.len()) > 32 * 1024 * 1024 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "appdetails path output limit/encoding"));
+    }
+    *path_bytes += bytes.len();
+    paths.push(bytes.to_vec());
+    Ok(())
+}
+
+#[cfg(test)]
+mod appdetails_output_tests {
+    use super::*;
+    #[test]
+    fn appdetails_output_limits() {
+        let mut paths = vec![Vec::new(); 99_999];
+        let mut bytes = 32 * 1024 * 1024 - 1;
+        assert!(collect_appdetails_path(&mut paths, &mut bytes, b"x").is_ok());
+        assert_eq!(paths.len(), 100_000);
+        assert!(collect_appdetails_path(&mut paths, &mut bytes, b"").is_err());
+        paths.clear();
+        assert!(collect_appdetails_path(&mut paths, &mut bytes, b"x").is_err());
+        assert!(paths.is_empty());
+        bytes = 0;
+        for invalid in [b"a\nb".as_slice(), b"a\rb".as_slice()] {
+            assert!(collect_appdetails_path(&mut paths, &mut bytes, invalid).is_err());
+            assert!(paths.is_empty());
+            assert_eq!(bytes, 0);
+        }
+        assert!(collect_appdetails_path(&mut paths, &mut bytes, b"a\tb").is_ok());
+        assert_eq!(paths[0], b"a\tb");
+    }
+}
+
 fn cmd_appdetails_index(
     root_s: &str,
     out_s: &str,
     maxdepth_s: Option<&str>,
     mindepth_s: Option<&str>,
+    paths_sort: Option<bool>,
 ) -> i32 {
     let start = Instant::now();
     if root_s.is_empty() || out_s.is_empty() {
@@ -2756,6 +2478,8 @@ fn cmd_appdetails_index(
             return 4;
         }
     };
+    let mut paths: Vec<Vec<u8>> = Vec::new();
+    let mut path_bytes = 0usize;
     let mut rows = 0u64;
     let mut res = ScanResult::default();
     let max_u = max as usize;
@@ -2768,6 +2492,14 @@ fn cmd_appdetails_index(
                 .map(|n| n == "app_details.json")
                 .unwrap_or(false)
         {
+            if paths_sort.is_some() {
+                let bytes = p.as_os_str().as_bytes();
+                // A line protocol cannot represent newlines. Do not emit ambiguous paths.
+                // Bound buffering; callers may use their existing GNU fallback on failure.
+                collect_appdetails_path(&mut paths, &mut path_bytes, bytes)?;
+                rows += 1;
+                return Ok(());
+            }
             let parent = p
                 .parent()
                 .and_then(|x| x.file_name())
@@ -2778,21 +2510,32 @@ fn cmd_appdetails_index(
             } else {
                 parent
             };
-            let _ = writeln!(
+            writeln!(
                 out,
                 "{}\t{}\t{}\t{}",
                 app,
                 p.to_string_lossy(),
                 m.len(),
                 m.mtime()
-            );
+            )?;
             rows += 1;
         }
         Ok(())
     };
-    let _ = walk_no_follow(root, root, 0, Some(max_u), &mut res, &mut f);
+    let traversal = walk_no_follow(root, root, 0, Some(max_u), &mut res, &mut f);
+    if let Some(sorted) = paths_sort {
+        if traversal.is_err() || res.errors != 0 { return 1; }
+        if sorted { paths.sort_unstable(); }
+        let mut writer = BufWriter::new(out);
+        for path in paths {
+            if writer.write_all(&path).and_then(|_| writer.write_all(b"\n")).is_err() { return 1; }
+        }
+        if writer.flush().is_err() { return 1; }
+        println!("{}", rows);
+        return 0;
+    }
     println!("APPDETAILS_INDEX ok={} root={} out={} rows={} errors={} maxdepth={} mindepth={} elapsedMs={} policy=facts-only", if res.errors==0{"true"}else{"partial"},root_s,out_s,rows,res.errors,max,min,start.elapsed().as_millis());
-    0
+    if traversal.is_ok() && out.flush().is_ok() { 0 } else { 1 }
 }
 fn cmd_file_list_abs_filter(
     root_s: &str,
@@ -2820,7 +2563,7 @@ fn cmd_file_list_abs_filter(
     let mut f = |p: &Path, m: &fs::Metadata, _: usize, _: &mut ScanResult| {
         if m.is_dir() {
             if !prefix.is_empty() && has_prefix_path(p, prefix) {
-                return Err(std::io::Error::other("skip-subtree"));
+                return Ok(());
             }
             return Ok(());
         }
@@ -2837,15 +2580,15 @@ fn cmd_file_list_abs_filter(
             if !prefix.is_empty() && has_prefix_path(p, prefix) {
                 return Ok(());
             }
-            let _ = writeln!(out, "{}", p.to_string_lossy());
+            writeln!(out, "{}", p.to_string_lossy())?;
             rows += 1;
         }
         Ok(())
     };
-    let _ = walk_no_follow(root, root, 0, None, &mut res, &mut f);
+    let traversal = speedbackup_native_rs::walk_no_follow_except(root, root, 0, None, &mut res, &mut f, Path::new(prefix));
     let errors = res.errors;
     println!("FILE_LIST_ABS_FILTER ok={} root={} out={} rows={} errors={} skipAppDetails={} elapsedMs={} policy=facts-only",if errors==0{"true"}else{"partial"},root_s,out_s,rows,errors,if skip{1}else{0},start.elapsed().as_millis());
-    0
+    if traversal.is_ok() && out.flush().is_ok() { 0 } else { 1 }
 }
 fn cmd_selected_list(applist: &str, blacklist: &str, out_s: &str, blacklist_mode: &str) -> i32 {
     let start = Instant::now();
@@ -2860,7 +2603,22 @@ fn cmd_selected_list(applist: &str, blacklist: &str, out_s: &str, blacklist_mode
         Ok(f) => f,
         Err(_) => return 4,
     };
-    let black = load_set(blacklist);
+    let mut black = std::collections::HashSet::new();
+    if !blacklist.is_empty() && blacklist != "-" {
+        match File::open(blacklist) {
+            Ok(f) => {
+                let mut reader = BufReader::new(f);
+                let mut buf = Vec::new();
+                while let Some(line) = next_c_line_lossy(&mut reader, &mut buf) {
+                    if !line.is_empty() && !matches!(line.as_bytes()[0], b'#' | 0xef) {
+                        black.insert(line);
+                    }
+                }
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {},
+            Err(e) => { note_io::<()>(Err(e)); }
+        }
+    }
     let full = blacklist_mode == "1" || blacklist_mode == "true";
     let mut rows = 0;
     let mut excluded = 0;
@@ -2870,12 +2628,12 @@ fn cmd_selected_list(applist: &str, blacklist: &str, out_s: &str, blacklist_mode
         if let Some((name, pkg, mut nodata)) = parse_app_line(&l) {
             let hit = black.contains(&pkg);
             if hit && full {
-                let _ = writeln!(
+                note_io(writeln!(
                     out,
                     "EXCLUDED\t{}\t{}",
                     tsv_sanitize(&name),
                     tsv_sanitize(&pkg)
-                );
+                ));
                 excluded += 1;
                 continue;
             }
@@ -2883,13 +2641,13 @@ fn cmd_selected_list(applist: &str, blacklist: &str, out_s: &str, blacklist_mode
                 nodata = true;
             }
             let safe = safe_name_for_backup(&name, &pkg);
-            let _ = writeln!(
+            note_io(writeln!(
                 out,
                 "APP\t{}\t{}\t{}",
                 tsv_sanitize(&safe),
                 tsv_sanitize(&pkg),
                 if nodata { 1 } else { 0 }
-            );
+            ));
             rows += 1;
         }
     }
@@ -2936,7 +2694,7 @@ fn cmd_apk_size_map(input: &str, out_s: &str) -> i32 {
         rows += 1;
         if let Ok(m) = fs::symlink_metadata(path) {
             if m.is_file() {
-                let _ = writeln!(out, "{}\t{}", pkg, m.len());
+                note_io(writeln!(out, "{}\t{}", pkg, m.len()));
                 ok += 1;
             }
         }
@@ -3248,14 +3006,14 @@ fn cmd_backup_prescan_exact_input(
         }
     };
     let mut stats = BufWriter::new(stats_f);
-    let _ = writeln!(stats, "bytes\t{}", total);
-    let _ = writeln!(stats, "archives\t{}", rows.len());
-    let _ = writeln!(stats, "apkRows\t{}", apk_rows);
-    let _ = writeln!(stats, "apkPackages\t{}", need_apk.len());
-    let _ = writeln!(stats, "apkFiles\t{}", apk_files);
-    let _ = writeln!(stats, "dirRows\t{}", dir_rows);
-    let _ = writeln!(stats, "cacheKeys\t{}", cache_keys);
-    let _ = writeln!(stats, "elapsedMs\t{}", elapsed);
+    note_io(writeln!(stats, "bytes\t{}", total));
+    note_io(writeln!(stats, "archives\t{}", rows.len()));
+    note_io(writeln!(stats, "apkRows\t{}", apk_rows));
+    note_io(writeln!(stats, "apkPackages\t{}", need_apk.len()));
+    note_io(writeln!(stats, "apkFiles\t{}", apk_files));
+    note_io(writeln!(stats, "dirRows\t{}", dir_rows));
+    note_io(writeln!(stats, "cacheKeys\t{}", cache_keys));
+    note_io(writeln!(stats, "elapsedMs\t{}", elapsed));
     if stats.flush().is_err() {
         return 10;
     }
@@ -3354,13 +3112,22 @@ fn cmd_backup_prescan_summary(args: CmdBackupPrescanSummaryArgs<'_>) -> i32 {
         remote_stream,
         remote_type,
     } = args;
+    macro_rules! sum {
+        ($left:expr, $right:expr) => {
+            match ($left).checked_add($right) {
+                Some(value) => value,
+                None => { eprintln!("prescan summary size overflow"); return 4; }
+            }
+        };
+    }
     let start = Instant::now();
     let mut app_count = 0u64;
     let mut excluded = 0u64;
     let mut per: HashMap<String, AppSumEntry> = HashMap::new();
     // read_selected_for_summary(): split only the first three TABs.  The nd
     // field retains any remaining TAB bytes, so "1\textra" is not nodata.
-    for l in read_lines(Path::new(selected)).unwrap_or_default() {
+    let selected_lines = match read_lines(Path::new(selected)) { Ok(v) => v, Err(e) => { eprintln!("selected summary input: {e}"); return 4; } };
+    for l in selected_lines {
         let mut it = l.splitn(4, '\t');
         let kind = match it.next() {
             Some(v) => v,
@@ -3375,7 +3142,7 @@ fn cmd_backup_prescan_summary(args: CmdBackupPrescanSummaryArgs<'_>) -> i32 {
             None => continue,
         };
         if kind == "EXCLUDED" {
-            excluded = excluded.wrapping_add(1);
+            excluded = sum!(excluded, 1);
             continue;
         }
         let nd = match it.next() {
@@ -3388,16 +3155,19 @@ fn cmd_backup_prescan_summary(args: CmdBackupPrescanSummaryArgs<'_>) -> i32 {
                 e.name = name.to_string();
             }
             e.nodata = nd == "1";
-            app_count = app_count.wrapping_add(1);
+            app_count = sum!(app_count, 1);
         }
     }
     let mut media_total = 0u64;
     let mut media_cache = 0u64;
     let mut media_mapped = 0u64;
     let mut cache_mapped = 0u64;
+    let mut media_keys = HashSet::new();
+    let mut media_cache_keys = HashSet::new();
     // add_dirsize_to_summary(): first two TABs only; size retains the suffix.
     if dirsizes != "-" {
-        for l in read_lines(Path::new(dirsizes)).unwrap_or_default() {
+        let lines = match read_lines(Path::new(dirsizes)) { Ok(v) => v, Err(e) => { eprintln!("size summary input: {e}"); return 4; } };
+        for l in lines {
             let mut it = l.splitn(3, '\t');
             let pkg = match it.next() {
                 Some(v) => v,
@@ -3415,11 +3185,13 @@ fn cmd_backup_prescan_summary(args: CmdBackupPrescanSummaryArgs<'_>) -> i32 {
             if pkg == "__speedbackup_custom_media__" {
                 if typ.starts_with("media_") {
                     if typ.contains("_exclude_cache") {
-                        media_cache = media_cache.wrapping_add(sz);
-                        cache_mapped = cache_mapped.wrapping_add(1);
+                        if let Some(key) = typ.strip_suffix("_exclude_cache") { media_cache_keys.insert(key.to_string()); }
+                        media_cache = sum!(media_cache, sz);
+                        cache_mapped = sum!(cache_mapped, 1);
                     } else {
-                        media_total = media_total.wrapping_add(sz);
-                        media_mapped = media_mapped.wrapping_add(1);
+                        media_keys.insert(typ.to_string());
+                        media_total = sum!(media_total, sz);
+                        media_mapped = sum!(media_mapped, 1);
                     }
                 }
                 continue;
@@ -3429,17 +3201,18 @@ fn cmd_backup_prescan_summary(args: CmdBackupPrescanSummaryArgs<'_>) -> i32 {
                 None => continue,
             };
             if typ == "user" || typ == "user_de" {
-                e.appdata = e.appdata.wrapping_add(sz);
+                e.appdata = sum!(e.appdata, sz);
             } else if typ == "data" || typ == "obb" || typ == "media" {
-                e.external = e.external.wrapping_add(sz);
+                e.external = sum!(e.external, sz);
             } else if typ.contains("_exclude_cache") || typ.contains("_exclude_code_cache") {
-                e.cache = e.cache.wrapping_add(sz);
+                e.cache = sum!(e.cache, sz);
             }
         }
     }
     // add_apk_to_summary(): first TAB only; the entire suffix is parsed.
     if apkmap != "-" {
-        for l in read_lines(Path::new(apkmap)).unwrap_or_default() {
+        let lines = match read_lines(Path::new(apkmap)) { Ok(v) => v, Err(e) => { eprintln!("APK summary input: {e}"); return 4; } };
+        for l in lines {
             let mut it = l.splitn(2, '\t');
             let pkg = match it.next() {
                 Some(v) => v,
@@ -3450,7 +3223,7 @@ fn cmd_backup_prescan_summary(args: CmdBackupPrescanSummaryArgs<'_>) -> i32 {
                 None => continue,
             };
             if let Some(v) = per.get_mut(pkg) {
-                v.apk = v.apk.wrapping_add(parse_u64_strict_default(szs, 0));
+                v.apk = sum!(v.apk, parse_u64_strict_default(szs, 0));
             }
         }
     }
@@ -3475,37 +3248,37 @@ fn cmd_backup_prescan_summary(args: CmdBackupPrescanSummaryArgs<'_>) -> i32 {
             e.external = 0;
             e.cache = 0;
         }
-        let raw = e.apk.wrapping_add(e.appdata).wrapping_add(e.external);
+        let raw = sum!(sum!(e.apk, e.appdata), e.external);
         let eff = if raw > e.cache {
             raw.wrapping_sub(e.cache)
         } else {
             0
         };
-        apk = apk.wrapping_add(e.apk);
-        appdata = appdata.wrapping_add(e.appdata);
-        ext = ext.wrapping_add(e.external);
-        cache_total = cache_total.wrapping_add(e.cache);
-        total = total.wrapping_add(eff);
+        apk = sum!(apk, e.apk);
+        appdata = sum!(appdata, e.appdata);
+        ext = sum!(ext, e.external);
+        cache_total = sum!(cache_total, e.cache);
+        total = sum!(total, eff);
         if rstream && remote_on && rs.contains(&e.name) {
-            remote_skip = remote_skip.wrapping_add(eff);
+            remote_skip = sum!(remote_skip, eff);
         } else if !remote_on && !rstream && ls.contains(&e.name) {
-            local_skip = local_skip.wrapping_add(eff);
+            local_skip = sum!(local_skip, eff);
         }
     }
-    total = total.wrapping_add(media_total);
-    cache_total = cache_total.wrapping_add(media_cache);
+    total = sum!(total, media_total);
+    cache_total = sum!(cache_total, media_cache);
     total = if total > media_cache {
         total.wrapping_sub(media_cache)
     } else {
         0
     };
-    let skip_sum = remote_skip.wrapping_add(local_skip);
+    let skip_sum = sum!(remote_skip, local_skip);
     let expected = if skip_sum < total {
         total.wrapping_sub(skip_sum)
     } else {
         0
     };
-    let partial_media: i32 = if media_mapped > 0 { 0 } else { 1 };
+    let partial_media: i32 = if !media_keys.is_empty() && media_keys == media_cache_keys { 0 } else { 1 };
     let body=format!(
         "apps\t{}\nexcludedApps\t{}\napk\t{}\nappData\t{}\nexternal\t{}\nmediaCustom\t{}\nexcludedCache\t{}\ntotal\t{}\nremoteSkip\t{}\nlocalSkip\t{}\nexpected\t{}\npartialMedia\t{}\nmediaMapped\t{}\ncacheMapped\t{}\n",
         app_count,excluded,apk,appdata,ext,media_total,cache_total,total,remote_skip,local_skip,expected,partial_media,media_mapped,cache_mapped
@@ -3514,7 +3287,10 @@ fn cmd_backup_prescan_summary(args: CmdBackupPrescanSummaryArgs<'_>) -> i32 {
         Ok(f) => f,
         Err(_) => return 4,
     };
-    let _ = out.write_all(body.as_bytes());
+    if let Err(error) = out.write_all(body.as_bytes()) {
+        eprintln!("prescan summary output: {error}");
+        return 4;
+    }
     println!("BACKUP_PRESCAN_SUMMARY_NATIVE ok=true out={} apps={} total={} expected={} elapsedMs={} policy=facts-only",out_s,app_count,total,expected,start.elapsed().as_millis());
     0
 }
@@ -3560,7 +3336,7 @@ fn cmd_backup_root_index(root_s: &str, out_s: &str, maxdepth_s: Option<&str>) ->
             } else {
                 "other"
             };
-            let _ = writeln!(
+            writeln!(
                 out,
                 "{}\t{}\t{}\t{}\t{}\t{}",
                 kind,
@@ -3569,16 +3345,15 @@ fn cmd_backup_root_index(root_s: &str, out_s: &str, maxdepth_s: Option<&str>) ->
                 depth,
                 m.mtime(),
                 if m.is_file() { m.len() } else { 0 }
-            );
+            )?;
             rows += 1;
         }
         Ok(())
     };
-    let _ = walk_no_follow(root, root, 0, Some(max), &mut res, &mut f);
+    let traversal = walk_no_follow(root, root, 0, Some(max), &mut res, &mut f);
     println!("BACKUP_ROOT_INDEX ok={} root={} out={} rows={} errors={} maxdepth={} elapsedMs={} policy=facts-only",if res.errors==0{"true"}else{"partial"},root_s,out_s,rows,res.errors,max,start.elapsed().as_millis());
-    0
+    if traversal.is_ok() && out.flush().is_ok() { 0 } else { 1 }
 }
-
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 struct StatVfs {
@@ -3853,7 +3628,7 @@ fn checksum_list_walk_rs(
             Ok(v) => (v, true),
             Err(_) => (0, false),
         };
-        let _ = writeln!(
+        note_io(writeln!(
             out,
             "{}\t{}\t{}\t{:016x}\t{}",
             rel_s,
@@ -3861,7 +3636,7 @@ fn checksum_list_walk_rs(
             m.mtime(),
             h,
             if ok { "OK" } else { "READ_ERROR" }
-        );
+        ));
         *rows = (*rows).wrapping_add(1);
         if !ok {
             *errors = (*errors).wrapping_add(1);
@@ -3883,7 +3658,7 @@ fn checksum_list_walk_rs(
     for ent in rd {
         let ent = match ent {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(_) => { *errors += 1; rc = 1; continue; },
         };
         if !path_len_c_join_ok(path, ent.file_name().as_os_str()) {
             *errors = (*errors).wrapping_add(1);
@@ -3913,10 +3688,10 @@ fn cmd_checksum_list(root_s: &str, out_s: &str) -> i32 {
             return 3;
         }
     };
-    let _ = writeln!(
+    note_io(writeln!(
         out,
         "#schema\tspeedbackup.checksum_list.v1\n#fields\trel\tbytes\tmtime\tfnv64\tstatus"
-    );
+    ));
     let mut root_len = root_s.len();
     let rb = root_s.as_bytes();
     while root_len > 1 && rb[root_len - 1] == b'/' {
@@ -3932,7 +3707,7 @@ fn cmd_checksum_list(root_s: &str, out_s: &str) -> i32 {
         &mut rows,
         &mut errors,
     );
-    let _ = writeln!(out, "#summary\trows={}\terrors={}\trc={}", rows, errors, rc);
+    note_io(writeln!(out, "#summary\trows={}\terrors={}\trc={}", rows, errors, rc));
     rc
 }
 fn cmd_manifest_verify(root_s: &str, manifest: &str, prefix_restore: bool) -> i32 {
@@ -4079,7 +3854,7 @@ fn cmd_run_tmpdir_facts(base: &str, out_s: &str, prefix: Option<&str>) -> i32 {
         match fs::symlink_metadata(&path) {
             Ok(m) => {
                 let age = now - m.mtime();
-                let _ = writeln!(
+                note_io(writeln!(
                     out,
                     "{}\t{}\t{}\t{:04o}\t{}\t{}\t{}\t{}\t{}",
                     name,
@@ -4091,13 +3866,13 @@ fn cmd_run_tmpdir_facts(base: &str, out_s: &str, prefix: Option<&str>) -> i32 {
                     m.len(),
                     m.mtime(),
                     age
-                );
+                ));
                 rows += 1
             }
             Err(_) => errors += 1,
         }
     }
-    let _ = writeln!(out, "#summary\trows={}\terrors={}", rows, errors);
+    note_io(writeln!(out, "#summary\trows={}\terrors={}", rows, errors));
     if errors == 0 {
         0
     } else {
@@ -4243,7 +4018,7 @@ fn pack_plan_emit_row_rs(
         ),
         None => ("missing", 0, 0, 0, 0, 0, 0, 0, 0, 0),
     };
-    let _ = writeln!(
+    note_io(writeln!(
         out,
         "PACK_PLAN_ROW\t{}\t{}\t{:04o}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         tsv_sanitize(rel),
@@ -4259,7 +4034,7 @@ fn pack_plan_emit_row_rs(
         nlink,
         if packable { 1 } else { 0 },
         tsv_sanitize(reason)
-    );
+    ));
     res.rows = res.rows.wrapping_add(1);
     if packable {
         res.packable = res.packable.wrapping_add(1);
@@ -4321,7 +4096,7 @@ fn pack_plan_walk_rs(
     for ent in rd {
         let ent = match ent {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(_) => { res.errors += 1; rc = 1; continue; },
         };
         if !path_len_c_join_ok(path, ent.file_name().as_os_str()) {
             res.errors = res.errors.wrapping_add(1);
@@ -4365,7 +4140,7 @@ fn cmd_tree_pack_plan(root_s: &str, out_s: &str, exclude: &str, max_rows_s: Opti
     };
     let max_rows = parse_u64_default(max_rows_s, 0);
     let ex = load_set(exclude);
-    let _ = writeln!(out, "#schema\tspeedbackup.tree_pack_plan.v1");
+    note_io(writeln!(out, "#schema\tspeedbackup.tree_pack_plan.v1"));
     let _=writeln!(out,"#fields\trel\ttype\tmode\tuid\tgid\tbytes\tblocks512\tmtime\tdev\tino\tnlink\tpackable\treason");
     let mut res = PackPlanResult::default();
     let walk_rc = pack_plan_walk_rs(&mut out, root, root, &ex, &mut res, max_rows);
@@ -4407,7 +4182,7 @@ fn app_media_emit_row_rs(
         res.truncated = 1;
         return false;
     }
-    let _ = writeln!(
+    note_io(writeln!(
         out,
         "APP_MEDIA_INDEX_ROW\t{}\t{}\t{:04o}\t{}\t{}\t{}\t{}\t{}\t{}",
         tsv_sanitize(rel),
@@ -4419,7 +4194,7 @@ fn app_media_emit_row_rs(
         m.blocks(),
         m.mtime(),
         depth
-    );
+    ));
     res.rows = res.rows.wrapping_add(1);
     let mt = m.mtime() as u64;
     if mt > res.max_mtime {
@@ -4500,7 +4275,7 @@ fn app_media_walk_rs(args: AppMediaWalkRsArgs<'_>) -> i32 {
     for ent in rd {
         let ent = match ent {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(_) => { res.errors += 1; rc = 1; continue; },
         };
         if !path_len_c_join_ok(path, ent.file_name().as_os_str()) {
             res.errors = res.errors.wrapping_add(1);
@@ -4608,7 +4383,7 @@ fn entry_facts_emit_row(
         res.truncated = 1;
         return false;
     }
-    let _ = writeln!(
+    note_io(writeln!(
         out,
         "{}\t{}\t{}\t{:04o}\t{}\t{}\t{}\t{}\t{}\t{}",
         prefix,
@@ -4621,7 +4396,7 @@ fn entry_facts_emit_row(
         m.blocks(),
         m.mtime(),
         m.ino()
-    );
+    ));
     res.rows = res.rows.wrapping_add(1);
     let mt = m.mtime() as u64;
     if mt > res.max_mtime {
@@ -4688,7 +4463,7 @@ fn entry_facts_walk(
     for ent in rd {
         let ent = match ent {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(_) => { res.errors += 1; rc = 1; continue; },
         };
         if !path_len_c_join_ok(path, ent.file_name().as_os_str()) {
             res.errors = res.errors.wrapping_add(1);
@@ -4732,11 +4507,11 @@ fn cmd_entry_size_facts(root_s: &str, out_s: &str, exclude: &str, max_rows_s: Op
     };
     let max_rows = parse_u64_default(max_rows_s, 0);
     let ex = load_set(exclude);
-    let _ = writeln!(out, "#schema\tspeedbackup.entry_size_facts.v1");
-    let _ = writeln!(
+    note_io(writeln!(out, "#schema\tspeedbackup.entry_size_facts.v1"));
+    note_io(writeln!(
         out,
         "#fields\trel\ttype\tmode\tuid\tgid\tbytes\tblocks512\tmtime\tino"
-    );
+    ));
     let mut res = EntryFactsRs::default();
     let rc = entry_facts_walk(&mut out, root, root, &ex, &mut res, max_rows);
     let _=writeln!(out,"#summary\trows={}\tfiles={}\tdirs={}\tlinks={}\tspecials={}\tbytes={}\tblocks512={}\tmaxMtime={}\terrors={}\ttruncated={}\trc={}",res.rows,res.files,res.dirs,res.links,res.specials,res.bytes,res.blocks512,res.max_mtime,res.errors,res.truncated,rc);
@@ -4804,7 +4579,7 @@ fn cmd_changed_entry_facts(manifest: &str, out_s: &str) -> i32 {
             return 4;
         }
     };
-    let _ = writeln!(out, "#schema\tspeedbackup.changed_entry_facts.v1");
+    note_io(writeln!(out, "#schema\tspeedbackup.changed_entry_facts.v1"));
     let _=writeln!(out,"#fields\tapp\tpkg\tentry\tpath\texists\tfiles\tdirs\tlinks\tspecials\tbytes\tblocks512\tmaxMtime\terrors\toriginBytes\tarchiveRel");
     let mut rows = 0u64;
     let mut exists_rows = 0u64;
@@ -4839,7 +4614,7 @@ fn cmd_changed_entry_facts(manifest: &str, out_s: &str) -> i32 {
             total_bytes = total_bytes.wrapping_add(r.bytes);
             total_files = total_files.wrapping_add(r.files);
             errors = errors.wrapping_add(r.errors);
-            let _ = writeln!(
+            note_io(writeln!(
                 out,
                 "CHANGED_ENTRY_FACT\t{}\t{}\t{}\t{}\t1\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
                 tsv_sanitize(app),
@@ -4856,9 +4631,9 @@ fn cmd_changed_entry_facts(manifest: &str, out_s: &str) -> i32 {
                 r.errors,
                 tsv_sanitize(origin),
                 tsv_sanitize(archive)
-            );
+            ));
         } else {
-            let _ = writeln!(
+            note_io(writeln!(
                 out,
                 "CHANGED_ENTRY_FACT\t{}\t{}\t{}\t{}\t0\t0\t0\t0\t0\t0\t0\t0\t0\t{}\t{}",
                 tsv_sanitize(app),
@@ -4867,23 +4642,34 @@ fn cmd_changed_entry_facts(manifest: &str, out_s: &str) -> i32 {
                 tsv_sanitize(path_s),
                 tsv_sanitize(origin),
                 tsv_sanitize(archive)
-            );
+            ));
         }
     }
-    let _ = writeln!(
+    note_io(writeln!(
         out,
         "#summary\trows={}\texists={}\tfiles={}\tbytes={}\terrors={}",
         rows, exists_rows, total_files, total_bytes, errors
-    );
+    ));
     println!("CHANGED_ENTRY_FACTS ok={} manifest={} out={} rows={} exists={} files={} bytes={} errors={} elapsedMs={} policy=facts-only schema=speedbackup.changed_entry_facts.v1",if errors==0{"true"}else{"partial"},tsv_sanitize(manifest),tsv_sanitize(out_s),rows,exists_rows,total_files,total_bytes,errors,start.elapsed().as_millis());
     0
 }
 
+fn read_tsv_rows_required(path: &str) -> Vec<Vec<String>> {
+    if path == "-" { return Vec::new(); }
+    match File::open(path) {
+        Ok(f) => read_tsv_reader(f),
+        Err(e) => { note_io::<()>(Err(e)); Vec::new() }
+    }
+}
 fn read_tsv_rows(path: &str) -> Vec<Vec<String>> {
     let f = match File::open(path) {
         Ok(v) => v,
-        Err(_) => return Vec::new(),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Vec::new(),
+        Err(e) => { note_io::<()>(Err(e)); return Vec::new(); },
     };
+    read_tsv_reader(f)
+}
+fn read_tsv_reader(f: File) -> Vec<Vec<String>> {
     let mut br = BufReader::new(f);
     let mut buf = Vec::<u8>::new();
     let mut out = Vec::new();
@@ -4919,7 +4705,7 @@ fn write_fast_miss(args: WriteFastMissArgs<'_>) {
         miss_count,
         miss_apps,
     } = args;
-    let _ = writeln!(
+    note_io(writeln!(
         out,
         "{}\t{}\t{}\t{}\t{}\t{}",
         tsv_sanitize(app),
@@ -4928,7 +4714,7 @@ fn write_fast_miss(args: WriteFastMissArgs<'_>) {
         tsv_sanitize(entry),
         tsv_sanitize(cur),
         tsv_sanitize(old)
-    );
+    ));
     *miss_count += 1;
     miss_apps.insert(pkg.to_string());
 }
@@ -4998,12 +4784,12 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
         Ok(v) => v,
         Err(_) => return 4,
     };
-    let sel = read_tsv_rows(selected);
+    let sel = read_tsv_rows_required(selected);
     let mut meta: HashSet<String> = HashSet::new();
     let mut rver: HashMap<String, String> = HashMap::new();
     let mut rsize: HashMap<(String, String), String> = HashMap::new();
     let mut state_valid: HashMap<String, String> = HashMap::new();
-    for r in read_tsv_rows(summary) {
+    for r in read_tsv_rows_required(summary) {
         if r.len() >= 9 {
             let app = r[0].clone();
             meta.insert(app.clone());
@@ -5020,7 +4806,7 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
     let mut st_cur: HashMap<String, String> = HashMap::new();
     let mut st_match: HashMap<String, String> = HashMap::new();
     let mut nstate = 0u64;
-    for r in read_tsv_rows(state) {
+    for r in read_tsv_rows_required(state) {
         if r.len() >= 5 {
             st_old.insert(r[0].clone(), r[2].clone());
             st_cur.insert(r[0].clone(), r[3].clone());
@@ -5029,14 +4815,14 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
         }
     }
     let mut lsize: HashMap<(String, String), String> = HashMap::new();
-    for r in read_tsv_rows(dirsizes) {
+    for r in read_tsv_rows_required(dirsizes) {
         if r.len() >= 3 {
             lsize.insert((r[0].clone(), r[1].clone()), r[2].clone());
         }
     }
     let mut dexists: HashSet<(String, String)> = HashSet::new();
     let mut nexists = 0u64;
-    for r in read_tsv_rows(exists) {
+    for r in read_tsv_rows_required(exists) {
         if r.len() >= 2 {
             dexists.insert((r[0].clone(), r[1].clone()));
             nexists += 1;
@@ -5044,18 +4830,20 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
     }
     let mut arch: HashSet<(String, String)> = HashSet::new();
     let mut narch = 0u64;
-    for r in read_tsv_rows(archives) {
+    for r in read_tsv_rows_required(archives) {
         if r.len() >= 2 {
             arch.insert((r[0].clone(), r[1].clone()));
             narch += 1;
         }
     }
     let mut black: HashSet<String> = HashSet::new();
-    for r in read_tsv_rows(blackset) {
+    for r in read_tsv_rows_required(blackset) {
         if !r.is_empty() {
             black.insert(r[0].clone());
         }
     }
+    // Never turn incomplete facts into an authoritative skip decision.
+    if COMMAND_IO_FAILED.load(Ordering::Relaxed) { return 4; }
     let mut fast = 0u64;
     let mut misses = 0u64;
     let mut miss_apps: HashSet<String> = HashSet::new();
@@ -5229,9 +5017,6 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
                 });
                 return false;
             }
-            if cur == "0" {
-                return true;
-            }
             let old = rsize.get(&app_key).cloned().unwrap_or_default();
             if old.is_empty() || old == "null" || old != cur {
                 write_fast_miss(WriteFastMissArgs {
@@ -5299,7 +5084,7 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
             }
         }
         if ok {
-            let _ = writeln!(out, "{}", app);
+            note_io(writeln!(out, "{}", app));
             fast += 1;
         }
     }
@@ -5307,7 +5092,7 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
         Ok(v) => v,
         Err(_) => return 4,
     };
-    let _ = writeln!(
+    note_io(writeln!(
         stats,
         "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         sel.len(),
@@ -5318,7 +5103,7 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
         fast,
         miss_apps.len(),
         misses
-    );
+    ));
     0
 }
 
@@ -5392,7 +5177,7 @@ fn cmd_dir_size_manifest(args: &[String]) -> i32 {
             {
                 continue;
             }
-            let _ = writeln!(exists, "{}\t{}", tsv_sanitize(pkg), entry);
+            note_io(writeln!(exists, "{}\t{}", tsv_sanitize(pkg), entry));
             let (n, a) = write_presize_manifest_entry(&mut manifest, pkg, entry, &path);
             primary_rows += n.saturating_sub(a);
             auxiliary_rows += a;
@@ -5415,7 +5200,7 @@ fn cmd_backup_entry_presence_map(args: &[String]) -> i32 {
     let android_root = &args[7];
     let user_root = &args[8];
     let user_de_root = &args[9];
-    let rows = read_tsv_rows(selected);
+    let rows = read_tsv_rows_required(selected);
     let mut found: Vec<(String, String)> = Vec::new();
     for r in rows.iter() {
         if r.len() < 3 {
@@ -5443,7 +5228,7 @@ fn cmd_backup_entry_presence_map(args: &[String]) -> i32 {
         Err(_) => return 4,
     };
     for (pkg, entry) in found.iter() {
-        let _ = writeln!(out, "{}\t{}", tsv_sanitize(pkg), entry);
+        note_io(writeln!(out, "{}\t{}", tsv_sanitize(pkg), entry));
     }
     println!("BACKUP_ENTRY_PRESENCE_MAP selected={} rows={} schema=speedscan.backup_entry_presence_map.v1",rows.len(),found.len());
     0
@@ -5488,7 +5273,7 @@ fn cmd_payload_archive_set(args: &[String]) -> i32 {
         Err(_) => return 4,
     };
     for (app, entry) in rows.iter() {
-        let _ = writeln!(out, "{}\t{}", tsv_sanitize(app), entry);
+        note_io(writeln!(out, "{}\t{}", tsv_sanitize(app), entry));
     }
     println!(
         "PAYLOAD_ARCHIVE_SET rows={} schema=speedscan.payload_archive_set.v1",
@@ -5546,13 +5331,13 @@ fn presize_enabled_entries(
 }
 
 fn write_presize_manifest_entry(out: &mut File, pkg: &str, entry: &str, path: &str) -> (u64, u64) {
-    let _ = writeln!(
+    note_io(writeln!(
         out,
         "{}\t{}\t{}",
         tsv_sanitize(pkg),
         entry,
         tsv_sanitize(path)
-    );
+    ));
     let mut aux = 0u64;
     let base = Path::new(path);
     let mut maybe_add = |suffix: &str, child: &str| {
@@ -5560,13 +5345,13 @@ fn write_presize_manifest_entry(out: &mut File, pkg: &str, entry: &str, path: &s
         if fs::metadata(&p).map(|m| m.is_dir()).unwrap_or(false) {
             let typ = format!("{}_exclude_{}", entry, suffix);
             let ps = p.to_string_lossy();
-            let _ = writeln!(
+            note_io(writeln!(
                 out,
                 "{}\t{}\t{}",
                 tsv_sanitize(pkg),
                 typ,
                 tsv_sanitize(ps.as_ref())
-            );
+            ));
             aux += 1;
         }
     };
@@ -5628,7 +5413,7 @@ fn write_presize_existing_entries(args: WritePresizeExistingEntriesArgs<'_>) -> 
         aux_rows += a;
     }
     if rows > 0 {
-        let _ = writeln!(
+        note_io(writeln!(
             diag,
             "{}\t{}\t{}\tpresize_full_dirsize_rows={}\tauxiliary_rows={}",
             tsv_sanitize(app),
@@ -5636,7 +5421,7 @@ fn write_presize_existing_entries(args: WritePresizeExistingEntriesArgs<'_>) -> 
             reason,
             rows,
             aux_rows
-        );
+        ));
     }
     (rows, aux_rows)
 }
@@ -5690,8 +5475,9 @@ fn tiny_dir_probe(path: &Path, limit: u64, max_nodes: usize) -> TinyDirProbe {
 
 fn archive_exists_local(backup_root: &str, app: &str, entry: &str) -> bool {
     let base = Path::new(backup_root).join(app);
-    fs::metadata(base.join(format!("{}.tar", entry))).is_ok()
-        || fs::metadata(base.join(format!("{}.tar.zst", entry))).is_ok()
+    if base.join(format!("{}.tar.incomplete", entry)).exists() { return false; }
+    fs::metadata(base.join(format!("{}.tar", entry))).map(|m| m.is_file() && m.len() > 0).unwrap_or(false)
+        || fs::metadata(base.join(format!("{}.tar.zst", entry))).map(|m| m.is_file() && m.len() > 0).unwrap_or(false)
 }
 
 struct RewritePresizeStatsV4Args<'a> {
@@ -5917,7 +5703,7 @@ fn run_fastskip_presize_plan_v4_after_facts(
         Err(_) => return 4,
     };
     for (pkg, entry, size) in &tiny_all {
-        let _ = writeln!(tiny_file, "{}\t{}\t{}", tsv_sanitize(pkg), entry, size);
+        note_io(writeln!(tiny_file, "{}\t{}\t{}", tsv_sanitize(pkg), entry, size));
     }
     drop(tiny_file);
 
@@ -5936,21 +5722,13 @@ fn run_fastskip_presize_plan_v4_after_facts(
         }
         let pkg = &r[0];
         let typ = &r[1];
-        let mut drop_row = false;
-        for (key_pkg, key_entry) in tiny_primary.keys() {
-            if pkg == key_pkg
-                && (typ == key_entry
-                    || typ == &format!("{}_exclude_cache", key_entry)
-                    || typ == &format!("{}_exclude_code_cache", key_entry))
-            {
-                drop_row = true;
-                break;
-            }
-        }
+        let entry = typ.strip_suffix("_exclude_code_cache")
+            .or_else(|| typ.strip_suffix("_exclude_cache")).unwrap_or(typ);
+        let drop_row = tiny_primary.contains_key(&(pkg.clone(), entry.to_owned()));
         if drop_row {
             continue;
         }
-        let _ = writeln!(mf, "{}\t{}\t{}", r[0], r[1], r[2]);
+        note_io(writeln!(mf, "{}\t{}\t{}", r[0], r[1], r[2]));
         scan_rows += 1;
         if typ.contains("_exclude_cache") || typ.contains("_exclude_code_cache") {
             scan_aux += 1;
@@ -6040,7 +5818,7 @@ fn cmd_local_fastskip_presize_plan_v4(args: &[String]) -> i32 {
         Err(_) => return 4,
     };
     for (pkg, entry) in &live {
-        let _ = writeln!(exists_file, "{}\t{}", tsv_sanitize(pkg), entry);
+        note_io(writeln!(exists_file, "{}\t{}", tsv_sanitize(pkg), entry));
     }
     drop(exists_file);
     let presence_ms = presence_start.elapsed().as_millis();
@@ -6065,7 +5843,7 @@ fn cmd_local_fastskip_presize_plan_v4(args: &[String]) -> i32 {
         Err(_) => return 4,
     };
     for (app, entry) in &archives {
-        let _ = writeln!(archive_file, "{}\t{}", tsv_sanitize(app), entry);
+        note_io(writeln!(archive_file, "{}\t{}", tsv_sanitize(app), entry));
     }
     drop(archive_file);
     let archive_ms = archive_start.elapsed().as_millis();
@@ -6130,12 +5908,12 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
         Ok(v) => v,
         Err(_) => return 4,
     };
-    let sel = read_tsv_rows(selected);
+    let sel = read_tsv_rows_required(selected);
     let mut meta: HashSet<String> = HashSet::new();
     let mut rver: HashMap<String, String> = HashMap::new();
     let mut rsize: HashMap<(String, String), String> = HashMap::new();
     let mut state_valid: HashMap<String, String> = HashMap::new();
-    for r in read_tsv_rows(summary) {
+    for r in read_tsv_rows_required(summary) {
         if r.len() >= 9 {
             let app = r[0].clone();
             meta.insert(app.clone());
@@ -6151,7 +5929,7 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
     let mut st_old: HashMap<String, String> = HashMap::new();
     let mut st_cur: HashMap<String, String> = HashMap::new();
     let mut st_match: HashMap<String, String> = HashMap::new();
-    for r in read_tsv_rows(state) {
+    for r in read_tsv_rows_required(state) {
         if r.len() >= 5 {
             st_old.insert(r[0].clone(), r[2].clone());
             st_cur.insert(r[0].clone(), r[3].clone());
@@ -6159,19 +5937,19 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
         }
     }
     let mut dexists: HashSet<(String, String)> = HashSet::new();
-    for r in read_tsv_rows(exists) {
+    for r in read_tsv_rows_required(exists) {
         if r.len() >= 2 {
             dexists.insert((r[0].clone(), r[1].clone()));
         }
     }
     let mut arch: HashSet<(String, String)> = HashSet::new();
-    for r in read_tsv_rows(archives) {
+    for r in read_tsv_rows_required(archives) {
         if r.len() >= 2 {
             arch.insert((r[0].clone(), r[1].clone()));
         }
     }
     let mut black: HashSet<String> = HashSet::new();
-    for r in read_tsv_rows(blackset) {
+    for r in read_tsv_rows_required(blackset) {
         if !r.is_empty() {
             black.insert(r[0].clone());
         }
@@ -6194,24 +5972,24 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
         let cv = &r[3];
         if black.contains(pkg) {
             if blacklist_mode == "true" {
-                let _ = writeln!(
+                note_io(writeln!(
                     diag,
                     "{}\t{}\tblacklist_full_skip",
                     tsv_sanitize(app),
                     tsv_sanitize(pkg)
-                );
+                ));
                 non_size_miss += 1;
                 continue;
             }
             nodata = true;
         }
         if !meta.contains(app) {
-            let _ = writeln!(
+            note_io(writeln!(
                 diag,
                 "{}\t{}\tlocal_json_missing",
                 tsv_sanitize(app),
                 tsv_sanitize(pkg)
-            );
+            ));
             first_full += 1;
             non_size_miss += 1;
             let (n, a) = write_presize_existing_entries(WritePresizeExistingEntriesArgs {
@@ -6236,12 +6014,12 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
             continue;
         }
         if !arch.contains(&(app.to_string(), "apk".to_string())) {
-            let _ = writeln!(
+            note_io(writeln!(
                 diag,
                 "{}\t{}\tapk_archive_missing",
                 tsv_sanitize(app),
                 tsv_sanitize(pkg)
-            );
+            ));
             first_full += 1;
             non_size_miss += 1;
             let (n, a) = write_presize_existing_entries(WritePresizeExistingEntriesArgs {
@@ -6267,12 +6045,12 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
         }
         let rv = rver.get(app).cloned().unwrap_or_default();
         if cv.is_empty() {
-            let _ = writeln!(
+            note_io(writeln!(
                 diag,
                 "{}\t{}\tcurrent_version_missing",
                 tsv_sanitize(app),
                 tsv_sanitize(pkg)
-            );
+            ));
             non_size_miss += 1;
             let (n, a) = write_presize_existing_entries(WritePresizeExistingEntriesArgs {
                 out: &mut out,
@@ -6296,12 +6074,12 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
             continue;
         }
         if rv.is_empty() || rv != *cv {
-            let _ = writeln!(
+            note_io(writeln!(
                 diag,
                 "{}\t{}\tapk_version_mismatch",
                 tsv_sanitize(app),
                 tsv_sanitize(pkg)
-            );
+            ));
             non_size_miss += 1;
             let (n, a) = write_presize_existing_entries(WritePresizeExistingEntriesArgs {
                 out: &mut out,
@@ -6337,13 +6115,13 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
                 None
             };
             if let Some(reason) = fail_reason {
-                let _ = writeln!(
+                note_io(writeln!(
                     diag,
                     "{}\t{}\t{}",
                     tsv_sanitize(app),
                     tsv_sanitize(pkg),
                     reason
-                );
+                ));
                 non_size_miss += 1;
                 let (n, a) = write_presize_existing_entries(WritePresizeExistingEntriesArgs {
                     out: &mut out,
@@ -6386,13 +6164,13 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
             }
         }
         if let Some(reason) = forced_reason {
-            let _ = writeln!(
+            note_io(writeln!(
                 diag,
                 "{}\t{}\t{}",
                 tsv_sanitize(app),
                 tsv_sanitize(pkg),
                 reason
-            );
+            ));
             non_size_miss += 1;
             let (n, a) = write_presize_existing_entries(WritePresizeExistingEntriesArgs {
                 out: &mut out,
@@ -6439,16 +6217,16 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
     } else {
         "two-phase-incremental-safe"
     };
-    let _ = writeln!(stats, "selected\t{}", sel.len());
-    let _ = writeln!(stats, "candidates\t{}", candidates);
-    let _ = writeln!(stats, "manifestRows\t{}", manifest_rows);
-    let _ = writeln!(stats, "primaryRows\t{}", primary_rows);
-    let _ = writeln!(stats, "auxiliaryRows\t{}", auxiliary_rows);
-    let _ = writeln!(stats, "firstFull\t{}", first_full);
-    let _ = writeln!(stats, "nonSizeMiss\t{}", non_size_miss);
-    let _ = writeln!(stats, "fullDirsizeRows\t{}", full_dirsize_rows);
-    let _ = writeln!(stats, "compareRows\t{}", compare_rows);
-    let _ = writeln!(stats, "planMode\t{}", plan_mode);
+    note_io(writeln!(stats, "selected\t{}", sel.len()));
+    note_io(writeln!(stats, "candidates\t{}", candidates));
+    note_io(writeln!(stats, "manifestRows\t{}", manifest_rows));
+    note_io(writeln!(stats, "primaryRows\t{}", primary_rows));
+    note_io(writeln!(stats, "auxiliaryRows\t{}", auxiliary_rows));
+    note_io(writeln!(stats, "firstFull\t{}", first_full));
+    note_io(writeln!(stats, "nonSizeMiss\t{}", non_size_miss));
+    note_io(writeln!(stats, "fullDirsizeRows\t{}", full_dirsize_rows));
+    note_io(writeln!(stats, "compareRows\t{}", compare_rows));
+    note_io(writeln!(stats, "planMode\t{}", plan_mode));
     println!("LOCAL_FASTSKIP_PRESIZE_PLAN selected={} candidates={} manifestRows={} primaryRows={} auxiliaryRows={} firstFull={} nonSizeMiss={} fullDirsizeRows={} compareRows={} planMode={} schema=speedscan.local_fastskip_presize_plan_v3.v1",sel.len(),candidates,manifest_rows,primary_rows,auxiliary_rows,first_full,non_size_miss,full_dirsize_rows,compare_rows,plan_mode);
     0
 }
@@ -6466,13 +6244,13 @@ fn cmd_remote_stream_local_read_plan(args: &[String]) -> i32 {
     let android_root = &args[8];
     let user_root = &args[9];
     let user_de_root = &args[10];
-    let sel = read_tsv_rows(selected);
+    let sel = read_tsv_rows_required(selected);
     let mut out = match File::create(out_s) {
         Ok(v) => v,
         Err(_) => return 4,
     };
     let mut lsize: HashMap<(String, String), String> = HashMap::new();
-    for r in read_tsv_rows(dirsizes) {
+    for r in read_tsv_rows_required(dirsizes) {
         if r.len() >= 3 {
             lsize.insert((r[0].clone(), r[1].clone()), r[2].clone());
         }
@@ -6495,13 +6273,10 @@ fn cmd_remote_stream_local_read_plan(args: &[String]) -> i32 {
             }
             let key = (pkg.to_string(), entry.to_string());
             let cur = lsize.get(&key).cloned().unwrap_or_default();
-            // Same small-data rule as tools.sh when a trustworthy size is available.
+            // Every existing directory can contribute archive entries, even at zero data bytes.
             // A missing/invalid prescan row is kept conservatively because Backup_data()
             // can fall back to calc_dir_size(); uncertainty must delay release, never make
             // it happen before a later local read.
-            if cur == "0" {
-                return;
-            }
             let reason = if cur.is_empty() {
                 "local_size_missing"
             } else if cur.chars().all(|c| c.is_ascii_digit()) {
@@ -6509,7 +6284,7 @@ fn cmd_remote_stream_local_read_plan(args: &[String]) -> i32 {
             } else {
                 "local_size_uncertain"
             };
-            let _ = writeln!(
+            note_io(writeln!(
                 out,
                 "{}\t{}\t{}\t{}\t{}",
                 tsv_sanitize(app),
@@ -6517,7 +6292,7 @@ fn cmd_remote_stream_local_read_plan(args: &[String]) -> i32 {
                 entry,
                 reason,
                 cur
-            );
+            ));
             rows = rows.wrapping_add(1);
         };
         if backup_obb == "true" {
@@ -6577,9 +6352,6 @@ fn cmd_remote_stream_local_read_plan_v2(args: &[String]) -> i32 {
                 return;
             }
             let cur = lsize.get(&key).cloned().unwrap_or_default();
-            if cur == "0" {
-                return;
-            }
             let reason = if cur.is_empty() {
                 "local_size_missing"
             } else if cur.chars().all(|c| c.is_ascii_digit()) {
@@ -6587,7 +6359,7 @@ fn cmd_remote_stream_local_read_plan_v2(args: &[String]) -> i32 {
             } else {
                 "local_size_uncertain"
             };
-            let _ = writeln!(
+            note_io(writeln!(
                 out,
                 "{}\t{}\t{}\t{}\t{}",
                 tsv_sanitize(app),
@@ -6595,7 +6367,7 @@ fn cmd_remote_stream_local_read_plan_v2(args: &[String]) -> i32 {
                 entry,
                 reason,
                 cur
-            );
+            ));
         };
         if backup_obb == "true" {
             add_entry("data");
@@ -6625,21 +6397,21 @@ fn cmd_remote_stream_local_read_final_plan(args: &[String]) -> i32 {
     let backup_obb = &args[10];
     let backup_user = &args[11];
     let fp = FingerprintMatch::load(summary);
-    let sel = read_tsv_rows(selected);
+    let sel = read_tsv_rows_required(selected);
     let mut lsize: HashMap<(String, String), String> = HashMap::new();
-    for r in read_tsv_rows(dirsizes) {
+    for r in read_tsv_rows_required(dirsizes) {
         if r.len() >= 3 {
             lsize.insert((r[0].clone(), r[1].clone()), r[2].clone());
         }
     }
     let mut dexists: HashSet<(String, String)> = HashSet::new();
-    for r in read_tsv_rows(exists) {
+    for r in read_tsv_rows_required(exists) {
         if r.len() >= 2 && !r[0].is_empty() && !r[1].is_empty() {
             dexists.insert((r[0].clone(), r[1].clone()));
         }
     }
     let mut rsize: HashMap<(String, String), String> = HashMap::new();
-    for r in read_tsv_rows(summary) {
+    for r in read_tsv_rows_required(summary) {
         if r.len() >= 8 {
             let app = r[0].clone();
             rsize.insert((app.to_string(), "user".into()), r[3].clone());
@@ -6649,7 +6421,7 @@ fn cmd_remote_stream_local_read_final_plan(args: &[String]) -> i32 {
             rsize.insert((app.to_string(), "media".into()), r[7].clone());
         }
     }
-    let payload: HashSet<String> = read_tsv_rows(payloadset)
+    let payload: HashSet<String> = read_tsv_rows_required(payloadset)
         .into_iter()
         .filter_map(|r| r.first().cloned())
         .collect();
@@ -6664,7 +6436,7 @@ fn cmd_remote_stream_local_read_final_plan(args: &[String]) -> i32 {
     let mut actual_entries = 0u64;
     let mut final_apps = 0u64;
     let mut skipped_unchanged = 0u64;
-    let mut skipped_small = 0u64;
+    let skipped_small = 0u64;
     let mut payload_missing = 0u64;
     let mut remote_size_missing = 0u64;
     let mut local_size_uncertain = 0u64;
@@ -6686,12 +6458,8 @@ fn cmd_remote_stream_local_read_final_plan(args: &[String]) -> i32 {
                 return;
             }
             let cur = lsize.get(&key).cloned().unwrap_or_default();
-            // Preserve / small-entry semantics exactly: a trustworthy 0..999-byte
-            // current size cannot justify holding app guards for a later local read.
-            if cur == "0" {
-                skipped_small = skipped_small.wrapping_add(1);
-                return;
-            }
+            // Zero data bytes still describe directories, empty files and links.
+            // They require the same archive/fingerprint checks as nonempty data.
             let old = rsize
                 .get(&(app.to_string(), entry.to_string()))
                 .cloned()
@@ -6732,7 +6500,7 @@ fn cmd_remote_stream_local_read_final_plan(args: &[String]) -> i32 {
             consider("user_de");
         }
         if let Some((entry, reason, cur, old)) = final_row {
-            let _ = writeln!(
+            note_io(writeln!(
                 out,
                 "{}\t{}\t{}\t{}\t{}\t{}",
                 tsv_sanitize(app),
@@ -6741,11 +6509,11 @@ fn cmd_remote_stream_local_read_final_plan(args: &[String]) -> i32 {
                 reason,
                 cur,
                 old
-            );
+            ));
             final_apps = final_apps.wrapping_add(1);
         }
     }
-    let _ = writeln!(
+    note_io(writeln!(
         stats,
         "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         sel.len(),
@@ -6757,7 +6525,7 @@ fn cmd_remote_stream_local_read_final_plan(args: &[String]) -> i32 {
         remote_size_missing,
         local_size_uncertain,
         size_mismatch
-    );
+    ));
     println!("REMOTE_STREAM_LOCAL_READ_FINAL_PLAN selected={} actualEntries={} finalApps={} skippedUnchanged={} skippedSmall={} payloadMissing={} remoteSizeMissing={} localSizeUncertain={} sizeMismatch={} schema=speedscan.remote_stream_local_read_final_plan.v1",sel.len(),actual_entries,final_apps,skipped_unchanged,skipped_small,payload_missing,remote_size_missing,local_size_uncertain,size_mismatch);
     0
 }
@@ -6793,7 +6561,7 @@ fn stream_log_kv(s: &str) -> String {
     for ch in s.chars().take(700) {
         match ch {
             '\t' | '\n' | '\r' | ' ' => out.push('_'),
-            '=' => out.push_str("％3D"),
+            '=' => out.push_str("%3D"),
             _ => out.push(ch),
         }
     }
@@ -7073,7 +6841,7 @@ fn cmd_stream_entry_perf_stage(args: &[String]) -> i32 {
                 return 4;
             }
         };
-        let _ = writeln!(out, "{}", stream_context_row(&ctx));
+        note_io(writeln!(out, "{}", stream_context_row(&ctx)));
         println!("STREAM_ENTRY_PERF_PENDING app={} package={} entry={} archiveRel={} reason=defer_until_webdav_daemon_flush resolver=rust",
             stream_log_kv(&ctx.label), stream_log_kv(&ctx.pkg), stream_log_kv(&ctx.entry), stream_log_kv(&ctx.rb));
     } else {
@@ -7165,16 +6933,6 @@ fn cmd_stream_entry_perf_finalize(args: &[String]) -> i32 {
     0
 }
 
-fn read_first_trimmed(path_s: &str) -> String {
-    if path_s.is_empty() || path_s == "-" {
-        return String::new();
-    }
-    match fs::read_to_string(path_s) {
-        Ok(s) => s.lines().next().unwrap_or("").trim().to_string(),
-        Err(_) => String::new(),
-    }
-}
-
 fn load_line_set(path_s: &str) -> HashSet<String> {
     let mut out = HashSet::new();
     if path_s.is_empty() || path_s == "-" {
@@ -7237,7 +6995,7 @@ fn appdetails_remote_payload_apps(
     }
     let mut apps = HashSet::new();
     let mut rels = HashSet::new();
-    for mut line in read_lines(Path::new(remote_files)).unwrap_or_default() {
+    for mut line in read_lines(Path::new(remote_files)).ok()? {
         while line.ends_with('\r') {
             line.pop();
         }
@@ -7309,11 +7067,11 @@ fn write_set_file(path_s: &str, values: &HashSet<String>) {
     if path_s.is_empty() {
         return;
     }
-    if let Ok(mut f) = File::create(path_s) {
+    if let Some(mut f) = note_io(File::create(path_s)) {
         let mut v: Vec<String> = values.iter().cloned().collect();
         v.sort();
         for x in v {
-            let _ = writeln!(f, "{}", tsv_sanitize(&x));
+            note_io(writeln!(f, "{}", tsv_sanitize(&x)));
         }
     }
 }
@@ -7332,9 +7090,9 @@ fn write_vec_file(path_s: &str, values: &[String]) {
     if path_s.is_empty() {
         return;
     }
-    if let Ok(mut f) = File::create(path_s) {
+    if let Some(mut f) = note_io(File::create(path_s)) {
         for x in values {
-            let _ = writeln!(f, "{}", tsv_sanitize(x));
+            note_io(writeln!(f, "{}", tsv_sanitize(x)));
         }
     }
 }
@@ -8282,18 +8040,18 @@ fn cmd_appdetails_health_batch(args: &[String]) -> i32 {
             missing = missing.wrapping_add(1);
             if !remote_mode {
                 issue_rows = issue_rows.wrapping_add(1);
-                let _ = writeln!(
+                note_io(writeln!(
                     issues,
                     "{}: app_details.json 不存在或為空",
                     tsv_sanitize(&label)
-                );
+                ));
             }
-            let _ = writeln!(
+            note_io(writeln!(
                 drops,
                 "{}: app_details.json 缺失或下載失敗 ({}/app_details.json)",
                 tsv_sanitize(&label),
                 tsv_sanitize(&key)
-            );
+            ));
             continue;
         }
         let body = match fs::read_to_string(&jf) {
@@ -8302,20 +8060,20 @@ fn cmd_appdetails_health_batch(args: &[String]) -> i32 {
                 invalid = invalid.wrapping_add(1);
                 if !remote_mode {
                     issue_rows = issue_rows.wrapping_add(1);
-                    let _ = writeln!(issues, "{}: json 格式損壞 (無法解析)", tsv_sanitize(&label));
+                    note_io(writeln!(issues, "{}: json 格式損壞 (無法解析)", tsv_sanitize(&label)));
                 }
-                let _ = writeln!(
+                note_io(writeln!(
                     drops,
                     "{}: app_details.json 無效/下載不完整 ({}/app_details.json)",
                     tsv_sanitize(&label),
                     tsv_sanitize(&key)
-                );
-                let _ = writeln!(
+                ));
+                note_io(writeln!(
                     summary,
                     "{}			0	0	0	false	false	false	read_error:{}",
                     tsv_sanitize(&label0),
                     tsv_sanitize(&c_strerror(&e))
-                );
+                ));
                 summary_rows = summary_rows.wrapping_add(1);
                 continue;
             }
@@ -8324,19 +8082,19 @@ fn cmd_appdetails_health_batch(args: &[String]) -> i32 {
             invalid = invalid.wrapping_add(1);
             if !remote_mode {
                 issue_rows = issue_rows.wrapping_add(1);
-                let _ = writeln!(issues, "{}: json 格式損壞 (無法解析)", tsv_sanitize(&label));
+                note_io(writeln!(issues, "{}: json 格式損壞 (無法解析)", tsv_sanitize(&label)));
             }
-            let _ = writeln!(
+            note_io(writeln!(
                 drops,
                 "{}: app_details.json 無效/下載不完整 ({}/app_details.json)",
                 tsv_sanitize(&label),
                 tsv_sanitize(&key)
-            );
-            let _ = writeln!(
+            ));
+            note_io(writeln!(
                 summary,
                 "{}			0	0	0	false	false	false	parse_error",
                 tsv_sanitize(&label0)
-            );
+            ));
             summary_rows = summary_rows.wrapping_add(1);
             continue;
         }
@@ -8383,14 +8141,14 @@ fn cmd_appdetails_health_batch(args: &[String]) -> i32 {
         }
         if !issue.is_empty() {
             issue_rows = issue_rows.wrapping_add(1);
-            let _ = writeln!(issues, "{}:{}", tsv_sanitize(&label), issue);
+            note_io(writeln!(issues, "{}:{}", tsv_sanitize(&label), issue));
         }
         if !hint.is_empty() {
             hint_rows = hint_rows.wrapping_add(1);
-            let _ = writeln!(hints, "{}:{}", tsv_sanitize(&label), hint);
+            note_io(writeln!(hints, "{}:{}", tsv_sanitize(&label), hint));
         }
         ok = ok.wrapping_add(1);
-        let _ = writeln!(
+        note_io(writeln!(
             summary,
             "{}	{}	{}	{}	{}	{}	{}	{}	{}",
             tsv_sanitize(&label0),
@@ -8402,19 +8160,19 @@ fn cmd_appdetails_health_batch(args: &[String]) -> i32 {
             if schema_ok { "true" } else { "false" },
             if items_ok { "true" } else { "false" },
             if nullable_ok { "true" } else { "false" }
-        );
+        ));
         summary_rows = summary_rows.wrapping_add(1);
     }
     if let Ok(mut st) = File::create(&stats_path) {
-        let _ = writeln!(st, "total	{}", total);
-        let _ = writeln!(st, "ok	{}", ok);
-        let _ = writeln!(st, "invalid	{}", invalid);
-        let _ = writeln!(st, "missing	{}", missing);
-        let _ = writeln!(st, "issues	{}", issue_rows);
-        let _ = writeln!(st, "hints	{}", hint_rows);
-        let _ = writeln!(st, "rows	{}", summary_rows);
-        let _ = writeln!(st, "elapsedMs	{}", start.elapsed().as_millis());
-        let _ = writeln!(st, "schema	speedbackup.appdetails_health_batch.v1");
+        note_io(writeln!(st, "total	{}", total));
+        note_io(writeln!(st, "ok	{}", ok));
+        note_io(writeln!(st, "invalid	{}", invalid));
+        note_io(writeln!(st, "missing	{}", missing));
+        note_io(writeln!(st, "issues	{}", issue_rows));
+        note_io(writeln!(st, "hints	{}", hint_rows));
+        note_io(writeln!(st, "rows	{}", summary_rows));
+        note_io(writeln!(st, "elapsedMs	{}", start.elapsed().as_millis()));
+        note_io(writeln!(st, "schema	speedbackup.appdetails_health_batch.v1"));
     }
     println!("APPDETAILS_HEALTH_BATCH	OK	total={}	ok={}	invalid={}	missing={}	issues={}	hints={}	rows={}	outPrefix={}	elapsedMs={}	schema=speedbackup.appdetails_health_batch.v1",
         total, ok, invalid, missing, issue_rows, hint_rows, summary_rows, tsv_sanitize(out_prefix), start.elapsed().as_millis());
@@ -8571,6 +8329,19 @@ fn appdetails_required_meta_ok(body: &str) -> bool {
     })
 }
 
+fn appdetails_baseline(path: Option<&String>) -> HashMap<String, String> {
+    let Some(path) = path else { return HashMap::new(); };
+    let lines = match read_lines(Path::new(path)) {
+        Ok(lines) => lines,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return HashMap::new(),
+        Err(e) => { note_io::<()>(Err(e)); return HashMap::new(); }
+    };
+    lines.iter().filter_map(|line| {
+        let r: Vec<&str> = line.split('\t').collect();
+        (r.len() == 2 && r[1].len() == 64).then(|| (r[0].to_owned(), r[1].to_owned()))
+    }).collect()
+}
+
 fn cmd_appdetails_seed_index(args: &[String]) -> i32 {
     if args.len() < 5 {
         return 2;
@@ -8582,11 +8353,14 @@ fn cmd_appdetails_seed_index(args: &[String]) -> i32 {
     if !root.is_dir() {
         return 3;
     }
+    let mut baseline = match File::create(format!("{}.baseline.tsv", out_prefix)) {
+        Ok(f) => BufWriter::new(f), Err(_) => return 4,
+    };
     let diag_file = format!("{}.diag", out_prefix);
     let stats_file = format!("{}.stats", out_prefix);
     let mut dirs: Vec<(String, PathBuf)> = Vec::new();
-    if let Ok(rd) = fs::read_dir(root) {
-        for e in rd.flatten() {
+    if let Some(rd) = note_io(fs::read_dir(root)) {
+        for e in rd.filter_map(note_io) {
             let dir = e.path();
             if !dir.is_dir() {
                 continue;
@@ -8596,7 +8370,7 @@ fn cmd_appdetails_seed_index(args: &[String]) -> i32 {
                 None => continue,
             };
             let jf = dir.join("app_details.json");
-            if jf.is_file() && fs::metadata(&jf).map(|m| m.len() > 0).unwrap_or(false) {
+            if jf.is_file() {
                 dirs.push((app, jf));
             }
         }
@@ -8619,46 +8393,45 @@ fn cmd_appdetails_seed_index(args: &[String]) -> i32 {
         let body = match fs::read_to_string(jf) {
             Ok(v) => v,
             Err(e) => {
-                bad = bad.wrapping_add(1);
-                let _ = writeln!(
+                note_io(writeln!(
                     diag,
                     "{}\tjson_unreadable\t{}\t{}",
                     tsv_sanitize(app),
                     tsv_sanitize(&jf.to_string_lossy()),
                     tsv_sanitize(&c_strerror(&e))
-                );
-                // Indexing must never delete source backup metadata.
-                continue;
+                ));
+                // Unreadable bytes cannot be grandfathered into a new bundle.
+                return 3;
             }
         };
+        let sha = match sha256_file_hex(jf) { Ok(s) => s, Err(_) => return 4 };
+        if writeln!(baseline, "{}\t{}", tsv_sanitize(app), sha).is_err()
+            || writeln!(seed, "{}", app).is_err() { return 4; }
         if appdetails_required_meta_ok(&body) {
-            if writeln!(seed, "{}", app).is_err() {
-                return 4;
-            }
             ok = ok.wrapping_add(1);
         } else {
             bad = bad.wrapping_add(1);
-            let _ = writeln!(
+            note_io(writeln!(
                 diag,
                 "{}\tmetadata_invalid\t{}",
                 tsv_sanitize(app),
                 tsv_sanitize(&jf.to_string_lossy())
-            );
+            ));
             // Keep invalid metadata for diagnosis or explicit repair.
         }
     }
-    if seed.flush().is_err() || diag.flush().is_err() {
+    if seed.flush().is_err() || diag.flush().is_err() || baseline.flush().is_err() {
         return 4;
     }
     let elapsed = start.elapsed().as_millis();
     if let Ok(mut st) = File::create(&stats_file) {
-        let _ = writeln!(
+        note_io(writeln!(
             st,
             "{}\t{}\t{}\t{}\t{}\tspeedbackup.appdetails_seed_index.v1",
             total, ok, bad, total, elapsed
-        );
+        ));
     }
-    if ok == 0 {
+    if total == 0 {
         println!("APPDETAILS_SEED_INDEX\tEMPTY\ttotal={}\tok=0\tbad={}\telapsedMs={}\tschema=speedbackup.appdetails_seed_index.v1", total, bad, elapsed);
         return 5;
     }
@@ -8671,6 +8444,7 @@ fn cmd_appdetails_bundle_manifest(args: &[String]) -> i32 {
         return 2;
     }
     let start = Instant::now();
+    let baseline = appdetails_baseline(args.get(4));
     let root = Path::new(&args[2]);
     let out_prefix = &args[3];
     if !root.is_dir() {
@@ -8682,8 +8456,8 @@ fn cmd_appdetails_bundle_manifest(args: &[String]) -> i32 {
     let stats_file = format!("{}.stats", out_prefix);
     let ok_file = format!("{}.ok", out_prefix);
     let mut dirs: Vec<(String, PathBuf)> = Vec::new();
-    if let Ok(rd) = fs::read_dir(root) {
-        for e in rd.flatten() {
+    if let Some(rd) = note_io(fs::read_dir(root)) {
+        for e in rd.filter_map(note_io) {
             let dir = e.path();
             if !dir.is_dir() {
                 continue;
@@ -8693,7 +8467,7 @@ fn cmd_appdetails_bundle_manifest(args: &[String]) -> i32 {
                 None => continue,
             };
             let jf = dir.join("app_details.json");
-            if jf.is_file() && fs::metadata(&jf).map(|m| m.len() > 0).unwrap_or(false) {
+            if jf.is_file() {
                 dirs.push((app, jf));
             }
         }
@@ -8718,13 +8492,13 @@ fn cmd_appdetails_bundle_manifest(args: &[String]) -> i32 {
             Ok(v) => v,
             Err(e) => {
                 bad += 1;
-                let _ = writeln!(
+                note_io(writeln!(
                     diag,
                     "{}\t\tmetadata_unreadable\t{}\t{}",
                     tsv_sanitize(app),
                     tsv_sanitize(&jf.to_string_lossy()),
                     tsv_sanitize(&c_strerror(&e))
-                );
+                ));
                 continue;
             }
         };
@@ -8732,57 +8506,60 @@ fn cmd_appdetails_bundle_manifest(args: &[String]) -> i32 {
             Ok(v) => v,
             Err(e) => {
                 bad += 1;
-                let _ = writeln!(
+                note_io(writeln!(
                     diag,
                     "{}\t\tjson_unreadable\t{}\t{}",
                     tsv_sanitize(app),
                     tsv_sanitize(&jf.to_string_lossy()),
                     tsv_sanitize(&c_strerror(&e))
-                );
+                ));
                 continue;
             }
         };
         let pkg = json_string_value(&body, &["PackageName", "packageName", "package", "pkg"])
             .unwrap_or_default();
-        if pkg.is_empty() || !appdetails_required_meta_ok(&body) {
-            bad += 1;
-            let _ = writeln!(
-                diag,
-                "{}\t{}\tmetadata_invalid\t{}",
-                tsv_sanitize(app),
-                tsv_sanitize(&pkg),
-                tsv_sanitize(&jf.to_string_lossy())
-            );
-            continue;
-        }
         let sha = match sha256_file_hex(jf) {
             Ok(v) => v,
             Err(e) => {
                 bad += 1;
-                let _ = writeln!(
+                note_io(writeln!(
                     diag,
                     "{}\t{}\tsha256_failed\t{}\t{}",
                     tsv_sanitize(app),
                     tsv_sanitize(&pkg),
                     tsv_sanitize(&jf.to_string_lossy()),
                     tsv_sanitize(&c_strerror(&e))
-                );
+                ));
                 continue;
             }
         };
-        let _ = writeln!(
+        if (pkg.is_empty() || !appdetails_required_meta_ok(&body)) && baseline.get(app) != Some(&sha) {
+            bad += 1;
+            note_io(writeln!(
+                diag,
+                "{}\t{}\tmetadata_invalid\t{}",
+                tsv_sanitize(app),
+                tsv_sanitize(&pkg),
+                tsv_sanitize(&jf.to_string_lossy())
+            ));
+            continue;
+        }
+        if pkg.is_empty() || !appdetails_required_meta_ok(&body) {
+            note_io(writeln!(diag, "{}\t{}\tlegacy_invalid_preserved_unchanged", tsv_sanitize(app), tsv_sanitize(&pkg)));
+        }
+        note_io(writeln!(
             out,
             "{}\t{}\t{}\t{}",
             tsv_sanitize(app),
             tsv_sanitize(&pkg),
             meta.len(),
             sha
-        );
+        ));
         ok = ok.wrapping_add(1);
     }
     drop(out);
     if let Ok(mut st) = File::create(&stats_file) {
-        let _ = writeln!(
+        note_io(writeln!(
             st,
             "{}\t{}\t{}\t{}\t{}\tspeedbackup.appdetails_bundle_manifest.v1",
             total,
@@ -8790,7 +8567,7 @@ fn cmd_appdetails_bundle_manifest(args: &[String]) -> i32 {
             bad,
             seen,
             start.elapsed().as_millis()
-        );
+        ));
     }
     if total == 0 || bad > 0 || ok != total {
         let _ = fs::remove_file(&tmp_manifest);
@@ -8802,7 +8579,7 @@ fn cmd_appdetails_bundle_manifest(args: &[String]) -> i32 {
         return 4;
     }
     if let Ok(mut f) = File::create(&ok_file) {
-        let _ = writeln!(f, "{}", ok);
+        note_io(writeln!(f, "{}", ok));
     }
     println!("APPDETAILS_BUNDLE_MANIFEST\tOK\ttotal={}\tok={}\tbad=0\tseen={}\tmanifest={}\telapsedMs={}\tschema=speedbackup.appdetails_bundle_manifest.v1", total, ok, seen, tsv_sanitize(&manifest.to_string_lossy()), start.elapsed().as_millis());
     0
@@ -8813,13 +8590,12 @@ fn appdetails_seed_expansion_allowed(
     scoped_payload_len: usize,
     missing_seed_len: usize,
     missing_stage_len: usize,
-    ignored_remote_count: usize,
+    _ignored_remote_count: usize,
     bad: u64,
 ) -> bool {
     missing_seed_len > 0
-        && stage_len == scoped_payload_len
+        && stage_len >= scoped_payload_len
         && missing_stage_len == 0
-        && ignored_remote_count == 0
         && bad == 0
 }
 
@@ -8828,6 +8604,7 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
         return 2;
     }
     let start = Instant::now();
+    let baseline = appdetails_baseline(args.get(9));
     let root = &args[2];
     let remote_files = &args[3];
     let seed_list_path = &args[4];
@@ -8840,15 +8617,9 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
         .unwrap_or(false);
     let stage = appdetails_stage_apps(root);
     let seed = load_line_set(seed_list_path);
-    let seed_state = if Path::new(seed_state_s).exists() || seed_state_s == "-" {
-        read_first_trimmed(seed_state_s)
-    } else {
-        seed_state_s.to_string()
-    };
+    // These arguments are values, never inferred filesystem paths.
+    let seed_state = seed_state_s.to_string();
     let mut seed_count = parse_u64_strict_default(seed_count_s, seed.len() as u64);
-    if Path::new(seed_count_s).exists() {
-        seed_count = parse_u64_strict_default(&read_first_trimmed(seed_count_s), seed.len() as u64);
-    }
     if seed_count == 0 && !seed.is_empty() {
         seed_count = seed.len() as u64;
     }
@@ -8907,12 +8678,24 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
     let mut missing_stage: Vec<String> = Vec::new();
     let mut seedless_repair = false;
     let mut seed_expansion_candidate = false;
-    if !allow_shrink {
+    if seed_state == "unknown" || (seed_state == "ok" && !seed_ok) {
+        reason = "seed_read_unknown".to_owned();
+    } else if !allow_shrink {
         match payload_opt.as_ref() {
-            Some(payload) if payload.is_empty() => {}
+            Some(payload) if payload.is_empty() => {
+                if seed_ok {
+                    missing_stage = set_missing(&seed, &stage);
+                    if !missing_stage.is_empty() { reason = "seed_not_covered_by_stage".to_owned(); }
+                }
+            }
             None => {
-                if !seed_ok || (stage.len() as u64) < seed_count {
+                if !seed_ok {
                     reason = "remote_payload_unknown_and_seed_not_ok".to_string();
+                } else {
+                    missing_stage = set_missing(&seed, &stage);
+                    if !missing_stage.is_empty() || (stage.len() as u64) < seed_count {
+                        reason = "seed_not_covered_by_stage".to_string();
+                    }
                 }
             }
             Some(_payload) => {
@@ -8936,10 +8719,9 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
                         required_stage.insert(app.clone());
                     }
                     missing_stage = set_missing(&required_stage, &stage);
-                    // a previous bundle seed is allowed to grow when the current staging set
-                    // exactly covers the scoped remote payload, no remote payload was ignored, and
-                    // every previously seeded/payload app is present in staging. Payload consistency
-                    // is checked below before seedExpansion becomes final.
+                    // Growth requires every previous seed and scoped payload app in staging.
+                    // Extra legacy entries are retained; unrelated remote folders taint cleanup
+                    // without blocking growth. Payload consistency is checked below.
                     seed_expansion_candidate = appdetails_seed_expansion_allowed(
                         stage.len(),
                         scoped_payload.len(),
@@ -8964,13 +8746,14 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
 
     let mut checked = 0u64;
     let mut bad = 0u64;
+    let mut legacy_warnings = 0u64;
     let mut badlog = match File::create(&bad_log_file) {
         Ok(f) => f,
         Err(_) => return 4,
     };
-    if !rels.is_empty() {
-        if let Ok(rd) = fs::read_dir(root) {
-            for e in rd.flatten() {
+    if payload_opt.is_some() {
+        if let Some(rd) = note_io(fs::read_dir(root)) {
+            for e in rd.filter_map(note_io) {
                 let dir = e.path();
                 if !dir.is_dir() {
                     continue;
@@ -8985,8 +8768,10 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
                 }
                 let body = match fs::read_to_string(&jf) {
                     Ok(v) => v,
-                    Err(_) => continue,
+                    Err(_) => { bad += 1; continue; },
                 };
+                let unchanged = baseline.get(&app).map(|old| sha256_file_hex(&jf).ok().as_ref() == Some(old)).unwrap_or(false);
+                if unchanged && !appdetails_required_meta_ok(&body) { legacy_warnings += 1; }
                 let pkg =
                     json_string_value(&body, &["PackageName", "packageName", "package", "pkg"])
                         .unwrap_or_else(|| "unknown".to_string());
@@ -9002,8 +8787,8 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
                     let relz = format!("{}/{}.tar.zst", app, entry);
                     let relt = format!("{}/{}.tar", app, entry);
                     if !(rels.contains(&relz) || rels.contains(&relt)) {
-                        bad = bad.wrapping_add(1);
-                        let _ = writeln!(badlog, "REMOTE_METADATA_PAYLOAD_STALE app={} package={} entry={} size={} rel={} reason=payload_missing", tsv_sanitize(&app), tsv_sanitize(&pkg), tsv_sanitize(entry), tsv_sanitize(&sz), tsv_sanitize(&relz));
+                        if unchanged { legacy_warnings += 1; } else { bad += 1; }
+                        note_io(writeln!(badlog, "REMOTE_METADATA_PAYLOAD_STALE app={} package={} entry={} size={} rel={} reason=payload_missing", tsv_sanitize(&app), tsv_sanitize(&pkg), tsv_sanitize(entry), tsv_sanitize(&sz), tsv_sanitize(&relz)));
                     }
                 }
             }
@@ -9021,7 +8806,7 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
             ignored_remote_count,
             bad,
         );
-    let seedless_tainted = seedless_repair && ignored_remote_count > 0;
+    let seedless_tainted = ignored_remote_count > 0 || legacy_warnings > 0;
     let status = if reason == "ok" { "OK" } else { "BLOCK" };
     let first_missing = missing_seed
         .first()
@@ -9029,8 +8814,8 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
         .cloned()
         .unwrap_or_default();
     if let Ok(mut st) = File::create(&stats_file) {
-        let _ = writeln!(st, "stage\tseed\tremotePayloadApps\tremotePayloadTotal\tignoredRemotePayloadApps\tmissingSeed\tmissingStage\tchecked\tbad\treason\tfirstMissing\tallowShrink\tseedlessRepair\tseedlessTainted\tseedExpansion\tignoredRemotePayloadSample\telapsedMs");
-        let _ = writeln!(
+        note_io(writeln!(st, "stage\tseed\tremotePayloadApps\tremotePayloadTotal\tignoredRemotePayloadApps\tmissingSeed\tmissingStage\tchecked\tbad\treason\tfirstMissing\tallowShrink\tseedlessRepair\tseedlessTainted\tseedExpansion\tignoredRemotePayloadSample\telapsedMs"));
+        note_io(writeln!(
             st,
             "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             stage.len(),
@@ -9050,7 +8835,7 @@ fn cmd_appdetails_bundle_audit(args: &[String]) -> i32 {
             if seed_expansion { 1 } else { 0 },
             tsv_sanitize(&ignored_remote_sample),
             start.elapsed().as_millis()
-        );
+        ));
     }
     // A fixed line receipt preserves empty fields with shell read (no IFS collapse).
     let fields = vec![
@@ -9205,14 +8990,14 @@ fn cmd_selected_apps_map(args: &[String]) -> i32 {
         }
         let app = sanitize_app_folder_name(&name, &pkg);
         let ver = versions.get(&pkg).cloned().unwrap_or_default();
-        let _ = writeln!(
+        note_io(writeln!(
             out,
             "{}\t{}\t{}\t{}",
             tsv_sanitize(&app),
             tsv_sanitize(&pkg),
             nodata,
             tsv_sanitize(&ver)
-        );
+        ));
         rows += 1;
     }
     println!("SELECTED_APPS_MAP\tOK\trows={}\tout={}\telapsedMs={}\tschema=speedbackup.selected_apps_map.v1", rows, tsv_sanitize(out_s), start.elapsed().as_millis());
@@ -9262,7 +9047,7 @@ fn cmd_appdetails_summary_map(args: &[String]) -> i32 {
             } else {
                 "0"
             };
-            let _ = writeln!(
+            note_io(writeln!(
                 out,
                 "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
                 tsv_sanitize(&app),
@@ -9275,7 +9060,7 @@ fn cmd_appdetails_summary_map(args: &[String]) -> i32 {
                 tsv_sanitize(&sz_media),
                 state_ok,
                 profile::entry_fingerprints(&body)
-            );
+            ));
             rows += 1;
         }
     }
@@ -9373,7 +9158,7 @@ fn cmd_appstate_match_map(args: &[String]) -> i32 {
             if eq {
                 matched = matched.wrapping_add(1);
             }
-            let _ = writeln!(
+            note_io(writeln!(
                 out,
                 "{}\t{}\t{}\t{}\t{}",
                 tsv_sanitize(&app),
@@ -9381,7 +9166,7 @@ fn cmd_appstate_match_map(args: &[String]) -> i32 {
                 if old_ok { "1" } else { "0" },
                 if cur_ok { "1" } else { "0" },
                 if eq { "1" } else { "0" }
-            );
+            ));
             rows = rows.wrapping_add(1);
         }
     }
@@ -9882,20 +9667,20 @@ fn cmd_remote_manifest_plan(args: &[String]) -> i32 {
         &folder_without_appdetails,
     );
     if let Ok(mut f) = File::create(format!("{}.orphan_candidates.tsv", out_prefix)) {
-        let _ = writeln!(f, "app\tpackage\treason");
+        note_io(writeln!(f, "app\tpackage\treason"));
         for (a, p, r) in orphan_rows.iter() {
-            let _ = writeln!(
+            note_io(writeln!(
                 f,
                 "{}\t{}\t{}",
                 tsv_sanitize(a),
                 tsv_sanitize(p),
                 tsv_sanitize(r)
-            );
+            ));
         }
     }
     if let Ok(mut f) = File::create(format!("{}.stats", out_prefix)) {
-        let _ = writeln!(f, "remoteApps\tremotePayloadRels\tbundleApps\tfolderWithoutAppdetails\torphanCandidates\tinstalledPkgs\tremoteState\telapsedMs");
-        let _ = writeln!(
+        note_io(writeln!(f, "remoteApps\tremotePayloadRels\tbundleApps\tfolderWithoutAppdetails\torphanCandidates\tinstalledPkgs\tremoteState\telapsedMs"));
+        note_io(writeln!(
             f,
             "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             remote_apps.len(),
@@ -9906,7 +9691,7 @@ fn cmd_remote_manifest_plan(args: &[String]) -> i32 {
             installed.len(),
             remote_state,
             start.elapsed().as_millis()
-        );
+        ));
     }
     println!("REMOTE_MANIFEST_PLAN\tOK\tremoteApps={}\tremotePayloadRels={}\tbundleApps={}\tfolderWithoutAppdetails={}\torphanCandidates={}\tinstalledPkgs={}\tremoteState={}\telapsedMs={}\tschema=speedbackup.remote_manifest_plan.v1",
         remote_apps.len(), remote_rels.len(), bundle_apps.len(), folder_without_appdetails.len(), orphan_rows.len(), installed.len(), tsv_sanitize(&remote_state), start.elapsed().as_millis());
@@ -9942,12 +9727,10 @@ fn cmd_restore_payload_plan(args: &[String]) -> i32 {
                 Some(v) => v.to_string_lossy().into_owned(),
                 None => continue,
             };
-            if name.ends_with(".apk") {
-                if !name.starts_with('.') {
-                    match p.file_name().and_then(|n| n.to_str()) {
-                        Some(exact_name) => inventory.push((exact_name.to_owned(), metadata.len())),
-                        None => inventory_valid = false,
-                    }
+            if name.ends_with(".apk") && !name.starts_with('.') {
+                match p.file_name().and_then(|n| n.to_str()) {
+                    Some(exact_name) => inventory.push((exact_name.to_owned(), metadata.len())),
+                    None => inventory_valid = false,
                 }
                 apk_count = apk_count.wrapping_add(1);
                 if name == "base.apk" || name == "nmsl.apk" {
@@ -9981,17 +9764,17 @@ fn cmd_restore_payload_plan(args: &[String]) -> i32 {
         }
     }
     if let Ok(mut f) = File::create(format!("{}.payloads.tsv", out_prefix)) {
-        let _ = writeln!(f, "name");
+        note_io(writeln!(f, "name"));
         for x in payloads.iter() {
-            let _ = writeln!(f, "{}", tsv_sanitize(x));
+            note_io(writeln!(f, "{}", tsv_sanitize(x)));
         }
     }
     if let Ok(mut f) = File::create(format!("{}.stats", out_prefix)) {
-        let _ = writeln!(
+        note_io(writeln!(
             f,
             "package\tapkKind\tapkCount\tsplitCount\tbasePresent\tpayloadCount\telapsedMs"
-        );
-        let _ = writeln!(
+        ));
+        note_io(writeln!(
             f,
             "{}\t{}\t{}\t{}\t{}\t{}\t{}",
             tsv_sanitize(&package),
@@ -10001,7 +9784,7 @@ fn cmd_restore_payload_plan(args: &[String]) -> i32 {
             if base_present { 1 } else { 0 },
             payloads.len(),
             start.elapsed().as_millis()
-        );
+        ));
     }
     println!("RESTORE_PAYLOAD_PLAN\tOK\tpackage={}\tapkKind={}\tapkCount={}\tsplitCount={}\tbasePresent={}\tpayloadCount={}\telapsedMs={}\tschema=speedbackup.restore_payload_plan_full.v1",
         tsv_sanitize(&package), apk_kind, apk_count, split_count, if base_present {1}else{0}, payloads.len(), start.elapsed().as_millis());
@@ -10036,12 +9819,21 @@ fn cmd_manifest_diff_cache_index(args: &[String]) -> i32 {
     let missing_out = format!("{}.payload_missing_map", out_prefix);
     let diag_out = format!("{}.diag.tsv", out_prefix);
     let stats_out = format!("{}.stats", out_prefix);
-    let selected_rows = read_tsv_rows(selected);
+    let selected_rows = read_tsv_rows_required(selected);
     let fp = FingerprintMatch::load(remote_summary);
-    let remote_rows = read_tsv_rows(remote_summary);
-    let dir_rows = read_tsv_rows(dirsizes);
-    let payload_rows = read_tsv_rows(payload_set);
+    let remote_rows = read_tsv_rows_required(remote_summary);
+    let dir_rows = read_tsv_rows_required(dirsizes);
+    let payload_rows = read_tsv_rows_required(payload_set);
     let changed_set = load_line_set(changed);
+    // One map per batch; an absent/unreadable state map disables data fast-skip.
+    let states: HashMap<String, bool> = args.get(11)
+        .and_then(|p| read_lines(Path::new(p)).ok()).unwrap_or_default()
+        .iter().filter_map(|line| {
+            let r: Vec<&str> = line.split('\t').collect();
+            (r.len() >= 5).then(|| (r[0].to_owned(), r[2] == "1" && r[3] == "1" && r[4] == "1"))
+        }).collect();
+    let state_valid: HashSet<&str> = remote_rows.iter()
+        .filter(|r| r.len() >= 9 && r[8] == "1").map(|r| r[0].as_str()).collect();
 
     let mut r_app: HashSet<String> = HashSet::new();
     let mut rver: HashMap<String, String> = HashMap::new();
@@ -10084,7 +9876,7 @@ fn cmd_manifest_diff_cache_index(args: &[String]) -> i32 {
         Ok(v) => v,
         Err(_) => return 4,
     };
-    let _ = writeln!(diff, "app\tpackage\tdecision\treason");
+    note_io(writeln!(diff, "app\tpackage\tdecision\treason"));
     let mut fast_count = 0u64;
     let mut miss_count = 0u64;
     let mut payload_missing = 0u64;
@@ -10135,9 +9927,6 @@ fn cmd_manifest_diff_cache_index(args: &[String]) -> i32 {
                 *reason_ref = format!("local_size_invalid_{}", entry);
                 return;
             }
-            if cur == "0" {
-                return;
-            }
             let old = rsize
                 .get(&(app.to_string(), entry.to_string()))
                 .cloned()
@@ -10149,14 +9938,14 @@ fn cmd_manifest_diff_cache_index(args: &[String]) -> i32 {
             }
             if !payload_ok(entry) {
                 let rel = format!("{}/{}.tar.zst", app, entry);
-                let _ = writeln!(
+                note_io(writeln!(
                     missing,
                     "{}\t{}\t{}\t{}",
                     tsv_sanitize(app),
                     tsv_sanitize(pkg),
                     entry,
                     tsv_sanitize(&rel)
-                );
+                ));
                 payload_missing += 1;
                 *ok_ref = false;
                 *reason_ref = format!("payload_missing_{}", entry);
@@ -10176,36 +9965,41 @@ fn cmd_manifest_diff_cache_index(args: &[String]) -> i32 {
                 check_entry("user_de", &mut ok, &mut reason);
             }
         }
+        if ok && backup_mode == "true" && !nodata && backup_user == "true" && pkg != "bin.mt.plus"
+            && (!state_valid.contains(app.as_str()) || states.get(app) != Some(&true)) {
+            ok = false;
+            reason = "appstate_changed_or_unverified".to_owned();
+        }
         if ok {
-            let _ = writeln!(fast, "{}", tsv_sanitize(app));
-            let _ = writeln!(
+            note_io(writeln!(fast, "{}", tsv_sanitize(app)));
+            note_io(writeln!(
                 diff,
                 "{}\t{}\tskip\t{}",
                 tsv_sanitize(app),
                 tsv_sanitize(pkg),
                 reason
-            );
+            ));
             fast_count += 1;
         } else {
-            let _ = writeln!(
+            note_io(writeln!(
                 diff,
                 "{}\t{}\tchanged\t{}",
                 tsv_sanitize(app),
                 tsv_sanitize(pkg),
                 tsv_sanitize(&reason)
-            );
-            let _ = writeln!(
+            ));
+            note_io(writeln!(
                 diag,
                 "{}\t{}\t{}",
                 tsv_sanitize(app),
                 tsv_sanitize(pkg),
                 tsv_sanitize(&reason)
-            );
+            ));
             miss_count += 1;
         }
     }
     if let Ok(mut st) = File::create(&stats_out) {
-        let _ = writeln!(
+        note_io(writeln!(
             st,
             "{}\t{}\t{}\t{}\t{}\t{}\t{}",
             selected_rows.len(),
@@ -10215,7 +10009,7 @@ fn cmd_manifest_diff_cache_index(args: &[String]) -> i32 {
             fast_count,
             miss_count,
             payload_missing
-        );
+        ));
     }
     println!("MANIFEST_DIFF_CACHE_INDEX\tOK\tselected={}\tremote={}\tdirRows={}\tpayloadRows={}\tfastSkip={}\tmiss={}\tpayloadMissing={}\telapsedMs={}\tschema=speedbackup.manifest_diff_cache_index.v2",
         selected_rows.len(), remote_rows.len(), dir_rows.len(), payload_rows.len(), fast_count, miss_count, payload_missing, start.elapsed().as_millis());
@@ -10236,10 +10030,45 @@ fn argv_utf8_or_exit() -> Vec<String> {
     out
 }
 
+pub(crate) fn file_rpc_dispatch(args: &[String]) -> i32 {
+    match args.first().map(String::as_str) {
+        Some("proc-fd-no-termux") => proc_fd_no_termux(&args[1..]),
+        Some("internal-tree-clear") => internal_tree::command(&args[1..]),
+        Some("internal-tree-clear-quiet") => internal_tree::quiet_command(&args[1..]),
+        Some("app-permissions") => android_policy::command(&args[1..], "permissions"),
+        Some("external-tree-check") => external_tree::command(&args[1..], false),
+        Some("external-tree-clear") => external_tree::command(&args[1..], true),
+        Some("external-policy-fused") => external_policy::fused_command(&args[1..]),
+        Some("external-policy-repair") => external_policy::command(&args[1..]),
+        Some("selinux-restore-external") => android_policy::command(&args[1..], "selinux-external"),
+        Some("selinux-restore") => android_policy::command(&args[1..], "selinux"),
+        Some("restore-package-maps") => { let mut argv=vec!["speedscan".to_owned()];argv.extend_from_slice(args);let rc=restore_package_maps::command(&argv);if rc==125{3}else{rc} },
+        _ => 2,
+    }
+}
+
 pub(crate) fn run() {
     let args: Vec<String> = argv_utf8_or_exit();
     let rc = match args.get(1).map(|s| s.as_str()) {
-        Some("app-permissions") => restore_safety::permissions(&args[2..]),
+        Some("file-daemon") => crate::file_rpc::command(&args[2..]),
+        Some("flash-info") => device_flash::run(&args[2..]),
+        Some("stream-bench") => stream_bench::run(&args[2..]),
+        Some("app-permissions") => android_policy::command(&args[2..], "permissions"),
+        Some("app-owner") => android_policy::command(&args[2..], "owner"),
+        Some("selinux-restore-plan-group") => android_policy::command(&args[2..], "selinux-plan-group"),
+        Some("selinux-restore-generic-plan-group") => android_policy::command(&args[2..], "selinux-generic-plan-group"),
+        Some("selinux-restore-external") => android_policy::command(&args[2..], "selinux-external"),
+        Some("selinux-restore-group") => android_policy::command(&args[2..], "selinux-group"),
+        Some("selinux-restore") => android_policy::command(&args[2..], "selinux"),
+        Some("android-policy-probe") => android_policy::command(&args[2..], "probe"),
+        Some("selinux-external-stream") => android_policy::command(&args[2..],"external-stream"),
+        Some("external-tree-check") => external_tree::command(&args[2..],false),
+        Some("proc-fd-no-termux") => proc_fd_no_termux(&args[2..]),
+        Some("internal-tree-clear") => internal_tree::command(&args[2..]),
+        Some("internal-tree-clear-quiet") => internal_tree::quiet_command(&args[2..]),
+        Some("external-tree-clear") => external_tree::command(&args[2..],true),
+        Some("external-policy-fused") => external_policy::fused_command(&args[2..]),
+        Some("external-policy-repair") => external_policy::command(&args[2..]),
         Some("bounded-run") => command_lifecycle::bounded(&args[2..]),
         Some("facts-result") => command_lifecycle::facts_result(&args[2..]),
         Some("cleanup-legacy-namespaces") => command_lifecycle::prune_legacy(&args[2..]),
@@ -10251,8 +10080,9 @@ pub(crate) fn run() {
             0
         }
         Some("--capabilities") | Some("capabilities") => {
+            println!("speedscan.stream_bench.v1 speedscan.flash_info.v1");
             println!("speedscan.restore_package_maps.v1");
-            println!("speedscan.owned_bounded_run.v1 speedscan.facts_result.v1 speedscan.profile_finalize_stage.v1 speedscan.stream_entry_finish.v1 speedscan.json_ops.v1 speedscan.profile_transform.v1 speedscan.bundle_audit_fields.v1 speedscan.app_permissions.v1 speedscan.process_lease.v1 speedscan.process_lease_stop.v1 speedscan.backup_run_model.v1 speedscan.backup_plan_coverage.v1 speedscan.tree_fixup_symlink_owner.v1 speedscan.tar_source_manifest.v1 speedscan.restore_source_verify.v1 speedscan.debug_consolidate.v1 speedscan.payload_stats.v1 speedscan.restore_tree_audit_bytes.v1 speedscan.result_contract.v1 speedscan.remote_orphan_plan.v1 speedscan.restore_tree_manifest_bytes.v1 speedscan.appdetails_seed_index_strict_meta.v1 speedscan.appdetails_seed_index.v1 speedscan.backup_prescan_exact_input_batch.v1 speedscan.tar_input_hardlink_type_safe.v1 speedscan.dir_size_tar_input_map.v1 speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.posix_recursive_scan.v1 speedscan.dir_size_map_workers.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan.v1 speedscan.local_fastskip_presize_plan_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_audit_seed_expansion.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.rust_convergence_source.v1 speedscan.full_convergence_stage3.v1");
+            println!("speedscan.owned_bounded_run.v1 speedscan.facts_result.v1 speedscan.profile_finalize_stage.v1 speedscan.stream_entry_finish.v1 speedscan.json_ops.v1 speedscan.profile_transform.v1 speedscan.profile_backup_map.v1 speedscan.bundle_audit_fields.v1 speedscan.app_permissions.android_policy.v2 speedscan.process_lease.v1 speedscan.process_lease_stop.v1 speedscan.backup_run_model.v1 speedscan.backup_plan_coverage.v1 speedscan.tar_source_manifest.v1 speedscan.restore_source_verify.v1 speedscan.debug_consolidate.v1 speedscan.payload_stats.v1 speedscan.restore_tree_audit_bytes.v1 speedscan.result_contract.v1 speedscan.remote_orphan_plan.v1 speedscan.restore_tree_manifest_bytes.v1 speedscan.appdetails_seed_index_strict_meta.v1 speedscan.appdetails_seed_index.v1 speedscan.backup_prescan_exact_input_batch.v1 speedscan.tar_input_hardlink_type_safe.v1 speedscan.dir_size_tar_input_map.v1 speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.posix_recursive_scan.v1 speedscan.dir_size_map_workers.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan.v1 speedscan.local_fastskip_presize_plan_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_audit_seed_expansion.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.rust_convergence_source.v1 speedscan.full_convergence_stage3.v1");
             0
         }
         Some("dir-size") if args.len() >= 3 => cmd_dir_size(&args[2]),
@@ -10264,15 +10094,7 @@ pub(crate) fn run() {
         Some("batch-stat") if args.len() >= 3 => cmd_batch_stat(&args[2]),
         Some("batch-exists") if args.len() >= 3 => cmd_batch_exists(&args[2]),
         Some("batch-chmod") if args.len() >= 4 => cmd_batch_chmod(&args[2], &args[3]),
-        Some("batch-chown") if args.len() >= 5 => cmd_batch_chown(&args[2], &args[3], &args[4]),
-        Some("tree-chown") if args.len() >= 5 => cmd_tree_chown(&args[2], &args[3], &args[4]),
-        Some("tree-fixup") if args.len() >= 5 => cmd_tree_fixup(
-            &args[2],
-            &args[3],
-            &args[4],
-            args.get(5).map(|s| s.as_str()).unwrap_or("-"),
-            args.get(6).map(|s| s.as_str()).unwrap_or("-"),
-        ),
+
         Some("has-files") if args.len() >= 3 => cmd_has_files(&args[2]),
         Some("manifest") if args.len() >= 4 => write_manifest(&args[2], &args[3]),
         Some("scan-summary") if args.len() >= 3 => {
@@ -10291,7 +10113,12 @@ pub(crate) fn run() {
             &args[3],
             args.get(4).map(|s| s.as_str()),
             args.get(5).map(|s| s.as_str()),
+            None,
         ),
+        Some("appdetails-paths") if args.len() == 7 && matches!(args[6].as_str(), "0" | "1") => cmd_appdetails_index(
+            &args[2], &args[3], Some(&args[4]), Some(&args[5]), Some(args[6] == "1"),
+        ),
+        Some("file-size-human-batch") if args.len() >= 3 => cmd_file_size_human_batch(&args[2..]),
         Some("file-list-abs-filter") if args.len() >= 5 => cmd_file_list_abs_filter(
             &args[2],
             &args[3],
@@ -10425,7 +10252,7 @@ pub(crate) fn run() {
             2
         }
     };
-    std::process::exit(rc)
+    std::process::exit(if rc == 0 && COMMAND_IO_FAILED.load(Ordering::Relaxed) { 1 } else { rc })
 }
 
 #[cfg(test)]

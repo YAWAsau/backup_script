@@ -138,7 +138,7 @@ fn pidfd_probe(pid: i32) -> i32 {
 fn wait_pid_or_file(pid: i32, fatal_file: &str, timeout_ms: i64, tag: &str) -> i32 {
     let tag = if tag.is_empty() { "pid_or_file" } else { tag };
     let start = Instant::now();
-    let has_fatal = !fatal_file.is_empty();
+    let has_fatal = !fatal_file.is_empty() && fatal_file != "-";
 
     if has_fatal && file_nonempty(Path::new(fatal_file)) {
         println!("fatal\t126\t{}\tfatal-file", tag);
@@ -762,6 +762,19 @@ fn sum_pipeline_cpu_ticks(pids: &[PipelinePid]) -> i64 {
     total
 }
 
+fn json_text(text: &str) -> String {
+    let mut out = String::new();
+    for ch in text.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            c if c < ' ' => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 struct EmitPipelineEventArgs<'a> {
     event: &'a str,
     rc: i32,
@@ -791,12 +804,15 @@ fn emit_pipeline_event(args: EmitPipelineEventArgs<'_>) {
     };
     let r = if reason.is_empty() { event } else { reason };
     if json {
-        print!("{{\"event\":\"{}\",\"rc\":{},\"tag\":\"{}\",\"reason\":\"{}\",\"pidCount\":{},\"alive\":{}", event, rc, t, r, pid_count, alive);
+        print!("{{\"event\":\"{}\",\"rc\":{},\"tag\":\"{}\",\"reason\":\"{}\",\"pidCount\":{},\"alive\":{}", json_text(event), rc, json_text(t), json_text(r), pid_count, alive);
         if !extra.is_empty() {
-            // C prints the caller-provided fragment verbatim after a comma.
-            // Preserve that byte-level behavior even though current callers
-            // pass TAB-separated key=value text rather than strict JSON.
-            print!(",{}", extra);
+            for field in extra.split('\t') {
+                if let Some((key, value)) = field.split_once('=') {
+                    if let Ok(number) = value.parse::<i64>() {
+                        print!(",\"{}\":{}", json_text(key), number);
+                    }
+                }
+            }
         }
         println!("}}");
     } else {
@@ -1088,6 +1104,7 @@ fn pipeline_rate_watch(args: PipelineRateWatchArgs<'_>) -> i32 {
                     last_size = sz;
                     last_stamp = stp;
                     last_progress_ms = now;
+                    last_cpu_ticks = sum_pipeline_cpu_ticks(&pids);
                     if window_size < 0 {
                         window_size = sz;
                         window_start_ms = now;
@@ -1175,56 +1192,6 @@ fn pipeline_rate_watch(args: PipelineRateWatchArgs<'_>) -> i32 {
     }
 }
 
-fn remove_tree_safe_c(path: &Path) -> i32 {
-    let md = match fs::symlink_metadata(path) {
-        Ok(v) => v,
-        Err(e) => {
-            return if e.kind() == std::io::ErrorKind::NotFound {
-                0
-            } else {
-                1
-            }
-        }
-    };
-    if md.file_type().is_dir() {
-        let rd = match fs::read_dir(path) {
-            Ok(v) => v,
-            Err(_) => return 1,
-        };
-        let mut rc = 0;
-        for ent in rd {
-            // C stops its readdir() loop on NULL and does not inspect errno.
-            let ent = match ent {
-                Ok(v) => v,
-                Err(_) => break,
-            };
-            let name = ent.file_name();
-            if name.as_bytes() == b"." || name.as_bytes() == b".." {
-                continue;
-            }
-            let mut child_bytes = path.as_os_str().as_bytes().to_vec();
-            child_bytes.push(b'/');
-            child_bytes.extend_from_slice(name.as_bytes());
-            if child_bytes.len() >= PATH_MAX_SAFE {
-                rc = 1;
-                continue;
-            }
-            let child = path.join(&name);
-            if remove_tree_safe_c(&child) != 0 {
-                rc = 1;
-            }
-        }
-        if fs::remove_dir(path).is_err() {
-            rc = 1;
-        }
-        rc
-    } else if fs::remove_file(path).is_ok() {
-        0
-    } else {
-        1
-    }
-}
-
 fn cleanup_owned(run_id: &str, tmpdir: &str) -> i32 {
     let prefix = "/data/.speedbackup_tmp/.speedbackup_run_";
     if run_id.is_empty() || tmpdir.is_empty() {
@@ -1238,17 +1205,37 @@ fn cleanup_owned(run_id: &str, tmpdir: &str) -> i32 {
         println!("skip\t0\tcleanup-owned\tdotdot\tpath={}", tmpdir);
         return 0;
     }
+    // Cleanup is root-only and limited to one private run directory. Validate
+    // both ancestors before reading owner.pid; a prefix alone permits symlinks
+    // and descendants outside the intended run root.
+    let run = Path::new(tmpdir);
+    let base = Path::new("/data/.speedbackup_tmp");
+    let private_root_dir = |p: &Path| {
+        fs::canonicalize(p).map(|v| v == p).unwrap_or(false)
+            && fs::symlink_metadata(p)
+                .map(|m| m.is_dir() && m.uid() == 0 && m.mode() & 0o077 == 0)
+                .unwrap_or(false)
+    };
+    if run.parent() != Some(base) || !private_root_dir(base) || !private_root_dir(run) {
+        println!("skip\t0\tcleanup-owned\tunsafe-directory\tpath={}", tmpdir);
+        return 0;
+    }
     let owner_path = format!("{}/owner.pid", tmpdir);
     if owner_path.len() >= PATH_MAX_SAFE {
         return 2;
     }
-    let mut owner_file = match File::open(&owner_path) {
+    let mut owner_file = match fs::OpenOptions::new().read(true)
+        .custom_flags(O_NOFOLLOW_NATIVE | O_NONBLOCK | O_CLOEXEC).open(&owner_path) {
         Ok(f) => f,
         Err(_) => {
             println!("skip\t0\tcleanup-owned\tno-owner\tpath={}", tmpdir);
             return 0;
         }
     };
+    if !owner_file.metadata().map(|m| m.is_file() && m.uid() == 0 && m.nlink() == 1).unwrap_or(false) {
+        println!("skip\t0\tcleanup-owned\tunsafe-owner\tpath={}", tmpdir);
+        return 0;
+    }
     let mut owner_buf = [0u8; 127];
     let n = owner_file.read(&mut owner_buf).unwrap_or_default();
     drop(owner_file); // C closes owner.pid before parsing/removing the tree.
@@ -1270,7 +1257,9 @@ fn cleanup_owned(run_id: &str, tmpdir: &str) -> i32 {
         );
         return 0;
     }
-    let rc = remove_tree_safe_c(Path::new(tmpdir));
+    // Rust's Unix directory removal uses directory-relative operations and
+    // does not recursively follow symlinks encountered inside the tree.
+    let rc = if fs::remove_dir_all(run).is_ok() { 0 } else { 1 };
     if rc == 0 {
         println!(
             "done\t0\tcleanup-owned\tremoved\tpath={}\towner={}",
@@ -1404,8 +1393,8 @@ pub(crate) fn run() {
         Some("pipeline-watch") if args.len() >= 7 => {
             let mut tag = args.get(7).map(|s| s.as_str()).unwrap_or("pipeline_watch");
             let mut json = false;
-            if args.get(7).map(|s| s == "--json").unwrap_or(false) {
-                json = true;
+            if args.get(7).map(|s| matches!(s.as_str(), "--json" | "--tsv")).unwrap_or(false) {
+                json = args[7] == "--json";
                 tag = "pipeline_watch";
             }
             if args.get(8).map(|s| s == "--json").unwrap_or(false) {
@@ -1427,8 +1416,8 @@ pub(crate) fn run() {
                 .map(|s| s.as_str())
                 .unwrap_or("pipeline_rate_watch");
             let mut json = false;
-            if args.get(9).map(|s| s == "--json").unwrap_or(false) {
-                json = true;
+            if args.get(9).map(|s| matches!(s.as_str(), "--json" | "--tsv")).unwrap_or(false) {
+                json = args[9] == "--json";
                 tag = "pipeline_rate_watch";
             }
             if args.get(10).map(|s| s == "--json").unwrap_or(false) {

@@ -18,7 +18,7 @@ package libcore.util;
 
 import androidx.annotation.NonNull;
 
-import com.android.org.kxml2.io.KXmlParser;
+import com.xayah.dex.xml.KXmlParser;
 import com.android.org.kxml2.io.KXmlSerializer;
 
 import org.xmlpull.v1.XmlPullParser;

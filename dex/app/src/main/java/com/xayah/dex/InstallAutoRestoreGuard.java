@@ -101,8 +101,16 @@ public final class InstallAutoRestoreGuard {
             recover();original=backend.read();
             if(original!=null&&!original.equals("0")&&!original.equals("1"))throw new IOException("setting");
             if("0".equals(original))return;
-            try(FileOutputStream out=new FileOutputStream(journal)) {
-                out.write((original==null?"null":original).getBytes(StandardCharsets.UTF_8));out.getFD().sync();
+            // Create private from the first byte, independent of the daemon's
+            // inherited umask. Recovery above must retire any previous journal.
+            Set<OpenOption> options=new HashSet<>(Arrays.asList(StandardOpenOption.CREATE_NEW,
+                    StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS));
+            try(FileChannel out=FileChannel.open(journal.toPath(),options,
+                    java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                            java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")))) {
+                java.nio.ByteBuffer bytes=java.nio.ByteBuffer.wrap((original==null?"null":original).getBytes(StandardCharsets.UTF_8));
+                while(bytes.hasRemaining())out.write(bytes);
+                out.force(true);
             }
             dirty=true;
             try {

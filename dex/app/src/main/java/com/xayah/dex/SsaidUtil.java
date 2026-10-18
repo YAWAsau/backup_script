@@ -267,12 +267,15 @@ final class SsaidUtil {
     static synchronized void shutdownStateCache(String reason) {
         int closed = 0;
         int forced = 0;
+        Throwable persistenceFailure = null;
         for (SsaidStateHolder holder : STATE_CACHE.values()) {
             if (holder == null || holder.thread == null) continue;
-            synchronized (holder.lock) { holder.state.persistSyncLocked(); }
+            boolean persisted = true;
+            try { synchronized (holder.lock) { holder.state.persistSyncLocked(); } }
+            catch (Throwable failure) { persisted = false; if (persistenceFailure == null) persistenceFailure = failure; }
             HandlerThread thread = holder.thread;
             try {
-                thread.quitSafely();
+                if (persisted) thread.quitSafely(); else thread.quit();
             } catch (Throwable t) {
                 try { thread.quit(); forced++; } catch (Throwable ignored) {}
             }
@@ -289,6 +292,7 @@ final class SsaidUtil {
             closed++;
         }
         STATE_CACHE.clear();
+        if (persistenceFailure != null) throw new IllegalStateException("SSAID cache persistence failed; all holders discarded", persistenceFailure);
         if ("1".equals(System.getenv("DEX_DEBUG_SSAID_CACHE"))) {
             System.err.println("SSAID_STATE_CACHE_SHUTDOWN reason=" + safe(reason)
                     + " closed=" + closed + " forced=" + forced);
@@ -323,6 +327,7 @@ final class SsaidUtil {
         File file = ssaidFile(userId);
         int key = SettingsState.makeKey(SettingsState.SETTINGS_TYPE_SSAID, userId);
         SettingsState settingsState;
+        try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             settingsState = new SettingsStateApi31(
                     lock, file, key, SettingsState.MAX_BYTES_PER_APP_PACKAGE_UNLIMITED,
@@ -335,6 +340,10 @@ final class SsaidUtil {
         SsaidStateHolder holder = new SsaidStateHolder(lock, thread, settingsState, file);
         STATE_CACHE.put(userId, holder);
         return holder;
+        } catch (RuntimeException | Error failure) {
+            thread.quit();
+            throw failure;
+        }
     }
 
     static SsaidAccessInfo resolveAccessInfo(int userId, String packageName,
@@ -364,9 +373,17 @@ final class SsaidUtil {
         FileMetadata beforeMeta = FileMetadata.capture(holder.file);
         String readBack;
         synchronized (holder.lock) {
-            holder.state.insertSettingLocked(
-                    accessInfo.keyName, normalized, null, true, packageName);
-            holder.state.persistSyncLocked();
+            try {
+                holder.state.insertSettingLocked(
+                        accessInfo.keyName, normalized, null, true, packageName);
+                holder.state.persistSyncLocked();
+            } catch (RuntimeException | Error failure) {
+                // Never serve values which failed to reach disk, or retry a
+                // failed restore implicitly during cache shutdown.
+                STATE_CACHE.remove(userId);
+                holder.thread.quit();
+                throw failure;
+            }
             SettingsState.Setting setting = holder.state.getSettingLocked(accessInfo.keyName);
             readBack = setting == null ? null : setting.getValue();
         }

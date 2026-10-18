@@ -23,6 +23,25 @@ final class TimelineDatabase {
 
     interface Barrier { void check() throws Exception; }
 
+    static final class PrimaryNotReady extends IOException {
+        PrimaryNotReady(android.system.ErrnoException cause) {
+            super("timeline_primary_not_initialized",cause);
+        }
+    }
+
+    // Only ENOENT on the primary database permits a deferred, pre-write retry.
+    // Permission failures, links, empty files and unsupported schemas stay fatal.
+    static void primaryRegular(File file) throws Exception {
+        try { regular(file); }
+        catch(android.system.ErrnoException e) {
+            if(e.errno==OsConstants.ENOENT) {
+                require(OsConstants.S_ISDIR(Os.lstat(file.getParent()).st_mode),"timeline_database_directory_invalid");
+                throw new PrimaryNotReady(e);
+            }
+            throw e;
+        }
+    }
+
     static final class Live {
         final File odlh, aux, geller;
         final File actualAux;
@@ -51,7 +70,7 @@ final class TimelineDatabase {
             }
             require(matches!=null && matches.length==1,"requires_one_selected_geller_account");
             geller=matches[0];
-            regular(odlh); regular(aux); regular(geller);
+            primaryRegular(odlh); regular(aux); regular(geller);
             uid=Os.stat(odlh.getPath()).st_uid;
             require(uid/100000==user && uid%100000>=10000 && uid%100000<99000,"gms_uid_invalid");
             require(Os.stat(aux.getPath()).st_uid==(auxiliaryAbsent?0:uid) && Os.stat(geller.getPath()).st_uid==uid,"database_owner_mismatch");

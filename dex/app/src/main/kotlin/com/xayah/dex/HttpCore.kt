@@ -1,5 +1,6 @@
 package com.xayah.dex
 
+import java.util.concurrent.TimeUnit
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
 import java.io.InputStream
@@ -251,14 +252,16 @@ object HttpCore {
         ): Pair<Int, String?> {
             val seed = Target(url)
             val preferredMode = pathModeCache[seed.connKey] ?: PathMode.ENCODED
+            val replaySafe = !requestHasBody(method, headers) || canReplayBody
+            val retrySafe = { replaySafe && retryOnConnectionFailure() }
             val first = requestOnceWithMode(
                 method, url, preferredMode, user, pass, headers, bodyWriter,
-                retryOnConnectionFailure, closeConnectionOnNon2xx, responseHeadTimeoutMs, onRequestBodyComplete, onConnection, responseConsumer
+                retrySafe, closeConnectionOnNon2xx, responseHeadTimeoutMs, onRequestBodyComplete, onConnection, responseConsumer
             )
             val code = first.first
             val pathModeRetryableStatus = code == 400 || code == 404
             if (!pathModeRetryableStatus || !urlHasNonAscii(url)) return first
-            if (method == "PUT" && !canReplayBody) return first
+            if (!replaySafe) return first
 
             // Adaptive WebDAV base-path compatibility:
             // - standards-compliant servers expect percent-encoded request targets
@@ -269,7 +272,7 @@ object HttpCore {
             val altMode = if (preferredMode == PathMode.ENCODED) PathMode.RAW_UTF8 else PathMode.ENCODED
             val alt = requestOnceWithMode(
                 method, url, altMode, user, pass, headers, bodyWriter,
-                retryOnConnectionFailure, closeConnectionOnNon2xx, responseHeadTimeoutMs, onRequestBodyComplete, onConnection, responseConsumer
+                retrySafe, closeConnectionOnNon2xx, responseHeadTimeoutMs, onRequestBodyComplete, onConnection, responseConsumer
             )
             if (alt.first in 200..299) {
                 pathModeCache[seed.connKey] = altMode
@@ -302,7 +305,7 @@ object HttpCore {
                 return
             }
             val stop = AtomicBoolean(false)
-            val lastProgress = AtomicLong(System.currentTimeMillis())
+            val writeStarted = AtomicLong(0L)
             val guard = Thread {
                 while (!stop.get()) {
                     try {
@@ -310,7 +313,8 @@ object HttpCore {
                     } catch (_: InterruptedException) {
                         return@Thread
                     }
-                    if (!stop.get() && System.currentTimeMillis() - lastProgress.get() > LONG_TRANSFER_TIMEOUT_MS) {
+                    val started = writeStarted.get()
+                    if (!stop.get() && started != 0L && System.nanoTime() - started > TimeUnit.MILLISECONDS.toNanos(LONG_TRANSFER_TIMEOUT_MS.toLong())) {
                         runCatching { conn.socket.close() }
                         return@Thread
                     }
@@ -319,22 +323,19 @@ object HttpCore {
 
             val guarded = object : OutputStream() {
                 override fun write(value: Int) {
-                    lastProgress.set(System.currentTimeMillis())
-                    out.write(value)
-                    lastProgress.set(System.currentTimeMillis())
+                    writeStarted.set(System.nanoTime())
+                    try { out.write(value) } finally { writeStarted.set(0L) }
                 }
 
                 override fun write(buffer: ByteArray, offset: Int, length: Int) {
                     if (length <= 0) return
-                    lastProgress.set(System.currentTimeMillis())
-                    out.write(buffer, offset, length)
-                    lastProgress.set(System.currentTimeMillis())
+                    writeStarted.set(System.nanoTime())
+                    try { out.write(buffer, offset, length) } finally { writeStarted.set(0L) }
                 }
 
                 override fun flush() {
-                    lastProgress.set(System.currentTimeMillis())
-                    out.flush()
-                    lastProgress.set(System.currentTimeMillis())
+                    writeStarted.set(System.nanoTime())
+                    try { out.flush() } finally { writeStarted.set(0L) }
                 }
 
                 override fun close() {
@@ -446,7 +447,7 @@ object HttpCore {
                 canReplayBody = true,
                 retryOnConnectionFailure = { !outputStarted }
             ) { code, headers, input ->
-                if (code in 200..299) readResponseBody(headers, input, guardedOut, decodeContent = true) else discardResponseBody(headers, input)
+                if (code in 200..299) readResponseBody(headers, input, guardedOut, decodeContent = true) else discardErrorResponseBody(headers, input)
             }
         }
 
@@ -609,8 +610,12 @@ object HttpCore {
     }
 
     fun readResponseHead(input: InputStream): ResponseHead {
+        var totalBytes = 0
+        var totalLines = 0
         while (true) {
             val status = readHttpLine(input)
+            totalBytes += status.length
+            if (++totalLines > 1024 || totalBytes > 262144) throw java.io.IOException("HTTP headers too large")
             if (status.isEmpty()) throw EOFException("empty HTTP response")
             val parts = status.split(" ", limit = 3)
             val code = parts.getOrNull(1)?.toIntOrNull() ?: 0
@@ -618,6 +623,8 @@ object HttpCore {
             val headers = linkedMapOf<String, MutableList<String>>()
             while (true) {
                 val line = readHttpLine(input)
+                totalBytes += line.length
+                if (++totalLines > 1024 || totalBytes > 262144) throw java.io.IOException("HTTP headers too large")
                 if (line.isEmpty()) break
                 val idx = line.indexOf(':')
                 if (idx <= 0) continue

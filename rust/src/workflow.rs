@@ -92,14 +92,7 @@ pub fn run(args: &[String]) -> i32 {
                     if !safe(rel) {
                         return Err(invalid());
                     }
-                    let a = format!(
-                        "{rel}{}",
-                        if mode == "local" {
-                            ".tar.zst"
-                        } else {
-                            &args[8]
-                        }
-                    );
+                    let a = format!("{rel}.tar.zst");
                     let b = format!("{rel}.tar");
                     if !present(mode, &a, &remote, &receipts, root)
                         && !present(mode, &b, &remote, &receipts, root)

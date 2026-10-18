@@ -386,6 +386,24 @@ fn normalize(root: &V) -> Result<V, String> {
 fn read(p: &str) -> Result<V, String> {
     parse(&fs::read_to_string(p).map_err(|e| e.to_string())?)
 }
+// Consume the existing snapshot map in the same process as the transformation.
+// Match the first TSV record, as the former awk helper did, but validate its
+// package identity before writing any profile output.
+fn snapshot_from_map(path: &str, package: &str) -> Result<V, String> {
+    if package.is_empty() { return Err("snapshot package missing".into()); }
+    let file = File::open(path).map_err(|e| e.to_string())?;
+    for line in BufReader::new(file).lines() {
+        let line = line.map_err(|e| e.to_string())?;
+        let mut fields = line.split('\t');
+        if fields.next() != Some(package) { continue; }
+        let state = parse(fields.next().ok_or("snapshot record missing JSON")?)?;
+        if state.get("packageName").and_then(V::text) != Some(package) {
+            return Err("snapshot package mismatch".into());
+        }
+        return Ok(state);
+    }
+    Err("snapshot package not found".into())
+}
 fn persistable(v: &V) -> bool {
     v.get("recordType").and_then(V::text) == Some("snapshot")
         && matches!(v.get("schemaVersion"),Some(V::Atom(n)) if n.parse::<f64>().ok()==Some(2.0))
@@ -400,10 +418,29 @@ fn persistable(v: &V) -> bool {
 fn valid(v: &V) -> bool {
     !matches!(v,V::Atom(s)if s=="null") && v.text() != Some("") && v.text() != Some("null")
 }
-fn backup(old: &V, entry: &str, state: &V, prefix: &str) -> Result<(), String> {
+fn require_complete_state(state: &V) -> Result<(), String> {
     if !persistable(state) {
         return Err("invalid snapshot".into());
     }
+    // Diagnostic/installer failures are harmless to persisted sections; failed
+    // state collection must never replace a valid previous subtree with empties.
+    if let Some(V::Array(errors)) = state.get("errors") {
+        if errors.is_empty() && state.get("result").and_then(|r| r.get("name")).and_then(V::text) == Some("PARTIAL") {
+            return Err("partial snapshot without section diagnostics".into());
+        }
+        if errors.iter().any(|e| e.get("field").and_then(V::text).map(|field|
+                ["permissions", "otherAppOps", "specialAccess", "batterySettings"].iter()
+                    .any(|section| field == *section || field.starts_with(&format!("{section}."))))
+                .unwrap_or(false)) {
+            return Err("incomplete state snapshot; previous state retained".into());
+        }
+    } else if state.get("result").and_then(|r| r.get("name")).and_then(V::text) == Some("PARTIAL") {
+        return Err("partial snapshot without section diagnostics".into());
+    }
+    Ok(())
+}
+fn backup(old: &V, entry: &str, state: &V, prefix: &str) -> Result<(), String> {
+    require_complete_state(state)?;
     let empty = obj();
     let oe = old.get(entry).unwrap_or(&empty);
     let missing =
@@ -488,6 +525,7 @@ fn finalize_stage(source: &str, target: &str) -> Result<(), String> {
     Ok(())
 }
 fn refresh(old: &V, entry: &str, pkg: &str, state: &V) -> Result<V, String> {
+    require_complete_state(state)?;
     let empty = obj();
     let oe = old.get(entry).unwrap_or(&empty);
     let mut out = obj();
@@ -510,6 +548,15 @@ fn refresh(old: &V, entry: &str, pkg: &str, state: &V) -> Result<V, String> {
         .unwrap_or_else(|| alt(oe, "Ssaid", atom("null")));
     if prev.truth() && prev.text() != Some("") && prev.text() != Some("null") {
         s.put("ssaid", prev)
+    }
+    // Refresh keeps the backup's identity, and must not erase installer metadata
+    // merely because the current package-manager query could not provide it.
+    if !valid(&alt(&s, "installer", atom("null"))) {
+        let previous_installer = oe.get("app_state")
+            .map(|x| alt(x, "installer", atom("null")))
+            .filter(V::truth)
+            .unwrap_or_else(|| alt(oe, "installer", atom("null")));
+        if valid(&previous_installer) { s.put("installer", previous_installer); }
     }
     e.put("PackageName", alt(oe, "PackageName", V::String(pkg.into())));
     e.put("app_state", s);
@@ -562,6 +609,10 @@ pub(super) fn run(args: &[String]) -> i32 {
             Some("finalize-stage") if args.len() == 5 => finalize_stage(&args[3], &args[4]),
             Some("backup") if args.len() == 7 => {
                 backup(&read(&args[3])?, &args[4], &read(&args[5])?, &args[6])
+            }
+            Some("backup-map") if args.len() == 8 => {
+                let state = snapshot_from_map(&args[5], &args[6])?;
+                backup(&read(&args[3])?, &args[4], &state, &args[7])
             }
             Some("refresh") if args.len() == 8 => write(
                 &args[7],

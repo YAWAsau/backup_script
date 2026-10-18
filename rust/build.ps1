@@ -221,6 +221,10 @@ try {
     $CargoTargetDir = Join-Path ([System.IO.Path]::GetTempPath()) $cacheName
     $env:CARGO_TARGET_DIR = $CargoTargetDir
 
+    Write-Step 'Checking pinned Android arm64 stat ABI'
+    & $Clang -fsyntax-only (Join-Path $PSScriptRoot 'abi_stat_android_aarch64.c')
+    if ($LASTEXITCODE -ne 0) { throw 'Android arm64 stat ABI check failed' }
+
     Write-Step 'Building all Android arm64 release binaries'
     & cargo build --locked --offline --release --bins --target $RustTarget
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed with exit code $LASTEXITCODE" }

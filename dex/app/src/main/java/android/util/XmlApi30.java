@@ -73,7 +73,7 @@ public class XmlApi30 {
      */
     public static XmlPullParser newPullParser() {
         try {
-            XmlPullParser parser = XmlObjectFactory.newXmlPullParser();
+            XmlPullParser parser = new com.xayah.dex.xml.KXmlParser();
             parser.setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL, true);
             parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true);
             return parser;

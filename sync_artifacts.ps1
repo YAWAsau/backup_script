@@ -16,6 +16,14 @@ foreach ($entry in $artifacts.GetEnumerator()) {
     $path = Join-Path $PSScriptRoot $entry.Value
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Build artifact missing: $path" }
     $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $runtimePath = Join-Path $PSScriptRoot ($runtimePrefix + $entry.Key)
+    if ([IO.Path]::GetFullPath($path) -ne [IO.Path]::GetFullPath($runtimePath)) {
+        if (-not $Check) { Copy-Item -LiteralPath $path -Destination $runtimePath -Force }
+        if (-not (Test-Path -LiteralPath $runtimePath -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $runtimePath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hash) {
+            throw "Stale runtime artifact: $runtimePath"
+        }
+    }
     $pattern = '(?m)^' + [regex]::Escape($entry.Key) + ' [0-9a-f]{64}$'
     if ([regex]::Matches($body, $pattern).Count -ne 1) { throw "Missing or duplicate SHA row: $($entry.Key)" }
     $wanted = $entry.Key + ' ' + $hash

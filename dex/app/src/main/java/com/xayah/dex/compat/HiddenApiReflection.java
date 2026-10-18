@@ -116,19 +116,46 @@ public final class HiddenApiReflection {
     }
 
     private static Method resolveMethod(Class<?> clazz, String methodName, Object[] args) {
+        java.util.List<Method> candidates = new java.util.ArrayList<>();
         for (Method method : clazz.getMethods()) {
-            if (matches(method, methodName, args)) {
-                method.setAccessible(true);
-                return method;
+            if (matches(method, methodName, args)) candidates.add(method);
+        }
+        // Keep the existing public-first contract; only use private members as fallback.
+        if (candidates.isEmpty()) {
+            for (Method method : clazz.getDeclaredMethods()) {
+                if (matches(method, methodName, args)) candidates.add(method);
             }
         }
-        for (Method method : clazz.getDeclaredMethods()) {
-            if (matches(method, methodName, args)) {
-                method.setAccessible(true);
-                return method;
+        Method best = null;
+        for (Method candidate : candidates) {
+            boolean dominated = false;
+            for (Method other : candidates) {
+                if (moreSpecific(other, candidate)) { dominated = true; break; }
             }
+            if (dominated) continue;
+            if (best != null && !best.equals(candidate)) {
+                throw new IllegalArgumentException("Ambiguous method: " + clazz.getName() + "." + methodName);
+            }
+            best = candidate;
         }
-        return null;
+        if (best != null) best.setAccessible(true);
+        return best;
+    }
+
+    private static boolean moreSpecific(Method a, Method b) {
+        if (a.equals(b)) return false;
+        Class<?>[] aa = a.getParameterTypes(), bb = b.getParameterTypes();
+        boolean strict = false;
+        for (int i = 0; i < aa.length; i++) {
+            if (aa[i] == bb[i]) continue;
+            // Boxing is applicable, but does not make int more specific than Integer.
+            if (aa[i].isPrimitive() || bb[i].isPrimitive() || !bb[i].isAssignableFrom(aa[i])) return false;
+            strict = true;
+        }
+        if (strict) return true;
+        if (a.isBridge() != b.isBridge()) return !a.isBridge();
+        return a.getDeclaringClass() != b.getDeclaringClass()
+                && b.getDeclaringClass().isAssignableFrom(a.getDeclaringClass());
     }
 
     private static boolean matches(Method method, String methodName, Object[] args) {

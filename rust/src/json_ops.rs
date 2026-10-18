@@ -3,6 +3,60 @@ use super::*;
 include!("json_caps.rs");
 #[path = "json_legacy.rs"]
 mod legacy;
+// Device-tree cells are big-endian. Limit optional reads and never propagate failures.
+fn ram_cell(path: &str) -> Option<u32> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut bytes = [0u8; 4];
+    file.read_exact(&mut bytes).ok()?;
+    let mut extra = [0u8; 1];
+    if file.read(&mut extra).ok()? != 0 { return None; }
+    Some(u32::from_be_bytes(bytes))
+}
+fn ram_vendor(id: Option<u32>) -> String {
+    // Rockchip DDR Develop Guide, LPDDR MR5 manufacturer tables.
+    match id {
+        Some(1) => "Samsung".into(),
+        Some(6) => "SK hynix".into(),
+        Some(255) => "Micron".into(),
+        Some(0x13) => "CXMT".into(),
+        Some(0x1a) => "UniIC".into(),
+        Some(0xe5) => "Dosilicon".into(),
+        Some(id) => format!("未知 (ID:0x{:08x})", id),
+        None => "未知".into(),
+    }
+}
+fn ram_product() -> String {
+    #[cfg(target_os = "android")]
+    {
+        unsafe extern "C" { fn __system_property_get(name: *const std::ffi::c_char, value: *mut std::ffi::c_char) -> i32; }
+        let mut buf = [0u8; 92];
+        let n = unsafe { __system_property_get(c"ro.product.device".as_ptr(), buf.as_mut_ptr().cast()) };
+        if n > 0 && (n as usize) < buf.len() { return String::from_utf8_lossy(&buf[..n as usize]).into_owned(); }
+    }
+    String::new()
+}
+fn ram_display(id: Option<u32>, size: Option<u32>, product: &str, spec: &str) -> String {
+    let mut parts = vec![ram_vendor(id)];
+    // Only these boards' ddr_size units have been verified as nominal GB.
+    // Do not round MemTotal or include swap; unknown capacity is omitted.
+    if matches!(product, "songyuan" | "fuxi") {
+        if let Some(gb) = size.filter(|n| matches!(n, 4 | 6 | 8 | 12 | 16 | 24 | 32 | 48 | 64)) {
+            parts.push(format!("{} GB", gb));
+        }
+    }
+    let spec = spec.trim();
+    if !spec.is_empty() && spec != "null" { parts.push(spec.to_owned()); }
+    format!("RAM:{}", parts.join(" "))
+}
+fn ram_info(spec: &str) -> String {
+    ram_display(
+        ram_cell("/sys/firmware/devicetree/base/memory/ddr_manufacturer_id"),
+        ram_cell("/sys/firmware/devicetree/base/memory/ddr_size"),
+        &ram_product(), spec,
+    )
+}
+
 type Vars = HashMap<String, String>;
 fn string(s: impl Into<String>) -> V {
     V::String(s.into())
@@ -407,6 +461,29 @@ fn execute(op: &str, v: &V, a: &Vars, file: &str) -> Result<Vec<V>, String> {
             }
             one(merge(&xs[0], &xs[1]))
         }
+        // Merge only payload entries actually downloaded in this transaction.
+        "media-download-merge" => {
+            let xs = values(v);
+            if xs.len() != 2 || !xs[0].object() || !xs[1].object() {
+                return Err("media download merge needs two objects".into());
+            }
+            let mut out = xs[0].clone();
+            let selection = std::fs::read_to_string(var(a, "items"))
+                .map_err(|e| format!("read media selection: {e}"))?;
+            if selection.lines().any(|s| s == "Media") {
+                for (key, value) in entries(&xs[1]) { out.put(&key, value); }
+            } else {
+                for item in selection.lines() {
+                    let Some(key) = item.strip_suffix(".tar.zst")
+                        .or_else(|| item.strip_suffix(".tar")) else { continue };
+                    if item.contains('/') { continue; }
+                    let value = xs[1].get(key).filter(|x| x.object())
+                        .ok_or_else(|| format!("missing selected media metadata: {key}"))?;
+                    out.put(key, value.clone());
+                }
+            }
+            one(out)
+        }
         "release-tag" => one(alt(v, "tag_name", empty)),
         "release-body" => one(alt(v, "body", empty)),
         "release-assets" => Ok(values(&g(v, "assets"))
@@ -428,14 +505,10 @@ fn execute(op: &str, v: &V, a: &Vars, file: &str) -> Result<Vec<V>, String> {
                         raw(&alt(&d, "VENDOR", string("null"))),
                         raw(&alt(&d, "NAME", string("null")))
                     )),
-                    string(format!(
-                        "RAM\tRAM:{} {}",
-                        raw(&alt(&d, "MEMORY", string("null"))),
-                        raw(&alt(&d, "CHANNELS", string("null")))
-                    )),
+                    string(format!("RAM\t{}", ram_info(&raw(&alt(&d, "MEMORY", string("")))))),
                 ])
             } else {
-                Ok(vec![string("DEVICE\t處理器:null"), string("RAM\tRAM:null")])
+                Ok(vec![string("DEVICE\t處理器:null"), string(format!("RAM\t{}", ram_info("")))])
             }
         }
         "webdav-contract" => {
@@ -808,11 +881,10 @@ fn execute(op: &str, v: &V, a: &Vars, file: &str) -> Result<Vec<V>, String> {
         "snapshot-states" | "snapshot-errors" | "snapshot-reduce" => {
             let mut out = vec![];
             if op != "snapshot-errors" && snapshot_ok(v) {
-                let mut xs = vec![g(v, "packageName"), string(v.emit(false, 0))];
-                if op == "snapshot-reduce" {
-                    xs.insert(0, string("STATE"))
-                }
-                out.push(tsv(&xs)?)
+                let prefix = if op == "snapshot-reduce" { "STATE\t" } else { "" };
+                // Compact JSON has no raw tabs/newlines; preserve its own escapes.
+                out.push(string(format!("{}{}\t{}", prefix,
+                    tsv_sanitize(g(v, "packageName").text().unwrap_or("")), v.emit(false, 0))));
             }
             if op != "snapshot-states" && snapshot_error(v) {
                 let mut xs = vec![

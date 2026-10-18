@@ -31,7 +31,7 @@ import dev.rikka.tools.refine.Refine;
  * SpeedBackup App inventory snapshot.
  *
  * One PackageManager scan provides label/pkg/uid/version/source/flag/category data for shell.
- * In a persistent root daemon this class keeps a per-user/per-locale cache for the current run.
+ * In a persistent root daemon this class keeps a per-user/per-locale cache within one command request.
  */
 final class AppInventoryUtil {
     static final String VERSION = DexBuildInfo.VERSION;
@@ -205,11 +205,42 @@ final class AppInventoryUtil {
             if (item != null && item.uid >= 0) {
                 return item.packageName + "\t" + item.uid + "\n";
             }
-            return "APP_INVENTORY_PKG_UID_MISSING package=" + sanitize(pkgName) + " userId=" + userId + " reason=uid_missing\n";
-        } catch (Throwable t) {
+            throw new IllegalStateException("Package metadata has no UID");
+        } catch (Exception t) {
+            if (!(t instanceof PackageManager.NameNotFoundException)) throw t;
             return "APP_INVENTORY_PKG_UID_MISSING package=" + sanitize(pkgName) + " userId=" + userId
                     + " reason=" + sanitize(t.getClass().getSimpleName()) + "\n";
         }
+    }
+
+    // Only authoritative absence permits retiring a removed package's journal.
+    // Keep it for another user, a shared/reused UID, or an unavailable PM service.
+    static boolean removedPackageUidUnowned(int userId, String packageName, int uid) {
+        if (userId < 0 || uid < 0 || uid % 100000 < 10000 || uid / 100000 != userId || packageName == null || packageName.isEmpty()) return false;
+        try {
+            PackageManager pm = PackageManagerUtil.getPackageManager(HiddenApiHelper.getContext()).packageManager();
+            PackageManagerHidden hidden = Refine.unsafeCast(pm);
+            try {
+                hidden.getPackageInfoAsUser(packageName, 0x00400000 /* MATCH_ANY_USER */, userId);
+                return false;
+            } catch (Exception absent) {
+                if (!(absent instanceof PackageManager.NameNotFoundException)) return false;
+                String[] owners = pm.getPackagesForUid(uid);
+                return owners == null || owners.length == 0;
+            }
+        } catch (Exception unavailable) { return false; }
+    }
+
+    // A live, user-scoped query. Missing/failed metadata must never mean disabled.
+    static synchronized String packageEnabledSingle(int userId, String packageName) throws Exception {
+        if (userId < 0 || packageName == null || packageName.trim().isEmpty())
+            throw new IllegalArgumentException("USER_ID PACKAGE required");
+        PackageManager pm = PackageManagerUtil.getPackageManager(HiddenApiHelper.getContext()).packageManager();
+        PackageManagerHidden hidden = Refine.unsafeCast(pm);
+        PackageInfo pkg = hidden.getPackageInfoAsUser(packageName.trim(), 0, userId);
+        if (pkg == null || pkg.applicationInfo == null)
+            throw new IllegalStateException("Package metadata unavailable");
+        return pkg.applicationInfo.enabled ? "true\n" : "false\n";
     }
 
     static synchronized String packageStatusSingle(int userId, String packageName, boolean refresh) throws Exception {
@@ -227,17 +258,18 @@ final class AppInventoryUtil {
             PackageInfo pkg = pmHidden.getPackageInfoAsUser(pkgName, PackageManager.GET_META_DATA, userId);
             Item item = toItem(pm, pkg, userId);
             if (item == null) {
-                return statusMissing(userId, pkgName, "ITEM_NULL");
+                throw new IllegalStateException("Package metadata unavailable");
             }
             JsonObject o = item.toJson();
             o.addProperty("schema", "speedbackup.package_status.v1");
             o.addProperty("recordType", "packageStatus");
             o.addProperty("source", "packageManager");
             o.addProperty("reason", "OK");
-            o.addProperty("suspended", false);
+            o.addProperty("suspended", isPackageSuspended(pm, pkgName, userId));
             addDataDirs(o, userId, item.packageName);
             return GSON.toJson(o) + "\n";
-        } catch (Throwable t) {
+        } catch (Exception t) {
+            if (!(t instanceof PackageManager.NameNotFoundException)) throw t;
             return statusMissing(userId, pkgName, t.getClass().getSimpleName());
         }
     }
@@ -287,7 +319,6 @@ final class AppInventoryUtil {
         if (refresh) clearCache();
         String pkgName = packageName == null ? "" : packageName.trim();
         if (maxUserId < 0) maxUserId = 0;
-        if (maxUserId > 99) maxUserId = 99;
         StringBuilder out = new StringBuilder();
         out.append("#schema\tspeedbackup.pm_installed_users.v1\n");
         out.append("#fields\tpackage\tuserId\tinstalled\tuid\tenabled\tversionCode\treason\n");
@@ -299,7 +330,7 @@ final class AppInventoryUtil {
         PackageManager pm = PackageManagerUtil.getPackageManager(ctx).packageManager();
         PackageManagerHidden pmHidden = Refine.unsafeCast(pm);
         boolean any = false;
-        for (int u = 0; u <= maxUserId; u++) {
+        for (int u : actualUsers(-1)) {
             try {
                 PackageInfo pi = pmHidden.getPackageInfoAsUser(pkgName, PackageManager.GET_META_DATA, u);
                 Item item = toItem(pm, pi, u);
@@ -309,11 +340,14 @@ final class AppInventoryUtil {
                             .append(item.uid).append('\t').append(item.enabled ? "true" : "false").append('\t')
                             .append(item.versionCode).append("\tOK\n");
                 }
-            } catch (Throwable ignored) {
-                // keep output compact: only installed users are rows; final MISS row below if none.
+            } catch (Exception failure) {
+                // Only authoritative package absence may contribute to MISSING.
+                // Binder/security/metadata failures must propagate to the caller.
+                // Hidden API stubs omit the checked exception declaration.
+                if (!(failure instanceof PackageManager.NameNotFoundException)) throw failure;
             }
         }
-        if (!any) out.append("MISSING\t").append(sanitize(pkgName)).append("\t-1\tfalse\t-1\tfalse\t-1\tNOT_INSTALLED_0_").append(maxUserId).append('\n');
+        if (!any) out.append("MISSING\t").append(sanitize(pkgName)).append("\t-1\tfalse\t-1\tfalse\t-1\tNOT_INSTALLED_ACTUAL_USERS\n");
         return out.toString();
     }
 
@@ -488,11 +522,12 @@ final class AppInventoryUtil {
                 PackageInfo pkg = pmHidden.getPackageInfoAsUser(pkgName, PackageManager.GET_META_DATA, userId);
                 Item item = toItem(pm, pkg, userId);
                 if (item == null) {
-                    appendPreRestoreMissingFact(out, userId, pkgName, "ITEM_NULL", anyUser);
+                    throw new IllegalStateException("Package metadata unavailable");
                 } else {
                     appendPreRestoreItemFact(out, pm, pmHidden, item, "OK", anyUser);
                 }
-            } catch (Throwable t) {
+            } catch (Exception t) {
+                if (!(t instanceof PackageManager.NameNotFoundException)) throw t;
                 appendPreRestoreMissingFact(out, userId, pkgName, t.getClass().getSimpleName(), anyUser);
             }
         }
@@ -698,12 +733,12 @@ final class AppInventoryUtil {
     }
 
 
-    private static void appendPreRestoreItemFact(StringBuilder out, PackageManager pm, PackageManagerHidden pmHidden, Item item, String reason, boolean installedAnyUser) {
+    private static void appendPreRestoreItemFact(StringBuilder out, PackageManager pm, PackageManagerHidden pmHidden, Item item, String reason, boolean installedAnyUser) throws Exception {
         String splits = item.splitSourceDirs == null ? "" : String.join("|", item.splitSourceDirs);
         String userDataDir = item.packageName == null || item.packageName.isEmpty() ? "" : "/data/user/" + item.userId + "/" + item.packageName;
         String userDeDataDir = item.packageName == null || item.packageName.isEmpty() ? "" : "/data/user_de/" + item.userId + "/" + item.packageName;
         boolean hidden = isApplicationHidden(pm, item.packageName, item.userId);
-        boolean suspended = isPackageSuspended(pm, item.packageName);
+        boolean suspended = isPackageSuspended(pm, item.packageName, item.userId);
         String installerPkg = item.installerPackageName == null ? "" : item.installerPackageName;
         String installSource = installerPkg;
         String initiating = installerPkg;
@@ -765,23 +800,42 @@ final class AppInventoryUtil {
                 .append("\tfalse\tfalse\t\t\t\t\tPackageManager\n");
     }
 
-    private static boolean isInstalledAnyUser(PackageManager pm, PackageManagerHidden pmHidden, String pkgName, int preferredUserId) {
-        int[] users = new int[]{preferredUserId, 0, 10, 11, 12, 13, 14, 15, 999};
-        Set<Integer> seen = new HashSet<>();
-        for (int u : users) {
-            if (u < 0 || seen.contains(u)) continue;
-            seen.add(u);
-            try {
-                PackageInfo pi = pmHidden.getPackageInfoAsUser(pkgName, PackageManager.GET_META_DATA, u);
-                if (pi != null && pi.applicationInfo != null) return true;
-            } catch (Throwable ignored) {}
+    private static java.util.Set<Integer> actualUsers(int preferredUserId) throws Exception {
+        Object manager = com.xayah.dex.compat.HiddenApiServices.interfaceService("user", "android.os.IUserManager$Stub");
+        java.util.Set<Integer> users = new java.util.LinkedHashSet<>();
+        try {
+            Object raw = com.xayah.dex.compat.HiddenApiReflection.invokeFlexible(manager, "getUserIds");
+            if (!(raw instanceof int[])) throw new IllegalStateException("User inventory unavailable");
+            for (int id : (int[]) raw) if (id >= 0) users.add(id);
+        } catch (NoSuchMethodException absent) {
+            // IUserManager signatures vary; use the actual UserInfo list, never guessed IDs.
+            Object raw;
+            try { raw = com.xayah.dex.compat.HiddenApiReflection.invokeFlexible(manager, "getUsers", false, false, false); }
+            catch (NoSuchMethodException older) {
+                try { raw = com.xayah.dex.compat.HiddenApiReflection.invokeFlexible(manager, "getUsers", false, false); }
+                catch (NoSuchMethodException oldest) { raw = com.xayah.dex.compat.HiddenApiReflection.invokeFlexible(manager, "getUsers", false); }
+            }
+            if (!(raw instanceof java.util.List)) throw new IllegalStateException("UserInfo inventory unavailable");
+            for (Object info : (java.util.List<?>) raw) {
+                int id = info.getClass().getField("id").getInt(info);
+                if (id >= 0) users.add(id);
+            }
         }
-        for (int u = 0; u <= 15; u++) {
-            if (seen.contains(u)) continue;
+        if (users.isEmpty()) throw new IllegalStateException("Empty user inventory");
+        return users;
+    }
+
+    private static boolean isInstalledAnyUser(PackageManager pm, PackageManagerHidden pmHidden, String pkgName, int preferredUserId) throws Exception {
+        for (int u : actualUsers(preferredUserId)) {
             try {
                 PackageInfo pi = pmHidden.getPackageInfoAsUser(pkgName, PackageManager.GET_META_DATA, u);
-                if (pi != null && pi.applicationInfo != null) return true;
-            } catch (Throwable ignored) {}
+                if (pi == null || pi.applicationInfo == null) {
+                    throw new IllegalStateException("Package metadata unavailable for user " + u);
+                }
+                return true;
+            } catch (Exception e) {
+                if (!(e instanceof PackageManager.NameNotFoundException)) throw e;
+            }
         }
         return false;
     }
@@ -797,15 +851,11 @@ final class AppInventoryUtil {
         }
     }
 
-    private static boolean isPackageSuspended(PackageManager pm, String packageName) {
-        if (packageName == null || packageName.length() == 0) return false;
-        try {
-            Method m = pm.getClass().getMethod("isPackageSuspended", String.class);
-            Object r = m.invoke(pm, packageName);
-            return Boolean.TRUE.equals(r);
-        } catch (Throwable ignored) {
-            return false;
-        }
+    private static boolean isPackageSuspended(PackageManager pm, String packageName, int userId) throws Exception {
+        PackageManagerHidden hidden = Refine.unsafeCast(pm);
+        PackageInfo info = hidden.getPackageInfoAsUser(packageName, 0, userId);
+        return info != null && info.applicationInfo != null
+                && (info.applicationInfo.flags & (1 << 30)) != 0; // ApplicationInfo.FLAG_SUSPENDED
     }
 
     static synchronized String packageFactsBatch(int userId, String[] packageNames, boolean refresh) throws Exception {

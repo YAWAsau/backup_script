@@ -98,7 +98,7 @@ fn install_signals() -> bool {
 }
 
 fn open_inotify() -> c_int {
-    let fd = unsafe { inotify_init1(O_CLOEXEC) };
+    let fd = unsafe { inotify_init1(O_CLOEXEC | 0o4000) };
     if fd >= 0 {
         return fd;
     }
@@ -110,6 +110,7 @@ fn open_inotify() -> c_int {
     if fd2 >= 0 {
         unsafe {
             fcntl(fd2, F_SETFD, FD_CLOEXEC);
+            if fcntl(fd2, 4, 0o4000) < 0 { close(fd2); return -1; }
         }
     }
     fd2
@@ -273,9 +274,14 @@ fn wait_exists(path: &str) -> i32 {
             unsafe { close(fd) };
             return 130;
         }
+        match speedbackup_native_rs::signal_wait::readable(fd, &G_STOP) {
+            Ok(true) => {},
+            Ok(false) => { unsafe { close(fd) }; return 130; },
+            Err(e) => { eprintln!("filewatch: wait: {}", e); unsafe { close(fd) }; return 1; },
+        }
         let received = unsafe { read(fd, buffer.as_mut_ptr() as *mut c_void, buffer.len()) };
         if received < 0 {
-            if errno_now() == EINTR {
+            if matches!(errno_now(), EINTR | 11) {
                 continue;
             }
             eprintln!(
@@ -302,6 +308,10 @@ fn wait_exists(path: &str) -> i32 {
                 eprintln!("filewatch: watched parent disappeared");
                 unsafe { close(fd) };
                 return 2;
+            }
+            if mask_val & IN_Q_OVERFLOW != 0 && path_exists(path) {
+                println!("EXISTS path={}", path);
+                unsafe { close(fd) }; return 0;
             }
             if len_val > 0 {
                 let name_bytes = &buffer[offset + HDR..offset + HDR + len_val];
@@ -362,9 +372,14 @@ fn watch_path(path: &str, once: bool) -> i32 {
             unsafe { close(fd) };
             return 130;
         }
+        match speedbackup_native_rs::signal_wait::readable(fd, &G_STOP) {
+            Ok(true) => {},
+            Ok(false) => { unsafe { close(fd) }; return 130; },
+            Err(e) => { eprintln!("filewatch: wait: {}", e); unsafe { close(fd) }; return 1; },
+        }
         let received = unsafe { read(fd, buffer.as_mut_ptr() as *mut c_void, buffer.len()) };
         if received < 0 {
-            if errno_now() == EINTR {
+            if matches!(errno_now(), EINTR | 11) {
                 continue;
             }
             eprintln!(

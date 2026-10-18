@@ -55,7 +55,7 @@ final class AppWakeBlockUtil {
         if (run != null && run.length() > 0) return run;
         String tmp = System.getenv("TMPDIR");
         if (tmp != null && tmp.contains(".speedbackup_run_") && tmp.length() > 0) return tmp;
-        return "/data/local/tmp/.speedbackup_run_dex_" + android.os.Process.myPid();
+        return GuardLifecycle.fallbackRunDirectory();
     }
 
     private static String scopedPath(String envName, String name) {
@@ -78,8 +78,8 @@ final class AppWakeBlockUtil {
         session.ownerToken = ownerToken;
         session.ownerKind = ownerKind == null ? "" : ownerKind.trim();
         try {
-            session.apply();
             SESSIONS.put(token, session);
+            session.apply();
             return "APP_WAKE_BLOCK_START_OK token=" + token
                     + " user=" + userId
                     + " package=" + session.packageName
@@ -89,7 +89,9 @@ final class AppWakeBlockUtil {
                     + " log=" + sanitize(logPath) + "\n";
         } catch (Throwable t) {
             try { session.restore("start-failed"); } catch (Throwable ignored) {}
+            if (session.restored) SESSIONS.remove(token);
             return "APP_WAKE_BLOCK_START_FAILED token=" + token
+                    + " stateRetained=" + !session.restored
                     + " user=" + userId
                     + " package=" + session.packageName
                     + " mode=" + session.mode
@@ -111,14 +113,19 @@ final class AppWakeBlockUtil {
     }
 
     static synchronized String stop(int token, int expectedUserId, String expectedPackageName) {
-        WakeBlockSession session = SESSIONS.remove(token);
+        WakeBlockSession session = SESSIONS.get(token);
         if (session == null) {
-            return "APP_WAKE_BLOCK_STOP_MISSING token=" + token
+            String restored = restorePersistedWakeBlockToken(token, "stop-missing-" + token, expectedUserId, expectedPackageName);
+            return new OperationResult("wake-stop", restoreDoneAndStateDeleted(restored)).token(token).appendTo("APP_WAKE_BLOCK_STOP_MISSING token=" + token
                     + " expectedUser=" + expectedUserId
                     + " expectedPackage=" + safePackage(expectedPackageName) + "\n"
-                    + restorePersistedWakeBlockToken(token, "stop-missing-" + token, expectedUserId, expectedPackageName);
+                    + restored);
         }
-        return session.restore("stop-token-" + token);
+        String mismatch = expectedMismatch(session, expectedUserId, safePackage(expectedPackageName));
+        if (!mismatch.isEmpty()) return new OperationResult("wake-stop", false).token(token).appendTo("APP_WAKE_BLOCK_STOP_REJECTED reason=" + mismatch + " stateRetained=true\n");
+        String result = session.restore("stop-token-" + token);
+        if (session.restored) SESSIONS.remove(token);
+        return new OperationResult("wake-stop", session.restored).token(token).appendTo(result);
     }
 
     static synchronized String deferStopToPrimaryScope(int token, int expectedUserId, String expectedPackageName, String reason) {
@@ -172,26 +179,41 @@ final class AppWakeBlockUtil {
     }
 
     static synchronized String restorePersistedObserverToken(int observerToken, String reason, int expectedUserId, String expectedPackageName) {
-        File file = findStateByOwnerToken(observerToken, "processObserver", expectedUserId, expectedPackageName);
-        if (file == null) {
-            return "APP_WAKE_BLOCK_PERSISTENT_RESTORE_MISSING ownerToken=" + observerToken
-                    + " ownerKind=processObserver"
-                    + " expectedUser=" + expectedUserId
-                    + " expectedPackage=" + safePackage(expectedPackageName)
-                    + " reason=" + sanitize(reason) + "\n";
+        File[] files = stateDir().listFiles();
+        StringBuilder out = new StringBuilder();
+        int matched = 0, restored = 0, invalid = 0;
+        if (files != null) for (File file : files) {
+            if (!isStateFile(file)) continue;
+            Properties properties = readProperties(file);
+            if (parseInt(properties.getProperty("ownerToken"), Integer.MIN_VALUE) == Integer.MIN_VALUE
+                    || !properties.containsKey("ownerKind")) {
+                invalid++;
+                out.append("APP_WAKE_BLOCK_OBSERVER_STATE_UNIDENTIFIED stateRetained=true\n");
+                continue;
+            }
+            if (parseInt(properties.getProperty("ownerToken"), -1) != observerToken
+                    || !"processObserver".equals(properties.getProperty("ownerKind"))) continue;
+            matched++;
+            // Let the restore routine reject identity mismatches, rather than
+            // filtering them into a misleading 'missing' success.
+            String result = restorePersistedFile(file, reason, "process-observer-token", -1,
+                    observerToken, expectedUserId, safePackage(expectedPackageName));
+            out.append(result);
+            if (restoreDoneAndStateDeleted(result)) restored++;
         }
-        return restorePersistedFile(file, reason, "process-observer-token", -1, observerToken, expectedUserId, safePackage(expectedPackageName));
+        boolean ok = files != null && invalid == 0 && matched == restored;
+        return new OperationResult("wake-restore-observer", ok).token(observerToken)
+                .counts(matched, restored, 0, matched - restored + invalid, 0).appendTo(out);
     }
 
     static synchronized String restorePersistedPackage(int userId, String packageName, String reason) {
         String pkg = safePackage(packageName);
         File file = findStateByPackage(userId, pkg);
         if (file == null) {
-            return "APP_WAKE_BLOCK_PERSISTENT_RESTORE_MISSING user=" + userId
-                    + " package=" + pkg
-                    + " reason=" + sanitize(reason) + "\n";
+            return new OperationResult("wake-restore-package", false).identity(userId, pkg).appendTo("APP_WAKE_BLOCK_PERSISTENT_RESTORE_MISSING user=" + userId + " package=" + pkg + "\n");
         }
-        return restorePersistedFile(file, reason, "package", -1, -1, userId, pkg);
+        String result = restorePersistedFile(file, reason, "package", -1, -1, userId, pkg);
+        return new OperationResult("wake-restore-package", restoreDoneAndStateDeleted(result)).identity(userId, pkg).appendTo(result);
     }
 
     static synchronized boolean hasPersistedPackage(int userId, String packageName) {
@@ -216,7 +238,7 @@ final class AppWakeBlockUtil {
         out.append("APP_WAKE_BLOCK_PERSISTENT_RESTORE_ALL_DONE total=").append(total)
                 .append(" restored=").append(restored)
                 .append(" reason=").append(sanitize(reason)).append('\n');
-        return out.toString();
+        return new OperationResult("wake-restore-all", files != null && restored == total).counts(total, restored, 0, total-restored, 0).appendTo(out);
     }
 
 
@@ -279,7 +301,7 @@ final class AppWakeBlockUtil {
                 .append(" restored=").append(restored)
                 .append(" deleted=").append(deleted)
                 .append(" reason=").append(sanitize(reason)).append('\n');
-        return out.toString();
+        return new OperationResult("wake-cleanup", files != null && restored == stale && deleted == stale).counts(stale, restored, 0, stale-deleted, 0).appendTo(out);
     }
 
     static synchronized String status() {
@@ -354,6 +376,11 @@ final class AppWakeBlockUtil {
         }
 
         void apply() throws Exception {
+            try { applyTracked(); }
+            finally { CURRENT_UID.remove(); CURRENT_PACKAGE.remove(); CURRENT_USER.remove(); }
+        }
+
+        private void applyTracked() throws Exception {
             if (packageName.isEmpty()) throw new IllegalArgumentException("packageName is empty");
             log = openLog(logPath);
             targetUid = resolveTargetUid(userId, packageName);
@@ -366,7 +393,7 @@ final class AppWakeBlockUtil {
                     + " ownerToken=" + ownerToken
                     + " ownerKind=" + sanitize(ownerKind));
             snapshot();
-            persistState("snapshot");
+            if (!persistState("snapshot")) throw new IllegalStateException("State snapshot write failed");
             if (!snapshotSafe()) {
                 persistState("snapshot-unsafe-before-delete");
                 boolean stateDeleted = deletePersistedState("snapshot-unsafe-not-applied");
@@ -440,7 +467,8 @@ final class AppWakeBlockUtil {
                 return direct.snapshot.restoreMode;
             }
             ShellResult r = runShell("cmd appops get --user " + userId + " " + shellQuote(packageName) + " " + op,
-                    "cmd appops get " + shellQuote(packageName) + " " + op);
+                    "cmd appops get --user " + userId + " " + shellQuote(packageName) + " " + op);
+            if (r.rc != 0) return "unknown";
             AppOpSnapshot snapshot = parseAppOpsSnapshot(op, r.out);
             logLine("APP_WAKE_BLOCK_SNAPSHOT_OP op=" + op
                     + " mode=" + snapshot.restoreMode
@@ -464,7 +492,8 @@ final class AppWakeBlockUtil {
                 return direct.snapshot.bucket;
             }
             ShellResult r = runShell("am get-standby-bucket --user " + userId + " " + shellQuote(packageName),
-                    "am get-standby-bucket " + shellQuote(packageName));
+                    "am get-standby-bucket --user " + userId + " " + shellQuote(packageName));
+            if (r.rc != 0) return "unknown";
             StandbySnapshot snapshot = parseStandbyBucketSnapshot(r.out);
             logLine("APP_WAKE_BLOCK_SNAPSHOT_BUCKET bucket=" + snapshot.bucket
                     + " rawBucket=" + snapshot.rawBucket
@@ -487,7 +516,7 @@ final class AppWakeBlockUtil {
             }
             ShellResult r = runShell("dumpsys deviceidle whitelist", "cmd deviceidle whitelist");
             boolean listed = deviceIdleWhitelistContains(r.out, packageName);
-            deviceIdleWhitelistSnapshotKnown = r.rc == 0 || (r.out != null && !r.out.trim().isEmpty());
+            deviceIdleWhitelistSnapshotKnown = r.rc == 0;
             logLine("APP_WAKE_BLOCK_SNAPSHOT_DEVICEIDLE package=" + packageName
                     + " whitelisted=" + listed
                     + " known=" + deviceIdleWhitelistSnapshotKnown
@@ -503,6 +532,13 @@ final class AppWakeBlockUtil {
                 logLine("APP_WAKE_BLOCK_APPLY stage=appops op=" + op + " skipped=true reason=snapshot-unknown target=" + targetMode);
                 return;
             }
+            if (OP_RUN_IN_BACKGROUND.equals(op)) runInBackgroundTouched = true;
+            if (OP_RUN_ANY_IN_BACKGROUND.equals(op)) runAnyInBackgroundTouched = true;
+            if (!persistState("intent-appops-" + op)) {
+                if (OP_RUN_IN_BACKGROUND.equals(op)) runInBackgroundTouched = false;
+                if (OP_RUN_ANY_IN_BACKGROUND.equals(op)) runAnyInBackgroundTouched = false;
+                throw new IllegalStateException("AppOps intent write failed");
+            }
             DirectResult direct = setAppOpDirect(op, targetMode);
             ShellResult r;
             String provider;
@@ -511,12 +547,11 @@ final class AppWakeBlockUtil {
                 provider = "direct";
             } else {
                 r = runShell("cmd appops set --user " + userId + " " + shellQuote(packageName) + " " + op + " " + targetMode,
-                        "cmd appops set " + shellQuote(packageName) + " " + op + " " + targetMode);
+                        "cmd appops set --user " + userId + " " + shellQuote(packageName) + " " + op + " " + targetMode);
                 provider = "shell directError=" + sanitize(direct.error);
             }
             boolean ok = r.rc == 0;
-            if (OP_RUN_IN_BACKGROUND.equals(op)) runInBackgroundTouched = ok;
-            if (OP_RUN_ANY_IN_BACKGROUND.equals(op)) runAnyInBackgroundTouched = ok;
+            if (!ok) throw new IllegalStateException("AppOps apply failed: " + op);
             if (ok) persistState("apply-appops-" + op);
             logLine("APP_WAKE_BLOCK_APPLY stage=appops op=" + op + " target=" + targetMode
                     + " original=" + original + " ok=" + ok + " provider=" + provider + " rc=" + r.rc + " raw=" + sanitize(r.out));
@@ -527,9 +562,17 @@ final class AppWakeBlockUtil {
                 logLine("APP_WAKE_BLOCK_APPLY stage=standby skipped=true reason=snapshot-unknown target=" + bucket);
                 return;
             }
-            if ((originalDeviceIdleWhitelist || "exempted".equals(originalStandbyBucket)) && "restricted".equals(bucket)) {
+            if ("exempted".equals(originalStandbyBucket) && !originalDeviceIdleWhitelist)
+                throw new IllegalStateException("Non-whitelist exemption cannot be restored safely");
+            standbyTouched = true;
+            if (originalDeviceIdleWhitelist && "restricted".equals(bucket)) deviceIdleWhitelistTouched = true;
+            if (!persistState("intent-standby")) {
+                standbyTouched = false; deviceIdleWhitelistTouched = false;
+                throw new IllegalStateException("Standby intent write failed");
+            }
+            if (originalDeviceIdleWhitelist && "restricted".equals(bucket)) {
                 boolean removed = setDeviceIdleWhitelist(false, "apply-restricted");
-                deviceIdleWhitelistTouched = removed;
+                if (!removed) throw new IllegalStateException("Whitelist removal failed");
                 if (removed) persistState("apply-deviceidle-remove");
             }
             DirectResult direct = setStandbyBucketDirect(bucket);
@@ -540,10 +583,10 @@ final class AppWakeBlockUtil {
                 provider = "direct";
             } else {
                 r = runShell("am set-standby-bucket --user " + userId + " " + shellQuote(packageName) + " " + bucket,
-                        "am set-standby-bucket " + shellQuote(packageName) + " " + bucket);
+                        "am set-standby-bucket --user " + userId + " " + shellQuote(packageName) + " " + bucket);
                 provider = "shell directError=" + sanitize(direct.error);
             }
-            standbyTouched = r.rc == 0;
+            if (r.rc != 0) throw new IllegalStateException("Standby apply failed");
             if (standbyTouched) persistState("apply-standby");
             logLine("APP_WAKE_BLOCK_APPLY stage=standby target=" + bucket + " original=" + originalStandbyBucket
                     + " originalDeviceIdleWhitelist=" + originalDeviceIdleWhitelist
@@ -562,6 +605,17 @@ final class AppWakeBlockUtil {
             boolean runBgRestored = !runInBackgroundTouched;
             boolean restoreOk = false;
             try {
+                if (standbyTouched || runAnyInBackgroundTouched || runInBackgroundTouched || deviceIdleWhitelistTouched) {
+                    int currentUid = resolveTargetUid(userId, packageName);
+                    if (currentUid < 0 && removedPackageStateClear()) {
+                        boolean deleted = deletePersistedState("removed-package-policy-clear");
+                        restored = deleted;
+                        return "APP_WAKE_BLOCK_STOP_" + (deleted ? "OK" : "FAILED") + " token=" + token
+                                + " restoreOk=true stateDeleted=" + deleted + " stateRetained=" + !deleted
+                                + " reason=removed-package-policy-clear mutation=false\n";
+                    }
+                    if (targetUid < 0 || currentUid != targetUid) throw new IllegalStateException("restore-package-uid-changed");
+                }
                 CURRENT_USER.set(userId);
                 CURRENT_PACKAGE.set(packageName);
                 CURRENT_UID.set(targetUid);
@@ -663,10 +717,31 @@ final class AppWakeBlockUtil {
                         .append(" stateRetained=true").append('\n');
             } finally {
                 if (log != null) {
-                    try { log.flush(); log.close(); } catch (Throwable ignored) {}
+                    try { log.flush(); if (!logPath.isEmpty() && !"-".equals(logPath)) log.close(); } catch (Throwable ignored) {}
                 }
+                CURRENT_USER.remove(); CURRENT_PACKAGE.remove(); CURRENT_UID.remove();
             }
             return out.toString();
+        }
+
+        private boolean removedPackageStateClear() {
+            if (!AppInventoryUtil.removedPackageUidUnowned(userId, packageName, targetUid)) return false;
+            try {
+                AppOpsManagerHidden ops = appOpsManager();
+                for (String op : new String[]{OP_RUN_IN_BACKGROUND, OP_RUN_ANY_IN_BACKGROUND}) {
+                    boolean touched = OP_RUN_IN_BACKGROUND.equals(op) ? runInBackgroundTouched : runAnyInBackgroundTouched;
+                    if (!touched) continue;
+                    Integer mode = AppOpsCompat.tryGetPackageModeRaw(ops, appOpCode(op), targetUid, packageName);
+                    if (mode == null || mode != AppOpsManagerHidden.MODE_DEFAULT) return false;
+                }
+                if (deviceIdleWhitelistTouched) {
+                    Object names = HiddenApiReflection.invokeFlexible(HiddenApiServices.deviceIdle(), "getUserPowerWhitelist");
+                    if (!(names instanceof String[])) return false;
+                    for (String name : (String[]) names) if (packageName.equals(name)) return false;
+                }
+                // Standby is package scoped; no target remains on any user.
+                return AppInventoryUtil.removedPackageUidUnowned(userId, packageName, targetUid);
+            } catch (Throwable unavailable) { return false; }
         }
 
         private boolean restoreAppOp(String op, String original) {
@@ -682,7 +757,7 @@ final class AppWakeBlockUtil {
                 provider = "direct";
             } else {
                 r = runShell("cmd appops set --user " + userId + " " + shellQuote(packageName) + " " + op + " " + original,
-                        "cmd appops set " + shellQuote(packageName) + " " + op + " " + original);
+                        "cmd appops set --user " + userId + " " + shellQuote(packageName) + " " + op + " " + original);
                 provider = "shell directError=" + sanitize(direct.error);
             }
             boolean ok = r.rc == 0;
@@ -715,7 +790,7 @@ final class AppWakeBlockUtil {
                 provider = "direct";
             } else {
                 r = runShell("am set-standby-bucket --user " + userId + " " + shellQuote(packageName) + " " + targetBucket,
-                        "am set-standby-bucket " + shellQuote(packageName) + " " + targetBucket);
+                        "am set-standby-bucket --user " + userId + " " + shellQuote(packageName) + " " + targetBucket);
                 provider = "shell directError=" + sanitize(direct.error);
             }
             boolean ok = r.rc == 0;
@@ -726,8 +801,14 @@ final class AppWakeBlockUtil {
         }
 
         private boolean restoreDeviceIdleWhitelistIfNeeded() {
-            if ("exempted".equals(originalStandbyBucket) || originalDeviceIdleWhitelist) {
+            if (deviceIdleWhitelistTouched && originalDeviceIdleWhitelist) {
                 boolean ok = setDeviceIdleWhitelist(true, "restore-original-exempted");
+                if (ok && "exempted".equals(originalStandbyBucket)) {
+                    String currentBucket = snapshotStandbyBucket();
+                    ok = "exempted".equals(currentBucket);
+                    logLine("APP_WAKE_BLOCK_RESTORE stage=exempted-readback actual=" + currentBucket
+                            + " ok=" + ok + " stateRetained=" + !ok);
+                }
                 logLine("APP_WAKE_BLOCK_RESTORE stage=deviceidle-whitelist target=true original=" + originalDeviceIdleWhitelist
                         + " originalBucket=" + originalStandbyBucket
                         + " ok=" + ok);
@@ -772,7 +853,7 @@ final class AppWakeBlockUtil {
             return ok;
         }
 
-        private void persistState(String phase) {
+        private boolean persistState(String phase) {
             try {
                 File file = stateFileFor(this);
                 Properties p = new Properties();
@@ -809,11 +890,13 @@ final class AppWakeBlockUtil {
                         + " ownerKind=" + sanitize(ownerKind)
                         + " phase=" + sanitize(phase)
                         + " path=" + sanitize(file.getAbsolutePath()));
+                return true;
             } catch (Throwable t) {
                 logLine("APP_WAKE_BLOCK_PERSIST_STATE_FAILED token=" + token
                         + " phase=" + sanitize(phase)
                         + " exception=" + sanitize(t.getClass().getName())
                         + " message=" + sanitize(t.getMessage()));
+                return false;
             }
         }
 
@@ -924,7 +1007,7 @@ final class AppWakeBlockUtil {
 
     private static WakeBlockSession sessionFromProperties(Properties p) {
         int token = parseInt(p.getProperty("token"), -1);
-        int userId = parseInt(p.getProperty("user"), 0);
+        int userId = parseInt(p.getProperty("user"), -1);
         String pkg = safePackage(p.getProperty("package", ""));
         String mode = normalizeMode(p.getProperty("mode", "normal"));
         String logPath = p.getProperty("logPath", "-");
@@ -977,27 +1060,9 @@ final class AppWakeBlockUtil {
         return best;
     }
 
-    private static File findStateByOwnerToken(int ownerToken, String ownerKind) {
-        return findStateByOwnerToken(ownerToken, ownerKind, -1, "");
-    }
 
-    private static File findStateByOwnerToken(int ownerToken, String ownerKind, int expectedUserId, String expectedPackageName) {
-        File[] files = stateDir().listFiles();
-        if (files == null) return null;
-        File best = null;
-        long bestTime = Long.MIN_VALUE;
-        String kind = ownerKind == null ? "" : ownerKind.trim();
-        for (File f : files) {
-            if (!isStateFile(f)) continue;
-            Properties p = readProperties(f);
-            if (parseInt(p.getProperty("ownerToken"), -1) != ownerToken) continue;
-            if (!kind.isEmpty() && !kind.equals(p.getProperty("ownerKind", ""))) continue;
-            if (!stateMatchesExpected(p, expectedUserId, expectedPackageName)) continue;
-            long t = stateUpdatedAt(p, f);
-            if (best == null || t > bestTime) { best = f; bestTime = t; }
-        }
-        return best;
-    }
+
+
 
     private static File findStateByPackage(int userId, String packageName) {
         File[] files = stateDir().listFiles();
@@ -1027,6 +1092,7 @@ final class AppWakeBlockUtil {
 
     private static String expectedMismatch(WakeBlockSession s, int expectedUserId, String expectedPackageName) {
         if (s == null) return "empty-session";
+        if (s.userId < 0 || s.packageName.isEmpty()) return "invalid-session-identity";
         if (expectedUserId >= 0 && s.userId != expectedUserId) return "user";
         String expectedPkg = safePackage(expectedPackageName);
         if (!expectedPkg.isEmpty() && !expectedPkg.equals(s.packageName)) return "package";
@@ -1067,22 +1133,15 @@ final class AppWakeBlockUtil {
         try (FileOutputStream out = new FileOutputStream(tmp)) {
             p.store(out, "SpeedBackup wake-block persistent state");
             out.flush();
-            try { out.getFD().sync(); } catch (Throwable ignored) {}
+            out.getFD().sync();
         }
         if (!tmp.renameTo(file)) {
-            try { copyFile(tmp, file); } finally { try { tmp.delete(); } catch (Throwable ignored) {} }
+            tmp.delete();
+            throw new java.io.IOException("Atomic state replacement failed");
         }
     }
 
-    private static void copyFile(File src, File dst) throws Exception {
-        byte[] buf = new byte[8192];
-        try (FileInputStream in = new FileInputStream(src); FileOutputStream out = new FileOutputStream(dst)) {
-            int n;
-            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
-            out.flush();
-            try { out.getFD().sync(); } catch (Throwable ignored) {}
-        }
-    }
+
 
 
     private static String safeFilePart(String raw) {
@@ -1256,13 +1315,13 @@ final class AppWakeBlockUtil {
     private static String standbyBucketNameFromNumber(String rawNumber) {
         try {
             int value = Integer.parseInt(rawNumber);
-            if (value <= 5) return "exempted";
+            if (value == 5) return "exempted";
             if (value == 10) return "active";
             if (value == 20) return "working_set";
             if (value == 30) return "frequent";
             if (value == 40) return "rare";
             if (value == 45) return "restricted";
-            if (value >= 50) return "never";
+            if (value == 50) return "never";
         } catch (Throwable ignored) {}
         return "unknown";
     }
@@ -1274,7 +1333,9 @@ final class AppWakeBlockUtil {
         String[] lines = normalized.split("\n");
         for (String line : lines) {
             String l = line == null ? "" : line.trim();
-            if (l.equals(pkg) || l.endsWith(" " + pkg) || l.contains("," + pkg) || l.contains("=" + pkg)) return true;
+            // Only user-owned exemptions may be removed and later restored.
+            // System entries and package-name prefixes are not ownership proof.
+            if (!l.startsWith("user,")) continue;
             if (l.contains(pkg)) {
                 String[] parts = l.split("[^A-Za-z0-9._-]+");
                 for (String part : parts) if (pkg.equals(part)) return true;
@@ -1351,6 +1412,7 @@ final class AppWakeBlockUtil {
             int code = appOpCode(op);
             if (code == AppOpsManagerHidden.OP_NONE || targetUidInvalidForDirect(op)) return DirectAppOpSnapshot.fail("op-or-uid-unavailable");
             Integer packageModeValue = AppOpsCompat.tryGetPackageModeRaw(appOps, code, cachedUidForCurrentThread(), cachedPackageForCurrentThread());
+            if (packageModeValue == null) return DirectAppOpSnapshot.fail("package-mode-unknown");
             Integer uidModeValue = AppOpsCompat.tryGetUidModeRaw(appOps, code, cachedUidForCurrentThread(), AppWakeBlockUtil::appOpPublicName);
             int effectiveValue = AppOpsManagerHidden.MODE_DEFAULT;
             try { effectiveValue = appOps.unsafeCheckOpRawNoThrow(code, cachedUidForCurrentThread(), cachedPackageForCurrentThread()); } catch (Throwable ignored) {}
@@ -1410,10 +1472,7 @@ final class AppWakeBlockUtil {
         try {
             Object service = HiddenApiServices.deviceIdle();
             Object names = null;
-            try { names = HiddenApiReflection.invokeFlexible(service, "getFullPowerWhitelist"); } catch (Throwable ignored) {}
-            if (!(names instanceof String[])) {
-                try { names = HiddenApiReflection.invokeFlexible(service, "getFullPowerWhitelistExceptIdle"); } catch (Throwable ignored) {}
-            }
+            try { names = HiddenApiReflection.invokeFlexible(service, "getUserPowerWhitelist"); } catch (Throwable ignored) {}
             if (names instanceof String[]) {
                 for (String name : (String[]) names) {
                     if (cachedPackageForCurrentThread().equals(name)) return DirectBooleanResult.ok(true, "IDeviceIdleController.whitelist contains=true");
@@ -1538,8 +1597,8 @@ final class AppWakeBlockUtil {
         if (bucket == 30) return "frequent";
         if (bucket == 40) return "rare";
         if (bucket == 45) return "restricted";
-        if (bucket >= 50) return "never";
-        return String.valueOf(bucket);
+        if (bucket == 50) return "never";
+        return "unknown";
     }
 
     private static final ThreadLocal<Integer> CURRENT_USER = new ThreadLocal<>();

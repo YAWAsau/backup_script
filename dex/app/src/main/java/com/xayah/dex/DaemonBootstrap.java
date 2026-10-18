@@ -57,9 +57,11 @@ final class DaemonBootstrap {
 
     static String readUtf8Line(InputStream in) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream(128);
+        int bytes = 0;
         while (true) {
             int b = in.read();
             if (b < 0 || b == '\n') break;
+            if (++bytes > 4096) throw new IOException("daemon header line too long");
             if (b != '\r') out.write(b);
         }
         return out.toString("UTF-8");

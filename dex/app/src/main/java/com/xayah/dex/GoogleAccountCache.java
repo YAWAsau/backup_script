@@ -25,7 +25,7 @@ final class GoogleAccountCache {
         try { Files.createDirectory(root.toPath(),PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))); }
         catch(java.nio.file.FileAlreadyExistsException ignored) { }
         StructStat s=Os.lstat(root.getPath());
-        need(OsConstants.S_ISDIR(s.st_mode)&&s.st_uid==0&&(s.st_mode&0777)==0700,"account_cache_directory_invalid");
+        need(root.getCanonicalFile().equals(root.getAbsoluteFile())&&OsConstants.S_ISDIR(s.st_mode)&&s.st_uid==0&&(s.st_mode&0777)==0700,"account_cache_directory_invalid");
     }
     private static String stamp(File file,boolean required) throws Exception {
         StructStat s;
@@ -74,6 +74,32 @@ final class GoogleAccountCache {
     }
     static synchronized List<GoogleAccountNames.Account> read(File source,File root,int user,boolean fresh) throws Exception {
         privateDirectory(root);
+        // Serialize across app_process instances as well as threads. Once locked,
+        // abandoned snapshot directories cannot belong to another live reader.
+        File lock=new File(root,".snapshot.lock");
+        try(java.nio.channels.FileChannel channel=java.nio.channels.FileChannel.open(lock.toPath(),
+                java.nio.file.StandardOpenOption.CREATE,java.nio.file.StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
+            Os.chmod(lock.getPath(),0600);
+            try(java.nio.channels.FileLock held=channel.lock()) {
+                File[] abandoned=root.listFiles();
+                need(abandoned!=null,"account_cache_list_failed");
+                for(File old:abandoned) {
+                    String name=old.getName();
+                    if(name.startsWith("snapshot-")) {
+                        StructStat st=Os.lstat(old.getPath());
+                        need(OsConstants.S_ISDIR(st.st_mode)&&st.st_uid==0&&(st.st_mode&0777)==0700,"account_snapshot_invalid");
+                        File[] files=old.listFiles();need(files!=null,"account_snapshot_list_failed");
+                        for(File f:files)Files.deleteIfExists(f.toPath());
+                        Files.deleteIfExists(old.toPath());
+                    } else if(name.startsWith("cache-")&&name.endsWith(".tmp")) {
+                        privateFile(old);Files.deleteIfExists(old.toPath());
+                    }
+                }
+                return readLocked(source,root,user,fresh);
+            }
+        }
+    }
+    private static List<GoogleAccountNames.Account> readLocked(File source,File root,int user,boolean fresh) throws Exception {
         String key=signature(source);File cache=new File(root,"u"+user+".json");
         if(!fresh) {
             List<GoogleAccountNames.Account> hit=cached(cache,key,user);

@@ -1,15 +1,12 @@
-//! App-only permission repair and process-lifetime directory leases.
+//! Process-lifetime directory leases. App repair lives in android_policy.rs.
 //! The flock serializes lease changes only; the shell's PID/start/boot identity
 //! owns the directory until release or verified process death.
-use std::ffi::CString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::os::fd::{AsRawFd, FromRawFd};
-use std::os::raw::{c_char, c_int, c_void};
-use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::os::raw::{c_int, c_void};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
+use std::path::Path;
 use std::time::Instant;
 
 struct StopProcess {
@@ -219,6 +216,10 @@ pub fn lock_stop(args: &[String]) -> i32 {
             println!("LOCK_STOP_OK processes={count}");
             0
         }
+        Err(e) if e.raw_os_error() == Some(38) => {
+            eprintln!("LOCK_STOP_UNSUPPORTED reason=pidfd_unavailable owner_preserved=true");
+            3
+        }
         Err(e) => {
             eprintln!("LOCK_STOP_REFUSED_OR_INCOMPLETE error={e}");
             1
@@ -227,192 +228,8 @@ pub fn lock_stop(args: &[String]) -> i32 {
 }
 
 extern "C" {
-    fn lchown(path: *const c_char, uid: u32, gid: u32) -> c_int;
-    fn lgetxattr(
-        path: *const c_char,
-        name: *const c_char,
-        value: *mut c_void,
-        size: usize,
-    ) -> isize;
-    fn lsetxattr(
-        path: *const c_char,
-        name: *const c_char,
-        value: *const c_void,
-        size: usize,
-        flags: c_int,
-    ) -> c_int;
     fn flock(fd: c_int, op: c_int) -> c_int;
     fn kill(pid: c_int, sig: c_int) -> c_int;
-}
-
-#[derive(Default)]
-struct Repair {
-    visited: u64,
-    excluded: u64,
-    owners: u64,
-    labels: u64,
-    errors: u64,
-    fallback_count: u64,
-    fallback: Vec<PathBuf>,
-}
-
-fn flush_fallback(out: &mut Repair) {
-    if out.fallback.is_empty() {
-        return;
-    }
-    if !matches!(Command::new("/system/bin/restorecon").arg("-F").args(&out.fallback).status(), Ok(s) if s.success())
-    {
-        out.errors += 1;
-    }
-    out.fallback.clear();
-}
-
-fn repair(
-    path: &Path,
-    root: bool,
-    uid: u32,
-    gid: u32,
-    context: Option<&CString>,
-    allow_fallback: bool,
-    out: &mut Repair,
-) {
-    let meta = match fs::symlink_metadata(path) {
-        Ok(m) => m,
-        Err(_) => {
-            out.errors += 1;
-            return;
-        }
-    };
-    let cpath = match CString::new(path.as_os_str().as_bytes()) {
-        Ok(p) => p,
-        Err(_) => {
-            out.errors += 1;
-            return;
-        }
-    };
-    out.visited += 1;
-    let link = meta.file_type().is_symlink();
-    if meta.uid() != uid || meta.gid() != gid {
-        if unsafe { lchown(cpath.as_ptr(), uid, gid) } != 0 {
-            out.errors += 1;
-        } else {
-            out.owners += 1;
-            // chown can clear special permission bits. Preserve extracted mode.
-            if !link
-                && meta.mode() & 0o6000 != 0
-                && fs::set_permissions(path, fs::Permissions::from_mode(meta.mode() & 0o7777))
-                    .is_err()
-            {
-                out.errors += 1;
-            }
-        }
-    }
-    let mut label_ok = false;
-    if let Some(ctx) = context {
-        let attr = b"security.selinux\0";
-        let mut current = [0u8; 4096];
-        let n = unsafe {
-            lgetxattr(
-                cpath.as_ptr(),
-                attr.as_ptr().cast(),
-                current.as_mut_ptr().cast(),
-                current.len(),
-            )
-        };
-        if n >= 0
-            && current[..n as usize]
-                .strip_suffix(&[0])
-                .unwrap_or(&current[..n as usize])
-                == ctx.as_bytes()
-        {
-            label_ok = true;
-        } else if unsafe {
-            lsetxattr(
-                cpath.as_ptr(),
-                attr.as_ptr().cast(),
-                ctx.as_bytes_with_nul().as_ptr().cast(),
-                ctx.as_bytes_with_nul().len(),
-                0,
-            )
-        } == 0
-        {
-            out.labels += 1;
-            label_ok = true;
-        }
-    }
-    if !label_ok {
-        if allow_fallback {
-            out.fallback.push(path.to_path_buf());
-            out.fallback_count += 1;
-            if out.fallback.len() == 64 {
-                flush_fallback(out);
-            }
-        } else {
-            out.errors += 1;
-        }
-    }
-    if meta.is_dir() && !link {
-        match fs::read_dir(path) {
-            Ok(entries) => {
-                for entry in entries {
-                    match entry {
-                        Ok(e) => {
-                            if root && (e.file_name() == "cache" || e.file_name() == "code_cache") {
-                                out.excluded += 1;
-                                continue;
-                            }
-                            repair(&e.path(), false, uid, gid, context, allow_fallback, out);
-                        }
-                        Err(_) => out.errors += 1,
-                    }
-                }
-            }
-            Err(_) => out.errors += 1,
-        }
-    }
-}
-
-pub fn permissions(args: &[String]) -> i32 {
-    if args.len() != 4 {
-        return 2;
-    }
-    let (u, g) = match args[0].split_once(':') {
-        Some(v) => v,
-        None => return 2,
-    };
-    let (uid, gid) = match (u.parse::<u32>(), g.parse::<u32>()) {
-        (Ok(u), Ok(g)) if u != u32::MAX && g != u32::MAX => (u, g),
-        _ => return 2,
-    };
-    let root = Path::new(&args[1]);
-    if !matches!(fs::symlink_metadata(root), Ok(m) if m.is_dir() && !m.file_type().is_symlink()) {
-        return 2;
-    }
-    let fallback = match args[3].as_str() {
-        "1" => true,
-        "0" => false,
-        _ => return 2,
-    };
-    let ctx = if args[2].is_empty() || args[2] == "?" {
-        None
-    } else {
-        match CString::new(args[2].as_bytes()) {
-            Ok(c) => Some(c),
-            Err(_) => return 2,
-        }
-    };
-    let mut out = Repair::default();
-    let started = Instant::now();
-    repair(root, true, uid, gid, ctx.as_ref(), fallback, &mut out);
-    // Non-recursive batches visit exactly the already-selected nodes: cache trees
-    // cannot be revisited by a recursive restorecon fallback.
-    flush_fallback(&mut out);
-    println!("APP_PERMISSIONS_V1 visited={} excluded={} owners={} labels={} fallback={} errors={} elapsedMs={} policy=no-follow,skip-top-cache", out.visited, out.excluded, out.owners, out.labels, out.fallback_count, out.errors, started.elapsed().as_millis());
-    if out.errors == 0 {
-        0
-    } else {
-        1
-    }
 }
 
 fn identity(pid: u32) -> io::Result<String> {

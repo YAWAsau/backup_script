@@ -20,7 +20,7 @@
 
 // Contributors: Paul Hackenberger (unterminated entity handling in relaxed mode)
 
-package com.android.org.kxml2.io;
+package com.xayah.dex.xml;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -140,6 +140,10 @@ public class KXmlParser implements XmlPullParser, Closeable {
     private Reader reader;
     private String encoding;
     private ContentSource nextContentSource;
+    private static final int MAX_ENTITY_DEPTH = 32;
+    private static final long MAX_ENTITY_CHARS = 1_048_576L;
+    private int entityDepth;
+    private long entityChars;
     private char[] buffer = new char[8192];
     private int position = 0;
     private int limit = 0;
@@ -302,7 +306,9 @@ public class KXmlParser implements XmlPullParser, Closeable {
     }
 
     private void checkRelaxed(String errorMessage) throws XmlPullParserException {
-        if (!relaxed) {
+        // Relaxed syntax must not turn a truncated document into a successful
+        // restore input. EOF inside markup is fatal in either mode.
+        if (!relaxed || UNEXPECTED_EOF.equals(errorMessage) || errorMessage.endsWith("but was EOF")) {
             throw new XmlPullParserException(errorMessage, this, null);
         }
         if (error == null) {
@@ -376,6 +382,7 @@ public class KXmlParser implements XmlPullParser, Closeable {
                     readEndTag();
                     return type;
                 case END_DOCUMENT:
+                    if (depth != 0) throw new XmlPullParserException("Truncated XML: unclosed element", this, null);
                     return type;
 
                 /*
@@ -1259,6 +1266,10 @@ public class KXmlParser implements XmlPullParser, Closeable {
 
         char[] resolved;
         if (documentEntities != null && (resolved = documentEntities.get(code)) != null) {
+            if (resolved.length > MAX_ENTITY_CHARS - entityChars) {
+                throw new XmlPullParserException("Entity expansion limit exceeded", this, null);
+            }
+            entityChars += resolved.length;
             out.delete(start, out.length());
             unresolved = false;
             if (processDocDecl) {
@@ -1605,6 +1616,9 @@ public class KXmlParser implements XmlPullParser, Closeable {
 
     public void setInput(Reader reader) throws XmlPullParserException {
         this.reader = reader;
+        while (nextContentSource != null) popContentSource();
+        entityDepth = 0;
+        entityChars = 0;
 
         type = START_DOCUMENT;
         parsedTopLevelStartTag = false;
@@ -2160,7 +2174,11 @@ public class KXmlParser implements XmlPullParser, Closeable {
      * Prepends the characters of {@code newBuffer} to be read before the
      * current buffer.
      */
-    private void pushContentSource(char[] newBuffer) {
+    private void pushContentSource(char[] newBuffer) throws XmlPullParserException {
+        if (entityDepth >= MAX_ENTITY_DEPTH) {
+            throw new XmlPullParserException("Entity nesting limit exceeded", this, null);
+        }
+        entityDepth++;
         nextContentSource = new ContentSource(nextContentSource, buffer, position, limit);
         buffer = newBuffer;
         position = 0;
@@ -2171,6 +2189,7 @@ public class KXmlParser implements XmlPullParser, Closeable {
      * Replaces the current exhausted buffer with the next buffer in the chain.
      */
     private void popContentSource() {
+        entityDepth--;
         buffer = nextContentSource.buffer;
         position = nextContentSource.position;
         limit = nextContentSource.limit;

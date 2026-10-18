@@ -146,16 +146,25 @@ fn numeric_name(s: &str) -> bool {
 
 /// Faithful port of read_cmdline_first(): reads /proc/PID/cmdline and returns
 /// only the first NUL-terminated argv[0] field (matches C's early-break loop).
-fn read_cmdline_first(pid: i32) -> Option<String> {
+fn read_cmdline_first(pid: i32) -> std::io::Result<Option<String>> {
     use std::io::Read as _;
-    let mut f = std::fs::File::open(format!("/proc/{}/cmdline", pid)).ok()?;
-    let mut raw = [0u8; 511]; // C cmd[512] reads cap-1 bytes once.
-    let n = f.read(&mut raw).ok()?;
-    if n == 0 {
-        return None;
+    let mut f = std::fs::File::open(format!("/proc/{}/cmdline", pid))?;
+    let mut raw = Vec::new();
+    let mut chunk = [0u8; 512];
+    loop {
+        let n = match f.read(&mut chunk) {
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            other => other?,
+        };
+        let end = chunk[..n].iter().position(|&b| b == 0);
+        raw.extend_from_slice(&chunk[..end.unwrap_or(n)]);
+        if raw.len() > 65536 {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "argv0 exceeds limit"));
+        }
+        if end.is_some() || n == 0 { break; }
     }
-    let end = raw[..n].iter().position(|&b| b == 0).unwrap_or(n);
-    Some(String::from_utf8_lossy(&raw[..end]).into_owned())
+    if raw.is_empty() { return Ok(None); }
+    Ok(Some(String::from_utf8_lossy(&raw).into_owned()))
 }
 
 fn append_pid_capped(out: &mut String, token: &str) {
@@ -171,8 +180,7 @@ fn append_pid_capped(out: &mut String, token: &str) {
     };
     let room = CAP - used;
     if frag.len() >= room {
-        let take = room - 1;
-        out.push_str(&String::from_utf8_lossy(&frag.as_bytes()[..take]));
+        return; // Diagnostics may omit whole PIDs, never emit a truncated PID.
     } else {
         out.push_str(&frag);
     }
@@ -201,7 +209,8 @@ fn scan_package_pids(pkg: &str, user: u32) -> Result<(String, usize), i32> {
         Ok(v) => v,
         Err(e) => return Err(e.raw_os_error().unwrap_or(-1)),
     };
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = entry.map_err(|e| e.raw_os_error().unwrap_or(-1))?;
         let name = entry.file_name().to_string_lossy().into_owned();
         if !numeric_name(&name) {
             continue;
@@ -211,15 +220,17 @@ fn scan_package_pids(pkg: &str, user: u32) -> Result<(String, usize), i32> {
             _ => continue,
         };
         use std::os::unix::fs::MetadataExt;
-        if std::fs::symlink_metadata(format!("/proc/{pid}"))
-            .map(|m| m.uid() / 100000 != user)
-            .unwrap_or(true)
-        {
-            continue;
-        }
+        let meta = match std::fs::symlink_metadata(format!("/proc/{pid}")) {
+            Ok(m) => m,
+            Err(e) if matches!(e.raw_os_error(), Some(2) | Some(3)) => continue,
+            Err(e) => return Err(e.raw_os_error().unwrap_or(-1)),
+        };
+        if meta.uid() / 100000 != user { continue; }
         let cmd = match read_cmdline_first(pid as i32) {
-            Some(v) => v,
-            None => continue,
+            Ok(Some(v)) => v,
+            Ok(None) => continue,
+            Err(e) if matches!(e.raw_os_error(), Some(2) | Some(3)) => continue,
+            Err(e) => return Err(e.raw_os_error().unwrap_or(-1)),
         };
         if !cmdline_matches_package(&cmd, pkg) {
             continue;
@@ -242,31 +253,75 @@ fn scan_uid_pids(uid: u32) -> Result<(String, usize), i32> {
         Ok(v) => v,
         Err(e) => return Err(e.raw_os_error().unwrap_or(-1)),
     };
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = entry.map_err(|e| e.raw_os_error().unwrap_or(-1))?;
         let name = entry.file_name().to_string_lossy().into_owned();
         if !numeric_name(&name) {
             continue;
         }
         let meta = match std::fs::symlink_metadata(format!("/proc/{}", name)) {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(e) if matches!(e.raw_os_error(), Some(2) | Some(3)) => continue,
+            Err(e) => return Err(e.raw_os_error().unwrap_or(-1)),
         };
         if meta.uid() != uid {
             continue;
         }
+        let stat = match std::fs::read_to_string(format!("/proc/{}/stat", name)) {
+            Ok(v) => v,
+            Err(e) if matches!(e.raw_os_error(), Some(2) | Some(3)) => continue,
+            Err(e) => return Err(e.raw_os_error().unwrap_or(-1)),
+        };
+        let state = stat.rsplit_once(')').and_then(|(_, s)| s.split_whitespace().next()).ok_or(5)?;
+        if matches!(state, "Z" | "X") { continue; }
         count += 1;
         append_pid_capped(&mut out, &name);
     }
     Ok((out, count))
 }
 
-/// Faithful port of wait_scan_gone(): poll /proc every 20ms until the target
-/// (package or uid) has had zero matching PIDs for `stable_ms` continuously,
-/// or `timeout_ms` elapses first. Output markers match C exactly:
-///   GONE kind=... target=... stableMs=... elapsedMs=...
-///   TIMEOUT kind=... target=... count=... pids=... timeoutMs=... stableMs=... elapsedMs=...
-///   PROCWAIT_SCAN_FAIL kind=... target=... errno=...
-fn wait_scan_gone(kind: &str, target: &str, timeout_ms: i64, stable_ms: i64, user: u32) -> i32 {
+// Keep package/UID re-scans: pidfds observe existing processes, not new ones.
+// Schedule scan starts on a bounded cadence; scanning itself must not add a
+// fresh 20ms sleep. The last scan still occurs after the full quiet interval.
+#[derive(Default)]
+struct ScanWaitStats { enabled: bool, scans: u64, scan_us: u128, wait_us: u128,
+    pidfds: u64, wakes: u64, fallback: u64 }
+impl Drop for ScanWaitStats {
+    fn drop(&mut self) {
+        if self.enabled {
+            use std::io::Write;
+            let _ = writeln!(std::io::stderr().lock(),"PROCWAIT_WAIT_STATS scans={} scanUs={} waitUs={} pidfdOpens={} eventWakes={} timerWaits={}",
+            self.scans,self.scan_us,self.wait_us,self.pidfds,self.wakes,self.fallback); }
+    }
+}
+struct ScanPidFd(i32);
+impl Drop for ScanPidFd { fn drop(&mut self) { unsafe { close(self.0); } } }
+fn scan_wait_until(pids: &str, deadline: Instant, stats: &mut ScanWaitStats) {
+    let mut owned = Vec::new();
+    for pid in pids.split(',').filter_map(|s|s.parse::<i32>().ok()).filter(|p|*p>0) {
+        let fd=unsafe { syscall(SYS_PIDFD_OPEN,pid,0) } as i32;
+        if fd>=0 { owned.push(ScanPidFd(fd)); stats.pidfds+=1; }
+        else if errno_now()==ESRCH { return; } // Re-scan now, never infer empty.
+    }
+    let mut fds:Vec<PollFd>=owned.iter().map(|f|PollFd{fd:f.0,events:POLLIN,revents:0}).collect();
+    if fds.is_empty() { stats.fallback+=1; }
+    loop {
+        let remaining=deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() { return; }
+        let ms=((remaining.as_micros()+999)/1000).min(i32::MAX as u128) as i32;
+        let rc=unsafe { poll(fds.as_mut_ptr(),fds.len() as _,ms) };
+        if rc>0 { stats.wakes+=1; return; } // Exit/error/hangup all require re-scan.
+        if rc==0 { return; }
+        if errno_now()!=EINTR {
+            // Kernel restrictions must never turn an observer failure into GONE.
+            // Bounded timer fallback retains the same mandatory /proc re-scan.
+            std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
+            stats.fallback+=1; return;
+        }
+    }
+}
+
+pub(crate) fn wait_scan_gone(kind: &str, target: &str, timeout_ms: i64, stable_ms: i64, user: u32) -> i32 {
     let timeout_ms = timeout_ms.max(0);
     let stable_ms = stable_ms.max(0);
     let start = Instant::now();
@@ -279,7 +334,9 @@ fn wait_scan_gone(kind: &str, target: &str, timeout_ms: i64, stable_ms: i64, use
         0
     };
     let mut first_empty: Option<Instant> = None;
+    let mut stats=ScanWaitStats{enabled:stable_ms>0 && std::env::var("SPEEDBACKUP_PROCWAIT_STATS").as_deref()==Ok("1"),..Default::default()};
     loop {
+        let scan_start=Instant::now();
         let (pids, count) = if kind == "uid" {
             match scan_uid_pids(uid) {
                 Ok(v) => v,
@@ -303,6 +360,7 @@ fn wait_scan_gone(kind: &str, target: &str, timeout_ms: i64, stable_ms: i64, use
                 }
             }
         };
+        stats.scans+=1; stats.scan_us+=scan_start.elapsed().as_micros();
         if count == 0 {
             let fe = *first_empty.get_or_insert_with(Instant::now);
             if fe.elapsed().as_millis() as i64 >= stable_ms {
@@ -331,7 +389,23 @@ fn wait_scan_gone(kind: &str, target: &str, timeout_ms: i64, stable_ms: i64, use
             );
             return 124;
         }
-        std::thread::sleep(std::time::Duration::from_millis(20));
+        let mut deadline=(scan_start+std::time::Duration::from_millis(20))
+            .min(start+std::time::Duration::from_millis(timeout_ms as u64));
+        if let Some(fe)=first_empty {
+            deadline=deadline.min(fe+std::time::Duration::from_millis(stable_ms as u64));
+        }
+        let waiting=Instant::now();
+        // Even exit/error events or scans slower than 20ms must yield. Never
+        // extend this floor beyond the operation timeout. Slow scans regain the
+        // old 20ms rest instead of consuming almost the entire CPU slice. This changes only
+        // re-scan scheduling, never the empty-process or stable-window test.
+        let backoff_ms=if scan_start.elapsed()>=std::time::Duration::from_millis(20) {20} else {2};
+        let floor=(waiting+std::time::Duration::from_millis(backoff_ms))
+            .min(start+std::time::Duration::from_millis(timeout_ms as u64));
+        deadline=deadline.max(floor);
+        scan_wait_until(&pids,deadline,&mut stats);
+        std::thread::sleep(floor.saturating_duration_since(Instant::now()));
+        stats.wait_us+=waiting.elapsed().as_micros();
     }
 }
 
@@ -397,7 +471,7 @@ fn parse_uid_strtoul_like(s: &str) -> Option<u32> {
     }
     let u = v as u64;
     let final_u = if neg { 0u64.wrapping_sub(u) } else { u };
-    Some(final_u as u32)
+    u32::try_from(final_u).ok()
 }
 
 fn print_help(program: &str) {

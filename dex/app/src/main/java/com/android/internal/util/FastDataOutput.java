@@ -186,11 +186,11 @@ public class FastDataOutput implements DataOutput, Flushable, Closeable {
     public void writeUTF(String s) throws IOException {
         // Attempt to write directly to buffer space if there's enough room,
         // otherwise fall back to chunking into place
-        if (mBufferCap - mBufferPos < 2 + s.length()) drain();
-
         // Unfoturnately, we cannot use VMRuntime, so we will take len to be negative as specified below
         // and insert manually
         final byte[] tmp = s.getBytes(StandardCharsets.UTF_8);
+        if (tmp.length > 65535) throw new java.io.UTFDataFormatException("UTF-8 string exceeds 65535 bytes");
+        if (mBufferCap - mBufferPos < 2 + tmp.length) drain();
         writeShort(tmp.length);
         write(tmp, 0, tmp.length);
     }

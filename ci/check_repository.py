@@ -66,7 +66,9 @@ def check_diagnostic_capabilities():
     rust = (ROOT / 'rust/src/json_caps.rs').read_text(encoding='utf-8')
     contract = re.search(r'const CAPS_DIAGNOSTIC:.*?=\s*&\[(.*?)\];', rust, re.S)
     require(contract is not None, 'Missing Rust diagnostic capability contract')
-    required = set(re.findall(r'"([^"]+)"', contract.group(1)))
+    declared = re.findall(r'"([^"]+)"', contract.group(1))
+    required = set(declared)
+    require(len(declared) == len(required), 'Duplicate diagnostic capability')
     require(bool(required), 'Empty diagnostic capability contract')
     java = (ROOT / 'dex/app/src/main/java/com/xayah/dex/AppStateEngine.java').read_text(encoding='utf-8')
     enabled = set(re.findall(r'addCapability\(capabilities,\s*"([^"]+)",\s*true\s*,', java))
@@ -75,8 +77,57 @@ def check_diagnostic_capabilities():
     print(f'Diagnostic capability declarations: {len(required)} match')
 
 
+def check_device_keys():
+    source = (ROOT / 'dex/app/src/main/java/com/xayah/dex/DeviceModelDb.java').read_text(encoding='utf-8')
+    keys = re.findall(r'put\(m,\s*"([^"]+)"', source)
+    normalized = [re.sub(r'[^A-Z0-9]', '', key.strip().upper()) for key in keys]
+    require(bool(keys) and all(normalized), 'Empty device model keys')
+    require(len(normalized) == len(set(normalized)), 'Duplicate normalized device model key')
+    print(f'Device model keys: {len(keys)} unique normalized keys')
+
+
+def check_freezer_capabilities():
+    native = (ROOT / 'rust/src/bin/cgfreezer.rs').read_text(encoding='utf-8')
+    declared = set(re.search(r'const CAPS: &str = "([^"]+)"', native).group(1).split(','))
+    shell = (ROOT / 'tools/tools.sh').read_text(encoding='utf-8')
+    required = set(re.search(r'^SPEEDBACKUP_CGROUP_FREEZER_REQUIRED_CAPS="([^"]+)"', shell, re.M).group(1).split())
+    # Every added native token must be consciously classified as a startup
+    # requirement or as an optional diagnostic/legacy interface.
+    optional = set('backend-probe binder-freeze binder-info cgroup-v1-freezer cgroup-v2-events check-root '
+                   'daemon-control-plain-lines-v2 daemon-single-owner-v1 daemon-stats-detail-v1 freeze '
+                   'freeze-peer-cancel-v1 kill-report-v2 last-error-v1 pid-cache pidfd-kill-v1 proc-snapshot-v1 '
+                   'proc-wchan-v1 rust-convergence-source-v1 scan subscribe-logd thaw thaw-package-isolated-v1 '
+                   'uid-cache uid-wchan-v1'.split())
+    require(required <= declared, f'Freezer startup requirements not declared: {sorted(required-declared)}')
+    require(declared == required | optional, f'Unclassified or stale freezer capabilities: {sorted(declared ^ (required | optional))}')
+    diagnostic = (ROOT / 'tools/dex_check.sh').read_text(encoding='utf-8')
+    checked = set(re.search(r'for _cg_need in ([^;]+); do', diagnostic).group(1).split())
+    require(required <= checked, f'Freezer requirements absent from dex_check: {sorted(required-checked)}')
+    print(f'Freezer capability contract: {len(required)} gated, {len(optional)} optional')
+
+
+def check_soc_data():
+    def unique_pairs(pairs):
+        out = {}
+        for key, value in pairs:
+            require(key not in out, f'Duplicate SoC JSON key: {key}')
+            out[key] = value
+        return out
+    data = json.loads((ROOT / 'tools/soc.json').read_text(encoding='utf-8'), object_pairs_hook=unique_pairs)
+    for key, row in data.items():
+        require(key == key.strip() and key, f'Untrimmed SoC key: {key!r}')
+        require(not re.search(r'X{4,}|Y{4,}', key), f'Unverified placeholder SoC key: {key}')
+        require(isinstance(row, dict), f'Invalid SoC row: {key}')
+        for field in ('VENDOR', 'NAME', 'MEMORY', 'CHANNELS'):
+            value = row.get(field)
+            require(isinstance(value, str) and value == value.strip(), f'Invalid SoC {field}: {key}')
+    print(f'SoC table: {len(data)} unique trimmed rows; no placeholder keys')
+
+
 def check_versions():
     check_diagnostic_capabilities()
+    check_freezer_capabilities()
+    check_device_keys()
     config = ROOT / 'versions.properties'
     if not config.exists():
         print('Versions: existing legacy scheme (no versions.properties)')
@@ -128,7 +179,7 @@ def check(shells=False):
         require(not data.startswith(b'\xef\xbb\xbf'), f'Unexpected UTF-8 BOM: {name}')
         require(b'\r' not in data, f'Expected LF line endings: {name}')
         data.decode('utf-8')
-    json.loads((ROOT / 'tools/soc.json').read_text(encoding='utf-8'))
+    check_soc_data()
     cargo = tomllib.loads((ROOT / 'rust/Cargo.toml').read_text(encoding='utf-8'))
     lock = tomllib.loads((ROOT / 'rust/Cargo.lock').read_text(encoding='utf-8'))
     packages = [p for p in lock['package'] if p['name'] == cargo['package']['name']]
@@ -161,6 +212,15 @@ def package():
             'Expected Android arm64 ELF64')
     # The Rust builder additionally checks PIE, 16 KiB segments and API28/r30 notes.
     native_info = json.loads((ROOT / 'rust/out/BUILD_INFO.json').read_text(encoding='utf-8-sig'))
+    versions = dict(line.split('=', 1) for line in (ROOT / 'versions.properties').read_text().splitlines()
+                    if line.strip() and not line.startswith('#'))
+    require(native_info.get('buildVersion') == versions['build'], 'Stale native build version')
+    require(native_info.get('appletVersions') == {k: v for k, v in versions.items() if k not in ('build', 'script', 'dex')},
+            'Stale native component versions')
+    require(f'{sha256(elf)}  speednative' in native_info.get('sha256', []), 'Native build metadata hash differs')
+    dex_info = json.loads((ROOT / 'dex/BUILD_INFO.json').read_text(encoding='utf-8'))
+    require(dex_info.get('buildVersion') == versions['build'] and dex_info.get('componentVersion') == versions['dex']
+            and dex_info.get('sha256') == sha256(dex.read_bytes()), 'Stale Dex build output')
     config = json.loads((ROOT / 'ci/toolchain.json').read_text(encoding='utf-8'))
     require(native_info['ndk'] == config['ndk'] and native_info['api'] == config['android_api'], 'Unexpected NDK/API build metadata')
     commit = git('rev-parse', 'HEAD').decode().strip()

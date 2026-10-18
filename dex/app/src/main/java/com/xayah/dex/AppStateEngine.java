@@ -913,8 +913,8 @@ public final class AppStateEngine {
                         statesOut.write(tsvEscape(packageName));
                         statesOut.write('\t');
                         // Each row contains a package name and JSON as TSV fields, so the JSON
-                        // string itself must receive TSV escaping (not merely raw JSON output).
-                        statesOut.write(tsvEscape(rawLine));
+                        // compact JSON already escapes TAB/CR/LF; do not TSV-escape it a second time.
+                        statesOut.write(rawLine); // Compact JSON already escapes TSV control characters.
                         statesOut.write('\n');
                         directStateWriteNs += System.nanoTime() - writeStartNs;
                         stateRows++;
@@ -1115,6 +1115,12 @@ public final class AppStateEngine {
                 } catch (Throwable e) {
                     record = foregroundStatePackageSimple(realPm, null, packageName, null);
                     ok++;
+                }
+                if (running.source == null || running.source.isEmpty() || "none".equals(running.source)) {
+                    record.add("active", com.google.gson.JsonNull.INSTANCE);
+                    record.addProperty("source", "unknown");
+                    ok--;
+                    partial++;
                 }
                 out.append(GSON.toJson(record)).append('\n');
             }
@@ -2111,7 +2117,7 @@ public final class AppStateEngine {
 
     private static List<ForegroundProcess> getDumpsysRunningProcesses(int userId) {
         List<ForegroundProcess> out = new ArrayList<>();
-        String dump = runShellOutput("dumpsys activity processes; dumpsys activity oom");
+        String dump = runShellOutput("dumpsys activity processes") + "\n" + runShellOutput("dumpsys activity oom");
         if (dump == null || dump.isEmpty()) return out;
         BufferedReader reader = new BufferedReader(new java.io.StringReader(dump));
         try {
@@ -2205,38 +2211,36 @@ public final class AppStateEngine {
         return value.matches("[A-Za-z0-9_.-]+") ? value : "";
     }
 
+    private static final Pattern IMPORTANCE_WORD = Pattern.compile(
+            "(?<![a-z0-9_.$:/-])(top-activity|mresumedactivity|top|fg-service|fgs|foreground service|visible|vis|perceptible|prcp|cached|cch|service|svc)(?![a-z0-9_.$:/-])");
     private static int inferImportanceFromDumpsysLine(String line) {
         String lower = line == null ? "" : line.toLowerCase(Locale.ROOT);
-        if (lower.contains("top") || lower.contains("top-activity") || lower.contains("mresumedactivity")) return 100;
-        if (lower.contains("fg-service") || lower.contains("fgs") || lower.contains("foreground service")) return 125;
-        if (lower.contains("vis") || lower.contains("visible")) return 200;
-        if (lower.contains("perceptible") || lower.contains("prcp")) return 230;
-        if (lower.contains("cached") || lower.contains("cch")) return 400;
-        if (lower.contains("service") || lower.contains("svc")) return 300;
-        return 400;
+        Matcher words = IMPORTANCE_WORD.matcher(lower);
+        int importance = 400;
+        while (words.find()) {
+            String word = words.group(1);
+            int value;
+            switch (word) {
+                case "top": case "top-activity": case "mresumedactivity": value=100; break;
+                case "fg-service": case "fgs": case "foreground service": value=125; break;
+                case "vis": case "visible": value=200; break;
+                case "prcp": case "perceptible": value=230; break;
+                case "service": case "svc": value=300; break;
+                default: value=400;
+            }
+            importance=Math.min(importance,value);
+        }
+        return importance;
     }
 
     private static String runShellOutput(String command) {
-        Process process = null;
         try {
-            ProcessBuilder builder = new ProcessBuilder("sh", "-c", command);
-            builder.redirectErrorStream(true);
-            process = builder.start();
-            StringBuilder out = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) out.append(line).append('\n');
-            }
-            try {
-                if (!process.waitFor(8, TimeUnit.SECONDS)) process.destroy();
-            } catch (Throwable ignored) {
-                try { process.waitFor(); } catch (Throwable ignored2) {}
-            }
-            return out.toString();
-        } catch (Throwable ignored) {
-            if (process != null) try { process.destroy(); } catch (Throwable ignored2) {}
+            BoundedShell.Result result = BoundedShell.run(command, 8000);
+            return result.code == 0 ? result.output : "";
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             return "";
-        }
+        } catch (Exception e) { return ""; }
     }
 
     private static final class UidParts {
@@ -2357,7 +2361,7 @@ public final class AppStateEngine {
             PackageManagerHidden pmHidden = runtime.packageManagerHidden;
             AppOpsManagerHidden appOps = runtime.appOpsManager;
             UserHandle user = UserHandleHidden.of(userId);
-            Set<String> idleWhitelist = getDeviceIdleWhitelist();
+            Set<String> idleWhitelist = verifyOnly ? getDeviceIdleWhitelist() : Collections.emptySet();
             GooglePackageSnapshot playStore = verifyOnly
                     ? googlePackageSnapshot(realPm, pmHidden, appOps, idleWhitelist, userId, "com.android.vending")
                     : null;
@@ -2371,7 +2375,7 @@ public final class AppStateEngine {
                 try {
                     result = verifyOnly
                             ? verifyPackageState(realPm, pmHidden, appOps, user, userId, packageName,
-                            desired, playStore, playServices)
+                            desired, playStore, playServices, idleWhitelist)
                             : restorePackageState(realPm, pmHidden, appOps, user, userId, packageName, desired);
                 } catch (PackageManager.NameNotFoundException e) {
                     result = packageErrorRecord(verifyOnly ? "verify" : "restore", userId, packageName,
@@ -2522,7 +2526,9 @@ public final class AppStateEngine {
         JsonObject root = baseRecord("restore", userId, packageName);
         Set<Integer> expectedOps = collectExpectedOps(desired);
 
-        AppOpsCompat.ResetResult reset = AppOpsCompat.resetPackageModesSafe(appOps, userId, packageName);
+        AppOpsCompat.ResetResult reset = exclusiveAppUid(uid, packageName)
+                ? AppOpsCompat.resetPackageModesSafe(appOps, userId, packageName)
+                : AppOpsCompat.ResetResult.unsupported(null);
         if (reset.ok) {
             report.success("appOpsReset", packageName,
                     "package-scoped resetAllModes signature=" + reset.signature + " cached=" + reset.cached);
@@ -2578,9 +2584,19 @@ public final class AppStateEngine {
             if ((runtime || development) && changeableGrant && !specialAccessOp) {
                 try {
                     boolean granted = booleanMember(permission, "granted", false);
-                    if (granted) pmHidden.grantRuntimePermission(packageName, name, user);
-                    else pmHidden.revokeRuntimePermission(packageName, name, user);
-                    report.success("permissionGrant", name, granted ? "granted" : "revoked");
+                    int liveFlags = pmHidden.getPermissionFlags(name, packageName, user);
+                    boolean liveGranted = permissionGrantedNow(pmHidden, packageName, name, userId);
+                    if (liveGranted != granted && isPolicyFixedPermission(liveFlags)) {
+                        report.note("permissionGrant", name, ResultCode.PARTIAL,
+                                "platform-fixed grant retained; expected=" + granted + " actual=" + liveGranted + " liveFlags=" + liveFlags);
+                    } else {
+                        if (granted) pmHidden.grantRuntimePermission(packageName, name, user);
+                        else pmHidden.revokeRuntimePermission(packageName, name, user);
+                        boolean actual = permissionGrantedNow(pmHidden, packageName, name, userId);
+                        if (actual != granted) report.note("permissionGrant", name, ResultCode.PARTIAL,
+                                "grant readback mismatch; expected=" + granted + " actual=" + actual);
+                        else report.success("permissionGrant", name, granted ? "granted; readback matched" : "revoked; readback matched");
+                    }
                 } catch (Throwable e) {
                     report.failure("permissionGrant", name, e);
                 }
@@ -2601,7 +2617,9 @@ public final class AppStateEngine {
                     }
                 } catch (Throwable e) {
                     if (isNonRestorablePermissionFlags(name, intMember(permission, "flags", 0) & permissionMask)
-                            && classifyThrowable(e) == ResultCode.INTERNAL_ERROR) {
+                            && (classifyThrowable(e) == ResultCode.PERMISSION_DENIED
+                                || classifyThrowable(e) == ResultCode.BAD_REQUEST
+                                || classifyThrowable(e) == ResultCode.UNSUPPORTED)) {
                         report.success("permissionFlags", name,
                                 "skipped framework-rejected custom permission flags reason=" + failureMessage(e));
                     } else {
@@ -3065,8 +3083,7 @@ public final class AppStateEngine {
                                                  AppOpsManagerHidden appOps, UserHandle user, int userId,
                                                  String packageName, JsonObject desired,
                                                  GooglePackageSnapshot playStore,
-                                                 GooglePackageSnapshot playServices) throws Exception {
-        Set<String> idleWhitelist = getDeviceIdleWhitelist();
+                                                 GooglePackageSnapshot playServices, Set<String> idleWhitelist) throws Exception {
         PackageInfo packageInfo = pmHidden.getPackageInfoAsUser(packageName, snapshotPackageFlags(), userId);
         JsonObject current = snapshotPackage(realPm, pmHidden, appOps, idleWhitelist, user, userId,
                 packageName, playStore, playServices);
@@ -3150,6 +3167,10 @@ public final class AppStateEngine {
         if (mismatch == null) return false;
         String path = stringMember(mismatch, "path");
         String message = stringMember(mismatch, "message");
+        if (path.startsWith("permissions.") && path.endsWith(".granted")
+                && "value mismatch".equals(message)
+                && booleanMember(mismatch, "platformFixed", false)
+                && isPolicyFixedPermission(intMember(mismatch, "currentPermissionFlags", 0))) return true;
         JsonElement expected = mismatch.has("expected") ? mismatch.get("expected") : null;
         JsonElement actual = mismatch.has("actual") ? mismatch.get("actual") : null;
         if ("otherAppOps.119.mode".equals(path)
@@ -3284,7 +3305,16 @@ public final class AppStateEngine {
                 continue;
             }
             if (!legacySpecialOrNonSnapshot) {
+                int grantMismatchStart = mismatches.size();
                 compareScalar(mismatches, "permissions." + name + ".granted", e, a, "granted", false);
+                // Only evidence from the fresh target snapshot may classify a
+                // mismatch as policy constrained. Never trust backup flags.
+                if (mismatches.size() > grantMismatchStart && !a.has("flagsError")
+                        && isPolicyFixedPermission(intMember(a, "flags", 0))) {
+                    JsonObject mismatch = mismatches.get(grantMismatchStart).getAsJsonObject();
+                    mismatch.addProperty("platformFixed", true);
+                    mismatch.addProperty("currentPermissionFlags", intMember(a, "flags", 0));
+                }
                 if (e.has("flags")) {
                     int ef = intMember(e, "flags", 0) & mask;
                     int af = intMember(a, "flags", 0) & mask;
@@ -3382,8 +3412,13 @@ public final class AppStateEngine {
             }
             compareOpState(mismatches, "batterySettings." + key, e, a, "mode", notes);
         }
-        compareScalar(mismatches, "batterySettings.deviceidleWhitelist", expected, actual,
-                "deviceidleWhitelist", false);
+        // An unreadable whitelist is unknown, not false. Snapshot PARTIAL below
+        // still prevents verification from claiming success for unavailable data.
+        if (actual != null && actual.has("deviceidleWhitelist")
+                && !actual.get("deviceidleWhitelist").isJsonNull()) {
+            compareScalar(mismatches, "batterySettings.deviceidleWhitelist", expected, actual,
+                    "deviceidleWhitelist", false);
+        }
     }
 
     private static void compareSsaidState(JsonObject desired, JsonObject current, JsonArray mismatches) {
@@ -3642,6 +3677,23 @@ public final class AppStateEngine {
         }
     }
 
+    private static boolean permissionGrantedNow(PackageManagerHidden pm, String pkg, String permission, int userId) {
+        PackageInfo fresh = pm.getPackageInfoAsUser(pkg, PackageManager.GET_PERMISSIONS, userId);
+        if (fresh != null && fresh.requestedPermissions != null && fresh.requestedPermissionsFlags != null) {
+            for (int i = 0; i < fresh.requestedPermissions.length; i++) {
+                if (permission.equals(fresh.requestedPermissions[i]) && i < fresh.requestedPermissionsFlags.length)
+                    return (fresh.requestedPermissionsFlags[i] & PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0;
+            }
+        }
+        throw new IllegalStateException("permission grant readback unavailable");
+    }
+
+    private static boolean isPolicyFixedPermission(int flags) {
+        int fixed = PermissionCompat.packageManagerFlag("FLAG_PERMISSION_SYSTEM_FIXED", 1 << 4)
+                | PermissionCompat.packageManagerFlag("FLAG_PERMISSION_POLICY_FIXED", 1 << 2);
+        return (flags & fixed) != 0;
+    }
+
     private static int permissionFlagRestoreMask() {
         int mask = 0;
         mask |= PermissionCompat.packageManagerFlag("FLAG_PERMISSION_USER_SET", 1 << 0);
@@ -3656,6 +3708,7 @@ public final class AppStateEngine {
 
     private static void setDeviceIdleWhitelist(String packageName, boolean enabled) throws Exception {
         Set<String> current = getDeviceIdleWhitelist();
+        if (current == null) throw new UnsupportedOperationException("deviceidle whitelist unavailable");
         if (current.contains(packageName) == enabled) return;
         Throwable serviceFailure = null;
         try {
@@ -3686,15 +3739,7 @@ public final class AppStateEngine {
     }
 
     private static int runShellCommand(String command) throws Exception {
-        ProcessBuilder builder = new ProcessBuilder("sh", "-c", command);
-        builder.redirectErrorStream(true);
-        Process process = builder.start();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            while (reader.readLine() != null) {
-                // Drain output so a full pipe cannot deadlock waitFor().
-            }
-        }
-        return process.waitFor();
+        return BoundedShell.run(command, 8000).code;
     }
 
     static List<String> parsePackageLines(String text) {
@@ -3746,7 +3791,14 @@ public final class AppStateEngine {
             code = ResultCode.PARTIAL;
         }
 
-        Map<Integer, Integer> rawOps = readPackageOps(appOps, packageInfo.applicationInfo.uid, packageName);
+        Map<Integer, Integer> rawOps;
+        try {
+            rawOps = readPackageOps(appOps, packageInfo.applicationInfo.uid, packageName);
+        } catch (Throwable e) {
+            rawOps = new LinkedHashMap<>();
+            errors.add(errorObject("otherAppOps", classifyThrowable(e), failureMessage(e)));
+            code = ResultCode.PARTIAL;
+        }
         Set<Integer> handledOps = new HashSet<>();
         Set<Integer> specialManagedOps = collectRequestedSpecialAccessOps(packageInfo);
         handledOps.addAll(specialManagedOps);
@@ -3775,6 +3827,11 @@ public final class AppStateEngine {
 
         try {
             root.add("batterySettings", collectBatterySettings(appOps, packageInfo, idleWhitelist));
+            if (idleWhitelist == null) {
+                errors.add(errorObject("batterySettings.deviceidleWhitelist", ResultCode.UNSUPPORTED,
+                        "deviceidle whitelist unavailable; battery AppOps retained"));
+                code = ResultCode.PARTIAL;
+            }
             int runInBackground = resolveOp("android:run_in_background");
             int runAnyInBackground = resolveOp("android:run_any_in_background");
             if (runInBackground != AppOpsManagerHidden.OP_NONE) {
@@ -4104,7 +4161,8 @@ public final class AppStateEngine {
         JsonObject out = new JsonObject();
         out.add("RUN_IN_BACKGROUND", appOpState(appOps, packageInfo, resolveOp("android:run_in_background")));
         out.add("RUN_ANY_IN_BACKGROUND", appOpState(appOps, packageInfo, resolveOp("android:run_any_in_background")));
-        out.addProperty("deviceidleWhitelist", idleWhitelist.contains(packageInfo.packageName));
+        if (idleWhitelist == null) addJsonNull(out, "deviceidleWhitelist");
+        else out.addProperty("deviceidleWhitelist", idleWhitelist.contains(packageInfo.packageName));
         return out;
     }
 
@@ -4264,14 +4322,9 @@ public final class AppStateEngine {
 
     private static Map<Integer, Integer> readPackageOps(AppOpsManagerHidden appOps, int uid, String packageName) {
         Map<Integer, Integer> out = new LinkedHashMap<>();
-        try {
-            List<AppOpsManagerHidden.PackageOps> list = appOps.getOpsForPackage(uid, packageName, null);
-            if (list != null && !list.isEmpty() && list.get(0).getOps() != null) {
-                for (AppOpsManagerHidden.OpEntry entry : list.get(0).getOps()) {
-                    out.put(entry.getOp(), entry.getMode());
-                }
-            }
-        } catch (Throwable ignored) {
+        List<AppOpsManagerHidden.PackageOps> list = appOps.getOpsForPackage(uid, packageName, null);
+        if (list != null && !list.isEmpty() && list.get(0).getOps() != null) {
+            for (AppOpsManagerHidden.OpEntry entry : list.get(0).getOps()) out.put(entry.getOp(), entry.getMode());
         }
         return out;
     }
@@ -4426,50 +4479,17 @@ public final class AppStateEngine {
             }
         } catch (Throwable ignored) {
         }
-        Process process = null;
         try {
-            ProcessBuilder builder = new ProcessBuilder("sh", "-c", "dumpsys deviceidle whitelist");
-            builder.redirectErrorStream(true);
-            process = builder.start();
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while (true) {
-                    while (reader.ready() && (line = reader.readLine()) != null) {
-                        for (String token : line.split("[,\\s]+")) {
-                            String value = token.trim();
-                            if (value.contains(".") && value.matches("[A-Za-z0-9._-]+")) result.add(value);
-                        }
-                    }
-                    if (!process.isAlive()) {
-                        break;
-                    }
-                    if (System.nanoTime() >= deadline) {
-                        process.destroy();
-                        if (!process.waitFor(200, TimeUnit.MILLISECONDS)) {
-                            process.destroyForcibly();
-                        }
-                        break;
-                    }
-                    Thread.sleep(20L);
-                }
-                while ((line = reader.readLine()) != null) {
-                    for (String token : line.split("[,\\s]+")) {
-                        String value = token.trim();
-                        if (value.contains(".") && value.matches("[A-Za-z0-9._-]+")) result.add(value);
-                    }
-                }
+            BoundedShell.Result shell = BoundedShell.run("dumpsys deviceidle whitelist", 5000);
+            if (shell.code != 0) return null;
+            for (String token : shell.output.split("[,\\s]+")) {
+                if (token.contains(".") && token.matches("[A-Za-z0-9._-]+")) result.add(token);
             }
-            process.waitFor(200, TimeUnit.MILLISECONDS);
-        } catch (Throwable ignored) {
-            if (process != null) {
-                try {
-                    process.destroy();
-                } catch (Throwable ignoredDestroy) {
-                }
-            }
-        }
-        return result;
+            return result;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception ignored) {}
+        return null;
     }
 
     private static int snapshotPackageFlags() {
@@ -4793,6 +4813,11 @@ public final class AppStateEngine {
     }
 
     private static ResultCode classifyThrowable(Throwable e) {
+        for (int depth = 0; depth < 16 && e.getCause() != null && e.getCause() != e; depth++) {
+            if (!(e instanceof java.lang.reflect.InvocationTargetException)
+                    && !(e instanceof java.lang.reflect.UndeclaredThrowableException)) break;
+            e = e.getCause();
+        }
         Throwable cur = e;
         while (cur != null) {
             if (cur instanceof PackageManager.NameNotFoundException) return ResultCode.PACKAGE_NOT_FOUND;

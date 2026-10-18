@@ -27,6 +27,7 @@ final class PowerCompletion {
     }
 
     void run() throws Exception {
+        boolean completionAttempted = false;
         try {
             String workers = PowerNotifyUtil.read(new File(dir,"workers"),65536);
             for (String pid : workers.split("\n")) {
@@ -37,6 +38,7 @@ final class PowerCompletion {
             }
             String outcome = PowerNotifyUtil.read(new File(dir,"ready"),32).trim();
             if (!java.util.Arrays.asList("success","partial","failed","cancelled").contains(outcome)) return;
+            if ("cancelled".equals(outcome)) { ui("本輪作業已取消，本次不發送電腦關機請求。\n"); return; }
             if (!new File(key).isAbsolute() || !new File(key).canExecute()) return;
             acquire();
             if (!"AVAILABLE".equals(bounded("offer",55))) return;
@@ -50,6 +52,7 @@ final class PowerCompletion {
             while (true) {
                 long remaining = TimeUnit.NANOSECONDS.toSeconds(deadline-System.nanoTime());
                 if (remaining <= 0) { reply="PAIRING_REQUIRED"; break; }
+                completionAttempted = true;
                 reply=bounded("complete", Math.min(55,remaining));
                 if (!reply.startsWith("PAIRING_REQUIRED ")) break;
                 String fingerprint=reply.substring(17);
@@ -61,10 +64,15 @@ final class PowerCompletion {
                 case "PAIRING_REQUIRED": ui("首次使用請在電腦 Server 允許此手機配對；本次未送出關機。\n"); break;
                 case "STATE waiting": case "STATE countdown": case "STATE deferred": ui("電腦已接受關機請求，可在電腦上取消或延後；尚未確認關機。\n"); break;
                 case "STATE shutting_down": ui("電腦已提交關機操作；尚未確認電源關閉。\n"); break;
+                case "NOTIFICATION_UNCERTAIN": ui("關機請求回覆未確認，為避免重複操作不會重送；請在電腦上確認狀態。\n"); break;
                 case "STATE simulated": ui("Server 已完成預覽請求，不會真的關機。\n"); break;
                 case "STATE cancelled": case "STATE closed": ui("此請求已取消或結束，不會重新安排關機。\n"); break;
                 default: ui("電腦關機通知未成功；已完成的備份／恢復結果不受影響。\n");
             }
+        } catch (Exception e) {
+            log("POWER_COMPLETION_FAILED reason="+e.getClass().getSimpleName()+"\n");
+            ui(completionAttempted ? "關機請求逾時或回覆未確認，可能已送達；請在電腦端確認，不會自動重送。\n" : "電腦關機服務檢查失敗或逾時，本次未發送關機請求；備份／恢復結果不受影響。\n");
+            throw e;
         } finally { release(); }
     }
 

@@ -44,7 +44,10 @@ public final class PowerNotifyUtil {
                 if (dir.lastModified() >= cutoff) continue;
                 File[] files = dir.listFiles(); if (files == null) continue;
                 boolean known = true;
-                for (File file : files) if (!Arrays.asList("job.json", "ready", "offered", "attempted").contains(file.getName())) known = false;
+                for (File file : files) {
+                    if (!Arrays.asList("job.json", "ready", "offered", "attempted", "workers", "coordinator", "ui.log", "issues").contains(file.getName())) known = false;
+                    secure(file,false);
+                }
                 if (!known) continue;
                 for (File file : files) Files.deleteIfExists(file.toPath());
                 Files.deleteIfExists(dir.toPath());
@@ -124,21 +127,25 @@ public final class PowerNotifyUtil {
         if (!new File(dir, "attempted").createNewFile()) return "ALREADY_ATTEMPTED";
         Os.chmod(new File(dir, "attempted").getPath(), 0600);
         byte[] bytes = JSON.toJson(body).getBytes(StandardCharsets.UTF_8);
-        for (int attempt = 0; attempt < 4; attempt++) {
-            if (attempt > 0) Thread.sleep(new int[]{2000, 5000, 10000}[attempt - 1]);
-            Reply reply;
-            try { reply = request(base + "/api/v1/power/manual", credential, bytes); }
-            catch (IOException failure) { continue; }
-            if (reply.status == 200 || reply.status == 202) {
-                JsonObject result = JsonParser.parseString(reply.body).getAsJsonObject();
-                if (!id.equals(result.get("job_id").getAsString())) throw new IOException();
-                String state = result.get("state").getAsString();
-                if (!STATES.contains(state)) throw new IOException();
-                return "STATE " + state; // Never echo untrusted server text or the response body.
-            }
-            if (reply.status < 500 || reply.status > 599) return "REJECTED " + reply.status;
+        return submitCompletion(base, credential, bytes, id);
+    }
+
+    private static String submitCompletion(String base, String credential, byte[] bytes, String id) throws Exception {
+        if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+        // An I/O/5xx response can follow a successfully accepted shutdown request.
+        // No server-side idempotency guarantee is negotiated: never replay this POST.
+        Reply reply;
+        try { reply = request(base + "/api/v1/power/manual", credential, bytes); }
+        catch (IOException failure) { return "NOTIFICATION_UNCERTAIN"; }
+        if (reply.status == 200 || reply.status == 202) {
+            JsonObject result = JsonParser.parseString(reply.body).getAsJsonObject();
+            if (!id.equals(result.get("job_id").getAsString())) throw new IOException();
+            String state = result.get("state").getAsString();
+            if (!STATES.contains(state)) throw new IOException();
+            return "STATE " + state;
         }
-        return "NOTIFICATION_FAILED";
+        if (reply.status >= 500 && reply.status <= 599) return "NOTIFICATION_UNCERTAIN";
+        return "REJECTED " + reply.status;
     }
 
     static String pairForJob(File store, String base, String id) throws Exception {
@@ -229,16 +236,24 @@ public final class PowerNotifyUtil {
         return requestAuthorized(url, credential == null ? null : "Bearer " + credential, body);
     }
     static Reply requestAuthorized(String url, String authorization, byte[] body) throws Exception {
+        if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+        java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicReference<HttpURLConnection> active = new java.util.concurrent.atomic.AtomicReference<>();
         FutureTask<Reply> call = new FutureTask<>(() -> {
             HttpURLConnection c = (HttpURLConnection)new URL(url).openConnection(Proxy.NO_PROXY);
+            active.set(c);
             try {
+                if (cancelled.get()) throw new IOException("cancelled");
                 c.setInstanceFollowRedirects(false); c.setConnectTimeout(4000); c.setReadTimeout(4000);
                 c.setUseCaches(false); c.setRequestProperty("Accept", "application/json");
                 if (body != null) {
                     c.setRequestMethod("POST"); c.setDoOutput(true); c.setFixedLengthStreamingMode(body.length);
                     c.setRequestProperty("Content-Type", "application/json");
                     if (authorization != null) c.setRequestProperty("Authorization", authorization);
-                    try (OutputStream out = c.getOutputStream()) { out.write(body); }
+                    try (OutputStream out = c.getOutputStream()) {
+                        if (cancelled.get()) throw new IOException("cancelled");
+                        out.write(body);
+                    }
                 }
                 int status = c.getResponseCode();
                 String text = "";
@@ -250,11 +265,19 @@ public final class PowerNotifyUtil {
                     }
                 }
                 return new Reply(status,text);
-            } finally { c.disconnect(); }
+            } finally { active.compareAndSet(c,null); c.disconnect(); }
         });
         Thread worker = new Thread(call, "power-http"); worker.setDaemon(true); worker.start();
         try { return call.get(8, TimeUnit.SECONDS); }
-        catch (Exception e) { call.cancel(true); throw new IOException("request unavailable"); }
+        catch (Exception e) {
+            cancelled.set(true); call.cancel(true);
+            HttpURLConnection c=active.getAndSet(null);
+            if(c!=null) {
+                Thread close=new Thread(c::disconnect,"power-http-close");close.setDaemon(true);close.start();
+            }
+            if(e instanceof InterruptedException) { Thread.currentThread().interrupt(); throw e; }
+            throw new IOException("request unavailable");
+        }
     }
     static final class Reply { final int status; final String body; Reply(int s,String b){status=s;body=b;} }
     static void secure(File file, boolean directory) throws Exception {

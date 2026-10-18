@@ -9,6 +9,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.PackageManagerHidden;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
@@ -47,7 +48,7 @@ final class UidNetworkBlockUtil {
         if (run != null && run.length() > 0) return run;
         String tmp = System.getenv("TMPDIR");
         if (tmp != null && tmp.contains(".speedbackup_run_") && tmp.length() > 0) return tmp;
-        return "/data/local/tmp/.speedbackup_run_dex_" + android.os.Process.myPid();
+        return GuardLifecycle.fallbackRunDirectory();
     }
 
     private static String scopedPath(String envName, String name) {
@@ -70,8 +71,8 @@ final class UidNetworkBlockUtil {
         session.ownerToken = ownerToken;
         session.ownerKind = ownerKind == null ? "" : ownerKind.trim();
         try {
-            session.apply();
             SESSIONS.put(token, session);
+            session.apply();
             return new OperationResult("uidnet-start", true).token(token).identity(userId, session.packageName).appendTo("UID_NET_BLOCK_START_OK token=" + token
                     + " user=" + userId
                     + " package=" + session.packageName
@@ -83,7 +84,10 @@ final class UidNetworkBlockUtil {
                     + " log=" + sanitize(logPath) + "\n");
         } catch (Throwable t) {
             try { session.restore("start-failed"); } catch (Throwable ignored) {}
-            return new OperationResult("uidnet-start", false).token(token).appendTo("UID_NET_BLOCK_START_FAILED token=" + token
+            if (session.restored) SESSIONS.remove(token);
+            return new OperationResult("uidnet-start", false).token(token)
+                    .identity(userId, session.packageName).restoration(session.restored, session.restored)
+                    .appendTo("UID_NET_BLOCK_START_FAILED token=" + token
                     + " user=" + userId
                     + " package=" + session.packageName
                     + " mode=" + session.mode
@@ -105,7 +109,7 @@ final class UidNetworkBlockUtil {
     }
 
     static synchronized String stop(int token, int expectedUserId, String expectedPackageName) {
-        NetBlockSession session = SESSIONS.remove(token);
+        NetBlockSession session = SESSIONS.get(token);
         if (session == null) {
             return "UID_NET_BLOCK_STOP_MISSING token=" + token
                     + " expectedUser=" + expectedUserId
@@ -119,7 +123,7 @@ final class UidNetworkBlockUtil {
                     .appendTo("UID_NET_BLOCK_STOP_REJECTED reason=" + sanitize(mismatch));
         }
         String result = session.restore("stop-token-" + token);
-        if (!OperationResult.isOk(result, "uidnet-stop")) SESSIONS.put(token, session);
+        if (OperationResult.isOk(result, "uidnet-stop")) SESSIONS.remove(token);
         return result;
     }
 
@@ -182,7 +186,7 @@ final class UidNetworkBlockUtil {
         out.append("UID_NET_BLOCK_PERSISTENT_RESTORE_ALL_DONE total=").append(total)
                 .append(" restored=").append(restored)
                 .append(" reason=").append(sanitize(reason)).append('\n');
-        return out.toString();
+        return new OperationResult("uidnet-restore-all", files != null && restored == total).counts(total, restored, 0, total-restored, 0).appendTo(out);
     }
 
     static synchronized String cleanupStalePersistentStates(String reason) {
@@ -243,7 +247,7 @@ final class UidNetworkBlockUtil {
                 .append(" restored=").append(restored)
                 .append(" deleted=").append(deleted)
                 .append(" reason=").append(sanitize(reason)).append('\n');
-        return out.toString();
+        return new OperationResult("uidnet-cleanup", files != null && restored == stale && deleted == stale).counts(stale, restored, 0, stale-deleted, 0).appendTo(out);
     }
 
     static synchronized String probe(int userId, String packageName) {
@@ -268,7 +272,7 @@ final class UidNetworkBlockUtil {
                     .append(" rejectMetered=").append(policyRejectMeteredBackground()).append('\n');
             boolean add = hasMethod(service, "addUidPolicy", Integer.valueOf(uid), Integer.valueOf(policyRejectMeteredBackground()));
             boolean set = hasMethod(service, "setUidPolicy", Integer.valueOf(uid), Integer.valueOf(policy));
-            out.append("UID_NET_BLOCK_PROBE type=netpolicy method=addUidPolicy ok=").append(add).append('\n');
+            out.append("UID_NET_BLOCK_PROBE type=netpolicy method=addUidPolicy ok=").append(add).append(" usable=false reason=original-membership-unavailable\n");
             out.append("UID_NET_BLOCK_PROBE type=netpolicy method=setUidPolicy ok=").append(set).append('\n');
         } catch (Throwable t) {
             out.append("UID_NET_BLOCK_PROBE type=netpolicy ok=false exception=").append(sanitize(t.getClass().getName()))
@@ -278,14 +282,28 @@ final class UidNetworkBlockUtil {
             Object service = netdService();
             boolean add = hasMethod(service, "bandwidthAddNaughtyApp", Integer.valueOf(uid));
             boolean remove = hasMethod(service, "bandwidthRemoveNaughtyApp", Integer.valueOf(uid));
-            out.append("UID_NET_BLOCK_PROBE type=netd method=bandwidthAddNaughtyApp ok=").append(add).append('\n');
-            out.append("UID_NET_BLOCK_PROBE type=netd method=bandwidthRemoveNaughtyApp ok=").append(remove).append('\n');
+            out.append("UID_NET_BLOCK_PROBE type=netd method=bandwidthAddNaughtyApp ok=").append(add).append(" usable=false reason=original-membership-unavailable\n");
+            out.append("UID_NET_BLOCK_PROBE type=netd method=bandwidthRemoveNaughtyApp ok=").append(remove).append(" usable=false reason=original-membership-unavailable\n");
         } catch (Throwable t) {
             out.append("UID_NET_BLOCK_PROBE type=netd ok=false exception=").append(sanitize(t.getClass().getName()))
                     .append(" message=").append(sanitize(t.getMessage())).append('\n');
         }
         out.append("UID_NET_BLOCK_PROBE_DONE user=").append(userId).append(" package=").append(pkg).append(" uid=").append(uid).append('\n');
         return out.toString();
+    }
+
+    private static void requireNoOverlappingUid(NetBlockSession target) throws Exception {
+        for (NetBlockSession other : SESSIONS.values()) {
+            if (other != target && other.uid == target.uid && !other.restored)
+                throw new IllegalStateException("uid-net-block-owner-active");
+        }
+        for (File file : UidPolicyLock.pendingStateFiles(stateDir())) {
+            if (!isStateFile(file)) continue;
+            Properties state = readProperties(file);
+            int existingUid = Integer.parseInt(state.getProperty("uid", "-1"));
+            if (existingUid < 0) throw new IOException("uid-net-block-owner-unverifiable");
+            if (existingUid == target.uid) throw new IllegalStateException("uid-net-block-owner-pending");
+        }
     }
 
     private static final class NetBlockSession {
@@ -318,13 +336,15 @@ final class UidNetworkBlockUtil {
         void apply() throws Exception {
             openLog();
             uid = resolveUid(userId, packageName);
+            try (UidPolicyLock ownership = UidPolicyLock.acquire(uid)) {
+            requireNoOverlappingUid(this);
             logLine("UID_NET_BLOCK_START schema=speedbackup.uid_net_block.v1"
                     + " user=" + userId + " package=" + packageName + " uid=" + uid
                     + " mode=" + mode + " token=" + token + " ownerToken=" + ownerToken
                     + " ownerKind=" + sanitize(ownerKind));
             originalUidPolicy = snapshotUidPolicy();
             targetPolicy = selectTargetPolicy(mode);
-            persistState("snapshot");
+            if (!persistState("snapshot")) throw new IllegalStateException("State snapshot write failed");
             boolean ok = false;
             String m = mode;
             if ("none".equals(m) || "off".equals(m) || "disable".equals(m)) {
@@ -345,22 +365,19 @@ final class UidNetworkBlockUtil {
                     + " user=" + userId + " package=" + packageName + " uid=" + uid
                     + " mode=" + mode + " provider=" + provider
                     + " policyTouched=" + policyTouched + " netdTouched=" + netdTouched);
+            }
         }
 
         private boolean applyNetPolicy() {
             try {
                 Object service = netPolicyService();
-                int next = originalUidPolicy | targetPolicy;
-                try {
-                    HiddenApiReflection.invokeFlexible(service, "addUidPolicy", uid, targetPolicy);
-                    provider = "direct-netpolicy-addUidPolicy";
-                } catch (Throwable addError) {
-                    HiddenApiReflection.invokeFlexible(service, "setUidPolicy", uid, next);
-                    provider = "direct-netpolicy-setUidPolicy addError=" + addError.getClass().getSimpleName();
-                }
+                policyTouched = true;
+                if (!persistState("intent-netpolicy")) { policyTouched = false; return false; }
+                HiddenApiReflection.invokeFlexible(service, "addUidPolicy", uid, targetPolicy);
+                provider = "direct-netpolicy-addUidPolicy";
                 int verify = snapshotUidPolicy();
                 boolean ok = (verify & targetPolicy) == targetPolicy;
-                policyTouched = ok;
+                // Keep intent even when verification fails.
                 logLine("UID_NET_BLOCK_APPLY stage=netpolicy targetPolicy=" + targetPolicy
                         + " originalPolicy=" + originalUidPolicy
                         + " verifyPolicy=" + verify
@@ -376,25 +393,48 @@ final class UidNetworkBlockUtil {
         }
 
         private boolean applyNetdNaughty() {
-            try {
-                Object service = netdService();
-                HiddenApiReflection.invokeFlexible(service, "bandwidthAddNaughtyApp", uid);
-                provider = "direct-netd-bandwidthAddNaughtyApp";
-                netdTouched = true;
-                logLine("UID_NET_BLOCK_APPLY stage=netd method=bandwidthAddNaughtyApp ok=true uid=" + uid);
-                persistState("apply-netd");
-                return true;
-            } catch (Throwable t) {
-                provider = "direct-netd-failed";
-                logLine("UID_NET_BLOCK_APPLY stage=netd method=bandwidthAddNaughtyApp ok=false exception=" + sanitize(t.getClass().getName())
-                        + " message=" + sanitize(t.getMessage()));
-                return false;
-            }
+            // INetd exposes mutation but no authoritative naughty-list membership snapshot.
+            // Removing a pre-existing restriction on stop would corrupt another owner's policy.
+            provider = "netd-original-membership-unavailable";
+            logLine("UID_NET_BLOCK_APPLY stage=netd ok=false reason=original-membership-unavailable");
+            return false;
         }
 
         String restore(String reason) {
+            if (uid < 0 && !policyTouched && !netdTouched) return restoreLocked(reason);
+            try (UidPolicyLock ownership = UidPolicyLock.acquire(uid)) {
+                return restoreLocked(reason);
+            } catch (Exception e) {
+                return new OperationResult("uidnet-stop", false).token(token).restoration(false,false)
+                        .appendTo("UID_NET_BLOCK_STOP_FAILED reason=ownership_lock stateRetained=true\n");
+            }
+        }
+
+        private String restoreLocked(String reason) {
             StringBuilder out = new StringBuilder();
             openLog();
+            // Uninstall can remove the policy before our stop runs. Retire only
+            // after authoritative absence AND a readback proving our bits gone.
+            // Legacy netd mutations have no membership query and remain pending.
+            try {
+                if (!netdTouched && AppInventoryUtil.removedPackageUidUnowned(userId, packageName, uid)
+                        && (!policyTouched || (snapshotUidPolicy() & (targetPolicy & ~originalUidPolicy)) == 0)
+                        && AppInventoryUtil.removedPackageUidUnowned(userId, packageName, uid)) {
+                    boolean deleted = deletePersistedState("removed-package-policy-clear");
+                    restored = deleted;
+                    closeLog();
+                    return new OperationResult("uidnet-stop", deleted).token(token).restoration(true, deleted)
+                            .identity(userId, packageName).appendTo("UID_NET_BLOCK_REMOVED_PACKAGE policyClear=true mutation=false stateDeleted=" + deleted + "\n");
+                }
+            } catch (Exception unavailable) { /* Keep normal identity failure and journal. */ }
+            try {
+                if ((policyTouched || netdTouched) && resolveUid(userId, packageName) != uid)
+                    throw new IllegalStateException("UID changed");
+            } catch (Exception e) {
+                closeLog();
+                return new OperationResult("uidnet-stop", false).token(token).restoration(false, false)
+                        .appendTo("UID_NET_BLOCK_STOP_FAILED reason=identity_unverified stateRetained=true\n");
+            }
             restoreAttempts++;
             persistState("restore-attempt-" + restoreAttempts);
             boolean policyOk = true;
@@ -418,11 +458,12 @@ final class UidNetworkBlockUtil {
             if (policyTouched) {
                 try {
                     Object service = netPolicyService();
-                    HiddenApiReflection.invokeFlexible(service, "setUidPolicy", uid, originalUidPolicy);
+                    int added = targetPolicy & ~originalUidPolicy;
+                    HiddenApiReflection.invokeFlexible(service, "removeUidPolicy", uid, added);
                     int verify = snapshotUidPolicy();
-                    policyOk = verify == originalUidPolicy;
+                    policyOk = (verify & added) == 0;
                     logLine("UID_NET_BLOCK_RESTORE stage=netpolicy targetPolicy=" + originalUidPolicy
-                            + " verifyPolicy=" + verify + " ok=" + policyOk + " provider=direct-netpolicy-setUidPolicy");
+                            + " verifyPolicy=" + verify + " ok=" + policyOk + " provider=direct-netpolicy-removeUidPolicy");
                 } catch (Throwable t) {
                     policyOk = false;
                     logLine("UID_NET_BLOCK_RESTORE stage=netpolicy targetPolicy=" + originalUidPolicy
@@ -472,10 +513,11 @@ final class UidNetworkBlockUtil {
         private int snapshotUidPolicy() throws Exception {
             Object service = netPolicyService();
             Object v = HiddenApiReflection.invokeFlexible(service, "getUidPolicy", uid);
-            return asInt(v, 0);
+            if (!(v instanceof Number)) throw new IllegalStateException("uid-policy-snapshot-unavailable");
+            return ((Number) v).intValue();
         }
 
-        private void persistState(String phase) {
+        private boolean persistState(String phase) {
             try {
                 File file = stateFileFor(this);
                 Properties p = new Properties();
@@ -506,11 +548,13 @@ final class UidNetworkBlockUtil {
                 logLine("UID_NET_BLOCK_PERSIST_STATE token=" + token
                         + " phase=" + sanitize(phase)
                         + " path=" + sanitize(file.getAbsolutePath()));
+                return true;
             } catch (Throwable t) {
                 logLine("UID_NET_BLOCK_PERSIST_STATE_FAILED token=" + token
                         + " phase=" + sanitize(phase)
                         + " exception=" + sanitize(t.getClass().getName())
                         + " message=" + sanitize(t.getMessage()));
+                return false;
             }
         }
 
@@ -633,7 +677,7 @@ final class UidNetworkBlockUtil {
 
     private static NetBlockSession sessionFromProperties(Properties p) {
         int token = parseInt(p.getProperty("token"), -1);
-        int userId = parseInt(p.getProperty("user"), 0);
+        int userId = parseInt(p.getProperty("user"), -1);
         String pkg = safePackage(p.getProperty("package", ""));
         String mode = normalizeMode(p.getProperty("mode", "netpolicy"));
         String logPath = p.getProperty("logPath", "-");
@@ -702,6 +746,7 @@ final class UidNetworkBlockUtil {
 
     private static String expectedMismatch(NetBlockSession s, int expectedUserId, String expectedPackageName) {
         if (s == null) return "empty-session";
+        if (s.userId < 0 || s.packageName.isEmpty()) return "invalid-session-identity";
         if (expectedUserId >= 0 && s.userId != expectedUserId) return "user";
         String expectedPkg = safePackage(expectedPackageName);
         if (!expectedPkg.isEmpty() && !expectedPkg.equals(s.packageName)) return "package";
@@ -738,7 +783,7 @@ final class UidNetworkBlockUtil {
         try (FileOutputStream out = new FileOutputStream(tmp)) {
             props.store(out, "SpeedBackup UID net block state");
             out.flush();
-            try { out.getFD().sync(); } catch (Throwable ignored) {}
+            out.getFD().sync();
         }
         if (!tmp.renameTo(file)) throw new IllegalStateException("rename failed: " + tmp + " -> " + file);
     }

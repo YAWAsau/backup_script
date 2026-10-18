@@ -563,7 +563,7 @@ public final class AppStateLocalization {
                 type = value.substring(0, tab).trim();
                 key = value.substring(tab + 1).trim();
             } else {
-                String[] parts = value.split("\s+", 2);
+                String[] parts = value.split("\\s+", 2);
                 type = parts.length > 0 ? parts[0].trim() : "lookup";
                 key = parts.length > 1 ? parts[1].trim() : "";
             }

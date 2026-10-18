@@ -169,6 +169,9 @@ public final class BinaryXmlPullParser implements TypedXmlPullParser {
         } catch (EOFException e) {
             token = END_DOCUMENT;
         }
+        if (token == END_DOCUMENT && mCurrentDepth != 0) {
+            throw new XmlPullParserException("Truncated binary XML: unclosed element");
+        }
         switch (token) {
             case XmlPullParser.START_TAG:
                 // We need to peek forward to find the next external token so

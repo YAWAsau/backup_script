@@ -196,7 +196,8 @@ if ($env:OS -eq "Windows_NT" -and ($PSScriptRoot -match '[^\x00-\x7F]' -or $PSSc
             $null = New-Item -ItemType Directory -Path $finalRelease -Force
             Publish-SpeedBackupDexFiles @(
                 @{ Src = $stagedApks[0].FullName; Dst = (Join-Path $finalRelease $stagedApks[0].Name) },
-                @{ Src = $stagedDex; Dst = (Join-Path $PSScriptRoot "classes.dex") }
+                @{ Src = $stagedDex; Dst = (Join-Path $PSScriptRoot "classes.dex") },
+                @{ Src = (Join-Path $stageRoot "BUILD_INFO.json"); Dst = (Join-Path $PSScriptRoot "BUILD_INFO.json") }
             )
             $artifactSync = Join-Path (Split-Path -Parent $PSScriptRoot) 'sync_artifacts.ps1'
             if (Test-Path -LiteralPath $artifactSync -PathType Leaf) { & $artifactSync -Component Dex }
@@ -288,7 +289,16 @@ if ($gradleExitCode -ne 0) {
 
 # ---- 4. Extract classes.dex from the release APK ----
 $releaseDir = [System.IO.Path]::Combine($PSScriptRoot, "app", "build", "outputs", "apk", "release")
-$releaseApk = Get-ChildItem -LiteralPath $releaseDir -Filter "*.apk" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+$apkMetadata = Get-Content -LiteralPath (Join-Path $releaseDir 'output-metadata.json') -Raw | ConvertFrom-Json
+$releaseProperties = ConvertFrom-StringData ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'release-version.properties')))
+if (@($apkMetadata.elements).Count -ne 1 -or
+    $apkMetadata.elements[0].versionCode -ne [int]$releaseProperties.versionCode -or
+    $apkMetadata.elements[0].versionName -ne ($releaseProperties.version + ' build=' + $releaseProperties.build)) {
+    throw 'Release APK metadata does not match this build.'
+}
+$apkName = [string]$apkMetadata.elements[0].outputFile
+if ([IO.Path]::GetFileName($apkName) -ne $apkName -or $apkName -notlike '*.apk') { throw 'Invalid release APK path.' }
+$releaseApk = Get-Item -LiteralPath (Join-Path $releaseDir $apkName) -ErrorAction Stop
 if (-not $releaseApk) {
     Write-Host "Release APK not found in: $releaseDir" -ForegroundColor Red
     exit 1
@@ -357,8 +367,8 @@ $requiredDexStrings = @(
     "PACKAGE_SCOPE_TRIGGER reason=taskstack-top-target",
     "kill-package-live-rescan-v1",
     "dex.cgroup_freezer.native_package_kill_live_rescan.v1",
-    "native-kill-package-pre-force-stop",
-    "native-kill-package-post-force-stop",
+    "nativeIdentityChecked=true",
+    "numericPidFallback=false",
     "dex.display_power.root_daemon.v1"
 )
 foreach ($needle in $requiredDexStrings) {
@@ -368,6 +378,12 @@ foreach ($needle in $requiredDexStrings) {
     }
 }
 Write-Host "Dex verify: required CLI classes and Dex capabilities present (version strings diagnostic only)" -ForegroundColor Green
+$dexBuildInfo = [ordered]@{
+    buildVersion = $releaseProperties.build
+    componentVersion = $releaseProperties.version
+    sha256 = (Get-FileHash -LiteralPath $outputDex -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+[IO.File]::WriteAllText((Join-Path $PSScriptRoot 'BUILD_INFO.json'), ($dexBuildInfo | ConvertTo-Json) + "`n", [Text.UTF8Encoding]::new($false))
 $artifactSync = Join-Path (Split-Path -Parent $PSScriptRoot) 'sync_artifacts.ps1'
 if (Test-Path -LiteralPath $artifactSync -PathType Leaf) { & $artifactSync -Component Dex }
 

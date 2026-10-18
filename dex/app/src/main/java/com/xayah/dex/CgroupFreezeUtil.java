@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * package pids are frozen in one native package request.  ProcessObserver may open additional
  * pid-specific sessions for newly awakened pids during the same scope.  ProcessObserver cgroup and
  * wake-block cleanup defer to the primary app-scope token while it is active, so the final release
- * order is: primary THAW_UID, then deferred wake-block package restore.  Stop restores the original
+ * order is: primary package-scoped release, then deferred wake-block package restore.  Stop restores the original
  * frozen state and verifies cgroup.events.
  */
 final class CgroupFreezeUtil {
@@ -47,7 +47,10 @@ final class CgroupFreezeUtil {
     private static String helperCachePath = null;
     private static long daemonCacheAt = 0L;
     private static Boolean daemonCacheOk = null;
-    private static Process daemonProcess = null;
+    private static long daemonCacheGeneration = 0L;
+    private static volatile boolean daemonMayHaveWorkers;
+    private static Process daemonStartingProcess;
+    private static final long DAEMON_RETRY_MS = 1000L;
     private static volatile boolean batchDaemonPinned = false;
     private static volatile long batchDaemonPinnedAt = 0L;
     private static final String[] HELPER_CANDIDATES = new String[] {
@@ -66,7 +69,7 @@ final class CgroupFreezeUtil {
         if (run != null && run.length() > 0) return run;
         String tmp = System.getenv("TMPDIR");
         if (tmp != null && tmp.contains(".speedbackup_run_") && tmp.length() > 0) return tmp;
-        return "/data/local/tmp/.speedbackup_run_dex_" + android.os.Process.myPid();
+        return GuardLifecycle.fallbackRunDirectory();
     }
 
     private static String scopedPath(String envName, String name) {
@@ -238,6 +241,10 @@ final class CgroupFreezeUtil {
 
         NativePackageFreezeResult packageFreeze = selectedPid > 0 ? null
                 : tryNativeFreezePackage(session, pids, packageUid, safeTimeoutMs, out);
+        if (packageFreeze != null && packageFreeze.noRetry) {
+            out.append(doneLine("START", false, -1, 0, 0, pids.size(), "native_freeze_uncertain", startMs));
+            return out.toString();
+        }
         if (packageFreeze != null && packageFreeze.accepted) {
             checked = packageFreeze.checked;
             frozen = packageFreeze.frozen;
@@ -272,6 +279,13 @@ final class CgroupFreezeUtil {
 
         SESSIONS.put(session.token, session);
         boolean stateWritten = writePersistentSession(session, out);
+        if (!stateWritten) {
+            StopStats rollback = restoreSession(session, safeTimeoutMs, out, "CGROUP_FREEZE_START_ROLLBACK");
+            if (rollback.failed == 0 && removePersistentToken(session.token)) SESSIONS.remove(session.token);
+            out.append(doneLine("START", false, SESSIONS.containsKey(session.token) ? session.token : -1, checked, frozen, skipped, "state_write_failed", startMs));
+            return out.toString();
+        }
+        session.activePrimary = isPrimaryAppScopeOwner(session.owner);
         out.append("CGROUP_FREEZE_START_OK token=").append(session.token)
                 .append(" user=").append(userId)
                 .append(" package=").append(sanitize(pkg))
@@ -310,7 +324,7 @@ final class CgroupFreezeUtil {
                 .append(" expectedUser=").append(expectedUserId)
                 .append(" expectedPackage=").append(sanitize(expectedPkg))
                 .append('\n');
-        FreezeSession session = SESSIONS.remove(token);
+        FreezeSession session = SESSIONS.get(token);
         if (session == null) {
             session = readPersistentSession(token);
         }
@@ -340,10 +354,13 @@ final class CgroupFreezeUtil {
                     .append(System.currentTimeMillis() - startMs).append('\n');
             return new OperationResult("cgroup-stop", false).token(token).restoration(false, false).appendTo(out.toString());
         }
-        boolean restoreDeferredToPrimaryScope = shouldDeferProcessObserverRestoreToPrimaryScope(session);
+        session.activePrimary = false;
+        boolean restoreDeferredToPrimaryScope = (isProcessObserverOwner(session.owner) || isPrimaryAppScopeOwner(session.owner))
+                && hasActivePrimaryAppScopeSession(session.userId, session.packageName, session.token);
         StopStats stats;
         if (restoreDeferredToPrimaryScope) {
             stats = new StopStats();
+            if (!transferToPrimaryScope(session, out)) stats.failed++;
             out.append("CGROUP_FREEZE_STOP_RESTORE_DEFER_TO_PRIMARY_SCOPE token=").append(token)
                     .append(" user=").append(session.userId)
                     .append(" package=").append(sanitize(session.packageName))
@@ -354,11 +371,11 @@ final class CgroupFreezeUtil {
         } else {
             stats = restoreSession(session, 1500, out, "CGROUP_FREEZE_STOP");
         }
-        tryNativeStopFinalReleaseThawUid(session, 700, out, "CGROUP_FREEZE_STOP");
-        tryRestoreDeferredWakeBlockAfterPrimaryRelease(session, out, "CGROUP_FREEZE_STOP");
+        if (!restoreDeferredToPrimaryScope && stats.failed == 0
+                && !tryRestoreDeferredWakeBlockAfterPrimaryRelease(session, out, "CGROUP_FREEZE_STOP")) stats.failed++;
         boolean stateDeleted = stats.failed == 0 && removePersistentToken(token);
         boolean ok = stats.failed == 0 && stateDeleted;
-        if (!ok) SESSIONS.put(token, session);
+        if (!ok) SESSIONS.put(token, session); else SESSIONS.remove(token);
         out.append(ok ? "CGROUP_FREEZE_STOP_OK" : "CGROUP_FREEZE_STOP_FAILED")
                 .append(" token=").append(token)
                 .append(" user=").append(session.userId)
@@ -433,6 +450,7 @@ final class CgroupFreezeUtil {
             probe.startedAt = session.startedAt;
             List<FreezeEntry> frozenEntries = nativeFreezePackageNoThaw(probe, pids, packageUid, safeTimeoutMs, out,
                     "primary-refresh-" + sanitize(safeReason));
+            if (frozenEntries == null) { failed++; continue; }
             if (frozenEntries.isEmpty()) {
                 for (PidInfo pidInfo : pids) {
                     if (pidInfo == null || pidInfo.pid <= 0) continue;
@@ -461,6 +479,7 @@ final class CgroupFreezeUtil {
                 e.packageName = session.packageName;
                 e.owner = session.owner;
                 e.startedAt = session.startedAt;
+                // Preserve the identity captured by native before freezing.
                 if (!existing.contains(e.pid)) {
                     session.entries.add(e);
                     delta.entries.add(e);
@@ -469,8 +488,13 @@ final class CgroupFreezeUtil {
                 }
             }
             if (!delta.entries.isEmpty()) {
-                writePersistentSession(delta, out);
+                boolean durable = writePersistentSession(delta, out);
                 SESSIONS.put(session.token, session);
+                if (!durable) {
+                    failed++;
+                    StopStats rollback = restoreSession(delta, safeTimeoutMs, out, "CGROUP_FREEZE_REFRESH_ROLLBACK");
+                    if (rollback.failed == 0) session.entries.removeAll(delta.entries);
+                }
             }
             out.append("CGROUP_FREEZE_PRIMARY_REFRESH_SESSION token=").append(session.token)
                     .append(" user=").append(session.userId)
@@ -497,17 +521,13 @@ final class CgroupFreezeUtil {
     private static List<FreezeSession> activePrimaryAppScopeSessions(int userId, String packageName, int skipToken) {
         List<FreezeSession> result = new ArrayList<>();
         if (packageName == null || packageName.length() == 0) return result;
-        Set<Integer> seen = new LinkedHashSet<>();
+        // Journals are recovery evidence, not proof that their owner is active
+        // in this daemon. Never defer a release to an abandoned on-disk scope.
         for (FreezeSession s : SESSIONS.values()) {
             if (s == null || s.token == skipToken) continue;
-            if (s.userId == userId && packageName.equals(s.packageName) && isPrimaryAppScopeOwner(s.owner)) {
+            if (s.activePrimary && s.userId == userId && packageName.equals(s.packageName) && isPrimaryAppScopeOwner(s.owner)) {
                 result.add(s);
-                seen.add(s.token);
             }
-        }
-        for (FreezeSession s : readAllPersistentSessions()) {
-            if (s == null || s.token == skipToken || seen.contains(s.token)) continue;
-            if (s.userId == userId && packageName.equals(s.packageName) && isPrimaryAppScopeOwner(s.owner)) result.add(s);
         }
         return result;
     }
@@ -516,7 +536,7 @@ final class CgroupFreezeUtil {
         Set<Integer> set = new LinkedHashSet<>();
         if (session == null) return set;
         for (FreezeEntry e : session.entries) {
-            if (e != null && e.pid > 0) set.add(e.pid);
+            if (e != null && e.pid > 0 && e.procStartTime > 0 && e.procStartTime == procStartTime(e.pid)) set.add(e.pid);
         }
         return set;
     }
@@ -545,6 +565,7 @@ final class CgroupFreezeUtil {
                     .append(" elapsedMs=").append(System.currentTimeMillis() - startMs)
                     .append(" output=").append(sanitize(run.output))
                     .append('\n');
+            if (containsToken(run.output, "noRetry=true")) return null;
             String doneLine = "";
             String raw = run.output == null ? "" : run.output;
             for (String line : raw.split("\\n")) {
@@ -577,6 +598,7 @@ final class CgroupFreezeUtil {
                 e.originalFreeze = "1".equals(beforeFreeze) ? "1" : "0";
                 e.originalFrozen = originallyFrozen ? "1" : "0";
                 e.startedAt = session.startedAt;
+                e.procStartTime = nativeStartTime(trimmed);
                 e.owner = session.owner;
                 entries.add(e);
             }
@@ -651,7 +673,10 @@ final class CgroupFreezeUtil {
     private static String restorePersistedAllLocked(String reason) {
         StringBuilder out = new StringBuilder();
         out.append("CGROUP_FREEZE_PERSISTENT_RESTORE_ALL_BEGIN reason=").append(sanitize(reason)).append('\n');
-        List<Integer> tokens = readAllPersistentTokens();
+        List<FreezeSession> recoverable = readAllPersistentSessions(out);
+        List<Integer> tokens = new ArrayList<>();
+        for (FreezeSession saved : recoverable) tokens.add(saved.token);
+        boolean corrupt = out.indexOf("CGROUP_FREEZE_STATE_INVALID") >= 0;
         int ok = 0;
         int fail = 0;
         for (Integer token : tokens) {
@@ -664,7 +689,7 @@ final class CgroupFreezeUtil {
                 .append(" fail=").append(fail)
                 .append(" stateDeleted=").append(fail == 0)
                 .append('\n');
-        return out.toString();
+        return new OperationResult("cgroup-restore-all", fail == 0 && !corrupt).counts(tokens.size(), ok, 0, fail, 0).appendTo(out);
     }
 
     static String cleanupStalePersistentStates(String reason, long ttlMs) {
@@ -678,7 +703,8 @@ final class CgroupFreezeUtil {
         StringBuilder out = new StringBuilder();
         out.append("CGROUP_FREEZE_CLEANUP_STALE_BEGIN reason=").append(sanitize(reason))
                 .append(" ttlMs=").append(ttl).append('\n');
-        List<FreezeSession> sessions = readAllPersistentSessions();
+        List<FreezeSession> sessions = readAllPersistentSessions(out);
+        boolean corrupt = out.indexOf("CGROUP_FREEZE_STATE_INVALID") >= 0;
         int stale = 0;
         int ok = 0;
         int fail = 0;
@@ -694,7 +720,7 @@ final class CgroupFreezeUtil {
                 .append(" ok=").append(ok)
                 .append(" fail=").append(fail)
                 .append('\n');
-        return out.toString();
+        return new OperationResult("cgroup-cleanup", fail == 0 && !corrupt).counts(stale, ok, 0, fail, 0).appendTo(out);
     }
 
     static boolean isStartOk(String result) {
@@ -706,68 +732,11 @@ final class CgroupFreezeUtil {
     }
 
     private static StartPidResult freezePid(FreezeSession session, PidInfo p, int packageUid, int timeoutMs, StringBuilder out) {
-        StartPidResult nativeResult = tryNativeFreezePid(session, p, timeoutMs, out);
-        if (nativeResult != null && nativeResult.ok) return nativeResult;
-        StartPidResult result = new StartPidResult();
-        String rawCgroup = readProcCgroup(p.pid);
-        out.append("CGROUP_FREEZE_START_PROC_CGROUP pid=").append(p.pid)
-                .append(" uid=").append(p.uid)
-                .append(" cmdline=").append(sanitize(p.cmdline))
-                .append(" raw=").append(sanitize(rawCgroup))
-                .append('\n');
-        CandidateSelection selection = selectWritableCandidate(p, packageUid, rawCgroup, out, "CGROUP_FREEZE_START_CANDIDATE");
-        if (selection == null) {
-            result.reason = "no_writable_events_readable_path";
-            out.append("CGROUP_FREEZE_START_PID_SKIP pid=").append(p.pid).append(" reason=").append(result.reason).append('\n');
-            return result;
-        }
-        Candidate c = selection.candidate;
-        CandidateProbe before = selection.probe;
-        String originalFreeze = normalizeFreezeValue(before.freezeValue);
-        String originalFrozen = normalizeFreezeValue(before.frozen);
-        boolean originalKnown = "0".equals(originalFreeze) || "1".equals(originalFreeze);
-        boolean originallyFrozen = "1".equals(originalFreeze) || "1".equals(originalFrozen);
-        try {
-            writeFileText(new File(c.freezePath), "1\n");
-            String rb = readFileTrim(new File(c.freezePath), 64);
-            boolean eventOk = waitFrozenValue(c.freezePath, "1", timeoutMs, out, "CGROUP_FREEZE_START_WAIT_FROZEN");
-            boolean ok = "1".equals(normalizeFreezeValue(rb)) && eventOk;
-            out.append("CGROUP_FREEZE_START_WRITE pid=").append(p.pid)
-                    .append(" source=").append(sanitize(c.source))
-                    .append(" path=").append(sanitize(c.freezePath))
-                    .append(" beforeFreeze=").append(sanitize(before.freezeValue))
-                    .append(" beforeFrozen=").append(sanitize(before.frozen))
-                    .append(" write=1 readback=").append(sanitize(rb))
-                    .append(" eventOk=").append(eventOk)
-                    .append(" ok=").append(ok)
-                    .append('\n');
-            if (!ok) {
-                result.reason = "freeze_verify_failed";
-                return result;
-            }
-            FreezeEntry e = new FreezeEntry();
-            e.token = session.token;
-            e.userId = session.userId;
-            e.packageName = session.packageName;
-            e.pid = p.pid;
-            e.uid = p.uid;
-            e.processName = p.cmdline;
-            e.path = c.freezePath;
-            e.originalFreeze = originalKnown ? originalFreeze : (originallyFrozen ? "1" : "0");
-            e.originalFrozen = originallyFrozen ? "1" : "0";
-            e.startedAt = session.startedAt;
-            e.owner = session.owner;
-            session.entries.add(e);
-            result.ok = true;
-            result.originallyFrozen = originallyFrozen;
-            result.reason = "ok";
-            return result;
-        } catch (Throwable t) {
-            result.reason = t.getClass().getSimpleName() + ":" + t.getMessage();
-            out.append("CGROUP_FREEZE_START_ERROR pid=").append(p.pid)
-                    .append(" error=").append(sanitize(result.reason)).append('\n');
-            return result;
-        }
+        StartPidResult result = tryNativeFreezePid(session, p, timeoutMs, out);
+        if (result != null) return result;
+        result = new StartPidResult();
+        result.reason = "native_helper_required";
+        return result;
     }
 
     private static String tryNativeBackendProbe(StringBuilder out, int timeoutMs) {
@@ -847,6 +816,7 @@ final class CgroupFreezeUtil {
                 e.originalFreeze = "1".equals(beforeFreeze) ? "1" : "0";
                 e.originalFrozen = originallyFrozen ? "1" : "0";
                 e.startedAt = session.startedAt;
+                e.procStartTime = nativeStartTime(trimmed);
                 e.owner = session.owner;
                 parsed.add(e);
                 if (originallyFrozen) already++;
@@ -854,6 +824,11 @@ final class CgroupFreezeUtil {
 
             boolean accepted = !run.timedOut && run.exitCode == 0
                     && containsToken(doneLine, "ok=true") && !parsed.isEmpty();
+            if (containsToken(raw, "noRetry=true")) {
+                NativePackageFreezeResult uncertain = new NativePackageFreezeResult();
+                uncertain.noRetry = true;
+                return uncertain;
+            }
             if (!accepted) {
                 if (!parsed.isEmpty() || (run.timedOut && containsToken(raw, "CGFREEZER_FREEZE_PKG_BEGIN"))) {
                     tryNativeEmergencyThawUid(packageUid, timeoutMs, out, "native-package-uncertain");
@@ -885,10 +860,10 @@ final class CgroupFreezeUtil {
         }
     }
 
-    private static void tryNativeEmergencyThawUid(int uid, int timeoutMs, StringBuilder out, String reason) {
-        if (uid < 10000) return;
+    private static boolean tryNativeEmergencyThawUid(int uid, int timeoutMs, StringBuilder out, String reason) {
+        if (uid < 10000) return false;
         String helper = findNativeHelper();
-        if (helper == null || helper.isEmpty()) return;
+        if (helper == null || helper.isEmpty()) return false;
         try {
             NativeRun run = runNativeCommand(helper,
                     new String[] {"thaw-uid", String.valueOf(uid), String.valueOf(timeoutMs)},
@@ -901,31 +876,20 @@ final class CgroupFreezeUtil {
                     .append(" timedOut=").append(run.timedOut)
                     .append(" output=").append(sanitize(run.output))
                     .append('\n');
+            return !run.timedOut && run.exitCode == 0 && containsToken(run.output, "CGFREEZER_THAW_UID_DONE ok=true");
         } catch (Throwable t) {
             out.append("CGROUP_FREEZE_NATIVE_EMERGENCY_THAW_UID_ERROR uid=").append(uid)
                     .append(" reason=").append(sanitize(reason))
                     .append(" error=").append(sanitize(t.getClass().getSimpleName() + ":" + t.getMessage()))
                     .append('\n');
+            return false;
         }
     }
 
-    private static void tryNativeStopFinalReleaseThawUid(FreezeSession session, int timeoutMs, StringBuilder out, String tagPrefix) {
-        if (!shouldFinalReleaseThawUid(session)) return;
-        int uid = firstAppUid(session);
-        if (uid < 10000) {
-            out.append(tagPrefix).append("_FINAL_RELEASE_THAW_UID_SKIP reason=uid_missing_or_non_app user=")
-                    .append(session == null ? -1 : session.userId)
-                    .append(" package=").append(session == null ? "-" : sanitize(session.packageName))
-                    .append(" owner=").append(session == null ? "-" : sanitize(session.owner))
-                    .append('\n');
-            return;
-        }
-        tryNativeEmergencyThawUid(uid, clamp(timeoutMs, 100, 5000, 700), out,
-                "stop_final_release_" + safeWord(session.owner));
-    }
 
-    private static void tryRestoreDeferredWakeBlockAfterPrimaryRelease(FreezeSession session, StringBuilder out, String tagPrefix) {
-        if (session == null || !isPrimaryAppScopeOwner(session.owner)) return;
+
+    private static boolean tryRestoreDeferredWakeBlockAfterPrimaryRelease(FreezeSession session, StringBuilder out, String tagPrefix) {
+        if (session == null || !isPrimaryAppScopeOwner(session.owner)) return true;
         if (!AppWakeBlockUtil.hasPersistedPackage(session.userId, session.packageName)) {
             out.append(tagPrefix).append("_PRIMARY_WAKE_BLOCK_RESTORE_SKIP user=")
                     .append(session.userId)
@@ -933,7 +897,7 @@ final class CgroupFreezeUtil {
                     .append(" owner=").append(sanitize(session.owner))
                     .append(" reason=no_deferred_wakeblock")
                     .append('\n');
-            return;
+            return true;
         }
         try {
             String result = AppWakeBlockUtil.restorePersistedPackage(session.userId, session.packageName,
@@ -944,6 +908,7 @@ final class CgroupFreezeUtil {
                     .append(" owner=").append(sanitize(session.owner))
                     .append(" result=").append(sanitize(result))
                     .append('\n');
+            return OperationResult.isOk(result, "wake-restore-package");
         } catch (Throwable t) {
             out.append(tagPrefix).append("_PRIMARY_WAKE_BLOCK_RESTORE_ERROR user=")
                     .append(session.userId)
@@ -951,19 +916,13 @@ final class CgroupFreezeUtil {
                     .append(" owner=").append(sanitize(session.owner))
                     .append(" error=").append(sanitize(t.getClass().getSimpleName() + ":" + t.getMessage()))
                     .append('\n');
+            return false;
         }
     }
 
-    private static boolean shouldFinalReleaseThawUid(FreezeSession session) {
-        return session != null && !session.entries.isEmpty() && isPrimaryAppScopeOwner(session.owner);
-    }
 
-    private static boolean shouldDeferProcessObserverRestoreToPrimaryScope(FreezeSession session) {
-        if (session == null || session.entries.isEmpty()) return false;
-        String owner = session.owner == null ? "" : session.owner.trim();
-        if (!owner.startsWith("processObserver")) return false;
-        return hasActivePrimaryAppScopeSession(session.userId, session.packageName, session.token);
-    }
+
+
 
     static String deferProcessObserverTokenToPrimaryScope(int token, int expectedUserId, String expectedPackageName, String reason) {
         return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "deferProcessObserverTokenToPrimaryScope",
@@ -981,7 +940,7 @@ final class CgroupFreezeUtil {
                 .append(" expectedPackage=").append(sanitize(expectedPkg))
                 .append(" reason=").append(sanitize(safeReason))
                 .append('\n');
-        FreezeSession session = SESSIONS.remove(token);
+        FreezeSession session = SESSIONS.get(token);
         if (session == null) {
             session = readPersistentSession(token);
         }
@@ -1020,15 +979,15 @@ final class CgroupFreezeUtil {
                     .append(" elapsedMs=").append(System.currentTimeMillis() - startMs).append('\n');
             return out.toString();
         }
-        boolean stateDeleted = removePersistentToken(token);
-        if (!stateDeleted) SESSIONS.put(token, session);
+        boolean stateDeleted = transferToPrimaryScope(session, out) && removePersistentToken(token);
+        if (!stateDeleted) SESSIONS.put(token, session); else SESSIONS.remove(token);
         out.append("CGROUP_FREEZE_STOP_RESTORE_DEFER_TO_PRIMARY_SCOPE token=").append(token)
                 .append(" user=").append(session.userId)
                 .append(" package=").append(sanitize(session.packageName))
                 .append(" owner=").append(sanitize(session.owner))
                 .append(" entries=").append(session.entries.size())
                 .append(" reason=primary_app_scope_still_active")
-                .append(" mode=process_observer_state_only")
+                .append(" mode=durable_ownership_transfer")
                 .append('\n');
         out.append(stateDeleted ? "CGROUP_FREEZE_STOP_PROCESS_OBSERVER_DEFER_OK" : "CGROUP_FREEZE_STOP_PROCESS_OBSERVER_DEFER_FAILED")
                 .append(" token=").append(token)
@@ -1045,6 +1004,74 @@ final class CgroupFreezeUtil {
         return !activePrimaryAppScopeSessions(userId, packageName, skipToken).isEmpty();
     }
 
+    // Persist the recipient before deleting the donor: a crash can duplicate ownership,
+    // but must never lose the original state of a process frozen by the observer.
+    private static boolean transferToPrimaryScope(FreezeSession donor, StringBuilder out) {
+        List<FreezeSession> recipients = activePrimaryAppScopeSessions(donor.userId, donor.packageName, donor.token);
+        if (recipients.isEmpty()) return false;
+        FreezeSession recipient = recipients.get(0);
+        FreezeSession merged = new FreezeSession();
+        merged.token = recipient.token;
+        merged.userId = recipient.userId;
+        merged.packageName = recipient.packageName;
+        merged.owner = recipient.owner;
+        merged.startedAt = recipient.startedAt;
+        merged.activePrimary = recipient.activePrimary;
+        List<FreezeEntry> candidates = new ArrayList<>(recipient.entries);
+        candidates.addAll(donor.entries);
+        for (FreezeEntry entry : candidates) {
+            int duplicate = -1;
+            for (int i = 0; i < merged.entries.size(); i++) {
+                FreezeEntry previous = merged.entries.get(i);
+                if (previous.pid == entry.pid && previous.uid == entry.uid
+                        && previous.procStartTime == entry.procStartTime
+                        && java.util.Objects.equals(previous.path, entry.path)) { duplicate = i; break; }
+            }
+            if (duplicate >= 0) {
+                FreezeEntry previous = merged.entries.get(duplicate);
+                if (previous.startedAt < entry.startedAt
+                        || (previous.startedAt == entry.startedAt && "0".equals(previous.originalFreeze))) continue;
+            }
+            FreezeEntry copy = decodeEntry(encodeEntry(entry));
+            if (copy == null) return false;
+            copy.token = merged.token;
+            copy.owner = merged.owner;
+            if (duplicate < 0) merged.entries.add(copy); else merged.entries.set(duplicate, copy);
+        }
+        if (!replacePersistentSession(merged, out)) return false;
+        SESSIONS.put(merged.token, merged);
+        out.append("CGROUP_FREEZE_OWNERSHIP_TRANSFER donor=").append(donor.token)
+                .append(" recipient=").append(merged.token).append(" entries=").append(merged.entries.size()).append('\n');
+        return true;
+    }
+
+    private static boolean replacePersistentSession(FreezeSession replacement, StringBuilder out) {
+        File state = new File(STATE_FILE);
+        File temporary = new File(STATE_FILE + ".transfer." + android.os.Process.myPid());
+        try {
+            String raw = state.exists() ? new String(java.nio.file.Files.readAllBytes(state.toPath()), StandardCharsets.UTF_8) : "";
+            try (FileOutputStream stream = new FileOutputStream(temporary, false)) {
+                for (String line : raw.split("\\n")) {
+                    if (line.trim().isEmpty()) continue;
+                    FreezeEntry entry = decodeEntry(line);
+                    if (entry != null && entry.token == replacement.token) continue;
+                    stream.write((line + "\n").getBytes(StandardCharsets.UTF_8));
+                }
+                for (FreezeEntry entry : replacement.entries)
+                    stream.write((encodeEntry(entry) + "\n").getBytes(StandardCharsets.UTF_8));
+                stream.getFD().sync();
+            }
+            if (!temporary.renameTo(state)) throw new java.io.IOException("ownership transfer rename failed");
+            TimelineUtil.syncDirectory(state.getAbsoluteFile().getParentFile());
+            return true;
+        } catch (Throwable failure) {
+            temporary.delete();
+            out.append("CGROUP_FREEZE_OWNERSHIP_TRANSFER_FAILED stateRetained=true error=")
+                    .append(sanitize(failure.toString())).append('\n');
+            return false;
+        }
+    }
+
     private static boolean isPrimaryAppScopeOwner(String owner) {
         String safeOwner = owner == null ? "" : owner.trim();
         return "backup_app_scope".equals(safeOwner) || "restore_app_scope".equals(safeOwner);
@@ -1059,13 +1086,6 @@ final class CgroupFreezeUtil {
         return explicitPid > 0 && isPrimaryAppScopeOwner(owner) ? -1 : explicitPid;
     }
 
-    private static int firstAppUid(FreezeSession session) {
-        if (session == null || session.entries.isEmpty()) return -1;
-        for (FreezeEntry e : session.entries) {
-            if (e != null && e.uid >= 10000) return e.uid;
-        }
-        return -1;
-    }
 
     private static StartPidResult tryNativeFreezePid(FreezeSession session, PidInfo p, int timeoutMs, StringBuilder out) {
         String helper = findNativeHelper();
@@ -1073,7 +1093,7 @@ final class CgroupFreezeUtil {
         long startMs = System.currentTimeMillis();
         StartPidResult result = new StartPidResult();
         try {
-            NativeRun run = runNativeCommand(helper, new String[] {"freeze-pid", String.valueOf(p.pid), String.valueOf(timeoutMs)}, "FREEZE " + p.pid + " " + timeoutMs, timeoutMs + 1200);
+            NativeRun run = runNativeCommand(helper, new String[] {"freeze-pid", String.valueOf(p.pid), String.valueOf(timeoutMs), session.packageName, String.valueOf(session.userId)}, "FREEZE " + p.pid + " " + timeoutMs + " " + session.packageName + " " + session.userId, timeoutMs + 1200);
             out.append("CGROUP_FREEZE_NATIVE_HELPER_FREEZE pid=").append(p.pid)
                     .append(" helper=").append(sanitize(helper))
                     .append(" viaDaemon=").append(run.viaDaemon)
@@ -1083,7 +1103,7 @@ final class CgroupFreezeUtil {
                     .append(" output=").append(sanitize(run.output))
                     .append('\n');
             if (run.timedOut || run.exitCode != 0 || !containsToken(run.output, "ok=true")) {
-                result.reason = "native_helper_failed";
+                result.reason = containsToken(run.output, "noRetry=true") ? "native_freeze_uncertain" : "native_helper_failed";
                 return result;
             }
             String freezePath = valueOfKey(run.output, "path");
@@ -1107,6 +1127,7 @@ final class CgroupFreezeUtil {
             e.originalFreeze = "1".equals(beforeFreeze) ? "1" : "0";
             e.originalFrozen = originallyFrozen ? "1" : "0";
             e.startedAt = session.startedAt;
+            e.procStartTime = nativeStartTime(run.output);
             e.owner = session.owner;
             session.entries.add(e);
             result.ok = true;
@@ -1170,8 +1191,7 @@ final class CgroupFreezeUtil {
             helloBeforeOutput = h.output == null ? "" : h.output;
             if (!h.timedOut && h.exitCode == 0 && helloBeforeOutput.contains("CGFREEZER_DAEMON_HELLO ok=true")) {
                 helloBefore = true;
-                daemonCacheOk = Boolean.TRUE;
-                daemonCacheAt = System.currentTimeMillis();
+                publishDaemonCache(Boolean.TRUE, System.currentTimeMillis());
             }
         } catch (Throwable t) {
             helloBeforeOutput = t.getClass().getSimpleName() + ":" + t.getMessage();
@@ -1180,8 +1200,7 @@ final class CgroupFreezeUtil {
         boolean started = false;
         String caps = "";
         if (!ok) {
-            daemonCacheOk = null;
-            daemonCacheAt = 0L;
+            publishDaemonCache(null, 0L);
             ok = ensureNativeDaemon();
             started = ok;
         }
@@ -1209,6 +1228,51 @@ final class CgroupFreezeUtil {
                 .append(" caps=").append(sanitize(caps))
                 .append('\n');
         return new OperationResult("cgroup-daemon-ensure", ok).appendTo(out.toString());
+    }
+
+    static synchronized List<Integer> ownedPids(int token) {
+        List<Integer> pids = new ArrayList<>();
+        FreezeSession session = SESSIONS.get(token);
+        if (session != null) for (FreezeEntry entry : session.entries) if (entry.pid > 0) pids.add(entry.pid);
+        return pids;
+    }
+
+    private static long nativeStartTime(String output) {
+        try { return Long.parseLong(valueOfKey(output, "startTime")); }
+        catch (NumberFormatException invalid) { return -1; }
+    }
+
+    private static long procStartTime(int pid) {
+        try {
+            String stat = new String(java.nio.file.Files.readAllBytes(new File("/proc/" + pid + "/stat").toPath()), java.nio.charset.StandardCharsets.UTF_8);
+            return Long.parseLong(stat.substring(stat.lastIndexOf(')') + 2).split("\\s+")[19]);
+        } catch (Exception e) { return -1; }
+    }
+
+    static synchronized boolean isOwnedPidFrozen(int user, String pkg, int pid) {
+        for (FreezeSession session : SESSIONS.values()) {
+            if (session.userId != user || !pkg.equals(session.packageName)) continue;
+            for (FreezeEntry entry : session.entries) {
+                if (entry.pid != pid || entry.procStartTime <= 0 || entry.procStartTime != procStartTime(pid)) continue;
+                if (readStatusUid(pid) != entry.uid || !isPackageProcess(readProcCmdline(pid), pkg)) continue;
+                if (isV1FreezerPath(entry.path)) return false; // Let native revalidate v1 membership.
+                try { return "1".equals(normalizeFreezeValue(readFileTrim(new File(entry.path), 64)))
+                        && "1".equals(parseEventsValue(readFileTrim(eventsFileForFreezePath(entry.path), 4096), "frozen")); }
+                catch (Exception ignored) { return false; }
+            }
+        }
+        return false;
+    }
+
+    static boolean resumePackagePids(int user, String pkg, String csv) {
+        if (!csv.matches("[0-9]+(?:,[0-9]+)*")) return false;
+        String helper = findNativeHelper();
+        if (helper == null) return false;
+        try {
+            NativeRun result = runNativeCommand(helper, new String[]{"resume-pids", pkg, String.valueOf(user), csv},
+                    "RESUME_PIDS " + pkg + " " + user + " " + csv, 1500);
+            return result.exitCode == 0 && containsToken(result.output, "ok=true");
+        } catch (Exception e) { return false; }
     }
 
     static String killPackage(int userId, String packageName, int eventPid,
@@ -1325,7 +1389,7 @@ final class CgroupFreezeUtil {
         return ensureNativeDaemon() ? DAEMON_SOCKET : null;
     }
 
-    private static String findNativeHelper() {
+    private static synchronized String findNativeHelper() {
         long now = System.currentTimeMillis();
         if (helperCacheAt > 0 && now - helperCacheAt >= 0 && now - helperCacheAt < HELPER_CACHE_TTL_MS) {
             return helperCachePath;
@@ -1346,51 +1410,90 @@ final class CgroupFreezeUtil {
     }
 
 
+    private static synchronized void publishDaemonCache(Boolean ok, long at) {
+        daemonCacheOk = ok;
+        daemonCacheAt = at;
+        daemonCacheGeneration++;
+    }
+
+    private static synchronized void invalidateDaemonCache(long generation) {
+        // An older failed request must not discard a newer successful startup.
+        if (generation == daemonCacheGeneration) publishDaemonCache(Boolean.FALSE, System.currentTimeMillis());
+    }
+
     private static NativeRun runNativeCommand(String helper, String[] helperArgs, String daemonCommand, int timeoutMs) throws Exception {
-        if (ensureNativeDaemon()) {
+        final boolean ready;
+        final long generation;
+        synchronized (CgroupFreezeUtil.class) {
+            ready = ensureNativeDaemon();
+            generation = daemonCacheGeneration;
+        }
+        // Only lifecycle/cache work is newly serialized; do not hold its monitor
+        // around an otherwise independent socket request or native fallback.
+        if (ready) {
             try {
                 NativeRun daemonRun = runNativeDaemonCommand(daemonCommand, timeoutMs);
                 if (!daemonRun.timedOut && daemonRun.exitCode == 0 && daemonRun.output != null && daemonRun.output.trim().length() > 0) {
                     daemonRun.viaDaemon = true;
                     return daemonRun;
                 }
-            } catch (Throwable ignored) {
-                daemonCacheOk = Boolean.FALSE;
-                daemonCacheAt = System.currentTimeMillis();
-            }
+            } catch (Throwable ignored) {}
+            // Empty/nonzero/timeout replies are transport failures too. Do not
+            // leave the batch-pinned hot path pointing at a dead daemon.
+            invalidateDaemonCache(generation);
+            return uncertainDaemonResult(daemonCommand);
         }
-        return runNativeHelper(helper, helperArgs, timeoutMs);
+        // A failed HELLO/transport does not prove its native worker exited.
+        // Never overlap it with a CLI mutation; recover through the daemon.
+        synchronized (CgroupFreezeUtil.class) {
+            if (daemonMayHaveWorkers) return uncertainDaemonResult(daemonCommand);
+            return runNativeHelper(helper, helperArgs, timeoutMs);
+        }
     }
 
-    static boolean ensureNativeDaemon() {
+    private static NativeRun uncertainDaemonResult(String command) {
+        NativeRun r = new NativeRun();
+        r.exitCode = 75;
+        r.timedOut = true;
+        r.viaDaemon = true;
+        r.output = "CGFREEZER_COMMAND_UNCERTAIN noRetry=true command=" + command.split(" ", 2)[0];
+        return r;
+    }
+
+    static synchronized boolean ensureNativeDaemon() {
         long now = System.currentTimeMillis();
         if (daemonCacheOk != null && Boolean.TRUE.equals(daemonCacheOk) && batchDaemonPinned) {
             return true;
         }
-        if (daemonCacheOk != null && now - daemonCacheAt >= 0 && now - daemonCacheAt < DAEMON_CACHE_TTL_MS) {
+        if (daemonCacheOk != null && now - daemonCacheAt >= 0 && now - daemonCacheAt < (Boolean.TRUE.equals(daemonCacheOk) ? DAEMON_CACHE_TTL_MS : DAEMON_RETRY_MS)) {
             return Boolean.TRUE.equals(daemonCacheOk);
         }
         try {
             NativeRun hello = runNativeDaemonCommand("HELLO", 600);
             if (!hello.timedOut && hello.output.contains("CGFREEZER_DAEMON_HELLO ok=true")) {
-                daemonCacheOk = Boolean.TRUE;
-                daemonCacheAt = now;
+                daemonMayHaveWorkers = true;
+                publishDaemonCache(Boolean.TRUE, now);
                 return true;
             }
         } catch (Throwable ignored) {}
+        if (daemonStartingProcess != null && daemonStartingProcess.isAlive()) {
+            publishDaemonCache(Boolean.FALSE, now);
+            return false;
+        }
         String helper = findNativeHelper();
         if (helper == null || helper.isEmpty()) {
-            daemonCacheOk = Boolean.FALSE;
-            daemonCacheAt = now;
+            publishDaemonCache(Boolean.FALSE, now);
             return false;
         }
         try {
             ProcessBuilder pb = new ProcessBuilder(helper, "daemon", DAEMON_SOCKET);
             pb.redirectErrorStream(true);
-            daemonProcess = pb.start();
+            final Process started = pb.start();
+            daemonStartingProcess = started;
+            daemonMayHaveWorkers = true;
             // Drain daemon stdout/stderr so its pipe does not block.
             Thread drainer = new Thread(() -> {
-                try (InputStream in = daemonProcess.getInputStream()) {
+                try (InputStream in = started.getInputStream()) {
                     byte[] buf = new byte[512];
                     while (in.read(buf) >= 0) {}
                 } catch (Throwable ignored) {}
@@ -1402,15 +1505,13 @@ final class CgroupFreezeUtil {
                 try {
                     NativeRun hello = runNativeDaemonCommand("HELLO", 600);
                     if (!hello.timedOut && hello.output.contains("CGFREEZER_DAEMON_HELLO ok=true")) {
-                        daemonCacheOk = Boolean.TRUE;
-                        daemonCacheAt = System.currentTimeMillis();
+                        publishDaemonCache(Boolean.TRUE, System.currentTimeMillis());
                         return true;
                     }
                 } catch (Throwable ignored) {}
             }
         } catch (Throwable ignored) {}
-        daemonCacheOk = Boolean.FALSE;
-        daemonCacheAt = System.currentTimeMillis();
+        publishDaemonCache(Boolean.FALSE, System.currentTimeMillis());
         return false;
     }
 
@@ -1521,6 +1622,16 @@ final class CgroupFreezeUtil {
     }
 
 
+    private static boolean definitelyAbsent(File path) {
+        if (path == null) return false;
+        try {
+            java.nio.file.Files.readAttributes(path.toPath(), java.nio.file.attribute.BasicFileAttributes.class,
+                    java.nio.file.LinkOption.NOFOLLOW_LINKS);
+            return false;
+        } catch (java.nio.file.NoSuchFileException missing) { return true; }
+        catch (Exception unavailable) { return false; }
+    }
+
     private static StopStats restoreSession(FreezeSession session, int timeoutMs, StringBuilder out, String tagPrefix) {
         StopStats stats = new StopStats();
         List<FreezeEntry> ordered = new ArrayList<>(session.entries);
@@ -1528,22 +1639,40 @@ final class CgroupFreezeUtil {
         for (FreezeEntry e : ordered) {
             boolean v1Entry = isV1FreezerPath(e.path);
             File f = new File(e.path == null ? "" : e.path);
-            if (!v1Entry && !f.exists()) {
-                stats.missingPath++;
-                out.append(tagPrefix).append("_RESTORE_PATH_MISSING pid=").append(e.pid)
-                        .append(" path=").append(sanitize(e.path))
-                        .append(" original=").append(sanitize(e.originalFreeze))
-                        .append(" ok=true reason=process_gone\n");
-                continue;
-            }
             try {
                 String target = "1".equals(e.originalFreeze) ? "1" : "0";
+                if (e.pid > 0 && new File("/proc/" + e.pid).exists()) {
+                    long currentStart = procStartTime(e.pid);
+                    int currentUid = readStatusUid(e.pid);
+                    if (e.procStartTime <= 0 || currentStart <= 0 || currentUid < 0) {
+                        stats.failed++;
+                        out.append(tagPrefix).append("_RESTORE_FAILED reason=identity_unavailable stateRetained=true\n");
+                        continue;
+                    }
+                    if (e.procStartTime != currentStart || e.uid != currentUid) {
+                        stats.missingPath++;
+                        out.append(tagPrefix).append("_RESTORE_ORIGINAL_PROCESS_GONE reason=identity_changed mutation=false\n");
+                        continue;
+                    }
+                }
+                if (!v1Entry && !f.exists()) {
+                    boolean gone = e.pid > 0 ? definitelyAbsent(new File("/proc/" + e.pid))
+                            : definitelyAbsent(f.getParentFile());
+                    if (gone && definitelyAbsent(f)) {
+                        stats.missingPath++;
+                        out.append(tagPrefix).append("_RESTORE_PATH_MISSING ok=true reason=original_scope_gone\n");
+                    } else {
+                        stats.failed++;
+                        out.append(tagPrefix).append("_RESTORE_PATH_UNAVAILABLE ok=false stateRetained=true\n");
+                    }
+                    continue;
+                }
                 Boolean nativeOk = tryNativeRestorePath(e, target, timeoutMs, out, tagPrefix);
                 if (Boolean.TRUE.equals(nativeOk)) {
                     stats.restored++;
                     continue;
                 }
-                if (v1Entry) {
+                if (!(e.pid < 0 && "timeline".equals(e.owner))) {
                     stats.failed++;
                     out.append(tagPrefix).append("_RESTORE_FAIL_V1_NATIVE_REQUIRED pid=").append(e.pid)
                             .append(" path=").append(sanitize(e.path))
@@ -1696,13 +1825,13 @@ final class CgroupFreezeUtil {
     private static List<PidInfo> findPackagePids(String pkg, int userId, StringBuilder out) {
         List<PidInfo> nativeResult = tryNativeScanPackage(pkg, userId, out);
         if (nativeResult != null) return nativeResult;
-        return findPackagePidsJava(pkg);
+        return findPackagePidsJava(pkg, userId);
     }
 
-    private static List<PidInfo> findPackagePidsJava(String pkg) {
+    private static List<PidInfo> findPackagePidsJava(String pkg, int userId) {
         List<PidInfo> result = new ArrayList<>();
         File[] entries = new File("/proc").listFiles();
-        if (entries == null) return result;
+        if (entries == null) throw new IllegalStateException("Process inventory unavailable");
         for (File entry : entries) {
             String name = entry.getName();
             if (!isDigits(name)) continue;
@@ -1714,6 +1843,11 @@ final class CgroupFreezeUtil {
             info.pid = pid;
             info.cmdline = cmdline;
             info.uid = readStatusUid(pid);
+            if (info.uid < 0) {
+                if (entry.exists()) throw new IllegalStateException("Process UID unavailable: " + pid);
+                continue;
+            }
+            if (userIdFromUid(info.uid) != userId) continue;
             result.add(info);
         }
         return result;
@@ -1721,7 +1855,7 @@ final class CgroupFreezeUtil {
     private static PidInfo explicitPidInfo(String pkg, int userId, int pid, StringBuilder out) {
         String cmdline = readProcCmdline(pid);
         int uid = readStatusUid(pid);
-        boolean userOk = uid < 0 || userIdFromUid(uid) == userId;
+        boolean userOk = uid >= 0 && userIdFromUid(uid) == userId;
         boolean pkgOk = isPackageProcess(cmdline, pkg);
         if (out != null) {
             out.append("CGROUP_FREEZE_EXPLICIT_PID_CHECK pid=").append(pid)
@@ -1760,7 +1894,8 @@ final class CgroupFreezeUtil {
             if (run.timedOut || run.exitCode != 0 || !containsToken(run.output, "CGFREEZER_SCAN_DONE ok=true")) return null;
             String csv = valueOfKey(run.output, "pids");
             List<PidInfo> parsed = parseNativePidCsv(csv);
-            return parsed == null ? null : parsed;
+            int expected = parseInt(valueOfKey(run.output, "count"), -1);
+            return parsed != null && expected == parsed.size() ? parsed : null;
         } catch (Throwable t) {
             if (out != null) {
                 out.append("CGROUP_FREEZE_NATIVE_HELPER_SCAN_ERROR package=").append(sanitize(pkg))
@@ -1912,6 +2047,7 @@ final class CgroupFreezeUtil {
                     fos.write('\n');
                 }
                 fos.flush();
+                fos.getFD().sync();
             }
             return true;
         } catch (Throwable t) {
@@ -1922,17 +2058,11 @@ final class CgroupFreezeUtil {
     }
 
     private static FreezeSession readPersistentSession(int token) {
-        List<FreezeSession> all = readAllPersistentSessions();
+        List<FreezeSession> all = readAllPersistentSessions(new StringBuilder());
         for (FreezeSession s : all) if (s.token == token) return s;
         return null;
     }
 
-    private static List<Integer> readAllPersistentTokens() {
-        List<FreezeSession> sessions = readAllPersistentSessions();
-        List<Integer> tokens = new ArrayList<>();
-        for (FreezeSession s : sessions) tokens.add(s.token);
-        return tokens;
-    }
 
     private static List<Integer> readPersistentTokensForPackage(int userId, String pkg) {
         List<FreezeSession> sessions = readAllPersistentSessions();
@@ -1944,15 +2074,26 @@ final class CgroupFreezeUtil {
     }
 
     private static List<FreezeSession> readAllPersistentSessions() {
+        return readAllPersistentSessions(null);
+    }
+
+    // Recovery can process independent valid rows while retaining every corrupt row.
+    // Normal start/ownership queries stay strict: unknown ownership must not permit freezing.
+    private static List<FreezeSession> readAllPersistentSessions(StringBuilder diagnostics) {
         Map<Integer, FreezeSession> map = new HashMap<>();
         File state = new File(STATE_FILE);
         if (!state.exists()) return new ArrayList<>();
         try {
-            String raw = readFileTrim(state, 1024 * 1024);
+            String raw = new String(java.nio.file.Files.readAllBytes(state.toPath()), java.nio.charset.StandardCharsets.UTF_8);
             String[] lines = raw.split("\\n");
             for (String line : lines) {
                 FreezeEntry e = decodeEntry(line);
-                if (e == null) continue;
+                if (line.trim().isEmpty()) continue;
+                if (e == null) {
+                    if (diagnostics == null) throw new java.io.IOException("Malformed freeze state");
+                    diagnostics.append("CGROUP_FREEZE_STATE_INVALID stateRetained=true\n");
+                    continue;
+                }
                 FreezeSession s = map.get(e.token);
                 if (s == null) {
                     s = new FreezeSession();
@@ -1965,7 +2106,8 @@ final class CgroupFreezeUtil {
                 }
                 s.entries.add(e);
             }
-        } catch (Throwable ignored) {
+        } catch (Exception e) {
+            throw new IllegalStateException("Freeze recovery state unreadable; retained", e);
         }
         return new ArrayList<>(map.values());
     }
@@ -1976,25 +2118,28 @@ final class CgroupFreezeUtil {
         File tmp = new File(STATE_FILE + ".tmp." + android.os.Process.myPid() + "." + System.currentTimeMillis());
         boolean wrote = false;
         try {
-            String raw = readFileTrim(state, 1024 * 1024);
+            String raw = new String(java.nio.file.Files.readAllBytes(state.toPath()), java.nio.charset.StandardCharsets.UTF_8);
             try (FileOutputStream fos = new FileOutputStream(tmp, false)) {
                 String[] lines = raw.split("\\n");
                 for (String line : lines) {
                     FreezeEntry e = decodeEntry(line);
-                    if (e == null || e.token == token) continue;
+                    if (line.trim().isEmpty()) continue;
+                    // Never discard an unidentified recovery row. It remains visible to
+                    // strict readers and makes aggregate cleanup report incomplete.
+                    if (e != null && e.token == token) continue;
                     fos.write(line.getBytes());
                     fos.write('\n');
                     wrote = true;
                 }
                 fos.flush();
+                fos.getFD().sync();
             }
             if (wrote) {
                 if (!tmp.renameTo(state)) {
-                    copyFile(tmp, state);
-                    tmp.delete();
+                    throw new java.io.IOException("Atomic state replacement failed");
                 }
             } else {
-                state.delete();
+                if (!state.delete() && state.exists()) throw new java.io.IOException("State deletion failed");
                 tmp.delete();
             }
             return true;
@@ -2007,7 +2152,7 @@ final class CgroupFreezeUtil {
     private static String encodeEntry(FreezeEntry e) {
         return e.token + "\t" + e.userId + "\t" + safeWord(e.packageName) + "\t" + e.pid + "\t" + e.uid + "\t"
                 + e.startedAt + "\t" + safeWord(e.owner) + "\t" + safeWord(e.originalFreeze) + "\t"
-                + safeWord(e.originalFrozen) + "\t" + encodeField(e.path) + "\t" + encodeField(e.processName);
+                + safeWord(e.originalFrozen) + "\t" + encodeField(e.path) + "\t" + encodeField(e.processName) + "\t" + e.procStartTime;
     }
 
     private static FreezeEntry decodeEntry(String line) {
@@ -2027,6 +2172,7 @@ final class CgroupFreezeUtil {
             e.originalFrozen = p[8];
             e.path = decodeField(p[9]);
             e.processName = decodeField(p[10]);
+            e.procStartTime = p.length > 11 ? Long.parseLong(p[11]) : 0;
             return e;
         } catch (Throwable ignored) {
             return null;
@@ -2043,14 +2189,7 @@ final class CgroupFreezeUtil {
         return raw.replace("%0D", "\r").replace("%0A", "\n").replace("%09", "\t").replace("%25", "%");
     }
 
-    private static void copyFile(File src, File dst) throws Exception {
-        try (FileInputStream in = new FileInputStream(src); FileOutputStream out = new FileOutputStream(dst, false)) {
-            byte[] buf = new byte[4096];
-            int n;
-            while ((n = in.read(buf)) >= 0) out.write(buf, 0, n);
-            out.flush();
-        }
-    }
+
 
     private static File eventsFileForFreezePath(String freezePath) {
         File freeze = new File(freezePath == null ? "" : freezePath);
@@ -2123,7 +2262,8 @@ final class CgroupFreezeUtil {
             int nul = value.indexOf('\0');
             if (nul >= 0) value = value.substring(0, nul);
             return value.trim();
-        } catch (Throwable ignored) {
+        } catch (Exception failure) {
+            if (new File("/proc/" + pid).exists()) throw new IllegalStateException("Process cmdline unavailable: " + pid, failure);
             return "";
         }
     }
@@ -2280,6 +2420,8 @@ final class CgroupFreezeUtil {
     }
 
     private static final class FreezeSession {
+        // Process-local liveness only: never serialized or inferred from recovery.
+        boolean activePrimary;
         int token;
         int userId;
         String packageName;
@@ -2299,10 +2441,12 @@ final class CgroupFreezeUtil {
         String originalFreeze;
         String originalFrozen;
         long startedAt;
+        long procStartTime;
         String owner;
     }
 
     private static final class NativePackageFreezeResult {
+        boolean noRetry;
         boolean accepted;
         int checked;
         int frozen;

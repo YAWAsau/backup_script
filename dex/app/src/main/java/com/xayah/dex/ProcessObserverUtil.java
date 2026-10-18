@@ -91,7 +91,7 @@ final class ProcessObserverUtil {
         if (run != null && run.length() > 0) return run;
         String tmp = System.getenv("TMPDIR");
         if (tmp != null && tmp.contains(".speedbackup_run_") && tmp.length() > 0) return tmp;
-        return "/data/local/tmp/.speedbackup_run_dex_" + android.os.Process.myPid();
+        return GuardLifecycle.fallbackRunDirectory();
     }
 
     private static String scopedPath(String envName, String name) {
@@ -115,16 +115,10 @@ final class ProcessObserverUtil {
             }
             session.startTarget();
             session.await();
-            synchronized (ProcessObserverUtil.class) {
-                SESSIONS.remove(token);
-            }
-            return session.finish("timeout");
+            return finishRetainingOwnership(token, session, "timeout");
         } catch (Throwable t) {
-            synchronized (ProcessObserverUtil.class) {
-                SESSIONS.remove(token);
-            }
             if (session != null) {
-                try { return session.finish("error:" + t.getClass().getSimpleName() + ":" + sanitize(t.getMessage())); } catch (Throwable ignored) {}
+                try { return finishRetainingOwnership(token, session, "error:" + t.getClass().getSimpleName() + ":" + sanitize(t.getMessage())); } catch (Throwable ignored) {}
             }
             return "PROCESS_OBSERVER_WATCH_FAILED exception=" + sanitize(t.getClass().getName())
                     + " message=" + sanitize(t.getMessage()) + "\n";
@@ -148,13 +142,25 @@ final class ProcessObserverUtil {
                     + " lifecycle=global-target"
                     + " log=" + sanitize(logPath) + "\n");
         } catch (Throwable t) {
-            SESSIONS.remove(token);
             if (session != null) {
-                try { session.finish("start-failed:" + t.getClass().getSimpleName()); } catch (Throwable ignored) {}
+                try { finishRetainingOwnership(token, session, "start-failed:" + t.getClass().getSimpleName()); } catch (Throwable ignored) {}
             }
             return new OperationResult("observer-start", false).token(token).appendTo("PROCESS_OBSERVER_START_FAILED exception=" + sanitize(t.getClass().getName())
                     + " message=" + sanitize(t.getMessage()) + "\n");
         }
+    }
+
+    private static String finishRetainingOwnership(int token, WatchSession session, String reason) {
+        String result = session.finish(reason);
+        boolean complete;
+        synchronized (session) { complete = session.wakeBlockToken <= 0 && session.cgroupFreezeTokens.isEmpty(); }
+        if (complete) {
+            synchronized (ProcessObserverUtil.class) {
+                if (SESSIONS.get(token) == session) SESSIONS.remove(token);
+            }
+            deleteBatchState(token);
+        }
+        return result;
     }
 
     static synchronized void stopOwnedSessions() {
@@ -174,14 +180,16 @@ final class ProcessObserverUtil {
                     && !existing.packageName.equals(expectedPackageName)))) {
             return "PROCESS_OBSERVER_STOP_REJECTED token=" + token + " stateRetained=true reason=identity_mismatch\n";
         }
-        WatchSession session = SESSIONS.remove(token);
+        WatchSession session = SESSIONS.get(token);
         if (session == null) {
             return "PROCESS_OBSERVER_STOP_MISSING token=" + token
                     + " expectedUser=" + expectedUserId
                     + " expectedPackage=" + safePackage(expectedPackageName) + "\n"
                     + AppWakeBlockUtil.restorePersistedObserverToken(token, "process-observer-stop-missing-" + token, expectedUserId, expectedPackageName);
         }
-        return session.finish("stop-token-" + token);
+        String result = session.finish("stop-token-" + token);
+        if (session.wakeBlockToken <= 0 && session.cgroupFreezeTokens.isEmpty()) SESSIONS.remove(token);
+        return result;
     }
 
 
@@ -259,7 +267,7 @@ final class ProcessObserverUtil {
                     if (pkg.isEmpty() || !pkg.matches("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) continue;
                     if (!seen.add(pkg)) continue;
                     requested++;
-                    if (isSpeedBackupSelfPackage(pkg)) {
+                    if (isSpeedBackupSelfPackage(pkg, opts.termuxNonHost)) {
                         out.append("PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_SKIP package=").append(pkg)
                                 .append(" label=").append(sanitize(label)).append(" reason=self\n");
                         factsRows += appendRestoreSessionFactRow(factsOut, realPm, pmHidden, userId, "PKG", "RESTORE", pkg, label, "none", "skip:self", "compare-map");
@@ -286,6 +294,7 @@ final class ProcessObserverUtil {
                         SESSIONS.put(token, session);
                         session.startTarget();
                         boolean stateOk = persistBatchState(token, userId, pkg, label, decision.action, commonLogPath, "restore-session-direct-start:" + decision.reason);
+                        if (!stateOk) throw new IllegalStateException("batch_state_persist_failed");
                         started++;
                         if (pkgsOut != null) pkgsOut.println(pkg + "\t" + label + "\t" + decision.action + "\t" + decision.reason);
                         out.append("PROCESS_OBSERVER_BATCH_START_ITEM token=").append(token)
@@ -300,10 +309,8 @@ final class ProcessObserverUtil {
                                 .append(" log=").append(sanitize(commonLogPath)).append('\n');
                     } catch (Throwable t) {
                         failed++;
-                        SESSIONS.remove(token);
-                        deleteBatchState(token);
                         if (session != null) {
-                            try { session.finish("restore-session-direct-start-failed:" + t.getClass().getSimpleName()); } catch (Throwable ignored) {}
+                            try { finishRetainingOwnership(token, session, "restore-session-direct-start-failed:" + t.getClass().getSimpleName()); } catch (Throwable ignored) {}
                         }
                         out.append("PROCESS_OBSERVER_BATCH_START_ITEM_FAILED index=").append(requested)
                                 .append(" package=").append(pkg)
@@ -356,6 +363,7 @@ final class ProcessObserverUtil {
     private static final class RestoreSessionPolicyOptions {
         String raw = "smart";
         String base = "smart";
+        boolean termuxNonHost = false;
         boolean defaultHomeEnabled = true;
         boolean defaultImeEnabled = true;
         final Set<String> hardFreeze = new HashSet<>();
@@ -389,7 +397,8 @@ final class ProcessObserverUtil {
             int eq = part.indexOf('=');
             String k = eq >= 0 ? part.substring(0, eq).trim().toLowerCase(Locale.US) : part.toLowerCase(Locale.US);
             String v = eq >= 0 ? part.substring(eq + 1).trim() : "1";
-            if ("home".equals(k) || "default_home".equals(k)) opts.defaultHomeEnabled = optionEnabled(v);
+            if ("termux_nonhost".equals(k)) opts.termuxNonHost = "1".equals(v);
+            else if ("home".equals(k) || "default_home".equals(k)) opts.defaultHomeEnabled = optionEnabled(v);
             else if ("ime".equals(k) || "default_ime".equals(k)) opts.defaultImeEnabled = optionEnabled(v);
             else if ("hard".equals(k) || "hardfreeze".equals(k) || "hard_freeze".equals(k) || "highrisk".equals(k)) {
                 for (String p : v.split("[, ]+")) {
@@ -554,12 +563,14 @@ final class ProcessObserverUtil {
         return a.isEmpty() || "none".equals(a) || "off".equals(a) || "disable".equals(a) || "disabled".equals(a);
     }
 
-    private static boolean isSpeedBackupSelfPackage(String pkg) {
-        return "bin.mt.plus".equals(pkg) || "bin.mt.plus.canary".equals(pkg) || "com.termux".equals(pkg);
+    private static boolean isSpeedBackupSelfPackage(String pkg, boolean termuxNonHost) {
+        return "bin.mt.plus".equals(pkg) || "bin.mt.plus.canary".equals(pkg)
+                || ("com.termux".equals(pkg) && !termuxNonHost);
     }
 
     private static boolean isRestoreHardFreezePackage(String pkg) {
-        return "com.tencent.mm".equals(pkg)
+        return "com.google.android.googlequicksearchbox".equals(pkg)
+                || "com.tencent.mm".equals(pkg)
                 || "com.tencent.mobileqq".equals(pkg)
                 || "com.tencent.tim".equals(pkg)
                 || "com.tencent.wework".equals(pkg)
@@ -633,6 +644,7 @@ final class ProcessObserverUtil {
                     SESSIONS.put(token, session);
                     session.startTarget();
                     boolean stateOk = persistBatchState(token, userId, pkg, label, action, logPath, "start-ok");
+                        if (!stateOk) throw new IllegalStateException("batch_state_persist_failed");
                     started++;
                     out.append("PROCESS_OBSERVER_BATCH_START_ITEM token=").append(token)
                             .append(" user=").append(userId)
@@ -645,10 +657,8 @@ final class ProcessObserverUtil {
                             .append(" log=").append(sanitize(logPath)).append('\n');
                 } catch (Throwable t) {
                     failed++;
-                    SESSIONS.remove(token);
-                    deleteBatchState(token);
                     if (session != null) {
-                        try { session.finish("batch-start-failed:" + t.getClass().getSimpleName()); } catch (Throwable ignored) {}
+                        try { finishRetainingOwnership(token, session, "batch-start-failed:" + t.getClass().getSimpleName()); } catch (Throwable ignored) {}
                     }
                     out.append("PROCESS_OBSERVER_BATCH_START_ITEM_FAILED index=").append(requested)
                             .append(" package=").append(pkg)
@@ -740,8 +750,8 @@ final class ProcessObserverUtil {
                         throw new java.io.IOException("batch token identity mismatch");
                     String summary = session.finish("batch-stop-token-" + token);
                     long stopMs = Math.max(0L, System.currentTimeMillis() - stopT0);
-                    SESSIONS.remove(token);
                     if (!BackupGuardRelease.observerRestored(summary)) throw new java.io.IOException("batch guard restore incomplete");
+                    SESSIONS.remove(token);
                     boolean deleted = deleteBatchState(token);
                     if (deleted) {
                         stopped++;
@@ -905,14 +915,21 @@ final class ProcessObserverUtil {
         int total = 0;
         int stale = 0;
         int restored = 0;
-        int retained = 0;
+        int retained = files == null ? 1 : 0;
+        if (files == null) out.append("PROCESS_OBSERVER_BATCH_SCAN_FAILED stateRetained=true\n");
         if (files != null) {
             for (File f : files) {
                 if (f == null || !f.isFile() || !f.getName().endsWith(".properties")) continue;
                 total++;
                 Properties p = readBatchState(f);
                 int token = parsePositiveInt(p.getProperty("token", ""), -1);
-                int userId = parsePositiveInt(p.getProperty("user", ""), -1);
+                int userId;
+                try { userId = Integer.parseInt(p.getProperty("user", "-1")); } catch (NumberFormatException e) { userId = -1; }
+                if (userId < 0 || token <= 0 || pkgInvalid(p.getProperty("package", ""))) {
+                    retained++;
+                    out.append("PROCESS_OBSERVER_BATCH_STATE_INVALID path=").append(sanitize(f.getAbsolutePath())).append(" stateRetained=true\n");
+                    continue;
+                }
                 String pkg = safePackage(p.getProperty("package", ""));
                 long updatedAt = parseLongLocal(p.getProperty("updatedAt", ""), f.lastModified());
                 long ageMs = Math.max(0L, now - updatedAt);
@@ -945,7 +962,8 @@ final class ProcessObserverUtil {
                     .append(" dirDeleted=").append(dirDeleted)
                     .append(" reason=").append(sanitize(reason)).append('\n');
         }
-        return out.toString();
+        return new OperationResult("observer-cleanup", retained == 0)
+                .counts(restored + retained, restored, 0, retained, 0).appendTo(out);
     }
 
     private static BatchSafetyResult restoreBatchSafetyNet(int token, int userId, String pkg, String reason) {
@@ -957,8 +975,8 @@ final class ProcessObserverUtil {
         try { cgroup = CgroupFreezeUtil.restorePersistedPackage(userId, safePkg, reason); } catch (Throwable t) { cgroup = "CGROUP_FREEZE_PERSISTENT_RESTORE_PACKAGE_FAILED exception=" + sanitize(t.getClass().getName()) + " message=" + sanitize(t.getMessage()) + "\n"; }
         out.append(sanitizeMultiLineLocal(wake)).append('\n');
         out.append(sanitizeMultiLineLocal(cgroup)).append('\n');
-        boolean wakeOk = restoreMissingOrDeleted(wake);
-        boolean cgroupOk = cgroupRestoreOk(cgroup);
+        boolean wakeOk = OperationResult.isOk(wake, "wake-restore-observer");
+        boolean cgroupOk = OperationResult.isOk(cgroup, "cgroup-restore-package");
         boolean restoreOk = wakeOk && cgroupOk;
         boolean stateDeleted = restoreOk && deleteBatchState(token);
         out.append("PROCESS_OBSERVER_BATCH_SAFETY_RESTORE token=").append(token)
@@ -972,16 +990,6 @@ final class ProcessObserverUtil {
         return new BatchSafetyResult(restoreOk, stateDeleted, out.toString());
     }
 
-    private static boolean restoreMissingOrDeleted(String text) {
-        String s = text == null ? "" : text;
-        return s.contains("PERSISTENT_RESTORE_MISSING") || s.contains("stateDeleted=true") || s.contains("RESTORE_DONE") || s.contains("STOP_OK") || s.contains("STOP_DONE");
-    }
-
-    private static boolean cgroupRestoreOk(String text) {
-        String s = text == null ? "" : text;
-        if (s.contains("fail=") && !s.contains("fail=0")) return false;
-        return s.contains("CGROUP_FREEZE_PERSISTENT_RESTORE_PACKAGE_DONE") || s.contains("PERSISTENT_RESTORE_MISSING") || s.contains("stateDeleted=true") || s.contains("tokens=0");
-    }
 
     private static long parseLongLocal(String raw, long fallback) {
         try { return Long.parseLong(raw == null ? "" : raw.trim()); } catch (Throwable ignored) { return fallback; }
@@ -1021,16 +1029,7 @@ final class ProcessObserverUtil {
 
     static boolean resumePausedPids(int userId, String pkg, String csv) {
         if (csv.equals("-")) return true;
-        java.util.HashSet<Integer> live = new java.util.HashSet<>();
-        for (PidInfo p : findAliveProcesses(userId, pkg, -1)) live.add(p.pid);
-        boolean ok = true;
-        for (String raw : csv.split(",")) {
-            int pid = Integer.parseInt(raw);
-            if (!live.contains(pid)) continue; // Exited or reused PID must never receive SIGCONT.
-            try { android.system.Os.kill(pid, android.system.OsConstants.SIGCONT); }
-            catch (android.system.ErrnoException e) { if (e.errno != android.system.OsConstants.ESRCH) ok = false; }
-        }
-        return ok;
+        return CgroupFreezeUtil.resumePackagePids(userId, pkg, csv);
     }
 
     static String wchanStatus(int userId, String packageName, String expect) {
@@ -1456,7 +1455,7 @@ final class ProcessObserverUtil {
         if (durationMs < 100) durationMs = 100;
         if (durationMs > 5000) durationMs = 5000;
         int uid = pkg.isEmpty() ? -1 : resolveTargetUid(userId, pkg);
-        StringBuilder out = new StringBuilder();
+        StringBuffer out = new StringBuffer();
         out.append("UID_OBSERVER_WATCH_BEGIN")
                 .append(" user=").append(userId)
                 .append(" package=").append(pkg)
@@ -1482,13 +1481,15 @@ final class ProcessObserverUtil {
             }
             try { Thread.sleep(durationMs); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
         } catch (Throwable t) {
-            out.append("UID_OBSERVER_WATCH_ERROR exception=").append(sanitize(t.getClass().getName()))
-                    .append(" message=").append(sanitize(t.getMessage())).append('\n');
+            synchronized (out) { out.append("UID_OBSERVER_WATCH_ERROR exception=").append(sanitize(t.getClass().getName()))
+                    .append(" message=").append(sanitize(t.getMessage())).append('\n'); }
         } finally {
             if (registered) {
                 try { HiddenApiReflection.invokeFlexible(HiddenApiServices.activity(), "unregisterUidObserver", observer); } catch (Throwable ignored) {}
             }
         }
+        synchronized (log) {
+            log.closed = true;
         out.append("UID_OBSERVER_WATCH_DONE ok=").append(registered)
                 .append(" user=").append(userId)
                 .append(" package=").append(pkg)
@@ -1498,6 +1499,7 @@ final class ProcessObserverUtil {
                 .append(" event_source=IActivityManager.registerUidObserver")
                 .append(" hash=0 planner=0\n");
         return out.toString();
+        }
     }
 
     static String forceStopPackageVerify(int userId, String[] args, int start) {
@@ -1739,21 +1741,71 @@ final class ProcessObserverUtil {
         }
     }
 
+    private static final AtomicBoolean TASK_DIRTY = new AtomicBoolean();
+    private static final AtomicBoolean TASK_WORKER = new AtomicBoolean();
+    private static volatile int latestTaskCode;
     private static void dispatchTaskStackEvent(String callback, int code) {
         GLOBAL_TASK_EVENTS.incrementAndGet();
-        WatchSession[] sessions = sessionsSnapshot();
-        for (WatchSession session : sessions) {
+        latestTaskCode = code;
+        TASK_DIRTY.set(true);
+        scheduleTaskWorker();
+    }
+    private static void scheduleTaskWorker() {
+        if (!TASK_WORKER.compareAndSet(false, true)) return;
+        Thread worker = new Thread(() -> {
             try {
-                session.onTaskStackEvent(callback, code);
-            } catch (Throwable t) {
-                try {
-                    session.logLine("PROCESS_OBSERVER_TASKSTACK_DISPATCH_ERROR callback=" + sanitize(callback)
-                            + " code=" + code
-                            + " exception=" + sanitize(t.getClass().getName())
-                            + " message=" + sanitize(t.getMessage()));
-                } catch (Throwable ignored) {}
+                while (TASK_DIRTY.getAndSet(false)) {
+                    int code = latestTaskCode;
+                    WatchSession[] sessions = sessionsSnapshot();
+                    try {
+                        Map<String, List<PidInfo>> processes = taskProcessSnapshot(sessions);
+                        Map<Integer, TopSnapshot> tops = new HashMap<>();
+                        for (WatchSession session : sessions) {
+                            if (!session.running.get()) continue;
+                            if (!tops.containsKey(session.userId)) tops.put(session.userId, findTopApp(session.userId));
+                            List<PidInfo> alive = processes.get(session.userId + ":" + session.packageName);
+                            try { session.onTaskStackEvent("onTaskStackChanged", code, tops.get(session.userId), alive); }
+                            catch (Throwable t) { session.logLine("PROCESS_OBSERVER_TASKSTACK_DISPATCH_ERROR " + t.getClass().getSimpleName()); }
+                        }
+                    } catch (Throwable t) {
+                        for (WatchSession session : sessions) session.logLine("PROCESS_OBSERVER_TASKSTACK_SNAPSHOT_FAILED " + t.getClass().getSimpleName());
+                    }
+                }
+            } finally {
+                TASK_WORKER.set(false);
+                if (TASK_DIRTY.get()) scheduleTaskWorker();
             }
+        }, "speedbackup-task-reconcile");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    // One /proc pass per coalesced task event, shared by all active sessions.
+    // This is only an observation; action paths still verify live identities.
+    private static Map<String, List<PidInfo>> taskProcessSnapshot(WatchSession[] sessions) {
+        Map<String, List<PidInfo>> result = new HashMap<>();
+        Set<String> packages = new HashSet<>();
+        for (WatchSession session : sessions) {
+            if (!session.running.get()) continue;
+            packages.add(session.packageName);
+            result.put(session.userId + ":" + session.packageName, new ArrayList<>());
         }
+        if (packages.isEmpty()) return result;
+        File[] entries = new File("/proc").listFiles();
+        if (entries == null) throw new IllegalStateException("Cannot scan /proc");
+        for (File entry : entries) {
+            int pid = parsePositiveInt(entry.getName(), -1);
+            if (pid <= 0) continue;
+            String cmd = readCmdline(pid);
+            int colon = cmd.indexOf(':');
+            String pkg = colon < 0 ? cmd : cmd.substring(0, colon);
+            if (!packages.contains(pkg)) continue;
+            int uid = readStatusUid(pid);
+            if (uid < 0) { if (!entry.exists()) continue; throw new IllegalStateException("Cannot read UID for " + pid); }
+            List<PidInfo> list = result.get(userIdFromUid(uid) + ":" + pkg);
+            if (list != null) list.add(new PidInfo(pid, uid, cmd));
+        }
+        return result;
     }
 
     private static final class WatchSession {
@@ -1858,7 +1910,7 @@ final class ProcessObserverUtil {
                     + "\n";
             logLine(summary.trim());
             if (log != null) {
-                try { log.flush(); log.close(); } catch (Throwable ignored) {}
+                try { log.flush(); if (!logPath.isEmpty() && !"-".equals(logPath)) log.close(); } catch (Throwable ignored) {}
             }
             return summary + stopDetails;
         }
@@ -2090,20 +2142,7 @@ final class ProcessObserverUtil {
             if (result.cgroupToken > 0) {
                 cgroupFreezeTokens.add(result.cgroupToken);
                 List<Integer> tokenPids = new ArrayList<>();
-                if (result.cgroupPid > 0) addFrozenPid(result.cgroupPid, tokenPids);
-                for (Integer frozenPid : result.cgroupPids) {
-                    if (frozenPid != null && frozenPid > 0) addFrozenPid(frozenPid, tokenPids);
-                }
-                // /: pid-scope cgroup freeze may freeze the whole package pid-set, but older
-                // bookkeeping recorded only the eventPid. Record the alive pid-set observed just
-                // before the freeze too, so the next foreground-service/activity callback reuses
-                // the existing token instead of opening another cgroup freezer token for the
-                // sibling process such as com.tencent.mobileqq:MSF.
-                if (cgroupFreezerPreferredForAction(packageName, action) && alive != null) {
-                    for (PidInfo info : alive) {
-                        if (info != null && info.pid > 0) addFrozenPid(info.pid, tokenPids);
-                    }
-                }
+                for (Integer frozenPid : CgroupFreezeUtil.ownedPids(result.cgroupToken)) addFrozenPid(frozenPid, tokenPids);
                 cgroupTokenPids.put(result.cgroupToken, tokenPids);
             }
             if (!result.finalAlive) {
@@ -2142,14 +2181,15 @@ final class ProcessObserverUtil {
             }
             for (Integer token : staleTokens) {
                 if (token == null || token <= 0) continue;
-                List<Integer> oldPids = cgroupTokenPids.remove(token);
-                cgroupFreezeTokens.remove(token);
-                if (oldPids != null) {
+                List<Integer> oldPids = cgroupTokenPids.get(token);
+                String stopResult = CgroupFreezeUtil.stop(token, userId, packageName);
+                boolean released = OperationResult.isOk(stopResult, "cgroup-stop");
+                if (released) { cgroupTokenPids.remove(token); cgroupFreezeTokens.remove(token); }
+                if (released && oldPids != null) {
                     for (Integer oldPid : oldPids) {
                         if (oldPid != null) cgroupFrozenPids.remove(oldPid);
                     }
                 }
-                String stopResult = CgroupFreezeUtil.stop(token, userId, packageName);
                 logLine("PROCESS_OBSERVER_CGROUP_TOKEN_PRUNE reason=stale-frozen-pids-gone"
                         + " token=" + token
                         + " oldPids=" + intPidCsv(oldPids)
@@ -2160,18 +2200,19 @@ final class ProcessObserverUtil {
         }
 
         private boolean eventPidAlreadyFrozen(int pid) {
-            return pid > 0 && cgroupFrozenPids.contains(pid);
+            return pid > 0 && cgroupFrozenPids.contains(pid) && CgroupFreezeUtil.isOwnedPidFrozen(userId, packageName, pid);
         }
 
         private boolean allAlivePidsAlreadyFrozen(List<PidInfo> alive) {
             if (alive == null || alive.isEmpty() || cgroupFreezeTokens.isEmpty()) return false;
             for (PidInfo info : alive) {
-                if (info == null || info.pid <= 0 || !cgroupFrozenPids.contains(info.pid)) return false;
+                if (info == null || info.pid <= 0 || !eventPidAlreadyFrozen(info.pid)) return false;
             }
             return true;
         }
 
         private synchronized boolean tryFastCgroupFreezeTopTarget(String callback, List<PidInfo> alive) {
+            if (!running.get() || "monitor".equals(action) || "log".equals(action)) return false;
             if (AudioPlaybackGuard.blocks(userId, packageName)) return true;
             if (!cgroupFreezerPreferredForAction(packageName, action)) return false;
             if (alive == null || alive.isEmpty()) return false;
@@ -2190,12 +2231,10 @@ final class ProcessObserverUtil {
             String freezeResult = CgroupFreezeUtil.start(userId, packageName, -1, 1000, "processObserver-fast-top");
             int freezeToken = CgroupFreezeUtil.parseToken(freezeResult);
             boolean freezeOk = CgroupFreezeUtil.isStartOk(freezeResult) && freezeToken > 0;
+            if (freezeToken > 0) cgroupFreezeTokens.add(freezeToken);
             if (freezeOk) {
-                cgroupFreezeTokens.add(freezeToken);
                 List<Integer> tokenPids = new ArrayList<>();
-                for (PidInfo info : alive) {
-                    if (info != null && info.pid > 0) addFrozenPid(info.pid, tokenPids);
-                }
+                for (Integer frozenPid : CgroupFreezeUtil.ownedPids(freezeToken)) addFrozenPid(frozenPid, tokenPids);
                 cgroupTokenPids.put(freezeToken, tokenPids);
                 lastFinalOkMs = System.currentTimeMillis();
                 logLine("PROCESS_OBSERVER_CGROUP_FAST_FREEZE_OK reason=top-target-fast-freeze"
@@ -2264,7 +2303,9 @@ final class ProcessObserverUtil {
                 return;
             }
             String result = AppWakeBlockUtil.start(userId, packageName, wakeBlockMode, logPath, token, "processObserver");
-            wakeBlockToken = result.contains("APP_WAKE_BLOCK_START_OK") ? parseTokenFromLine(result, "token=") : -1;
+            wakeBlockToken = (result.startsWith("APP_WAKE_BLOCK_START_OK ")
+                    || (result.startsWith("APP_WAKE_BLOCK_START_FAILED ") && result.contains(" stateRetained=true")))
+                    ? parseTokenFromLine(result, "token=") : -1;
             logLine("PROCESS_OBSERVER_WAKE_BLOCK_START integrated=1 mode=" + wakeBlockMode
                     + " token=" + wakeBlockToken
                     + " result=" + sanitize(result));
@@ -2275,11 +2316,12 @@ final class ProcessObserverUtil {
                 return;
             }
             int token = wakeBlockToken;
-            wakeBlockToken = -1;
             String result;
             if (CgroupFreezeUtil.hasActivePrimaryAppScopeSession(userId, packageName, -1)) {
                 result = AppWakeBlockUtil.deferStopToPrimaryScope(token, userId, packageName,
                         "process_observer_stop_defer_primary_cgroup_" + safeWord(reason));
+                if (result.startsWith("APP_WAKE_BLOCK_STOP_DEFER_TO_PRIMARY_SCOPE ")
+                        && result.contains(" stateDeferred=true")) wakeBlockToken = -1;
                 stopDetails.append(result).append('\n');
                 logLine("PROCESS_OBSERVER_WAKE_BLOCK_STOP_DEFER integrated=1 mode=" + wakeBlockMode
                         + " token=" + token
@@ -2287,7 +2329,8 @@ final class ProcessObserverUtil {
                         + " result=" + sanitize(result));
                 return;
             }
-            result = AppWakeBlockUtil.stop(token);
+            result = AppWakeBlockUtil.stop(token, userId, packageName);
+            if (OperationResult.isOk(result, "wake-stop")) wakeBlockToken = -1;
             stopDetails.append(result).append('\n');
             logLine("PROCESS_OBSERVER_WAKE_BLOCK_STOP integrated=1 mode=" + wakeBlockMode
                     + " token=" + token
@@ -2300,14 +2343,14 @@ final class ProcessObserverUtil {
                 return;
             }
             List<Integer> tokens = new ArrayList<>(cgroupFreezeTokens);
-            cgroupFreezeTokens.clear();
-            cgroupFrozenPids.clear();
-            cgroupTokenPids.clear();
+
             for (Integer token : tokens) {
                 if (token == null || token <= 0) continue;
                 if (CgroupFreezeUtil.hasActivePrimaryAppScopeSession(userId, packageName, token)) {
                     String result = CgroupFreezeUtil.deferProcessObserverTokenToPrimaryScope(token, userId, packageName, reason);
                     if (result != null && result.contains("CGROUP_FREEZE_STOP_PROCESS_OBSERVER_DEFER_OK")) {
+                        cgroupFreezeTokens.remove(token);
+                        cgroupTokenPids.remove(token);
                         stopDetails.append(result).append('\n');
                         logLine("PROCESS_OBSERVER_CGROUP_FREEZER_STOP_DEFER integrated=1 token=" + token
                                 + " reason=" + sanitize(reason)
@@ -2319,6 +2362,7 @@ final class ProcessObserverUtil {
                             + " result=" + sanitize(result));
                 }
                 String result = CgroupFreezeUtil.stop(token, userId, packageName);
+                if (OperationResult.isOk(result, "cgroup-stop")) { cgroupFreezeTokens.remove(token); cgroupTokenPids.remove(token); }
                 stopDetails.append(result).append('\n');
                 logLine("PROCESS_OBSERVER_CGROUP_FREEZER_STOP integrated=1 token=" + token
                         + " reason=" + sanitize(reason)
@@ -2340,11 +2384,10 @@ final class ProcessObserverUtil {
         }
 
 
-        void onTaskStackEvent(String callback, int code) {
+        void onTaskStackEvent(String callback, int code, TopSnapshot top, List<PidInfo> alive) {
             if (!running.get()) return;
             taskEvents.incrementAndGet();
-            TopSnapshot top = findTopApp(userId);
-            List<PidInfo> alive = findAliveProcesses(userId, packageName, targetUid);
+            if (alive == null) alive = new ArrayList<>();
             boolean targetTop = top != null && packageName.equals(top.packageName);
             boolean targetAlive = !alive.isEmpty();
             String topPackage = top == null ? "" : top.packageName;
@@ -2493,6 +2536,10 @@ final class ProcessObserverUtil {
                             while (active.get() && (line = br.readLine()) != null) {
                                 if (!active.get() || !session.running.get()) break;
                                 lines.incrementAndGet();
+                                if (line.startsWith("CGFREEZER_DAEMON_RESULT ok=false reason=subscription_limit")) {
+                                    session.logLine("PROCESS_OBSERVER_NATIVE_LOGD_SKIP reason=subscription_limit optional=1 callbacks=retained");
+                                    return;
+                                }
                                 session.onNativeLogdLine(line);
                                 if (!ready && line.startsWith("CGFREEZER_LOGD_WATCH_START ok=true")) {
                                     ready = true;
@@ -2581,10 +2628,8 @@ final class ProcessObserverUtil {
 
     private static final class GuardResult {
         final List<String> lines = new ArrayList<>();
-        final List<Integer> cgroupPids = new ArrayList<>();
         boolean finalAlive;
         int cgroupToken = -1;
-        int cgroupPid = -1;
     }
 
     private static final class TopSnapshot {
@@ -2604,6 +2649,22 @@ final class ProcessObserverUtil {
     private static GuardResult runGuardStop(int userId, String packageName, int targetUid, String action,
                                            String callback, int eventPid, int eventUid, String eventProcess) {
         GuardResult result = new GuardResult();
+        try {
+            return runGuardStopTracked(result, userId, packageName, targetUid, action,
+                    callback, eventPid, eventUid, eventProcess);
+        } catch (Throwable failure) {
+            // A successful freeze must remain reachable even if later observation fails.
+            if (result.cgroupToken <= 0) throw new IllegalStateException("guard observation failed", failure);
+            result.finalAlive = true;
+            result.lines.add("ACTION_RESULT stage=observation-error ok=false stateRetained=true token="
+                    + result.cgroupToken + " error=" + sanitize(failure.toString()));
+            return result;
+        }
+    }
+
+    private static GuardResult runGuardStopTracked(GuardResult result, int userId, String packageName,
+                                           int targetUid, String action, String callback,
+                                           int eventPid, int eventUid, String eventProcess) {
         if (AudioPlaybackGuard.blocks(userId, packageName)) {
             result.finalAlive = true;
             result.lines.add("ACTION_RESULT stage=audio-playback-guard skipped=true noForceStop=true noCgroup=true");
@@ -2656,14 +2717,8 @@ final class ProcessObserverUtil {
                     + " scope=" + freezeScope
                     + " trigger=" + sanitize(callback)
                     + " detail=" + sanitize(freezeResult));
+            if (freezeToken > 0) result.cgroupToken = freezeToken;
             if (freezeOk) {
-                result.cgroupToken = freezeToken;
-                result.cgroupPid = pidForFreeze;
-                if (pidForFreeze <= 0) {
-                    for (PidInfo info : before) {
-                        if (info != null && info.pid > 0 && !result.cgroupPids.contains(info.pid)) result.cgroupPids.add(info.pid);
-                    }
-                }
                 TopSnapshot topAfterFreeze = findTopApp(userId);
                 result.lines.add(topLine("after-cgroup-freeze", topAfterFreeze, packageName));
                 List<PidInfo> aliveAfterFreeze = findAliveProcesses(userId, packageName, uid);
@@ -2682,7 +2737,7 @@ final class ProcessObserverUtil {
             // dead event pid returns false and previously fell through to force-stop,
             // even though package-scope cgroup freeze is the desired cgroup-first
             // policy.  Retry a package-scope freeze before any kill/force-stop fallback.
-            if (pidForFreeze > 0 && isProcessDiedCallback(callback) && before != null && !before.isEmpty()) {
+            if (result.cgroupToken <= 0 && pidForFreeze > 0 && isProcessDiedCallback(callback) && before != null && !before.isEmpty()) {
                 String packageFreezeResult = CgroupFreezeUtil.start(userId, packageName, -1, 1500,
                         "processObserver-package-retry-after-dead-pid");
                 int packageFreezeToken = CgroupFreezeUtil.parseToken(packageFreezeResult);
@@ -2694,12 +2749,8 @@ final class ProcessObserverUtil {
                         + " trigger=" + sanitize(callback)
                         + " reason=dead-event-pid"
                         + " detail=" + sanitize(packageFreezeResult));
+                if (packageFreezeToken > 0) result.cgroupToken = packageFreezeToken;
                 if (packageFreezeOk) {
-                    result.cgroupToken = packageFreezeToken;
-                    result.cgroupPid = -1;
-                    for (PidInfo info : before) {
-                        if (info != null && info.pid > 0 && !result.cgroupPids.contains(info.pid)) result.cgroupPids.add(info.pid);
-                    }
                     TopSnapshot topAfterPackageFreeze = findTopApp(userId);
                     result.lines.add(topLine("after-cgroup-freeze-package-retry", topAfterPackageFreeze, packageName));
                     List<PidInfo> aliveAfterPackageFreeze = findAliveProcesses(userId, packageName, uid);
@@ -2719,145 +2770,28 @@ final class ProcessObserverUtil {
             cgroupFallbackInstantKill = true;
             result.lines.add("CGROUP_FREEZER_FALLBACK reason=unavailable_or_failed next=native-kill-package-live-rescan scope="
                     + freezeScope + " eventPid=" + eventPid
-                    + " order=native-kill-pre,force-stop,native-kill-post,dex-escalation"
-                    + " killUidFallback=true killProcessGroupFallback=true sigkillPidFallback=true");
-        }
-
-        boolean directKillOk = true;
-        boolean nativeKillPreAttempted = false;
-        boolean nativeKillPreOk = false;
-        boolean nativeKillPostAttempted = false;
-        boolean nativeKillPostOk = false;
-        if (cgroupFallbackInstantKill) {
-            nativeKillPreAttempted = true;
-            String nativeKillPre = CgroupFreezeUtil.killPackage(userId, packageName, eventPid, 700,
-                    "processObserver-pre-force-stop");
-            nativeKillPreOk = CgroupFreezeUtil.isNativePackageKillOk(nativeKillPre);
-            directKillOk = nativeKillPreOk;
-            result.lines.add("ACTION_RESULT stage=native-kill-package-pre-force-stop ok=" + nativeKillPreOk
-                    + " eventPid=" + eventPid
-                    + " remain=" + CgroupFreezeUtil.nativePackageKillRemain(nativeKillPre)
-                    + " detail=" + sanitize(nativeKillPre));
-            if (!nativeKillPreOk && eventPid > 0) {
-                directKillOk = killEventPid(eventPid);
-                result.lines.add("ACTION_RESULT stage=event-sigkill-fallback ok=" + directKillOk
-                        + " pid=" + eventPid
-                        + " reason=native-kill-package-unavailable-or-failed"
-                        + " detail=" + (directKillOk ? "sigkill=ok" : "sigkill=failed"));
-            }
-        } else if ("kill".equals(normalized) || "kill-stop".equals(normalized)) {
-            directKillOk = killEventPid(eventPid);
-            result.lines.add("ACTION_RESULT stage=event-sigkill ok=" + directKillOk
-                    + " pid=" + eventPid
-                    + " detail=" + (directKillOk ? "sigkill=ok" : "sigkill=failed"));
+                    + " order=force-stop,native-kill-live-rescan"
+                    + " numericPidFallback=false");
         }
 
         boolean forceStopOk = true;
+        boolean killRequested = cgroupFallbackInstantKill || usesKillUid(normalized)
+                || usesProcessGroupKill(normalized) || "kill".equals(normalized);
         if (usesForceStop(normalized) || cgroupFallbackInstantKill) {
             forceStopOk = ActivityCompat.forceStopPackageNoThrow(packageName, userId);
-            result.lines.add("ACTION_RESULT stage=force-stop ok=" + forceStopOk
-                    + " package=" + packageName
-                    + " detail=forceStop=" + (forceStopOk ? "ok" : "failed"));
+            result.lines.add("ACTION_RESULT stage=force-stop ok=" + forceStopOk);
         }
-
-        if (cgroupFallbackInstantKill) {
-            nativeKillPostAttempted = true;
-            String nativeKillPost = CgroupFreezeUtil.killPackage(userId, packageName, -1, 500,
-                    "processObserver-post-force-stop");
-            nativeKillPostOk = CgroupFreezeUtil.isNativePackageKillOk(nativeKillPost);
-            result.lines.add("ACTION_RESULT stage=native-kill-package-post-force-stop ok=" + nativeKillPostOk
-                    + " remain=" + CgroupFreezeUtil.nativePackageKillRemain(nativeKillPost)
-                    + " detail=" + sanitize(nativeKillPost));
+        boolean nativeOk = true;
+        if (killRequested) {
+            String nativeResult = CgroupFreezeUtil.killPackage(userId, packageName, -1, 700, "processObserver-live-rescan");
+            nativeOk = CgroupFreezeUtil.isNativePackageKillOk(nativeResult);
+            result.lines.add("ACTION_RESULT stage=native-kill-package ok=" + nativeOk + " detail=" + sanitize(nativeResult));
         }
-
-        TopSnapshot topAfterForceStop = findTopApp(userId);
-        result.lines.add(topLine(cgroupFallbackInstantKill ? "after-native-kill-post-force-stop" : "after-force-stop",
-                topAfterForceStop, packageName));
-        List<PidInfo> afterForceStop = findAliveProcesses(userId, packageName, uid);
-        result.lines.add(verifyLine(cgroupFallbackInstantKill ? "after-native-kill-post-force-stop" : "after-force-stop",
-                afterForceStop));
-        if (afterForceStop.isEmpty() && !isTargetTop(topAfterForceStop, packageName)) {
-            result.finalAlive = false;
-            result.lines.add("FINAL result=ok alive=false topTarget=false finalStage="
-                    + (cgroupFallbackInstantKill ? "native-kill-package-post-force-stop" : "force-stop")
-                    + " forceStopOk=" + forceStopOk
-                    + " directKillOk=" + directKillOk
-                    + " nativeKillPreAttempted=" + nativeKillPreAttempted
-                    + " nativeKillPreOk=" + nativeKillPreOk
-                    + " nativeKillPostAttempted=" + nativeKillPostAttempted
-                    + " nativeKillPostOk=" + nativeKillPostOk);
-            return result;
-        }
-
-        if (usesKillUid(normalized) || cgroupFallbackInstantKill) {
-            result.lines.add("ESCALATE from=force-stop to=kill-uid alivePids=" + pidCsv(afterForceStop));
-            boolean killUidOk = ActivityCompat.killUidNoThrow(uid, userId, "speedbackup-process-observer");
-            result.lines.add("ACTION_RESULT stage=kill-uid ok=" + killUidOk
-                    + " uid=" + uid
-                    + " detail=killUid=" + (killUidOk ? "ok" : "failed"));
-            TopSnapshot topAfterKillUid = findTopApp(userId);
-            result.lines.add(topLine("after-kill-uid", topAfterKillUid, packageName));
-            List<PidInfo> afterKillUid = findAliveProcesses(userId, packageName, uid);
-            result.lines.add(verifyLine("after-kill-uid", afterKillUid));
-            if (afterKillUid.isEmpty() && !isTargetTop(topAfterKillUid, packageName)) {
-                result.finalAlive = false;
-                result.lines.add("FINAL result=ok alive=false topTarget=false finalStage=kill-uid forceStopOk=" + forceStopOk);
-                return result;
-            }
-            afterForceStop = afterKillUid;
-        }
-
-        if (usesProcessGroupKill(normalized) || cgroupFallbackInstantKill) {
-            result.lines.add("ESCALATE from=kill-uid to=kill-process-group alivePids=" + pidCsv(afterForceStop));
-            int okCount = 0;
-            int failCount = 0;
-            for (PidInfo info : afterForceStop) {
-                boolean ok = ActivityCompat.killProcessGroupNoThrow(info.uid, info.pid);
-                if (!ok) ok = killPidNoThrow(info.pid);
-                if (ok) okCount++; else failCount++;
-            }
-            result.lines.add("ACTION_RESULT stage=kill-process-group ok=" + (failCount == 0)
-                    + " okCount=" + okCount
-                    + " failCount=" + failCount);
-            TopSnapshot topAfterGroup = findTopApp(userId);
-            result.lines.add(topLine("after-kill-process-group", topAfterGroup, packageName));
-            List<PidInfo> afterGroup = findAliveProcesses(userId, packageName, uid);
-            result.lines.add(verifyLine("after-kill-process-group", afterGroup));
-            if (afterGroup.isEmpty() && !isTargetTop(topAfterGroup, packageName)) {
-                result.finalAlive = false;
-                result.lines.add("FINAL result=ok alive=false topTarget=false finalStage=kill-process-group forceStopOk=" + forceStopOk);
-                return result;
-            }
-            afterForceStop = afterGroup;
-        }
-
-        int sigOk = 0;
-        int sigFail = 0;
-        if (usesPidKillFallback(normalized) || cgroupFallbackInstantKill) {
-            result.lines.add("ESCALATE from=kill-process-group to=sigkill-pid alivePids=" + pidCsv(afterForceStop));
-            for (PidInfo info : afterForceStop) {
-                if (killPidNoThrow(info.pid)) sigOk++; else sigFail++;
-            }
-            result.lines.add("ACTION_RESULT stage=sigkill-pid ok=" + (sigFail == 0)
-                    + " okCount=" + sigOk
-                    + " failCount=" + sigFail);
-        }
-        TopSnapshot topFinal = findTopApp(userId);
-        result.lines.add(topLine("final", topFinal, packageName));
-        List<PidInfo> finalAlive = findAliveProcesses(userId, packageName, uid);
-        result.lines.add(verifyLine("final", finalAlive));
-        boolean topFinalTarget = isTargetTop(topFinal, packageName);
-        result.finalAlive = !finalAlive.isEmpty() || topFinalTarget;
-        result.lines.add("FINAL result=" + (result.finalAlive ? "still-alive" : "ok")
-                + " alive=" + result.finalAlive
-                + " topTarget=" + topFinalTarget
-                + " finalStage=" + ((usesPidKillFallback(normalized) || cgroupFallbackInstantKill) ? "sigkill-pid" : "force-stop")
-                + " pids=" + pidCsv(finalAlive)
-                + " forceStopOk=" + forceStopOk
-                + " nativeKillPreAttempted=" + nativeKillPreAttempted
-                + " nativeKillPreOk=" + nativeKillPreOk
-                + " nativeKillPostAttempted=" + nativeKillPostAttempted
-                + " nativeKillPostOk=" + nativeKillPostOk);
+        TopSnapshot finalTop = findTopApp(userId);
+        List<PidInfo> finalPids = findAliveProcesses(userId, packageName, uid);
+        result.finalAlive = !nativeOk || !forceStopOk || !finalPids.isEmpty() || isTargetTop(finalTop, packageName);
+        result.lines.add("FINAL result=" + (result.finalAlive ? "still-alive-or-unverified" : "ok")
+                + " alive=" + result.finalAlive + " pids=" + pidCsv(finalPids) + " nativeIdentityChecked=true");
         return result;
     }
 
@@ -2906,43 +2840,23 @@ final class ProcessObserverUtil {
         return "guard-stop".equals(action) || "kill-stop".equals(action) || "guard-kill".equals(action) || "kill".equals(action);
     }
 
-    private static boolean usesPidKillFallback(String action) {
-        return "guard-stop".equals(action) || "kill-stop".equals(action) || "guard-kill".equals(action) || "kill".equals(action);
-    }
-
-    private static boolean killEventPid(int pid) {
-        if (pid <= 0) return false;
-        return killPidNoThrow(pid);
-    }
-
-    private static boolean killPidNoThrow(int pid) {
-        if (pid <= 0) return false;
-        try {
-            Os.kill(pid, OsConstants.SIGKILL);
-            return true;
-        } catch (Throwable ignored) {
-            return false;
-        }
-    }
-
-
-
     private static final class UidObserverLog {
         final int targetUid;
-        final StringBuilder out;
+        final StringBuffer out;
+        boolean closed;
         final AtomicInteger events = new AtomicInteger(0);
-        UidObserverLog(int targetUid, StringBuilder out) { this.targetUid = targetUid; this.out = out; }
+        UidObserverLog(int targetUid, StringBuffer out) { this.targetUid = targetUid; this.out = out; }
         synchronized void event(String name, int uid, int procState, long seq, int capability, boolean disabled) {
-            if (uid != targetUid) return;
+            if (closed || uid != targetUid) return;
             events.incrementAndGet();
-            out.append("UID_OBSERVER_EVENT name=").append(sanitize(name))
+            synchronized (out) { out.append("UID_OBSERVER_EVENT name=").append(sanitize(name))
                     .append(" uid=").append(uid)
                     .append(" procState=").append(procState)
                     .append(" seq=").append(seq)
                     .append(" capability=").append(capability)
                     .append(" disabled=").append(disabled)
                     .append(" event_source=IUidObserver")
-                    .append('\n');
+                    .append('\n'); }
         }
     }
 
@@ -3077,7 +2991,7 @@ final class ProcessObserverUtil {
         List<PidInfo> list = new ArrayList<>();
         File proc = new File("/proc");
         File[] entries = proc.listFiles();
-        if (entries == null) return list;
+        if (entries == null) throw new IllegalStateException("Cannot scan /proc");
         for (File entry : entries) {
             String name = entry.getName();
             int pid = parsePositiveInt(name, -1);
@@ -3088,7 +3002,8 @@ final class ProcessObserverUtil {
             String cmd = readCmdline(pid);
             if (!cmd.equals(packageName) && !cmd.startsWith(packageName + ":")) continue;
             int uid = readStatusUid(pid);
-            if (uid >= 0 && userIdFromUid(uid) != userId) continue;
+            if (uid < 0) { if (!entry.exists()) continue; throw new IllegalStateException("Cannot read UID for " + pid); }
+            if (userIdFromUid(uid) != userId) continue;
             list.add(new PidInfo(pid, uid, cmd));
         }
         return list;
@@ -3098,7 +3013,8 @@ final class ProcessObserverUtil {
         File f = new File("/proc/" + pid + "/status");
         try (FileInputStream in = new FileInputStream(f)) {
             byte[] buf = new byte[4096];
-            int n = in.read(buf);
+            int n = 0, count;
+            while (n < buf.length && (count = in.read(buf, n, buf.length - n)) > 0) n += count;
             if (n <= 0) return -1;
             String s = new String(buf, 0, n, StandardCharsets.UTF_8);
             int idx = s.indexOf("Uid:");
@@ -3106,7 +3022,7 @@ final class ProcessObserverUtil {
             int end = s.indexOf('\n', idx);
             String line = end >= 0 ? s.substring(idx, end) : s.substring(idx);
             String[] parts = line.trim().split("\\s+");
-            if (parts.length >= 2) return parsePositiveInt(parts[1], -1);
+            if (parts.length >= 2) { int uid = Integer.parseInt(parts[1]); return uid >= 0 ? uid : -1; }
         } catch (Throwable ignored) {}
         return -1;
     }
@@ -3480,17 +3396,22 @@ final class ProcessObserverUtil {
 
     private static String readCmdline(int pid) {
         if (pid <= 0) return "";
-        File f = new File("/proc/" + pid + "/cmdline");
-        try (FileInputStream in = new FileInputStream(f)) {
-            byte[] buf = new byte[512];
-            int n = in.read(buf);
-            if (n <= 0) return "";
-            int len = 0;
-            while (len < n && buf[len] != 0) len++;
-            return new String(buf, 0, len, StandardCharsets.UTF_8).trim();
-        } catch (Throwable ignored) {
-            return "";
-        }
+        try (FileInputStream in = new FileInputStream("/proc/" + pid + "/cmdline")) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] bytes = new byte[512];
+            for (;;) {
+                int n = in.read(bytes);
+                if (n < 0) break;
+                int end = 0; while (end < n && bytes[end] != 0) end++;
+                out.write(bytes, 0, end);
+                if (out.size() > 65536) throw new java.io.IOException("argv0 limit");
+                if (end < n) break;
+            }
+            return new String(out.toByteArray(), StandardCharsets.UTF_8);
+        } catch (java.io.FileNotFoundException gone) {
+            if (!new File("/proc/" + pid).exists()) return "";
+            throw new IllegalStateException("Cannot read cmdline " + pid, gone);
+        } catch (java.io.IOException e) { throw new IllegalStateException("Cannot read cmdline " + pid, e); }
     }
 
     private static int userIdFromUid(int uid) {
@@ -3507,6 +3428,8 @@ final class ProcessObserverUtil {
         if (parent != null && !parent.isDirectory()) parent.mkdirs();
         return new PrintWriter(new OutputStreamWriter(new FileOutputStream(file, true), StandardCharsets.UTF_8), true);
     }
+
+    private static boolean pkgInvalid(String pkg) { return pkg == null || !pkg.matches("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+"); }
 
     private static String safePackage(String packageName) {
         if (packageName == null) return "";
@@ -3614,7 +3537,7 @@ final class ProcessObserverUtil {
     }
 
     private static String now() {
-        try { return TS.format(new Date()); } catch (Throwable ignored) { return String.valueOf(System.currentTimeMillis()); }
+        try { synchronized (TS) { return TS.format(new Date()); } } catch (Throwable ignored) { return String.valueOf(System.currentTimeMillis()); }
     }
 
     private static String safeWord(String raw) {

@@ -378,16 +378,24 @@ fn run_watcher() -> i32 {
 
     let mut buffer = vec![0u8; RECEIVE_BUFFER_SIZE];
     while !G_STOP.load(Ordering::SeqCst) {
+        match speedbackup_native_rs::signal_wait::readable(socket_fd, &G_STOP) {
+            Ok(true) => {},
+            Ok(false) => break,
+            Err(e) => { eprintln!("netwatch: wait: {}", e); unsafe { close(socket_fd) }; return 1; },
+        }
         let received_length = unsafe {
             recv(
                 socket_fd,
                 buffer.as_mut_ptr() as *mut c_void,
                 buffer.len(),
-                0,
+                0x40, // MSG_DONTWAIT after readiness, closes stop/read races
             )
         };
         if received_length < 0 {
-            if errno_now() == EINTR {
+            if errno_now() == 105 {
+                println!("NETLINK_OVERRUN"); flush_stdout_line(); continue;
+            }
+            if matches!(errno_now(), EINTR | 11) {
                 continue;
             }
             eprintln!(
@@ -398,7 +406,8 @@ fn run_watcher() -> i32 {
             return 1;
         }
         if received_length == 0 {
-            continue;
+            eprintln!("netwatch: unexpected EOF");
+            unsafe { close(socket_fd) }; return 1;
         }
         if process_netlink_buffer(&buffer, received_length as usize).is_err() {
             unsafe { close(socket_fd) };

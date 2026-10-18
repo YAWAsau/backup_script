@@ -112,6 +112,7 @@ public final class TimelineUtil {
                 zip.finish(); zip.flush(); output.getFD().sync();
             }
             need(temp.renameTo(destination),"backup_publish_failed");
+            syncDirectory(parent);
             return inputBytes;
         } finally { Files.deleteIfExists(temp.toPath()); }
     }
@@ -172,7 +173,17 @@ public final class TimelineUtil {
             need(TimelineDatabase.hash(src).equals(TimelineDatabase.hash(dst)),"backup_publish_hash_failed");
             try(FileOutputStream out=new FileOutputStream(dst,true)) { out.getFD().sync(); }
         }
+        syncDirectory(temp);
         need(temp.renameTo(destination),"backup_publish_failed");
+        syncDirectory(parent);
+    }
+    static boolean hasArchiveHistory(android.database.sqlite.SQLiteDatabase db) {
+        return TimelineDatabase.number(db,"SELECT EXISTS(SELECT 1 FROM semantic_segment_table) OR EXISTS(SELECT 1 FROM edited_segment_table)") != 0;
+    }
+
+    static void syncDirectory(File directory) throws Exception {
+        java.io.FileDescriptor fd=Os.open(directory.getPath(),OsConstants.O_RDONLY | OsConstants.O_NOFOLLOW,0);
+        try { need(OsConstants.S_ISDIR(Os.fstat(fd).st_mode),"backup_directory_invalid"); Os.fsync(fd); } finally { Os.close(fd); }
     }
     private static void restart(int user) throws Exception {
         for(String pkg:Arrays.asList("com.google.android.apps.maps",PKG)) {
@@ -359,7 +370,7 @@ public final class TimelineUtil {
             if(!odlh.exists()) { System.err.println("TIMELINE_BACKUP_ABSENT"); return; }
             boolean empty;
             try(android.database.sqlite.SQLiteDatabase db=TimelineDatabase.open(odlh,TimelineDatabase.RO)) {
-                empty=TimelineDatabase.number(db,"SELECT count(*) FROM semantic_segment_table")==0;
+                empty=!hasArchiveHistory(db);
             } finally { TimelineDatabase.fixSidecars(odlh); }
             if(empty) { System.err.println("TIMELINE_BACKUP_ABSENT"); return; }
         }
@@ -539,8 +550,19 @@ public final class TimelineUtil {
                 }
             }
         } catch(Throwable e) {
+            // This constructor failure precedes capture, pending journal and writes.
+            // 75 is reserved for a missing primary DB, never generic OS errors.
+            if(e instanceof TimelineDatabase.PrimaryNotReady)rc=75;
             String reason=e instanceof IOException && e.getMessage()!=null && e.getMessage().matches("[a-z_]+")?e.getMessage():e.getClass().getSimpleName();
             System.err.println("TIMELINE_FAILED reason="+reason);
+            Throwable cause=e;
+            for(int depth=0;cause!=null && depth<8;depth++,cause=cause.getCause()) {
+                if(cause instanceof android.system.ErrnoException) {
+                    android.system.ErrnoException os=(android.system.ErrnoException)cause;
+                    System.err.println("TIMELINE_OS_ERROR errno="+os.errno);
+                    break;
+                }
+            }
             for(StackTraceElement frame:e.getStackTrace())
                 if(frame.getClassName().startsWith("com.xayah.dex.Timeline"))
                     System.err.println("TIMELINE_FRAME "+frame);

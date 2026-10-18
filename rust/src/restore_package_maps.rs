@@ -1,6 +1,6 @@
 //! One process for the three post-install cache mutations. Inputs are fresh
 //! PackageManager facts; this operation never caches or discovers an Android UID.
-//! Numeric maps deliberately retain the shell's in-place (not rename) writes.
+//! Numeric maps are published atomically so interruption preserves the old cache.
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::Path;
@@ -114,14 +114,44 @@ fn numeric_update(path: &Path, input: Snapshot, package: &[u8], value: &[u8]) ->
         return State::Same;
     }
     let body = numeric_body(&data, package, value);
-    // Matches `cat temp > map`: preserve inode, mode, hard links and symlink
-    // target; do not replace the directory entry with a newly owned file.
-    match OpenOptions::new().write(true).create(true).truncate(true).open(path)
-        .and_then(|mut file| file.write_all(&body))
-    {
+    match publish_numeric_map(path, &body) {
         Ok(()) => State::Updated,
         Err(_) => State::Error,
     }
+}
+
+fn publish_numeric_map(path: &Path, body: &[u8]) -> io::Result<()> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let previous = match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() => Some(metadata),
+        Ok(_) => return Err(io::Error::new(io::ErrorKind::InvalidInput, "map is not a regular file")),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error),
+    };
+    let parent = path.parent().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing map parent"))?;
+    let temporary = parent.join(format!(".package-map-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+    let mut file = OpenOptions::new().write(true).create_new(true).open(&temporary)?;
+    let result = (|| {
+        file.write_all(body)?;
+        if let Some(metadata) = previous {
+            #[cfg(unix)] {
+                use std::os::{fd::AsRawFd, unix::fs::MetadataExt};
+                unsafe extern "C" { fn fchown(fd: i32, uid: u32, gid: u32) -> i32; }
+                if unsafe { fchown(file.as_raw_fd(), metadata.uid(), metadata.gid()) } != 0 {
+                    return Err(io::Error::last_os_error());
+                }
+            }
+            file.set_permissions(metadata.permissions())?;
+        }
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&temporary, path)?;
+        #[cfg(unix)] fs::File::open(parent)?.sync_all()?;
+        Ok(())
+    })();
+    if result.is_err() { let _ = fs::remove_file(&temporary); }
+    result
 }
 
 fn installed_update(path: &Path, input: Snapshot, package: &[u8]) -> State {
@@ -266,7 +296,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn in_place_updates_preserve_inode_mode_and_symlink() {
+    fn atomic_updates_preserve_metadata_and_reject_symlink_writes() {
         use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
         let t = Temp::new(); t.put("uid.target", b"app.test\t1\n");
         let target = t.0.join("uid.target"); fs::set_permissions(&target, fs::Permissions::from_mode(0o640)).unwrap();
@@ -276,7 +306,14 @@ mod tests {
         let new = fs::metadata(&target).unwrap();
         assert_eq!(old.ino(), new.ino()); assert_eq!(old.mode(), new.mode());
         assert!(fs::symlink_metadata(t.0.join(".pkg_uid")).unwrap().file_type().is_symlink());
-        assert_eq!(t.get("uid.target"), b"app.test\t2\n");
+        assert_eq!(t.get("uid.target"), b"app.test\t1\n");
+        fs::remove_file(t.0.join(".pkg_uid")).unwrap();
+        fs::rename(&target,t.0.join(".pkg_uid")).unwrap();
+        assert_eq!(apply(&t.0,"app.test","2","3").unwrap()[0],State::Updated);
+        let target=t.0.join(".pkg_uid");
+        let new=fs::metadata(&target).unwrap();
+        assert_ne!(old.ino(),new.ino());assert_eq!(old.mode(),new.mode());
+        assert_eq!(old.uid(),new.uid());assert_eq!(old.gid(),new.gid());
         let stamp = new.modified().unwrap();
         assert_eq!(apply(&t.0, "app.test", "2", "3").unwrap()[0], State::Same);
         assert_eq!(fs::metadata(&target).unwrap().modified().unwrap(), stamp);

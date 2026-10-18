@@ -94,7 +94,7 @@ final class GoogleAccountNames {
     }
     static String fields(int user)throws Exception {
         StringBuilder out=new StringBuilder();
-        for(Account a:read(user))out.append(a.selector).append('\t').append(label(a)).append('\n');
+        for(Account a:read(user,true))out.append(a.selector).append('\t').append(label(a)).append('\n');
         return out.toString();
     }
     static String greeting(int user) {

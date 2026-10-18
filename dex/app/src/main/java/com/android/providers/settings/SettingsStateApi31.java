@@ -500,12 +500,12 @@ public class SettingsStateApi31 implements SettingsState {
                     Log.i(LOG_TAG, "[PERSIST END]");
                 }
             } catch (Throwable t) {
-                Log.wtf(LOG_TAG, "Failed to write settings, restoring backup", t);
+                Log.e(LOG_TAG, "Failed to write settings, restoring backup", t);
                 if (t instanceof IOException) {
                     // we failed to create a directory, so log the permissions and existence
                     // state for the settings file and directory
                     logSettingsDirectoryInformation(destination.getBaseFile());
-                    if (t.getMessage().contains("Couldn't create directory")) {
+                    if (String.valueOf(t.getMessage()).contains("Couldn't create directory")) {
                         // attempt to create the directory with Files.createDirectories, which
                         // throws more informative errors than File.mkdirs.
                         Path parentPath = destination.getBaseFile().getParentFile().toPath();
@@ -519,6 +519,8 @@ public class SettingsStateApi31 implements SettingsState {
                     }
                 }
                 destination.failWrite(out);
+                synchronized (mLock) { mDirty = true; }
+                throw new IllegalStateException("Settings persistence failed", t);
             } finally {
                 IoUtils.closeQuietly(out);
             }
@@ -673,6 +675,11 @@ public class SettingsStateApi31 implements SettingsState {
             return;
         }
 
+        mSettings.clear();
+        mNamespaceBannedHashes.clear();
+        mNextId = 0;
+        mVersion = VERSION_UNDEFINED;
+
         // Settings file exists but is corrupted. Retry with the fallback file
         final File statePersistFallbackFile = new File(
                 mStatePersistFile.getAbsolutePath() + FALLBACK_FILE_SUFFIX);
@@ -682,20 +689,15 @@ public class SettingsStateApi31 implements SettingsState {
             in = new AtomicFile(statePersistFallbackFile).openRead();
         } catch (FileNotFoundException fnfe) {
             final String message = "No fallback file found for: " + mStatePersistFile;
-            Log.wtf(LOG_TAG, message);
+            Log.e(LOG_TAG, message);
             throw new IllegalStateException(message);
         }
         if (parseStateFromXmlStreamLocked(in)) {
-            // Parsed state from fallback file. Restore original file with fallback file
-            try (FileInputStream fin = new FileInputStream(statePersistFallbackFile);
-                    FileOutputStream fout = new FileOutputStream(mStatePersistFile)) {
-                FileUtils.copy(fin, fout);
-            } catch (IOException ignored) {
-                // Failed to copy, but it's okay because we already parsed states from fallback file
-            }
+            // Loading a fallback is read-only. The explicit SSAID write path
+            // commits through AtomicFile and restores owner/mode afterwards.
         } else {
             final String message = "Failed parsing settings file: " + mStatePersistFile;
-            Log.wtf(LOG_TAG, message);
+            Log.e(LOG_TAG, message);
             throw new IllegalStateException(message);
         }
     }
@@ -707,7 +709,7 @@ public class SettingsStateApi31 implements SettingsState {
             TypedXmlPullParser parser = XmlApi30.resolvePullParser(in);
             parseStateLocked(parser);
             return true;
-        } catch (XmlPullParserException | IOException e) {
+        } catch (XmlPullParserException | IOException | RuntimeException e) {
             return false;
         } finally {
             IoUtils.closeQuietly(in);
@@ -717,6 +719,7 @@ public class SettingsStateApi31 implements SettingsState {
     private void parseStateLocked(TypedXmlPullParser parser)
             throws IOException, XmlPullParserException {
         final int outerDepth = parser.getDepth();
+        boolean foundSettings = false;
         int type;
         while ((type = parser.next()) != XmlPullParser.END_DOCUMENT
                 && (type != XmlPullParser.END_TAG || parser.getDepth() > outerDepth)) {
@@ -726,11 +729,13 @@ public class SettingsStateApi31 implements SettingsState {
 
             String tagName = parser.getName();
             if (tagName.equals(TAG_SETTINGS)) {
+                foundSettings = true;
                 parseSettingsLocked(parser);
             } else if (tagName.equals(TAG_NAMESPACE_HASHES)) {
                 parseNamespaceHash(parser);
             }
         }
+        if (!foundSettings) throw new XmlPullParserException("Missing settings root");
     }
 
     @GuardedBy("mLock")
@@ -771,6 +776,9 @@ public class SettingsStateApi31 implements SettingsState {
                 }
             }
         }
+        if (type != XmlPullParser.END_TAG || parser.getDepth() != outerDepth) {
+            throw new XmlPullParserException("Truncated settings container", parser, null);
+        }
     }
 
     @GuardedBy("mLock")
@@ -791,6 +799,9 @@ public class SettingsStateApi31 implements SettingsState {
                 mNamespaceBannedHashes.put(namespace, bannedHashCode);
             }
         }
+        if (type != XmlPullParser.END_TAG || parser.getDepth() != outerDepth) {
+            throw new XmlPullParserException("Truncated settings container", parser, null);
+        }
     }
 
 
@@ -806,7 +817,11 @@ public class SettingsStateApi31 implements SettingsState {
             switch (message.what) {
                 case MSG_PERSIST_SETTINGS: {
                     Runnable callback = (Runnable) message.obj;
-                    doWriteState();
+                    try { doWriteState(); }
+                    catch (IllegalStateException failure) {
+                        Log.e(LOG_TAG, "Asynchronous settings persistence failed; state remains dirty", failure);
+                        return;
+                    }
                     if (callback != null) {
                         callback.run();
                     }

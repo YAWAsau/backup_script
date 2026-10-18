@@ -9,6 +9,9 @@ use std::env;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_ulong};
 use std::os::unix::ffi::OsStrExt;
+use std::fs::File;
+use std::os::fd::{AsRawFd, FromRawFd};
+use std::os::unix::fs::MetadataExt;
 
 const VERSION: &str = speedbackup_native_rs::versions::UIDEXEC;
 use speedbackup_native_rs::BUILD_VERSION;
@@ -21,9 +24,10 @@ extern "C" {
     fn getresuid(ruid: *mut u32, euid: *mut u32, suid: *mut u32) -> c_int;
     fn umask(mask: u32) -> u32;
     fn prctl(option: c_int, arg2: c_ulong, arg3: c_ulong, arg4: c_ulong, arg5: c_ulong) -> c_int;
-    fn mkdir(path: *const c_char, mode: u32) -> c_int;
-    fn chown(path: *const c_char, owner: u32, group: u32) -> c_int;
-    fn chmod(path: *const c_char, mode: u32) -> c_int;
+    fn openat(fd: c_int, path: *const c_char, flags: c_int, ...) -> c_int;
+    fn mkdirat(fd: c_int, path: *const c_char, mode: u32) -> c_int;
+    fn fchown(fd: c_int, owner: u32, group: u32) -> c_int;
+    fn fchmod(fd: c_int, mode: u32) -> c_int;
     fn getuid() -> u32;
     fn getgid() -> u32;
     fn setenv(name: *const c_char, value: *const c_char, overwrite: c_int) -> c_int;
@@ -120,7 +124,7 @@ fn parse_long(s: Option<&String>, name: &str) -> u32 {
     } else {
         -1
     };
-    if !valid || signed < 0 {
+    if !valid || signed < 0 || signed > u32::MAX as i64 {
         eprintln!("bad {}: {}", name, s);
         std::process::exit(2);
     }
@@ -156,29 +160,36 @@ fn make_tmpdir(android_data: &str, uid: u32, gid: u32) {
     if tmpdir.len() >= 4096 {
         die_msg("TMPDIR path too long");
     }
-    let c_tmpdir = cstr(&tmpdir);
-    let rc = unsafe { mkdir(c_tmpdir.as_ptr(), 0o700) };
+    // Resolve Android's /data/data alias, then pin every component without
+    // following links. All metadata changes operate on the opened inode.
+    let canonical = std::fs::canonicalize(android_data).unwrap_or_else(|_| die("resolve ANDROID_DATA"));
+    let mut parent = File::open("/").unwrap_or_else(|_| die("open root"));
+    const DIR_FLAGS: c_int = speedbackup_native_rs::O_DIRECTORY_NATIVE
+        | speedbackup_native_rs::O_NOFOLLOW_NATIVE | 0x80000;
+    for part in canonical.components() {
+        if let std::path::Component::Normal(name) = part {
+            let name = CString::new(name.as_bytes()).unwrap();
+            let fd = unsafe { openat(parent.as_raw_fd(), name.as_ptr(), DIR_FLAGS) };
+            if fd < 0 { die("open ANDROID_DATA component"); }
+            parent = unsafe { File::from_raw_fd(fd) };
+        }
+    }
+    if parent.metadata().unwrap_or_else(|_| die("stat ANDROID_DATA")).uid() != uid {
+        die_msg("ANDROID_DATA owner does not match target uid");
+    }
+    let c_tmpdir = cstr("tmp");
+    let rc = unsafe { mkdirat(parent.as_raw_fd(), c_tmpdir.as_ptr(), 0o700) };
     if rc != 0 {
         let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
         if errno != EEXIST {
             die("mkdir TMPDIR");
         }
     }
-    // Best effort: uidexec normally starts as root, but do not make old
-    // caller environments fail merely because ownership/mode cannot be
-    // adjusted on a special directory.
-    if unsafe { chown(c_tmpdir.as_ptr(), uid, gid) } != 0 && debug_enabled() {
-        eprintln!(
-            "warn: chown TMPDIR failed: {}",
-            c_strerror(&std::io::Error::last_os_error())
-        );
-    }
-    if unsafe { chmod(c_tmpdir.as_ptr(), 0o700) } != 0 && debug_enabled() {
-        eprintln!(
-            "warn: chmod TMPDIR failed: {}",
-            c_strerror(&std::io::Error::last_os_error())
-        );
-    }
+    let fd = unsafe { openat(parent.as_raw_fd(), c_tmpdir.as_ptr(), DIR_FLAGS) };
+    if fd < 0 { die("open TMPDIR without symlinks"); }
+    let tmp = unsafe { File::from_raw_fd(fd) };
+    if unsafe { fchown(tmp.as_raw_fd(), uid, gid) } != 0 { die("fchown TMPDIR"); }
+    if unsafe { fchmod(tmp.as_raw_fd(), 0o700) } != 0 { die("fchmod TMPDIR"); }
     setenv_checked("TMPDIR", &tmpdir, 1, Some("setenv TMPDIR"));
 }
 
@@ -224,8 +235,8 @@ fn drop_identity(uid: u32, gid: u32) {
     }
 }
 
-fn exec_command(cmd: &[String]) -> ! {
-    let cstrings: Vec<CString> = cmd.iter().map(|a| cstr(a)).collect();
+fn exec_command(cmd: &[std::ffi::OsString]) -> ! {
+    let cstrings: Vec<CString> = cmd.iter().map(|a| CString::new(a.as_os_str().as_bytes()).expect("argv cannot contain NUL")).collect();
     let mut argv: Vec<*const c_char> = cstrings.iter().map(|c| c.as_ptr()).collect();
     argv.push(std::ptr::null());
     unsafe {
@@ -235,7 +246,8 @@ fn exec_command(cmd: &[String]) -> ! {
 }
 
 pub(crate) fn run() {
-    let args: Vec<String> = crate::multicall::args().collect();
+    let raw_args: Vec<_> = crate::multicall::args_os().collect();
+    let args: Vec<String> = raw_args.iter().map(|s| s.to_string_lossy().into_owned()).collect();
     let prog = args.first().map(|s| s.as_str()).unwrap_or("uidexec");
 
     if args.len() == 2 && (args[1] == "--version" || args[1] == "version") {
@@ -281,6 +293,10 @@ pub(crate) fn run() {
         std::process::exit(2);
     }
 
+    if raw_args[..cmd_index].iter().any(|s| s.to_str().is_none()) {
+        eprintln!("uidexec: non-UTF-8 control argument");
+        std::process::exit(2);
+    }
     harden_process();
 
     setenv_checked(
@@ -312,5 +328,5 @@ pub(crate) fn run() {
         });
     }
 
-    exec_command(&args[cmd_index..]);
+    exec_command(&raw_args[cmd_index..]);
 }

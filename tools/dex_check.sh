@@ -8,8 +8,8 @@ TOOLS_PATH="${TOOLS_PATH:-}"
 TEST_LOG_DIR="${TEST_LOG_DIR:-${PWD:-.}}"
 TEST_LOG_FILE="${TEST_LOG_FILE:-$TEST_LOG_DIR/dex_check.log}"
 TEST_SUMMARY_FILE="${TEST_SUMMARY_FILE:-$TEST_LOG_DIR/dex_full_test.summary}"
-DEX_CHECK_VERSION="v863"
-DEX_CHECK_BUILD="v863"
+DEX_CHECK_VERSION="v921"
+DEX_CHECK_BUILD="v921"
 BACKUP_WIFI_ENABLE="${BACKUP_WIFI_ENABLE:-1}"
 SB_SELFTEST_LEVEL="${SB_SELFTEST_LEVEL:-quick}"
 CHANGELOG_URL="${CHANGELOG_URL:-https://api.github.com/repos/XayahSuSuSu/Android-DataBackup/releases/latest}"
@@ -35,9 +35,23 @@ WARN=0
 FAIL=0
 HAD_CMD_STDERR=0
 CRITICAL_FAIL=0
-DEX_CHECK_TMPDIR="${DEX_CHECK_TMPDIR:-/data/local/tmp/.speedbackup_run_dexcheck_${$}}"
-mkdir -p "$DEX_CHECK_TMPDIR" 2>/dev/null || DEX_CHECK_TMPDIR="${TMPDIR:-/data/local/tmp}"
-case "$DEX_CHECK_TMPDIR" in /data/local/tmp/.speedbackup_run_*) DEX_CHECK_TMPDIR_OWN=1 ;; *) DEX_CHECK_TMPDIR_OWN=0 ;; esac
+DEX_CHECK_TMPDIR_OWN=0
+if [ -z "${DEX_CHECK_TMPDIR:-}" ]; then
+	DEX_CHECK_TMPDIR=$(umask 077; mktemp -d /data/local/tmp/.speedbackup_run_dexcheck_XXXXXXXX) || exit 1
+	DEX_CHECK_TMPDIR_OWN=1
+fi
+# Match GuardLifecycle's private, canonical run-directory contract. Never
+# fall back to shared /data/local/tmp or remove a caller-owned directory.
+case "$DEX_CHECK_TMPDIR" in
+	/data/local/tmp/.speedbackup_run_*|/data/.speedbackup_tmp/.speedbackup_run_*) ;;
+	*) echo 'Unsafe dex_check run directory' >&2; exit 1 ;;
+esac
+if [ ! -d "$DEX_CHECK_TMPDIR" ] || [ -L "$DEX_CHECK_TMPDIR" ] ||
+	[ "$(readlink -f "$DEX_CHECK_TMPDIR")" != "$DEX_CHECK_TMPDIR" ] ||
+	[ "$(stat -c '%u:%a' "$DEX_CHECK_TMPDIR")" != '0:700' ]; then
+	echo 'dex_check requires a root-owned mode 0700 run directory' >&2
+	exit 1
+fi
 TMPDIR="$DEX_CHECK_TMPDIR"
 SPEEDBACKUP_RUN_TMPDIR="$DEX_CHECK_TMPDIR"
 SPEEDBACKUP_CGROUP_FREEZER_SOCKET="$DEX_CHECK_TMPDIR/speedbackup_cgfreezerd.sock"
@@ -48,7 +62,9 @@ SPEEDBACKUP_CGROUP_FREEZER_STATE_FILE="$DEX_CHECK_TMPDIR/.speedbackup_cgroup_fre
 SPEEDBACKUP_NOTIFY_STATE_DIR="$DEX_CHECK_TMPDIR/.speedbackup_notify_state"
 export TMPDIR SPEEDBACKUP_RUN_TMPDIR SPEEDBACKUP_CGROUP_FREEZER_SOCKET SPEEDBACKUP_PROCESS_OBSERVER_BATCH_STATE_DIR SPEEDBACKUP_WAKEBLOCK_STATE_DIR SPEEDBACKUP_UID_NETBLOCK_STATE_DIR SPEEDBACKUP_CGROUP_FREEZER_STATE_FILE SPEEDBACKUP_NOTIFY_STATE_DIR
 cleanup_dexcheck_tmpdir(){ [ "${DEX_CHECK_TMPDIR_OWN:-0}" = 1 ] && rm -rf "$DEX_CHECK_TMPDIR" 2>/dev/null || true; }
-trap cleanup_dexcheck_tmpdir EXIT INT TERM
+trap cleanup_dexcheck_tmpdir EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 mkdir -p "$TEST_LOG_DIR" 2>/dev/null
 : > "$TEST_LOG_FILE" 2>/dev/null || TEST_LOG_FILE="$DEX_CHECK_TMPDIR/dex_check_$$.log"
 : > "$TEST_LOG_FILE" 2>/dev/null
@@ -213,32 +229,41 @@ else
 	warn "Play 商店身分模擬環境" "uidexec_not_found"
 fi
 
-_dex_ver_now="$(run_dex --version 2>&1 | head -n 30)"; _dex_ver_rc=$?
+_dex_ver_now="$(run_dex --version 2>&1)"; _dex_ver_rc=$?
+
+_dex_ver_now="$(printf '%s\n' "$_dex_ver_now" | head -n 30)"
 if [ "$_dex_ver_rc" -eq 0 ] && [ -n "$_dex_ver_now" ]; then
 	ok "Dex 主入口可啟動" "rc=0 diagnostic_version_only"
 else
 	critical_fail "Dex 主入口可啟動" "rc=$_dex_ver_rc $_dex_ver_now"
 fi
-_root_ver="$(run_class_stdout "$ROOT_DAEMON_CLASS" version 2>&1 | head -n 20)"; _root_ver_rc=$?
+_root_ver="$(run_class_stdout "$ROOT_DAEMON_CLASS" version 2>&1)"; _root_ver_rc=$?
+_root_ver="$(printf '%s\n' "$_root_ver" | head -n 20)"
 [ "$_root_ver_rc" -eq 0 ] && [ -n "$_root_ver" ] && ok "Dex RootDaemon 可啟動" "rc=0" || critical_fail "Dex RootDaemon 可啟動" "rc=$_root_ver_rc"
 _dex_ver_line="$(printf '%s\n' "$_dex_ver_now" | sed -n '1p')"
-_webdav_ver="$(run_class_stdout "$WEBDAV_CLASS" version 2>&1 | head -n 1)"; _webdav_ver_rc=$?
-_notify_ver="$(run_class_stdout "$NOTIFICATION_CLASS" version 2>&1 | head -n 1)"; _notify_ver_rc=$?
-_appstate_ver="$(run_class_stdout "$APPSTATE_CLASS" version 2>&1 | head -n 1)"; _appstate_ver_rc=$?
-_supervisor_ver="$(run_class_stdout com.xayah.dex.DaemonSupervisorUtil version 2>&1 | head -n 1)"; _supervisor_ver_rc=$?
+_webdav_ver="$(run_class_stdout "$WEBDAV_CLASS" version 2>&1)"; _webdav_ver_rc=$?
+_webdav_ver="$(printf '%s\n' "$_webdav_ver" | head -n 1)"
+_notify_ver="$(run_class_stdout "$NOTIFICATION_CLASS" version 2>&1)"; _notify_ver_rc=$?
+_notify_ver="$(printf '%s\n' "$_notify_ver" | head -n 1)"
+_appstate_ver="$(run_class_stdout "$APPSTATE_CLASS" version 2>&1)"; _appstate_ver_rc=$?
+_appstate_ver="$(printf '%s\n' "$_appstate_ver" | head -n 1)"
+_supervisor_ver="$(run_class_stdout com.xayah.dex.DaemonSupervisorUtil version 2>&1)"; _supervisor_ver_rc=$?
+_supervisor_ver="$(printf '%s\n' "$_supervisor_ver" | head -n 1)"
 if [ "$_root_ver_rc" -eq 0 ] && [ "$_webdav_ver_rc" -eq 0 ] && [ "$_notify_ver_rc" -eq 0 ] && [ "$_appstate_ver_rc" -eq 0 ] && [ "$_supervisor_ver_rc" -eq 0 ]     && [ "$_root_ver" = "$_dex_ver_line" ] && [ "$_webdav_ver" = "$_dex_ver_line" ] && [ "$_notify_ver" = "$_dex_ver_line" ] && [ "$_appstate_ver" = "$_dex_ver_line" ] && [ "$_supervisor_ver" = "$_dex_ver_line" ]; then
 	ok "Dex 全域版本資訊" "consistent diagnostic-only"
 else
 	warn "Dex 全域版本資訊" "diagnostic-only capability-gated HiddenApi=$_dex_ver_line RootDaemon=$_root_ver WebDav=$_webdav_ver Notification=$_notify_ver AppState=$_appstate_ver DaemonSupervisor=$_supervisor_ver"
 fi
-_bypass="$(run_dex hiddenApiBypassStatus 2>&1 | head -n 40)"; _bypass_rc=$?
+_bypass="$(run_dex hiddenApiBypassStatus 2>&1)"; _bypass_rc=$?
+_bypass="$(printf '%s\n' "$_bypass" | head -n 40)"
 printf '%s\n' "$_bypass" > "$TEST_LOG_DIR/hiddenapi_bypass_status.txt" 2>/dev/null
 if [ "$_bypass_rc" -eq 0 ] && printf '%s\n' "$_bypass" | grep -q 'HIDDEN_API_BYPASS'; then
 	ok "Hidden API softgate 狀態" "rc=0 optional=1"
 else
 	warn "Hidden API softgate 狀態" "rc=$_bypass_rc optional=1"
 fi
-_probe_out="$(run_dex hiddenApiRuntimeProbe "$USER_ID" "$PKG" 2>/dev/null | head -n 120)"; _probe_rc=$?
+_probe_out="$(run_dex hiddenApiRuntimeProbe "$USER_ID" "$PKG" 2>/dev/null)"; _probe_rc=$?
+_probe_out="$(printf '%s\n' "$_probe_out" | head -n 120)"
 printf '%s\n' "$_probe_out" > "$TEST_LOG_DIR/hiddenapi_runtime_probe.txt" 2>/dev/null
 if [ "$_probe_rc" -eq 0 ] && printf '%s\n' "$_probe_out" | grep -q 'HIDDEN_API_PROBE_DONE'; then
 	ok "Hidden API 實際功能探測" "rc=0 functional_gate=1"
@@ -281,7 +306,7 @@ _cg_bin="$(command -v cgfreezer 2>/dev/null)"; [ -n "$_cg_bin" ] || _cg_bin="$TO
 if [ -x "$_cg_bin" ]; then
 	_cg_caps="$("$_cg_bin" capabilities 2>/dev/null)"; _cg_caps_rc=$?
 	printf '%s\n' "$_cg_caps" > "$TEST_LOG_DIR/cgfreezer_capabilities.txt" 2>/dev/null
-	for _cg_need in freeze-package-refresh-v1 daemon-worker-error-detail-v1 subscribe-peer-close-v1 daemon-worker-admission-v1 daemon-stop-reaped-v1; do
+	for _cg_need in cgroup-v2-uid-root-fallback freeze-package-single-request-v1 freeze-package-refresh-v1 freeze-identity-report-v1 daemon-worker-error-detail-v1 subscribe-peer-close-v1 daemon-worker-admission-v1 daemon-stop-reaped-v1 kill-package-live-rescan-v1 pidfd-signal-optional-v1 cgroup-kill-fastpath-v1 thaw-uid-emergency-v1 daemon-parent-control-v1 daemon-diagnostics-batch-v1 daemon-stats-v1 batch-pid-list-v1 cgroup-wchan-confirm-v1 backend-select-cache-v1; do
 		if [ "$_cg_caps_rc" -eq 0 ] && printf '%s\n' "$_cg_caps" | tr ',' '\n' | grep -Fx "$_cg_need" >/dev/null 2>&1; then
 			ok "cgfreezer $_cg_need" "capability-only present"
 		else
@@ -298,14 +323,16 @@ else
 fi
 _ew_bin="$(command -v eventwait 2>/dev/null)"; [ -n "$_ew_bin" ] || _ew_bin="/data/backup_tools/eventwait"
 if [ -x "$_ew_bin" ]; then
-	_ew_ver="$($_ew_bin --version 2>/dev/null | head -n 1)"; _ew_ver_rc=$?
+	_ew_ver="$($_ew_bin --version 2>/dev/null)"; _ew_ver_rc=$?
+	_ew_ver="$(printf '%s\n' "$_ew_ver" | head -n 1)"
 	printf '%s\n' "$_ew_ver" > "$TEST_LOG_DIR/eventwait_version.txt" 2>/dev/null
 	if [ "$_ew_ver_rc" -eq 0 ] && [ -n "$_ew_ver" ]; then
 		ok "eventwait 版本資訊" "diagnostic-only capability-gated"
 	else
 		warn "eventwait 版本資訊" "diagnostic-only rc=$_ew_ver_rc version=$_ew_ver"
 	fi
-	_ew_caps="$($_ew_bin capabilities 2>/dev/null | head -n 3)"; _ew_caps_rc=$?
+	_ew_caps="$($_ew_bin capabilities 2>/dev/null)"; _ew_caps_rc=$?
+	_ew_caps="$(printf '%s\n' "$_ew_caps" | head -n 3)"
 	printf '%s\n' "$_ew_caps" > "$TEST_LOG_DIR/eventwait_capabilities.txt" 2>/dev/null
 	case " $_ew_caps " in
 	*" eventwait.fifo_process_identity.v1 "*) ok "eventwait FIFO process identity" "present" ;;
@@ -328,7 +355,8 @@ if [ -x "$_ew_bin" ]; then
 	*) critical_fail "常駐終端訊息輸出" "missing；執行時回退單次輸出，請同步更新配套 speednative" ;;
 	esac
 	if [ "$_ew_caps_rc" -eq 0 ] && printf '%s\n' "$_ew_caps" | grep -F "eventwait.pidfd_open.v1" >/dev/null 2>&1 && printf '%s\n' "$_ew_caps" | grep -F "eventwait.pid_exit_pidfd.v1" >/dev/null 2>&1; then ok "eventwait pidfd capability" "present"; else critical_fail "eventwait pidfd capability" "rc=$_ew_caps_rc $_ew_caps，請重編/替換 eventwait"; fi
-	_ew_probe="$($_ew_bin pidfd-probe $$ 2>/dev/null | head -n 3)"; _ew_probe_rc=$?
+	_ew_probe="$($_ew_bin pidfd-probe $$ 2>/dev/null)"; _ew_probe_rc=$?
+	_ew_probe="$(printf '%s\n' "$_ew_probe" | head -n 3)"
 	printf '%s\n' "$_ew_probe" > "$TEST_LOG_DIR/eventwait_pidfd_probe.txt" 2>/dev/null
 	if [ "$_ew_probe_rc" -eq 0 ] && printf '%s\n' "$_ew_probe" | grep -F "pidfd-probe" >/dev/null 2>&1 && printf '%s\n' "$_ew_probe" | grep -F "backend=pidfd_open" >/dev/null 2>&1; then ok "eventwait pidfd runtime" "rc=0"; else warn "eventwait pidfd runtime" "rc=$_ew_probe_rc $_ew_probe；舊核心會回退 poll-no-block"; fi
 else
@@ -340,7 +368,8 @@ _cg_bin="$(command -v cgfreezer 2>/dev/null)"; [ -n "$_cg_bin" ] || _cg_bin="/da
 if [ -x "$_cg_bin" ]; then
 	_cg_usage="$($_cg_bin 2>&1 | head -n 5)"
 	printf '%s\n' "$_cg_usage" | grep -F "proc-wchan" >/dev/null 2>&1 && ok "cgroup WCHAN native 指令" "present" || critical_fail "cgroup WCHAN native 指令" "missing proc-wchan，請重編/替換 cgfreezer"
-	_cg_backend_out="$($_cg_bin backend-probe 2>/dev/null | head -n 20)"; _cg_backend_rc=$?
+	_cg_backend_out="$($_cg_bin backend-probe 2>/dev/null)"; _cg_backend_rc=$?
+	_cg_backend_out="$(printf '%s\n' "$_cg_backend_out" | head -n 20)"
 	printf '%s\n' "$_cg_backend_out" > "$TEST_LOG_DIR/cgfreezer_backend_probe.txt" 2>/dev/null
 	if [ "$_cg_backend_rc" -eq 0 ] && printf '%s\n' "$_cg_backend_out" | grep -q 'preferred='; then ok "cgroup backend selector 探測" "rc=0"; else critical_fail "cgroup backend selector 探測" "rc=$_cg_backend_rc"; fi
 		# + cgfreezer keeps backend-select-cache-v1 in the CAPS payload, not in the no-arg usage line.
@@ -352,7 +381,8 @@ if [ -x "$_cg_bin" ]; then
 		else
 			critical_fail "cgroup backend 快取 capability" "missing backend-select-cache-v1，請重編/替換 cgfreezer"
 		fi
-	_cg_wchan_out="$($_cg_bin proc-wchan -1 $$ any 2>/dev/null | head -n 80)"; _cg_wchan_rc=$?
+	_cg_wchan_out="$($_cg_bin proc-wchan -1 $$ any 2>/dev/null)"; _cg_wchan_rc=$?
+	_cg_wchan_out="$(printf '%s\n' "$_cg_wchan_out" | head -n 80)"
 	printf '%s\n' "$_cg_wchan_out" > "$TEST_LOG_DIR/cgfreezer_wchan_smoke.txt" 2>/dev/null
 	if [ "$_cg_wchan_rc" -eq 0 ] && printf '%s\n' "$_cg_wchan_out" | grep -q 'CGFREEZER_WCHAN_DONE ok=true'; then ok "cgroup WCHAN 狀態確認" "rc=0"; else critical_fail "cgroup WCHAN 狀態確認" "rc=$_cg_wchan_rc"; fi
 else
@@ -367,7 +397,8 @@ if [ -x "$_ss_bin" ]; then
 		_ss_usage="$($_ss_bin 2>&1 | head -n 120)"
 		printf '%s\n' "$_ss_usage" > "$TEST_LOG_DIR/speedscan_usage.txt" 2>/dev/null
 		ok "speedscan help/version contract" "diagnostic-only capability-gated"
-	_ss_caps="$($_ss_bin capabilities 2>/dev/null | head -n 5)"; _ss_caps_rc=$?
+	_ss_caps="$($_ss_bin capabilities 2>/dev/null)"; _ss_caps_rc=$?
+	_ss_caps="$(printf '%s\n' "$_ss_caps" | head -n 5)"
 	printf '%s\n' "$_ss_caps" > "$TEST_LOG_DIR/speedscan_capabilities.txt" 2>/dev/null
 	if [ "$_ss_caps_rc" -eq 0 ] \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.json_ops.v1" >/dev/null 2>&1 \
@@ -383,7 +414,6 @@ if [ -x "$_ss_bin" ]; then
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.result_contract.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.backup_run_model.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.backup_plan_coverage.v1" >/dev/null 2>&1 \
-		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.tree_fixup_symlink_owner.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.tar_source_manifest.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.restore_source_verify.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.debug_consolidate.v1" >/dev/null 2>&1 \
@@ -451,7 +481,8 @@ if [ -x "$_ss_bin" ]; then
 	cat > "$_ss_ad_root/TestApp/app_details.json" 2>/dev/null <<'EOF_SPEEDSCAN_APPDETAILS_MANIFEST'
 {"TestApp":{"PackageName":"com.speedbackup.test","apk_version":"1"}}
 EOF_SPEEDSCAN_APPDETAILS_MANIFEST
-	_ss_ad_msg="$($_ss_bin appdetails-bundle-manifest "$_ss_ad_root" "$_ss_ad_prefix" 2>&1 | head -n 20)"; _ss_ad_rc=$?
+	_ss_ad_msg="$($_ss_bin appdetails-bundle-manifest "$_ss_ad_root" "$_ss_ad_prefix" 2>&1)"; _ss_ad_rc=$?
+	_ss_ad_msg="$(printf '%s\n' "$_ss_ad_msg" | head -n 20)"
 	printf '%s
 ' "$_ss_ad_msg" > "$TEST_LOG_DIR/speedscan_appdetails_bundle_manifest.summary.txt" 2>/dev/null
 	if [ "$_ss_ad_rc" -eq 0 ] && [ -s "$_ss_ad_root/manifest.tsv" ] && awk -F '\t' '$1=="TestApp" && $2=="com.speedbackup.test" && $3 ~ /^[0-9]+$/ && length($4)==64 {ok=1} END{exit ok?0:1}' "$_ss_ad_root/manifest.tsv" 2>/dev/null; then
@@ -481,14 +512,16 @@ EOF_SPEEDSCAN_APPDETAILS_SEED_BAD
 	printf '%s\n' "$_ss_seed_msg" > "$TEST_LOG_DIR/speedscan_appdetails_seed_index.summary.txt" 2>/dev/null
 	if [ "$_ss_seed_rc" -eq 0 ] \
 		&& grep -Fx "TestApp" "$_ss_seed_out" >/dev/null 2>&1 \
-		&& [ "$(wc -l < "$_ss_seed_out")" -eq 1 ] \
+		&& [ "$(wc -l < "$_ss_seed_out")" -eq 5 ] \
+		&& [ "$(wc -l < "$_ss_seed_prefix.baseline.tsv")" -eq 5 ] \
+		&& grep -F 'bad=4' "$TEST_LOG_DIR/speedscan_appdetails_seed_index.summary.txt" >/dev/null 2>&1 \
 		&& [ -f "$_ss_seed_root/TestApp/app_details.json" ] \
 		&& [ -f "$_ss_seed_root/BadApp/app_details.json" ] \
 		&& [ -f "$_ss_seed_root/Truncated/app_details.json" ] \
 		&& [ -f "$_ss_seed_root/Nested/app_details.json" ] \
 		&& [ -f "$_ss_seed_root/Trailing/app_details.json" ] \
 		&& grep -F "speedbackup.appdetails_seed_index.v1" "$_ss_seed_prefix.stats" >/dev/null 2>&1; then
-		ok "speedscan app_details seed index Rust 化" "rc=0 schema=appdetails_seed_index.v1 strict-document direct-child invalid-excluded-source-preserved"
+		ok "speedscan app_details seed index Rust 化" "rc=0 schema=appdetails_seed_index.v1 strict-document direct-child legacy-invalid-preserved-hash-baseline"
 	else
 		critical_fail "speedscan app_details seed index Rust 化" "rc=$_ss_seed_rc $_ss_seed_msg"
 	fi
@@ -506,7 +539,8 @@ EOF_SPEEDSCAN_AUDIT_B
 	printf 'AppA/user.tar.zst
 AppB/apk.tar.zst
 ' > "$_ss_audit_remote" 2>/dev/null
-	_ss_audit_msg="$($_ss_bin appdetails-bundle-audit "$_ss_audit_root" "$_ss_audit_remote" - missing 0 "$_ss_audit_prefix" 0 2>&1 | head -n 20)"; _ss_audit_rc=$?
+	_ss_audit_msg="$($_ss_bin appdetails-bundle-audit "$_ss_audit_root" "$_ss_audit_remote" - missing 0 "$_ss_audit_prefix" 0 2>&1)"; _ss_audit_rc=$?
+	_ss_audit_msg="$(printf '%s\n' "$_ss_audit_msg" | head -n 20)"
 	printf '%s
 ' "$_ss_audit_msg" > "$TEST_LOG_DIR/speedscan_appdetails_audit_seedless.summary.txt" 2>/dev/null
 	if [ "$_ss_audit_rc" -eq 0 ] && printf '%s
@@ -521,7 +555,8 @@ AppB/apk.tar.zst
 	_ss_audit_seed="$DEX_CHECK_TMPDIR/appdetails_audit_seed_expansion_seed.lst"
 	printf 'AppA\n' > "$_ss_audit_seed" 2>/dev/null
 	_ss_audit_expand_prefix="$DEX_CHECK_TMPDIR/appdetails_audit_seed_expansion_probe"
-	_ss_audit_expand_msg="$("$_ss_bin" appdetails-bundle-audit "$_ss_audit_root" "$_ss_audit_remote" "$_ss_audit_seed" ok 1 "$_ss_audit_expand_prefix" 0 2>&1 | head -n 20)"; _ss_audit_expand_rc=$?
+	_ss_audit_expand_msg="$("$_ss_bin" appdetails-bundle-audit "$_ss_audit_root" "$_ss_audit_remote" "$_ss_audit_seed" ok 1 "$_ss_audit_expand_prefix" 0 2>&1)"; _ss_audit_expand_rc=$?
+	_ss_audit_expand_msg="$(printf '%s\n' "$_ss_audit_expand_msg" | head -n 20)"
 	printf '%s\n' "$_ss_audit_expand_msg" > "$TEST_LOG_DIR/speedscan_appdetails_audit_seed_expansion.summary.txt" 2>/dev/null
 	if [ "$_ss_audit_expand_rc" -eq 0 ] && printf '%s\n' "$_ss_audit_expand_msg" | grep -F 'APPDETAILS_BUNDLE_AUDIT' >/dev/null 2>&1 && printf '%s\n' "$_ss_audit_expand_msg" | grep -F 'seedExpansion=1' >/dev/null 2>&1 && printf '%s\n' "$_ss_audit_expand_msg" | grep -F 'missingSeed=1' >/dev/null 2>&1 && printf '%s\n' "$_ss_audit_expand_msg" | grep -F 'missingStage=0' >/dev/null 2>&1 && printf '%s\n' "$_ss_audit_expand_msg" | grep -F 'bad=0' >/dev/null 2>&1 && printf '%s\n' "$_ss_audit_expand_msg" | grep -F 'ignoredRemotePayloadApps=0' >/dev/null 2>&1; then
 		ok "speedscan app_details 合法 seed expansion" "rc=0 seedExpansion=1 missingSeed=1"
@@ -556,7 +591,8 @@ AppB/apk.tar.zst
 	printf 'APK\tTestApp\tcom.speedbackup.test\tapk\t0\nDIR\tTestApp\tcom.speedbackup.test\tuser\t123\n' > "$_ss_exact_rows" 2>/dev/null
 	printf 'com.speedbackup.test\tuser\t/data/user/0/com.speedbackup.test\t20480\n' > "$_ss_exact_dirmap" 2>/dev/null
 	printf 'com.speedbackup.test\t%s\n' "$_ss_exact_dir/base.apk" > "$_ss_exact_apkmap" 2>/dev/null
-	_ss_exact_msg="$("$_ss_bin" backup-prescan-exact-input "$_ss_exact_rows" "$_ss_exact_dirmap" "$_ss_exact_apkmap" "$_ss_exact_details" "$_ss_exact_stats" 2>&1 | head -n 20)"; _ss_exact_rc=$?
+	_ss_exact_msg="$("$_ss_bin" backup-prescan-exact-input "$_ss_exact_rows" "$_ss_exact_dirmap" "$_ss_exact_apkmap" "$_ss_exact_details" "$_ss_exact_stats" 2>&1)"; _ss_exact_rc=$?
+	_ss_exact_msg="$(printf '%s\n' "$_ss_exact_msg" | head -n 20)"
 	printf '%s\n' "$_ss_exact_msg" > "$TEST_LOG_DIR/speedscan_exact_batch.summary.txt" 2>/dev/null
 	_ss_exact_bytes="$(awk -F '\t' '$1=="bytes"{print $2;exit}' "$_ss_exact_stats" 2>/dev/null)"
 	_ss_exact_archives="$(awk -F '\t' '$1=="archives"{print $2;exit}' "$_ss_exact_stats" 2>/dev/null)"
@@ -567,7 +603,8 @@ AppB/apk.tar.zst
 		critical_fail "speedscan prescan exact batch" "rc=$_ss_exact_rc bytes=$_ss_exact_bytes archives=$_ss_exact_archives $_ss_exact_msg"
 	fi
 	_ss_plan="$TEST_LOG_DIR/speedscan_tree_pack_plan.tsv"
-	_ss_plan_summary="$($_ss_bin tree-pack-plan "$TEST_LOG_DIR" "$_ss_plan" - 256 2>&1 | head -n 20)"; _ss_plan_rc=$?
+	_ss_plan_summary="$($_ss_bin tree-pack-plan "$TEST_LOG_DIR" "$_ss_plan" - 256 2>&1)"; _ss_plan_rc=$?
+	_ss_plan_summary="$(printf '%s\n' "$_ss_plan_summary" | head -n 20)"
 	printf '%s\n' "$_ss_plan_summary" > "$TEST_LOG_DIR/speedscan_tree_pack_plan.summary.txt" 2>/dev/null
 	if [ "$_ss_plan_rc" -eq 0 ] && [ -s "$_ss_plan" ] && grep -F "speedbackup.tree_pack_plan.v1" "$_ss_plan" >/dev/null 2>&1; then
 		ok "speedscan tree pack-plan facts" "rc=0"
@@ -575,7 +612,8 @@ AppB/apk.tar.zst
 		critical_fail "speedscan tree pack-plan facts" "rc=$_ss_plan_rc $_ss_plan_summary"
 	fi
 	_ss_media="$TEST_LOG_DIR/speedscan_app_media_index.tsv"
-	_ss_media_summary="$($_ss_bin app-media-index "$TEST_LOG_DIR" "$_ss_media" 4 256 - 2>&1 | head -n 20)"; _ss_media_rc=$?
+	_ss_media_summary="$($_ss_bin app-media-index "$TEST_LOG_DIR" "$_ss_media" 4 256 - 2>&1)"; _ss_media_rc=$?
+	_ss_media_summary="$(printf '%s\n' "$_ss_media_summary" | head -n 20)"
 	printf '%s\n' "$_ss_media_summary" > "$TEST_LOG_DIR/speedscan_app_media_index.summary.txt" 2>/dev/null
 	if [ "$_ss_media_rc" -eq 0 ] && [ -s "$_ss_media" ] && grep -F "speedbackup.app_media_index.v1" "$_ss_media" >/dev/null 2>&1; then
 		ok "speedscan app media index facts" "rc=0"

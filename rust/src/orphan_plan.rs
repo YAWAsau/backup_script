@@ -18,7 +18,7 @@ fn component(name: &str) -> bool {
 }
 
 fn app(name: &str) -> bool {
-    component(name) && !name.starts_with('.') && !matches!(name, "tools" | "wifi" | "Media" | "log")
+    component(name) && !name.starts_with('.') && !matches!(name, "tools" | "wifi" | "Media" | "log" | "communications")
 }
 
 pub fn package(name: &str) -> bool {

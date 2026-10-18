@@ -228,6 +228,7 @@ public final class AppOpsCompat {
 
         int failedCachedSignature = 0;
         Throwable last = null;
+        boolean signaturesMissing = true;
 
         if (sPackageScopedResetSignature == 1) {
             try {
@@ -235,6 +236,7 @@ public final class AppOpsCompat {
                 return ResetResult.ok("user_pkg", true);
             } catch (Throwable throwable) {
                 last = throwable;
+                if (!(throwable instanceof NoSuchMethodException)) signaturesMissing = false;
                 failedCachedSignature = 1;
                 sPackageScopedResetSignature = 0;
                 CompatDebug.throwable("cached resetAllModes(userId,packageName)", throwable);
@@ -245,6 +247,7 @@ public final class AppOpsCompat {
                 return ResetResult.ok("pkg_user", true);
             } catch (Throwable throwable) {
                 last = throwable;
+                if (!(throwable instanceof NoSuchMethodException)) signaturesMissing = false;
                 failedCachedSignature = 2;
                 sPackageScopedResetSignature = 0;
                 CompatDebug.throwable("cached resetAllModes(packageName,userId)", throwable);
@@ -258,6 +261,7 @@ public final class AppOpsCompat {
                 return ResetResult.ok("user_pkg", false);
             } catch (Throwable throwable) {
                 last = throwable;
+                if (!(throwable instanceof NoSuchMethodException)) signaturesMissing = false;
                 CompatDebug.throwable("resetAllModes(userId,packageName)", throwable);
             }
         }
@@ -269,12 +273,14 @@ public final class AppOpsCompat {
                 return ResetResult.ok("pkg_user", false);
             } catch (Throwable throwable) {
                 last = throwable;
+                if (!(throwable instanceof NoSuchMethodException)) signaturesMissing = false;
                 CompatDebug.throwable("resetAllModes(packageName,userId)", throwable);
             }
         }
 
-        sPackageScopedResetSignature = -1;
-        return ResetResult.unsupported(last);
+        if (signaturesMissing) sPackageScopedResetSignature = -1;
+        return signaturesMissing ? ResetResult.unsupported(last)
+                : new ResetResult(false, "resetAllModes", "transient_failure", false, true, false, last);
     }
 
     public static int resetKnownOpsToDefault(AppOpsManagerHidden appOpsManager, int uid, String packageName,

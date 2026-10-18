@@ -1,3 +1,4 @@
+pub mod signal_wait;
 use std::collections::HashSet;
 use std::ffi::CString;
 use std::fs::{self, File};
@@ -259,6 +260,13 @@ pub fn wait_pid_exit_pidfd(pid: i32, timeout_ms: i64, tag: &str) -> Option<i32> 
         return None;
     }
 }
+fn wait_pid_identity(pid: i32) -> io::Result<u64> {
+    let stat = std::fs::read_to_string(format!("/proc/{}/stat", pid))?;
+    let fields = stat.rsplit_once(')').map(|(_, tail)| tail)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "proc stat comm"))?;
+    fields.split_whitespace().nth(19).and_then(|v| v.parse().ok())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "proc stat starttime"))
+}
 pub fn wait_pid_exit_poll(pid: i32, timeout_ms: i64, tag: &str) -> i32 {
     let safe_tag = if tag.is_empty() { "pid_exit" } else { tag };
     if pid <= 0 {
@@ -268,10 +276,16 @@ pub fn wait_pid_exit_poll(pid: i32, timeout_ms: i64, tag: &str) -> i32 {
         println!("done\t0\t{}\tpid-exit", safe_tag);
         return 0;
     }
+    let identity = wait_pid_identity(pid);
     if let Some(rc) = wait_pid_exit_pidfd(pid, timeout_ms, safe_tag) {
         return rc;
     }
 
+    let expected = match identity {
+        Ok(value) => value,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return 0,
+        Err(_) => return 4,
+    };
     let start = Instant::now();
     let proc_path = format!("/proc/{}", pid);
     let mut ifd: c_int = -1;
@@ -291,7 +305,16 @@ pub fn wait_pid_exit_poll(pid: i32, timeout_ms: i64, tag: &str) -> i32 {
     loop {
         let now = start.elapsed().as_millis() as i64;
         let mut wait_ms: i64 = 1000;
-        if !pid_alive(pid) {
+        let current = wait_pid_identity(pid);
+        let gone = match current {
+            Ok(value) => value != expected,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => true,
+            Err(_) => {
+                if ifd >= 0 { unsafe { close(ifd) }; }
+                return 4;
+            }
+        };
+        if gone || !pid_alive(pid) {
             if ifd >= 0 {
                 unsafe { close(ifd) };
             }
@@ -697,6 +720,22 @@ pub fn walk_no_follow<F>(
 where
     F: FnMut(&Path, &fs::Metadata, usize, &mut ScanResult) -> io::Result<()>,
 {
+    walk_no_follow_except(root, path, depth, max_depth, res, f, Path::new(""))
+}
+pub fn walk_no_follow_except<F>(
+    root: &Path,
+    path: &Path,
+    depth: usize,
+    max_depth: Option<usize>,
+    res: &mut ScanResult,
+    f: &mut F,
+    excluded: &Path,
+) -> io::Result<()>
+where
+    F: FnMut(&Path, &fs::Metadata, usize, &mut ScanResult) -> io::Result<()>,
+{
+    if !excluded.as_os_str().is_empty() && path.starts_with(excluded) { return Ok(()); }
+    let errors_before = res.errors;
     let _depth = WalkDepthGuard::enter().inspect_err(|_e| {
         res.errors += 1;
     })?;
@@ -708,7 +747,7 @@ where
         }
     };
     note_stat(res, &meta);
-    f(path, &meta, depth, res)?;
+    f(path, &meta, depth, res).inspect_err(|_| { res.errors += 1; })?;
     if meta.file_type().is_dir() && max_depth.map(|m| depth < m).unwrap_or(true) {
         let rd = match fs::read_dir(path) {
             Ok(r) => r,
@@ -717,7 +756,11 @@ where
                 return Err(e);
             }
         };
-        for ent in rd.flatten() {
+        for entry in rd {
+            let ent = match entry {
+                Ok(ent) => ent,
+                Err(_) => { res.errors += 1; continue; }
+            };
             // Every C recursive walker builds child in char child[PATH_MAX]
             // through join_path(), including its deliberately conservative
             // +1 separator allowance even when the parent ends in '/'.
@@ -727,11 +770,12 @@ where
                 res.errors = res.errors.wrapping_add(1);
                 continue;
             }
-            let _ = walk_no_follow(root, &ent.path(), depth + 1, max_depth, res, f);
+            let _ = walk_no_follow_except(root, &ent.path(), depth + 1, max_depth, res, f, excluded);
         }
     }
     let _ = root;
-    Ok(())
+    if res.errors == errors_before { Ok(()) }
+    else { Err(io::Error::other("incomplete directory traversal")) }
 }
 pub fn rel_path(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
@@ -833,16 +877,15 @@ pub fn proc_uid(pid: i32) -> Option<u32> {
     v.split_whitespace().next()?.parse().ok()
 }
 
-pub fn list_pids() -> Vec<i32> {
+pub fn list_pids() -> io::Result<Vec<i32>> {
     let mut v = Vec::new();
-    if let Ok(rd) = fs::read_dir("/proc") {
-        for e in rd.flatten() {
-            if let Ok(pid) = e.file_name().to_string_lossy().parse::<i32>() {
-                v.push(pid);
-            }
+    for entry in fs::read_dir("/proc")? {
+        let e = entry?;
+        if let Ok(pid) = e.file_name().to_string_lossy().parse::<i32>() {
+            v.push(pid);
         }
     }
-    v
+    Ok(v)
 }
 pub fn is_valid_pkg_name(pkg: &str) -> bool {
     // Faithful port of is_valid_pkg_name()/is_pkg_char(): 3-128 chars,
@@ -965,6 +1008,11 @@ pub fn safe_name_for_backup(name: &str, pkg: &str) -> String {
 pub const O_NOFOLLOW_NATIVE: i32 = 0o100000;
 #[cfg(not(target_arch = "aarch64"))]
 pub const O_NOFOLLOW_NATIVE: i32 = 0o400000;
+
+#[cfg(any(target_arch = "aarch64", target_arch = "arm"))]
+pub const O_DIRECTORY_NATIVE: i32 = 0o40000;
+#[cfg(not(any(target_arch = "aarch64", target_arch = "arm")))]
+pub const O_DIRECTORY_NATIVE: i32 = 0o200000;
 
 thread_local! { static WALK_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
 pub struct WalkDepthGuard;

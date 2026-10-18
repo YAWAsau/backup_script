@@ -71,6 +71,8 @@ object WebDavUtil {
     private val serverKindCache = WebDavIdentityCache<String>(WebDavIdentityCache.Companion::serverKindLifetime)
     private val speedBackupIdentityCache = WebDavIdentityCache<Boolean>(WebDavIdentityCache.Companion::identityLifetime)
     private val featureFactsCache = ConcurrentHashMap<String, WebDavFeatureFacts>()
+    private val managedPartPattern = Regex("\\.part\\.[0-9]+\\.[0-9]+$")
+    private val advisoryHeaders = ConcurrentHashMap<String, String>()
     private val managedUploadSeq = AtomicInteger(0)
     private val streamLogSeq = AtomicInteger(0)
 
@@ -528,6 +530,7 @@ object WebDavUtil {
             mkcolOkCache.clear()
             listOkCache.clear()
             serverKindCache.clear()
+            advisoryHeaders.clear()
             speedBackupIdentityCache.clear()
             featureFactsCache.clear()
             dirStateCache.clear()
@@ -941,8 +944,7 @@ object WebDavUtil {
             val requestScoped = command == "getrel" || command == "listrel" || command == "statrel" ||
                 command == "propfindrel" || command == "optionsrel"
             if (!(requestScoped && knownTransferFailure)) {
-                System.err.println("[daemon] cmd=$command url=$url -> ${lastError!!.javaClass.name}: ${lastError!!.message}")
-                lastError!!.printStackTrace(System.err)
+                System.err.println("[daemon] cmd=$command exception=${lastError!!.javaClass.name}")
             }
         }
 
@@ -1067,7 +1069,7 @@ object WebDavUtil {
         val mode = args.getOrNull(5) ?: "auto"
         val parentMode = args.getOrNull(6) ?: "ensureParentMkdir"
         val code = runCatching {
-            putStdinManagedRel(args[1], args[2], args[3], args[4], mode, parentMode, System.`in`)
+            putStdinManagedRel(args[1], args[2], args[3], args[4], mode, parentMode, System.`in`, if (mode == "staged") ({ line: String -> print(line) }) else null)
         }.getOrElse { HttpCore.extractCode(it) }
         finish(code)
     }
@@ -1147,7 +1149,7 @@ object WebDavUtil {
         val profile = webDavBackendProfile(args[1], args[2], args[3], args.getOrNull(4) ?: "cli")
         val providerHint = providerHintFromBaseUrl(args[3], profile.kind)
         val facts = featureFactsCache[featureFactsKey(args[3])]
-        val alistServerHeader = if (isAlistFamily(profile.kind)) runCatching { parseKeyValueLines(optionsDav(args[1], args[2], buildRelUrl(args[3], "")).second)["server"].orEmpty() }.getOrDefault("") else ""
+        val alistServerHeader = if (isAlistFamily(profile.kind)) advisoryServerHeader(args[1], args[2], args[3]) else ""
         val alistSecurity = alistSecurityAdvisory(profile.kind, alistServerHeader)
         println("schema	speedbackup.webdav_backend_profile.v3")
         println("kind	${profile.kind}")
@@ -1383,7 +1385,7 @@ object WebDavUtil {
         val base = baseUrl.trimEnd('/')
         val rel = sanitizeRelPath(relPath)
         if (rel.isEmpty()) return base
-        return "$base/$rel"
+        return "$base/${rel.replace("%", "%25").replace("?", "%3F").replace("#", "%23")}"
     }
 
     private fun sanitizeRelPath(relPath: String): String {
@@ -1397,10 +1399,8 @@ object WebDavUtil {
         for (partRaw in raw.split('/')) {
             val part = partRaw
             require(part.isNotEmpty() && part != ".") { "WEBDAV_REL_PATH_REJECT empty_component" }
-            val decoded = runCatching { HttpCore.percentDecodePath(part) }.getOrElse { part }
-            require(part != ".." && decoded != "..") { "WEBDAV_REL_PATH_REJECT traversal" }
-            require(!decoded.contains('/') && !decoded.contains('\\')) { "WEBDAV_REL_PATH_REJECT encoded_separator" }
-            require(!ctrl.containsMatchIn(part) && !ctrl.containsMatchIn(decoded)) { "WEBDAV_REL_PATH_REJECT control_char" }
+            require(part != "..") { "WEBDAV_REL_PATH_REJECT traversal" }
+            require(!ctrl.containsMatchIn(part)) { "WEBDAV_REL_PATH_REJECT control_char" }
             out.add(part)
         }
         return out.joinToString("/")
@@ -1513,11 +1513,11 @@ object WebDavUtil {
         }
     }
 
-    private fun collectionExists(user: String, pass: String, url: String): Boolean {
-        when (dirStateCache[url]) {
+    private fun collectionExists(user: String, pass: String, url: String, refresh: Boolean = false): Boolean {
+        when (if (refresh) null else dirStateCache[url]) {
             DirState.EXISTS -> return true
             DirState.MISSING -> return false
-            DirState.FAILED -> return false
+            DirState.FAILED -> {} // Transient failures are never permanent negative facts.
             null -> {}
         }
         val (code, body) = propfindRaw(user, pass, url, 0)
@@ -1548,7 +1548,7 @@ object WebDavUtil {
         // 405/already-exists, ambiguous 0, and odd NAS/rclone responses only become
         // success after a real PROPFIND confirms the collection. 409 remains a
         // parent-missing signal to the caller's chain mkdir path.
-        if (collectionExists(user, pass, url)) return 200
+        if (collectionExists(user, pass, url, refresh = true)) return 200
         dirStateCache[url] = if (code == 404 || code == 409) DirState.MISSING else DirState.FAILED
         return code
     }
@@ -1583,7 +1583,9 @@ object WebDavUtil {
         if (authority.isEmpty()) return null
         var path = if (slash < 0) "" else rest.substring(slash + 1)
         path = path.substringBefore('#').substringBefore('?').trim('/')
-        return ConfiguredBase(prefix + authority, path)
+        // Configured URLs are already escaped; relative-path APIs take decoded names.
+        // Decode exactly once, so %20 and literal %2520 remain distinct.
+        return ConfiguredBase(prefix + authority, HttpCore.percentDecodePath(path))
     }
 
     /**
@@ -2037,6 +2039,7 @@ object WebDavUtil {
     }
 
     private fun statDav(user: String, pass: String, url: String): Pair<Int, DavEntry?> {
+        val timingStart = System.nanoTime()
         var headEntry: DavEntry? = null
         val headCode = pacedCode(DavOperation.HEAD) { http.request(
             "HEAD", url, user, pass, emptyMap(),
@@ -2053,11 +2056,16 @@ object WebDavUtil {
             // here: reading Content-Length bytes after HEAD blocks until timeout/EOF
             // on common WebDAV servers and turns a valid 2xx HEAD into HTTP 0.
         } }
-        if (headCode in 200..299 && headEntry != null) return headCode to headEntry
+        val headEnd = System.nanoTime()
+        if (headCode in 200..299 && headEntry != null && headEntry!!.length >= 0L) {
+            System.err.println("DAV_STAT_TIMING headUs=${(headEnd-timingStart)/1000} propfindUs=0 parseUs=0 totalUs=${(System.nanoTime()-timingStart)/1000} method=HEAD http=$headCode")
+            return headCode to headEntry
+        }
 
         val (pfCode, body) = propfindRaw(user, pass, url, 0)
-        if (pfCode !in 200..299) return pfCode to null
-        val entry = parseDavEntries(body).firstOrNull()
+        val pfEnd = System.nanoTime()
+        val entry = if (pfCode in 200..299) parseDavEntries(body).firstOrNull() else null
+        System.err.println("DAV_STAT_TIMING headUs=${(headEnd-timingStart)/1000} propfindUs=${(pfEnd-headEnd)/1000} parseUs=${(System.nanoTime()-pfEnd)/1000} totalUs=${(System.nanoTime()-timingStart)/1000} method=PROPFIND headHttp=$headCode http=$pfCode")
         return pfCode to entry
     }
 
@@ -2428,6 +2436,10 @@ object WebDavUtil {
             cleanup()
         }
 
+        fun measured(name: String, success: Boolean): Boolean? {
+            val step = steps.lastOrNull { it.name == name } ?: return null
+            return measuredCapability(step.code, success)
+        }
         val chunkedOk = chunkedPutOk
         val moveOk = stepOk(steps, "moverel")
         val listUsable = depthInfinityOk || recursiveWalkOk
@@ -2435,27 +2447,27 @@ object WebDavUtil {
         val ok = finalCode in 200..299 && uploadUsable && bodyMatches && mkcolOk && deleteOk && listUsable && cleanupOk
         val quirks = detectWebDavQuirks(base, allow, dav, server, allowReliable, steps, speedbackupIdentity)
         cacheFeatureFacts(baseUrl, WebDavFeatureFacts(
-            supportsChunkedPut = chunkedOk,
-            supportsFixedPut = fixedPutOk,
-            supportsGetStream = bodyMatches,
-            supportsMove = moveOk,
-            supportsCopy = stepOk(steps, "copyrel"),
-            supportsStat = finalStatOk,
-            supportsRemoteSize = remoteSizeOk,
-            supportsMkcol = mkcolOk,
-            supportsDelete = deleteOk,
-            supportsDepth0 = depth0Ok,
-            supportsDepth1 = depth1Ok,
-            supportsDepthInfinity = depthInfinityOk,
-            supportsRecursiveWalkFallback = recursiveWalkOk,
-            supportsAtomicPublish = moveOk,
-            supportsOverwriteMove = stepOk(steps, "moverel.overwrite") && stepOk(steps, "getstdoutrel.overwrite"),
+            supportsChunkedPut = measured("putstdinchunkedrel", chunkedOk),
+            supportsFixedPut = measured("putfixedrel", fixedPutOk),
+            supportsGetStream = measured("getstdoutrel", bodyMatches),
+            supportsMove = measured("moverel", moveOk),
+            supportsCopy = measured("copyrel", stepOk(steps, "copyrel")),
+            supportsStat = measured("statrel", finalStatOk),
+            supportsRemoteSize = measured("statrel", remoteSizeOk),
+            supportsMkcol = measured("mkdirsrel", mkcolOk),
+            supportsDelete = measured("deleterel.known", deleteOk),
+            supportsDepth0 = measured("propfind.depth0", depth0Ok),
+            supportsDepth1 = measured("propfind.depth1", depth1Ok),
+            supportsDepthInfinity = measured("propfind.infinity", depthInfinityOk),
+            supportsRecursiveWalkFallback = measured("propfind.depth1.walk", recursiveWalkOk),
+            supportsAtomicPublish = measured("moverel", moveOk),
+            supportsOverwriteMove = measured("moverel.overwrite", stepOk(steps, "moverel.overwrite") && stepOk(steps, "getstdoutrel.overwrite")),
             supportsPacerRetryBackoff = quirks.pacerRetryBackoff,
             supportsDirectoryCache = quirks.directoryCache.isNotEmpty() && quirks.directoryCache != "none",
-            supportsQuota = quotaSupported,
-            bodyCompareOk = bodyMatches,
-            copyStatOk = copyStatOk,
-            cleanupOk = cleanupOk,
+            supportsQuota = measured("quotarel", quotaSupported),
+            bodyCompareOk = measured("getstdoutrel", bodyMatches),
+            copyStatOk = measured("statrel.copy", copyStatOk),
+            cleanupOk = measured("cleanup", cleanupOk),
             source = "compat-probe"
         ))
         return finishCompatProbe(
@@ -3473,6 +3485,26 @@ object WebDavUtil {
 
     private fun isAlistFamily(kind: String): Boolean = kind == "alist" || kind == "openlist" || kind == "alist_compatible"
 
+    private fun measuredCapability(code: Int, success: Boolean): Boolean? = when {
+        success -> true
+        // A temporary server/transport failure cannot establish lack of support.
+        isTransientWebDavCode(code) || code == 401 -> null
+        else -> false
+    }
+
+    private fun advisoryServerHeader(user: String, pass: String, baseUrl: String): String {
+        val key = serverKindCacheKey(baseUrl)
+        advisoryHeaders[key]?.let { return it }
+        // Network I/O must not hold a ConcurrentHashMap bin lock. Failed/empty
+        // observations are not permanent facts and may recover on the next call.
+        val header = runCatching {
+            val (code, body) = optionsDav(user, pass, buildRelUrl(baseUrl, ""))
+            if (code in 200..299) parseKeyValueLines(body)["server"].orEmpty() else ""
+        }.getOrDefault("")
+        if (header.isNotEmpty()) advisoryHeaders.putIfAbsent(key, header)
+        return header
+    }
+
     private fun webDavBackendProfile(user: String, pass: String, baseUrl: String, reason: String): WebDavBackendProfile {
         val kind = detectServerKind(user, pass, baseUrl)
         val facts = featureFactsCache[featureFactsKey(baseUrl)]
@@ -3490,7 +3522,7 @@ object WebDavUtil {
         // recognizes both official AList and OpenList (used by AListLiteAndroid), while
         // retaining :5244/dav as an alist-compatible fallback when Server is stripped.
         val alistFamily = isAlistFamily(kind)
-        val alistServerHeader = if (alistFamily) runCatching { parseKeyValueLines(optionsDav(user, pass, buildRelUrl(baseUrl, "")).second)["server"].orEmpty() }.getOrDefault("") else ""
+        val alistServerHeader = if (alistFamily) advisoryServerHeader(user, pass, baseUrl) else ""
         val alistSecurity = alistSecurityAdvisory(kind, alistServerHeader)
         val newPayloadDirect = directAll || alistFamily || kind == "generic" || kind == "speedbackup"
         // BODY_DONE means only that SpeedBackup emitted the request body. AList/OpenList
@@ -3536,27 +3568,19 @@ object WebDavUtil {
     private fun managedDecision(user: String, pass: String, baseUrl: String, relPath: String, modeRaw: String?): ManagedDecision {
         val mode = normalizeManagedMode(modeRaw)
         val forcedProfile = WebDavBackendProfile("not_checked", false, false, true, streamPostBodyTimeoutMs(), true, "GENERIC", "forced", "forced")
-        if (mode == "direct") return ManagedDecision(true, "direct_forced", "not_checked", forcedProfile, mode, false)
+        // A failed overwrite PUT may destroy the previous backup on servers
+        // that expose partial bodies. Even legacy forced-direct callers must
+        // stage replacements; an unsupported MOVE fails without PUTting over it.
+        if (mode == "direct" || mode == "direct-json") return ManagedDecision(false, "atomic_replacement", "not_checked", forcedProfile, mode, false)
         if (mode == "atomic") return ManagedDecision(false, "atomic_forced", "not_checked", forcedProfile, mode, false)
         val profile = webDavBackendProfile(user, pass, baseUrl, "managed_put")
         val kind = profile.kind
         val knownMissing = modeMeansKnownMissing(mode)
-        val direct = when {
-            mode == "direct-json" -> isAppDetailsJson(relPath)
-            knownMissing -> profile.newPayloadDirect
-            mode == "auto" -> profile.directAll
-            else -> false
-        }
+        val direct = knownMissing && profile.newPayloadDirect
         val modeName = when {
-            direct && mode == "direct-json" -> "direct_json"
             direct && knownMissing && isAlistFamily(kind) -> "alist_family_direct_new_known_missing"
             direct && knownMissing && kind == "generic" -> "generic_direct_new_known_missing"
             direct && knownMissing -> "direct_new_known_missing"
-            direct && mode == "auto" && kind == "rclone" && isAppDetailsJson(relPath) -> "rclone_direct_json"
-            direct && mode == "auto" && kind == "rclone" -> "rclone_direct_all"
-            direct && mode == "auto" && kind == "123pan" && isAppDetailsJson(relPath) -> "pan123_direct_json"
-            direct && mode == "auto" && kind == "123pan" -> "pan123_direct_all"
-            direct -> "direct"
             else -> "atomic"
         }
         infoLog(
@@ -3644,7 +3668,9 @@ object WebDavUtil {
     private fun putStdinManagedRel(user: String, pass: String, baseUrl: String, relPath: String, mode: String?, parentMode: String?, input: InputStream, receipt: ((String) -> Unit)? = null): Int {
         val parentCode = ensureManagedPutParent(user, pass, baseUrl, relPath, parentMode)
         if (parentCode !in 200..299) return parentCode
-        val decision = managedDecision(user, pass, baseUrl, relPath, mode)
+        val deferred = mode == "staged"
+        val selected = managedDecision(user, pass, baseUrl, relPath, if (deferred) "auto" else mode)
+        val decision = if (deferred) selected.copy(direct = false, modeName = "staged", requestedMode = "staged", knownMissing = false) else selected
         val baseHost = runCatching { URL(baseUrl).host.lowercase(java.util.Locale.US) }.getOrDefault("")
         val publicJianguoyun = decision.serverKind == "jianguoyun" && (baseHost.contains("jianguoyun") || baseHost.contains("nutstore"))
         val sourceInput = if (publicJianguoyun) {
@@ -3679,11 +3705,16 @@ object WebDavUtil {
                 clientBodyComplete = meter.clientBodyComplete(), context = "stream-atomic-part", allowSizeOnly = true
             )
             if (putCode !in 200..299 && !putRecovered) {
+                runCatching { deleteCleanup(user, pass, targetUrl, "atomic-part-put-failed") }
                 putCode
             } else {
                 val putOk = if (putRecovered) true else verifiedPut2xxAfterStat(user, pass, baseUrl, targetUrl, targetRel, meter.sentBytes(), "stream-atomic-part", requireKnownRemoteSize = true, allowSizeOnly = true)
                 if (!putOk) {
+                    runCatching { deleteCleanup(user, pass, targetUrl, "atomic-part-verify-failed") }
                     PUT_SEMANTIC_FAILURE_HTTP_CODE
+                } else if (deferred) {
+                    // The shell owns tar/zstd exit status. Publish only after it confirms success.
+                    201
                 } else {
                     val moveCode = move(user, pass, targetUrl, buildRelUrl(baseUrl, relPath), overwrite = true, expectedLength = meter.sentBytes())
                     if (moveCode !in 200..299) runCatching { deleteCleanup(user, pass, targetUrl, "atomic-part-after-move-fail") }
@@ -3702,7 +3733,9 @@ object WebDavUtil {
                 infoLog("MANAGED_PUT_DIRECT_NEW_MISSING_CLEANUP rel=$relPath mode=${decision.modeName} code=$cleanupCode afterHttp=$code")
             }
         }
-        receipt?.invoke("SBRESULT\t1\twebdav-stream\t${if (code in 200..299) "ok" else "failed"}\t$code\t${meter.sentBytes()}\t$relPath\n")
+        val state = if (code !in 200..299) "failed" else if (deferred) "staged" else "ok"
+        val stageReceipt = if (deferred && code in 200..299) "SBSTAGED\t1\t$targetRel\t$relPath\t${meter.sentBytes()}\n" else ""
+        receipt?.invoke("SBRESULT\t1\twebdav-stream\t$state\t$code\t${meter.sentBytes()}\t$relPath\n" + stageReceipt)
         return code
     }
 
@@ -3743,10 +3776,12 @@ object WebDavUtil {
                 clientBodyComplete = attempt.clientBodyComplete, context = "file-atomic-part", allowSizeOnly = true
             )
             if (attempt.code !in 200..299 && !putRecovered) {
+                runCatching { deleteCleanup(user, pass, partUrl, "atomic-file-put-failed") }
                 attempt.code
             } else {
                 val putOk = if (putRecovered) true else verifiedPut2xxAfterStat(user, pass, baseUrl, partUrl, partRel, file.length(), "file-atomic-part", requireKnownRemoteSize = true, allowSizeOnly = true)
                 if (!putOk) {
+                    runCatching { deleteCleanup(user, pass, partUrl, "atomic-file-verify-failed") }
                     PUT_SEMANTIC_FAILURE_HTTP_CODE
                 } else {
                     val moveCode = move(user, pass, partUrl, buildRelUrl(baseUrl, relPath), overwrite = true, expectedLength = file.length())
@@ -3861,22 +3896,22 @@ object WebDavUtil {
         val putVerified = putRecovered || (putCode in 200..299 &&
             verifiedPut2xxAfterStat(user, pass, baseUrl, partUrl, partRel, bytes.size.toLong(), "managed-probe-chunked-put-2xx", requireKnownRemoteSize = false, allowSizeOnly = true))
         if (putCode !in 200..299 || !putVerified) {
+            runCatching { deleteCleanup(user, pass, partUrl, "managed-probe-put-failed") }
             cacheFeatureFacts(baseUrl, WebDavFeatureFacts(
-                supportsChunkedPut = false, source = "managed-probe-chunked-put-fail"
+                supportsChunkedPut = if (putCode == 405 || putCode == 501) false else null, source = "managed-probe-chunked-put-fail"
             ))
             return (if (putCode in 200..299) PUT_SEMANTIC_FAILURE_HTTP_CODE else putCode) to "step=chunked-put http=$putCode putVerified=${if (putVerified) 1 else 0} server=$kind rel=$partRel replayable=true chunked=1 temp=nodot\n"
         }
         val moveCode = move(user, pass, partUrl, buildRelUrl(baseUrl, finalRel), overwrite = true, expectedLength = bytes.size.toLong())
         if (moveCode !in 200..299) {
-            // MOVE support is optional for a usable streaming backend. The successful PUT
-            // already proves direct upload works, so cache atomic=false and let auto mode
-            // switch to direct PUT instead of disabling WebDAV entirely.
+            // Staged streaming must prove MOVE before accepting a real archive.
+            // Non-stream uploads can still use their separate direct-PUT policy.
             val cleanupCode = runCatching { deleteCleanup(user, pass, partUrl, "managed-probe-part") }.getOrDefault(0)
             cacheFeatureFacts(baseUrl, WebDavFeatureFacts(
-                supportsChunkedPut = true, supportsMove = false, supportsAtomicPublish = false,
-                source = "managed-probe-direct-fallback"
+                supportsChunkedPut = true, supportsMove = measuredCapability(moveCode, false), supportsAtomicPublish = measuredCapability(moveCode, false),
+                source = "managed-probe-move-failed"
             ))
-            return 200 to "step=fallback-direct putHttp=$putCode putRecovered=${if (putRecovered) 1 else 0} moveHttp=$moveCode server=$kind src=$partRel dst=$finalRel cleanup=$cleanupCode directFallback=1 chunked=1\n"
+            return moveCode to "step=move-required putHttp=$putCode putRecovered=${if (putRecovered) 1 else 0} moveHttp=$moveCode server=$kind src=$partRel dst=$finalRel cleanup=$cleanupCode directFallback=0 chunked=1\n"
         }
         // MOVE 2xx is authoritative evidence that atomic publish exists. STAT is a separate
         // capability: if unsupported, do not incorrectly disable a working MOVE backend.
@@ -3885,17 +3920,14 @@ object WebDavUtil {
         val sizeOk = statSupported && entry?.length == bytes.size.toLong()
         val cleanupCode = runCatching { deleteCleanup(user, pass, buildRelUrl(baseUrl, finalRel), "managed-probe-final") }.getOrDefault(0)
         cacheFeatureFacts(baseUrl, WebDavFeatureFacts(
-            supportsChunkedPut = true, supportsMove = true, supportsStat = statSupported,
+            supportsChunkedPut = true, supportsMove = true, supportsStat = if (statSupported) true else if (statCode == 405 || statCode == 501) false else null,
             supportsAtomicPublish = true, source = "managed-probe"
         ))
         return 200 to "step=move-confirmed putRecovered=${if (putRecovered) 1 else 0} moveHttp=$moveCode statHttp=$statCode statSupported=${if (statSupported) 1 else 0} sizeOk=${if (sizeOk) 1 else 0} server=$kind rel=$finalRel cleanup=$cleanupCode chunked=1 temp=nodot\n"
     }
 
-    private fun getTo(user: String, pass: String, url: String, out: OutputStream): Int {
-        return http.request("GET", url, user, pass, followRedirects = true, canReplayBody = true) { code, headers, input ->
-            if (code in 200..299) HttpCore.readResponseBody(headers, input, out) else HttpCore.discardErrorResponseBody(headers, input)
-        }
-    }
+    private fun getTo(user: String, pass: String, url: String, out: OutputStream): Int =
+        http.getTo(url, out, user, pass)
 
     private fun delete(user: String, pass: String, url: String, maxAttempts: Int = 4): Int {
         val raw = pacedCode(DavOperation.DELETE, maxAttempts = maxAttempts) {
@@ -4013,7 +4045,7 @@ object WebDavUtil {
     }
 
     private fun quotaDav(user: String, pass: String, url: String): Pair<Int, WebDavQuota> {
-        val bodyOut = ByteArrayOutputStream()
+        val bodyOut = DavResponseBuffer()
         val headers = linkedMapOf(
             "Depth" to "0",
             "Content-Type" to "application/xml; charset=utf-8",
@@ -4021,6 +4053,7 @@ object WebDavUtil {
         )
         val code = pacedCode(DavOperation.PROPFIND) {
             http.request("PROPFIND", url, user, pass, headers, bodyWriter = { out -> out.write(DAV_QUOTA_BODY) }, followRedirects = true, canReplayBody = true) { status, respHeaders, input ->
+                bodyOut.reset()
                 if (status in 200..299) HttpCore.readResponseBody(respHeaders, input, bodyOut) else HttpCore.discardErrorResponseBody(respHeaders, input)
             }
         }
@@ -4092,9 +4125,20 @@ object WebDavUtil {
         return (if (hardFail) 409 else if (unverifiable > 0) 206 else 200) to out.toString()
     }
 
+    private class DavResponseBuffer : ByteArrayOutputStream() {
+        override fun write(b: ByteArray, off: Int, len: Int) {
+            if (len > 32 * 1024 * 1024 - size()) throw java.io.IOException("WebDAV XML response exceeds 32 MiB")
+            super.write(b, off, len)
+        }
+        override fun write(b: Int) {
+            if (size() >= 32 * 1024 * 1024) throw java.io.IOException("WebDAV XML response exceeds 32 MiB")
+            super.write(b)
+        }
+    }
+
     private fun propfindRaw(user: String, pass: String, url: String, depth: Int): Pair<Int, ByteArray> {
         return pacedPair(DavOperation.PROPFIND, ByteArray(0)) {
-            val bodyOut = ByteArrayOutputStream()
+            val bodyOut = DavResponseBuffer()
             val headers = linkedMapOf(
                 "Depth" to if (depth < 0) "infinity" else depth.toString(),
                 "Content-Type" to "application/xml; charset=utf-8",
@@ -4103,6 +4147,7 @@ object WebDavUtil {
                 "Content-Length" to DAV_PROPFIND_BODY.size.toString()
             )
             val code = http.request("PROPFIND", url, user, pass, headers, bodyWriter = { out -> out.write(DAV_PROPFIND_BODY) }, followRedirects = true, canReplayBody = true) { status, respHeaders, input ->
+                bodyOut.reset()
                 if (status in 200..299) HttpCore.readResponseBody(respHeaders, input, bodyOut) else HttpCore.discardErrorResponseBody(respHeaders, input)
             }
             code to bodyOut.toByteArray()
@@ -4395,7 +4440,8 @@ object WebDavUtil {
                 if (entry.isDirectory) {
                     pending.add(childRel to childLocal)
                 } else {
-                    if (isLocalRebuildSidecar(name) || name == "app_details.json") continue
+                    if (isLocalRebuildSidecar(name) || name == "app_details.json"
+                            || name.startsWith(".speedbackup_") || managedPartPattern.containsMatchIn(name)) continue
                     appendDownloadFile(out, seen, childRel, childLocal)
                 }
             }
@@ -4425,7 +4471,7 @@ object WebDavUtil {
 
     private fun isSafeRemoteItem(value: String): Boolean {
         if (value.isEmpty() || value == "." || value == "..") return false
-        if (value.startsWith('/') || value.contains("../") || value.startsWith("../")) return false
+        if (value.startsWith('/') || value.replace('\\', '/').split('/').any { it == ".." || it == "." }) return false
         if (!isSafeTsvPath(value)) return false
         for (ch in value) {
             when (ch) {
@@ -4446,11 +4492,8 @@ object WebDavUtil {
     }
 
     private fun davEntryRelativePath(href: String, baseRelRaw: String): String {
-        var rel = href.substringBefore('?').substringBefore('#').trim()
-        if (rel.startsWith("http://", ignoreCase = true) || rel.startsWith("https://", ignoreCase = true)) {
-            rel = runCatching { URL(rel).path }.getOrElse { rel }
-        }
-        rel = HttpCore.percentDecodePath(rel)
+        // DavEntry.href was normalized and decoded exactly once at XML parsing.
+        var rel = href
         rel = rel.replace('\\', '/').trimStart('/')
         rel = rel.trimEnd('/')
         val baseRel = baseRelRaw.replace('\\', '/').trim('/').takeIf { it.isNotEmpty() && it != "." }.orEmpty()
@@ -4528,6 +4571,21 @@ object WebDavUtil {
 
     private fun parseDavEntries(body: ByteArray): List<DavEntry> {
         if (body.isEmpty()) return emptyList()
+        // Apply this before the tolerant parser fallback too. Ignore zero
+        // bytes so UTF-16/32 declarations cannot bypass the ASCII token check.
+        val forbidden = "<!DOCTYPE"
+        var matched = 0
+        for (byte in body) {
+            val value = byte.toInt() and 0xff
+            if (value == 0) continue
+            val upper = if (value in 97..122) value - 32 else value
+            if (upper == forbidden[matched].code) {
+                matched++
+                if (matched == forbidden.length) throw java.io.IOException("WebDAV DTD is unsupported")
+            } else {
+                matched = if (upper == '<'.code) 1 else 0
+            }
+        }
         val parsed = runCatching { parseDavEntriesDom(body) }.getOrElse { emptyList() }
         if (parsed.isNotEmpty()) return parsed
         return parseDavEntriesFallback(body)
@@ -4543,7 +4601,9 @@ object WebDavUtil {
             runCatching { setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false) }
             isExpandEntityReferences = false
         }
-        val doc = factory.newDocumentBuilder().parse(ByteArrayInputStream(body))
+        val builder = factory.newDocumentBuilder()
+        builder.setEntityResolver { _, _ -> throw org.xml.sax.SAXException("External XML entity refused") }
+        val doc = builder.parse(ByteArrayInputStream(body))
         val responses = doc.getElementsByTagNameNS("*", "response")
         val responseList = if (responses.length > 0) responses else doc.getElementsByTagName("response")
         for (i in 0 until responseList.length) {

@@ -3,6 +3,8 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, Read, Write};
+#[path = "owner_policy.rs"]
+mod owner_policy;
 #[cfg(unix)]
 use std::path::Path;
 
@@ -436,7 +438,14 @@ pub fn verify_command(root: &str, prefix: &str, mode: &str, owner: &str, mtime: 
         if !matches!(mode, "keep" | "ignore") || !matches!(mtime, "keep" | "ignore") {
             return Err(bad("verification policy"));
         }
-        let uid = if owner == "ignore" {
+        let android = if let Some(policy) = owner.strip_prefix("android:") {
+            let f: Vec<_> = policy.split(':').collect();
+            if f.len()!=3 { return Err(bad("android owner policy")); }
+            Some((f[0].parse::<u32>().map_err(|_|bad("target uid"))?,
+                  f[1].parse::<u32>().map_err(|_|bad("previous uid"))?,
+                  f[2].parse::<i32>().map_err(|_|bad("android api"))?))
+        } else { None };
+        let uid = if owner == "ignore" || android.is_some() {
             None
         } else {
             let f: Vec<_> = owner.split(':').collect();
@@ -457,7 +466,7 @@ pub fn verify_command(root: &str, prefix: &str, mode: &str, owner: &str, mtime: 
             return Err(bad("source receipt"));
         }
         let expected: usize = f[4].parse().map_err(|_| bad("source count"))?;
-        let limited: u64 = f[5].parse().map_err(|_| bad("source limitations"))?;
+        let mut limited: u64 = f[5].parse().map_err(|_| bad("source limitations"))?;
         let mut lines = io::BufReader::new(fs::File::open(format!("{prefix}.manifest"))?).lines();
         if lines.next().transpose()?.as_deref() != Some(HEADER) {
             return Err(bad("manifest schema"));
@@ -486,7 +495,8 @@ pub fn verify_command(root: &str, prefix: &str, mode: &str, owner: &str, mtime: 
         for line in lines {
             let m = Member::parse(&line?)?;
             count += 1;
-            let check = || -> io::Result<bool> {
+            let mut managed_marker = false;
+            let mut check = || -> io::Result<bool> {
                 let p = safe(&m.path)?;
                 let a = fs::symlink_metadata(&p)?;
                 let t = a.file_type();
@@ -512,6 +522,8 @@ pub fn verify_command(root: &str, prefix: &str, mode: &str, owner: &str, mtime: 
                     true
                 };
                 let d = a.rdev();
+                let observed_dev = a.dev();
+                let observed_ino = a.ino();
                 let actual = Member {
                     path: m.path.clone(),
                     kind,
@@ -528,17 +540,69 @@ pub fn verify_command(root: &str, prefix: &str, mode: &str, owner: &str, mtime: 
                     major: ((d >> 8) & 0xfff) | ((d >> 32) & 0xfffff000),
                     minor: (d & 0xff) | ((d >> 12) & 0xffffff00),
                 };
-                Ok(matches_source(
+                let expected_owner = if let Some((target, previous, api)) = android {
+                    let parts: Vec<_> = m.path.split(|b|*b==b'/').filter(|p|!p.is_empty()).collect();
+                    let cache = parts.get(1).is_some_and(|p| *p==b"cache" || *p==b"code_cache");
+                    Some(owner_policy::mapped(target,previous,
+                        u32::try_from(m.uid).map_err(|_|bad("source uid"))?,
+                        u32::try_from(m.gid).map_err(|_|bad("source gid"))?,
+                        parts.len()==1,cache,api))
+                } else { uid };
+                let matched = matches_source(
                     &m,
                     &actual,
                     hardlink_ok,
                     mode == "keep",
-                    uid,
+                    expected_owner,
                     mtime == "keep",
-                ))
+                );
+                if !matched && mode=="ignore" && owner=="ignore" && mtime=="ignore"
+                    && (root.starts_with("/data/media") || root.starts_with("/storage/emulated"))
+                    && m.kind==b'0' && m.size==0 && actual.kind==b'0'
+                    && p.file_name().is_some_and(|n|n==".nomedia") && actual.size>0 && actual.size<=4096 {
+                    // MediaProvider.setDirectoryDirty(false) writes the directory
+                    // path to an empty .nomedia. Accept only an inode-verified
+                    // alias of this exact directory; report a limitation, not
+                    // byte equivalence. A bind-mounted Download alias is valid.
+                    use std::os::unix::fs::OpenOptionsExt;
+                    #[cfg(target_arch="aarch64")]
+                    const NOFOLLOW:i32=0o100000;
+                    #[cfg(not(target_arch="aarch64"))]
+                    const NOFOLLOW:i32=0o400000;
+                    let mut file=fs::OpenOptions::new().read(true)
+                        .custom_flags(NOFOLLOW | 0x800).open(&p)?;
+                    let opened=file.metadata()?;
+                    if !opened.is_file() || opened.dev()!=observed_dev || opened.ino()!=observed_ino {
+                        return Ok(false);
+                    }
+                    let mut data=Vec::new();
+                    (&mut file).take(4097).read_to_end(&mut data)?;
+                    if data.len()<=4096 {
+                        if let Ok(text)=std::str::from_utf8(&data) {
+                            let alias=Path::new(text);
+                            if alias.is_absolute() && (alias.starts_with("/storage/emulated") || alias.starts_with("/data/media")) {
+                                // FUSE has a different st_dev from its backing
+                                // filesystem. Compare both storage views using
+                                // the documented emulated-user backing path.
+                                let backing=|path:&Path| path.strip_prefix("/storage/emulated")
+                                    .map(|rest|Path::new("/data/media").join(rest))
+                                    .unwrap_or_else(|_|path.to_path_buf());
+                                if let (Ok(left),Ok(right))=(fs::metadata(backing(alias)),fs::metadata(backing(p.parent().ok_or_else(||bad("marker parent"))?))) {
+                                    managed_marker=left.is_dir() && right.is_dir() && left.dev()==right.dev() && left.ino()==right.ino();
+                                }
+                            }
+                        }
+                    }
+                }
+                Ok(matched || managed_marker)
             };
             match check() {
-                Ok(true) => {}
+                Ok(true) => {
+                    if managed_marker {
+                        limited+=1;
+                        writeln!(out,"{}\tplatform-managed-nomedia-directory-marker",encoded(&m.path))?;
+                    }
+                }
                 Ok(false) => {
                     mismatch += 1;
                     writeln!(out, "{}\tmismatch", encoded(&m.path))?;

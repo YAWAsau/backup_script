@@ -5,8 +5,8 @@ use std::io::{self, Read, Write};
 use std::net::Shutdown;
 use std::os::raw::{c_char, c_int, c_ulong, c_void};
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::io::FromRawFd;
+use std::os::unix::fs::{PermissionsExt, OpenOptionsExt, MetadataExt, FileTypeExt};
+use std::os::unix::io::{FromRawFd, AsRawFd};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -118,10 +118,11 @@ const MAX_UID_PIDS: usize = 512;
 const MAX_DAEMON_CHILDREN: usize = 64;
 const WNOHANG: c_int = 1;
 const SIGTERM_DAEMON: c_int = 15;
-const CAPS: &str = "check-root,backend-probe,scan,freeze,freeze-package-single-request-v1,freeze-package-refresh-v1,daemon-worker-error-detail-v1,subscribe-peer-close-v1,daemon-worker-admission-v1,daemon-stop-reaped-v1,kill-package-live-rescan-v1 rust-convergence-source-v1,pidfd-signal-optional-v1,thaw,thaw-uid-emergency-v1,binder-freeze,binder-info,subscribe-logd,pid-cache,uid-cache,cgroup-v2-events,cgroup-v2-uid-root-fallback,cgroup-v1-freezer,daemon-parent-control-v1,daemon-diagnostics-batch-v1,daemon-stats-v1,daemon-stats-detail-v1,last-error-v1,daemon-control-plain-lines-v2,kill-report-v2,batch-pid-list-v1,proc-snapshot-v1,pidfd-kill-v1,cgroup-kill-fastpath-v1,cgroup-wchan-confirm-v1,proc-wchan-v1,uid-wchan-v1,backend-select-cache-v1";
+const CAPS: &str = "check-root,backend-probe,scan,freeze,freeze-package-single-request-v1,freeze-package-refresh-v1,freeze-identity-report-v1,daemon-worker-error-detail-v1,subscribe-peer-close-v1,daemon-worker-admission-v1,daemon-stop-reaped-v1,kill-package-live-rescan-v1,rust-convergence-source-v1,pidfd-signal-optional-v1,thaw,thaw-uid-emergency-v1,thaw-package-isolated-v1,freeze-peer-cancel-v1,binder-freeze,binder-info,subscribe-logd,pid-cache,uid-cache,cgroup-v2-events,cgroup-v2-uid-root-fallback,cgroup-v1-freezer,daemon-parent-control-v1,daemon-diagnostics-batch-v1,daemon-stats-v1,daemon-stats-detail-v1,last-error-v1,daemon-control-plain-lines-v2,kill-report-v2,batch-pid-list-v1,proc-snapshot-v1,pidfd-kill-v1,cgroup-kill-fastpath-v1,cgroup-wchan-confirm-v1,proc-wchan-v1,uid-wchan-v1,backend-select-cache-v1,daemon-single-owner-v1";
 
 extern "C" {
     fn _exit(status: c_int) -> !;
+    fn umask(mask: u32) -> u32;
 }
 #[repr(C)]
 struct SockAddrUn {
@@ -137,7 +138,20 @@ extern "C" {
     fn socket(domain: c_int, ty: c_int, protocol: c_int) -> c_int;
     fn bind(fd: c_int, addr: *const c_void, len: u32) -> c_int;
     fn listen(fd: c_int, backlog: c_int) -> c_int;
+    fn flock(fd: c_int, operation: c_int) -> c_int;
+    fn connect(fd: c_int, addr: *const c_void, len: u32) -> c_int;
     fn accept4(fd: c_int, addr: *mut c_void, addrlen: *mut u32, flags: c_int) -> c_int;
+    fn getsockopt(fd: c_int, level: c_int, opt: c_int, value: *mut c_void, len: *mut u32) -> c_int;
+}
+#[repr(C)]
+struct PeerCredentials { pid: i32, uid: u32, gid: u32 }
+
+fn daemon_peer_is_root(fd: c_int) -> bool {
+    let mut peer = PeerCredentials { pid: 0, uid: u32::MAX, gid: u32::MAX };
+    let mut len = std::mem::size_of::<PeerCredentials>() as u32;
+    // Linux/Android SOL_SOCKET=1, SO_PEERCRED=17; fail closed if unavailable.
+    (unsafe { getsockopt(fd, 1, 17, &mut peer as *mut _ as *mut c_void, &mut len) == 0 })
+        && len as usize == std::mem::size_of::<PeerCredentials>() && peer.uid == 0
 }
 const BINDER_O_RDWR: c_int = 0o2;
 const BINDER_O_CLOEXEC: c_int = 0o2000000;
@@ -345,12 +359,12 @@ fn read_file_c_bytes(path: &str, cap: usize) -> Option<Vec<u8>> {
         return None;
     }
     let mut f = File::open(path).ok()?;
-    let mut buf = vec![0u8; cap.saturating_sub(1)];
-    let n = match f.read(&mut buf) {
-        Ok(n) => n,
-        Err(_) => return None,
-    };
-    buf.truncate(n);
+    // procfs can return short reads before EOF. Read to EOF, but never
+    // silently accept a value truncated by the caller's bounded contract.
+    let mut buf = Vec::with_capacity(cap.min(8192));
+    if std::io::Read::by_ref(&mut f).take(cap as u64).read_to_end(&mut buf).is_err() || buf.len() >= cap {
+        return None;
+    }
     while matches!(buf.last(), Some(b'\n' | b'\r' | b' ' | b'\t')) {
         buf.pop();
     }
@@ -804,12 +818,22 @@ fn wait_frozen(freeze_path: &Path, expected: char, timeout_ms: i64) -> (bool, ch
     (false, last_frozen, start.elapsed().as_millis() as i64)
 }
 
-/// Faithful port of cmd_freeze_pid_v2(): resolves the pid's live cgroup.freeze
-/// path, coordinates a binder freeze (BINDER_FREEZE ioctl) before the cgroup
-/// write - with rollback if the cgroup write subsequently fails - then
-/// verifies via cgroup.events "frozen" key, matching C's full safety
-/// sequence rather than the previous bare fs::write with no binder
-/// coordination and no events-file verification.
+// Faithful port of cmd_freeze_pid_v2(): resolves the pid's live cgroup.freeze
+// path, coordinates a binder freeze (BINDER_FREEZE ioctl) before the cgroup
+// write - with rollback if the cgroup write subsequently fails - then
+// verifies via cgroup.events "frozen" key, matching C's full safety
+// sequence rather than the previous bare fs::write with no binder
+// coordination and no events-file verification.
+thread_local! { static FREEZE_PEER: std::cell::Cell<i32> = const { std::cell::Cell::new(-1) }; }
+fn freeze_peer_closed() -> bool {
+    FREEZE_PEER.with(|fd| {
+        if fd.get() < 0 { return false; }
+        let mut p = DaemonPollFd { fd: fd.get(), events: 0, revents: 0 };
+        let rc = unsafe { poll(&mut p, 1, 0) };
+        (rc < 0 && errno_now() != EINTR) || p.revents & (8 | 16 | 32) != 0
+    })
+}
+
 fn cmd_freeze_pid_v2(pid: i32, timeout_ms: i64) -> i32 {
     let st = Instant::now();
     let uid = parse_status_uid_c(pid);
@@ -836,13 +860,13 @@ fn cmd_freeze_pid_v2(pid: i32, timeout_ms: i64) -> i32 {
         || members.split_whitespace().any(|p| {
             p.parse::<i32>()
                 .ok()
-                .map(|p| parse_status_uid_c(p) != uid)
+                .map(|p| parse_status_uid_c(p) != uid || !freeze_member_valid(p))
                 .unwrap_or(true)
         })
         || fs::read_dir(group)
             .map(|rd| {
-                rd.flatten()
-                    .any(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(true))
+                rd.into_iter().any(|e| e.and_then(|e| e.file_type())
+                    .map(|t| t.is_dir()).unwrap_or(true))
             })
             .unwrap_or(true)
     {
@@ -876,6 +900,7 @@ fn cmd_freeze_pid_v2(pid: i32, timeout_ms: i64) -> i32 {
     }
 
     let already_frozen = before_freeze == '1' || before_frozen == '1';
+    if !freeze_identity_valid(pid) { return 4; }
     let binder_before = binder_get_status(pid);
     let binder_attempted = !already_frozen;
     let binder_freeze = if !already_frozen {
@@ -883,8 +908,19 @@ fn cmd_freeze_pid_v2(pid: i32, timeout_ms: i64) -> i32 {
     } else {
         binder_before.clone()
     };
-    let binder_should_restore = binder_freeze.ok;
+    let binder_should_restore = binder_attempted && binder_freeze.ok;
+    let binder_barrier_ok = !binder_attempted || binder_freeze.ok || !binder_freeze.supported;
+    if !binder_barrier_ok {
+        println!("CGFREEZER_FREEZE_DONE ok=false pid={} uid={} reason=binder_barrier_failed binderErrno={} elapsedMs={}",
+            pid, uid, binder_freeze.err, monotonic_ms(&st));
+        return 4;
+    }
+    if freeze_peer_closed() {
+        if binder_should_restore { let _ = binder_freeze_set(pid, false, 0); }
+        return 75;
+    }
 
+    if !freeze_identity_valid(pid) { return 4; }
     if let Err(e) = write_file_c(&path.to_string_lossy(), "1\n") {
         if binder_should_restore {
             let _ = binder_freeze_set(pid, false, 0);
@@ -901,7 +937,7 @@ fn cmd_freeze_pid_v2(pid: i32, timeout_ms: i64) -> i32 {
 
     let rb = normalize_freeze(&read_file_c(&path.to_string_lossy(), 64).unwrap_or_default());
     let (event_ok, last_frozen, wait_elapsed) = wait_frozen(&path, '1', timeout_ms);
-    let ok = rb == '1' && event_ok;
+    let ok = rb == '1' && event_ok && !freeze_peer_closed();
     if !ok && before_freeze == '0' {
         // A failed barrier must not leave a newly frozen group behind.
         if fs::write(&path, b"0").is_ok() {
@@ -911,10 +947,6 @@ fn cmd_freeze_pid_v2(pid: i32, timeout_ms: i64) -> i32 {
     if !ok && binder_should_restore {
         let _ = binder_freeze_set(pid, false, 0);
     }
-    let binder_barrier_ok = !binder_attempted
-        || binder_freeze.ok
-        || !binder_freeze.supported
-        || binder_freeze.err == EAGAIN;
     println!(
         "CGFREEZER_FREEZE_DONE ok={} pid={} uid={} path={} cmdline={} beforeFreeze={} beforeFrozen={} readback={} eventOk={} frozen={} waitMs={} reason={} binderAttempted={} binderSkipped={}{}{} binderBarrierOk={} elapsedMs={}",
         ok, pid, uid, shell_sanitize(&path.to_string_lossy()), shell_sanitize(&cmd), before_freeze, before_frozen, rb, event_ok, last_frozen, wait_elapsed,
@@ -1001,48 +1033,25 @@ fn token_list_contains_c(list: &str, needle: &str) -> bool {
     false
 }
 
-fn c_ascii_ws_fields(line: &str, max_fields: usize) -> Vec<&str> {
-    let b = line.as_bytes();
-    let mut out = Vec::new();
-    let mut i = 0usize;
-    while i < b.len() && out.len() < max_fields {
-        while i < b.len() && matches!(b[i], b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c) {
-            i += 1;
-        }
-        if i >= b.len() {
-            break;
-        }
-        let st = i;
-        while i < b.len() && !matches!(b[i], b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c) {
-            i += 1;
-        }
-        if let Ok(v) = std::str::from_utf8(&b[st..i]) {
-            out.push(v);
-        } else {
-            break;
+fn parse_v1_freezer_mount<R: io::BufRead>(reader: R) -> io::Result<Option<String>> {
+    for line in reader.lines() {
+        let line = line?;
+        let mut fields = line.split_ascii_whitespace();
+        let _source = fields.next();
+        let mount = fields.next();
+        let kind = fields.next();
+        let options = fields.next();
+        if kind == Some("cgroup") && options.is_some_and(|o| o.split(',').any(|v| v == "freezer")) {
+            return Ok(mount.map(str::to_owned));
         }
     }
-    out
+    Ok(None)
 }
 
 fn find_v1_freezer_mount() -> Option<String> {
-    // C read_file(..., MAX_TEXT) performs a single <=16383-byte read and
-    // trims only trailing ASCII space/TAB/CR/LF before strtok_r("\\n").
-    if let Some(mounts) = read_file_c("/proc/mounts", 16_384) {
-        for line in mounts.split('\n') {
-            let f = c_ascii_ws_fields(line, 4);
-            if f.len() == 4 {
-                // sscanf widths: src 255, mnt 2047, fstype 63, opts 1023.
-                let src = c_truncate_bytes(f[0], 255);
-                let mnt = c_truncate_bytes(f[1], 2047);
-                let fstype = c_truncate_bytes(f[2], 63);
-                let opts = c_truncate_bytes(f[3], 1023);
-                let _ = src;
-                if fstype == "cgroup" && token_list_contains_c(&opts, "freezer") {
-                    return Some(mnt);
-                }
-            }
-        }
+    // Stream the kernel mount table: unrelated mounts must not hide v1 freezer.
+    if let Ok(file) = fs::File::open("/proc/mounts") {
+        if let Ok(Some(mount)) = parse_v1_freezer_mount(io::BufReader::new(file)) { return Some(mount); }
     }
     for fb in ["/sys/fs/cgroup/freezer", "/dev/freezer", "/acct/freezer"] {
         // p1/p2 are char[MAX_PATH_LEN], so snprintf truncates to 2047 bytes.
@@ -1151,6 +1160,10 @@ fn write_pid_to_procs(procs_path: &str, pid: i32) -> io::Result<()> {
 fn cmd_freeze_pid_v1(pid: i32, timeout_ms: i64) -> i32 {
     let st = Instant::now();
     let uid = parse_status_uid_c(pid);
+    if uid < 0 || uid % 100000 < 10000 {
+        println!("CGFREEZER_FREEZE_V1_DONE ok=false pid={} uid={} reason=not_app_uid", pid, uid);
+        return 4;
+    }
     let cmd = read_cmdline_c(pid, 512).unwrap_or_default();
     let mount = match find_v1_freezer_mount() {
         Some(m) => m,
@@ -1171,24 +1184,34 @@ fn cmd_freeze_pid_v1(pid: i32, timeout_ms: i64) -> i32 {
     let group_dir = format!("{}/speedbackup_frozen_{}", mount, pid);
     let group_procs = format!("{}/cgroup.procs", group_dir);
     let group_state = format!("{}/freezer.state", group_dir);
+    // A second freeze cannot recover the original membership from /proc:
+    // it now names our managed group. Preserve the first owner's journal and
+    // never thaw/re-freeze that group or report it as a new baseline.
+    if rel.split('/').any(|part| part.starts_with("speedbackup_frozen_")) {
+        println!("CGFREEZER_FREEZE_V1_DONE ok=false pid={} uid={} backend=v1 reason=managed_membership_requires_original_owner stateRetained=true elapsedMs={}", pid, uid, monotonic_ms(&st));
+        return 16;
+    }
     let before_freeze = normalize_v1_state(&read_file_c(&orig_state, 128).unwrap_or_default());
     if let Err(e) = mkdir_p(&group_dir, 0o755) {
         println!("CGFREEZER_FREEZE_V1_DONE ok=false pid={} uid={} backend=v1 mount={} reason=mkdir_errno_{} elapsedMs={}", pid, uid, shell_sanitize(&mount), e.raw_os_error().unwrap_or(-1), monotonic_ms(&st));
         return 12;
     }
     let _ = write_file_c(&group_state, "THAWED\n");
+    if !freeze_identity_valid(pid) { cleanup_v1_group(&group_dir); return 4; }
     if let Err(e) = write_pid_to_procs(&group_procs, pid) {
         println!("CGFREEZER_FREEZE_V1_DONE ok=false pid={} uid={} backend=v1 path={} groupProcs={} beforeFreeze={} beforeFrozen={} reason=move_errno_{} elapsedMs={}",
             pid, uid, shell_sanitize(&orig_procs), shell_sanitize(&group_procs), before_freeze, before_freeze, e.raw_os_error().unwrap_or(-1), monotonic_ms(&st));
+        cleanup_v1_group(&group_dir);
         return 13;
     }
     if let Err(e) = write_file_c(&group_state, "FROZEN\n") {
         println!("CGFREEZER_FREEZE_V1_DONE ok=false pid={} uid={} backend=v1 path={} reason=state_errno_{} elapsedMs={}", pid, uid, shell_sanitize(&orig_procs), e.raw_os_error().unwrap_or(-1), monotonic_ms(&st));
         let _ = write_file_c(&group_state, "THAWED\n");
-        let _ = write_pid_to_procs(&orig_procs, pid);
+        if write_pid_to_procs(&orig_procs, pid).is_ok() { cleanup_v1_group(&group_dir); }
         return 14;
     }
-    let (ok, last, wait_ms) = wait_v1_state(&group_state, '1', timeout_ms);
+    let (verified, last, wait_ms) = wait_v1_state(&group_state, '1', timeout_ms);
+    let ok = verified && !freeze_peer_closed();
     println!(
         "CGFREEZER_FREEZE_DONE ok={} backend=v1 pid={} uid={} path={} groupState={} cmdline={} beforeFreeze={} beforeFrozen={} readback={} eventOk={} frozen={} waitMs={} reason={} binderAttempted=false binderSkipped=v1_no_binder binderBarrierOk=true elapsedMs={}",
         ok, pid, uid, shell_sanitize(&orig_procs), shell_sanitize(&group_state), shell_sanitize(&cmd),
@@ -1198,7 +1221,7 @@ fn cmd_freeze_pid_v1(pid: i32, timeout_ms: i64) -> i32 {
         0
     } else {
         let _ = write_file_c(&group_state, "THAWED\n");
-        let _ = write_pid_to_procs(&orig_procs, pid);
+        if write_pid_to_procs(&orig_procs, pid).is_ok() { cleanup_v1_group(&group_dir); }
         15
     }
 }
@@ -1213,6 +1236,14 @@ fn cmd_freeze_pid_v1(pid: i32, timeout_ms: i64) -> i32 {
 /// moved the pid anywhere - it just wrote THAWED in place, which does not
 /// reverse the v1 freeze mechanism (the pid remains in the wrong,
 /// unmanaged dedicated cgroup even after "thawing").
+fn cleanup_v1_group(group_dir: &str) {
+    if let Err(e) = fs::remove_dir(group_dir) {
+        if e.kind() != io::ErrorKind::NotFound {
+            eprintln!("CGFREEZER_V1_CLEANUP ok=false path={} errno={}", shell_sanitize(group_dir), e.raw_os_error().unwrap_or(-1));
+        }
+    }
+}
+
 fn cmd_thaw_pid_v1(pid: i32, orig_procs: &str, target: char, _timeout_ms: i64) -> i32 {
     let st = Instant::now();
     if orig_procs.is_empty() || !orig_procs.contains("cgroup.procs") {
@@ -1249,6 +1280,7 @@ fn cmd_thaw_pid_v1(pid: i32, orig_procs: &str, target: char, _timeout_ms: i64) -
         }
     }
     let ok = move_result.is_ok();
+    if ok { cleanup_v1_group(&group_dir); }
     println!(
         "CGFREEZER_THAW_DONE ok={} backend=v1 pid={} path={} target={} readback={} eventOk={} frozen={} waitMs=0 cgroupOk={} binderAttempted=false binderSkipped=v1_no_binder reason={} binderRestoreOk=true elapsedMs={}{}",
         ok, pid, shell_sanitize(orig_procs), target, target, ok, target, ok,
@@ -1275,7 +1307,7 @@ fn cmd_thaw_path_internal(
     have_pid: bool,
 ) -> i32 {
     let st = Instant::now();
-    if path.is_empty() || (target != '0' && target != '1') {
+    if path.is_empty() || (target != '0' && target != '1') || !valid_thaw_control(path, have_pid) {
         println!(
             "CGFREEZER_THAW_DONE ok=false reason=bad_args elapsedMs={}",
             monotonic_ms(&st)
@@ -1301,19 +1333,38 @@ fn cmd_thaw_path_internal(
     } else {
         BinderStatus::default()
     };
-    let ok = cgroup_ok;
+    let binder_ok = !binder_attempted || binder_thaw.ok || !binder_thaw.supported
+        || matches!(binder_thaw.err, EINVAL | 2 | 3); // No live Binder target remains.
+    let ok = cgroup_ok && binder_ok;
     println!(
         "CGFREEZER_THAW_DONE ok={} pid={} path={} target={} readback={} eventOk={} frozen={} waitMs={} cgroupOk={} binderAttempted={} binderSkipped={} reason={}{} binderRestoreOk={} elapsedMs={}",
         ok, if have_pid { pid } else { -1 }, shell_sanitize(path), target, rb, event_ok, last_frozen, wait_elapsed, cgroup_ok,
         binder_attempted, if binder_skipped_originally_frozen { "originally_frozen" } else { "false" },
-        if ok { "ok" } else { "verify_failed" }, binder_fields("thaw", &binder_thaw),
-        !binder_attempted || binder_thaw.ok || !binder_thaw.supported || binder_thaw.err == EINVAL, monotonic_ms(&st)
+        if !cgroup_ok { "verify_failed" } else if !binder_ok { "binder_thaw_failed" } else { "ok" }, binder_fields("thaw", &binder_thaw),
+        binder_ok, monotonic_ms(&st)
     );
     if ok {
         0
     } else {
         4
     }
+}
+
+// Only accept real control files on a kernel cgroup mount. A caller-supplied
+// path must not turn thaw into an arbitrary root file write.
+fn valid_thaw_control(raw: &str, have_pid: bool) -> bool {
+    let path = Path::new(raw);
+    let leaf = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    if leaf != "cgroup.freeze" && !(have_pid && leaf == "cgroup.procs") { return false; }
+    if fs::canonicalize(path).ok().as_deref() != Some(path) { return false; }
+    let Ok(mounts) = fs::read_to_string("/proc/mounts") else { return false; };
+    mounts.lines().any(|line| {
+        let fields: Vec<_> = line.split_whitespace().collect();
+        if fields.len() < 3 { return false; }
+        let kind = if leaf == "cgroup.freeze" { "cgroup2" } else { "cgroup" };
+        let mount = fields[1].replace("\\040", " ").replace("\\134", "\\");
+        fields[2] == kind && path.starts_with(Path::new(&mount))
+    })
 }
 
 fn is_app_uid_value(uid: i32) -> bool {
@@ -1343,7 +1394,8 @@ fn uid_pid_add(pids: &mut Vec<i32>, pid: i32) -> bool {
     true
 }
 
-fn collect_uid_paths_and_pids(uid: i32) -> (Vec<String>, Vec<i32>) {
+fn collect_uid_paths_and_pids(uid: i32, package: Option<(&str, i32)>) -> (Vec<String>, Vec<i32>, bool) {
+    let mut complete = true;
     let mut paths: Vec<String> = Vec::new();
     let mut pids: Vec<i32> = Vec::new();
     for root in [
@@ -1354,13 +1406,14 @@ fn collect_uid_paths_and_pids(uid: i32) -> (Vec<String>, Vec<i32>) {
     ] {
         let p = format!("{}/uid_{}/cgroup.freeze", root, uid);
         if let Ok(c) = CString::new(p.clone()) {
-            if unsafe { access(c.as_ptr(), R_OK | W_OK) == 0 } {
+            if package.is_none() && unsafe { access(c.as_ptr(), R_OK | W_OK) == 0 } {
                 let _ = uid_path_add(&mut paths, p);
             }
         }
     }
     if let Ok(entries) = fs::read_dir("/proc") {
-        for ent in entries.flatten() {
+        for entry in entries {
+            let ent = match entry { Ok(ent) => ent, Err(_) => { complete = false; continue; } };
             let name = ent.file_name().to_string_lossy().into_owned();
             if !name
                 .chars()
@@ -1374,22 +1427,25 @@ fn collect_uid_paths_and_pids(uid: i32) -> (Vec<String>, Vec<i32>) {
                 Ok(v) if v > 0 => v,
                 _ => continue,
             };
-            if parse_status_uid_c(pid) != uid {
-                continue;
-            }
-            let _ = uid_pid_add(&mut pids, pid);
+            let actual_uid = parse_status_uid_c(pid);
+            let matches = if let Some((pkg, user)) = package {
+                actual_uid >= 10000 && user_id_from_uid_rs(actual_uid as u32) == user
+                    && is_package_process_name(&read_cmdline_c(pid, 512).unwrap_or_default(), pkg)
+            } else { actual_uid == uid };
+            if !matches { continue; }
+            if !uid_pid_add(&mut pids, pid) { complete = false; }
             if let Some(dir) = cg_v2_dir_for_pid(pid) {
                 let p = dir.join("cgroup.freeze");
                 let p_s = p.to_string_lossy().into_owned();
                 if let Ok(c) = CString::new(p_s.clone()) {
                     if unsafe { access(c.as_ptr(), R_OK | W_OK) == 0 } {
-                        let _ = uid_path_add(&mut paths, p_s);
+                        if !paths.contains(&p_s) && !uid_path_add(&mut paths, p_s) { complete = false; }
                     }
                 }
             }
         }
-    }
-    (paths, pids)
+    } else { complete = false; }
+    (paths, pids, complete)
 }
 
 /// Faithful port of cmd_thaw_uid(): an "emergency, thaw everything we can
@@ -1400,9 +1456,18 @@ fn collect_uid_paths_and_pids(uid: i32) -> (Vec<String>, Vec<i32>) {
 /// cg_v2_dir_for_pid/cg_v1_freezer_dir_for_pid on currently-alive pids),
 /// with no binder coordination and no is_app_uid_value validation.
 fn cmd_thaw_uid(uid_u: u32, timeout: i64) -> i32 {
+    cmd_thaw_scope(uid_u, timeout, None)
+}
+fn cmd_thaw_package(pkg: &str, user: i32, timeout: i64) -> i32 {
+    if !is_valid_pkg_name(pkg) || user < 0 { return 64; }
+    let rc = cmd_thaw_scope(u32::MAX, timeout, Some((pkg, user)));
+    println!("CGFREEZER_THAW_PKG_DONE ok={} package={} user={}", rc == 0, shell_sanitize(pkg), user);
+    rc
+}
+fn cmd_thaw_scope(uid_u: u32, timeout: i64, package: Option<(&str, i32)>) -> i32 {
     let st = Instant::now();
     let uid = uid_u as i32;
-    if !is_app_uid_value(uid) {
+    if package.is_none() && !is_app_uid_value(uid) {
         println!(
             "CGFREEZER_THAW_UID_DONE ok=false uid={} reason=non_app_uid elapsedMs={}",
             uid,
@@ -1415,7 +1480,7 @@ fn cmd_thaw_uid(uid_u: u32, timeout: i64) -> i32 {
     } else {
         timeout
     };
-    let (paths, pids) = collect_uid_paths_and_pids(uid);
+    let (paths, pids, scan_complete) = collect_uid_paths_and_pids(uid, package);
     let mut v1_states = std::collections::HashSet::new();
     if let Some(mount) = find_v1_freezer_mount() {
         for pid in &pids {
@@ -1428,7 +1493,7 @@ fn cmd_thaw_uid(uid_u: u32, timeout: i64) -> i32 {
                             && text.split_whitespace().all(|p| {
                                 p.parse::<i32>()
                                     .ok()
-                                    .map(|p| parse_status_uid_c(p) == uid)
+                                    .map(|p| if package.is_some() { pids.contains(&p) } else { parse_status_uid_c(p) == uid })
                                     .unwrap_or(false)
                             })
                     })
@@ -1451,11 +1516,17 @@ fn cmd_thaw_uid(uid_u: u32, timeout: i64) -> i32 {
     let mut fail_paths = 0u64;
     for p in &paths {
         let wr = write_file_c(p, "0\n");
-        let (ev, last, waited) = if wr.is_ok() {
+        let (mut ev, last, waited) = if wr.is_ok() {
             wait_frozen(Path::new(p), '0', timeout_ms)
         } else {
             (false, '-', 0)
         };
+        // A verified group can disappear when its last process exits during thaw.
+        // Only ENOENT for the parent counts as gone; permission/I/O errors stay failures.
+        if !ev && Path::new(p).parent().is_some_and(|parent|
+            fs::metadata(parent).is_err_and(|e| e.kind() == io::ErrorKind::NotFound)) {
+            ev = true;
+        }
         if ev {
             ok_paths += 1;
         } else {
@@ -1485,7 +1556,13 @@ fn cmd_thaw_uid(uid_u: u32, timeout: i64) -> i32 {
             } else {
                 (false, '-', 0)
             };
-            if !ev {
+            // Emergency thaw has no original v1 membership. Do not claim a
+            // completed restore or retire its Java journal while the process
+            // remains in our dedicated group; only thaw-pid with orig_procs can
+            // safely relocate it. Never guess a root/original group here.
+            let needs_journal = Path::new(v1s).parent().and_then(|p| p.file_name())
+                .and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("speedbackup_frozen_"));
+            if !ev || needs_journal {
                 v1_ok = -1;
             } else if v1_ok >= 0 {
                 v1_ok += 1;
@@ -1498,6 +1575,12 @@ fn cmd_thaw_uid(uid_u: u32, timeout: i64) -> i32 {
                 last,
                 waited
             );
+            if needs_journal {
+                println!("CGFREEZER_THAW_UID_V1_RESTORE_PENDING state={} reason=original_membership_required stateRetained=true", shell_sanitize(v1s));
+            }
+        } else {
+            v1_ok = -1;
+            println!("CGFREEZER_THAW_UID_V1 ok=false state={} reason=control_not_writable", shell_sanitize(v1s));
         }
     }
     let (mut binder_ok, mut binder_fail, mut binder_unsupported) = (0u64, 0u64, 0u64);
@@ -1514,7 +1597,7 @@ fn cmd_thaw_uid(uid_u: u32, timeout: i64) -> i32 {
         }
     }
     let nothing_found = paths.is_empty() && v1_ok == 0 && pids.is_empty();
-    let ok = fail_paths == 0 && binder_fail == 0 && v1_ok >= 0;
+    let ok = scan_complete && fail_paths == 0 && binder_fail == 0 && v1_ok >= 0;
     println!(
         "CGFREEZER_THAW_UID_DONE ok={} uid={} paths={} okPaths={} failPaths={} pids={} binderOk={} binderUnsupported={} binderFail={} v1={} nothingFound={} emergencyOnly=true elapsedMs={}",
         ok, uid, paths.len(), ok_paths, fail_paths, pids.len(), binder_ok, binder_unsupported, binder_fail, v1_ok, nothing_found, monotonic_ms(&st)
@@ -1609,7 +1692,8 @@ fn scan_package_collect(pkg: &str, user_id: i32, print_lines: bool) -> ScanPacka
             return out;
         }
     };
-    for ent in entries.flatten() {
+    for entry in entries {
+        let ent = match entry { Ok(ent) => ent, Err(_) => { out.rc = -1; return out; } };
         let name = ent.file_name().to_string_lossy().into_owned();
         if !name
             .chars()
@@ -1646,6 +1730,9 @@ fn scan_package_collect(pkg: &str, user_id: i32, print_lines: bool) -> ScanPacka
                 out.csv.push(',');
             }
             out.csv.push_str(&format!("{}:{}:{}", pid, uid, cmd));
+        } else {
+            out.rc = -2;
+            return out;
         }
     }
     out.rc = 0;
@@ -1707,6 +1794,12 @@ fn parse_scan_csv_item_rs(item: &str) -> Option<ScanItem> {
     })
 }
 
+// CSV is capped during collection; preserve all records on the wire.
+fn scan_csv_token(csv: &str) -> String {
+    if csv.is_empty() { return "-".into(); }
+    csv.bytes().map(|b| if (0x21..=0x7e).contains(&b) { b as char } else { '_' }).collect()
+}
+
 fn cmd_scan_package(pkg: &str, user: i32) -> i32 {
     let st = Instant::now();
     if !is_valid_pkg_name(pkg) {
@@ -1724,7 +1817,7 @@ fn cmd_scan_package(pkg: &str, user: i32) -> i32 {
         shell_sanitize(pkg),
         user,
         scan.count,
-        shell_sanitize(&scan.csv),
+        scan_csv_token(&scan.csv),
         monotonic_ms(&st)
     );
     if scan.rc == 0 {
@@ -1758,7 +1851,8 @@ fn cmd_proc_snapshot(pkg: &str, user: i32) -> i32 {
             return 3;
         }
     };
-    for ent in entries.flatten() {
+    for entry in entries {
+        let ent = match entry { Ok(ent) => ent, Err(_) => { errors += 1; continue; } };
         let name = ent.file_name().to_string_lossy().into_owned();
         if !name
             .chars()
@@ -1806,8 +1900,37 @@ fn cmd_proc_snapshot(pkg: &str, user: i32) -> i32 {
         );
         rows += 1;
     }
-    println!("CGFREEZER_PROC_SNAPSHOT_DONE ok=true package={} user={} rows={} errors={} hash=0 elapsedMs={}", shell_sanitize(pkg), user, rows, errors, monotonic_ms(&st));
-    0
+    println!("CGFREEZER_PROC_SNAPSHOT_DONE ok={} package={} user={} rows={} errors={} hash=0 elapsedMs={}", errors == 0, shell_sanitize(pkg), user, rows, errors, monotonic_ms(&st));
+    if errors == 0 { 0 } else { 3 }
+}
+
+thread_local! {
+    static EXPECTED_FREEZE: std::cell::RefCell<Option<KillTarget>> = const { std::cell::RefCell::new(None) };
+}
+fn freeze_identity_valid(pid: i32) -> bool {
+    EXPECTED_FREEZE.with(|slot| slot.borrow().as_ref().is_some_and(|expected| {
+        let pkg = expected.process.split(':').next().unwrap_or("");
+        expected.pid == pid && snapshot_package_target(pid, pkg, expected.uid / 100000)
+            .is_some_and(|now| expected.same_as(&now))
+    }))
+}
+fn freeze_member_valid(pid: i32) -> bool {
+    EXPECTED_FREEZE.with(|slot| slot.borrow().as_ref().is_some_and(|expected| {
+        let pkg = expected.process.split(':').next().unwrap_or("");
+        snapshot_package_target(pid, pkg, expected.uid / 100000)
+            .is_some_and(|member| member.uid == expected.uid)
+    }))
+}
+fn cmd_freeze_pid_checked(pid: i32, timeout: i64, pkg: &str, user: i32) -> i32 {
+    let Some(identity) = snapshot_package_target(pid, pkg, user) else {
+        println!("CGFREEZER_FREEZE_DONE ok=false pid={} reason=identity_unverified", pid);
+        return 4;
+    };
+    EXPECTED_FREEZE.with(|slot| *slot.borrow_mut() = Some(identity.clone()));
+    let rc = cmd_freeze_pid(pid, timeout);
+    EXPECTED_FREEZE.with(|slot| *slot.borrow_mut() = None);
+    if rc == 0 { println!("CGFREEZER_FREEZE_IDENTITY{}", identity.fields()); }
+    rc
 }
 
 /// Faithful port of cmd_freeze_pid()'s v2-then-v1 dispatch (via
@@ -1818,6 +1941,11 @@ fn cmd_proc_snapshot(pkg: &str, user: i32) -> i32 {
 /// write_freeze() path with no binder coordination and guessed the backend
 /// from the returned file name instead of actually selecting one.
 fn cmd_freeze_pid(pid: i32, timeout: i64) -> i32 {
+    if !freeze_identity_valid(pid) {
+        println!("CGFREEZER_FREEZE_DONE ok=false pid={} reason=identity_required", pid);
+        return 64;
+    }
+    if freeze_peer_closed() { return 75; }
     match cgfb_select_for_pid(pid, true) {
         CgFreezeBackend::V2 => cmd_freeze_pid_v2(pid, timeout),
         CgFreezeBackend::V1 => cmd_freeze_pid_v1(pid, timeout),
@@ -1876,7 +2004,8 @@ fn cmd_freeze_pid_list(user: i32, target: &str, timeout_in: i64) -> i32 {
         // all happen here too - the previous implementation called the
         // bare write_freeze() with none of that.
         let cmd = read_cmdline_c(pid, 512).unwrap_or_default();
-        let rc = cmd_freeze_pid(pid, timeout);
+        let pkg = cmd.split(':').next().unwrap_or("");
+        let rc = cmd_freeze_pid_checked(pid, timeout, pkg, user_id_from_uid_rs(uid as u32));
         if rc == 0 {
             frozen += 1;
         } else {
@@ -1940,7 +2069,7 @@ fn cmd_freeze_package(pkg: &str, user_id: i32, timeout_in: i64) -> i32 {
     let scan = scan_package_collect(pkg, user_id, false);
     println!(
         "CGFREEZER_FREEZE_PKG_BEGIN ok={} package={} user={} timeoutMs={} scanned={} requestAtomic=true transactionalRollback=false pids={}",
-        scan.rc == 0, shell_sanitize(pkg), user_id, timeout_ms, scan.count, shell_sanitize(&scan.csv)
+        scan.rc == 0, shell_sanitize(pkg), user_id, timeout_ms, scan.count, scan_csv_token(&scan.csv)
     );
     if scan.rc != 0 {
         println!("CGFREEZER_FREEZE_PKG_DONE ok=false package={} user={} scanned=0 checked=0 frozen=0 failed=0 reason=scan_failed elapsedMs={}", shell_sanitize(pkg), user_id, monotonic_ms(&start));
@@ -1957,7 +2086,9 @@ fn cmd_freeze_package(pkg: &str, user_id: i32, timeout_in: i64) -> i32 {
         .filter(|v| !v.is_empty())
         .map(|v| v.to_string())
         .collect();
+    let mut owned: Vec<(KillTarget, String)> = Vec::new();
     for item in &freeze_items {
+        if freeze_peer_closed() { break; }
         let t = match parse_scan_csv_item_rs(item) {
             Some(v) => v,
             None => {
@@ -1967,6 +2098,14 @@ fn cmd_freeze_package(pkg: &str, user_id: i32, timeout_in: i64) -> i32 {
             }
         };
         checked += 1;
+        let identity = match snapshot_package_target(t.pid, pkg, user_id) {
+            Some(identity) => identity,
+            None => {
+                failed += 1;
+                println!("CGFREEZER_FREEZE_PKG_ENTRY ok=false pid={} reason=identity_unverified", t.pid);
+                continue;
+            }
+        };
         // Capture "before" state for both backends prior to freezing, purely
         // for reporting - matches C's v2_before_freeze/v2_before_frozen and
         // v1_capture/v1_before snapshots taken ahead of cmd_freeze_pid().
@@ -1982,7 +2121,9 @@ fn cmd_freeze_package(pkg: &str, user_id: i32, timeout_in: i64) -> i32 {
         }
         let v1_capture = capture_v1_restore_path(t.pid);
 
+        EXPECTED_FREEZE.with(|slot| *slot.borrow_mut() = Some(identity.clone()));
         let rc = cmd_freeze_pid(t.pid, timeout_ms);
+        EXPECTED_FREEZE.with(|slot| *slot.borrow_mut() = None);
         if rc != 0 {
             failed += 1;
             println!("CGFREEZER_FREEZE_PKG_ENTRY ok=false package={} user={} pid={} uid={} process={} rc={} reason=freeze_failed", shell_sanitize(pkg), user_id, t.pid, t.uid, shell_sanitize(&t.process), rc);
@@ -2016,11 +2157,23 @@ fn cmd_freeze_package(pkg: &str, user_id: i32, timeout_in: i64) -> i32 {
         if before_freeze == '1' || before_frozen == '1' {
             already += 1;
         }
+        if before_freeze != '1' && before_frozen != '1' {
+            owned.push((identity.clone(), restore_path.clone()));
+        }
         frozen += 1;
         println!(
-            "CGFREEZER_FREEZE_PKG_ENTRY ok=true package={} user={} pid={} uid={} process={} backend={} path={} beforeFreeze={} beforeFrozen={} rc=0",
-            shell_sanitize(pkg), user_id, t.pid, t.uid, shell_sanitize(&t.process), backend, shell_sanitize(&restore_path), before_freeze, before_frozen
+            "CGFREEZER_FREEZE_PKG_ENTRY ok=true package={} user={} pid={} uid={} process={} backend={} path={} beforeFreeze={} beforeFrozen={} startTime={} rc=0",
+            shell_sanitize(pkg), user_id, identity.pid, identity.uid, shell_sanitize(&identity.process), backend, shell_sanitize(&restore_path), before_freeze, before_frozen, identity.start_time
         );
+    }
+    if freeze_peer_closed() {
+        // Restore only this request's changes, never a pre-existing freeze.
+        for (identity, path) in owned.iter().rev() {
+            if snapshot_package_target(identity.pid, pkg, user_id).is_some_and(|now| identity.same_as(&now)) {
+                let _ = cmd_thaw_path_internal(identity.pid, path, '0', timeout_ms, true);
+            }
+        }
+        return 75;
     }
     let ok = frozen > 0;
     println!(
@@ -2146,7 +2299,8 @@ fn collect_package_targets(pkg: &str, user_id: i32) -> TargetScan {
             return out;
         }
     };
-    for ent in entries.flatten() {
+    for entry in entries {
+        let ent = match entry { Ok(ent) => ent, Err(_) => { out.rc = -1; return out; } };
         let name = ent.file_name().to_string_lossy().into_owned();
         if !name
             .chars()
@@ -2351,7 +2505,10 @@ fn validate_cgroup_tree_exact_recursive(
             return false;
         }
     };
-    for ent in entries.flatten() {
+    for entry in entries {
+        let ent = match entry { Ok(ent) => ent, Err(_) => {
+            probe.errors += 1; probe.note_reason("readdir_failed"); return false;
+        } };
         let name = ent.file_name().to_string_lossy().into_owned();
         if name == "." || name == ".." || name.starts_with("cgroup.") {
             continue;
@@ -2442,6 +2599,26 @@ struct KillSignalResult {
 /// fallback, rejecting as identity_mismatch if start_time/process changed
 /// (pid was reused) rather than signaling a process that merely happens to
 /// have the same pid number now.
+fn cmd_resume_pids(pkg: &str, user: i32, csv: &str) -> i32 {
+    if !is_valid_pkg_name(pkg) || user < 0 { return 64; }
+    let mut ok = true;
+    for item in csv.split(',') {
+        let pid = match item.parse::<i32>() { Ok(pid) if pid > 0 => pid, _ => return 64 };
+        let Some(expected) = snapshot_package_target(pid, pkg, user) else {
+            if pid_alive(pid) { ok = false; }
+            continue;
+        };
+        let fd = unsafe { syscall(SYS_PIDFD_OPEN, pid as c_ulong, 0u64) };
+        if fd < 0 { ok = false; continue; }
+        if snapshot_package_target(pid, pkg, user).is_some_and(|now| expected.same_as(&now)) {
+            if unsafe { syscall(SYS_PIDFD_SEND_SIGNAL as i64, fd as i64, 18i64, 0i64, 0i64) } != 0 && errno_now() != ESRCH { ok = false; }
+        } else { ok = false; }
+        unsafe { close(fd as c_int); }
+    }
+    println!("CGFREEZER_RESUME_DONE ok={} pidfdRequired=true", ok);
+    if ok { 0 } else { 3 }
+}
+
 fn signal_kill_target(expected: &KillTarget, pkg: &str, user_id: i32) -> KillSignalResult {
     if expected.pid <= 0 {
         return KillSignalResult {
@@ -2730,13 +2907,8 @@ const ESRCH: i32 = 3;
 const ENOSYS: i32 = 38;
 
 /// Faithful port of signal_pid_user_checked(): tries pidfd-based signaling
-/// first (race-free - it targets the exact process instance the pidfd was
-/// opened against, so if the pid is reused by an unrelated process in the
-/// window between the uid check and the signal, pidfd_send_signal correctly
-/// fails rather than hitting the wrong process), falling back to plain
-/// kill(pid) only when pidfd isn't supported by the kernel. The previous
-/// implementation always used plain kill(pid, sig), which has no such
-/// protection against pid-reuse races.
+/// first, with identity checked again after opening. Fail closed when pidfd
+/// signaling is unavailable: this PID-only entry cannot safely use kill(pid).
 /// Returns (rc, method, uid, errno). errno is captured explicitly at each
 /// failure point rather than read from process-global errno afterward,
 /// since intervening safe Rust calls (fs::read, etc.) can silently
@@ -2745,6 +2917,10 @@ fn signal_pid_user_checked(pid: i32, user_id: i32, sig: i32) -> (i32, &'static s
     if pid <= 0 {
         return (-1, "none", -1, EINVAL);
     }
+    let start = match read_proc_start_time(pid) {
+        Some(v) if v > 0 => v,
+        _ => return (-1, "none", -1, ESRCH),
+    };
     let uid = parse_status_uid_c(pid);
     if uid < 0 {
         return (-1, "none", -1, ESRCH);
@@ -2755,6 +2931,10 @@ fn signal_pid_user_checked(pid: i32, user_id: i32, sig: i32) -> (i32, &'static s
     let pidfd = unsafe { syscall(SYS_PIDFD_OPEN, pid as c_ulong, 0u64) };
     if pidfd >= 0 {
         let pidfd = pidfd as c_int;
+        if read_proc_start_time(pid) != Some(start) || parse_status_uid_c(pid) != uid {
+            unsafe { close(pidfd) };
+            return (-1, "pidfd", uid, ESTALE);
+        }
         let prc = unsafe {
             syscall(
                 SYS_PIDFD_SEND_SIGNAL as i64,
@@ -2773,9 +2953,9 @@ fn signal_pid_user_checked(pid: i32, user_id: i32, sig: i32) -> (i32, &'static s
             return (-1, "pidfd", uid, e);
         }
     }
-    let rc = unsafe { kill(pid as c_int, sig as c_int) };
-    let e = if rc == 0 { 0 } else { errno_now() };
-    (if rc == 0 { 0 } else { -1 }, "kill", uid, e)
+    // This entry accepts only PID/user, not a package identity. Numeric kill
+    // cannot safely close the reuse window; callers must handle unsupported.
+    (-1, "pidfd-required", uid, ENOSYS)
 }
 
 fn cmd_kill_pid_list(user: i32, target: &str, sig: i32) -> i32 {
@@ -2825,19 +3005,19 @@ fn cmd_kill_pid_list(user: i32, target: &str, sig: i32) -> i32 {
         println!("CGFREEZER_KILL_PID_LIST_ENTRY ok={} pid={} uid={} signal={} method={} errno={} process={}", ok, pid, uid, sig, method, e, shell_sanitize(&cmd));
     }
     let ok = killed > 0 && failed == 0;
-    println!("CGFREEZER_KILL_PID_LIST_DONE ok={} user={} checked={} killed={} failed={} skipped={} reason={} pidfdOptional=true batch=true elapsedMs={}", ok, user, checked, killed, failed, skipped, if ok { "ok" } else if killed > 0 { "partial" } else { "none" }, monotonic_ms(&st));
-    if killed > 0 {
+    println!("CGFREEZER_KILL_PID_LIST_DONE ok={} user={} checked={} killed={} failed={} skipped={} reason={} pidfdRequired=true batch=true elapsedMs={}", ok, user, checked, killed, failed, skipped, if ok { "ok" } else if killed > 0 { "partial" } else { "none" }, monotonic_ms(&st));
+    if ok {
         0
     } else {
         12
     }
 }
 
-fn uid_pids(uid: u32) -> Vec<i32> {
-    list_pids()
+fn uid_pids(uid: u32) -> io::Result<Vec<i32>> {
+    Ok(list_pids()?
         .into_iter()
         .filter(|p| parse_status_uid_c(*p) == uid as i32)
-        .collect()
+        .collect())
 }
 
 fn cmd_thaw_path(path: &str, target: &str, timeout: i64) -> i32 {
@@ -3111,7 +3291,14 @@ fn run_wchan_uid<W: Write>(out: &mut W, uid_filter: i32, expect_arg: &str, st: &
         uid_filter, user_id, expect
     );
     let mut stats = WchanStats::default();
-    for pid in uid_pids(uid_u) {
+    let pids = match uid_pids(uid_u) {
+        Ok(pids) => pids,
+        Err(e) => {
+            let _ = writeln!(out, "CGFREEZER_WCHAN_UID_DONE ok=false uid={} reason=proc_scan_failed errno={}", uid_filter, e.raw_os_error().unwrap_or(-1));
+            return 12;
+        }
+    };
+    for pid in pids {
         let process = read_cmdline_c(pid, 512).unwrap_or_default();
         write_wchan_entry(WriteWchanEntryArgs {
             out,
@@ -3372,6 +3559,7 @@ fn emit_logd_event(args: EmitLogdEventArgs<'_>) {
 /// on a real device before being trusted.
 fn cmd_watch_logd(pkg: &str, user_id: i32, duration_ms: i64) -> i32 {
     let start = Instant::now();
+    let mut live_since = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
     if !is_valid_pkg_name(pkg) {
         println!(
             "CGFREEZER_LOGD_WATCH_DONE ok=false reason=bad_package package={} elapsedMs=0",
@@ -3511,6 +3699,7 @@ fn cmd_watch_logd(pkg: &str, user_id: i32, duration_ms: i64) -> i32 {
                 {
                     break;
                 }
+                live_since = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
                 list = unsafe { logger_open(LOG_ID_EVENTS, 0, 0, 0) };
                 if !list.is_null() {
                     break;
@@ -3558,6 +3747,10 @@ fn cmd_watch_logd(pkg: &str, user_id: i32, duration_ms: i64) -> i32 {
         if payload_end <= hdr_size {
             continue;
         }
+        // tail=0 includes retained events. Do not turn history into live actions.
+        let sec = u32::from_ne_bytes(buf[12..16].try_into().unwrap()) as u64;
+        let nsec = u32::from_ne_bytes(buf[16..20].try_into().unwrap());
+        if (sec, nsec) < (live_since.as_secs(), live_since.subsec_nanos()) { continue; }
         let payload = &buf[hdr_size..payload_end];
 
         let ev = match parse_event_payload(payload) {
@@ -3727,6 +3920,7 @@ fn daemon_cmd_class(cmd: &str) -> usize {
         "FREEZE" | "FREEZE_PID_LIST" => 1,
         "FREEZE_PKG" => 2,
         "KILL_PKG" | "KILL_PID_LIST" => 3,
+        "RESUME_PIDS" => 4,
         c if c.starts_with("THAW") => 4,
         "SCAN" | "PROC_SNAPSHOT" | "WCHAN_PID_LIST" | "WCHAN_UID" | "SUBSCRIBE" => 5,
         "HELLO" | "CAPS" | "PING" | "STATUS" | "STATS" | "STATS_DETAIL" | "LAST_ERROR"
@@ -3740,6 +3934,7 @@ fn daemon_note_command(stats: &mut DaemonStats, cmd: &str) {
         "FREEZE" | "FREEZE_PID_LIST" => stats.stat_freeze += 1,
         "FREEZE_PKG" => stats.stat_freeze_pkg += 1,
         "KILL_PKG" | "KILL_PID_LIST" => stats.stat_kill_pkg += 1,
+        "RESUME_PIDS" => stats.stat_thaw += 1,
         c if c.starts_with("THAW") => stats.stat_thaw += 1,
         "SCAN" | "PROC_SNAPSHOT" | "WCHAN_PID_LIST" | "WCHAN_UID" => stats.stat_scan += 1,
         _ => {}
@@ -3766,7 +3961,7 @@ fn daemon_stat_note_done(stats: &mut DaemonStats, class: usize, elapsed_ms: i64,
     }
     c.total_ms += elapsed_ms;
     c.last_ms = elapsed_ms;
-    if c.min_ms == 0 || elapsed_ms < c.min_ms {
+    if c.completed == 1 || elapsed_ms < c.min_ms {
         c.min_ms = elapsed_ms;
     }
     if elapsed_ms > c.max_ms {
@@ -3929,6 +4124,9 @@ fn handle_worker_to<W: Write>(args: &[String], out: &mut W) -> i32 {
             // helper command strings or stats classification names, not real
             // daemon parent-dispatched worker commands; unknown tokens must fall
             // through to C-compatible unknown_command handling.
+            Some("RESUME_PIDS") => {
+                if args.len() != 4 { 64 } else { cmd_resume_pids(args[1].as_str(), parse_i(args.get(2), -1), args[3].as_str()) }
+            }
             Some("FREEZE") => {
                 if args.len() < 3 {
                     println!("CGFREEZER_FREEZE_DONE ok=false reason=bad_args");
@@ -3943,7 +4141,7 @@ fn handle_worker_to<W: Write>(args: &[String], out: &mut W) -> i32 {
                         if !(100..=5000).contains(&timeout) {
                             timeout = 1500;
                         }
-                        cmd_freeze_pid(pid, timeout)
+                        if args.len() >= 5 { cmd_freeze_pid_checked(pid, timeout, args[3].as_str(), parse_i(args.get(4), -1)) } else { cmd_freeze_pid(pid, timeout) }
                     }
                 }
             }
@@ -4016,6 +4214,11 @@ fn handle_worker_to<W: Write>(args: &[String], out: &mut W) -> i32 {
                             timeout,
                         )
                     }
+                }
+            }
+            Some("THAW_PKG") => {
+                if args.len() < 4 { 64 } else {
+                    cmd_thaw_package(&args[1], parse_i(args.get(2), -1), bounded_timeout_ms(parse_ms(args.get(3), 700), 700))
                 }
             }
             Some("THAW_UID") => {
@@ -4200,10 +4403,61 @@ fn handle_parent(line: &str, stats: &DaemonStats, socket: &str) -> Option<(bool,
     }
 }
 
+// Lifetime lock is never unlinked: replacing the inode would permit two owners.
+// A crashed owner releases flock in the kernel; forked workers close their copy.
+fn daemon_owner_lock(socket_path: &str) -> io::Result<File> {
+    let file = fs::OpenOptions::new().read(true).write(true).create(true)
+        .mode(0o600).custom_flags(O_NOFOLLOW_NATIVE | 0o4000)
+        .open(format!("{}.lock", socket_path))?;
+    let meta = file.metadata()?;
+    if !meta.is_file() || meta.nlink() != 1 {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid owner lock"));
+    }
+    if unsafe { flock(file.as_raw_fd(), 2 | 4) } != 0 { // LOCK_EX | LOCK_NB
+        return Err(io::Error::last_os_error());
+    }
+    Ok(file)
+}
+
+// Do not replace a live socket from an older daemon that predates owner locks.
+fn daemon_socket_available(socket_path: &str) -> io::Result<bool> {
+    match fs::symlink_metadata(socket_path) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(true),
+        Err(e) => return Err(e),
+        Ok(m) if !m.file_type().is_socket() => return Err(io::Error::new(io::ErrorKind::InvalidInput, "not socket")),
+        Ok(_) => {}
+    }
+    let fd = unsafe { socket(C_AF_UNIX, C_SOCK_STREAM | C_SOCK_CLOEXEC | 0o4000, 0) };
+    if fd < 0 { return Err(io::Error::last_os_error()); }
+    let mut addr = SockAddrUn { sun_family: C_AF_UNIX as u16, sun_path: [0; UNIX_SUN_PATH_MAX] };
+    for (i, &b) in socket_path.as_bytes().iter().enumerate() { addr.sun_path[i] = b as c_char; }
+    let rc = unsafe { connect(fd, &addr as *const SockAddrUn as *const c_void, std::mem::size_of::<SockAddrUn>() as u32) };
+    let error = io::Error::last_os_error();
+    unsafe { close(fd); }
+    if rc == 0 { return Ok(false); }
+    match error.raw_os_error() {
+        Some(2) | Some(111) => Ok(true), // ENOENT / ECONNREFUSED: stale inode
+        Some(11) | Some(115) | Some(114) => Ok(false), // backlog full / pending
+        _ => Err(error),
+    }
+}
+
 fn cmd_daemon(socket_path: &str) -> i32 {
     if socket_path.is_empty() || socket_path.len() >= UNIX_SUN_PATH_MAX {
         println!("CGFREEZER_DAEMON_START ok=false reason=bad_socket_path");
         return 2;
+    }
+    let daemon_lock = match daemon_owner_lock(socket_path) {
+        Ok(lock) => lock,
+        Err(e) => {
+            println!("CGFREEZER_DAEMON_START ok=false reason=owner_lock errno={}", e.raw_os_error().unwrap_or(0));
+            return 6;
+        }
+    };
+    match daemon_socket_available(socket_path) {
+        Ok(true) => {}
+        Ok(false) => { println!("CGFREEZER_DAEMON_START ok=false reason=already_running"); return 6; }
+        Err(e) => { println!("CGFREEZER_DAEMON_START ok=false reason=socket_check errno={}", e.raw_os_error().unwrap_or(0)); return 6; }
     }
     G_RUNNING.store(true, Ordering::Relaxed);
     unsafe {
@@ -4228,7 +4482,7 @@ fn cmd_daemon(socket_path: &str) -> i32 {
         );
         return 3;
     }
-    let _ = fs::remove_file(socket_path); // C unlink() result is intentionally ignored.
+    let _ = fs::remove_file(socket_path); // Only stale sockets, under the lifetime owner lock.
     let mut addr = SockAddrUn {
         sun_family: C_AF_UNIX as u16,
         sun_path: [0; UNIX_SUN_PATH_MAX],
@@ -4236,6 +4490,9 @@ fn cmd_daemon(socket_path: &str) -> i32 {
     for (i, &b) in socket_path.as_bytes().iter().enumerate() {
         addr.sun_path[i] = b as c_char;
     }
+    // This daemon is single-threaded at startup. Restrict creation permissions
+    // before publishing the socket, then restore the caller's umask.
+    let previous_umask = unsafe { umask(0o177) };
     let bind_rc = unsafe {
         bind(
             listen_fd,
@@ -4243,6 +4500,7 @@ fn cmd_daemon(socket_path: &str) -> i32 {
             std::mem::size_of::<SockAddrUn>() as u32,
         )
     };
+    unsafe { umask(previous_umask); }
     if bind_rc != 0 {
         let e = errno_now();
         unsafe {
@@ -4255,7 +4513,12 @@ fn cmd_daemon(socket_path: &str) -> i32 {
         );
         return 4;
     }
-    let _ = fs::set_permissions(socket_path, fs::Permissions::from_mode(0o600));
+    if let Err(e) = fs::set_permissions(socket_path, fs::Permissions::from_mode(0o600)) {
+        unsafe { close(listen_fd); }
+        let _ = fs::remove_file(socket_path);
+        eprintln!("CGFREEZER_DAEMON_START ok=false reason=socket_permissions error={e}");
+        return 4;
+    }
     if unsafe { listen(listen_fd, 8) } != 0 {
         let e = errno_now();
         unsafe {
@@ -4300,6 +4563,10 @@ fn cmd_daemon(socket_path: &str) -> i32 {
                 continue;
             }
             std::thread::sleep(Duration::from_millis(5));
+            continue;
+        }
+        if !daemon_peer_is_root(cfd) {
+            unsafe { close(cfd); }
             continue;
         }
         let mut stream = unsafe { UnixStream::from_raw_fd(cfd) };
@@ -4359,6 +4626,13 @@ fn cmd_daemon(socket_path: &str) -> i32 {
             .map(str::to_owned)
             .collect();
         // Keep the resource bound without ever forking an untracked worker.
+        let subscribers = stats.children.iter().filter(|c| c.command == "SUBSCRIBE").count();
+        if cmd_name == "SUBSCRIBE" && subscribers >= 16 {
+            stats.last_error = "subscription_limit".into();
+            daemon_stat_note_done(&mut stats, class, monotonic_ms(&cmd_start) as i64, true);
+            let _ = writeln!(stream, "CGFREEZER_DAEMON_RESULT ok=false reason=subscription_limit activeSubscribers={} reservedTransientSlots={}", subscribers, MAX_DAEMON_CHILDREN - 16);
+            continue;
+        }
         if stats.active_children() >= MAX_DAEMON_CHILDREN {
             stats.last_error = "worker_limit".into();
             daemon_stat_note_done(&mut stats, class, monotonic_ms(&cmd_start) as i64, true);
@@ -4371,6 +4645,8 @@ fn cmd_daemon(socket_path: &str) -> i32 {
         }
         let child = unsafe { fork() };
         if child == 0 {
+            // Closing a duplicate fd does not unlock the parent's flock.
+            drop(daemon_lock);
             unsafe {
                 close(listen_fd);
             }
@@ -4388,6 +4664,7 @@ fn cmd_daemon(socket_path: &str) -> i32 {
             } else {
                 None
             };
+            FREEZE_PEER.with(|fd| fd.set(stream.as_raw_fd()));
             let rc = handle_worker_to(&args, &mut stream);
             let _ = stream.flush();
             unsafe {
@@ -4457,6 +4734,10 @@ fn main_rc(args: &[String]) -> i32 {
             }
             cmd_scan_package(args[2].as_str(), parse_i(args.get(3), 0))
         }
+        "resume-pids" => {
+            if args.len() != 5 { return 64; }
+            cmd_resume_pids(args[2].as_str(), parse_i(args.get(3), -1), args[4].as_str())
+        }
         "freeze-pid" => {
             if args.len() < 4 {
                 return 64;
@@ -4465,7 +4746,8 @@ fn main_rc(args: &[String]) -> i32 {
             if pid <= 0 {
                 return 64;
             }
-            cmd_freeze_pid(pid, bounded_timeout_ms(parse_ms(args.get(3), 1500), 1500))
+            let timeout = bounded_timeout_ms(parse_ms(args.get(3), 1500), 1500);
+            if args.len() >= 6 { cmd_freeze_pid_checked(pid, timeout, args[4].as_str(), parse_i(args.get(5), -1)) } else { cmd_freeze_pid(pid, timeout) }
         }
         "freeze-package" => {
             if args.len() < 5 {
@@ -4558,6 +4840,10 @@ fn main_rc(args: &[String]) -> i32 {
                 bounded_timeout_ms(parse_ms(args.get(5), 1500), 1500),
             )
         }
+        "thaw-package" => {
+            if args.len() < 5 { return 64; }
+            cmd_thaw_package(&args[2], parse_i(args.get(3), -1), bounded_timeout_ms(parse_ms(args.get(4), 700), 700))
+        }
         "thaw-uid" => {
             if args.len() < 4 {
                 return 64;
@@ -4599,6 +4885,16 @@ pub(crate) fn run() {
 #[cfg(test)]
 mod daemon_control_tests {
     use super::*;
+    #[test]
+    fn bounded_proc_reader_collects_short_reads_and_rejects_truncation() {
+        let path = std::env::temp_dir().join(format!("sb-cg-read-{}", std::process::id()));
+        std::fs::write(&path, b"123456789").unwrap();
+        assert_eq!(read_file_c_bytes(path.to_str().unwrap(), 10).unwrap(), b"123456789");
+        assert!(read_file_c_bytes(path.to_str().unwrap(), 9).is_none());
+        assert!(read_file_c_bytes(path.to_str().unwrap(), 4).is_none());
+        std::fs::remove_file(path).unwrap();
+    }
+
     #[test]
     fn batch_is_one_parent_control_request_and_never_stops() {
         let mut stats = DaemonStats {

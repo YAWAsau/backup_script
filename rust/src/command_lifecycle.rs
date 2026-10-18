@@ -3,6 +3,7 @@ use speedbackup_native_rs::{close, kill, pidfd_open, poll, PollFd, POLLIN, SIGKI
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::unix::process::ExitStatusExt;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -75,6 +76,13 @@ pub fn bounded(args: &[String]) -> i32 {
 fn regular(path:&Path)->io::Result<bool>{
     match fs::symlink_metadata(path){Ok(m) if m.file_type().is_file()=>Ok(true),Err(e) if e.kind()==io::ErrorKind::NotFound=>Ok(false),_=>Err(io::Error::new(io::ErrorKind::InvalidInput,"regular file required"))}
 }
+fn read_regular(path:&Path)->io::Result<File>{
+    let file=fs::OpenOptions::new().read(true)
+        .custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE | speedbackup_native_rs::O_NONBLOCK | speedbackup_native_rs::O_CLOEXEC)
+        .open(path)?;
+    if !file.metadata()?.is_file(){return Err(io::Error::new(io::ErrorKind::InvalidInput,"regular file required"));}
+    Ok(file)
+}
 fn remove(path:&Path)->io::Result<()>{if regular(path)?{fs::remove_file(path)?;}Ok(())}
 fn preserve(src:&Path,dir:&Path,name:&str)->io::Result<String>{
     if !regular(src)? || fs::metadata(src)?.len()==0{return Ok("none".into());}
@@ -82,7 +90,7 @@ fn preserve(src:&Path,dir:&Path,name:&str)->io::Result<String>{
     if dst.exists(){return Err(io::Error::new(io::ErrorKind::AlreadyExists,"detail exists"));}
     // create_new prevents following a concurrently introduced symlink.
     let mut out=fs::OpenOptions::new().write(true).create_new(true).open(&dst)?;
-    io::copy(&mut File::open(src)?,&mut out)?;Ok(name.into())
+    io::copy(&mut read_regular(src)?,&mut out)?;Ok(name.into())
 }
 fn result(args:&[String])->io::Result<()> {
     if args.len()!=9{return Err(io::Error::new(io::ErrorKind::InvalidInput,"arguments"));}
@@ -98,8 +106,8 @@ fn result(args:&[String])->io::Result<()> {
         regular(p)?;
     }
     let mut rows=0;
-    if regular(data)? {for line in BufReader::new(File::open(data)?).split(b'\n'){if line?.starts_with(args[7].as_bytes()){rows+=1;}}}
-    let mut summary=Vec::new();if regular(sum)?{File::open(sum)?.take(700).read_to_end(&mut summary)?;}
+    if regular(data)? {for line in BufReader::new(read_regular(data)?).split(b'\n'){if line?.starts_with(args[7].as_bytes()){rows+=1;}}}
+    let mut summary=Vec::new();if regular(sum)?{read_regular(sum)?.take(700).read_to_end(&mut summary)?;}
     let summary=String::from_utf8_lossy(&summary).replace(['\n','\r'],"|");
     let ok=args[2]=="0"&&regular(data)?&&fs::metadata(data)?.len()>0;
     let detail=if ok&&args[3]=="1" {format!("kept:{}",data.file_name().unwrap().to_string_lossy())}

@@ -36,17 +36,24 @@ public final class PermissionCompat {
     public static void updatePermissionFlags(PackageManagerHidden packageManager, String packageName,
                                              String permissionName, int mask, int values,
                                              int userId, UserHandle user) throws Exception {
+        Throwable firstFailure;
         try {
             HiddenApiReflection.invokeFlexible(packageManager, "updatePermissionFlags",
                     permissionName, packageName, mask, values, user);
             return;
         } catch (Throwable first) {
+            firstFailure = first;
+            if (!(first instanceof NoSuchMethodException)) {
+                if (first instanceof Exception) throw (Exception) first;
+                throw new Exception(first);
+            }
             CompatDebug.throwable("updatePermissionFlags(perm,pkg,mask,values,user) " + packageName + " " + permissionName, first);
         }
         try {
             HiddenApiReflection.invokeFlexible(packageManager, "updatePermissionFlags",
                     packageName, permissionName, mask, values, false, userId);
         } catch (Throwable second) {
+            if (second != firstFailure) second.addSuppressed(firstFailure);
             CompatDebug.throwable("updatePermissionFlags(pkg,perm,mask,values,false,userId) " + packageName + " " + permissionName, second);
             if (second instanceof Exception) {
                 throw (Exception) second;

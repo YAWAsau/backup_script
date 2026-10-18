@@ -5,6 +5,7 @@ mod eventwait;
 #[path = "bin/filewatch.rs"]
 mod filewatch;
 mod multicall;
+mod file_rpc;
 #[path = "bin/netwatch.rs"]
 mod netwatch;
 #[path = "bin/procwait.rs"]
