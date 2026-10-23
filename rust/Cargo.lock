@@ -4,4 +4,4 @@ version = 4
 
 [[package]]
 name = "speedbackup-native-rs"
-version = "921.0.0"
+version = "930.0.0"

@@ -166,13 +166,23 @@ final class ExternalRestorePolicy {
         } else prepare(source,false);
     }
     private void repairRpc() throws Exception {
-        repair();
-        if (partitionedRoot()) {
+        long begin=android.os.SystemClock.elapsedRealtime();
+        boolean nativePreflight=partitionedRoot();
+        if (nativePreflight) {
+            // Exact same target/backing: Rust validates the complete tree before
+            // mutation (device, type, hardlinks, no-follow, ACL and project ID).
+            // Retain the ancestor gate; other storage layouts keep Dex's walk.
+            ancestors(target);
+        } else repair();
+        long checked=android.os.SystemClock.elapsedRealtime();
+        if (nativePreflight) {
             NativeFileClient.run("external-policy-fused",backing.getPath(),Integer.toString(app.uid),kind);
         } else {
             if (vold!=null) NativeFileClient.run("external-policy-repair",backing.getPath(),Integer.toString(app.uid),kind);
             NativeFileClient.run("selinux-restore",backing.getPath(),"12");
         }
+        System.err.println("EXTERNAL_REPAIR_TIMING nativePreflight="+nativePreflight
+                +" dexCheckMs="+(checked-begin)+" nativeMs="+(android.os.SystemClock.elapsedRealtime()-checked));
     }
     static void command(String[] args) {
         try {

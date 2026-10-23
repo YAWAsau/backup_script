@@ -5,7 +5,10 @@ mod eventwait;
 #[path = "bin/filewatch.rs"]
 mod filewatch;
 mod multicall;
+mod applist;
 mod file_rpc;
+mod pm_process;
+mod pm_session;
 #[path = "bin/netwatch.rs"]
 mod netwatch;
 #[path = "bin/procwait.rs"]
@@ -18,6 +21,14 @@ mod uidexec;
 mod unixsock;
 
 fn main() {
+    let args: Vec<_> = std::env::args_os().collect();
+    if args.get(1).and_then(|value| value.to_str()) == Some("--pm-session")
+        && args.first().and_then(|value| std::path::Path::new(value).file_name())
+            == Some(std::ffi::OsStr::new("speednative"))
+    {
+        pm_session::run(args.into_iter().skip(2).collect());
+        return;
+    }
     let (name, argv) = match multicall::select(std::env::args_os().collect()) {
         Ok(invocation) => invocation,
         Err(argv) => {

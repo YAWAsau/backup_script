@@ -1,6 +1,6 @@
 [package]
 name = "speedbackup-native-rs"
-version = "921.0.0"
+version = "930.0.0"
 edition = "2021"
 autobins = false
 license = "GPL-3.0-only"

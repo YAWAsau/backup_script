@@ -37,14 +37,16 @@ fn ram_product() -> String {
     String::new()
 }
 fn ram_display(id: Option<u32>, size: Option<u32>, product: &str, spec: &str) -> String {
-    let mut parts = vec![ram_vendor(id)];
     // Only these boards' ddr_size units have been verified as nominal GB.
-    // Do not round MemTotal or include swap; unknown capacity is omitted.
-    if matches!(product, "songyuan" | "fuxi") {
-        if let Some(gb) = size.filter(|n| matches!(n, 4 | 6 | 8 | 12 | 16 | 24 | 32 | 48 | 64)) {
-            parts.push(format!("{} GB", gb));
-        }
-    }
+    // The procfs fallback reports capacity explicitly in G/GB; never use swap.
+    let size = if matches!(product, "songyuan" | "fuxi") {
+        size.filter(|n| matches!(n, 4 | 6 | 8 | 12 | 16 | 24 | 32 | 48 | 64))
+    } else { None };
+    let vendor = ram_vendor(id);
+    let extra = if vendor.starts_with("未知") || size.is_none() { device_ram::fallback() } else { None };
+    let (vendor, size) = device_ram::merge(vendor, size, extra);
+    let mut parts = vec![vendor];
+    if let Some(gb) = size { parts.push(format!("{} GB", gb)); }
     let spec = spec.trim();
     if !spec.is_empty() && spec != "null" { parts.push(spec.to_owned()); }
     format!("RAM:{}", parts.join(" "))

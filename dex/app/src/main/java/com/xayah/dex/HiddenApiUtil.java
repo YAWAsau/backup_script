@@ -940,7 +940,16 @@ public class HiddenApiUtil {
                 String suffix="/"+Integer.parseInt(args[1])+"/"+args[2];
                 if (!("/data/user"+suffix).equals(args[5]) && !("/data/user_de"+suffix).equals(args[5]))
                     throw new IllegalArgumentException("internal target mismatch");
-                NativeFileClient.run("app-permissions",policy[0],args[4],args[5],policy[1]);
+                boolean autoOwner="auto".equals(args[4]);
+                String previous=args[4];
+                if (autoOwner) {
+                    android.system.StructStat st=android.system.Os.lstat(args[5]);
+                    if (!android.system.OsConstants.S_ISDIR(st.st_mode))
+                        throw new IllegalArgumentException("internal root is not a directory");
+                    previous=Integer.toString(st.st_uid);
+                }
+                NativeFileClient.run("app-permissions",policy[0],previous,args[5],policy[1]);
+                if (autoOwner) DaemonOutput.current().println(previous);
             }
         } catch (Exception e) {
             throw new IllegalStateException("Internal file operation incomplete; do not retry",e);

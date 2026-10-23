@@ -1,0 +1,1213 @@
+{
+  "schema": 1,
+  "routes": [
+    {
+      "file": "tools/tools.sh",
+      "context": "_getlist_rust_impl",
+      "line": "cp \"$MODDIR/appList.txt\" \"$_stage/old\" || return 1",
+      "count": 1,
+      "category": "fresh-stage",
+      "reason": "Snapshot the existing application list into a fresh mktemp private directory for Rust validation and the pre-publication cmp guard. This copy never overwrites the public list; the verified result is published separately through _generated_file_publish."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_speedbackup_root_tmp_state_cleanup_rescue",
+      "line": "cp \"$_out\" \"$SPEED_DEBUG_RUN_DIR/cgroup_lock_metrics.log\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _speedbackup_root_tmp_state_cleanup_rescue; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_speedbackup_ui_relay_stop",
+      "line": "[[ -f ${_SPEEDBACKUP_UI_RELAY_STATS:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_SPEEDBACKUP_UI_RELAY_STATS\" \"$SPEED_DEBUG_RUN_DIR/tty_relay_stats.txt\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _speedbackup_ui_relay_stop; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_backup_prescan_exact_payload_plan",
+      "line": "cp -f \"$_details\" \"$TMPDIR/.backup_run.plan\" || return 1",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _backup_prescan_exact_payload_plan; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_backup_payload_stats_show_summary",
+      "line": "cp -f \"$TMPDIR/.backup_run.events\" \"$SPEED_DEBUG_RUN_DIR/backup_run.events\"",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _backup_payload_stats_show_summary; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_backup_payload_stats_show_summary",
+      "line": "cp -f \"$TMPDIR/.backup_run.plan\" \"$SPEED_DEBUG_RUN_DIR/backup_run.plan\"",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _backup_payload_stats_show_summary; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_json_health_check_batch_list_native",
+      "line": "[[ -s $_prefix.summary.tsv ]] && cp -f \"$_prefix.summary.tsv\" \"$SPEED_DEBUG_RUN_DIR/json_health_batch_summary.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _json_health_check_batch_list_native; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_json_health_check_batch_list_native",
+      "line": "[[ -s $_prefix.stats ]] && cp -f \"$_prefix.stats\" \"$SPEED_DEBUG_RUN_DIR/json_health_batch_stats.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _json_health_check_batch_list_native; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_json_health_check_batch_list",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_summary ]] && cp -f \"$_summary\" \"$SPEED_DEBUG_RUN_DIR/json_health_batch_summary.tsv\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _json_health_check_batch_list; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_json_health_report",
+      "line": "cp -f \"$TMPDIR/.json_health_hints\" \"$SPEED_DEBUG_RUN_DIR/json_health_hints.log\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _json_health_report; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_speedbackup_install_tool_copy_startup",
+      "line": "cp -f \"$_src\" \"$_tmp\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f \"$_tmp\" 2>/dev/null; return 1; }",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _speedbackup_install_tool_copy_startup; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "upload_summary",
+      "line": "if mkdir -p \"${_saved%/*}\" && cp -f \"$_metadata_file\" \"$_saved\"; then",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in upload_summary; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_remote_webdav_classified_snapshot_store",
+      "line": "cp -f \"$_src\" \"$_dst\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _remote_webdav_classified_snapshot_store; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "remote_dir_size",
+      "line": "cp -f \"$_smb_size_map\" \"$(_remote_size_map_before_file)\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in remote_dir_size; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "remote_dir_size",
+      "line": "cp -f \"$_smb_size_map\" \"$(_backup_payload_stats_smb_post_map_file)\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in remote_dir_size; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "remote_dir_size",
+      "line": "cp -f \"$_wd_size_map\" \"$(_remote_size_map_before_file)\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in remote_dir_size; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appdetails_bundle_update_taint",
+      "line": "if ! cp -f \"$_list\" \"$_tmp\" || ! mv -f \"$_tmp\" \"$_target\"; then rm -f \"$_tmp\"; return 1; fi",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _appdetails_bundle_update_taint; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appdetails_bundle_audit_guard",
+      "line": "cp -f \"${_prefix}.ignored_remote_payload_apps.lst\" \"$_ignored_debug\" 2>/dev/null || true",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _appdetails_bundle_audit_guard; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appdetails_bundle_audit_guard",
+      "line": "cp -f \"$_taint_file\" \"${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/appdetails_bundle_seedless_taint.flag\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _appdetails_bundle_audit_guard; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appdetails_bundle_audit_guard",
+      "line": "[[ -s ${_prefix}.remote_payload_apps.lst ]] && cp -f \"${_prefix}.remote_payload_apps.lst\" \"$SPEED_DEBUG_RUN_DIR/appdetails_remote_payload_apps.lst\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _appdetails_bundle_audit_guard; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appdetails_bundle_audit_guard",
+      "line": "[[ -s ${_prefix}.missing_seed.lst ]] && cp -f \"${_prefix}.missing_seed.lst\" \"$SPEED_DEBUG_RUN_DIR/appdetails_missing_seed.lst\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _appdetails_bundle_audit_guard; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appdetails_bundle_audit_guard",
+      "line": "[[ -s ${_prefix}.missing_stage.lst ]] && cp -f \"${_prefix}.missing_stage.lst\" \"$SPEED_DEBUG_RUN_DIR/appdetails_missing_stage.lst\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _appdetails_bundle_audit_guard; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appdetails_bundle_audit_guard",
+      "line": "[[ -s ${_prefix}.bad.log ]] && cp -f \"${_prefix}.bad.log\" \"$SPEED_DEBUG_RUN_DIR/appdetails_payload_stale.log\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _appdetails_bundle_audit_guard; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appdetails_bundle_audit_guard",
+      "line": "[[ -s ${_prefix}.stats ]] && cp -f \"${_prefix}.stats\" \"$SPEED_DEBUG_RUN_DIR/appdetails_bundle_audit.stats\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _appdetails_bundle_audit_guard; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appdetails_bundle_stage_one",
+      "line": "cp -f \"$_file\" \"$_target\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _appdetails_bundle_stage_one; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appdetails_bundle_build_manifest",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_stats ]] && cp -f \"$_stats\" \"$SPEED_DEBUG_RUN_DIR/appdetails_bundle_manifest_rust.stats\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _appdetails_bundle_build_manifest; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appdetails_bundle_build_manifest",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_diag ]] && cp -f \"$_diag\" \"$SPEED_DEBUG_RUN_DIR/appdetails_bundle_preupload_rust_fail.tsv\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _appdetails_bundle_build_manifest; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appdetails_bundle_publish_nonstream",
+      "line": "cp -f \"$_files\" \"$TMPDIR/.remote_files\" || return 1",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _appdetails_bundle_publish_nonstream; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appdetails_bundle_publish_nonstream",
+      "line": "cp -f \"$TMPDIR/.nonstream_metadata_saved/$_rel\" \"$_tmp\" || return 1",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _appdetails_bundle_publish_nonstream; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appdetails_bundle_build_local_for_current_upload",
+      "line": "cp -f \"$_jf\" \"$_stage/$_name/app_details.json\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || continue",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _appdetails_bundle_build_local_for_current_upload; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appdetails_bundle_seed_remote_json_cache",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_stats ]] && cp -f \"$_stats\" \"$SPEED_DEBUG_RUN_DIR/appdetails_seed_index.stats\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _appdetails_bundle_seed_remote_json_cache; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appdetails_bundle_seed_remote_json_cache",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_diag ]] && cp -f \"$_diag\" \"$SPEED_DEBUG_RUN_DIR/appdetails_seed_index_bad.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _appdetails_bundle_seed_remote_json_cache; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_stream_upload_impl",
+      "line": "cp -f \"$_stream_receipt\" \"$_REMOTE_STREAM_RECEIPT\" || _rc=1",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _stream_upload_impl; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "remote_list_backups",
+      "line": "cp -f \"$out\" \"$out_cache\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in remote_list_backups; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "remote_list_backups",
+      "line": "cp \"$TMPDIR/.apps_sorted\" \"$TMPDIR/.apps_sorted_keep\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in remote_list_backups; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_speedbackup_device_facts_collect",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/device_facts.json\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _speedbackup_device_facts_collect; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_root_appstate_call",
+      "line": "cp -f \"$_in\" \"$_saved.in\" || return 1",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _root_appstate_call; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_root_appstate_call",
+      "line": "if [[ -f $_out ]]; then cp -f \"$_out\" \"$_saved.out\" || return 1; else : > \"$_saved.out\"; fi",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _root_appstate_call; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_root_appstate_call",
+      "line": "[[ ! -f $_out.summary ]] || cp -f \"$_out.summary\" \"$_saved.out.summary\" || return 1",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _root_appstate_call; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appstate_capabilities_check",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/appstate_capabilities.json\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _appstate_capabilities_check; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appstate_capabilities_check",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/appstate_capabilities_invalid.json\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _appstate_capabilities_check; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_maps_timeline_defer",
+      "line": "if ! chmod 700 \"$_dir\" || ! cp -- \"$_input\" \"$_dir/archive.sbtimeline\" ||",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _maps_timeline_defer; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_sb_update_backup_target_for_rollback",
+      "line": "[[ -d $_target/tools ]] && { cp -Rp \"$_target/tools\" \"$_rb/tools\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1; }",
+      "count": 1,
+      "category": "preserve-metadata",
+      "reason": "Metadata-preserving or recursive copy in _sb_update_backup_target_for_rollback; byte publication is not a drop-in replacement for cp -p/-R."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_sb_update_backup_target_for_rollback",
+      "line": "cp -p \"$_target/$_rel\" \"$_rb/files/$_rel\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || exit 1",
+      "count": 1,
+      "category": "preserve-metadata",
+      "reason": "Metadata-preserving or recursive copy in _sb_update_backup_target_for_rollback; byte publication is not a drop-in replacement for cp -p/-R."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_sb_update_copy_one_file_fuse_safe",
+      "line": "if cp -f \"$_src\" \"$_tmp\" && cmp -s \"$_src\" \"$_tmp\" && chmod 0755 \"$_tmp\" && mv -f \"$_tmp\" \"$_dst\"; then return 0; fi",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _sb_update_copy_one_file_fuse_safe; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_sb_update_copy_artifacts_to_debug",
+      "line": "[[ -f $_report ]] && cp -f \"$_report\" \"$_dst/update_report.log\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _sb_update_copy_artifacts_to_debug; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_sb_update_copy_artifacts_to_debug",
+      "line": "[[ -f $_state ]] && cp -f \"$_state\" \"$_dst/update_state.json\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _sb_update_copy_artifacts_to_debug; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_app_state_prescan_batch",
+      "line": "cp -f \"$_snapshot_out\" \"$_debug_snapshot\" 2>/dev/null && _debug_mode=copy || _debug_mode=failed",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in prepare_app_state_prescan_batch; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_app_state_prescan_batch",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_snapshot_out ]] && cp -f \"$_snapshot_out\" \"$SPEED_DEBUG_RUN_DIR/appstate_snapshot_invalid.ndjson\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in prepare_app_state_prescan_batch; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_restore_package_compare_build",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/restore_package_compare_map.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _restore_package_compare_build; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_restore_package_compare_build",
+      "line": "cp -f \"$_summary\" \"$SPEED_DEBUG_RUN_DIR/restore_package_compare_summary.txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _restore_package_compare_build; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_restore_package_compare_build",
+      "line": "cp -f \"$_remote\" \"$SPEED_DEBUG_RUN_DIR/restore_package_compare_remote_map.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _restore_package_compare_build; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_restore_framework_facts_prefetch",
+      "line": "[[ -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/default_role_facts.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _restore_framework_facts_prefetch; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_restore_framework_facts_prefetch",
+      "line": "[[ -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/storage_media_facts.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _restore_framework_facts_prefetch; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_restore_framework_facts_prefetch",
+      "line": "[[ -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/storage_volume_facts.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _restore_framework_facts_prefetch; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_restore_framework_facts_prefetch",
+      "line": "[[ -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/home_ime_launcher_facts.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _restore_framework_facts_prefetch; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_restore_package_facts_extract_from_stage",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/package_facts_prefetch_pkgs_stage.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _restore_package_facts_extract_from_stage; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_restore_package_facts_prefetch",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_facts\" \"$SPEED_DEBUG_RUN_DIR/package_facts_map.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _restore_package_facts_prefetch; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_restore_install_issue_emit",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_warn_file\" \"$SPEED_DEBUG_RUN_DIR/restore_install_vendor_warnings.tsv\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _restore_install_issue_emit; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_restore_install_issue_emit",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_file\" \"$SPEED_DEBUG_RUN_DIR/restore_install_issues.tsv\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _restore_install_issue_emit; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_local_fast_skip_presize_plan",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_native_out ]] && cp -f \"$_native_out\" \"$SPEED_DEBUG_RUN_DIR/local_fastskip_presize_stdout.fail.log\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in prepare_local_fast_skip_presize_plan; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_local_fast_skip_presize_plan",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_native_out ]] && cp -f \"$_native_out\" \"$SPEED_DEBUG_RUN_DIR/local_fastskip_presize_stdout.log\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in prepare_local_fast_skip_presize_plan; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_local_fast_skip_presize_plan",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_diag ]] && cp -f \"$_diag\" \"$SPEED_DEBUG_RUN_DIR/local_fastskip_presize_diag.tsv\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in prepare_local_fast_skip_presize_plan; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_local_fast_skip_presize_plan",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_tiny ]] && cp -f \"$_tiny\" \"$SPEED_DEBUG_RUN_DIR/local_fastskip_presize_tiny.tsv\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in prepare_local_fast_skip_presize_plan; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_remote_fast_skip_presize_plan",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_native_out ]] && cp -f \"$_native_out\" \"$SPEED_DEBUG_RUN_DIR/remote_fastskip_presize_stdout.fail.log\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in prepare_remote_fast_skip_presize_plan; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_remote_fast_skip_presize_plan",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_native_out ]] && cp -f \"$_native_out\" \"$SPEED_DEBUG_RUN_DIR/remote_fastskip_presize_stdout.log\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in prepare_remote_fast_skip_presize_plan; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_remote_fast_skip_presize_plan",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_diag ]] && cp -f \"$_diag\" \"$SPEED_DEBUG_RUN_DIR/remote_fastskip_presize_diag.tsv\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in prepare_remote_fast_skip_presize_plan; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_remote_fast_skip_presize_plan",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_tiny ]] && cp -f \"$_tiny\" \"$SPEED_DEBUG_RUN_DIR/remote_fastskip_presize_tiny.tsv\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in prepare_remote_fast_skip_presize_plan; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_dir_size_map",
+      "line": "cp -f \"$_filter_exists\" \"$_exists\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || : > \"$_exists\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in prepare_dir_size_map; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_dir_size_map",
+      "line": "cp -f \"$_filter_manifest\" \"$_ss_manifest\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || : > \"$_ss_manifest\"",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in prepare_dir_size_map; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_dir_size_map",
+      "line": "cp -f \"$_filter_tiny\" \"$_map\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || : > \"$_map\"",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in prepare_dir_size_map; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_dir_size_map",
+      "line": "ln \"$_ss_root_stats\" \"$SPEED_DEBUG_RUN_DIR/dir_size_root_stats.tsv\" 2>/dev/null || cp -f \"$_ss_root_stats\" \"$SPEED_DEBUG_RUN_DIR/dir_size_root_stats.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in prepare_dir_size_map; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_get_remote_appdetails",
+      "line": "cp \"$_cache_file\" \"$_out\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _get_remote_appdetails; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_get_remote_appdetails",
+      "line": "cp \"$_cache/$_name.json\" \"$_out\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _get_remote_appdetails; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_remote_manifest_plan_refresh",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s ${_prefix}.remote_apps.lst ]] && cp -f \"${_prefix}.remote_apps.lst\" \"$SPEED_DEBUG_RUN_DIR/remote_manifest_apps.lst\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _remote_manifest_plan_refresh; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_remote_manifest_plan_refresh",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s ${_prefix}.remote_payload_rels.lst ]] && cp -f \"${_prefix}.remote_payload_rels.lst\" \"$SPEED_DEBUG_RUN_DIR/remote_manifest_payload_rels.lst\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _remote_manifest_plan_refresh; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_remote_manifest_plan_refresh",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s ${_prefix}.folder_without_appdetails.lst ]] && cp -f \"${_prefix}.folder_without_appdetails.lst\" \"$SPEED_DEBUG_RUN_DIR/remote_manifest_folder_without_appdetails.lst\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _remote_manifest_plan_refresh; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_remote_manifest_plan_refresh",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s ${_prefix}.orphan_candidates.tsv ]] && cp -f \"${_prefix}.orphan_candidates.tsv\" \"$SPEED_DEBUG_RUN_DIR/remote_manifest_orphan_candidates.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _remote_manifest_plan_refresh; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_remote_payload_set_from_manifest_plan",
+      "line": "cp -f \"$_src\" \"$_out\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _remote_payload_set_from_manifest_plan; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_manifest_diff_cache_index_refresh",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s ${_prefix}.diff.tsv ]] && cp -f \"${_prefix}.diff.tsv\" \"$SPEED_DEBUG_RUN_DIR/manifest_diff_cache_index.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _manifest_diff_cache_index_refresh; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_manifest_diff_cache_index_refresh",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s ${_prefix}.diag.tsv ]] && cp -f \"${_prefix}.diag.tsv\" \"$SPEED_DEBUG_RUN_DIR/manifest_diff_cache_diag.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _manifest_diff_cache_index_refresh; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_manifest_diff_cache_index_refresh",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s ${_prefix}.fast_skip_ok ]] && cp -f \"${_prefix}.fast_skip_ok\" \"$SPEED_DEBUG_RUN_DIR/manifest_diff_fast_skip_ok.lst\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _manifest_diff_cache_index_refresh; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_manifest_diff_cache_index_refresh",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s ${_prefix}.payload_missing_map ]] && cp -f \"${_prefix}.payload_missing_map\" \"$SPEED_DEBUG_RUN_DIR/manifest_diff_payload_missing_map.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _manifest_diff_cache_index_refresh; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_manifest_diff_cache_index_refresh",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s ${_prefix}.stats ]] && cp -f \"${_prefix}.stats\" \"$SPEED_DEBUG_RUN_DIR/manifest_diff_cache_index_stats.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _manifest_diff_cache_index_refresh; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_restore_payload_plan_log",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s ${_prefix}.payloads.tsv ]] && cp -f \"${_prefix}.payloads.tsv\" \"$SPEED_DEBUG_RUN_DIR/restore_payload_plan_${_label//[!a-zA-Z0-9_.-]/_}.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _restore_payload_plan_log; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_remote_fast_skip_map",
+      "line": "if cp -f \"$TMPDIR/.remote_selected_apps.tsv\" \"$_selected\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && cp -f \"$TMPDIR/.remote_payload_set_presize.tsv\" \"$_payload_set\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in prepare_remote_fast_skip_map; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_remote_fast_skip_map",
+      "line": "cp -f \"$TMPDIR/.dir_sizes\" \"$_local_sizes\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || : > \"$_local_sizes\"",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in prepare_remote_fast_skip_map; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_remote_fast_skip_map",
+      "line": "mv -f \"$_read_plan_final\" \"$_read_plan\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || cp -f \"$_read_plan_final\" \"$_read_plan\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 2,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in prepare_remote_fast_skip_map; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_remote_fast_skip_map",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_read_plan ]] && cp -f \"$_read_plan\" \"$SPEED_DEBUG_RUN_DIR/remote_stream_local_read_plan.tsv\" 2>/dev/null",
+      "count": 3,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in prepare_remote_fast_skip_map; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_remote_fast_skip_map",
+      "line": "[[ -f $_local_sizes ]] || { cp -f \"$TMPDIR/.dir_sizes\" \"$_local_sizes\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || : > \"$_local_sizes\"; }",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in prepare_remote_fast_skip_map; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_remote_fast_skip_map",
+      "line": "[[ -s ${_midx_prefix}.fast_skip_ok ]] && cp -f \"${_midx_prefix}.fast_skip_ok\" \"$_map\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || : > \"$_map\"",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in prepare_remote_fast_skip_map; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_remote_fast_skip_map",
+      "line": "[[ -s ${_midx_prefix}.payload_missing_map ]] && cp -f \"${_midx_prefix}.payload_missing_map\" \"$_missing\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || : > \"$_missing\"",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in prepare_remote_fast_skip_map; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_remote_fast_skip_map",
+      "line": "[[ -s ${_midx_prefix}.diag.tsv ]] && cp -f \"${_midx_prefix}.diag.tsv\" \"$_diag\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || : > \"$_diag\"",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in prepare_remote_fast_skip_map; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_remote_fast_skip_map",
+      "line": "[[ -s ${_midx_prefix}.stats ]] && cp -f \"${_midx_prefix}.stats\" \"$_stats\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || : > \"$_stats\"",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in prepare_remote_fast_skip_map; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_remote_fast_skip_map",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_diag ]] && cp -f \"$_diag\" \"$SPEED_DEBUG_RUN_DIR/remote_fast_skip_batch.tsv\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in prepare_remote_fast_skip_map; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_local_fs_presence_maps_build",
+      "line": "cp -f \"$_prescan\" \"$_exists\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _local_fs_presence_maps_build; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "prepare_local_fast_skip_map",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_diag ]] && cp -f \"$_diag\" \"$SPEED_DEBUG_RUN_DIR/local_fast_skip_batch.tsv\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in prepare_local_fast_skip_map; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_remote_orphan_cleanup_stream",
+      "line": "cp -f \"$_rfiles\" \"$_roots\" || _list_rc=1",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _remote_orphan_cleanup_stream; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_remote_orphan_cleanup_stream",
+      "line": "cp -f \"$_bundle_root/.speedbackup_appdetails_bundle_seedless_taint\" \"${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/appdetails_bundle_seedless_taint.flag\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _remote_orphan_cleanup_stream; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_remote_orphan_cleanup_stream",
+      "line": "[[ -f \"$_bundle_root/.speedbackup_appdetails_bundle_ignored_remote_payload_apps.lst\" ]] && cp -f \"$_bundle_root/.speedbackup_appdetails_bundle_ignored_remote_payload_apps.lst\" \"${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/appdetails_ignored_remote_payload_apps.lst\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _remote_orphan_cleanup_stream; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_remote_orphan_cleanup_stream",
+      "line": "[[ -f ${_plan}.${_json} && -d ${SPEED_DEBUG_RUN_DIR:-/nonexistent} ]] && cp -f \"${_plan}.${_json}\" \"$SPEED_DEBUG_RUN_DIR/remote_orphan_plan.${_json}\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _remote_orphan_cleanup_stream; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_uid_netblock_remove_state_token",
+      "line": "awk -F '\t' -v t=\"$_token\" '$1!=t {print $0}' \"$_state\" > \"$_tmp\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || cp -f \"$_state\" \"$_tmp\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _uid_netblock_remove_state_token; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_uid_netblock_stop_all",
+      "line": "cp -f \"$_state\" \"$_tmp\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 0",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _uid_netblock_stop_all; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_cgroup_freezer_daemon_debug_status_legacy",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/cgroup_freezer_daemon_${_cmd}_${_safe}.txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _cgroup_freezer_daemon_debug_status_legacy; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_cgroup_freezer_daemon_debug_status",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/cgroup_freezer_daemon_${_cmd}_${_safe}.txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _cgroup_freezer_daemon_debug_status; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_cgroup_freezer_remove_state_token",
+      "line": "awk -F '\\t' -v t=\"$_token\" '$1!=t {print $0}' \"$_state\" > \"$_tmp\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || cp -f \"$_state\" \"$_tmp\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _cgroup_freezer_remove_state_token; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_cgroup_freezer_stop_all",
+      "line": "cp -f \"$_state\" \"$_tmp\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 0",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _cgroup_freezer_stop_all; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_process_observer_batch_state_prune_main",
+      "line": "awk -F '\\t' 'NR==FNR{del[$1]=1; next} !($1 in del){print $0}' \"$_batch\" \"$_state\" > \"$_tmp\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || cp -f \"$_state\" \"$_tmp\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _process_observer_batch_state_prune_main; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_process_observer_batch_start_backup",
+      "line": "tr '|' '\\n' < \"$_out\" > \"$_norm\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || cp -f \"$_out\" \"$_norm\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _process_observer_batch_start_backup; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_process_observer_restore_session_direct_start",
+      "line": "tr '|' '\\n' < \"$_out\" > \"$_norm\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || cp -f \"$_out\" \"$_norm\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _process_observer_restore_session_direct_start; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_process_observer_restore_session_start",
+      "line": "tr '|' '\\n' < \"$_out\" > \"$_norm\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || cp -f \"$_out\" \"$_norm\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _process_observer_restore_session_start; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_process_observer_batch_release_pkg_legacy",
+      "line": "awk -F '\t' -v p=\"$_pkg\" '$2!=p{print $0}' \"$_state\" > \"$_remain\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || cp -f \"$_state\" \"$_remain\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _process_observer_batch_release_pkg_legacy; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_process_observer_top_status",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/process_observer_top_${_safe_stage}.txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _process_observer_top_status; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_process_observer_foreground_status",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/process_observer_foreground_${_safe_stage}_${_safe_pkg}.txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _process_observer_foreground_status; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_package_live_state_status",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/package_live_state_${_safe_stage}_${_safe_pkg}.txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _package_live_state_status; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_package_install_snapshot_status",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/package_install_snapshot_${_safe_stage}_${_safe_pkg}.txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _package_install_snapshot_status; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_package_restriction_snapshot_status",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/package_restriction_snapshot_${_safe_stage}_${_safe_pkg}.txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _package_restriction_snapshot_status; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_cgroup_freezer_native_freeze_retry_pkg",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/cgroup_wchan_corrective_freeze_${_safe_phase}_${_safe_pkg}.txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _cgroup_freezer_native_freeze_retry_pkg; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_cgroup_freezer_native_thaw_uid_pkg",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/cgroup_wchan_corrective_thaw_${_safe_phase}_${_safe_pkg}.txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _cgroup_freezer_native_thaw_uid_pkg; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_cgroup_freezer_restore_package_direct",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/cgroup_wchan_corrective_restore_${_safe_phase}_${_safe_pkg}.txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _cgroup_freezer_restore_package_direct; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_cgroup_freezer_native_kill_pkg",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/cgroup_native_kill_${_stage}_$(_process_observer_status_safe_name \"$_pkg\").txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _cgroup_freezer_native_kill_pkg; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_uid_live_state_status",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/uid_live_state_${_safe_stage}_${_safe_pkg}.txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _uid_live_state_status; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_cgroup_freezer_proc_snapshot",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/cgroup_proc_snapshot_${_safe_stage}_${_safe_pkg}.txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _cgroup_freezer_proc_snapshot; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_cgroup_freezer_wchan_confirm_pkg",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/cgroup_wchan_${_safe_phase}_${_safe_pkg}.txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _cgroup_freezer_wchan_confirm_pkg; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_cgroup_freezer_kill_pid_list",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_out ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/cgroup_kill_pid_list_${_stage}_$(_process_observer_status_safe_name \"$_pkg\").txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _cgroup_freezer_kill_pid_list; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_process_observer_remove_state_token",
+      "line": "awk -F '\t' -v t=\"$_token\" '$1!=t {print $0}' \"$_state\" > \"$_tmp\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || cp -f \"$_state\" \"$_tmp\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _process_observer_remove_state_token; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_process_observer_stop_all",
+      "line": "cp -f \"$_state\" \"$_tmp\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 0",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _process_observer_stop_all; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_backup_mt_sidecar_copy",
+      "line": "{ cp -r \"$_source\" \"$_dest\"; } 2>/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || _copy_rc=$?",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _backup_mt_sidecar_copy; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_restore_install_bundle_fetch_set",
+      "line": "[[ -n \"${SPEED_DEBUG_RUN_DIR:-}\" && -d \"${SPEED_DEBUG_RUN_DIR:-}\" ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/restore_install_facts_failed.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _restore_install_bundle_fetch_set; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_restore_installer_context_facts_call",
+      "line": "[[ -n \"${SPEED_DEBUG_RUN_DIR:-}\" && -d \"${SPEED_DEBUG_RUN_DIR:-}\" ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/installer_context_facts_failed.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _restore_installer_context_facts_call; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_restore_install_plan_facts_call",
+      "line": "[[ -n \"${SPEED_DEBUG_RUN_DIR:-}\" && -d \"${SPEED_DEBUG_RUN_DIR:-}\" ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/restore_install_plan_failed.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _restore_install_plan_facts_call; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "installapk",
+      "line": "echo_log \"${apkfile##*/}解壓縮\" \"\" \"$result\" && [[ -f $Backup_folder/nmsl.apk ]] && cp -r \"$Backup_folder/nmsl.apk\" \"$_apk_stage\"",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in installapk; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "Check_archive",
+      "line": "[[ -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_cksum_out\" \"$SPEED_DEBUG_RUN_DIR/native_checksum_list.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in Check_archive; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "Check_archive",
+      "line": "[[ -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_verify_out\" \"$SPEED_DEBUG_RUN_DIR/native_manifest_verify.tsv\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in Check_archive; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_appstate_ssaid_report_emit",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $TMPDIR/.appstate_ssaid_report ]] && cp -f \"$TMPDIR/.appstate_ssaid_report\" \"$SPEED_DEBUG_RUN_DIR/ssaid_restore_report.tsv\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _appstate_ssaid_report_emit; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "flush_batch_appstate",
+      "line": "cp -f \"$_queue\" \"$_APPSTATE_RUN_DIR/queue\" || return 1",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in flush_batch_appstate; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "flush_batch_appstate",
+      "line": "cp -f \"$_final.restore.issues\" \"$TMPDIR/.appstate_restore_issues\"",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in flush_batch_appstate; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "flush_batch_appstate",
+      "line": "cp -f \"$_final.verify.issues\" \"$TMPDIR/.appstate_verify_issues\"",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in flush_batch_appstate; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "flush_batch_appstate",
+      "line": "[[ -s $TMPDIR/.appstate_restore_issues ]] && cp -f \"$TMPDIR/.appstate_restore_issues\" \"$SPEED_DEBUG_RUN_DIR/appstate_restore_issues.log\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in flush_batch_appstate; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "flush_batch_appstate",
+      "line": "[[ -s $TMPDIR/.appstate_verify_issues ]] && cp -f \"$TMPDIR/.appstate_verify_issues\" \"$SPEED_DEBUG_RUN_DIR/appstate_verify_issues.log\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in flush_batch_appstate; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "Background_application_list",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/foreground_state.ndjson\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in Background_application_list; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_action_foreground_dex_display",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/foreground_list_${_safe_action}.json\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _action_foreground_dex_display; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_default_home_pkg_ensure",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/default_home_last.json\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _default_home_pkg_ensure; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_default_ime_pkg_ensure",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/default_ime_last.json\" 2>/dev/null",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in _default_ime_pkg_ensure; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_applist_filter_installed",
+      "line": "if cp \"$_file\" \"$_base.input\" && printf '%s\\n' \"$Apk_info\" > \"$_base.installed\" &&",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in _applist_filter_installed; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "backup",
+      "line": "cp \"$_remote_json_file\" \"$app_details\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in backup; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "Remote_Backup_Stats",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_bad_json_list ]] && cp \"$_bad_json_list\" \"$SPEED_DEBUG_RUN_DIR/remote_stats_json_bad.log\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Runtime working/debug copy in Remote_Backup_Stats; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "remote_stream_restore",
+      "line": "if ! cp -f \"$list\" \"$_stream_list_file\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in remote_stream_restore; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "remote_stream_restore",
+      "line": "cp \"$_stream_list_file\" \"$_restore_system_list\" || { _remote_netwatch_finish; return 1; }",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in remote_stream_restore; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "Device_List",
+      "line": "if cp \"$_stage\" \"$_publish\" && mv -f \"$_publish\" \"$tools_path/Device_List\"; then",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in Device_List; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "wifi",
+      "line": "if [[ $_wifi_result = 0 && ! -d $Backup/tools ]]; then cp -r \"$tools_path\" \"$Backup/tools\" || _wifi_result=1; fi",
+      "count": 1,
+      "category": "retained-existing",
+      "reason": "Existing v925 retained copy in wifi; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    }
+  ]
+}

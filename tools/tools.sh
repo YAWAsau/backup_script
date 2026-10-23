@@ -73,12 +73,12 @@ shell_language="zh-TW"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202610190023"
+backup_version="202610092027"
 # 固定用 GitHub release tag 作為線上更新比較基準；不要用每日 rebuild 日期，避免本地開發版被誤判舊版。
 speedbackup_release_tag="202607232022"
 # Show readiness immediately, before cache/config checks and the UI relay exist.
 if [[ -t 1 ]]; then printf ' -正在準備執行環境，請稍候…\n'; fi
-speedbackup_script_version="v921"
+speedbackup_script_version="v930"
 # Generated from versions.properties. tools_version.log records actual tool
 # versions; operation logs do not repeat release-version markers.
 # Compatibility input alias, independent of the release version.
@@ -409,20 +409,7 @@ _restore_apk_roots_cleanup() {
 	rm -f "$TMPDIR/.apk_work_root"
 	_RESTORE_APK_ROOT=""
 }
-_restore_apk_stage_dir() {
-	local _pkg="$1"
-	case $_pkg in ''|*[!A-Za-z0-9_.]*|.*|*..*) return 1 ;; esac
-	printf '%s/stage/%s\n' "$_RESTORE_APK_ROOT" "$_pkg"
-}
-_restore_prepare_apk_stage_dir() {
-	local _work
-	_restore_apk_roots_init || return 1
-	_work="$(_restore_apk_stage_dir "$1")" || return 1
-	rm -rf -- "$_work" || return 1
-	(umask 077; mkdir "$_work") || return 1
-	_restore_apk_relabel "$_work" || return 1
-	printf '%s\n' "$_work"
-}
+
 _restore_apk_work_root() {
 	[[ -n ${_RESTORE_APK_ROOT:-} ]] || return 1
 	printf '%s/work\n' "$_RESTORE_APK_ROOT"
@@ -618,7 +605,6 @@ _speedbackup_run_tmpdir_stop_daemons_for_cleanup() {
 	# 正常完成路徑也要先停掉使用 TMPDIR socket/pid 的 daemon/prewarm，避免目錄被刪後又被背景預熱程序重建。
 	command -v _speedbackup_call_if_exists >/dev/null 2>&1 || return 0
 	_speedbackup_call_if_exists _root_daemon_prewarm_stop "$_reason"
-	_speedbackup_call_if_exists _install_daemon_stop "$_reason"
 	_speedbackup_call_if_exists _root_daemon_stop "$_reason"
 	_speedbackup_call_if_exists _webdav_daemon_stop "$_reason"
 	_speedbackup_call_if_exists _speedbackup_ui_relay_stop "$_reason"
@@ -715,8 +701,7 @@ _speedbackup_apply_internal_policy() {
 	VERIFY_APPSTATE_BATCH_CHUNK_SIZE=80
 	backup_wifi_enable=1
 	WIFI_BACKUP_TIMEOUT=20
-	_restore_defaults="restore_pm_install_with_installer=1 restore_play_install_keep_workdir=0 restore_play_install_verify_source=1 restore_play_install_bypass_low_target=0 restore_play_install_allow_test=0 restore_play_install_allow_downgrade=0 restore_play_install_grant_runtime_permissions=0 restore_play_install_dont_kill=0 restore_play_install_require_user_action=not_required restore_play_install_package_source=store restore_play_install_reason=user restore_play_install_location=auto restore_play_install_extra_flags= restore_play_install_human_log=0 restore_play_install_log_mode=summary"
-	for _kv in $_restore_defaults; do eval "$_kv"; done
+	restore_pm_install_with_installer=1
 	# diagnostic_mode 舊 conf key 會在模板同步時移除；深度診斷改用隱藏環境變數。
 	_dex_debug="${SPEEDBACKUP_DEBUG_XTRACE:-${_dex_debug:-0}}"
 	_INCREMENTAL_DEBUG="${SPEEDBACKUP_INCREMENTAL_DEBUG:-${_INCREMENTAL_DEBUG:-0}}"
@@ -2354,7 +2339,7 @@ _conf_load_literal() {
 		case $_line in ''|\#*) continue ;; *=*) ;; *) return 1 ;; esac
 		_key=${_line%%=*}; _text=${_line#*=}; _known=1
 		_key=${_key%"${_key##*[![:space:]]}"}
-		case $_key in Background_apps_ignore|Backup_Mode|Backup_obb_data|Backup_suffix|Backup_user_data|Compression_method|Custom_path|Output_path|Shell_LANG|Zstd_level|Zstd_size_hint|Zstd_small_max_bytes|Zstd_small_threads|Zstd_threads|background_execution|backup_calllogs|backup_media|backup_messages|blacklist|blacklist_mode|cdn|keyboard_input|list_location|log_max_size_mb|low_battery_mode|media_recovery|mount_point|notification_enable|pc_auto_shutdown|recovery_mode|remote_keep_local|remote_stream|remote_type|remote_upload_per_app|restore_allow_low_target_sdk|restore_calllogs|restore_messages|restore_play_install_allow_test|rgb_a|rgb_b|rgb_c|setDisplayPowerMode|smb_remote_pass|smb_remote_user|smb_url|system|update|user|webdav_remote_pass|webdav_remote_user|webdav_stream_heartbeat_sec|webdav_stream_idle_warn_sec|webdav_stream_progress_step_mb|webdav_stream_stall_abort_sec|webdav_stream_verbose|webdav_url|whitelist) ;; *) _known=0 ;; esac
+		case $_key in Background_apps_ignore|Backup_Mode|Backup_obb_data|Backup_suffix|Backup_user_data|Compression_method|Custom_path|Output_path|Shell_LANG|Zstd_level|Zstd_size_hint|Zstd_small_max_bytes|Zstd_small_threads|Zstd_threads|background_execution|backup_calllogs|backup_media|backup_messages|blacklist|blacklist_mode|cdn|keyboard_input|list_location|log_max_size_mb|low_battery_mode|media_recovery|mount_point|notification_enable|pc_auto_shutdown|recovery_mode|remote_keep_local|remote_stream|remote_type|remote_upload_per_app|restore_allow_low_target_sdk|restore_calllogs|restore_messages|rgb_a|rgb_b|rgb_c|setDisplayPowerMode|smb_remote_pass|smb_remote_user|smb_url|system|update|user|webdav_remote_pass|webdav_remote_user|webdav_stream_heartbeat_sec|webdav_stream_idle_warn_sec|webdav_stream_progress_step_mb|webdav_stream_stall_abort_sec|webdav_stream_verbose|webdav_url|whitelist) ;; *) _known=0 ;; esac
 		while :; do
 			_conf_decode_literal "$_text" && _rc=0 || _rc=$?
 			if [[ $_rc = 2 && $_text = \"* && $_text = *\\\" && $_text != *$'\n'* ]]; then
@@ -2630,7 +2615,6 @@ com.android.chrome}"
 update_Restore_settings_conf() {
 	printf '%s\n' '#進階安裝選項：預設關閉，僅明確需要時設 1'
 	_conf_write restore_allow_low_target_sdk "${restore_allow_low_target_sdk:-0}"
-	_conf_write restore_play_install_allow_test "${restore_play_install_allow_test:-0}"
 	_conf_print_raw '#低電量提示 (電量≤15%且未充電時的行為)
 #1低電量強制拒絕操作  2無需提示繼續執行  留空音量鍵選擇 (音量上=無視風險繼續操作, 音量下=退出)
 '
@@ -5066,28 +5050,41 @@ _soc_json_read_info() {
 	_json_cmd -r --arg device "$_device" soc-info "$_file" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
 
-# JSON 覆寫 helper：用 cat 寫回而不是 mv/rename。
-# 目的：避開部分 FUSE/sdcard/WebDAV/SMB 掛載層對 rename/chown/setfilecon 的限制。
-# 僅用於 JSON 最終覆寫；壓縮檔搬移/檔名 rename 不走這裡。
+# Generated files only: publish a verified fresh inode; never truncate the old inode.
+# Not for app-private restore trees, ownership-preserving copies, or arbitrary streams.
+_generated_file_publish() {
+    local _src="$1" _dst="$2" _mode="${3:-auto}" _bin
+    _speedscan_path_set || return 127
+    _bin="$_SPEEDSCAN_PATH_RET"
+    # Replace the isolated shell with the publisher: retain its umask without
+    # forking another child from the large parent script's subshell.
+    (umask 022; exec "$_bin" publish-file "$_src" "$_dst" "$_mode" detect) >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+}
+# Serialize generated list appends through the operation's existing lease.
+_generated_list_owner() {
+    local _rc=0
+    if _speedscan_path_set; then
+        "$_SPEEDSCAN_PATH_RET" generated-list-owner "$1" /data/media/0/Download 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || _rc=$?
+    else
+        _rc=127
+    fi
+    if [[ $_rc != 0 ]]; then
+        _speed_debug_log "GENERATED_LIST_OWNER_WARNING rc=$_rc path=$1"
+        echoRgb "清單內容已保留，但擁有者對齊失敗：$1（rc=$_rc）" 0
+    fi
+    # Owner alignment was best effort in v924; it cannot fail a completed backup.
+    return 0
+}
+_generated_list_append() {
+    # O_APPEND does not truncate an existing inode. The isolated FUSE matrix
+    # reproduces cp close EPERM but not append EPERM; keep the original fast path.
+    printf '%s\n' "$2" >> "$1"
+}
 _json_cat_replace() {
-	local _src="$1" _dst="$2" _bak _had_old=0
-	_restore_metadata_plan_invalidate "$_dst" || return 1
-	[[ -s $_src ]] || return 1
-	_json_parse_ok "$_src" || return 1
-	_bak="${TMPDIR:-/data/local/tmp}/.json_cat_replace_bak_${$}_$RANDOM"
-	if [[ -f $_dst ]]; then
-		_had_old=1
-		cat "$_dst" > "$_bak" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || rm -f "$_bak" 2>/dev/null
-	fi
-	if cat "$_src" > "$_dst" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && _json_parse_ok "$_dst"; then
-		rm -f "$_bak" 2>/dev/null
-		return 0
-	fi
-	if [[ $_had_old = 1 && -f $_bak ]]; then
-		cat "$_bak" > "$_dst" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	fi
-	rm -f "$_bak" 2>/dev/null
-	return 1
+    local _src="$1" _dst="$2"
+    _restore_metadata_plan_invalidate "$_dst" || return 1
+    [[ -s $_src ]] && _json_parse_ok "$_src" || return 1
+    _generated_file_publish "$_src" "$_dst"
 }
 
 # JSON 原地更新 helper
@@ -5320,7 +5317,12 @@ _speedscan_have_capability() {
 	local _want="$1" _caps_words
 	[[ -n $_want ]] || return 1
 	_speedscan_capabilities_init >/dev/null 2>&1 || return 1
-	_caps_words=" $(printf '%s\n' "${_SPEEDSCAN_CAPABILITIES_CACHE:-}" | tr '\r\n\t' '   ' 2>/dev/null) "
+	# Match the previous CR/LF/TAB-to-space transform without a pipeline.
+	_caps_words="${_SPEEDSCAN_CAPABILITIES_CACHE:-}"
+	_caps_words="${_caps_words//$'\r'/ }"
+	_caps_words="${_caps_words//$'\n'/ }"
+	_caps_words="${_caps_words//$'\t'/ }"
+	_caps_words=" $_caps_words  "
 	case "$_caps_words" in
 	*" $_want "*) return 0 ;;
 	*) return 1 ;;
@@ -5330,7 +5332,12 @@ _speedscan_have_capability() {
 _speedscan_required_caps_missing_summary() {
 	local _caps_words _cap _missing=""
 	_speedscan_capabilities_init >/dev/null 2>&1 || { printf 'capabilities-command-failed\n'; return 1; }
-	_caps_words=" $(printf '%s\n' "${_SPEEDSCAN_CAPABILITIES_CACHE:-}" | tr '\r\n\t' '   ' 2>/dev/null) "
+	# Match the previous CR/LF/TAB-to-space transform without a pipeline.
+	_caps_words="${_SPEEDSCAN_CAPABILITIES_CACHE:-}"
+	_caps_words="${_caps_words//$'\r'/ }"
+	_caps_words="${_caps_words//$'\n'/ }"
+	_caps_words="${_caps_words//$'\t'/ }"
+	_caps_words=" $_caps_words  "
 	for _cap in ${SPEEDBACKUP_SPEEDSCAN_REQUIRED_CAPS:-}; do
 		case "$_caps_words" in
 		*" $_cap "*) ;;
@@ -5424,13 +5431,31 @@ _speedscan_has_files() {
 }
 # Android filesystem policy and ownership traversal live in speedscan.
 _restore_app_permissions() {
-    local _owner="$1" _target="$2" _uid _old_uid
+    local _owner="$1" _target="$2" _uid _old_uid _owner_receipt _read_probe
     _RESTORE_OWNER_VERIFY_POLICY="required-missing"
     _uid=${_owner%%:*}
-    _old_uid="$(stat -c %u "$_target")" || return 1
-    case $_old_uid in ''|*[!0-9]*) return 1 ;; esac
     case ${sdk:-} in ''|*[!0-9]*) return 1 ;; esac
-    dex_hiddenapi_raw restoreInternalPermissions "${user:-0}" "$name2" "$_uid" "$_old_uid" "$_target" >> "${SPEED_DEBUG_CMD_LOG:-/dev/null}" 2>> "${SPEED_DEBUG_ERR_LOG:-/dev/null}" || return 1
+    # Live owner lookup and mutation share one request. Only a successful
+    # operation returns the previous UID used by post-repair verification.
+    # Only use the root-owned 0700 run directory established at startup.
+    [[ ${SPEEDBACKUP_RUN_TMPDIR_OWN:-0} = 1 && -n ${SPEEDBACKUP_RUN_TMPDIR:-} && ${TMPDIR:-} = "$SPEEDBACKUP_RUN_TMPDIR" ]] || return 1
+    if [[ ${_RESTORE_OWNER_READ_READY:-0} != 1 ]]; then
+        _read_probe=""
+        if IFS= read -r -d '' _read_probe <<'SB_OWNER_READ_PROBE'
+probe
+SB_OWNER_READ_PROBE
+        then return 1; fi
+        [[ $_read_probe = $'probe\n' ]] || return 1
+        _RESTORE_OWNER_READ_READY=1
+    fi
+    # One reusable receipt, removed with the private run directory at final cleanup.
+    _owner_receipt="$SPEEDBACKUP_RUN_TMPDIR/.restore_owner_${$}"
+    _root_daemon_call_args_to_file "$_owner_receipt" hiddenapi restoreInternalPermissions "${user:-0}" "$name2" "$_uid" auto "$_target" 2>> "${SPEED_DEBUG_ERR_LOG:-/dev/null}" || return 1
+    _old_uid=""
+    # Read the whole receipt without a subshell/cat; NUL or extra rows fail closed.
+    if IFS= read -r -d '' _old_uid < "$_owner_receipt"; then return 1; fi
+    while [[ $_old_uid = *$'\n' ]]; do _old_uid="${_old_uid%$'\n'}"; done
+    case $_old_uid in ''|*[!0-9]*) return 1 ;; esac
     _RESTORE_OWNER_VERIFY_POLICY="android:$_uid:$_old_uid:$sdk"
 }
 
@@ -7529,7 +7554,7 @@ _app_details_update_data_stage() {
 }
 _backup_data_stage_record_success() {
 	local _entry="$1" _src_path="$2" _size_value="$3"
-	[[ ${Backup_folder##*/} = Media ]] && [[ $(sed -e '/^$/d' "$mediatxt" | grep -w "${REPLY##*/}.tar$" | head -1) = "" ]] && echo "$FILE_NAME" >> "$mediatxt"
+	[[ ${Backup_folder##*/} = Media ]] && [[ $(sed -e '/^$/d' "$mediatxt" | grep -w "${REPLY##*/}.tar$" | head -1) = "" ]] && { _generated_list_append "$mediatxt" "$FILE_NAME" || { _speed_debug_log "MEDIA_LIST_PUBLISH_FAIL path=$mediatxt"; return 1; }; }
 	_app_details_update_data_stage "$_entry" "$_src_path" "$_size_value" || return 1
 	backup_has_changes=1
 	case $_entry in user|data|obb|user_de|media|thanox|hma) _mark_changed ;; esac
@@ -8754,13 +8779,13 @@ fi
 _speedbackup_tool_sha_table() {
 	cat <<'SB_TOOL_SHA_TABLE'
 busybox aea4610b3f8956d80edce07f084724c460bb609fb3366b6c368e9dbba41ef96f
-classes.dex ccca4e60dbbca2194c62ea8951d8a12113e98d91a55e2bdd30da7237505c7f51
+classes.dex 51f4bd66398f577b618020f89f2e640d6e91bb4f310a967bdce31fc1cf296acd
 cmd 08da8ac23b6e99788fd3ce6c19c7b5a083b2ad48be35963a48d01d6ee7f3bb6d
-dex_check.sh b4485552d3ff55370ddd15d0b6821234b4c3a65a88bf7be9ac687e8c7c197f0a
+dex_check.sh a2dfc051a59a8fdab3f207ffe629de099a8cf75682cfcc210ce6f896c3005486
 find 7fa812e58aafa29679cf8b50fc617ecf9fec2cfb2e06ea491e0a2d6bf79b903b
 keycheck 50645ee0e0d2a7d64fb4a1286446df7a4445f3d11aefd49eeeb88515b314c363
 smbclient 665aceb63a1d6759c800260aa62b102946966759a3951642036e859dea4ba404
-speednative 6b251f5fb21c30be676e41a2b767c28128b2b3ccbd42cbb73f13be9c45275fb7
+speednative 492721315cf85a052e44e3b0a47e7e07461954e845dcc04bd8c0b041677d9ffa
 tar c12e74777f0fea9048ef3f5c546a15cfe75ae790c79770133b5753c16f2a0bd4
 zstd 06839acabb2ed657089bb7e52878cc771e29d71c5234cd4ac17c02d7bfff3735
 SB_TOOL_SHA_TABLE
@@ -11624,7 +11649,7 @@ _speedbackup_locked_menu() {
             elif [[ $_rc = 3 ]]; then
                 printf '此核心不支援安全強制停止；原工作與備份鎖已保留。請由原工作正常停止或等候完成。\n'
             else
-                printf '無法確認停止完成，未強制移除鎖。請保留錯誤訊息；若擁有者已變更，請重新啟動後再選擇。\n'
+                printf '無法確認停止完成，未強制移除鎖。請保留錯誤訊息；若原工作已結束或擁有者已變更，請重新執行 start.sh，讓啟動流程重新核對鎖；不要手動刪鎖。\n'
             fi
             return "$_rc"
             ;;
@@ -11721,7 +11746,6 @@ kill_Serve() {
 	_speedbackup_call_if_exists _webdav_daemon_stop
 	_speedbackup_call_if_exists _webdav_mkcol_cache_clear_current
 	_speedbackup_call_if_exists _root_daemon_stop
-	_speedbackup_call_if_exists _install_daemon_stop
 	# /: 本輪一般暫存、Dex state、socket、SMB pid bucket 均在 run tmpdir；成功/退出收尾後 TTL=0 清理並刪整個 run tmpdir。
 	_speed_debug_log "TMPDIR_RUN_FINAL_CLEANUP_READY path=${SPEEDBACKUP_RUN_TMPDIR:-} stateScope=run-tmpdir"
     }
@@ -14392,7 +14416,7 @@ _appdetails_bundle_merge_stage_to_dest() {
 	[[ -z $_items || -f $_items ]] || return 1
 	mkdir -p "$_dest" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
 	if [[ -z $_items && -s "$_stage/manifest.tsv" ]]; then
-		cp -f "$_stage/manifest.tsv" "$_dest/manifest.tsv" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || _manifest_rc=1
+		_generated_file_publish "$_stage/manifest.tsv" "$_dest/manifest.tsv" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || _manifest_rc=1
 	fi
 	for _jf in "$_stage"/*/app_details.json; do
 		[[ -s $_jf ]] || continue
@@ -14404,7 +14428,7 @@ _appdetails_bundle_merge_stage_to_dest() {
 		fi
 		_total=$((_total + 1))
 		mkdir -p "$_dest/$_name" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || continue
-		cp -f "$_jf" "$_dest/$_name/app_details.json" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || continue
+		_generated_file_publish "$_jf" "$_dest/$_name/app_details.json" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || continue
 		_count=$((_count + 1))
 	done
 	_speed_debug_log "APPDETAILS_BUNDLE_MERGE_STAGE_DONE mode=$_mode stage=$_stage dest=$_dest count=$_count total=$_total manifestRc=$_manifest_rc layout=flat"
@@ -16259,7 +16283,7 @@ per_app_upload_and_cleanup() {
 			# 合併遠端數據到本地（本地數據優先，但保留遠端已有的字段）
 			local merged="$TMPDIR/.merged_app_details_$$"
 			if _appdetails_merge_old_new_native "$remote_app_details" "$local_app_details" "$merged" && [[ -s $merged ]]; then
-				cat "$merged" > "$local_app_details"
+				_generated_file_publish "$merged" "$local_app_details" || { rm -f "$merged" "$remote_app_details"; _speed_debug_log "APPDETAILS_MERGE_PUBLISH_FAIL app=$app_name action=skip-upload-preserve-local"; echoRgb "metadata 寫入失敗，保留本地備份並略過本 App 上傳: $app_name" 0; return 1; }
 			fi
 			rm -f "$merged"
 		}
@@ -17255,14 +17279,15 @@ remote_list_backups() {
 		fi
 		[[ -z $only_remote && -z $only_local ]] && echo "# 本地與遠端完全一致"
 	} > "$out_tmp"
-	if ! cp -f "$out_tmp" "$out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+	# v924: create/verify/close a fresh sibling, then rename. No chown or
+	# truncation of the old FUSE inode; failed preparation preserves the old list.
+	if ! (umask 022; _speedscan_cmd publish-file "$out_tmp" "$out") > "$TMPDIR/.appList_network_publish.result" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
 		echoRgb "appList_network.txt 寫入失敗: $out" "0"
-		_speed_debug_log "APP_LIST_NETWORK_WRITE_FAIL reason=copy path=$out tmp=$out_tmp"
+		_speed_debug_log "APP_LIST_NETWORK_WRITE_FAIL reason=publish path=$out tmp=$out_tmp"
 		rm -f "$out_tmp" "$apps" "$TMPDIR/.apps_sorted" "$local_apps" "$TMPDIR/.local_sorted" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		rm -f "$sub_listing" "$media_payloads" "$media_payloads_raw" "$media_payloads_candidates" "$media_json" "$media_json_keys" "$_payload_fallback_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		return 1
 	fi
-	chmod 0644 "$out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 	if [[ ! -f $out ]]; then
 		echoRgb "appList_network.txt 寫入後不存在: $out" "0"
 		_speed_debug_log "APP_LIST_NETWORK_WRITE_FAIL reason=verify_missing path=$out tmp=$out_tmp"
@@ -17271,7 +17296,7 @@ remote_list_backups() {
 		return 1
 	fi
 	cp -f "$out" "$out_cache" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
-	_speed_debug_log "APP_LIST_NETWORK_WRITE_OK path=$out cache=$out_cache bytes=$(wc -c < "$out" 2>/dev/null)"
+	_speed_debug_log "APP_LIST_NETWORK_WRITE_OK method=atomic_publish path=$out cache=$out_cache bytes=$(wc -c < "$out" 2>/dev/null)"
 	cp "$TMPDIR/.apps_sorted" "$TMPDIR/.apps_sorted_keep" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	rm -f "$out_tmp" "$apps" "$TMPDIR/.apps_sorted" "$local_apps" "$TMPDIR/.local_sorted"
 	rm -f "$sub_listing" "$media_payloads" "$media_payloads_raw" "$media_payloads_candidates" "$media_json" "$media_json_keys" "$_payload_fallback_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -18677,8 +18702,6 @@ _dex_translate_failed_skip() {
 	esac
 }
 
-
-
 _dex_translate_line() {
 	local _line="$1" _ctx="$2" _pkg _tag _ev _key _val _msg _b _c _status _source _op _mode _perm
 	[[ -n $_line ]] || return 0
@@ -18688,17 +18711,14 @@ _dex_translate_line() {
 		INSTALL_METHOD\ *)
 			set -- $_line; _pkg="$2"; _ev="$3"
 			case $_ev in
-				dex_play_session) _msg="安裝方式：Play UID hybrid session 安裝" ;;
-				dex_play_session_success) _msg="Play UID hybrid session 安裝成功" ;;
-				dex_play_session_failed) _msg="Play UID hybrid session 安裝失敗" ;;
 				hybrid_installer_pm) _msg="安裝方式：混合安裝來源 pm" ;;
 				hybrid_installer_pm_success) _msg="混合安裝來源commit成功" ;;
 				hybrid_installer_pm_failed) _msg="混合安裝來源commit失敗" ;;
 				hybrid_installer_pm_source_deferred) _msg="混合安裝來源驗證延後到批量驗證" ;;
 				hybrid_installer_pm_source_mismatch) _msg="混合安裝來源不完整，準備回退" ;;
-				installer_context_ok) _msg="備份安裝來源有效：${_line#* installer_context_ok }" ;;
-				installer_context_pm_only) _msg="備份安裝來源僅用於 pm -i：${_line#* installer_context_pm_only }" ;;
-				installer_context_skip) _msg="略過備份安裝來源：${_line#* installer_context_skip }" ;;
+				installer_context_ok) _msg="Play 安裝來源有效：${_line#* installer_context_ok }" ;;
+				installer_context_pm_only) _msg="Play 安裝來源僅用於 pm -i：${_line#* installer_context_pm_only }" ;;
+				installer_context_skip) _msg="略過Play 安裝來源：${_line#* installer_context_skip }" ;;
 				pm_fallback_after_dex_failed) _msg="dex 安裝失敗，已回退 pm 安裝" ;;
 				pm_install_single_legacy_try) _msg="安裝方式：pm install 單 APK（legacy已停用）" ;;
 				pm_install_single_session_first_try|pm_install_single_session_all_sdk_try) _msg="安裝方式：pm install session 單 APK" ;;
@@ -18712,7 +18732,6 @@ _dex_translate_line() {
 				pm_install_session_single_fallback_legacy) _msg="單 APK session 失敗，回退 legacy pm install" ;;
 				pm_install) _msg="安裝方式：pm install 單 APK" ;;
 				pm_install_create) _msg="安裝方式：pm install-create split session" ;;
-				dex_play_session_options) _msg="Play session 參數：${_line#* dex_play_session_options }" ;;
 				*) _msg="安裝流程：$_ev" ;;
 			esac
 			_dex_human_emit "$_pkg" "$_msg"; return 0 ;;
@@ -19017,12 +19036,6 @@ _dex_result_parse_status() {
 	_ROOT) _ROOT_RESULT_CODE="$_code"; _ROOT_RESULT_NAME="$_name"; _ROOT_RESULT_ORIGIN="$_origin" ;;
 	esac
 	return $_rc
-}
-
-_install_daemon_relay_file() {
-	local _socket="$1" _status="$2" _out="$3" _command="$4" _body="$5" _len="$6"
-	[[ -S $_socket && -f $_body ]] || return 2
-	{ printf '%s\n1\n%s\n' "$_command" "$_len"; cat "$_body"; } | _event_unixsock_call relay-unix "$_socket" --header-file "$_status" > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
 
 # 467/r18: 共用 Dex daemon 管理 helper。
@@ -19554,175 +19567,6 @@ _root_notify_call_file() {
 	return $_rc
 }
 
-# Exit cleanup can run during update_script, before restore functions are loaded.
-_restore_play_work_root() {
-	# 使用備份目錄下的專用子目錄，避免寫入或污染 Google Play 私有資料目錄。
-	# 279 起 APK bytes 由 root pm install-write 寫入；此處只給 Play UID daemon 載入 classes.dex。
-	echo "$filepath/.speedbackup_play_session/u$user"
-}
-
-# Play UID PackageInstaller daemon。此 daemon 必須由 uidexec 以 Play UID 啟動，不能與 root/shell HiddenApi daemon 混用。
-_INSTALL_DAEMON_SOCKET="${_INSTALL_DAEMON_SOCKET:-$TMPDIR/.install_daemon.sock}"
-_INSTALL_DAEMON_PID_FILE="${_INSTALL_DAEMON_PID_FILE:-$TMPDIR/.install_daemon.pid}"
-_INSTALL_DAEMON_RUNTIME_DIR=""
-_INSTALL_DAEMON_READY=0
-_INSTALL_DAEMON_KEY=""
-
-_install_daemon_stop() {
-	local _pid _i=0
-	_pid="$(cat "$_INSTALL_DAEMON_PID_FILE" 2>/dev/null)"
-	case $_pid in ''|*[!0-9]*) _pid="" ;; esac
-	if [[ -n $_pid ]] && _daemon_pid_identity_matches "$_INSTALL_DAEMON_PID_FILE" "$_pid"; then
-		_event_terminate_pid "$_pid" install_daemon_stop
-	fi
-	rm -f "$_INSTALL_DAEMON_PID_FILE" "$TMPDIR/.install_daemon_out" "$_INSTALL_DAEMON_SOCKET" 2>/dev/null
-	case "$_INSTALL_DAEMON_RUNTIME_DIR" in
-	"") ;; # No runtime was created; do not resolve a restore path during early exit.
-	"$TMPDIR"/.speedbackup_install_daemon_u*) rm -rf "$_INSTALL_DAEMON_RUNTIME_DIR" 2>/dev/null ;;
-	"$(_restore_play_work_root)/runtime") rmdir "$_INSTALL_DAEMON_RUNTIME_DIR" 2>/dev/null || true ;;
-	esac
-	_INSTALL_DAEMON_RUNTIME_DIR=""
-	_INSTALL_DAEMON_READY=0
-	_INSTALL_DAEMON_KEY=""
-}
-
-_install_daemon_bind_socket_path() {
-	local _play_uid="$1" _dir
-	if ! _speedbackup_tmpdir_is_safe "$TMPDIR"; then
-		_speed_debug_log "INSTALL_DAEMON_SOCKET_BIND_FAIL reason=bad_tmpdir tmp=$TMPDIR"
-		return 1
-	fi
-	case $_play_uid in ""|*[!0-9]*) return 1 ;; esac
-	_dir="$(_restore_play_work_root)/runtime"
-	_INSTALL_DAEMON_RUNTIME_DIR="$_dir"
-	_INSTALL_DAEMON_SOCKET="$_dir/install.sock"
-	return 0
-}
-
-_install_daemon_prepare_socket() {
-	local _play_uid="$1" _dir
-	_install_daemon_bind_socket_path "$_play_uid" || return 1
-	_dir="$_INSTALL_DAEMON_RUNTIME_DIR"
-	rm -rf "$_dir" 2>/dev/null
-	mkdir -p "$_dir" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
-	chown "$_play_uid:$_play_uid" "$_dir" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
-	chmod 0700 "$_dir" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
-	rm -f "$_INSTALL_DAEMON_SOCKET" 2>/dev/null
-	_speed_debug_log "INSTALL_DAEMON_SOCKET_READY dir=$_dir socket=$_INSTALL_DAEMON_SOCKET owner=$_play_uid"
-	return 0
-}
-
-_install_daemon_probe() {
-	local _status _body _rc _daemon_out
-	_webdav_unixsock_relay_ready || return 1
-	[[ -S $_INSTALL_DAEMON_SOCKET ]] || return 1
-	_status="$(_webdav_tmp_path install_probe_status)"
-	_body="$(_webdav_tmp_path install_probe_body)"
-	rm -f "$_status" "$_body" 2>/dev/null
-	printf 'ping\n1\n0\n' | _event_unixsock_call relay-unix "$_INSTALL_DAEMON_SOCKET" --header-file "$_status" > "$_body" 2>/dev/null
-	_rc=$?
-	if [[ $_rc = 0 ]] && _dex_result_parse_status "$_status" _HOTDEX && [[ $_HOTDEX_RESULT_CODE = 0 ]] && _sb_file_has_exact_line 'PONG' "$_body"; then
-		rm -f "$_status" "$_body" 2>/dev/null
-		return 0
-	fi
-	# Some Play-UID HiddenApi daemon builds leak ping output to daemon stdout while
-	# relay status is not materialized quickly enough.  Treat a filesystem socket
-	# plus READY/PONG stdout as ready, but only for the readiness probe.
-	_daemon_out="$TMPDIR/.install_daemon_out"
-	if [[ $_rc = 0 && -S $_INSTALL_DAEMON_SOCKET ]] \
-		&& grep -q '^HIDDENAPI_DAEMON_READY_UNIX ' "$_daemon_out" 2>/dev/null \
-		&& grep -q '^PONG$' "$_daemon_out" 2>/dev/null; then
-		_speed_debug_log "INSTALL_DAEMON_PROBE_STDOUT_READY socket=$_INSTALL_DAEMON_SOCKET"
-		rm -f "$_status" "$_body" 2>/dev/null
-		return 0
-	fi
-	rm -f "$_status" "$_body" 2>/dev/null
-	return 1
-}
-
-_install_daemon_ensure() {
-	local _play_uid="$1" _art_dir="$2" _dex_dst="$3" _key _pid _out="$TMPDIR/.install_daemon_out" _err _i=0
-	_key="$_play_uid|$_art_dir|$_dex_dst"
-	# 294: 批量 !play AppName 恢復時，主迴圈/清理流程可能讓 shell 狀態歸零，
-	# 但 Play UID daemon 與 AF_UNIX socket 仍活著。先綁回固定 socket path 並 probe，
-	# 避免誤殺既有 daemon 後每個 App 都重新 uidexec/app_process。
-	_install_daemon_bind_socket_path "$_play_uid" || return 1
-	if _install_daemon_probe; then
-		_INSTALL_DAEMON_READY=1
-		_INSTALL_DAEMON_KEY="$_key"
-		_speed_debug_log "INSTALL_DAEMON_REUSE_EXISTING_SOCKET play_uid=$_play_uid socket=$_INSTALL_DAEMON_SOCKET key=$_key"
-		return 0
-	fi
-	_INSTALL_DAEMON_READY=0
-	_INSTALL_DAEMON_KEY=""
-	_install_daemon_stop
-	_webdav_unixsock_relay_ready || return 1
-	_install_daemon_prepare_socket "$_play_uid" || return 1
-	: > "$_out" 2>/dev/null || return 1
-	_err="$(_speed_debug_log_path install_daemon_stderr.log)"
-	# Install daemon runs as Play UID.  Some ROMs hide the root/su owner pid from
-	# app UIDs, causing the shared DaemonBootstrap ownerPid validation to exit
-	# before binding the socket.  Start this short-lived install daemon without
-	# ownerPid and rely on a small idle timeout plus tools-side socket cleanup.
-	_speed_debug_log "INSTALL_DAEMON_OWNERLESS_START play_uid=$_play_uid idleSec=60 reason=play_uid_proc_visibility"
-	_speedbackup_tool_verify_once uidexec 1 || return 1
-	uidexec "$_play_uid" "$_play_uid" "$_art_dir" "$_dex_dst" \
-		"$(_dex_app_process_abs)" "$DEX_APP_PROCESS_BASE" com.xayah.dex.HiddenApiUtil daemonunix "$_INSTALL_DAEMON_SOCKET" 60 > "$_out" 2>>"$_err" &
-	_pid=$!
-	disown "$_pid" 2>/dev/null
-	_speedbackup_protect_pid "$_pid" install_daemon
-	_dex_daemon_write_pid "$_INSTALL_DAEMON_PID_FILE" "$_pid" || { kill "$_pid" 2>/dev/null; _install_daemon_stop; return 1; }
-	_eventwait_file_contains "$_out" "HIDDENAPI_DAEMON_READY_UNIX $_INSTALL_DAEMON_SOCKET" 5 install_ready >/dev/null 2>&1 || _event_filewatch_once "$_out" 5 install_ready >/dev/null 2>&1 || true
-	_install_daemon_probe && { _INSTALL_DAEMON_READY=1; _INSTALL_DAEMON_KEY="$_key"; _speed_debug_log "INSTALL_DAEMON_START_OK pid=$_pid play_uid=$_play_uid wait=eventwait"; return 0; }
-	# uidexec may exit before the Play-UID app_process daemon has fully written its
-	# READY/PONG line.  Do not break the readiness loop only because the launcher
-	# pid is gone; keep probing the socket/stdout for the bounded window.
-	while [[ $_i -lt 50 ]]; do
-		_install_daemon_probe && { _INSTALL_DAEMON_READY=1; _INSTALL_DAEMON_KEY="$_key"; _speed_debug_log "INSTALL_DAEMON_START_OK pid=$_pid play_uid=$_play_uid wait=probe_loop i=$_i launcher_alive=$(kill -0 "$_pid" 2>/dev/null && echo 1 || echo 0)"; return 0; }
-		if ! kill -0 "$_pid" 2>/dev/null && [[ ! -S $_INSTALL_DAEMON_SOCKET ]] && ! grep -q '^HIDDENAPI_DAEMON_READY_UNIX ' "$_out" 2>/dev/null; then
-			_speed_debug_log "INSTALL_DAEMON_WAIT_AFTER_LAUNCHER_EXIT pid=$_pid i=$_i socket=0 ready=0"
-		fi
-		sleep 0.1
-		_i=$((_i + 1))
-	done
-	_speed_debug_log "INSTALL_DAEMON_START_FAIL pid=$_pid out=$(cat "$_out" 2>/dev/null)"
-	_install_daemon_stop
-	return 1
-}
-
-_install_daemon_call_args() {
-	local _play_uid="$1" _art_dir="$2" _dex_dst="$3" _command="$4" _body _out _rc _status _len _relay_rc
-	shift 4
-	_body="$(_webdav_tmp_path install_args)"
-	_out="$(_webdav_tmp_path install_out)"
-	_hotdex_body_from_args "$_body" "$@" || { rm -f "$_body" "$_out" 2>/dev/null; return 125; }
-	_install_daemon_ensure "$_play_uid" "$_art_dir" "$_dex_dst" || { rm -f "$_body" "$_out" 2>/dev/null; return 125; }
-	_status="$(_webdav_tmp_path install_status)"
-	_len="$(_local_file_size_debug "$_body")"; case $_len in ''|*[!0-9]*) _len=0 ;; esac
-	rm -f "$_out" "$_status" 2>/dev/null
-	_install_daemon_relay_file "$_INSTALL_DAEMON_SOCKET" "$_status" "$_out" "$_command" "$_body" "$_len"
-	_relay_rc=$?
-	if [[ $_relay_rc = 0 ]] && _dex_result_parse_status "$_status" _HOTDEX; then
-		_rc="$_HOTDEX_RESULT_CODE"
-		cat "$_out" 2>/dev/null
-	else
-		# Fallback for relays that return the daemon framed response in stdout
-		# instead of splitting RESULT into --header-file.  Keep it install-daemon
-		# local; other daemon paths already have stable framing.
-		_rc="$(awk 'NR==1 && $1=="RESULT" && $2 ~ /^[0-9]+$/ {print $2; exit}' "$_out" 2>/dev/null)"
-		if [[ -n $_rc ]]; then
-			_speed_debug_log "INSTALL_DAEMON_RAW_RESULT_FALLBACK command=$_command result=$_rc"
-			awk 'NR<=2 {next} {print}' "$_out" 2>/dev/null
-		else
-			_INSTALL_DAEMON_READY=0
-			_rc=125
-			cat "$_out" 2>/dev/null
-		fi
-	fi
-	rm -f "$_body" "$_out" "$_status" 2>/dev/null
-	return $_rc
-}
-
 # 467/r18: 舊 AppState 獨立 daemon 已移除。snapshot/restore/verify/foreground/localize/capabilities
 # 均透過 unified root daemon 的 appstate namespace。root daemon 不可用時不再自動 fallback。
 _APPSTATE_RESULT_CODE=70
@@ -20249,7 +20093,7 @@ case $Shell_LANG in
 	esac
 	;;
 esac
-# 482/r43: App inventory snapshot — 一次取得 label/pkg/uid/version/source/flag，RootDaemon 內同輪 cache。
+
 _app_inventory_call() {
 	local _format="${1:-jsonl}" _filter="${2:-all}" _refresh="${3:-}" _body _out _rc
 	_body="$(_webdav_tmp_path root_inventory_args)"
@@ -20296,78 +20140,6 @@ _app_inventory_getlist_call() {
 }
 
 appinventory_getlist() { _app_inventory_getlist_call "$@"; }
-
-
-# Android Canary may return an empty AppInventory through hidden API / RootDaemon even
-# though PackageManager CLI is still usable. This fallback keeps appList generation usable and
-# avoids treating a clean Canary device or hidden-API visibility drift as a hard script failure.
-_applist_inventory_has_rows() {
-	awk '$1!="#META" && NF>=3 {found=1; exit} END{exit found?0:1}' 2>/dev/null
-}
-
-_pm_list_packages_for_user() {
-	local _user_id="${1:-0}" _mode="${2:-all}" _out
-	case $_user_id in ''|*[!0-9]*) _user_id=0 ;; esac
-	case $_mode in
-	user|third|thirdparty)
-		_out="$(cmd package list packages --user "$_user_id" -3 2>/dev/null | sed -n 's/^package://p' | awk '{print $1}' | sed '/^[[:space:]]*$/d')"
-		[[ -n $_out ]] && { _sb_println "$_out"; return 0; }
-		_out="$(cmd package list packages -3 --user "$_user_id" 2>/dev/null | sed -n 's/^package://p' | awk '{print $1}' | sed '/^[[:space:]]*$/d')"
-		[[ -n $_out ]] && { _sb_println "$_out"; return 0; }
-		_out="$(pm list packages --user "$_user_id" -3 2>/dev/null | sed -n 's/^package://p' | awk '{print $1}' | sed '/^[[:space:]]*$/d')"
-		[[ -n $_out ]] && { _sb_println "$_out"; return 0; }
-		_out="$(pm list packages -3 --user "$_user_id" 2>/dev/null | sed -n 's/^package://p' | awk '{print $1}' | sed '/^[[:space:]]*$/d')"
-		[[ -n $_out ]] && { _sb_println "$_out"; return 0; }
-		;;
-	*)
-		_out="$(cmd package list packages --user "$_user_id" 2>/dev/null | sed -n 's/^package://p' | awk '{print $1}' | sed '/^[[:space:]]*$/d')"
-		[[ -n $_out ]] && { _sb_println "$_out"; return 0; }
-		_out="$(pm list packages --user "$_user_id" 2>/dev/null | sed -n 's/^package://p' | awk '{print $1}' | sed '/^[[:space:]]*$/d')"
-		[[ -n $_out ]] && { _sb_println "$_out"; return 0; }
-		;;
-	esac
-	return 1
-}
-
-_applist_getlist_pm_fallback() {
-	local _targets="$1" _user_id="${USER_ID:-${user:-0}}" _all _third _out _pkg _rows=0 _oldifs
-	_all="$TMPDIR/.applist_pm_all_${$}_$RANDOM"
-	_third="$TMPDIR/.applist_pm_third_${$}_$RANDOM"
-	_out="$TMPDIR/.applist_pm_getlist_${$}_$RANDOM"
-	_pm_list_packages_for_user "$_user_id" all | awk 'NF && $0 ~ /^[A-Za-z0-9_.-]+$/ {print}' | sort -u > "$_all" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	_pm_list_packages_for_user "$_user_id" user | awk 'NF && $0 ~ /^[A-Za-z0-9_.-]+$/ {print}' | sort -u > "$_third" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	{
-		printf '#META	defaultHome			pm-fallback
-'
-		printf '#META	defaultIme			pm-fallback
-'
-		while read -r _pkg; do
-			[[ -n $_pkg ]] || continue
-			printf '%s %s user
-' "$_pkg" "$_pkg"
-			_rows=$((_rows + 1))
-		done < "$_third"
-		_oldifs=$IFS
-		IFS=','
-		for _pkg in $_targets; do
-			IFS=$_oldifs
-			_pkg="$(printf '%s' "$_pkg" | tr -d ' 	
-')"
-			case $_pkg in ''|*[!A-Za-z0-9_.-]*|.*|*..*) IFS=','; continue ;; esac
-			if awk -v p="$_pkg" '$0==p{found=1; exit} END{exit found?0:1}' "$_all" 2>/dev/null; then
-				printf '%s %s system
-' "$_pkg" "$_pkg"
-				_rows=$((_rows + 1))
-			fi
-			IFS=','
-		done
-		IFS=$_oldifs
-	} > "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	_speed_debug_log "APP_INVENTORY_GETLIST_PM_FALLBACK user=$_user_id rows=$_rows targets=${_targets:-empty}"
-	cat "$_out" 2>/dev/null
-	rm -f "$_all" "$_third" "$_out" 2>/dev/null
-	return 0
-}
 
 # r90: 單包 UID 查詢。restore 中只要 install/reinstall touched，就不再相信批量預掃 UID，
 # 直接向 RootDaemon/Dex AppInventory 讀 PackageManager 當下最新 UID。
@@ -21587,11 +21359,13 @@ TOUCH_SHELL_EOF
 	_wrapper_text="${_wrapper_text//MODDIR_REL_PLACEHOLDER/$_sb_moddir_rel}"
 	_wrapper_text="${_wrapper_text//CONF_REL_PLACEHOLDER/$_sb_conf_rel}"
 	_wrapper_text="${_wrapper_text//ENTRY_MODE_PLACEHOLDER/$1}"
-	if [[ -n ${KSH_VERSION:-} ]]; then
-		print -r -- "$_wrapper_text" > "$2"
-	else
-		printf '%s\n' "$_wrapper_text" > "$2"
-	fi
+	local _wrapper_tmp _wrapper_rc
+	_wrapper_tmp="$(mktemp "$TMPDIR/.wrapper.XXXXXXXX")" || return 1
+	printf '%s\n' "$_wrapper_text" > "$_wrapper_tmp" || { rm -f "$_wrapper_tmp"; return 1; }
+	_generated_file_publish "$_wrapper_tmp" "$2" 0755
+	_wrapper_rc=$?
+	rm -f "$_wrapper_tmp"
+	return "$_wrapper_rc"
 }
 
 # 遠端下載落地後，本地補齊不再上傳到遠端的入口 sidecar；appList/mediaList 直接復用既有「重新生成應用列表」流程，避免重複造輪子。
@@ -21807,7 +21581,7 @@ _speedbackup_startup_language_sync() {
 	if ts < "$_main_sh" > "$_tmp_sh"; then
 		sed -i "s/shell_language=\"$_lang\"/shell_language=\"$Script_target_language\"/g" "$_tmp_sh" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		if /system/bin/sh -n "$_tmp_sh" >/dev/null 2>>"${SPEED_DEBUG_ERR_LOG:-/dev/null}"; then
-			cat "$_tmp_sh" > "$_main_sh" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+			_generated_file_publish "$_tmp_sh" "$_main_sh" 0755 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_tmp_sh" "$_done"; rmdir "$_tmp_dir" 2>/dev/null; return 1; }
 			chmod 0755 "$_main_sh" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 			_changed=1
 			echo_log "tools/tools.sh整體翻譯"
@@ -22049,7 +21823,7 @@ _sb_update_copy_one_file_fuse_safe() {
 	_parent="${_dst%/*}"; [[ $_parent != "$_dst" ]] || _parent=.
 	mkdir -p "$_parent" || return 1
 	_tmp="$(mktemp "${_dst}.update.XXXXXX")" || return 1
-	if cat "$_src" > "$_tmp" && chmod 0755 "$_tmp" && mv -f "$_tmp" "$_dst"; then return 0; fi
+	if cp -f "$_src" "$_tmp" && cmp -s "$_src" "$_tmp" && chmod 0755 "$_tmp" && mv -f "$_tmp" "$_dst"; then return 0; fi
 	rm -f "$_tmp"
 	return 1
 }
@@ -23257,9 +23031,54 @@ prepare_app_state_prescan_batch() {
 	return 2
 }
 
-# 預掃 pkg → uid map (給備份主迴圈用, 避免每個 app 都 fork 一次 pm + awk)
-# 寫到 $TMPDIR/.pkg_uid 格式: pkg<TAB>uid
-# 用法: prepare_pkg_uid_map (backup / backup_update_apk 開頭呼叫)
+prepare_restore_inventory_maps() {
+	local _stage _rc=0 _user_id="${USER_ID:-${user:-0}}"
+	[[ ${SPEEDBACKUP_RUN_TMPDIR_OWN:-0} = 1 && -n ${SPEEDBACKUP_RUN_TMPDIR:-} && ${TMPDIR:-} = "$SPEEDBACKUP_RUN_TMPDIR" ]] || return 1
+	case $_user_id in ''|*[!0-9]*) return 1 ;; esac
+	while [[ $_user_id = 0[0-9]* ]]; do _user_id="${_user_id#0}"; done
+	_stage="$(mktemp -d "$TMPDIR/.restore_inventory.XXXXXXXX")" || return 1
+	if appinventory restoreMaps all refresh > "$_stage/raw" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
+		awk -F '\t' -v user="$_user_id" -v dest="$_stage" '
+			NR == 1 {
+				if (NF != 2 || $1 != "RESTORE_MAPS_1" || ("u" $2) != ("u" user)) bad=1
+				next
+			}
+			$1 == "END_RESTORE_MAPS_1" {
+				if (ended || NF != 2 || $2 !~ /^[0-9]+$/ || $2 + 0 != count) bad=1
+				ended=1
+				next
+			}
+			{
+				if (ended || NF != 3 || $1 !~ /^[A-Za-z0-9_][A-Za-z0-9_.]*$/ || seen[$1]++ ||
+					($2 != "-1" && $2 !~ /^[0-9]+$/) || ($3 != "-1" && $3 !~ /^[0-9]+$/)) {
+					bad=1
+					next
+				}
+				print $1 > (dest "/.installed_pkgs")
+				if ($2 != "-1") printf "%s\t%s\n", $1, $2 > (dest "/.pkg_uid")
+				if ($3 != "-1") printf "%s\t%s\n", $1, $3 > (dest "/.pkg_ver")
+				count++
+			}
+			END { if (bad || !ended || count == 0) exit 1 }
+		' "$_stage/raw" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || _rc=1
+	else
+		_rc=1
+	fi
+	if [[ $_rc = 0 && -s $_stage/.pkg_uid && -s $_stage/.pkg_ver && -s $_stage/.installed_pkgs ]]; then
+		mv -f "$_stage/.pkg_uid" "$_stage/.pkg_ver" "$_stage/.installed_pkgs" "$TMPDIR/" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || _rc=1
+	else
+		_rc=1
+	fi
+	rm -rf "$_stage" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	if [[ $_rc != 0 ]]; then
+		rm -f "$TMPDIR/.pkg_uid" "$TMPDIR/.pkg_ver" "$TMPDIR/.installed_pkgs"
+		_speed_debug_log "RESTORE_INVENTORY_MAPS_FAIL strict=1"
+		return 1
+	fi
+	_speed_debug_log "RESTORE_INVENTORY_MAPS_OK source=single-request refresh=1"
+	return 0
+}
+
 prepare_pkg_uid_map() {
 	: > "$TMPDIR/.pkg_uid" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	appinventory pkgUidMap all 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} >> "$TMPDIR/.pkg_uid"
@@ -25332,7 +25151,7 @@ _restore_stream_prune_missing_remote_apps() {
 	done < "$_work"
 	cat "$_tmp" > "$_work" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 	if [[ -n $_rewrite && -f $_src && -s $_rewrite ]]; then
-		cat "$_rewrite" > "$_src" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && _speed_debug_log "STREAM_RESTORE_LIST_SOURCE_REWRITE_OK source=$_src dropped=$_dropped kept=$_kept" || _speed_debug_log "STREAM_RESTORE_LIST_SOURCE_REWRITE_FAIL source=$_src dropped=$_dropped kept=$_kept"
+		_generated_file_publish "$_rewrite" "$_src" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && _speed_debug_log "STREAM_RESTORE_LIST_SOURCE_REWRITE_OK source=$_src dropped=$_dropped kept=$_kept" || _speed_debug_log "STREAM_RESTORE_LIST_SOURCE_REWRITE_FAIL source=$_src dropped=$_dropped kept=$_kept"
 	elif [[ -n $_rewrite && -f $_src && $_dropped -gt 0 ]]; then
 		: > "$_src" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
 		_speed_debug_log "STREAM_RESTORE_LIST_SOURCE_REWRITE_EMPTY source=$_src dropped=$_dropped kept=$_kept"
@@ -26481,7 +26300,7 @@ _remote_orphan_cleanup_stream() {
 	# 僅從呼叫者提供的本地 appList 移除已成功刪除的 package；遠端列表由 metadata 重建。
 	if [[ -n ${txt_path2:-} && -f $txt_path2 && -s $_pkgs && $_removed -gt 0 ]]; then
 		_tmp="$TMPDIR/.remote_orphan_applist_${$}_$RANDOM"
-		awk 'NR==FNR{drop[$1]=1; next} {p=$2; if (p in drop) next; print}' "$_pkgs" "$txt_path2" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && cat "$_tmp" > "$txt_path2"
+		awk 'NR==FNR{drop[$1]=1; next} {p=$2; if (p in drop) next; print}' "$_pkgs" "$txt_path2" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && _generated_file_publish "$_tmp" "$txt_path2"
 		rm -f "$_tmp" 2>/dev/null
 		_speed_debug_log "REMOTE_ORPHAN_APPLIST_UPDATED path=$txt_path2 removed=$_removed"
 	fi
@@ -26667,7 +26486,7 @@ cleanup_chrome_legacy() {
 	kept="$(printf '%s\n' "$files" | while IFS= read -r _candidate; do
 		printf '%s\t%s\n' "$(stat -c '%Y' "$_candidate")" "$_candidate"
 	done | sort -nr | head -1 | cut -f2-)"
-	[[ -f $kept ]] && cp -r "$kept" "$Backup_folder/nmsl.apk"
+	[[ -f $kept ]] && _generated_file_publish "$kept" "$Backup_folder/nmsl.apk"
 }
 
 # 查 app uid。優先使用 AppInventory 預掃 .pkg_uid；必要時只做 Dex 單點補查，不再回退 pm/dumpsys。
@@ -31118,7 +30937,7 @@ _backup_apk_impl() {
 						# 否則本地 app_details 只是新建的 {}，後續 Backup_metadata_once 會誤判 permissions/installer/battery 全部缺失，
 						# 造成第二次增量仍重新備份/上傳 JSON。
 						if [[ $remote_stream != 1 && -n $remote_type && -s $remote_app_details ]]; then
-							cp "$remote_app_details" "$app_details" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+							_generated_file_publish "$remote_app_details" "$app_details" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { _speed_debug_log "APPDETAILS_SEED_PUBLISH_FAIL app=$name1 action=fail-apk-entry"; return 1; }
 							app_details_read "$app_details"
 							_speed_debug_log "REMOTE_APPDETAILS_SEED app=$name1 package=$name2 source=remote_apk_skip"
 						fi
@@ -31729,12 +31548,17 @@ _restore_mount_fstype() {
 }
 
 _restore_path_available_bytes_one() {
-	local _path="$1" _df _kb _prefix _digit _carry=0 _product _bytes=""
+	local _path="$1" _df _kb _prefix _digit _carry=0 _product _bytes="" _device _total _used _rest
 	[[ -z $_path ]] && { echo 0; return 1; }
 	[[ -d $_path ]] || _path="${_path%/*}"
 	[[ -d $_path ]] || { echo 0; return 1; }
-	_df="$(df -k "$_path" 2>/dev/null | tail -n 1)"
-	_kb="$(printf '%s\n' "$_df" | awk '{print $4; exit}' 2>/dev/null)"
+	_df="$(df -k "$_path" 2>/dev/null; print -rn -- .)"
+	_df="${_df%.}"
+	_df="${_df%$'\n'}"
+	_df="${_df##*$'\n'}"
+	IFS=$' \t' read -r _device _total _used _kb _rest <<EOF_RESTORE_SPACE_DF
+$_df
+EOF_RESTORE_SPACE_DF
 	case $_kb in ''|*[!0-9]*) echo 0; return 1 ;; esac
 	# mksh arithmetic can be 32-bit; multiply one decimal digit at a time.
 	while [[ -n $_kb ]]; do
@@ -31853,13 +31677,13 @@ _restore_media_space_precheck() {
 		# Android 可能把 /data/media/0/DCIM 或 Pictures 額外 tmpfs 掛載；df /storage/emulated/0 會看到 300GB，
 		# 但 tar 實際寫入會打到 tmpfs，必須優先以 tmpfs 的可用空間判斷。
 		if [[ $_c_type = tmpfs ]]; then
-			if [[ $_tmpfs_seen != 1 || -z $_avail ]] || [[ $(_decimal_cmp_uint "$_c_avail" "$_avail") = -1 ]]; then
+			if [[ $_tmpfs_seen != 1 || -z $_avail ]] || _restore_space_less_than "$_c_avail" "$_avail"; then
 				_avail="$_c_avail"
 				_picked="$_cand"
 			fi
 			_tmpfs_seen=1
 		elif [[ $_tmpfs_seen != 1 ]]; then
-			if [[ -z $_avail ]] || [[ $(_decimal_cmp_uint "$_c_avail" "$_avail") = -1 ]]; then
+			if [[ -z $_avail ]] || _restore_space_less_than "$_c_avail" "$_avail"; then
 				_avail="$_c_avail"
 				_picked="$_cand"
 			fi
@@ -31870,11 +31694,12 @@ EOFMSPC
 	case $_avail in ''|*[!0-9]*) return 0 ;; esac
 	# Media 解壓需要額外 metadata/目錄項/相簿索引餘量；至少保留 64MiB。
 	_margin=$((64 * 1024 * 1024))
-	_need_with_margin="$(_decimal_add_uint "$_need" "$_margin")"
+	_decimal_add_uint_set "$_need" "$_margin"
+	_need_with_margin="$_DECIMAL_ADD_UINT_RESULT"
 	if [[ $_tmpfs_seen = 1 ]]; then
 		echoRgb "偵測到 Media 目標路徑被 tmpfs 掛載，實際可用空間以 $_picked 為準" "2"
 	fi
-	if [[ $(_decimal_cmp_uint "$_avail" "$_need_with_margin") = -1 ]]; then
+	if _restore_space_less_than "$_avail" "$_need_with_margin"; then
 		echoRgb "Media恢復空間不足，跳過 $FILE_NAME" "0"
 		echoRgb "目標路徑：$_target" "0"
 		echoRgb "實際檢查：${_picked:-$_target}" "0"
@@ -31885,6 +31710,16 @@ EOFMSPC
 		return 1
 	fi
 	return 0
+}
+
+_restore_space_less_than() {
+	local _left="$1" _right="$2"
+	case $_left in ''|*[!0-9]*) return 1 ;; esac
+	case $_right in ''|*[!0-9]*) return 1 ;; esac
+	while [[ $_left = 0[0-9]* ]]; do _left="${_left#0}"; done
+	while [[ $_right = 0[0-9]* ]]; do _right="${_right#0}"; done
+	[[ ${#_left} -lt ${#_right} ]] && return 0
+	[[ ${#_left} -eq ${#_right} && $_left < $_right ]]
 }
 
 _restore_stream_payload_size_from_raw_list() {
@@ -32043,6 +31878,7 @@ _restore_app_payload_failed() {
 }
 _pm_install_split_writes_commit() {
 	local _stage="$1" _session="$2" _apk _rc=0 _one _start
+	local _RESTORE_INSTALL_GUARD_BLOCKED=0
 	for _apk in "$_stage"/*.apk; do
 		[[ -f $_apk && ${_apk##*/} != nmsl.apk ]] || continue
 		pm install-write "$_session" "${_apk##*/}" "$_apk" </dev/null >/dev/null
@@ -32052,11 +31888,16 @@ _pm_install_split_writes_commit() {
 	done
 	if [[ $_rc = 0 ]]; then
 		_speed_time_refresh; _start="${SPEEDBACKUP_NOW_MS:-0}"
-		_restore_install_commit /system/bin/pm install-commit "$_session" >/dev/null
+		_RESTORE_INSTALL_COMMIT_UNCERTAIN=1
+		_restore_install_commit _restore_install_capture_set /system/bin/pm install-commit "$_session"
+		_rc=$?
+		[[ $_RESTORE_INSTALL_GUARD_BLOCKED = 1 ]] && pm install-abandon "$_session" >/dev/null 2>&1
+		printf 'PM_SPLIT_SESSION_COMMIT session=%s rc=%s raw=%s\n' "$_session" "$_rc" "$_RESTORE_INSTALL_CAPTURE_TEXT" >>"${SPEED_DEBUG_RUN_DIR:-$TMPDIR}/install_session.log"
+		_restore_install_commit_result_set "$_rc" "$_RESTORE_INSTALL_CAPTURE_TEXT"
 		_rc=$?
 		_restore_elapsed_ms_set "$_start"; RESTORE_APK_TIMING_COMMIT_MS="$_RESTORE_ELAPSED_MS"
 	fi
-	if [[ $_rc != 0 ]]; then pm install-abandon "$_session" </dev/null >/dev/null 2>&1 || true; fi
+	if [[ $_rc != 0 && ${_RESTORE_INSTALL_COMMIT_UNCERTAIN:-0} != 1 ]]; then pm install-abandon "$_session" </dev/null >/dev/null 2>&1 || true; fi
 	echo_log "split Apk安裝" "" "$_rc"
 	return "$_rc"
 }
@@ -32491,38 +32332,6 @@ Release_data_traced_impl() {
 	_restore_trace_mark payload_cleanup
 	return "${result:-1}"
 }
-# 取得備份記錄的 installer；若 .installer 缺失，從 install_diagnostics.installer/installing fallback
-_restore_backup_installer_value() {
-	_appdetails_get_backup_installer_value "$1"
-}
-
-# 安裝來源上下文解析：只使用備份記錄且目前系統真的存在的 installer。
-# 流程：讀備份 installer → 檢查目前 user 是否存在 → 取得 UID → 取得可用 data dir → 安裝時才套用 -i/UID context。
-# 目的：避免無腦使用 com.android.vending 或其他已不存在的來源，造成 pm -i 無效、install-create 失敗或來源欄位污染。
-_restore_pkg_exists_for_user() {
-	local _pkg="$1"
-	[[ -n $_pkg ]] || return 1
-	_appinventory_pkg_exists_for_user "$_pkg" "${user:-${USER_ID:-0}}"
-}
-
-_restore_pkg_uid_for_user() {
-	local _pkg="$1" _uid=""
-	[[ -n $_pkg ]] || return 1
-	_uid="$(_appinventory_pkg_uid_for_user "$_pkg" "${user:-${USER_ID:-0}}")" || _uid=""
-	if [[ -z $_uid ]]; then
-		_uid="$(dex_hiddenapi_raw getPackageUid "$USER_ID" "$_pkg" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | awk '/^[0-9]+$/ {print; exit}')"
-	fi
-	case $_uid in ''|*[!0-9]*) return 1 ;; esac
-	echo "$_uid"
-}
-
-_restore_pkg_data_dir_for_user() {
-	local _pkg="$1" _dir
-	for _dir in "/data/user/${USER_ID}/$_pkg" "/data/user_de/${USER_ID}/$_pkg"; do
-		[[ -d $_dir ]] && { echo "$_dir"; return 0; }
-	done
-	return 1
-}
 
 # Both results belong only to the dynamically scoped installapk invocation.
 # Never reuse PM facts across App boundaries or an installer/user change.
@@ -32781,22 +32590,11 @@ _restore_log_install_plan_facts() {
 }
 
 _restore_select_installer_context() {
-	local _target_pkg="$1" _installer="$2" _uid _data_dir
+	local USER_ID="${user:-0}"
+	local _target_pkg="$1" _installer="com.android.vending" _uid _data_dir
 	RESTORE_INSTALLER_PKG=""
 	RESTORE_INSTALLER_UID=""
 	RESTORE_INSTALLER_DATA_DIR=""
-	case $_installer in ''|null|NULL|clear|CLEAR|none|NONE)
-		_restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=empty backupInstaller=${_installer:-null}"
-		return 1
-		;;
-	esac
-	# 只有備份記錄的原始安裝來源是 Google Play 商店本身才做安裝來源偽裝 (installer/initiating/UID hybrid)。
-	# 非 Play 來源 (其他應用商店/側載) 偽裝成該商店會有假安裝失敗風險, 直接跳過偽裝、走原生 pm 正常安裝。
-	if [[ $_installer != com.android.vending ]]; then
-		echoRgb "備份安裝來源 $_installer 非 Google Play, 不偽裝安裝來源, 使用原生 pm 安裝" "2"
-		_restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=non_play_installer installer=$_installer"
-		return 1
-	fi
 	local _ctx _status="" _target _inst _user_id _target_installed _target_installer _uid _data_dir _de_dir _ver _is_play _installed="" _enabled="" _usable_pm _usable_hybrid _reason
 	local _RESTORE_INSTALL_FACTS_RETURN_MODE=file _RESTORE_INSTALL_FACTS_FILE="" _RESTORE_INSTALL_FACTS_TEXT=""
 	local _RESTORE_INSTALL_FACTS_ROW="" _RESTORE_INSTALL_FACTS_FIELD="" _facts_start
@@ -32830,18 +32628,26 @@ _restore_select_installer_context() {
 			_restore_install_facts_shift; _usable_pm="$_RESTORE_INSTALL_FACTS_FIELD"
 			_restore_install_facts_shift; _usable_hybrid="$_RESTORE_INSTALL_FACTS_FIELD"
 			_restore_install_facts_shift; _reason="$_RESTORE_INSTALL_FACTS_FIELD"
+			if [[ $_target != "$_target_pkg" || $_inst != "$_installer" || $_user_id != "${USER_ID:-${user:-0}}" ]]; then
+				_restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=facts_identity_mismatch"
+				return 1
+			fi
 			_restore_perf_timing_done "installer_context_facts_parse" "$_facts_start" "package=$_target_pkg installer=$_installer result=ok parser=shell-tsv"
 		else
 			_speed_debug_log "INSTALLER_CONTEXT_FACTS_INVALID target=$_target_pkg installer=$_installer reason=no_valid_ok_or_missing_row"
 			_restore_perf_timing_done "installer_context_facts_parse" "$_facts_start" "package=$_target_pkg installer=$_installer result=fallback parser=shell-tsv"
 		fi
 		if [[ $_status = OK && $_installed = true && $_enabled = true ]]; then
-			case $_uid in ''|*[!0-9]*)
-				echoRgb "備份安裝來源 $_installer 無法取得 UID，跳過安裝來源偽裝" "2"
+			case $_uid in ''|0*|*[!0-9]*)
+				echoRgb "Play 安裝來源 $_installer 無法取得 UID，跳過安裝來源偽裝" "2"
 				_restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=uid_missing installer=$_installer source=installerContextFacts"
 				return 1
 				;;
 			esac
+			if [[ ${#_uid} -gt 10 ]] || [[ $((_uid / 100000)) != "$USER_ID" || $((_uid % 100000)) -lt 10000 ]]; then
+				_restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=uid_user_mismatch"
+				return 1
+			fi
 			case $_usable_hybrid:$_data_dir in true:/*)
 				_restore_log_install_method "$_target_pkg" "installer_context_ok" "installer=$_installer uid=$_uid dataDir=$_data_dir reason=${_reason:-OK} source=installerContextFacts"
 				;;
@@ -32856,154 +32662,18 @@ _restore_select_installer_context() {
 			return 0
 		fi
 		case $_installed:$_enabled in
-		false:*) echoRgb "備份安裝來源 $_installer 目前不存在，跳過安裝來源偽裝" "2"; _restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=package_missing installer=$_installer source=installerContextFacts factsReason=${_reason:-unknown}"; return 1 ;;
-		true:false) echoRgb "備份安裝來源 $_installer 目前停用，跳過安裝來源偽裝" "2"; _restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=package_disabled installer=$_installer source=installerContextFacts factsReason=${_reason:-unknown}"; return 1 ;;
+		false:*) echoRgb "Play 安裝來源 $_installer 目前不存在，跳過安裝來源偽裝" "2"; _restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=package_missing installer=$_installer source=installerContextFacts factsReason=${_reason:-unknown}"; return 1 ;;
+		true:false) echoRgb "Play 安裝來源 $_installer 目前停用，跳過安裝來源偽裝" "2"; _restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=package_disabled installer=$_installer source=installerContextFacts factsReason=${_reason:-unknown}"; return 1 ;;
 		esac
 	else
 		_restore_perf_timing_done "installer_context_facts_parse" "$_facts_start" "package=$_target_pkg installer=$_installer result=fallback parser=shell-tsv"
 	fi
 	_speed_debug_log "INSTALLER_CONTEXT_FACTS_FALLBACK target=$_target_pkg installer=$_installer reason=dex_facts_unavailable"
-	if ! _restore_pkg_exists_for_user "$_installer"; then
-		echoRgb "備份安裝來源 $_installer 目前不存在，跳過安裝來源偽裝" "2"
-		_restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=package_missing installer=$_installer fallback=appinventory"
-		return 1
-	fi
-	_uid="$(_restore_pkg_uid_for_user "$_installer")"
-	case $_uid in ''|*[!0-9]*)
-		echoRgb "備份安裝來源 $_installer 無法取得 UID，跳過安裝來源偽裝" "2"
-		_restore_log_install_method "$_target_pkg" "installer_context_skip" "reason=uid_missing installer=$_installer fallback=appinventory"
-		return 1
-		;;
-	esac
-	_data_dir="$(_restore_pkg_data_dir_for_user "$_installer")"
-	if [[ -z $_data_dir ]]; then
-		_restore_log_install_method "$_target_pkg" "installer_context_pm_only" "installer=$_installer uid=$_uid reason=data_dir_missing fallback=appinventory"
-	else
-		_restore_log_install_method "$_target_pkg" "installer_context_ok" "installer=$_installer uid=$_uid dataDir=$_data_dir fallback=appinventory"
-	fi
-	RESTORE_INSTALLER_PKG="$_installer"
-	RESTORE_INSTALLER_UID="$_uid"
-	RESTORE_INSTALLER_DATA_DIR="$_data_dir"
-	return 0
+	return 1
 }
 
 _restore_bool_enabled() {
 	case "$1" in 1|true|True|TRUE|yes|YES|on|ON) return 0 ;; *) return 1 ;; esac
-}
-
-_restore_play_uid() {
-	local _uid=""
-	_uid="$(_appinventory_pkg_uid_for_user com.android.vending "${user:-${USER_ID:-0}}")" || _uid=""
-	if [[ -z $_uid ]]; then
-		_uid="$(dex_hiddenapi_raw getPackageUid "$USER_ID" com.android.vending 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | awk '/^[0-9]+$/ {print; exit}')"
-	fi
-	echo "$_uid"
-}
-
-_restore_has_play_store() {
-	local _uid="" _path_ok=0 _disabled=0 _enabled_rc
-	_restore_pkg_exists_for_user com.android.vending && _path_ok=1
-	_appinventory_pkg_enabled_for_user com.android.vending "${user:-${USER_ID:-0}}"
-	_enabled_rc=$?
-	[[ $_enabled_rc = 2 ]] && _disabled=1
-	_uid="$(_restore_play_uid)"
-	case $_uid in ''|*[!0-9]*)
-		_speed_debug_log "PLAY_STORE_CHECK result=fail reason=uid_missing path_ok=$_path_ok disabled=$_disabled source=appinventory"
-		return 1
-		;;
-	esac
-	if [[ $_path_ok != 1 ]]; then
-		_speed_debug_log "PLAY_STORE_CHECK result=fail reason=package_missing uid=$_uid disabled=$_disabled source=appinventory"
-		return 1
-	fi
-	if [[ $_disabled = 1 ]]; then
-		_speed_debug_log "PLAY_STORE_CHECK result=fail reason=package_disabled uid=$_uid source=appinventory"
-		return 1
-	fi
-	_speed_debug_log "PLAY_STORE_CHECK result=ok uid=$_uid path_ok=$_path_ok disabled=$_disabled source=appinventory"
-	return 0
-}
-
-_restore_line_requests_play_session() {
-	local _line="$1"
-	_line="$(printf '%s\n' "$_line" | sed 's/^[ 	]*//')"
-	case "$_line" in
-	\#*|＃*|'') return 1 ;;
-	!play[[:space:]]*|！play[[:space:]]*) return 0 ;;
-	esac
-	return 1
-}
-
-_restore_list_has_play_markers() {
-	local _list="$1" _line=""
-	[[ -s $_list ]] || return 1
-	while IFS= read -r _line; do
-		_restore_line_requests_play_session "$_line" && return 0
-	done < "$_list"
-	return 1
-}
-
-_restore_prepare_play_dex() {
-	local _play_uid="$1" _root _art_dir _dex_dst
-	[[ -n $_play_uid && -f $filepath/classes.dex ]] || return 1
-	_root="$(_restore_play_work_root)"
-	_art_dir="$_root/art"
-	_dex_dst="$_art_dir/classes.dex"
-	mkdir -p "$_art_dir/tmp" "$_art_dir/dalvik-cache" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
-	chown "$_play_uid:$_play_uid" "$_root" "$_art_dir" "$_art_dir/tmp" "$_art_dir/dalvik-cache" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	chmod 700 "$_root" "$_art_dir" "$_art_dir/tmp" "$_art_dir/dalvik-cache" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	local _src_sha _dst_sha _copy_reason="missing"
-	if [[ -f $_dex_dst ]]; then
-		if command -v cmp >/dev/null 2>&1 && cmp -s "$filepath/classes.dex" "$_dex_dst" 2>/dev/null; then
-			_speed_debug_log "PLAY_DEX_REUSE method=cmp dst=$_dex_dst"
-		else
-			_src_sha="$(sha256sum "$filepath/classes.dex" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | awk '{print $1}')"
-			_dst_sha="$(sha256sum "$_dex_dst" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | awk '{print $1}')"
-			if [[ -n $_src_sha && $_src_sha = $_dst_sha ]]; then
-				_speed_debug_log "PLAY_DEX_REUSE method=sha256 dst=$_dex_dst sha=$_src_sha"
-			else
-				_copy_reason="changed"
-				cp -f "$filepath/classes.dex" "$_dex_dst" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
-				_speed_debug_log "PLAY_DEX_COPY reason=$_copy_reason dst=$_dex_dst src_sha=${_src_sha:-unknown} dst_sha=${_dst_sha:-missing}"
-			fi
-		fi
-	else
-		cp -f "$filepath/classes.dex" "$_dex_dst" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
-		_speed_debug_log "PLAY_DEX_COPY reason=$_copy_reason dst=$_dex_dst"
-	fi
-	chown "$_play_uid:$_play_uid" "$_dex_dst" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	# Android 14+/16 ART 禁止載入對呼叫 UID 可寫的 dex；必須只讀
-	chmod 400 "$_dex_dst" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
-	_speedscan_cmd selinux-restore "$_root" 4 >> "${SPEED_DEBUG_CMD_LOG:-/dev/null}" 2>> "${SPEED_DEBUG_CMD_LOG:-/dev/null}" || return 1
-	echo "$_dex_dst"
-}
-
-_restore_cleanup_play_session() {
-	local _pkg="$1" _root _art_dir _install_root _work
-	[[ ${restore_play_install_keep_workdir:-0} = 1 ]] && return 0
-	if [[ ${_RESTORE_DEFER_PLAY_CLEANUP:-0} = 1 ]]; then
-		[[ -n $_pkg ]] && _restore_log_install_stage "$_pkg" "CLEANUP_SKIP" "reason=deferred_for_fallback"
-		return 0
-	fi
-	[[ -z $_pkg ]] && return 0
-	_root="$(_restore_play_work_root)"
-	_art_dir="$_root/art"
-	_install_root="$_root/install"
-	_work="$_install_root/$_pkg"
-	# 只清本腳本建立的集中二進制目錄專用工作區，絕不清 Play 商店私有資料。
-	# 294: 若 Install daemon 仍可 probe，保留 art/classes.dex 與 root，讓批量 !play AppName 共用同一顆
-	# Play UID app_process；只清每個 App 的 APK stage / install work，避免佔空間。
-	if _install_daemon_probe; then
-		rm -rf "$_work" "$(_restore_apk_stage_dir "$_pkg")" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		_restore_log_install_stage "$_pkg" "CLEANUP_KEEP_DAEMON" "apk_stage=removed art=kept socket=$_INSTALL_DAEMON_SOCKET"
-		[ -d "$_install_root" ] && rmdir "$_install_root" 2>/dev/null || true
-		return 0
-	fi
-	rm -rf "$_art_dir" "$_work" "$(_restore_apk_stage_dir "$_pkg")" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	_restore_log_install_stage "$_pkg" "CLEANUP_OK" "workdir=removed"
-	[ -d "$_install_root" ] && rmdir "$_install_root" 2>/dev/null || true
-	[ -d "$_root" ] && rmdir "$_root" 2>/dev/null || true
-	[ -d "$filepath/.speedbackup_play_session" ] && rmdir "$filepath/.speedbackup_play_session" 2>/dev/null || true
 }
 
 _restore_now_ms() {
@@ -33101,6 +32771,18 @@ _restore_sum_stage_apk_bytes() {
 	echo "$_sum"
 }
 
+_restore_install_stamp_set() {
+	local _epoch="${EPOCHREALTIME:-}" _key
+	_epoch="${_epoch%%.*}"
+	case $_epoch in ''|*[!0-9]*) _epoch="" ;; esac
+	_key="$_epoch:${TZ+x}:${TZ:-}"
+	if [[ -n $_epoch && "${_RESTORE_INSTALL_STAMP_KEY:-}" = "$_key" && -n "${_RESTORE_INSTALL_STAMP:-}" ]]; then return 0; fi
+	_RESTORE_INSTALL_STAMP_KEY=""
+	_RESTORE_INSTALL_STAMP="$(date '+%Y-%m-%d %H:%M:%S')" || return 1
+	[[ -n $_epoch && -n $_RESTORE_INSTALL_STAMP ]] && _RESTORE_INSTALL_STAMP_KEY="$_key"
+	return 0
+}
+
 _restore_log_install_method() {
 	local _pkg="$1" _method="$2" _detail="$3" _line _log _stamp
 	[[ -z "$_pkg" ]] && _pkg="unknown"
@@ -33111,205 +32793,18 @@ _restore_log_install_method() {
 	echo "$_line" >> "$TMPDIR/.install_method_log" 2>>"${SPEED_DEBUG_ERR_LOG:-/dev/null}"
 	_log="${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/install_method.log"
 	[[ -d "${_log%/*}" ]] || mkdir -p "${_log%/*}" 2>>"${SPEED_DEBUG_ERR_LOG:-/dev/null}"
-	_stamp="$(date '+%Y-%m-%d %H:%M:%S')"
+	_restore_install_stamp_set
+	_stamp="$_RESTORE_INSTALL_STAMP"
 	echo "[${_stamp}] $_line" >> "$_log" 2>>"${SPEED_DEBUG_ERR_LOG:-/dev/null}"
 	# installer source strategy report：抽出使用者可讀的策略摘要，完整原始資料仍留 install_method.log。
-# mksh here-string cleanup：移除 <<< / done<<<，避免 Android sh 解析 unexpected redirection。
+    # mksh here-string cleanup：移除 <<< / done<<<，避免 Android sh 解析 unexpected redirection。
 	case "$_method" in
-		installer_context_ok|installer_context_pm_only|installer_context_skip|hybrid_installer_pm|hybrid_installer_pm_success|hybrid_installer_pm_failed|hybrid_installer_pm_source_mismatch|dex_play_session|dex_play_session_success|dex_play_session_failed|pm_install|pm_install_create|pm_fallback_after_*|play_session_requested_by_appList)
-			local _slog="${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/install_strategy.log"
-			[[ -d "${_slog%/*}" ]] || mkdir -p "${_slog%/*}" 2>>"${SPEED_DEBUG_ERR_LOG:-/dev/null}"
-			echo "[${_stamp}] $_pkg $_method ${_detail:-}" >> "$_slog" 2>>"${SPEED_DEBUG_ERR_LOG:-/dev/null}"
-			;;
+	installer_context_ok|installer_context_pm_only|installer_context_skip|hybrid_installer_pm|hybrid_installer_pm_success|hybrid_installer_pm_failed|hybrid_installer_pm_source_mismatch|pm_install|pm_install_create|pm_fallback_after_*)
+		local _slog="${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/install_strategy.log"
+		[[ -d "${_slog%/*}" ]] || mkdir -p "${_slog%/*}" 2>>"${SPEED_DEBUG_ERR_LOG:-/dev/null}"
+		echo "[${_stamp}] $_pkg $_method ${_detail:-}" >> "$_slog" 2>>"${SPEED_DEBUG_ERR_LOG:-/dev/null}"
+		;;
 	esac
-}
-
-_restore_save_play_session_raw_log() {
-	local _pkg="$1" _file="$2" _log
-	[[ -s $_file ]] || return 0
-	_log="${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/install_session.log"
-	mkdir -p "${_log%/*}" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	{
-		echo "===== [$(date '+%Y-%m-%d %H:%M:%S')] $_pkg ====="
-		cat "$_file"
-		echo
-	} >> "$_log" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-}
-
-_restore_save_play_session_raw_log_from_line() {
-	local _pkg="$1" _file="$2" _start="${3:-0}" _tmp
-	[[ -s $_file ]] || return 0
-	case $_start in ''|*[!0-9]*) _start=0 ;; esac
-	_tmp="$(_webdav_tmp_path play_session_log_delta)"
-	awk -v s="$_start" 'NR>s {print}' "$_file" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	_restore_save_play_session_raw_log "$_pkg" "$_tmp"
-	rm -f "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-}
-
-_restore_print_play_session_output() {
-	local _file="$1" _mode="${restore_play_install_log_mode:-summary}"
-	[[ -s $_file ]] || return 0
-	case $_mode in
-		raw|RAW|full|FULL)
-			cat "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | while read -r _l; do [[ -n $_l ]] && echoRgb "$_l" "2"; done
-			;;
-		quiet|QUIET|0|off|OFF)
-			return 0
-			;;
-		*)
-			cat "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | grep -E 'INSTALL_SESSION (failed|failureCode|failureHint|packageNotFoundAfterWait|sourceVerifyFailed)' | while read -r _l; do
-				[[ -n $_l ]] && echoRgb "$_l" "2"
-			done
-			;;
-	esac
-}
-
-_restore_get_install_diag_value() {
-	local _file="$1" _pkg="$2" _key="$3"
-	awk -v p="$_pkg" -v k="$_key" '$1==p && $2=="INSTALL_DIAG" && $3==k {print $4; exit}' "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-}
-
-_restore_verify_play_install_source_from_file() {
-	local _pkg="$1" _diag="$2" _installer _installing _initiating _source
-	[[ ${restore_play_install_verify_source:-1} = 1 ]] || return 0
-	[[ -n $_pkg && -s $_diag ]] || return 1
-	_installer="$(_restore_get_install_diag_value "$_diag" "$_pkg" installer)"
-	_installing="$(_restore_get_install_diag_value "$_diag" "$_pkg" installing)"
-	_initiating="$(_restore_get_install_diag_value "$_diag" "$_pkg" initiating)"
-	_source="$(_restore_get_install_diag_value "$_diag" "$_pkg" packageSourceName)"
-	if [[ $_installer = com.android.vending && $_installing = com.android.vending && $_initiating = com.android.vending ]]; then
-		echoRgb "Play 來源驗證通過" "1"
-		return 0
-	fi
-	# PackageInstaller session 失敗或未回完整 INSTALL_DIAG 時，交回 getInstallSourceInfo 路徑。
-	[[ -z $_installer && -z $_installing && -z $_initiating ]] && return 1
-	echoRgb "⚠️ Play來源驗證未完全通過: installer=${_installer:-null} installing=${_installing:-null} initiating=${_initiating:-null} source=${_source:-null}" "0"
-	return 0
-}
-
-_restore_verify_play_install_source() {
-	local _pkg="$1" _diag _installer _installing _initiating _source
-	[[ ${restore_play_install_verify_source:-1} = 1 ]] || return 0
-	[[ -n $_pkg ]] || return 1
-	_diag="$TMPDIR/.play_install_source_${_pkg//[!a-zA-Z0-9]/_}"
-	local _diag_err
-	_diag_err="${TMPDIR:-/data/local/tmp}/.play_install_source_stderr_${_pkg//[!a-zA-Z0-9]/_}_$$"
-	dex_hiddenapi_raw getInstallSourceInfo "$USER_ID" "$_pkg" 2>"$_diag_err" | _dex_filter_human_stdout > "$_diag"
-	_dex_append_nonhuman_stderr "$_diag_err"
-	rm -f "$_diag_err" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	_dex_translate_file "$_diag" "HiddenApiUtil:getInstallSourceInfo"
-	# 詳細 INSTALL_DIAG 已寫入 speed_debug/install_session.log；終端只顯示通過/異常結論。
-	_installer="$(_restore_get_install_diag_value "$_diag" "$_pkg" installer)"
-	_installing="$(_restore_get_install_diag_value "$_diag" "$_pkg" installing)"
-	_initiating="$(_restore_get_install_diag_value "$_diag" "$_pkg" initiating)"
-	_source="$(_restore_get_install_diag_value "$_diag" "$_pkg" packageSourceName)"
-	if [[ $_installer = com.android.vending && $_installing = com.android.vending && $_initiating = com.android.vending ]]; then
-		echoRgb "Play 來源驗證通過" "1"
-		rm -f "$_diag" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		return 0
-	fi
-	echoRgb "⚠️ Play來源驗證未完全通過: installer=${_installer:-null} installing=${_installing:-null} initiating=${_initiating:-null} source=${_source:-null}" "0"
-	[[ ${restore_play_install_keep_workdir:-0} = 1 ]] || rm -f "$_diag" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	# 安裝本身已成功，不在這裡回退 pm；pm 反而會導致 initiating=shell。
-	return 0
-}
-
-_restore_play_install_options() {
-	local _flags="INSTALL_REPLACE_EXISTING" _bypass="${restore_allow_low_target_sdk:-0}"
-	_restore_bool_enabled "${restore_play_install_allow_test:-0}" && _flags="$_flags,INSTALL_ALLOW_TEST"
-	_restore_bool_enabled "${restore_play_install_allow_downgrade:-0}" && _flags="$_flags,INSTALL_ALLOW_DOWNGRADE,INSTALL_REQUEST_DOWNGRADE"
-	_restore_bool_enabled "${restore_play_install_grant_runtime_permissions:-0}" && _flags="$_flags,INSTALL_GRANT_RUNTIME_PERMISSIONS"
-	case $_bypass in
-		1|true|TRUE|yes|YES|on|ON) _flags="$_flags,INSTALL_BYPASS_LOW_TARGET_SDK_BLOCK" ;;
-		auto|AUTO) [[ ${sdk:-0} -gt 33 ]] && _flags="$_flags,INSTALL_BYPASS_LOW_TARGET_SDK_BLOCK" ;;
-	esac
-	[[ -n ${restore_play_install_extra_flags:-} ]] && _flags="$_flags,${restore_play_install_extra_flags}"
-	# 這些值預期為無空白 token；extra_flags 請用逗號分隔，不要加入空白。
-	printf '%s' "--installer=com.android.vending --package-source=${restore_play_install_package_source:-store} --install-reason=${restore_play_install_reason:-user} --require-user-action=${restore_play_install_require_user_action:-not_required} --install-location=${restore_play_install_location:-auto} --install-flags=$_flags --dont-kill=${restore_play_install_dont_kill:-0} --human-log=${restore_play_install_human_log:-0}"
-}
-
-# 舊批量/預檢安裝路線已於 先前版本 清除；!play 只保留 create=Play/write=root/commit=Play。
-
-_restore_play_session_id_from_file() {
-	local _pkg="$1" _file="$2"
-	awk -v p="$_pkg" '$1==p && $2=="INSTALL_SESSION_CREATE" && $3=="sessionId" {print $4; exit}' "$_file" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-}
-
-_restore_run_play_session_create_once() {
-	local _pkg="$1" _play_uid="$2" _art_dir="$3" _dex_dst="$4" _apk_work="$5" _session_opts="$6" _out="$7" _sess_err _raw _rc _t0 _total
-	_sess_err="${TMPDIR:-/data/local/tmp}/.play_install_create_stderr_${_pkg//[!a-zA-Z0-9]/_}_$$"
-	_raw="$(_webdav_tmp_path play_session_create_raw)"
-	rm -f "$_out" "$_sess_err" "$_raw" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	_total="$(_restore_sum_stage_apk_bytes "$_apk_work")"
-	case $_total in ''|*[!0-9]*) _total=0 ;; esac
-	_t0="$(_restore_now_ms)"
-	# !play/STORE 路線改為 hybrid：Play UID daemon 建 session，APK bytes 仍由 root pm install-write 寫入。
-	# 不能用 pipeline 承接 daemon call，否則 mksh 會在子 shell 內更新 _INSTALL_DAEMON_READY，commit 階段又重啟 daemon。
-	# shellcheck disable=SC2086
-	_install_daemon_call_args "$_play_uid" "$_art_dir" "$_dex_dst" installSessionCreate "$USER_ID" "$_pkg" "$_total" $_session_opts > "$_raw" 2>"$_sess_err"
-	_rc=$?
-	_dex_filter_human_stdout < "$_raw" > "$_out"
-	rm -f "$_raw" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	if [[ $_rc = 125 ]]; then
-		_speed_debug_log "INSTALL_DAEMON_REQUIRED_NO_SPAWN command=installSessionCreate pkg=$_pkg play_uid=$_play_uid"
-	fi
-	_restore_log_install_timing "$_pkg" "session_create" "$_t0"
-	_dex_append_nonhuman_stderr "$_sess_err"
-	rm -f "$_sess_err" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	_dex_translate_file "$_out" "HiddenApiUtil:installSessionCreate"
-	_restore_save_play_session_raw_log "$_pkg" "$_out"
-	_restore_print_play_session_output "$_out"
-	return $_rc
-}
-
-_restore_play_session_write_root() {
-	local _pkg="$1" _session_id="$2" _apk_work="$3" _out="$4" _err="$5" _a _name _rc _write_failed=0 _t0 _start_line
-	[[ -n $_pkg && -n $_session_id && -d $_apk_work ]] || return 1
-	_t0="$(_restore_now_ms)"
-	_start_line="$(wc -l < "$_out" 2>/dev/null || echo 0)"
-	case $_start_line in ''|*[!0-9]*) _start_line=0 ;; esac
-	_restore_log_install_method "$_pkg" "dex_play_session_write_root" "session=$_session_id apkDir=$_apk_work writer=root"
-	for _a in "$_apk_work"/*.apk; do
-		[[ -f $_a ]] || continue
-		_name="${_a##*/}"
-		_name="${_name%.apk}"
-		_restore_log_install_method "$_pkg" "dex_play_session_write_root_file" "session=$_session_id file=${_a##*/} splitName=$_name"
-		pm install-write "$_session_id" "$_name" "$_a" >>"$_out" 2>>"$_err"
-		_rc=$?
-		echo "PLAY_SESSION_WRITE_ROOT file=${_a##*/} name=$_name rc=$_rc" >>"$_out"
-		if [[ $_rc != 0 ]]; then _write_failed=1; break; fi
-		echo_log "${_a##*/}寫入session"
-	done
-	_restore_log_install_timing "$_pkg" "session_write_root" "$_t0"
-	_restore_save_play_session_raw_log_from_line "$_pkg" "$_out" "$_start_line"
-	[[ $_write_failed = 0 ]]
-}
-
-_restore_run_play_session_commit_once() {
-	local _pkg="$1" _play_uid="$2" _art_dir="$3" _dex_dst="$4" _session_id="$5" _session_opts="$6" _out="$7" _sess_err _raw _rc _t0 _start_line
-	_sess_err="${TMPDIR:-/data/local/tmp}/.play_install_commit_stderr_${_pkg//[!a-zA-Z0-9]/_}_$$"
-	_raw="$(_webdav_tmp_path play_session_commit_raw)"
-	rm -f "$_sess_err" "$_raw" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	_t0="$(_restore_now_ms)"
-	_start_line="$(wc -l < "$_out" 2>/dev/null || echo 0)"
-	case $_start_line in ''|*[!0-9]*) _start_line=0 ;; esac
-	# 不能用 pipeline 承接 daemon call，避免 create 成功後的 daemon ready 狀態丟在子 shell。
-	# shellcheck disable=SC2086
-	_install_daemon_call_args "$_play_uid" "$_art_dir" "$_dex_dst" installSessionCommit "$USER_ID" "$_pkg" "$_session_id" $_session_opts > "$_raw" 2>"$_sess_err"
-	_rc=$?
-	_dex_filter_human_stdout < "$_raw" >> "$_out"
-	rm -f "$_raw" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	if [[ $_rc = 125 ]]; then
-		_speed_debug_log "INSTALL_DAEMON_REQUIRED_NO_SPAWN command=installSessionCommit pkg=$_pkg play_uid=$_play_uid"
-	fi
-	_restore_log_install_timing "$_pkg" "session_commit" "$_t0"
-	_restore_elapsed_ms_set "$_t0"; RESTORE_APK_TIMING_COMMIT_MS="$_RESTORE_ELAPSED_MS"
-	_dex_append_nonhuman_stderr "$_sess_err"
-	rm -f "$_sess_err" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	_dex_translate_file "$_out" "HiddenApiUtil:installSessionCommit"
-	_restore_save_play_session_raw_log_from_line "$_pkg" "$_out" "$_start_line"
-	_restore_print_play_session_output "$_out"
-	return $_rc
 }
 
 _restore_hybrid_installer_source_ok() {
@@ -33319,37 +32814,6 @@ _restore_hybrid_installer_source_ok() {
 	# 這可省下每個 app 一次 app_process 啟動與 getInstallSourceInfo 診斷時間。
 	_restore_log_install_method "$_pkg" "hybrid_installer_pm_source_deferred" "verify=verifyAppStateBatch installerExpected=$_installer installingExpected=$_installer initiatingExpected=$_installer packageSourceExpected=OTHER"
 	return 0
-}
-
-_restore_uidexec_bin_set() {
-	_RESTORE_UIDEXEC_BIN=""
-	_speedbackup_tool_verify_once uidexec 1 || return 1
-	local _u="${tools_path:-/data/backup_tools}/uidexec"
-	if [[ -x $_u ]]; then
-		_RESTORE_UIDEXEC_BIN="$_u"
-		return 0
-	fi
-	_u="$(command -v uidexec 2>/dev/null || true)"
-	if [[ -n $_u && -x $_u ]]; then
-		_RESTORE_UIDEXEC_BIN="$_u"
-		return 0
-	fi
-	return 1
-}
-
-_restore_hybrid_tmp_prepare_set() {
-	local _bin="$1" _data="$2" _uid="$3"
-	_RESTORE_HYBRID_TMP_MODE=legacy-shell
-	# The caller has already verified speednative via _restore_uidexec_bin_set.
-	# Its uidexec applet performs mkdir/chown/chmod before dropping identity.
-	# Keep the old setup for a PATH/custom uidexec with an unknown contract.
-	if [[ -n "${filepath:-}" && "$_bin" -ef "$filepath/speednative" ]]; then
-		_RESTORE_HYBRID_TMP_MODE=uidexec-owned
-		return 0
-	fi
-	# Unknown helpers cannot safely repair app-controlled paths as root.
-	_speed_debug_log "RESTORE_HYBRID_TMP_REJECT reason=unverified-uidexec"
-	return 1
 }
 
 # Capture text without a command-substitution Shell. PM output is text, not binary.
@@ -33394,250 +32858,169 @@ _restore_install_session_id_set() {
     return 0
 }
 
-_restore_install_with_hybrid_installer_pm() {
-	local _pkg="$1" _apk_src="$2" _inst_pkg="$3" _inst_uid="$4" _inst_data_dir="$5"
-	local _apk_work _rc _t_prepare _t_install _iarg _bypass="" _out _err _apk_count=0 _a _uidexec_bin
-	local _RESTORE_HYBRID_TMP_MODE="" _tmp_start _tmp_ms
-	local _session_id="" _session_raw="" _write_failed=0 _commit_rc=1 _nmsl="" _main_count=0 _legacy="" _name="" _commit_raw=""
-	[[ -n $_pkg && -n $_inst_pkg ]] || return 1
-	case $_inst_uid in ""|*[!0-9]*) echoRgb "安裝來源 $_inst_pkg UID 無效，跳過混合來源安裝流程" "0"; return 1 ;; esac
-	[[ -d $_inst_data_dir ]] || { echoRgb "安裝來源 $_inst_pkg 缺少 data dir，跳過混合來源安裝流程" "2"; return 1; }
-	_restore_uidexec_bin_set || { echoRgb "找不到 uidexec，跳過混合來源安裝流程" "0"; return 1; }
-	_uidexec_bin="$_RESTORE_UIDEXEC_BIN"
-	echoRgb "使用混合安裝來源安裝: $_inst_pkg" "3"
-	_speed_time_refresh; _tmp_start="${SPEEDBACKUP_NOW_MS:-0}"
-	_restore_hybrid_tmp_prepare_set "$_uidexec_bin" "$_inst_data_dir" "$_inst_uid" || return 1
-	_restore_elapsed_ms_set "$_tmp_start"; _tmp_ms="$_RESTORE_ELAPSED_MS"
-	_speed_debug_log "RESTORE_HYBRID_TMP_PREPARE_TIMING package=$_pkg mode=$_RESTORE_HYBRID_TMP_MODE elapsedMs=$_tmp_ms timingRelation=within-apk-installSession"
-	_speed_time_refresh; _t_prepare="${SPEEDBACKUP_NOW_MS:-0}"
-	[[ -n $_apk_src && -d $_apk_src ]] || { echoRgb "APK 目錄不存在，跳過混合來源安裝流程" "0"; return 1; }
-	if [[ "${_RESTORE_APK_INVENTORY_SCOPE:-0}" = 1 && "${_RESTORE_APK_INVENTORY_DIR:-}" = "$_apk_src" ]]; then
-		_apk_count="$_RESTORE_APK_INVENTORY_COUNT"
-		_main_count="$_RESTORE_APK_INVENTORY_MAIN"
-		[[ -n "$_RESTORE_APK_INVENTORY_NMSL" ]] && _nmsl="$_apk_src/$_RESTORE_APK_INVENTORY_NMSL"
-	else
-		for _a in "$_apk_src"/*.apk; do
-			[[ -f "$_a" ]] || continue
-			_apk_count=$((_apk_count + 1))
-			if [[ "${_a##*/}" = nmsl.apk ]]; then _nmsl="$_a"; else _main_count=$((_main_count + 1)); fi
-		done
+_restore_install_commit_result_set() {
+	local _rc="$1" _text="$2" _line _success=0 _failure=0
+	_RESTORE_INSTALL_COMMIT_UNCERTAIN=1
+	while IFS= read -r _line; do
+		_line="${_line%$'\r'}"
+		case "$_line" in
+		Success) _success=1 ;;
+		'Failure ['*']') _failure=1 ;;
+		esac
+	done <<< "$_text"
+	if [[ $_success = 1 && $_failure = 0 && $_rc = 0 ]]; then
+		_RESTORE_INSTALL_COMMIT_UNCERTAIN=0
+		return 0
 	fi
-	if [[ "$_apk_count" -lt 1 ]]; then
-		echoRgb "APK 目錄沒有 apk，跳過混合來源安裝流程" "0"
+	if [[ $_failure = 1 && $_success = 0 && $_rc = 1 ]]; then
+		_RESTORE_INSTALL_COMMIT_UNCERTAIN=0
 		return 1
 	fi
-	_apk_work="$_apk_src"
-	_restore_log_install_stage "$_pkg" "READY" "mode=direct_root_write dir=$_apk_work apkCount=$_apk_count bytes=skipped"
-	_restore_log_install_timing "$_pkg" "prepare_hybrid_installer_pm" "$_t_prepare"
-	_restore_log_install_method "$_pkg" "hybrid_installer_pm" "installer=$_inst_pkg uid=$_inst_uid uidexec=$_uidexec_bin dataDir=$_inst_data_dir apkDir=$_apk_work sourceNote=packageSource_OTHER_expected stage=direct_root_write"
-	_iarg="$(_pm_installer_arg "$_inst_pkg")"
-	[[ $sdk -gt 33 && ${restore_allow_low_target_sdk:-0} = 1 ]] && _bypass="--bypass-low-target-sdk-block"
-	[[ $sdk -lt 30 ]] && _legacy="-l"
-	_out="$TMPDIR/.hybrid_installer_pm_${_pkg//[!a-zA-Z0-9]/_}"
-	_err="$TMPDIR/.hybrid_installer_pm_stderr_${_pkg//[!a-zA-Z0-9]/_}_$$"
-	rm -f "$_out" "$_err" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	if [[ $_apk_count -lt 1 || $_main_count -lt 1 ]]; then
-		_restore_log_install_method "$_pkg" "hybrid_installer_pm_failed" "rc=1 reason=no_apk apkCount=$_apk_count mainCount=$_main_count installer=$_inst_pkg"
-		_restore_log_install_stage "$_pkg" "CLEANUP_SKIP" "reason=hybrid_installer_pm_failed_keep_for_fallback"
-		return 1
-	fi
-	if [[ $_main_count -gt 1 ]]; then
-		echoRgb "恢復split apk（混合安裝來源）" "2"
-	else
-		echoRgb "恢復普通apk（混合安裝來源）" "2"
-	fi
-	_speed_time_refresh; _t_install="${SPEEDBACKUP_NOW_MS:-0}"
-	{
-		echo "HYBRID_INSTALLER_PM_BEGIN pkg=$_pkg installer=$_inst_pkg uid=$_inst_uid apkCount=$_apk_count mainCount=$_main_count sdk=$sdk"
-		echo "HYBRID_INSTALLER_PM_ROUTE create=InstallerUID write=root commit=InstallerUID packageSource=OTHER_expected"
-	} >>"$_out"
+	return 2
+}
 
-	# nmsl.apk 若存在，沿用舊版特殊處理：先獨立安裝，其他 APK 仍走混合 session。
-	if [[ -n $_nmsl && -f $_nmsl ]]; then
-		_restore_log_install_method "$_pkg" "hybrid_installer_pm_nmsl" "cmd=/system/bin/pm route=session user=$user apk=nmsl.apk bypass=${_bypass:-none} installerArg=${_iarg:-none} writer=root installer=$_inst_pkg"
-		if _pm_install_single_session "$_nmsl" "$_inst_pkg" "$_pkg"; then
-			_rc=0
-		else
-			_rc=$?
-		fi
-		if [[ $_rc != 0 ]]; then
-			_restore_log_install_method "$_pkg" "hybrid_installer_pm_failed" "rc=$_rc stage=nmsl_install_session installer=$_inst_pkg"
-			_restore_log_install_timing "$_pkg" "hybrid_installer_pm_install" "$_t_install"
-			cat "$_out" "$_err" 2>/dev/null >> "${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/install_session.log"
-			rm -f "$_err" 2>/dev/null
-			_restore_log_install_stage "$_pkg" "CLEANUP_SKIP" "reason=hybrid_installer_pm_failed_keep_for_fallback"
-			[[ ${restore_play_install_keep_workdir:-0} = 1 ]] || rm -f "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-			return 1
-		fi
-		echo "HYBRID_INSTALLER_PM_NMSL_OK pkg=$_pkg installer=$_inst_pkg route=session" >>"$_out"
-		echo_log "nmsl.apk安裝"
-	fi
-
-	_restore_log_install_method "$_pkg" "hybrid_installer_pm_route" "create=InstallerUID write=root commit=InstallerUID user=$user apkCount=$_main_count packageSource=OTHER installer=$_inst_pkg"
-	# Session ownership/initiating 在 install-create 當下決定：這一步必須由備份 installer UID 建立。
-	# shellcheck disable=SC2086
-	_restore_install_capture_set "$_uidexec_bin" "$_inst_uid" "$_inst_uid" "$_inst_data_dir" "$filepath/classes.dex" \
-		/system/bin/pm install-create -r $_bypass --user "$user" -t $_legacy $_iarg 2>>"$_err"
-	_rc=$?; _session_raw="$_RESTORE_INSTALL_CAPTURE_TEXT"
-	echo "HYBRID_INSTALLER_PM_CREATE rc=$_rc raw=$_session_raw" >>"$_out"
-	_restore_install_session_id_set "$_session_raw"; _session_id="$_RESTORE_INSTALL_SESSION_ID"
-	if [[ $_rc = 0 && -n $_session_id ]]; then
-		for _a in "$_apk_work"/*.apk; do
-			[[ -f $_a && ${_a##*/} != nmsl.apk ]] || continue
-			_name="${_a##*/}"
-			_name="${_name%.apk}"
-			_restore_log_install_method "$_pkg" "hybrid_installer_pm_write_root" "session=$_session_id file=${_a##*/} splitName=$_name installer=$_inst_pkg"
-			# APK bytes 寫入由 root/shell 執行，使用原生 pm reverse-path，避開 installer UID reverse-mode 限制並保持速度。
-			pm install-write "$_session_id" "$_name" "$_a" >>"$_out" 2>>"$_err"
-			_rc=$?
-			echo "HYBRID_INSTALLER_PM_WRITE_ROOT file=${_a##*/} name=$_name rc=$_rc" >>"$_out"
-			if [[ $_rc != 0 ]]; then
-				_write_failed=1
-				break
-			fi
-			echo_log "${_a##*/}寫入session"
-		done
-		if [[ $_write_failed = 0 ]]; then
-			# commit 優先由 installer UID 執行；若 ROM 對 ownership/權限有差異，再 root commit fallback。
-			local _hybrid_commit_start
-			_speed_time_refresh; _hybrid_commit_start="${SPEEDBACKUP_NOW_MS:-0}"
-			_restore_install_capture_set _restore_install_commit "$_uidexec_bin" "$_inst_uid" "$_inst_uid" "$_inst_data_dir" "$filepath/classes.dex" \
-				/system/bin/pm install-commit "$_session_id" 2>>"$_err"
-			_commit_rc=$?; _commit_raw="$_RESTORE_INSTALL_CAPTURE_TEXT"
-			echo "HYBRID_INSTALLER_PM_COMMIT_INSTALLER session=$_session_id rc=$_commit_rc raw=$_commit_raw" >>"$_out"
-			if [[ $_commit_rc != 0 ]]; then
-				_restore_install_capture_set _restore_install_commit /system/bin/pm install-commit "$_session_id" 2>>"$_err"
-				_commit_rc=$?; _commit_raw="$_RESTORE_INSTALL_CAPTURE_TEXT"
-				echo "HYBRID_INSTALLER_PM_COMMIT_ROOT session=$_session_id rc=$_commit_rc raw=$_commit_raw" >>"$_out"
-			fi
-			_restore_elapsed_ms_set "$_hybrid_commit_start"; RESTORE_APK_TIMING_COMMIT_MS="$_RESTORE_ELAPSED_MS"
-			_rc=$_commit_rc
-		else
-			"$_uidexec_bin" "$_inst_uid" "$_inst_uid" "$_inst_data_dir" "$filepath/classes.dex" \
-				/system/bin/pm install-abandon "$_session_id" >>"$_out" 2>>"$_err" || true
-			pm install-abandon "$_session_id" >>"$_out" 2>>"$_err" || true
-			_rc=1
-		fi
-	else
-		_restore_log_install_method "$_pkg" "hybrid_installer_pm_failed" "rc=$_rc stage=install-create raw=${_session_raw:-empty} installer=$_inst_pkg"
-		_rc=1
-	fi
-	_restore_log_install_timing "$_pkg" "hybrid_installer_pm_install" "$_t_install"
-	cat "$_out" "$_err" 2>/dev/null >> "${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/install_session.log"
-	rm -f "$_err" 2>/dev/null
-	if [[ $_rc = 0 ]]; then
-		if [[ $_main_count -gt 1 ]]; then
-			echoRgb "split Apk提交成功，等待PackageManager驗證" "1"
-		else
-			echoRgb "Apk提交成功，等待PackageManager驗證" "1"
-		fi
-		_speed_debug_log "OK: Apk提交 stage=commit_wait_package_verify"
-		result=0
-		Set_back_0
-		_restore_log_install_method "$_pkg" "hybrid_installer_pm_success" "rc=0 apkCount=$_apk_count mainCount=$_main_count mode=create_installer_write_root_commit_installer installer=$_inst_pkg sourceExpected=installer_installing_initiating_${_inst_pkg}_packageSource_OTHER"
-		echoRgb "混合安裝來源commit成功: $_inst_pkg" "1"
-		if _restore_hybrid_installer_source_ok "$_pkg" "$_inst_pkg"; then
-			rm -f "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-			return 0
-		fi
-		_restore_log_install_method "$_pkg" "hybrid_installer_pm_source_mismatch" "fallback=pm installer=$_inst_pkg"
-	else
-		_restore_log_install_method "$_pkg" "hybrid_installer_pm_failed" "rc=$_rc apkCount=$_apk_count mainCount=$_main_count mode=create_installer_write_root_commit_installer installer=$_inst_pkg"
-		echoRgb "混合安裝來源commit失敗: $_inst_pkg" "0"
-	fi
-	# 失敗或來源不完整時不能清理 APK 目錄；後續 pm fallback 或 !play 慢速模式仍要共用同一批 APK。
-	_restore_log_install_stage "$_pkg" "CLEANUP_SKIP" "reason=hybrid_installer_pm_failed_keep_for_fallback"
-	[[ ${restore_play_install_keep_workdir:-0} = 1 ]] || rm -f "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+_restore_install_fallback_allowed() {
+	[[ ${_RESTORE_INSTALL_COMMIT_UNCERTAIN:-0} != 1 ]] && return 0
+	_RESTORE_INSTALL_UNKNOWN_KEYS="${_RESTORE_INSTALL_UNKNOWN_KEYS:-} ${user:-0}:$1"
+	_restore_log_install_method "$1" "install_commit_outcome_unknown" "fallback=blocked action=inspect_session_before_retry"
+	echoRgb "安裝提交結果不明，停止此 App 的自動重試，請查看安裝日誌" "0"
+	result=75
 	return 1
 }
-_restore_install_with_play_session() {
-	local _pkg="$1" _apk_src="$2" _play_uid _dex_dst _apk_work _out _err _rc _art_dir _session_opts _session_id _t_prepare
-	[[ -n $_pkg ]] || return 1
-	_restore_has_play_store || { echoRgb "未找到 Google Play 商店，跳過 Play UID 安裝流程" "2"; return 1; }
-	_play_uid="$(_restore_play_uid)"
-	case $_play_uid in ""|*[!0-9]*) echoRgb "無法取得 Google Play UID，跳過 Play UID 安裝流程" "0"; return 1 ;; esac
-	[[ -n $_apk_src && -d $_apk_src ]] || return 1
-	_apk_work="$_apk_src"
-	_t_prepare="$(_restore_now_ms)"
-	_dex_dst="$(_restore_prepare_play_dex "$_play_uid")" || { echoRgb "準備 Play 私有 dex 失敗，跳過 Play UID 安裝流程" "0"; _restore_cleanup_play_session "$_pkg"; return 1; }
-	_restore_log_install_timing "$_pkg" "prepare" "$_t_prepare"
-	_art_dir="$(_restore_play_work_root)/art"
-	_out="$TMPDIR/.play_install_session_${_pkg//[!a-zA-Z0-9]/_}"
-	_err="$TMPDIR/.play_install_session_write_stderr_${_pkg//[!a-zA-Z0-9]/_}_$$"
-	rm -f "$_out" "$_err" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	_restore_log_install_method "$_pkg" "dex_play_session" "installer=com.android.vending uid=$_play_uid uidexec=uidexec mode=create_play_write_root_commit_play apkDir=$_apk_work"
-	echoRgb "使用 Google Play UID hybrid session 安裝 APK..." "3"
-	_session_opts="$(_restore_play_install_options)"
-	_restore_log_install_method "$_pkg" "dex_play_session_options" "flags=${restore_play_install_extra_flags:-default} downgrade=${restore_play_install_allow_downgrade:-0} test=${restore_play_install_allow_test:-0} source=${restore_play_install_package_source:-store} logMode=${restore_play_install_log_mode:-summary} humanLog=${restore_play_install_human_log:-0} route=createPlay_writeRoot_commitPlay"
-	if ! _restore_run_play_session_create_once "$_pkg" "$_play_uid" "$_art_dir" "$_dex_dst" "$_apk_work" "$_session_opts" "$_out"; then
-		echoRgb "Play UID 建立安裝 session 失敗" "0"
-		_restore_log_install_method "$_pkg" "dex_play_session_failed" "stage=create installer=com.android.vending"
-		_RESTORE_DEFER_PLAY_CLEANUP=1 _restore_cleanup_play_session "$_pkg"
-		[[ ${restore_play_install_keep_workdir:-0} = 1 ]] || rm -f "$_out" "$_err" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		return 1
-	fi
-	_session_id="$(_restore_play_session_id_from_file "$_pkg" "$_out")"
-	case $_session_id in ''|*[!0-9]*)
-		echoRgb "Play UID 建立 session 後無 sessionId" "0"
-		_restore_log_install_method "$_pkg" "dex_play_session_failed" "stage=parse_session_id raw=empty"
-		_RESTORE_DEFER_PLAY_CLEANUP=1 _restore_cleanup_play_session "$_pkg"
-		[[ ${restore_play_install_keep_workdir:-0} = 1 ]] || rm -f "$_out" "$_err" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+
+_restore_install_retry_allowed() {
+	case " ${_RESTORE_INSTALL_UNKNOWN_KEYS:-} " in
+	*" ${user:-0}:$1 "*)
+		_restore_log_install_method "$1" "install_retry_blocked" "reason=previous_commit_unknown user=${user:-0}"
+		echoRgb "此 App 前次提交結果不明，本輪不再自動安裝" "0"
 		return 1
 		;;
 	esac
-	if ! _restore_play_session_write_root "$_pkg" "$_session_id" "$_apk_work" "$_out" "$_err"; then
-		echoRgb "root 寫入 Play session 失敗" "0"
-		_restore_log_install_method "$_pkg" "dex_play_session_failed" "stage=write_root session=$_session_id installer=com.android.vending"
-		pm install-abandon "$_session_id" >>"$_out" 2>>"$_err" || true
-		cat "$_out" "$_err" 2>/dev/null >> "${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/install_session.log"
-		rm -f "$_err" 2>/dev/null
-		_RESTORE_DEFER_PLAY_CLEANUP=1 _restore_cleanup_play_session "$_pkg"
-		[[ ${restore_play_install_keep_workdir:-0} = 1 ]] || rm -f "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		return 1
-	fi
-	cat "$_err" 2>/dev/null >> "${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/install_session.log"
-	rm -f "$_err" 2>/dev/null
-	_restore_install_commit _restore_run_play_session_commit_once "$_pkg" "$_play_uid" "$_art_dir" "$_dex_dst" "$_session_id" "$_session_opts" "$_out"
-	_rc=$?
-	if [[ $_rc = 0 ]] && grep -q "$_pkg INSTALL_SESSION packageFound" "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
-		echoRgb "Play UID hybrid session 安裝成功" "1"
-		_restore_log_install_method "$_pkg" "dex_play_session_success" "installer=com.android.vending mode=create_play_write_root_commit_play session=$_session_id"
-		_restore_verify_play_install_source_from_file "$_pkg" "$_out" || _restore_verify_play_install_source "$_pkg"
-		_restore_cleanup_play_session "$_pkg"
-		rm -f "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		return 0
-	fi
-	echoRgb "Play UID hybrid session 安裝失敗" "0"
-	_restore_log_install_method "$_pkg" "dex_play_session_failed" "stage=commit session=$_session_id installer=com.android.vending"
-	_RESTORE_DEFER_PLAY_CLEANUP=1 _restore_cleanup_play_session "$_pkg"
-	[[ ${restore_play_install_keep_workdir:-0} = 1 ]] || rm -f "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	return 0
+}
+
+_restore_install_data_allowed() {
+	_restore_install_retry_allowed "$1" && return 0
+	result=75
+	_restore_log_install_method "$1" "install_unknown_data_blocked" "dataRestore=blocked appStateRestore=blocked"
 	return 1
 }
 
-_pm_installer_arg() {
+_restore_native_session_exchange() {
+	local _session="$1" _event _outcome _completed _extra
+	_NATIVE_COMMIT_ATTEMPTED=1
+	print -p -- "COMMIT $_session" || return 75
+	IFS=' ' read -r -p -t 360 _event _outcome _completed _extra || return 75
+	[[ $_event = RESULT && $_completed = "$_session" && -z $_extra ]] || return 75
+	case $_outcome in success) return 0 ;; failure|precommit_failure) return 1 ;; *) return 75 ;; esac
+}
+
+_restore_native_session_transport() {
+	trap ':' PIPE
+	local _pid _event _detail _session _extra _rc _child_rc _start _elapsed=0
+	local _NATIVE_COMMIT_ATTEMPTED=0
+	eval '"$@" |&'
+	_pid=$!
+	if ! IFS=' ' read -r -p -t 360 _event _detail _session _extra; then
+		print -p -- ABORT 2>/dev/null
+		wait "$_pid"
+		printf 'SB_NATIVE_RESULT failure - 0\n'
+		return 1
+	fi
+	if [[ $_event = RESULT && $_detail = precommit_failure && -z $_extra ]]; then
+		wait "$_pid"; _child_rc=$?
+		printf 'SB_NATIVE_RESULT failure %s 0\n' "$_session"
+		return 1
+	fi
+	[[ $_event = READY && -z $_session && -z $_extra ]] || { print -p -- ABORT 2>/dev/null; wait "$_pid"; printf 'SB_NATIVE_RESULT failure - 0\n'; return 1; }
+	_session="$_detail"
+	case $_session in ''|*[!0-9]*) print -p -- ABORT 2>/dev/null; wait "$_pid"; printf 'SB_NATIVE_RESULT failure - 0\n'; return 1 ;; esac
+	_speed_time_refresh; _start="${SPEEDBACKUP_NOW_MS:-0}"
+	_restore_install_commit _restore_native_session_exchange "$_session" >/dev/null
+	_rc=$?
+	_restore_elapsed_ms_set "$_start"; _elapsed="$_RESTORE_ELAPSED_MS"
+	if [[ $_NATIVE_COMMIT_ATTEMPTED = 0 ]]; then
+		print -p -- ABORT 2>/dev/null
+		wait "$_pid"
+		if [[ $_rc = 76 ]]; then
+			printf 'SB_NATIVE_RESULT blocked %s 0\n' "$_session"
+			return 76
+		fi
+		printf 'SB_NATIVE_RESULT failure %s 0\n' "$_session"
+		return 1
+	fi
+	wait "$_pid"; _child_rc=$?
+	case $_rc:$_child_rc in
+	0:0) printf 'SB_NATIVE_RESULT success %s %s\n' "$_session" "$_elapsed"; return 0 ;;
+	1:1) printf 'SB_NATIVE_RESULT failure %s %s\n' "$_session" "$_elapsed"; return 1 ;;
+	*) return 75 ;;
+	esac
+}
+
+_restore_install_with_hybrid_installer_pm() {
+	local _pkg="$1" _apk_src="$2" _inst_pkg="$3" _inst_uid="$4" _inst_data_dir="$5"
+	local _apk _nmsl="" _count=0 _bypass=0 _legacy=0 _reply _rc _magic _outcome _session _elapsed _extra _started
+	local _session_log="${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/install_session.log"
+	[[ -n $_pkg && $_inst_pkg = com.android.vending && -d $_apk_src && -d $_inst_data_dir ]] || return 1
+	_speedbackup_tool_verify_once speednative 1 || return 1
+	[[ $sdk -gt 33 && ${restore_allow_low_target_sdk:-0} = 1 ]] && _bypass=1
+	[[ $sdk -lt 30 ]] && _legacy=1
+	set --
+	for _apk in "$_apk_src"/*.apk; do
+		[[ -f $_apk ]] || continue
+		if [[ ${_apk##*/} = nmsl.apk ]]; then _nmsl="$_apk"; else set -- "$@" "$_apk"; _count=$((_count + 1)); fi
+	done
+	[[ $_count -gt 0 ]] || return 1
+	_restore_log_install_method "$_pkg" "hybrid_native_session" "installer=$_inst_pkg uid=$_inst_uid apkCount=$_count create=InstallerUID write=root commit=InstallerUID"
+	: >>"$_session_log" 2>/dev/null || return 1
+	if [[ -n $_nmsl ]]; then
+		_pm_install_single_session "$_nmsl" "$_inst_pkg" "$_pkg" || return $?
+	fi
+	_speed_time_refresh; _started="${SPEEDBACKUP_NOW_MS:-0}"
+	_RESTORE_INSTALL_COMMIT_UNCERTAIN=1
+	_reply="$(_restore_native_session_transport "$filepath/speednative" --pm-session "${user:-0}" "$_inst_uid" "$_inst_data_dir" "$filepath/classes.dex" "$_bypass" "$_legacy" "$@" 2>>"$_session_log")"
+	_rc=$?
+	IFS=' ' read -r _magic _outcome _session _elapsed _extra <<EOF_NATIVE_RESULT
+$_reply
+EOF_NATIVE_RESULT
+	_restore_log_install_timing "$_pkg" "hybrid_native_session" "$_started"
+	_restore_log_install_method "$_pkg" "hybrid_native_result" "rc=$_rc receipt=$_reply"
+	[[ $_magic = SB_NATIVE_RESULT && -z $_extra && $_reply != *$'\n'* ]] || return 75
+	case $_elapsed in ''|*[!0-9]*) return 75 ;; esac
+	RESTORE_APK_TIMING_COMMIT_MS="$_elapsed"
+	case $_rc:$_outcome in
+	0:success)
+		_RESTORE_INSTALL_COMMIT_UNCERTAIN=0
+		result=0
+		Set_back_0
+		_restore_hybrid_installer_source_ok "$_pkg" "$_inst_pkg" || _restore_log_install_method "$_pkg" "hybrid_native_source_warning" "fallback=blocked reason=already_committed"
+		return 0 ;;
+	1:failure)
+		_RESTORE_INSTALL_COMMIT_UNCERTAIN=0
+		return 1 ;;
+	*) return 75 ;;
+	esac
+}
+
+_pm_installer_arg_set() {
 	local _installer="$1"
+	_PM_INSTALLER_ARG=""
 	_restore_bool_enabled "${restore_pm_install_with_installer:-1}" || return 0
-	# 呼叫端必須先經過 _restore_select_installer_context 驗證；這裡只負責組 pm 參數。
 	case $_installer in ""|null|NULL|clear|CLEAR|none|NONE) return 0 ;; esac
-	printf '%s\n' "-i $_installer"
+	_PM_INSTALLER_ARG="-i $_installer"
 }
 
 _pm_install_single() {
-	# legacy single-APK direct install is disabled for single APK paths.
-	# PackageInstaller/install-create session is available from Android API 21 and is already used by split APK restores;
-	# use the same session route for single APK on all supported SDKs.
 	local _apk="$1" _installer="$2" _pkg="${3:-}"
-	RESTORE_PM_INSTALL_SINGLE_FAILED_PARSE=0
 	[[ -f $_apk ]] || return 1
 	_restore_log_install_method "${_pkg:-unknown}" "pm_install_single_legacy_disabled" "apk=${_apk##*/} installer=${_installer:-null} route=session-only"
 	_pm_install_single_session "$_apk" "$_installer" "$_pkg"
 }
 _pm_install_single_session() {
-	# 單 APK session helper；是否優先使用由 _restore_single_apk_session_first_policy 決定。
-	# Android 16 auto 預設 session-first；舊機/強制 legacy-first 時仍可作 parse failure fallback。
 	local _apk="$1" _installer="$2" _pkg="${3:-}" _session_raw _session_id _out _err _rc _bypass="" _legacy="" _iarg _name
+	local _RESTORE_INSTALL_GUARD_BLOCKED=0
 	[[ -f $_apk ]] || return 1
-	_iarg="$(_pm_installer_arg "$_installer")"
+	_pm_installer_arg_set "$_installer"; _iarg="$_PM_INSTALLER_ARG"
 	[[ $sdk -gt 33 && ${restore_allow_low_target_sdk:-0} = 1 ]] && _bypass="--bypass-low-target-sdk-block"
 	[[ $sdk -lt 30 ]] && _legacy="-l"
 	_out="$TMPDIR/.pm_single_session_${_pkg//[!a-zA-Z0-9_.-]/_}_${$}_$RANDOM.out"
@@ -33645,11 +33028,10 @@ _pm_install_single_session() {
 	mkdir -p "${_err%/*}" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_restore_log_install_method "${_pkg:-unknown}" "pm_install_session_single" "apk=${_apk##*/} installer=${_installer:-null} route=create_root_write_root_commit_root"
 	# shellcheck disable=SC2086
-	_session_raw="$(pm install-create -r $_bypass --user "$user" -t $_legacy $_iarg 2>>"$_err")"
-	_rc=$?
+	_restore_install_capture_set /system/bin/pm install-create -r $_bypass --user "$user" -t $_legacy $_iarg 2>>"$_err"
+	_rc=$?; _session_raw="$_RESTORE_INSTALL_CAPTURE_TEXT"
 	echo "PM_SINGLE_SESSION_CREATE rc=$_rc raw=$_session_raw" >>"$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	_session_id="$(printf '%s
-' "$_session_raw" | sed -n 's/.*\[\([0-9][0-9]*\)\].*/\1/p' | head -n1)"
+	_restore_install_session_id_set "$_session_raw"; _session_id="$_RESTORE_INSTALL_SESSION_ID"
 	if [[ $_rc != 0 || -z $_session_id ]]; then
 		_restore_log_install_method "${_pkg:-unknown}" "pm_install_session_single_failed" "stage=create rc=$_rc raw=${_session_raw:-empty} stderr=pm_single_session_stderr.log"
 		rm -f "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -33669,7 +33051,13 @@ _pm_install_single_session() {
 	fi
 	local _single_commit_start
 	_speed_time_refresh; _single_commit_start="${SPEEDBACKUP_NOW_MS:-0}"
-	_restore_install_commit /system/bin/pm install-commit "$_session_id" >>"$_out" 2>>"$_err"
+	_RESTORE_INSTALL_COMMIT_UNCERTAIN=1
+	_restore_install_commit _restore_install_capture_set /system/bin/pm install-commit "$_session_id" 2>>"$_err"
+	_rc=$?
+	[[ $_RESTORE_INSTALL_GUARD_BLOCKED = 1 ]] && pm install-abandon "$_session_id" >>"$_out" 2>>"$_err"
+	printf '%s\n' "$_RESTORE_INSTALL_CAPTURE_TEXT" >>"$_out"
+	printf 'PM_SINGLE_SESSION_COMMIT session=%s rc=%s raw=%s\n' "$_session_id" "$_rc" "$_RESTORE_INSTALL_CAPTURE_TEXT" >>"${SPEED_DEBUG_RUN_DIR:-$TMPDIR}/install_session.log"
+	_restore_install_commit_result_set "$_rc" "$_RESTORE_INSTALL_CAPTURE_TEXT"
 	_rc=$?
 	_restore_elapsed_ms_set "$_single_commit_start"; RESTORE_APK_TIMING_COMMIT_MS="$_RESTORE_ELAPSED_MS"
 	echo "PM_SINGLE_SESSION_COMMIT session=$_session_id rc=$_rc" >>"$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -33678,7 +33066,7 @@ _pm_install_single_session() {
 		rm -f "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		return 0
 	fi
-	pm install-abandon "$_session_id" >>"$_out" 2>>"$_err" || true
+	[[ ${_RESTORE_INSTALL_COMMIT_UNCERTAIN:-0} != 1 ]] && pm install-abandon "$_session_id" >>"$_out" 2>>"$_err"
 	_restore_log_install_method "${_pkg:-unknown}" "pm_install_session_single_failed" "stage=commit rc=$_rc session=$_session_id stderr=pm_single_session_stderr.log"
 	rm -f "$_out" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	return 1
@@ -33686,7 +33074,7 @@ _pm_install_single_session() {
 
 _pm_install_create_session() {
 	local _installer="$1" _iarg _bypass="" _legacy=""
-	_iarg="$(_pm_installer_arg "$_installer")"
+	_pm_installer_arg_set "$_installer"; _iarg="$_PM_INSTALLER_ARG"
 	[[ $sdk -gt 33 && ${restore_allow_low_target_sdk:-0} = 1 ]] && _bypass="--bypass-low-target-sdk-block"
 	[[ $sdk -lt 30 ]] && _legacy="-l"
 	# shellcheck disable=SC2086
@@ -33760,19 +33148,32 @@ _restore_install_data_guard_eligible() {
 _restore_install_commit() {
     local _phase_start _phase_command _phase_end _phase_done
     local _rc _begun=0 _out="$TMPDIR/.install_auto_restore_${$}" _line
+    _RESTORE_INSTALL_GUARD_BLOCKED=0
     if [[ ${_RESTORE_COMMIT_DATA_GUARD:-0} != 1 ]]; then "$@"; return $?; fi
+    local _owner="$$" _observed_pid _proc_rest
+    if read -r _observed_pid _proc_rest < /proc/self/stat; then
+        case $_observed_pid in ''|*[!0-9]*) ;; *) _owner="$_observed_pid" ;; esac
+    fi
+    _out="$TMPDIR/.install_auto_restore_${_owner}"
     _speed_time_refresh; _phase_start="${SPEEDBACKUP_NOW_MS:-0}"
     if [[ ${_RESTORE_COMMIT_DATA_GUARD:-0} = 1 ]]; then
         : > "$_out"
-        if _root_daemon_call_args_to_file "$_out" hiddenapi installAutoRestoreBegin "${USER_ID:-${user:-0}}" "$$" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && _operation_result_read "$_out" install-auto-restore && [[ $_OP_RESULT_TOKEN = "$$" ]]; then _begun=1; fi
+        if _root_daemon_call_args_to_file "$_out" hiddenapi installAutoRestoreBegin "${USER_ID:-${user:-0}}" "$_owner" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && _operation_result_read "$_out" install-auto-restore && [[ $_OP_RESULT_TOKEN = "$_owner" ]]; then _begun=1; fi
         while IFS= read -r _line; do _speed_debug_log "INSTALL_AUTO_RESTORE $_line"; done < "$_out"
+    fi
+    if [[ $_begun != 1 ]]; then
+        _RESTORE_INSTALL_GUARD_BLOCKED=1
+        _root_daemon_call_args_to_file "$_out" hiddenapi installAutoRestoreEnd "${USER_ID:-${user:-0}}" "$_owner" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
+        _speed_debug_log "INSTALL_AUTO_RESTORE_BEGIN_FAILED user=${USER_ID:-${user:-0}} owner=$_owner commit=blocked"
+        rm -f "$_out" 2>/dev/null
+        return 76
     fi
     _speed_time_refresh; _phase_command="${SPEEDBACKUP_NOW_MS:-0}"
     "$@"; _rc=$?
     _speed_time_refresh; _phase_end="${SPEEDBACKUP_NOW_MS:-0}"
     if [[ $_begun = 1 ]]; then
-        if ! _root_daemon_call_args_to_file "$_out" hiddenapi installAutoRestoreEnd "${USER_ID:-${user:-0}}" "$$" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || ! _operation_result_read "$_out" install-auto-restore; then
-            _speed_debug_log "INSTALL_AUTO_RESTORE_END_FAILED user=${USER_ID:-${user:-0}} owner=$$ recovery=daemon-watch-or-next-lease"
+        if ! _root_daemon_call_args_to_file "$_out" hiddenapi installAutoRestoreEnd "${USER_ID:-${user:-0}}" "$_owner" >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || ! _operation_result_read "$_out" install-auto-restore || [[ $_OP_RESULT_TOKEN != "$_owner" ]]; then
+            _speed_debug_log "INSTALL_AUTO_RESTORE_END_FAILED user=${USER_ID:-${user:-0}} owner=$_owner recovery=daemon-watch-or-next-lease"
         fi
         while IFS= read -r _line; do _speed_debug_log "INSTALL_AUTO_RESTORE $_line"; done < "$_out"
     fi
@@ -33784,7 +33185,10 @@ _restore_install_commit() {
 
 # 安裝 apk (含 split apk 處理), 自動繞過安裝驗證
 installapk() {
+	local USER_ID="${user:-0}"
+	_restore_install_retry_allowed "$name2" || { result=75; return 75; }
 	local _RESTORE_COMMIT_DATA_GUARD=0
+	local _RESTORE_INSTALL_COMMIT_UNCERTAIN=0
 	_restore_install_data_guard_eligible && _RESTORE_COMMIT_DATA_GUARD=1
 	local _RESTORE_APK_INVENTORY_SCOPE=1 _RESTORE_APK_INVENTORY_DIR="" _RESTORE_APK_INVENTORY_COUNT=""
 	local _RESTORE_APK_INVENTORY_MAIN="" _RESTORE_APK_INVENTORY_BYTES="" _RESTORE_APK_INVENTORY_NMSL=""
@@ -33805,11 +33209,7 @@ installapk() {
 	RESTORE_APK_TIMING_BYTES=0
 	RESTORE_APK_TIMING_ACTION="${RESTORE_APK_ACTION_CONTEXT:-install}"
 	RESTORE_APK_TIMING_REASON="pending"
-	if [[ ${_restore_force_play_session:-0} = 1 ]]; then
-		_apk_stage="$(_restore_prepare_apk_stage_dir "$name2")" || { result=1; Set_back_1; return 1; }
-	else
-		_apk_stage="$(_restore_prepare_apk_work_dir "$name2")" || { result=1; Set_back_1; return 1; }
-	fi
+	_apk_stage="$(_restore_prepare_apk_work_dir "$name2")" || { result=1; Set_back_1; return 1; }
 	# 串流恢復: 從遠端拉 apk.tar.zst → 解壓到本次 APK work 目錄 (apk 安裝需檔案, pm install 不能用 stdin)
 	if [[ $_RESTORE_STREAM = 1 && -n $_STREAM_APK_SRC ]]; then
 		local _apk_stream_extract_raw_log _apk_stream_extract_raw_start
@@ -33840,7 +33240,7 @@ installapk() {
 		_restore_elapsed_ms_set "$_apk_stream_profile_start"; RESTORE_APK_TIMING_EXTRACT_MS="$_RESTORE_ELAPSED_MS"
 		echo_log "apk串流解壓" "" "$result"
 		if [[ $result != 0 ]]; then
-			[[ ${_restore_force_play_session:-0} != 1 ]] && _restore_clear_apk_work_dir
+			_restore_clear_apk_work_dir
 			[[ $_RESTORE_STREAM = 1 ]] && _remote_stream_fatal_active && return 126
 			return 1
 		fi
@@ -33859,6 +33259,7 @@ installapk() {
 			*)
 				echoRgb "${apkfile##*/} 壓縮包不支持解壓縮" "0"
 				Set_back_1
+				false
 				;;
 			esac
 			result=$?
@@ -33867,7 +33268,7 @@ installapk() {
 			_restore_elapsed_ms_set "$_apk_profile_start"; RESTORE_APK_TIMING_EXTRACT_MS="$_RESTORE_ELAPSED_MS"
 			echo_log "${apkfile##*/}解壓縮" "" "$result" && [[ -f $Backup_folder/nmsl.apk ]] && cp -r "$Backup_folder/nmsl.apk" "$_apk_stage"
 			if [[ $result != 0 ]]; then
-				[[ ${_restore_force_play_session:-0} != 1 ]] && _restore_clear_apk_work_dir
+				_restore_clear_apk_work_dir
 				return 1
 			fi
 		else
@@ -33880,7 +33281,7 @@ installapk() {
 		_restore_source_verify "$_apk_stage" "$_source_prefix" ignore ignore ignore || { result=1; return 1; }
 		_restore_payload_plan_log "$_apk_stage" "$app_details" "$name1" >/dev/null 2>&1 || true
 		# 用 glob + 計數取代 find | wc (省 2 fork)
-		local _apks _apk_count=0 _installer _installer_raw _used_play_session=0 _fallback_pm=0 _apk_install_profile_start
+		local _apks _apk_count=0 _installer _requested_installer _used_play_session=0 _fallback_pm=0 _skip_pm=0 _apk_install_profile_start
 		_speed_time_refresh; _apk_install_profile_start="${SPEEDBACKUP_NOW_MS:-0}"
 		if [[ "$_RESTORE_APK_INVENTORY_DIR" = "$_apk_stage" ]]; then
 			_apk_count="$_RESTORE_APK_INVENTORY_COUNT"
@@ -33889,63 +33290,51 @@ installapk() {
 				[[ -f "$_apks" ]] && let _apk_count++
 			done
 		fi
-		_installer_raw="$(_restore_backup_installer_value "$app_details")"
+		_requested_installer="com.android.vending"
 		_installer=""
 		case $_apk_count in
-		1) _restore_log_install_plan_facts "$name2" single "$_installer_raw" >/dev/null 2>&1 || true ;;
-		*) _restore_log_install_plan_facts "$name2" split "$_installer_raw" >/dev/null 2>&1 || true ;;
+		1) _restore_log_install_plan_facts "$name2" single "$_requested_installer" >/dev/null 2>&1 || true ;;
+		*) _restore_log_install_plan_facts "$name2" split "$_requested_installer" >/dev/null 2>&1 || true ;;
 		esac
-		# 備份 installer 只作為候選；必須在目前 user 真的存在且能取得 UID，才允許用於 -i / UID hybrid。
 		if [[ $_apk_count -gt 0 ]]; then
-			if _restore_select_installer_context "$name2" "$_installer_raw"; then
+			if _restore_select_installer_context "$name2"; then
 				_installer="$RESTORE_INSTALLER_PKG"
 			else
 				_installer=""
 			fi
 		fi
-		# 正式 APK 安裝回退 shell/pm session。!play 保留舊慢速 Play session；失敗固定回退原生 pm。
-		if [[ $_apk_count -gt 0 && ${_restore_force_play_session:-0} = 1 ]]; then
-			echoRgb "${_restore_force_play_marker:-!play} 標記：使用 Play UID hybrid session 安裝（create/commit=Play，write=root）" "3"
-			_restore_log_install_method "$name2" "play_session_requested_by_appList" "marker=${_restore_force_play_marker:-!play} mode=play_daemon_create_root_write_play_commit installerBackup=${_installer_raw:-null} validatedInstaller=${_installer:-null} fallback=pm packageSource=STORE"
-			if _restore_install_with_play_session "$name2" "$_apk_stage"; then
-				_used_play_session=1
-				result=0
-				Set_back_0
-			else
-				echoRgb "Play UID hybrid session 安裝失敗，回退原生 pm" "3"
-				_restore_log_install_method "$name2" "pm_fallback_after_play_session_failed" "installer=${_installer:-null} rawInstaller=${_installer_raw:-null}"
-				_fallback_pm=1
-			fi
-		elif [[ $_apk_count -gt 0 && -n $_installer && -n ${RESTORE_INSTALLER_UID:-} && -n ${RESTORE_INSTALLER_DATA_DIR:-} ]]; then
+		if [[ $_apk_count -gt 0 && -n $_installer && -n ${RESTORE_INSTALLER_UID:-} && -n ${RESTORE_INSTALLER_DATA_DIR:-} ]]; then
 			if [[ ${_restore_hybrid_installer_pm_disabled:-0} = 1 ]]; then
 				echoRgb "本輪已停用混合安裝來源，直接使用原生 pm" "3"
-				_restore_log_install_method "$name2" "hybrid_installer_pm_skip_disabled" "fallback=pm installer=${_installer:-null} rawInstaller=${_installer_raw:-null}"
+				_restore_log_install_method "$name2" "hybrid_installer_pm_skip_disabled" "fallback=pm installer=${_installer:-null} requestedInstaller=${_requested_installer:-null}"
 				_fallback_pm=1
 			elif _restore_install_with_hybrid_installer_pm "$name2" "$_apk_stage" "$RESTORE_INSTALLER_PKG" "$RESTORE_INSTALLER_UID" "$RESTORE_INSTALLER_DATA_DIR"; then
 				_used_play_session=1
 				result=0
 				Set_back_0
 				if [[ ${_restore_hybrid_installer_pm_consecutive_fail:-0} != 0 ]]; then
-					_restore_log_install_method "$name2" "hybrid_installer_pm_consecutive_fail_reset" "reason=next_app_hybrid_success previousFailures=${_restore_hybrid_installer_pm_consecutive_fail:-0} installer=${_installer:-null} rawInstaller=${_installer_raw:-null}"
+					_restore_log_install_method "$name2" "hybrid_installer_pm_consecutive_fail_reset" "reason=next_app_hybrid_success previousFailures=${_restore_hybrid_installer_pm_consecutive_fail:-0} installer=${_installer:-null} requestedInstaller=${_requested_installer:-null}"
 				fi
 			_restore_hybrid_installer_pm_consecutive_fail=0
 			else
-				# 不能同一個 App 連續跑兩次混合安裝。
-				# 第一次 hybrid 失敗只讓「本 App」回退原生 pm，下一個符合條件的 App 再測一次 hybrid；
-				# 只有連續兩個不同 App 都 hybrid 失敗，才停用本輪後續 hybrid。
-				if [[ ${_restore_hybrid_installer_pm_consecutive_fail:-0} -ge 1 ]]; then
+				if ! _restore_install_fallback_allowed "$name2"; then
+					_skip_pm=1
+    				# 不能同一個 App 連續跑兩次混合安裝。
+				    # 第一次 hybrid 失敗只讓「本 App」回退原生 pm，下一個符合條件的 App 再測一次 hybrid；
+				    # 只有連續兩個不同 App 都 hybrid 失敗，才停用本輪後續 hybrid。
+				elif [[ ${_restore_hybrid_installer_pm_consecutive_fail:-0} -ge 1 ]]; then
 					echoRgb "混合安裝來源連續兩個應用失敗，本輪後續全部回退原生 pm" "3"
 					_restore_hybrid_installer_pm_disabled=1
-					_restore_log_install_method "$name2" "hybrid_installer_pm_disable_for_batch" "fallback=pm policy=next_app_probe consecutiveApps=2 installer=${_installer:-null} rawInstaller=${_installer_raw:-null}"
+					_restore_log_install_method "$name2" "hybrid_installer_pm_disable_for_batch" "fallback=pm policy=next_app_probe consecutiveApps=2 installer=${_installer:-null} requestedInstaller=${_requested_installer:-null}"
 				else
 					echoRgb "混合安裝來源commit失敗，本 App 回退原生 pm；下一個符合條件的 App 再測一次混合安裝" "3"
 					_restore_hybrid_installer_pm_consecutive_fail=1
-					_restore_log_install_method "$name2" "hybrid_installer_pm_first_fail_defer_batch_disable" "fallback=pm policy=next_app_probe consecutiveApps=1 installer=${_installer:-null} rawInstaller=${_installer_raw:-null}"
+					_restore_log_install_method "$name2" "hybrid_installer_pm_first_fail_defer_batch_disable" "fallback=pm policy=next_app_probe consecutiveApps=1 installer=${_installer:-null} requestedInstaller=${_requested_installer:-null}"
 				fi
-				_fallback_pm=1
+				[[ $_skip_pm = 1 ]] || _fallback_pm=1
 			fi
 		fi
-		if [[ $_used_play_session != 1 ]]; then
+		if [[ $_used_play_session != 1 && $_skip_pm != 1 ]]; then
 			case $_apk_count in
 			1)
 				local _single_session_rc
@@ -33967,12 +33356,15 @@ installapk() {
 			*)
 				echoRgb "恢復split apk" "2"
 				_restore_log_install_method "$name2" "pm_install_create" "apk=split count=$_apk_count installer=${_installer:-null} route=pm-install-create-write-commit"
-				b="$(_pm_install_create_session "$_installer" | grep -Eo '[0-9]+')"
-				if [[ -z $b ]]; then
+				local _create_rc
+				_restore_install_capture_set _pm_install_create_session "$_installer"
+				_create_rc=$?
+				_restore_install_session_id_set "$_RESTORE_INSTALL_CAPTURE_TEXT"; b="$_RESTORE_INSTALL_SESSION_ID"
+				if [[ $_create_rc != 0 || -z $b ]]; then
 					echoRgb "pm install-create 失敗" "0"
 					Set_back_1
 					[[ -n ${_apk_install_profile_start:-} ]] && _restore_perf_timing_done "apk_install" "$_apk_install_profile_start" "app=${name1:-} package=${name2:-} apkCount=${_apk_count:-0} rc=1 stage=install_create_failed"
-					[[ ${_restore_force_play_session:-0} != 1 ]] && _restore_clear_apk_work_dir
+					_restore_clear_apk_work_dir
 					return 1
 				fi
 				local _nmsl_rc=0
@@ -33997,8 +33389,13 @@ installapk() {
 	RESTORE_APK_TIMING_BYTES="$(_restore_sum_stage_apk_bytes "$_apk_stage" 2>/dev/null || echo 0)"
 	case ${RESTORE_APK_TIMING_BYTES:-} in ''|*[!0-9]*) RESTORE_APK_TIMING_BYTES=0 ;; esac
 	_restore_elapsed_ms_set "$_apk_total_start"; RESTORE_APK_TIMING_TOTAL_MS="$_RESTORE_ELAPSED_MS"
-	case ${result:-1} in 0) RESTORE_APK_TIMING_REASON="${RESTORE_APK_TIMING_REASON:-install_ok}" ;; *) RESTORE_APK_TIMING_REASON="install_failed" ;; esac
-	[[ ${_restore_force_play_session:-0} != 1 ]] && _restore_clear_apk_work_dir
+	if [[ ${_RESTORE_INSTALL_COMMIT_UNCERTAIN:-0} = 1 ]]; then
+		_restore_install_fallback_allowed "$name2" || true
+		RESTORE_APK_TIMING_REASON=commit_unknown
+	else
+		case ${result:-1} in 0) RESTORE_APK_TIMING_REASON="${RESTORE_APK_TIMING_REASON:-install_ok}" ;; *) RESTORE_APK_TIMING_REASON="install_failed" ;; esac
+	fi
+	_restore_clear_apk_work_dir
 	case ${result:-1} in ''|*[!0-9]*) return 1 ;; *) return "$result" ;; esac
 }
 # 關閉 apk 安裝驗證 (verifier_verify_adb_installs)
@@ -34291,7 +33688,7 @@ get_name(){
 	if [[ $delete_app != "" && ${SPEEDBACKUP_REGEN_SKIP_ORPHAN_CLEANUP:-0} = 1 ]]; then
 		_speed_debug_log "APPLIST_REGENERATE_ORPHAN_CLEANUP_SKIP context=download_local_rebuild entries=$(echo "$delete_app" | awk 'NF != 0 { count++ } END { print count+0 }')"
 	fi
-	chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt"
+	_generated_list_owner "$txt"
 	endtime 1
 	[[ ${SPEEDBACKUP_REGEN_NO_EXIT:-0} = 1 ]] && return "$_rename_rc"
 	exit "$_rename_rc"
@@ -35905,8 +35302,7 @@ _applist_filter_installed() {
 			if cmp -s "$_file" "$_base.ready"; then
 				_rc=0
 			else
-				_publish="$(mktemp "${_file}.sbfilter.XXXXXX")"
-				if [[ -n $_publish ]] && cp -p "$_file" "$_publish" && cat "$_base.ready" > "$_publish" && mv -f "$_publish" "$_file"; then
+				if _generated_file_publish "$_base.ready" "$_file"; then
 					_rc=0
 				fi
 			fi
@@ -35954,7 +35350,7 @@ _applist_home_last_file() {
 	local _APPLIST_HOME_MAP _APPLIST_IME_LAST
 	_applist_restore_home_map_set "$_context" || return 1
 	if _applist_home_last_filter "$_home" "$_APPLIST_HOME_MAP" "$_APPLIST_IME_LAST" < "$_file" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; then
-        cat "$_tmp" > "$_file" || _rc=1
+        _generated_file_publish "$_tmp" "$_file" || _rc=1
     else
         _rc=1
     fi
@@ -36615,7 +36011,6 @@ EOF_APP_INDEX
 		else
 			echoRgb "$name1[$name2] 不在安裝列表，備份個寂寞？" "0"
 		fi
-		unset _restore_force_play_session _restore_force_play_marker
 		let i++ en++ nskg++
 	done
 	endtime 1 "應用備份" "3"
@@ -36850,8 +36245,8 @@ EOF_APP_INDEX
 		_backup_stream_fatal_rc="$(_remote_stream_fatal_exit_rc)"
 		_speed_debug_log "REMOTE_STREAM_FATAL_VERIFY_REFRESH rc=$_backup_stream_fatal_rc $(_remote_stream_fatal_summary)"
 	fi
-	[[ -f $txt_path ]] && chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt_path"
-	[[ -f $txt_path2 ]] && chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$txt_path2"
+	if [[ -f $txt_path ]]; then _generated_list_owner "$txt_path"; fi
+	if [[ -f $txt_path2 ]]; then _generated_list_owner "$txt_path2"; fi
 	# 備份完成後針對本次有變動的應用做 json 健全度檢查 (結構+欄位一併驗證)
 	# 串流模式: json 在遠端 (本地 staging 已刪), 跳過本地驗證 (上傳時已即時驗證)。
 	# 遠端非串流且本輪無實際備份變更時，本地 app_details 可能只補到權限/通知等增量欄位；
@@ -37136,7 +36531,7 @@ _appdetails_refresh_regenerate_one_file() {
 		_speed_debug_log "JSON_REGENERATE_PROTECT_GUARD_FAIL label=$_label package=$_pkg file=$_file"
 		return 1
 	fi
-	# 373 起 _json_cat_replace() 內部已在 TMPDIR 建立回復備份；
+	# v925: JSON publication preserves the old inode until verified replacement;
 	# 不再把 app_details.json.pre360.bak 留在備份目錄。
 	rm -f "$_file.pre360.bak" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_json_cat_replace "$_out" "$_file" || { rm -f "$_tmp"* 2>/dev/null; echoRgb "覆蓋失敗: $_label" "0"; return 1; }
@@ -37504,7 +36899,7 @@ remote_stream_restore() {
 	local list="$MODDIR/appList_network.txt" _list_cache="$TMPDIR/.speedbackup_last_appList_network" _stream_list_file="$TMPDIR/.stream_restore_appList_network.$$"
 	if [[ ! -f $list && -f $_list_cache ]]; then
 		mkdir -p "${list%/*}" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true
-		cp -f "$_list_cache" "$list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && _speed_debug_log "APP_LIST_NETWORK_RESTORE_FROM_CACHE path=$list cache=$_list_cache"
+		_generated_file_publish "$_list_cache" "$list" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && _speed_debug_log "APP_LIST_NETWORK_RESTORE_FROM_CACHE path=$list cache=$_list_cache"
 	fi
 	if [[ ! -f $list ]]; then
 		echoRgb "找不到 $list" "0"
@@ -37882,12 +37277,10 @@ Restore() {
 	_AUDIO_PLAYBACK_WARNED=0; _AUDIO_PLAYBACK_RETRIED=""; _AUDIO_PLAYBACK_SKIPPED=""
 	_audio_playback_guard_prepare || true
 	_action_foreground_dex_display "恢復"
-	disable_verify || { echoRgb "無法保存安裝安全設定，已停止恢復" 0; return 1; }
 	[[ ! -d $path2 ]] && echoRgb "設備不存在user目錄" "0" && exit 1
 	# 預掃資料 (取代主迴圈內每 app fork)
-	_prepare_timed prepare_pkg_uid_map
-	_prepare_timed prepare_pkg_ver_map
-	prepare_installed_pkgs_map
+	_prepare_timed prepare_restore_inventory_maps || { echoRgb "套件清單驗證失敗，已停止恢復" 0; return 1; }
+	disable_verify || { echoRgb "無法保存安裝安全設定，已停止恢復" 0; return 1; }
 	# 恢復主迴圈期間必須保留 session maps。
 	# Release_data() 會在每個 tar 解壓後呼叫 cleanup_tmpdir_contents()；
 	# 若此 flag 沒有開啟，第 1 個 app 後 .installed_pkgs/.pkg_ver/.pkg_uid 會被刪除，
@@ -37922,27 +37315,15 @@ Restore() {
 				exit 1
 			fi
 			txt="$TMPDIR/.stream_restore_list"
-			if _restore_list_has_play_markers "$txt"; then
-				_speed_debug_log "STREAM_RESTORE_PLAY_MARKER_SUPPORT list=$txt marker=1"
-			fi
 		fi
 		[[ ! -f $txt ]] && echoRgb "請執行start.sh獲取應用列表再來恢復" "0" && exit 2
 		unset _DEFAULT_HOME_PKG_CACHE _DEFAULT_HOME_LABEL_CACHE _DEFAULT_HOME_SOURCE_CACHE _DEFAULT_IME_PKG_CACHE _DEFAULT_IME_LABEL_CACHE _DEFAULT_IME_SOURCE_CACHE
-	_applist_home_last_file "$txt" "restore_source" || { echoRgb "無法確認預設桌面恢復順序，已停止" 0; return 1; }
+    	_applist_home_last_file "$txt" "restore_source" || { echoRgb "無法確認預設桌面恢復順序，已停止" 0; return 1; }
 		i=1
 		r="$(awk '!/^[[:space:]]*[#＃]/ && NF{count++} END{print count}' "$txt" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
 		case "$r" in
 		""|0) echoRgb "appList.txt包名為空或是被注釋了\n -請執行start.sh獲取應用列表再來恢復" "0"; exit 1 ;;
 		esac
-		if _restore_list_has_play_markers "$txt"; then
-			if _restore_has_play_store; then
-				echoRgb "檢測到 !Play 恢復標記，Google Play 商店可用，將走 Play UID hybrid session" "3"
-				_speed_debug_log "PLAY_MARKER_LIST_CHECK result=ok stream=${_RESTORE_STREAM:-0} list=$txt"
-			else
-				echoRgb "檢測到 !Play 恢復標記，但 Google Play 商店不可用，對應 App 會回退原生 pm 安裝" "0"
-				_speed_debug_log "PLAY_MARKER_LIST_CHECK result=fail stream=${_RESTORE_STREAM:-0} list=$txt fallback=pm"
-			fi
-		fi
 		Backup_folder2="$MODDIR/Media"
 		if [[ $_RESTORE_STREAM = 1 ]]; then
 			_restore_stream_prepare_media || true
@@ -38086,13 +37467,11 @@ Restore() {
 	_RESTORE_PRESERVE_BATCH_QUEUE=1
 	RESTORE_LOW_RISK_GUARD_TRIM_COUNT=0
 	# 清空本輪批量恢復暫存，installer/電池也一併清，避免同一 shell session 內殘留
-: > "$TMPDIR/.batch_appstate_ndjson" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+    : > "$TMPDIR/.batch_appstate_ndjson" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 	_restore_install_issue_reset
 	_restore_framework_facts_prefetch || _speed_debug_log "RESTORE_FRAMEWORK_FACTS_PREFETCH_SKIP reason=unavailable"
 	_restore_package_facts_prefetch "$txt" "$r" || _speed_debug_log "RESTORE_PACKAGE_FACTS_PREFETCH_SKIP reason=unavailable"
 	# APK 安裝維持逐 app 流程：每個 app 解壓成功後立即安裝，再恢復 data/appstate。
-	# 預設使用備份 installer 條件式 hybrid_installer_pm；installer 不存在/無 UID 就退回原生 pm，不做無效來源偽裝。
-	# 需要 packageSource=STORE 的個別 app 才能在 appList.txt 行首加 !play 走慢速 Play session。
 	# hybrid_installer_pm 失敗後不在同一 App 連續重試；本 App 回退原生 pm，下一個符合條件的 App 再探測一次。
 	# 只有連續兩個不同 App 的 hybrid 安裝都失敗，才停用本輪後續 hybrid。
 	_restore_hybrid_installer_pm_disabled=0
@@ -38129,18 +37508,13 @@ EOF_APP_INDEX
 			_restore_trace_mark begin_ui_notify
 			# 一次 sed 抓行, 用 parameter expansion 拆欄位
 			_line="${_restore_indexed_lines[$i]}"
-			_restore_force_play_session=0
-			_restore_force_play_marker=""
 			case "$_line" in
 			!play[[:space:]]*|！play[[:space:]]*)
-				_restore_force_play_session=1
-				_restore_force_play_marker="!play"
 				_line="${_line#*!play}"
 				_line="${_line#*！play}"
 				_restore_space_trim_set "$_line"; _line=$_RESTORE_TRIM
 				;;
 			esac
-			[[ $_RESTORE_STREAM = 1 && ${_restore_force_play_session:-0} = 1 ]] && _speed_debug_log "STREAM_RESTORE_PLAY_MARKER_APPLY marker=${_restore_force_play_marker:-!} app=${_line%% *}"
 			name1="${_line%% *}"
 			name2="${_line#* }"
 			_restore_space_trim_set "$name2"; name2=$_RESTORE_TRIM
@@ -38190,7 +37564,6 @@ EOF_APP_INDEX
 					} >> "${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/bad_app_details.log" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 					unset _bad_size
 					rm -rf "$Backup_folder" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-					unset _restore_force_play_session _restore_force_play_marker
 					_RESTORE_OTHER_FAILED=1
 					_restore_trace_mark metadata_invalid_cleanup
 					_restore_trace_finish 0
@@ -38219,7 +37592,6 @@ EOF_APP_INDEX
 				echoRgb "$name1 應用包名獲取失敗, 跳過此應用" "0"
 				if [[ $_RESTORE_STREAM = 1 ]]; then
 					rm -rf "$Backup_folder" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-					unset _restore_force_play_session _restore_force_play_marker
 					_RESTORE_OTHER_FAILED=1
 					_restore_trace_mark metadata_missing_package_cleanup
 					_restore_trace_finish 0
@@ -38229,7 +37601,6 @@ EOF_APP_INDEX
 					_restore_trace_mark metadata_missing_package_exit
 					_RESTORE_OTHER_FAILED=1
 					_restore_trace_finish 1
-					unset _restore_force_play_session _restore_force_play_marker
 					let i++ en++ nskg++
 					continue
 				fi
@@ -38237,7 +37608,6 @@ EOF_APP_INDEX
 		fi
 		_restore_trace_mark metadata_select
         if _audio_playback_skip_current restore; then
-            unset _restore_force_play_session _restore_force_play_marker
             _restore_trace_finish 0
             let i++ en++ nskg++
             continue
@@ -38248,7 +37618,6 @@ EOF_APP_INDEX
 		fi
 		_speedbackup_restore_label_strict_gate "$name1" "$name2" "restore_loop" || {
 			[[ $_RESTORE_STREAM = 1 ]] && rm -rf "$Backup_folder" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-			unset _restore_force_play_session _restore_force_play_marker
 			_RESTORE_OTHER_FAILED=1
 			_restore_trace_mark strict_gate_cleanup
 			_restore_trace_finish 0
@@ -38462,6 +37831,9 @@ EOF_APP_INDEX
 					;;
 				esac
 			fi
+			if ! _restore_install_data_allowed "$name2"; then
+				_is_installed=0
+			fi
 			if [[ ${_RESTORE_APP_UNSAFE:-0} = 1 ]]; then
 				_is_installed=0
 				echoRgb "$name1 安裝後資料更新結果不確定，跳過資料/AppState恢復" 0
@@ -38483,7 +37855,6 @@ EOF_APP_INDEX
 						_guard_app_release "$name2" restore_guard_unsafe app || true
 						_live_app_resume_paused
 						_restore_trace_finish 125
-						unset _restore_force_play_session _restore_force_play_marker
 						let i++ en++ nskg++
 						continue
 					fi
@@ -38549,7 +37920,6 @@ EOF_APP_INDEX
                             fi
     						_live_app_resume_paused
     						_restore_trace_finish 126
-    						unset _restore_force_play_session _restore_force_play_marker
     						break
     					fi
 					else
@@ -38644,7 +38014,6 @@ EOF_APP_INDEX
 			echoRgb "$Backup_folder資料夾遺失，無法恢復" "0"
 			_RESTORE_OTHER_FAILED=1
 		fi
-		unset _restore_force_play_session _restore_force_play_marker
 		let i++ en++ nskg++
 		_restore_trace_finish 0
 	done
@@ -38902,7 +38271,9 @@ _applist_sanitize_backup_guide_lines() {
 		is_builtin_guide($0) { next }
 		{ print }
 	' "$_file" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_tmp"; return 1; }
-	{ _applist_backup_guide_header; cat "$_tmp"; } > "$_file"
+	{ _applist_backup_guide_header; cat "$_tmp"; } > "$_tmp.ready" || { rm -f "$_tmp" "$_tmp.ready"; return 1; }
+	_generated_file_publish "$_tmp.ready" "$_file" || { rm -f "$_tmp" "$_tmp.ready"; return 1; }
+	rm -f "$_tmp.ready"
 	rm -f "$_tmp"
 	_speed_debug_log "APPLIST_GUIDE_SANITIZE file=$_file"
 	return 0
@@ -38910,9 +38281,7 @@ _applist_sanitize_backup_guide_lines() {
 
 # 生成應用列表 (掃描所有已安裝 user app, 輸出到 appList.txt)
 # 配合 blacklist/whitelist 過濾系統 app
-# Getlist calls this function in the same shell: its counters and appended rows
-# must survive. Redirect only this noninteractive display phase, never pipe it.
-_getlist_emit_classified() {
+_getlist_display_classified() {
 	while IFS=$'\t' read -r kind app_label app_pkg; do
 		[[ -z $app_pkg ]] && continue
 		let _seen++
@@ -38945,7 +38314,6 @@ _getlist_emit_classified() {
 		BLACK)
 			if [[ $NZK = 1 ]]; then
 				if [[ $blacklist_mode = false ]]; then
-					echo "$REPLY" >> "$appended"
 					tmp=1
 					echoRgb "$((i+1)):$app_name $app_pkg($rgb_a)"
 					let i++ rb++
@@ -38959,30 +38327,25 @@ _getlist_emit_classified() {
 			;;
 		PRELOAD_XP)
 			echoRgb "$((i+1)):$app_name為Xposed模塊 進行添加" "0"
-			echo "$REPLY" >> "$appended"
 			tmp=1
 			let i++ rd++
 			;;
 		PRELOAD_WL)
-			echo "$REPLY" >> "$appended"
 			tmp=1
 			echoRgb "$((i+1)):$app_name $app_pkg($rgb_a)"
 			let i++
 			;;
 		PRELOAD)
 			echoRgb "$app_name 預裝應用 忽略輸出" "0"
-			echo "#$REPLY" >> "$appended"
 			tmp=1
 			let rc++
 			;;
 		XPOSED)
-			echo "$REPLY" >> "$appended"
 			tmp=1
 			echoRgb "$((i+1)):Xposed: $app_name $app_pkg($rgb_a)"
 			let i++ rd++
 			;;
 		HOME_IME)
-			echo "$REPLY" >> "$appended"
 			tmp=1
 			echoRgb "$((i+1)):$app_name $app_pkg($rgb_a) [預設桌面] [預設鍵盤]" "2"
 			_speed_debug_log "GETLIST_DEFAULT_HOME_INCLUDE package=$app_pkg label=$app_name"
@@ -38991,14 +38354,12 @@ _getlist_emit_classified() {
 			let i++
 			;;
 		HOME)
-			echo "$REPLY" >> "$appended"
 			tmp=1
 			echoRgb "$((i+1)):$app_name $app_pkg($rgb_a) [預設桌面]" "2"
 			_speed_debug_log "GETLIST_DEFAULT_HOME_INCLUDE package=$app_pkg label=$app_name"
 			let i++
 			;;
 		IME)
-			echo "$REPLY" >> "$appended"
 			tmp=1
 			echoRgb "$((i+1)):$app_name $app_pkg($rgb_a) [預設鍵盤]" "2"
 			_speed_debug_log "GETLIST_DEFAULT_IME_INCLUDE package=$app_pkg label=$app_name"
@@ -39006,7 +38367,6 @@ _getlist_emit_classified() {
 			let i++
 			;;
 		NORMAL|*)
-			echo "$REPLY" >> "$appended"
 			tmp=1
 			echoRgb "$((i+1)):$app_name $app_pkg($rgb_a)"
 			let i++
@@ -39017,370 +38377,98 @@ _getlist_emit_classified() {
 	return 0
 }
 
-Getlist() {
-	case $MODDIR in
-	/storage/emulated/0/Android/* | /data/media/0/Android/* | /sdcard/Android/*) echoRgb "請勿在$MODDIR內生成列表" "0" && exit 2 ;;
-	esac
-	#校驗選填是否正確
-	[[ $blacklist_mode != "" ]] && isBoolean "$blacklist_mode" "blacklist_mode" && blacklist_mode="$nsx" || {
-	_speedbackup_ui_must_rgb "選擇黑名單模式\n -音量上不輸出，音量下輸出應用列表" "2"
-	get_version "不輸出" "輸出應用列表"; blacklist_mode="$branch"
-	}
-	txt="$TMPDIR/appList"
-	if [[ -f "$MODDIR/appList.txt" ]]; then
-		cat "$MODDIR/appList.txt" >"$txt"
-		_applist_sanitize_backup_guide_lines "$txt"
-	else
-		_applist_backup_guide_header >"$txt"
-	fi
+_getlist_rust_impl() {
+	local _stage="$1" _existed=0 _filter _status _count _removed _rest
+	local Default_home_pkg Default_ime_pkg Apk_Quantity _old_eff _new_eff
+	local classified="$_stage/report.events" _seen=0 i=0 rc=0 rd=0 Q=0 Qc=0 rb=0 LR=1 rgb_a=118 NZK=1 tmp=""
+	local kind app_label app_pkg app_name REPLY _missing_line starttime1 endtime1
 	echoRgb "請勿關閉腳本，等待提示結束"
-	rgb_a=118
-	# legacy-visible timer is reset after inventory metadata is ready; guide text is never counted.
 	echoRgb "提示! 腳本默認會屏蔽預裝應用 如需備份請添加預裝應用白名單" "0"
-	# appList 生成走 Dex one-call。把 user/xposed inventory、系統白名單、default HOME 解析
-	# 合併在同一個 RootDaemon command 內，避免  仍需 appInventory + defaultHome + target packages 三次 round-trip。
-	local _target_system_pkgs="$TMPDIR/.getlist_target_system_pkgs" _target_filter _getlist_raw _meta _meta_ime _meta_xposed _meta_xposed_modules _home_label _home_source _ime_label _ime_source Default_ime_pkg _xp_state _xp_family _xp_evidence _xp_mgr_mode _xp_mgr_family _xp_mgr_pkg _xp_mgr_open _xp_mgr_evidence _xp_parasitic _xp_total _xp_legacy _xp_java _xp_native _xp_hybrid
-	: > "$_target_system_pkgs"
-	printf '%s\n' "$system" | awk '{for (i=1; i<=NF; i++) if ($i !~ /^[#＃]/) print $i}' >> "$_target_system_pkgs"
-	awk 'NF && $0 !~ /[^A-Za-z0-9_.-]/ && $0 !~ /^\./ && $0 !~ /\.\./ {print}' "$_target_system_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sort -u > "$_target_system_pkgs.tmp"
-	mv -f "$_target_system_pkgs.tmp" "$_target_system_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	_target_filter="$(paste -sd, "$_target_system_pkgs" 2>/dev/null)"
-	# inventory one-call is still logged, but the user-facing "輸出包名" timer
-	# matches legacy scope: output + validation only.
-	_getlist_raw="$(appinventory_getlist "$_target_filter" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
-	if ! printf '%s\n' "$_getlist_raw" | _applist_inventory_has_rows; then
-		_speed_debug_log "APP_INVENTORY_GETLIST_EMPTY_FALLBACK reason=no_rows targets=${_target_filter:-empty}"
-		_getlist_raw="$(_applist_getlist_pm_fallback "$_target_filter" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
-	fi
-	_meta="$(printf '%s\n' "$_getlist_raw" | awk -F '\t' '$1=="#META" && $2=="defaultHome"{print; exit}')"
-	_meta_ime="$(printf '%s\n' "$_getlist_raw" | awk -F '\t' '$1=="#META" && $2=="defaultIme"{print; exit}')"
-	_meta_xposed="$(printf '%s\n' "$_getlist_raw" | awk -F '\t' '$1=="#META" && $2=="xposedFramework"{print; exit}')"
-	_meta_xposed_modules="$(printf '%s\n' "$_getlist_raw" | awk -F '\t' '$1=="#META" && $2=="xposedModules"{print; exit}')"
-	Default_home_pkg="$(printf '%s\n' "$_meta" | awk -F '\t' '{print $3}')"
-	_home_label="$(printf '%s\n' "$_meta" | awk -F '\t' '{print $4}')"
-	_home_source="$(printf '%s\n' "$_meta" | awk -F '\t' '{print $5}')"
-	Default_ime_pkg="$(printf '%s\n' "$_meta_ime" | awk -F '\t' '{print $3}')"
-	_ime_label="$(printf '%s\n' "$_meta_ime" | awk -F '\t' '{print $4}')"
-	_ime_source="$(printf '%s\n' "$_meta_ime" | awk -F '\t' '{print $5}')"
-	_xp_state="$(printf '%s\n' "$_meta_xposed" | awk -F '\t' '{print $3}')"
-	_xp_family="$(printf '%s\n' "$_meta_xposed" | awk -F '\t' '{print $4}')"
-	_xp_evidence="$(printf '%s\n' "$_meta_xposed" | awk -F '\t' '{print $5}')"
-	_xp_mgr_mode="$(printf '%s\n' "$_meta_xposed" | awk -F '\t' '{print $6}')"
-	_xp_mgr_pkg="$(printf '%s\n' "$_meta_xposed" | awk -F '\t' '{print $7}')"
-	_xp_mgr_open="$(printf '%s\n' "$_meta_xposed" | awk -F '\t' '{print $8}')"
-	_xp_parasitic="$(printf '%s\n' "$_meta_xposed" | awk -F '\t' '{print $9}')"
-	_xp_total="$(printf '%s\n' "$_meta_xposed_modules" | awk -F '\t' '{print $3}')"
-	_xp_legacy="$(printf '%s\n' "$_meta_xposed_modules" | awk -F '\t' '{print $4}')"
-	_xp_java="$(printf '%s\n' "$_meta_xposed_modules" | awk -F '\t' '{print $5}')"
-	_xp_native="$(printf '%s\n' "$_meta_xposed_modules" | awk -F '\t' '{print $6}')"
-	_xp_hybrid="$(printf '%s\n' "$_meta_xposed_modules" | awk -F '\t' '{print $7}')"
-	_speed_debug_log "XPOSED_RUNTIME_FACTS state=${_xp_state:-unknown} family=${_xp_family:-unknown} evidence=${_xp_evidence:-none} managerMode=${_xp_mgr_mode:-unknown} managerFamily=${_xp_mgr_family:-unknown} managerPackage=${_xp_mgr_pkg:-none} managerOpenCap=${_xp_mgr_open:-unknown} managerEvidence=${_xp_mgr_evidence:-none} parasiticHint=${_xp_parasitic:-false}"
-	_speed_debug_log "XPOSED_MODULE_SUMMARY total=${_xp_total:-0} legacy=${_xp_legacy:-0} modernJava=${_xp_java:-0} modernNative=${_xp_native:-0} hybrid=${_xp_hybrid:-0}"
-	if [[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]]; then
-		[[ -n $_meta_xposed ]] && printf '%s\n' "$_meta_xposed" > "$SPEED_DEBUG_RUN_DIR/xposed_runtime_facts_last.tsv" 2>/dev/null
-		[[ -n $_meta_xposed_modules ]] && printf '%s\n' "$_meta_xposed_modules" > "$SPEED_DEBUG_RUN_DIR/xposed_module_summary_last.tsv" 2>/dev/null
-		printf '%s\n' "$_getlist_raw" | awk -F '\t' '$1=="#META" && $2=="xposedModule"{print}' > "$SPEED_DEBUG_RUN_DIR/xposed_modules_last.tsv" 2>/dev/null
-	fi
-	case "$Default_home_pkg" in ''|*[!A-Za-z0-9_.-]*) Default_home_pkg="" ;; esac
-	case "$Default_ime_pkg" in ''|*[!A-Za-z0-9_.-]*) Default_ime_pkg="" ;; esac
-	# appInventoryGetlist 已經在同一個 RootDaemon command 解析 default HOME。
-	# 直接灌入 _default_home_pkg_ensure() 的 cache，避免結尾 _applist_home_last_file()
-	# 再次呼叫 defaultHome，造成  appList 多 1 秒 round-trip。
-	_DEFAULT_HOME_PKG_CACHE="$Default_home_pkg"
-	_DEFAULT_HOME_LABEL_CACHE="${_home_label:-$Default_home_pkg}"
-	_DEFAULT_HOME_SOURCE_CACHE="${_home_source:-appInventoryGetlist}"
-	[[ -n $Default_home_pkg ]] && _speed_debug_log "DEFAULT_HOME_CACHE_FROM_GETLIST package=$Default_home_pkg label=${_DEFAULT_HOME_LABEL_CACHE:-} source=${_DEFAULT_HOME_SOURCE_CACHE:-appInventoryGetlist}"
-	_DEFAULT_IME_PKG_CACHE="$Default_ime_pkg"
-	_DEFAULT_IME_LABEL_CACHE="${_ime_label:-$Default_ime_pkg}"
-	_DEFAULT_IME_SOURCE_CACHE="${_ime_source:-appInventoryGetlist}"
-	[[ -n $Default_ime_pkg ]] && _speed_debug_log "DEFAULT_IME_CACHE_FROM_GETLIST package=$Default_ime_pkg label=${_DEFAULT_IME_LABEL_CACHE:-} source=${_DEFAULT_IME_SOURCE_CACHE:-appInventoryGetlist}"
-	[[ -n $Default_ime_pkg ]] && _speed_debug_log "DEFAULT_IME_APPLIST_FORCE_INCLUDE package=$Default_ime_pkg label=${_DEFAULT_IME_LABEL_CACHE:-}"
-	if [[ -n $Default_home_pkg && -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]]; then
-		printf '{"recordType":"defaultHome","packageName":"%s","label":"%s","source":"%s","result":{"name":"OK"}}\n' \
-			"$Default_home_pkg" "${_home_label:-$Default_home_pkg}" "${_home_source:-appInventoryGetlist}" > "$SPEED_DEBUG_RUN_DIR/default_home_last.json" 2>/dev/null
-	fi
-	if [[ -n $Default_ime_pkg && -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]]; then
-		printf '{"recordType":"defaultIme","packageName":"%s","label":"%s","source":"%s","result":{"name":"OK"}}\n' \
-			"$Default_ime_pkg" "${_ime_label:-$Default_ime_pkg}" "${_ime_source:-appInventoryGetlist}" > "$SPEED_DEBUG_RUN_DIR/default_ime_last.json" 2>/dev/null
-	fi
-	Apk_info="$(printf '%s\n' "$_getlist_raw" | awk '$1!="#META" && NF>=3 && $2!="ice.message" && $2!="com.topjohnwu.magisk"{print}' | tr '/\:' '___' | sed 's/\.\./__/g')"
-	_user_rows="$(printf '%s\n' "$Apk_info" | awk 'NF>=3 && !index("|" $3 "|", "|system|") {n++} END{print n+0}')"
-	_target_rows="$(printf '%s\n' "$Apk_info" | awk 'NF>=3 && index("|" $3 "|", "|system|") {n++} END{print n+0}')"
-	xposed_name="$(echo "$Apk_info" | awk 'index("|" $3 "|", "|xposed|") {print $2}')"
-	Pre_installed_apps="$(printf '%s\n' "$Apk_info" | awk 'NF>=3 && index("|" $3 "|", "|system|") {print $1, $2}')"
-	# 預設不建立全系統 allpkg 集合；舊註解行保留，避免為清註解再掃 system。需要完整清理時才開。
-	if [[ ${SPEEDBACKUP_APPLIST_FULL_INSTALLED_CLEANUP:-0} = 1 ]]; then
-		appinfo "all" "pkgName" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | sed '/^[[:space:]]*$/d' | sort -u > "$TMPDIR/.getlist_allpkg"
-		_speed_debug_log "APP_INVENTORY_GETLIST_FULL_CLEANUP rows=$(wc -l < "$TMPDIR/.getlist_allpkg" 2>/dev/null | tr -d ' ')"
+	[[ ! -L $MODDIR/appList.txt ]] || return 1
+	if [[ -e $MODDIR/appList.txt ]]; then
+		[[ -f $MODDIR/appList.txt ]] || return 1
+		cp "$MODDIR/appList.txt" "$_stage/old" || return 1
+		_existed=1
 	else
-		: > "$TMPDIR/.getlist_allpkg"
+		_applist_backup_guide_header > "$_stage/old" || return 1
 	fi
-	Apk_info="$(printf '%s\n' "$Apk_info" | awk 'NF>=3{print $1, $2}' | sed '/^[[:space:]]*$/d' | sort -u)"
-	_total_rows="$(printf '%s\n' "$Apk_info" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
-	_speed_debug_log "APP_INVENTORY_GETLIST_ONECALL userRows=${_user_rows:-0} targetedSystemRows=${_target_rows:-0} totalRows=${_total_rows:-0} defaultHome=${Default_home_pkg:-none} defaultIme=${Default_ime_pkg:-none} fullCleanup=${SPEEDBACKUP_APPLIST_FULL_INSTALLED_CLEANUP:-0} timelineMsg=${SPEEDBACKUP_DEBUG_TIMELINE_MSG:-0}"
-	# reset visible duration immediately before the legacy output/validation phase.
-	# This avoids counting guide text and the one-call inventory round-trip in "輸出包名" elapsed time.
+	printf '%s\n' "$whitelist" > "$_stage/white" || return 1
+	printf '%s\n' "$blacklist" > "$_stage/black" || return 1
+	if [[ -n $system ]]; then
+		_filter="$(printf '%s\n' "$system" | awk '{for(i=1;i<=NF;i++) if($i !~ /^[#＃]/) print $i}' | sort -u | paste -sd, -)"
+	else
+		_filter=""
+	fi
+	appinventory_getlist "$_filter" refresh > "$_stage/inventory" || return 1
 	_speed_time_refresh; starttime1="${SPEEDBACKUP_NOW_SEC:-0}"
-	_speed_debug_log "APPLIST_TIMER_SCOPE start=output_loop excludes=guide,target_csv,inventory_onecall"
-	rm -f "$_target_system_pkgs" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	[[ $Apk_info = "" ]] && {
-		_speed_debug_log "APP_INVENTORY_GETLIST_EMPTY_OK user=${USER_ID:-${user:-0}} reason=no_user_or_whitelist_packages"
-		echoRgb "未找到可列出的第三方或白名單系統應用，已生成空列表" "2"
-		Apk_info2=""
-		Apk_Quantity=0
-		endtime1="$(date -u "+%s")"
-		echoRgb "輸出包名耗時:$(hms $((endtime1 - starttime1)))" "1"
-		cat "$txt" > "$MODDIR/appList.txt" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-		return 0
-	} || Apk_info2="$(echo "$Apk_info" | cut -d' ' -f2)"
-	Apk_Quantity="$(printf "%s\n" "$Apk_info" | awk 'END{print NR}')"
-	echoRgb "列出第三方應用......." "2"
-	i=0; rc=0; rd=0; Q=0; Qc=0; rb=0
-	# 預先收集所有「待加進 txt」的行, 用暫存檔取代 REPLY2 字串拼接 (O(N²) → O(N))
-	local appended="$TMPDIR/.getlist_append"
-	: > "$appended"
-	# 一次 awk 把所有 app 預分類, 取代主迴圈內的多次 grep/awk fork
-	# 輸出格式: <類別>\t<原行>
-	# 類別: BLACK / XPOSED / WHITE / PRELOAD / NORMAL
-	local classified="$TMPDIR/.getlist_class"
-	# 分類 awk: 同時做「已存在判斷」與「同名不同包重命名」, 主迴圈不再 fork grep/add_entry
-	# 用 FNR==NR 先吃 $txt (現有清單): 收集已存在包名集合 exist[], 以及 app名→已被佔用 namecnt[]
-	# 第二檔 (Apk_info) 才做分類; 輸出格式: <類別>\t<最終label>\t<pkg>
-	: > "$TMPDIR/.getlist_apkinfo"
-	while read -r _label _pkg _rest; do
-		[[ -n $_pkg ]] || continue
-		_backup_path_safe_name_set "$_label" "$_pkg"
-		printf '%s %s\n' "$_BACKUP_PATH_SAFE_NAME_RET" "$_pkg" >> "$TMPDIR/.getlist_apkinfo"
-	done <<EOF_LABELS
-$Apk_info
-EOF_LABELS
-	awk -v whitelist="$whitelist" \
-		-v blacklist="$blacklist" \
-		-v xposed="$xposed_name" \
-		-v default_home_pkg="$Default_home_pkg" \
-		-v default_ime_pkg="$Default_ime_pkg" '
-		BEGIN {
-			n = split(whitelist, _w, /[ \t\n]+/)
-			for (k in _w) if (_w[k] != "") wl[_w[k]] = 1
-			n = split(blacklist, _b, /[ \t\n]+/)
-			for (k in _b) if (_b[k] != "" && _b[k] !~ /^[#＃]/) bl[_b[k]] = 1
-			n = split(xposed, _x, /[ \t\n]+/)
-			for (k in _x) if (_x[k] != "") xp[_x[k]] = 1
-			preload_re = "(oneplus|miui|xiaomi|oppo|flyme|meizu|coloros)"
-			preload_exact["com.android.soundrecorder"] = 1
-			preload_exact["com.mfashiongallery.emag"] = 1
-			preload_exact["com.mi.health"] = 1
-			preload_exact["com.duokan.phone.remotecontroller"] = 1
-			preload_exact["com.android.calendar"] = 1
-			preload_exact["com.android.deskclock"] = 1
-			preload_exact["com.google.android.safetycore"] = 1
-			preload_exact["com.google.android.contactkeys"] = 1
-			preload_exact["com.google.android.apps.messaging"] = 1
-			preload_exact["com.google.android.calendar"] = 1
-		}
-		# 第一檔: 現有 $txt — 收集已存在 pkg 與 app名已佔用情況
-		FNR==NR {
-			# 包名永遠是最後一欄 $NF; label 是前面所有欄位 (app 名可能含空格)
-			# (註解行如 "#日曆 com.google...calendar" 也要排除該 app 重複輸出)
-			if (NF < 2) next
-			_cpkg = $NF
-			_clabel = $1
-			for (_j = 2; _j < NF; _j++) _clabel = _clabel " " $_j
-			if ($0 ~ /^[#＃!]/) {
-				exist_cmt[_cpkg] = 1       # 被註解(#/!)的已存在包名
-			} else {
-				exist[_cpkg] = 1           # 正常已存在包名
-				namepkg[_clabel] = _cpkg   # 同名衝突判斷只看非註解行
-				used[_clabel] = 1
-			}
-			next
-		}
-		# 第二檔: Apk_info — 分類
-		{
-			# 防禦: 跳過空行或缺包名的行 (避免產生空 pkg 分類, 與 Apk_Quantity 計數不一致)
-			if (NF < 2) next
-			# 包名永遠是最後一欄 $NF; label 是前面所有欄位 (app 名可能含空格)
-			pkg = $NF
-			label = $1
-			for (_j = 2; _j < NF; _j++) label = label " " $_j
-			# 已存在(正常) → EXIST; 已存在(被註解) → EXIST_CMT; 兩者主迴圈都只計數跳過
-			if (pkg in exist)     { print "EXIST\t"     label "\t" pkg; next }
-			# r87: HOME 就算原本在 appList 內被註解，也要補一條有效行；舊註解保留作為使用者歷史內容。
-			# default IME 與 default HOME 同級；預設鍵盤即使是系統 App 或既有註解行，也要強制輸出有效行並在終端標註。
-			if (default_home_pkg != "" && pkg == default_home_pkg) { force_home = 1 } else { force_home = 0 }
-			if (default_ime_pkg != "" && pkg == default_ime_pkg) { force_ime = 1 } else { force_ime = 0 }
-			if ((pkg in exist_cmt) && !force_home && !force_ime) { print "EXIST_CMT\t" label "\t" pkg; next }
-			# 同名不同包 → 加數字後綴 (與 add_entry 等價)
-			final = label
-			if ((label in used) && namepkg[label] != pkg) {
-				c = 1
-				while ((final = label "_" c) in used) c++
-			}
-			used[final] = 1; namepkg[final] = pkg
-			if (force_home && force_ime) { print "HOME_IME\t" final "\t" pkg; next }
-			if (force_home) { print "HOME\t" final "\t" pkg; next }
-			if (force_ime) { print "IME\t" final "\t" pkg; next }
-			if (pkg in bl)        { print "BLACK\t"      final "\t" pkg; next }
-			if (pkg ~ preload_re || pkg in preload_exact) {
-				if (pkg in xp)    { print "PRELOAD_XP\t" final "\t" pkg; next }
-				if (pkg in wl)    { print "PRELOAD_WL\t" final "\t" pkg; next }
-				print "PRELOAD\t" final "\t" pkg; next
-			}
-			if (pkg in xp)        { print "XPOSED\t"     final "\t" pkg; next }
-			print "NORMAL\t" final "\t" pkg
-		}' "$txt" "$TMPDIR/.getlist_apkinfo" > "$classified"
-	rm -f "$TMPDIR/.getlist_apkinfo"
-	[[ -n "$(echo "$blacklist" | grep -Ev '^[[:space:]]*[#＃]')" ]] && NZK=1
-	# 主迴圈: 從分類結果讀, 每行已預先標好類別
-	LR=1
-	local _seen=0   # 核對1: 迴圈實際處理的 app 數, 應 == Apk_Quantity
-	# 分類 awk 已算好最終 label 與已存在判斷, 迴圈內不再 fork (grep/cat/add_entry 全消除)
-	local _getlist_ui
-	_getlist_ui="$(mktemp "$TMPDIR/.getlist_ui.XXXXXX" 2>/dev/null)" || _getlist_ui=""
-	# The function's explicit return 0 distinguishes a failed output open from
-	# loop results. On open failure it has not run; retain direct output fallback.
-	if [[ -n $_getlist_ui ]] && _getlist_emit_classified 2>/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} > "$_getlist_ui"; then
-		_speedbackup_ui_stream < "$_getlist_ui"
-		_speed_debug_log "APPLIST_UI_BATCH rows=$_seen mode=classified-loop batches=1 nativeCallsMax=1"
-	else
-		_speed_debug_log "APPLIST_UI_BATCH_FALLBACK reason=temp_create_or_open mode=direct"
-		_getlist_emit_classified
-	fi
-	[[ -n $_getlist_ui ]] && rm -f "$_getlist_ui" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	# 核對1 用: 先記錄合併前 txt 既有的有效行數 (非註解) — 須在 append 前取
-	local _old_eff
-	_old_eff=$(awk '/^[[:space:]]*$/{next} /^[[:space:]]*[#＃!]/{next} {c++} END{print c+0}' "$txt" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})
-	local _chk_fail=0
-	# ====== 數量核對1: 全員到齊 (無論有無新輸出都檢查) ======
-	# 迴圈處理數 _seen 應 == 分類檔行數, 且 == 系統第三方總數 Apk_Quantity
-	local _cls_lines
-	_cls_lines=$(awk 'END{print NR+0}' "$classified" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})
-	if [[ ${_seen:-0} -ne ${_cls_lines:-0} ]]; then
-		echoRgb "⚠️ 數量核對1異常: 迴圈處理=$_seen 但分類檔行數=$_cls_lines (迴圈漏讀)" "0"
-		_chk_fail=1
-	elif [[ ${_seen:-0} -ne ${Apk_Quantity:-0} ]]; then
-		echoRgb "⚠️ 數量核對1異常: 已分類=$_seen 但第三方總數=$Apk_Quantity (分類前後數量不符)" "0"
-		_chk_fail=1
-	else
-		echoRgb "✅ 數量核對1: 全部 $Apk_Quantity 個 app 皆已分類處理" "1"
-	fi
-	# 把累積的 append 一次寫進 txt
-	if [[ -s $appended ]]; then
-		# 修復: txt 結尾若缺換行符, 直接 append 會與新內容第一行黏成一行 (已知問題根因)
-		[[ -s $txt ]] && [[ -n "$(tail -c1 "$txt")" ]] && echo >> "$txt"
-		cat "$appended" >> "$txt"
-		echoRgb "已經將預裝應用輸出至appList.txt並注釋# 需要備份則去掉#" "0"
-		[[ -n $tmp ]] && echoRgb "第三方apk數量=\"$Apk_Quantity\"\n -已過濾=\"$rc\"\n -xposed=\"$rd\"\n -黑名單應用=\"$rb\"\n -存在列表中=\"$Q\"\n -已註解略過=\"$Qc\"\n -輸出=\"$i\""
-		# ====== 數量核對2: 輸出行 (僅在有新輸出時) ======
-		# 合併後有效行 應 == 合併前有效行 + 本次輸出 i
-		local _eff_lines _expect _new_eff
-		_eff_lines=$(awk '/^[[:space:]]*$/{next} /^[[:space:]]*[#＃!]/{next} {c++} END{print c+0}' "$txt")
-		# 本次 append 的非註解有效行數 (輸出 i 含註解行, 不可全加)
-		_new_eff=$(awk '/^[[:space:]]*$/{next} /^[[:space:]]*[#＃!]/{next} {c++} END{print c+0}' "$appended" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})
-		_expect=$(( ${_old_eff:-0} + ${_new_eff:-0} ))
-		if [[ $_eff_lines -ne $_expect ]]; then
-			echoRgb "⚠️ 數量核對2異常: 列表有效行=$_eff_lines 但預期(原有$_old_eff+本次新增有效$_new_eff)=$_expect" "0"
-			_chk_fail=1
+	_speedscan_cmd applist-merge "$_stage/old" "$_stage/inventory" "$_stage/white" "$_stage/black" "$blacklist_mode" "${USER_ID:-${user:-0}}" "$_stage/ready" "$_stage/report" > "$_stage/receipt" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
+	IFS="$SB_TAB" read -r _status _count _removed Default_home_pkg Default_ime_pkg Apk_Quantity _old_eff _new_eff NZK _rest < "$_stage/receipt" || return 1
+	[[ $_status = APPLIST_REPORT_1 && -z $_rest ]] || return 1
+	case $NZK in 0|1) ;; *) return 1 ;; esac
+	for _status in "$_count" "$_removed" "$Apk_Quantity" "$_old_eff" "$_new_eff"; do
+		case $_status in ''|*[!0-9]*) return 1 ;; esac
+	done
+	[[ $Default_home_pkg != - ]] || Default_home_pkg=""
+	[[ $Default_ime_pkg != - ]] || Default_ime_pkg=""
+	if [[ $Apk_Quantity = 0 ]]; then
+		if [[ $_count = 0 ]]; then
+			echoRgb "未找到可列出的第三方或白名單系統應用，已生成空列表" "2"
 		else
-			echoRgb "✅ 數量核對2: 列表有效行=$_eff_lines (原有$_old_eff+本次新增有效$_new_eff)" "1"
+			echoRgb "未找到可列出的第三方或白名單系統應用，保留既有已安裝應用" "2"
 		fi
+		_speed_time_refresh; endtime1="${SPEEDBACKUP_NOW_SEC:-0}"
+		echoRgb "輸出包名耗時:$(hms $((endtime1 - starttime1)))" "1"
 	else
-		# 無新輸出 (全部已存在/已註解): 顯示統計, 核對2 不適用
-		[[ -n $tmp ]] && echoRgb "第三方apk數量=\"$Apk_Quantity\"\n -已過濾=\"$rc\"\n -xposed=\"$rd\"\n -黑名單應用=\"$rb\"\n -存在列表中=\"$Q\"\n -已註解略過=\"$Qc\"\n -輸出=\"$i\""
+	echoRgb "列出第三方應用......." "2"
+	_getlist_display_classified > "$_stage/ui" || return 1
+	_speedbackup_ui_stream < "$_stage/ui"
+	[[ $_seen = "$Apk_Quantity" ]] || return 1
+	echoRgb "✅ 數量核對1: 全部 $Apk_Quantity 個 app 皆已分類處理" "1"
+	if [[ -n $tmp ]]; then
+		echoRgb "已經將預裝應用輸出至appList.txt並注釋# 需要備份則去掉#" "0"
+		echoRgb "第三方apk數量=\"$Apk_Quantity\"\n -已過濾=\"$rc\"\n -xposed=\"$rd\"\n -黑名單應用=\"$rb\"\n -存在列表中=\"$Q\"\n -已註解略過=\"$Qc\"\n -輸出=\"$i\""
+		echoRgb "✅ 數量核對2: 列表有效行=$((_old_eff + _new_eff)) (原有$_old_eff+本次新增有效$_new_eff)" "1"
+	else
 		echoRgb "本次無新增應用 (全部已存在或已註解)" "2"
 	fi
-	# 任一核對失敗 → 中止, 不寫出可能有誤的列表
-	if [[ $_chk_fail = 1 ]]; then
-		echoRgb "輸出異常 數量核對不通過 請聯繫作者解決" "0"
-		rm -rf "$txt"
-		rm -f "$appended" "$classified"
-		exit 1
-	fi
-	rm -f "$appended" "$classified"
-	# 結尾過濾: 對 txt 內的每行檢查 pkg 是否還在系統內, 不在的刪掉
-	# 用一個 awk 一次處理 (取代原本 per-row fork awk)
-	if [[ -f $txt ]]; then
-		local pkg_set="$TMPDIR/.getlist_pkgset"
-		echo "$Apk_info2" > "$pkg_set"
-		# 註解行用「全系統已裝包名」判斷 (Apk_info2 僅第三方+白名單預裝, 會誤刪系統 app)
-		# 直接複用開頭 appinfo 已存的全包名集合, 不再跑 pm list packages (省一次全系統查詢)
-		local all_pkg_set="$TMPDIR/.getlist_allpkg"
-		local _allpkg_n
-		_allpkg_n="$(wc -l < "$all_pkg_set" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || echo 0)"
-		local filtered="$TMPDIR/.getlist_filtered"
-		# 三檔: (1)第三方清單 existing[] (2)全系統清單 allpkg[] (3)txt 逐行判斷
-		awk -v allpkg_n="$_allpkg_n" '
-			# 第一檔: 第三方清單
-			FNR==NR { existing[$1]=1; next }
-			# 第二檔: 全系統清單
-			FILENAME == ALLF { allpkg[$1]=1; next }
-			# 第三檔: txt
-			/^[[:space:]]*$/ { print; next }
-			/^[[:space:]]*[#＃!]/ {
-				cpkg = $2
-				if (cpkg ~ /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z0-9_]+)+$/) {
-					# 合法包名的註解行: 全系統清單為空時一律保留(防 pm 失敗誤刪), 否則查全系統存在性
-					if (allpkg_n == 0 || cpkg in allpkg) print
-					else print "##__MISSING__\t" $0
-				} else {
-					print   # 說明行 / 無合法包名 → 保留
-				}
-				next
-			}
-			{
-				pkg = $2
-				if (pkg == "" || pkg in existing) print
-				else print "##__MISSING__\t" $0
-			}' ALLF="$all_pkg_set" "$pkg_set" "$all_pkg_set" "$txt" > "$filtered"
-		# 印出被刪除的行 (給用戶看)
-		grep '^##__MISSING__' "$filtered" | sed 's/^##__MISSING__\t//' | while read -r missing_line; do
-			echoRgb "$missing_line不存在系統，從列表中刪除" "0"
-		done
-		# 寫回 txt (排序, 去空行)
-		grep -v '^##__MISSING__' "$filtered" \
-			| sed -e '/^$/d' | sort > "$txt"
-			_applist_home_last_file "$txt" "getlist_output"
-		rm -f "$pkg_set" "$all_pkg_set" "$filtered"
-	fi
-	# ====== appList.txt 結構驗證 (類似 JSON 自動檢查) ======
-	# 檢查: 非註解行欄位數=2、包名格式合法、包名無重複
-	if [[ -f $txt ]]; then
-		echoRgb "—————— 應用列表結構驗證 ——————" "3"
-		local _lc_err="$TMPDIR/.applist_err"
-		: > "$_lc_err"
-		awk '
-			/^[[:space:]]*$/      { next }
-			/^[[:space:]]*[#＃!]/ { next }
-			{
-				total++
-				if (NF != 2) { print "欄位數異常(" NF "欄): " $0; next }
-				pkg = $2
-				if (pkg !~ /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z0-9_]+)+$/) print "包名格式可疑: " $1 " " pkg
-				if (pkg in seen) print "包名重複: " pkg " (與 " seen[pkg] " 重複)"
-				else seen[pkg] = $1
-			}
-			END { print "##TOTAL##\t" total > "/dev/stderr" }
-		' "$txt" 2> "$TMPDIR/.applist_cnt" >> "$_lc_err"
-		local _lc_total
-		_lc_total="$(awk -F'\t' '/^##TOTAL##/{print $2}' "$TMPDIR/.applist_cnt" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null})"
-		rm -f "$TMPDIR/.applist_cnt"
-		if [[ -s $_lc_err ]]; then
-			echoRgb "列表驗證發現異常:" "0"
-			while read -r _el; do echoRgb "❌ $_el" "0"; done < "$_lc_err"
-			echoRgb "請檢查 appList.txt 後再進行備份" "0"
-		else
-			echoRgb "✅ 列表結構正常 (${_lc_total:-0} 個有效應用)" "1"
-		fi
-		rm -f "$_lc_err"
-	fi
+	while IFS= read -r _missing_line; do
+		echoRgb "${_missing_line}不存在系統，從列表中刪除" "0"
+	done < "$_stage/report.missing"
+	echoRgb "—————— 應用列表結構驗證 ——————" "3"
+	echoRgb "✅ 列表結構正常 ($_count 個有效應用)" "1"
 	endtime 1
-	cat "$txt">"$MODDIR/appList.txt" && rm "$txt"
-	chown "$(stat -c '%u:%g' '/data/media/0/Download')" "$MODDIR/appList.txt"
-	echoRgb "輸出包名結束 請查看$MODDIR/appList.txt"
+	fi
+	[[ ! -L $MODDIR/appList.txt ]] || return 1
+	if [[ $_existed = 1 ]]; then
+		cmp -s "$_stage/old" "$MODDIR/appList.txt" || return 1
+	else
+		[[ ! -e $MODDIR/appList.txt ]] || return 1
+	fi
+	_generated_file_publish "$_stage/ready" "$MODDIR/appList.txt" || return 1
+	_generated_list_owner "$MODDIR/appList.txt"
+	_speed_debug_log "APPLIST_RUST_COMPLETE active=$_count removed=$_removed fullInventory=1 comments=preserved"
+	[[ $Apk_Quantity = 0 ]] || echoRgb "輸出包名結束 請查看$MODDIR/appList.txt"
+	return 0
 }
-# 備份自定義資料夾 (來自 Custom_path 設定)
-# 例: Pictures / Download / DCIM / /data/adb 等
-# 結尾設 REMOTE_UPLOAD_MEDIA=1 + REMOTE_TRIGGER=1
+
+Getlist() {
+	case $MODDIR in /storage/emulated/0/Android/*|/data/media/0/Android/*|/sdcard/Android/*) return 2 ;; esac
+	if [[ -n ${blacklist_mode:-} ]]; then
+		isBoolean "$blacklist_mode" "blacklist_mode" && blacklist_mode="$nsx" || return 2
+	else
+		_speedbackup_ui_must_rgb "選擇黑名單模式\n -音量上不輸出，音量下輸出應用列表" "2"
+		get_version "不輸出" "輸出應用列表" || return 1
+		blacklist_mode="$branch"
+	fi
+	local _stage _rc
+	_stage="$(mktemp -d "$TMPDIR/.getlist_rust.XXXXXXXX")" || return 1
+	_getlist_rust_impl "$_stage"; _rc=$?
+	[[ $_rc = 0 ]] || echoRgb "生成列表失敗或原檔已變更，未發布新列表" "0"
+	rm -f "$_stage/old" "$_stage/white" "$_stage/black" "$_stage/inventory" "$_stage/receipt" "$_stage/ready" "$_stage/report.events" "$_stage/report.missing" "$_stage/ui"
+	rmdir "$_stage" 2>/dev/null || true
+	return "$_rc"
+}
+
 backup_media() {
 	_speedbackup_operation_begin backup
 	self_test

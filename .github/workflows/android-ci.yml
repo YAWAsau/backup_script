@@ -30,6 +30,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y mksh
       - name: Check source and committed tools
         run: python ci/check_repository.py check --shells
+      - name: Check restore inventory failure boundaries
+        run: python ci/test_restore_inventory.py
 
   android-build:
     name: Android arm64 Dex and Rust

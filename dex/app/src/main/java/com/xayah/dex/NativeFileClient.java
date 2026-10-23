@@ -108,7 +108,9 @@ final class NativeFileClient {
     }
     static synchronized void run(String... args)throws Exception {
         need(!uncertain,"previous file RPC outcome uncertain; restore session stopped");
-        ensure();String request=id();ArrayList<String> fields=new ArrayList<>(Arrays.asList("SBFILE1",request,"RUN","600000"));fields.addAll(Arrays.asList(args));
+        long ensureStart=SystemClock.elapsedRealtime();
+        ensure();long ensureMs=SystemClock.elapsedRealtime()-ensureStart;
+        String request=id();ArrayList<String> fields=new ArrayList<>(Arrays.asList("SBFILE1",request,"RUN","600000"));fields.addAll(Arrays.asList(args));
         long begin=SystemClock.elapsedRealtime();
         try {
             Reply r;
@@ -121,7 +123,7 @@ final class NativeFileClient {
             // Preserve engine diagnostics, but success is decided by the broker's waitpid result.
             System.err.write(r.body);System.err.flush();
             if(r.rc!=0)throw new OperationFailure(r.rc);
-            System.err.println("FILE_RPC_OK command="+args[0]+" elapsedMs="+(SystemClock.elapsedRealtime()-begin));
+            System.err.println("FILE_RPC_OK command="+args[0]+" elapsedMs="+(SystemClock.elapsedRealtime()-begin)+" ensureMs="+ensureMs);
         } catch(Exception e){
             if(e instanceof TransportFailure && ((TransportFailure)e).written)uncertain=true;
             if(e instanceof OperationFailure && ((OperationFailure)e).code==125)uncertain=true;

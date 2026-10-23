@@ -156,41 +156,49 @@ fn unsetenv_ignored(name: &str) {
 }
 
 fn make_tmpdir(android_data: &str, uid: u32, gid: u32) {
+    let tmpdir = prepare_tmpdir(android_data, uid, gid).unwrap_or_else(|error| {
+        eprintln!("uidexec: prepare TMPDIR: {error}");
+        std::process::exit(1);
+    });
+    setenv_checked("TMPDIR", &tmpdir, 1, Some("setenv TMPDIR"));
+}
+
+fn prepare_tmpdir(android_data: &str, uid: u32, gid: u32) -> std::io::Result<String> {
     let tmpdir = format!("{}/tmp", android_data);
     if tmpdir.len() >= 4096 {
-        die_msg("TMPDIR path too long");
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "TMPDIR path too long"));
     }
     // Resolve Android's /data/data alias, then pin every component without
     // following links. All metadata changes operate on the opened inode.
-    let canonical = std::fs::canonicalize(android_data).unwrap_or_else(|_| die("resolve ANDROID_DATA"));
-    let mut parent = File::open("/").unwrap_or_else(|_| die("open root"));
+    let canonical = std::fs::canonicalize(android_data)?;
+    let mut parent = File::open("/")?;
     const DIR_FLAGS: c_int = speedbackup_native_rs::O_DIRECTORY_NATIVE
         | speedbackup_native_rs::O_NOFOLLOW_NATIVE | 0x80000;
     for part in canonical.components() {
         if let std::path::Component::Normal(name) = part {
-            let name = CString::new(name.as_bytes()).unwrap();
+            let name = CString::new(name.as_bytes())?;
             let fd = unsafe { openat(parent.as_raw_fd(), name.as_ptr(), DIR_FLAGS) };
-            if fd < 0 { die("open ANDROID_DATA component"); }
+            if fd < 0 { return Err(std::io::Error::last_os_error()); }
             parent = unsafe { File::from_raw_fd(fd) };
         }
     }
-    if parent.metadata().unwrap_or_else(|_| die("stat ANDROID_DATA")).uid() != uid {
-        die_msg("ANDROID_DATA owner does not match target uid");
+    if parent.metadata()?.uid() != uid {
+        return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "ANDROID_DATA owner does not match target uid"));
     }
     let c_tmpdir = cstr("tmp");
     let rc = unsafe { mkdirat(parent.as_raw_fd(), c_tmpdir.as_ptr(), 0o700) };
     if rc != 0 {
         let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
         if errno != EEXIST {
-            die("mkdir TMPDIR");
+            return Err(std::io::Error::last_os_error());
         }
     }
     let fd = unsafe { openat(parent.as_raw_fd(), c_tmpdir.as_ptr(), DIR_FLAGS) };
-    if fd < 0 { die("open TMPDIR without symlinks"); }
+    if fd < 0 { return Err(std::io::Error::last_os_error()); }
     let tmp = unsafe { File::from_raw_fd(fd) };
-    if unsafe { fchown(tmp.as_raw_fd(), uid, gid) } != 0 { die("fchown TMPDIR"); }
-    if unsafe { fchmod(tmp.as_raw_fd(), 0o700) } != 0 { die("fchmod TMPDIR"); }
-    setenv_checked("TMPDIR", &tmpdir, 1, Some("setenv TMPDIR"));
+    if unsafe { fchown(tmp.as_raw_fd(), uid, gid) } != 0 { return Err(std::io::Error::last_os_error()); }
+    if unsafe { fchmod(tmp.as_raw_fd(), 0o700) } != 0 { return Err(std::io::Error::last_os_error()); }
+    Ok(tmpdir)
 }
 
 fn harden_process() {
@@ -329,4 +337,75 @@ pub(crate) fn run() {
     }
 
     exec_command(&raw_args[cmd_index..]);
+}
+
+pub(crate) fn prepare_pm_command(command: &mut std::process::Command, uid: u32, data: &str, classpath: &str) -> std::io::Result<()> {
+    use std::os::unix::process::CommandExt;
+    let tmpdir = prepare_tmpdir(data, uid, uid)?;
+    command.env("TMPDIR", tmpdir).env("ANDROID_DATA", data).env("CLASSPATH", classpath);
+    unsafe {
+        command.pre_exec(move || {
+            umask(0o077);
+            let groups = [uid];
+            if setgroups(1, groups.as_ptr()) != 0 || setresgid(uid, uid, uid) != 0 || setresuid(uid, uid, uid) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            let (mut real_uid, mut effective_uid, mut saved_uid) = (u32::MAX, u32::MAX, u32::MAX);
+            let (mut real_gid, mut effective_gid, mut saved_gid) = (u32::MAX, u32::MAX, u32::MAX);
+            if getresuid(&mut real_uid, &mut effective_uid, &mut saved_uid) != 0
+                || getresgid(&mut real_gid, &mut effective_gid, &mut saved_gid) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            if [real_uid, effective_uid, saved_uid, real_gid, effective_gid, saved_gid].iter().any(|value| *value != uid) {
+                return Err(std::io::Error::from_raw_os_error(1));
+            }
+            if prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod pm_identity_tests {
+    use super::*;
+    use std::process::Command;
+
+    #[test]
+    fn child_identity_is_restricted_and_parent_is_unchanged() {
+        assert_eq!(unsafe { getuid() }, 0);
+        let path = format!("/data/local/tmp/sb_identity_unit_{}", std::process::id());
+        std::fs::create_dir(&path).unwrap();
+        let directory = File::open(&path).unwrap();
+        assert_eq!(unsafe { fchown(directory.as_raw_fd(), 19999, 19999) }, 0);
+        let previous = std::env::var_os("TMPDIR");
+        let mut command = Command::new("/system/bin/sh");
+        command.args(["-c", "id -u; id -g; id -G"]);
+        prepare_pm_command(&mut command, 19999, &path, "/unused/classes.dex").unwrap();
+        let output = command.output().unwrap();
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), "19999\n19999\n19999\n");
+        assert_eq!(std::env::var_os("TMPDIR"), previous);
+        assert_eq!(unsafe { getuid() }, 0);
+        let metadata = std::fs::metadata(format!("{path}/tmp")).unwrap();
+        assert_eq!(metadata.uid(), 19999);
+        assert_eq!(metadata.gid(), 19999);
+        assert_eq!(metadata.mode() & 0o777, 0o700);
+        std::fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn unsafe_tmp_paths_and_owner_mismatch_are_rejected() {
+        let path = format!("/data/local/tmp/sb_identity_negative_{}", std::process::id());
+        std::fs::create_dir(&path).unwrap();
+        assert!(prepare_tmpdir(&path, 19999, 19999).is_err());
+        let target = format!("{path}/target");
+        std::fs::create_dir(&target).unwrap();
+        std::os::unix::fs::symlink(&target, format!("{path}/tmp")).unwrap();
+        assert!(prepare_tmpdir(&path, 0, 0).is_err());
+        assert_eq!(std::fs::metadata(&target).unwrap().uid(), 0);
+        std::fs::remove_dir_all(path).unwrap();
+    }
 }

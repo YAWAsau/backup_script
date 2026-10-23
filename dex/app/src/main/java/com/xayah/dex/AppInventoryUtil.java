@@ -36,7 +36,6 @@ import dev.rikka.tools.refine.Refine;
 final class AppInventoryUtil {
     static final String VERSION = DexBuildInfo.VERSION;
     private static final String XPOSED_MODULE_METADATA = "xposedmodule";
-    private static final String XPOSED_MIN_VERSION_METADATA = "xposedminversion";
     private static final Gson GSON = new Gson();
     private static final Map<String, List<Item>> CACHE = new HashMap<>();
 
@@ -72,13 +71,17 @@ final class AppInventoryUtil {
                 break;
             }
         }
-        List<Item> items = snapshot(userId, refresh);
         HomeInfo home = defaultHomeInfo(userId);
         ImeInfo ime = defaultImeInfo(userId);
         Set<String> targets = parsePackageSet(targetCsv);
         if (!home.packageName.isEmpty()) targets.add(home.packageName);
         if (!ime.packageName.isEmpty()) targets.add(ime.packageName);
-        StringBuilder out = new StringBuilder(items.size() * 64);
+        List<Item> items = snapshot(userId, true, targets);
+        StringBuilder out = new StringBuilder(items.size() * 96);
+        out.append("#META\tinventoryBegin\t1\t").append(userId).append('\n');
+        for (Item item : items) {
+            out.append("#META\tinstalled\t").append(item.packageName).append('\n');
+        }
         out.append("#META\tdefaultHome\t")
                 .append(sanitize(home.packageName)).append('\t')
                 .append(sanitize(home.label)).append('\t')
@@ -117,23 +120,39 @@ final class AppInventoryUtil {
                     .append(item.xposedScopeList ? "true" : "false").append('\t')
                     .append(sanitize(item.xposedEvidence)).append('\n');
         }
+        int selectedCount = 0;
         for (Item item : items) {
             if (item == null || item.packageName == null || item.packageName.isEmpty()) continue;
             boolean include = !item.system || item.xposed || targets.contains(item.packageName);
             if (!include) continue;
+            selectedCount++;
             out.append(removeSpaces(item.label)).append(' ')
                     .append(item.packageName).append(' ')
                     .append(item.flag).append('\n');
         }
+        out.append("#META\tinventoryEnd\t").append(userId).append('\t')
+                .append(items.size()).append('\t').append(selectedCount).append('\n');
         return out.toString();
     }
 
     static synchronized String render(int userId, String format, String filter, boolean refresh) throws Exception {
+        if ("restoreMaps".equals(format) && "all".equals(filter)) {
+            return renderRestoreMaps(userId);
+        }
         List<Item> items = snapshot(userId, refresh);
         StringBuilder out = new StringBuilder(items.size() * 96);
+        int rendered = 0;
+        if ("restoreMaps".equals(format)) {
+            out.append("RESTORE_MAPS_1\t").append(userId).append('\n');
+        }
         for (Item item : items) {
             if (!matchesFilter(item, filter)) continue;
             switch (format) {
+                case "restoreMaps":
+                    out.append(item.packageName).append('\t').append(item.uid).append('\t')
+                            .append(item.versionCode).append('\n');
+                    rendered++;
+                    break;
                 case "pkgName":
                     out.append(item.packageName).append('\n');
                     break;
@@ -183,7 +202,30 @@ final class AppInventoryUtil {
                     break;
             }
         }
+        if ("restoreMaps".equals(format)) {
+            out.append("END_RESTORE_MAPS_1\t").append(rendered).append('\n');
+        }
         return out.toString();
+    }
+
+    private static String renderRestoreMaps(int userId) throws Exception {
+        Context context = HiddenApiHelper.getContext();
+        PackageManager manager = PackageManagerUtil.getPackageManager(context).packageManager();
+        PackageManagerHidden hidden = Refine.unsafeCast(manager);
+        List<PackageInfo> packages = hidden.getInstalledPackagesAsUser(PackageManager.GET_META_DATA, userId);
+        StringBuilder output = new StringBuilder("RESTORE_MAPS_1\t").append(userId).append('\n');
+        int count = 0;
+        if (packages != null) {
+            for (PackageInfo info : packages) {
+                if (info == null || info.applicationInfo == null || info.packageName == null || info.packageName.isEmpty()) {
+                    continue;
+                }
+                output.append(info.packageName).append('\t').append(info.applicationInfo.uid).append('\t')
+                        .append(longVersionCode(info)).append('\n');
+                count++;
+            }
+        }
+        return output.append("END_RESTORE_MAPS_1\t").append(count).append('\n').toString();
     }
 
 
@@ -567,6 +609,8 @@ final class AppInventoryUtil {
         final PackageManagerHidden hidden;
         final java.util.HashMap<String, PackageInfo> infos = new java.util.HashMap<>();
         final java.util.HashMap<String, Throwable> failures = new java.util.HashMap<>();
+        final java.util.HashMap<Integer, Boolean> installPermissions = new java.util.HashMap<>();
+        final java.util.HashMap<String, Boolean> directories = new java.util.HashMap<>();
 
         InstallFactsSnapshot(int userId) throws Exception {
             this.userId = userId;
@@ -586,6 +630,29 @@ final class AppInventoryUtil {
                 throw failure;
             }
         }
+
+        boolean directoryExists(String path) {
+            Boolean exists = directories.get(path);
+            if (exists == null) {
+                exists = new File(path).isDirectory();
+                directories.put(path, exists);
+            }
+            return exists;
+        }
+
+        boolean canInstall(int uid) {
+            Boolean allowed = installPermissions.get(uid);
+            if (allowed == null) {
+                try {
+                    allowed = HiddenApiHelper.getContext().checkPermission(
+                            "android.permission.INSTALL_PACKAGES", -1, uid) == PackageManager.PERMISSION_GRANTED;
+                } catch (Exception unavailable) {
+                    allowed = false;
+                }
+                installPermissions.put(uid, allowed);
+            }
+            return allowed;
+        }
     }
 
     static synchronized String restoreInstallFacts(int userId, String targetPackage, String apkKind, String backupInstaller, String policy, boolean refresh) throws Exception {
@@ -594,8 +661,6 @@ final class AppInventoryUtil {
         String installer = backupInstaller == null ? "" : backupInstaller.trim();
         InstallFactsSnapshot snapshot = target.isEmpty() ? null : new InstallFactsSnapshot(userId);
         String plan = restoreInstallPlan(userId, targetPackage, apkKind, backupInstaller, policy, snapshot);
-        // Shell only considers the recorded Play installer for UID hybrid. Do
-        // not add context/PM work for other stores or an empty installer.
         String context = "com.android.vending".equals(installer)
                 ? installerContextFacts(userId, targetPackage, installer, snapshot) : "";
         return "#schema\tspeedbackup.restore_install_facts.v1\n#section\tplan\n"
@@ -633,18 +698,20 @@ final class AppInventoryUtil {
             if (item == null) throw new IllegalStateException("ITEM_NULL");
             String dataDir = "/data/user/" + userId + "/" + installer;
             String deDataDir = "/data/user_de/" + userId + "/" + installer;
-            boolean dataOk = new File(dataDir).isDirectory();
-            boolean deDataOk = new File(deDataDir).isDirectory();
+            boolean dataOk = snapshot.directoryExists(dataDir);
+            boolean deDataOk = snapshot.directoryExists(deDataDir);
             boolean uidOk = item.uid >= 0;
             boolean usablePm = item.enabled && uidOk;
-            boolean usableHybrid = usablePm && dataOk;
+            boolean installAllowed = uidOk && snapshot.canInstall(item.uid);
+            boolean usableHybrid = usablePm && dataOk && installAllowed;
             out.append("OK\t").append(sanitize(target)).append('\t').append(sanitize(installer)).append('\t').append(userId).append('\t')
                     .append(targetInstalled ? "true" : "false").append('\t').append(sanitize(targetInstaller)).append('\t')
                     .append("true\t").append(item.enabled ? "true" : "false").append('\t').append(item.uid).append('\t')
                     .append(sanitize(dataDir)).append('\t').append(sanitize(deDataDir)).append('\t').append(item.versionCode).append('\t')
                     .append("com.android.vending".equals(installer) ? "true" : "false").append('\t')
                     .append(usablePm ? "true" : "false").append('\t').append(usableHybrid ? "true" : "false").append('\t')
-                    .append(dataOk ? "OK" : (deDataOk ? "DATA_DIR_MISSING_DE_EXISTS" : "DATA_DIR_MISSING")).append("\n");
+                    .append(!installAllowed ? "INSTALL_PERMISSION_DENIED"
+                            : dataOk ? "OK" : (deDataOk ? "DATA_DIR_MISSING_DE_EXISTS" : "DATA_DIR_MISSING")).append("\n");
         } catch (Throwable t) {
             out.append("MISSING\t").append(sanitize(target)).append('\t').append(sanitize(installer)).append('\t').append(userId)
                     .append("\t").append(targetInstalled ? "true" : "false").append('\t').append(sanitize(targetInstaller))
@@ -695,8 +762,10 @@ final class AppInventoryUtil {
                 if (i != null && i.enabled && i.uid >= 0) {
                     installerArg = installer;
                     installerUid = i.uid;
-                    usableHybrid = new File("/data/user/" + userId + "/" + installer).isDirectory();
-                    reason = usableHybrid ? "session_hybrid_installer_available" : "session_installer_pm_only";
+                    boolean installAllowed = snapshot.canInstall(i.uid);
+                    usableHybrid = installAllowed && snapshot.directoryExists("/data/user/" + userId + "/" + installer);
+                    reason = !installAllowed ? "session_installer_permission_denied"
+                            : usableHybrid ? "session_hybrid_installer_available" : "session_installer_pm_only";
                 }
             } catch (Throwable t) {
                 reason = "session_installer_unavailable_" + t.getClass().getSimpleName();
@@ -966,9 +1035,14 @@ final class AppInventoryUtil {
     }
 
     static synchronized List<Item> snapshot(int userId, boolean refresh) throws Exception {
+        return snapshot(userId, refresh, null);
+    }
+
+    private static List<Item> snapshot(int userId, boolean refresh, Set<String> labelTargets) throws Exception {
+        boolean strict = labelTargets != null;
         Locale locale = AppLocale.parse(System.getenv("APP_LABEL_LOCALE"));
         String cacheKey = userId + "|" + (locale == null ? "" : locale.toLanguageTag());
-        if (!refresh) {
+        if (!refresh && !strict) {
             List<Item> cached = CACHE.get(cacheKey);
             if (cached != null) return cached;
         }
@@ -979,10 +1053,17 @@ final class AppInventoryUtil {
         if (effectiveLocale == null) effectiveLocale = locale;
         PackageManagerHidden pmHidden = Refine.unsafeCast(pm);
         List<PackageInfo> packages = pmHidden.getInstalledPackagesAsUser(PackageManager.GET_META_DATA, userId);
+        if (strict && packages == null) throw new IllegalStateException("Incomplete package inventory");
         List<Item> items = new ArrayList<>();
         if (packages != null) {
             for (PackageInfo pkg : packages) {
-                Item item = toItem(pm, pkg, userId);
+                Item item = toItem(pm, pkg, userId, labelTargets);
+                if (strict && (item == null || item.packageName == null || item.packageName.isEmpty())) {
+                    throw new IllegalStateException("Incomplete package inventory item");
+                }
+                if (strict && !item.xposed && (item.xposedApkErrors != 0 || item.xposedApkScanned == 0)) {
+                    throw new IllegalStateException("Incomplete Xposed scan: " + item.packageName);
+                }
                 if (item != null && item.packageName != null && !item.packageName.isEmpty()) {
                     items.add(item);
                 }
@@ -991,7 +1072,7 @@ final class AppInventoryUtil {
         Collator collator = Collator.getInstance(effectiveLocale != null ? effectiveLocale : Locale.getDefault());
         items.sort((a, b) -> collator.getCollationKey(a.label == null ? "" : a.label)
                 .compareTo(collator.getCollationKey(b.label == null ? "" : b.label)));
-        CACHE.put(cacheKey, items);
+        if (!strict) CACHE.put(cacheKey, items);
         return items;
     }
 
@@ -1000,31 +1081,38 @@ final class AppInventoryUtil {
     }
 
     private static Item toItem(PackageManager pm, PackageInfo pkg, int userId) {
+        return toItem(pm, pkg, userId, null);
+    }
+
+    private static Item toItem(PackageManager pm, PackageInfo pkg, int userId, Set<String> labelTargets) {
         try {
             if (pkg == null || pkg.applicationInfo == null || pkg.packageName == null) return null;
             ApplicationInfo ai = pkg.applicationInfo;
             Item item = new Item();
             item.userId = userId;
             item.packageName = pkg.packageName;
-            AppLabelResolver.Result resolvedLabel = AppLabelResolver.resolve(new AppLabelResolver.Source() {
-                public CharSequence primary() { return ai.loadLabel(pm); }
-                public CharSequence nonLocalized() { return ai.nonLocalizedLabel; }
-                public CharSequence resource() throws Exception {
-                    return ai.labelRes == 0 ? null : pm.getResourcesForApplication(ai).getText(ai.labelRes);
-                }
-            }, pkg.packageName);
-            // Keep directory keys stable; the display label can improve independently.
-            item.label = safePathLabel(resolvedLabel.legacyLabel, pkg.packageName);
-            item.displayLabel = resolvedLabel.displayLabel;
-            item.labelSource = resolvedLabel.source;
+            item.system = (ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
+            XposedModuleScanner.Facts xposedFacts = xposedFacts(ai);
+            item.label = pkg.packageName;
+            if (labelTargets == null || !item.system || xposedFacts.module || labelTargets.contains(pkg.packageName)) {
+                AppLabelResolver.Result resolvedLabel = AppLabelResolver.resolve(new AppLabelResolver.Source() {
+                    public CharSequence primary() { return ai.loadLabel(pm); }
+                    public CharSequence nonLocalized() { return ai.nonLocalizedLabel; }
+                    public CharSequence resource() throws Exception {
+                        return ai.labelRes == 0 ? null : pm.getResourcesForApplication(ai).getText(ai.labelRes);
+                    }
+                }, pkg.packageName);
+                // Keep directory keys stable; the display label can improve independently.
+                item.label = safePathLabel(resolvedLabel.legacyLabel, pkg.packageName);
+                item.displayLabel = resolvedLabel.displayLabel;
+                item.labelSource = resolvedLabel.source;
+            }
             item.uid = ai.uid;
             item.versionCode = longVersionCode(pkg);
             item.versionName = pkg.versionName == null ? "" : pkg.versionName;
             item.enabled = ai.enabled;
             item.installed = true;
-            item.system = (ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
             item.updatedSystem = (ai.flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0;
-            XposedModuleScanner.Facts xposedFacts = xposedFacts(ai);
             item.xposed = xposedFacts.module;
             item.xposedModuleFormat = xposedFacts.moduleFormat;
             item.xposedLegacyMetadata = xposedFacts.legacyMetadata;
@@ -1038,7 +1126,9 @@ final class AppInventoryUtil {
             item.xposedEvidence = xposedFacts.evidence;
             item.sourceDir = ai.sourceDir == null ? "" : ai.sourceDir;
             item.publicSourceDir = ai.publicSourceDir == null ? "" : ai.publicSourceDir;
-            try { item.installerPackageName = pm.getInstallerPackageName(pkg.packageName); } catch (Throwable ignored) { item.installerPackageName = ""; }
+            if (labelTargets == null) {
+                try { item.installerPackageName = pm.getInstallerPackageName(pkg.packageName); } catch (Throwable ignored) { item.installerPackageName = ""; }
+            }
             item.splitSourceDirs = ai.splitSourceDirs == null ? new String[0] : ai.splitSourceDirs;
             item.splitCount = item.splitSourceDirs.length;
             List<String> flags = new ArrayList<>();
@@ -1106,13 +1196,15 @@ final class AppInventoryUtil {
     static XposedModuleScanner.Facts xposedFacts(ApplicationInfo info) {
         if (info == null) return XposedModuleScanner.inspect(false, null, null);
         boolean legacyMetadata = false;
+        boolean metadataError = false;
         try {
             if (info.metaData != null) {
-                legacyMetadata = info.metaData.containsKey(XPOSED_MODULE_METADATA)
-                        || info.metaData.containsKey(XPOSED_MIN_VERSION_METADATA);
+                legacyMetadata = XposedModuleScanner.legacyMetadata(info.metaData.get(XPOSED_MODULE_METADATA));
             }
-        } catch (Throwable ignored) {}
-        return XposedModuleScanner.inspect(legacyMetadata, info.sourceDir, info.splitSourceDirs);
+        } catch (RuntimeException ignored) { metadataError = true; }
+        XposedModuleScanner.Facts facts = XposedModuleScanner.inspect(legacyMetadata, info.sourceDir, info.splitSourceDirs);
+        if (metadataError) facts.apkErrors++;
+        return facts;
     }
 
     private static int parseInt(String raw, int fallback) {

@@ -1,0 +1,26 @@
+Adding or changing shell copies
+
+Generated public file overwrite: use _generated_file_publish. It stages a new
+inode, checks write/close/content, then renames. Do not substitute cat > target.
+Per-item list append: keep _generated_list_append and immediate visibility.
+Directory copies, metadata-preserving copies and private working files may use
+cp when their destination and failure semantics have been reviewed.
+
+Run python ci/check_repository.py check. New/changed cp source lines, duplicate
+occurrences and new product shell files require an explicit copy_routes.json
+entry with category, concrete reason and count. Do not refresh the inventory
+blindly. Review destination definitions as well as the copy line. Retained
+existing entries record the migration baseline, not proof of arbitrary paths.
+Do not copy template reasons for new routes: describe the concrete destination
+and why cp semantics are needed. Formatting or quote changes also trigger the
+check; review and update the affected entry rather than refreshing all entries.
+
+Scope: root *.sh and recursive tools/*.sh. The conservative text matcher can
+flag comments inside commands or strings. It does not parse shell evaluation,
+variable command names, aliases, other languages, cat/redirection, or changes
+to a destination variable elsewhere. Those still require code review. Function
+context is a lexical hint (last function declaration), not a parsed scope.
+Extensionless scripts, .ksh/.bash files and shell commands embedded in other
+languages are outside this scope. Split-line function declarations do not
+update the context hint; the exact source line is still checked.
+No global cp wrapper is installed; this check adds no Android runtime work.

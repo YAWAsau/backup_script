@@ -77,18 +77,30 @@ fn stop_process(pid: u32, token: &str) -> io::Result<StopProcess> {
         fd: unsafe { File::from_raw_fd(fd) },
         resume: false,
     };
-    if identity(pid)? != token {
-        return Err(io::ErrorKind::PermissionDenied.into());
+    match identity(pid) {
+        Ok(live) if live == token => (),
+        Err(_) if p.exited()? => return Ok(p),
+        Err(e) => return Err(e),
+        _ => return Err(io::ErrorKind::PermissionDenied.into()),
     }
-    let state = process_parent_state(pid)?.1;
+    let state = match process_parent_state(pid) {
+        Ok(v) => v.1,
+        Err(_) if p.exited()? => return Ok(p),
+        Err(e) => return Err(e),
+    };
     if state != 'T' && state != 't' && !p.exited()? {
         p.resume = true;
-        p.signal(19)?;
+        if let Err(e) = p.signal(19) {
+            if !p.exited()? { return Err(e); }
+        }
     }
     let start = Instant::now();
     while !p.exited()? {
-        if matches!(process_parent_state(pid)?.1, 'T' | 't') {
-            break;
+        match process_parent_state(pid) {
+            Ok((_, 'T' | 't')) => break,
+            Ok(_) => (),
+            Err(_) if p.exited()? => break,
+            Err(e) => return Err(e),
         }
         if start.elapsed().as_millis() > 1000 {
             return Err(io::ErrorKind::TimedOut.into());
@@ -103,14 +115,17 @@ pub fn lock_stop(args: &[String]) -> i32 {
     if args.len() != 2 {
         return 2;
     }
+    let mut stage = "guard";
     let result = (|| -> io::Result<usize> {
         let path = Path::new(&args[0]);
         let expected = &args[1];
         let _guard = guard(path)?;
+        stage = "lease_directory";
         let meta = fs::symlink_metadata(path)?;
         if !meta.is_dir() || meta.file_type().is_symlink() {
             return Err(io::ErrorKind::PermissionDenied.into());
         }
+        stage = "owner_record";
         if fs::read_to_string(path.join("owner"))?.trim() != expected {
             return Err(io::ErrorKind::PermissionDenied.into());
         }
@@ -127,10 +142,12 @@ pub fn lock_stop(args: &[String]) -> i32 {
             .trim()
             .parse()
             .map_err(|_| io::ErrorKind::InvalidData)?;
+        stage = "owner_process_identity";
         if pid <= 1 || pid > i32::MAX as u32 || identity(pid)? != *expected {
             return Err(io::ErrorKind::PermissionDenied.into());
         }
         // Never terminate this controller, or a parent whose death could kill it.
+        stage = "controller_ancestors";
         let mut ancestor = std::process::id();
         for _ in 0..256 {
             if ancestor == pid {
@@ -141,7 +158,9 @@ pub fn lock_stop(args: &[String]) -> i32 {
             }
             ancestor = process_parent_state(ancestor)?.0;
         }
+        stage = "freeze_owner";
         let mut processes = vec![stop_process(pid, expected)?];
+        stage = "scan_freeze_descendants";
         let started = Instant::now();
         loop {
             let before = processes.len();
@@ -184,11 +203,15 @@ pub fn lock_stop(args: &[String]) -> i32 {
             }
         }
         // Frozen parents cannot create new workers. Kill children before their owner.
+        stage = "kill_pinned_processes";
         for p in processes.iter().rev() {
             if !p.exited()? {
-                p.signal(9)?;
+                if let Err(e) = p.signal(9) {
+                    if !p.exited()? { return Err(e); }
+                }
             }
         }
+        stage = "wait_pidfd_exit";
         let deadline = Instant::now();
         loop {
             let mut pending = false;
@@ -208,6 +231,7 @@ pub fn lock_stop(args: &[String]) -> i32 {
         if fs::read_to_string(path.join("owner"))?.trim() != expected {
             return Err(io::ErrorKind::PermissionDenied.into());
         }
+        stage = "remove_verified_lease";
         remove_owned(path)?;
         Ok(processes.len())
     })();
@@ -221,7 +245,7 @@ pub fn lock_stop(args: &[String]) -> i32 {
             3
         }
         Err(e) => {
-            eprintln!("LOCK_STOP_REFUSED_OR_INCOMPLETE error={e}");
+            eprintln!("LOCK_STOP_REFUSED_OR_INCOMPLETE stage={stage} error={e}");
             1
         }
     }

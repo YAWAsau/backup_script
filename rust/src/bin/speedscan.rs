@@ -51,6 +51,10 @@ mod internal_tree;
 mod external_tree;
 #[path = "../device_flash.rs"]
 mod device_flash;
+#[path = "../device_ram.rs"]
+mod device_ram;
+#[path = "../publish_file.rs"]
+mod publish_file;
 #[path = "../stream_bench.rs"]
 mod stream_bench;
 #[path = "../command_lifecycle.rs"]
@@ -10052,6 +10056,9 @@ pub(crate) fn run() {
     let rc = match args.get(1).map(|s| s.as_str()) {
         Some("file-daemon") => crate::file_rpc::command(&args[2..]),
         Some("flash-info") => device_flash::run(&args[2..]),
+        Some("ram-devinfo-read") => device_ram::reader(&args[2..]),
+        Some("publish-file") => publish_file::run(&args[2..]),
+        Some("generated-list-owner") => publish_file::align_owner(&args[2..]),
         Some("stream-bench") => stream_bench::run(&args[2..]),
         Some("app-permissions") => android_policy::command(&args[2..], "permissions"),
         Some("app-owner") => android_policy::command(&args[2..], "owner"),
@@ -10085,6 +10092,7 @@ pub(crate) fn run() {
             println!("speedscan.owned_bounded_run.v1 speedscan.facts_result.v1 speedscan.profile_finalize_stage.v1 speedscan.stream_entry_finish.v1 speedscan.json_ops.v1 speedscan.profile_transform.v1 speedscan.profile_backup_map.v1 speedscan.bundle_audit_fields.v1 speedscan.app_permissions.android_policy.v2 speedscan.process_lease.v1 speedscan.process_lease_stop.v1 speedscan.backup_run_model.v1 speedscan.backup_plan_coverage.v1 speedscan.tar_source_manifest.v1 speedscan.restore_source_verify.v1 speedscan.debug_consolidate.v1 speedscan.payload_stats.v1 speedscan.restore_tree_audit_bytes.v1 speedscan.result_contract.v1 speedscan.remote_orphan_plan.v1 speedscan.restore_tree_manifest_bytes.v1 speedscan.appdetails_seed_index_strict_meta.v1 speedscan.appdetails_seed_index.v1 speedscan.backup_prescan_exact_input_batch.v1 speedscan.tar_input_hardlink_type_safe.v1 speedscan.dir_size_tar_input_map.v1 speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.posix_recursive_scan.v1 speedscan.dir_size_map_workers.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan.v1 speedscan.local_fastskip_presize_plan_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_audit_seed_expansion.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.rust_convergence_source.v1 speedscan.full_convergence_stage3.v1");
             0
         }
+        Some("applist-merge") => crate::applist::run(&args[2..]),
         Some("dir-size") if args.len() >= 3 => cmd_dir_size(&args[2]),
         Some("dir-size-map") if args.len() >= 3 => cmd_dir_size_map(&args[2]),
         Some("dir-size-manifest") if args.len() >= 11 => cmd_dir_size_manifest(&args),

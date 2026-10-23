@@ -12,6 +12,7 @@ import tempfile
 import tomllib
 import zipfile
 from pathlib import Path
+from check_copy_routes import check as check_copy_routes
 
 ROOT = Path(__file__).resolve().parent.parent
 REQUIRED_TOOLS = {
@@ -180,6 +181,7 @@ def check(shells=False):
         require(b'\r' not in data, f'Expected LF line endings: {name}')
         data.decode('utf-8')
     check_soc_data()
+    check_copy_routes(ROOT)
     cargo = tomllib.loads((ROOT / 'rust/Cargo.toml').read_text(encoding='utf-8'))
     lock = tomllib.loads((ROOT / 'rust/Cargo.lock').read_text(encoding='utf-8'))
     packages = [p for p in lock['package'] if p['name'] == cargo['package']['name']]
