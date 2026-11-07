@@ -1,9 +1,9 @@
 {
-  "rust": "1.96.0",
+  "rust": "1.99.1",
   "rust_target": "aarch64-linux-android",
   "ndk": "30.0.16248370",
   "android_api": 28,
-  "compile_sdk": "34",
-  "build_tools": "34.0.0",
+  "compile_sdk": "37.0",
+  "build_tools": "37.0.0",
   "java_major": "17"
 }

@@ -1275,11 +1275,7 @@ object WebDavUtil {
         val staging = File.createTempFile(".speedbackup-get-", ".partial", parent)
         try {
             Os.chmod(staging.path, 384) // 0600
-            val code = FileOutputStream(staging).use { out ->
-                val result = getTo(user, pass, url, out)
-                if (result in 200..299) { out.flush(); out.fd.sync() }
-                result
-            }
+            val code = WebDavDownload.fetch(http, user, pass, url, staging)
             if (code in 200..299) Os.rename(staging.path, destination.absolutePath)
             return code
         } finally {
@@ -2960,6 +2956,11 @@ object WebDavUtil {
     }
 
     private fun put(user: String, pass: String, url: String, input: InputStream, contentLength: Long?, chunked: Boolean, meter: WebDavStreamMeter? = null, responseHeadTimeoutMs: Int = HttpCore.LONG_TRANSFER_TIMEOUT_MS, onBodyComplete: (() -> Unit)? = null): Int {
+        if (NextcloudUpload.available(http, user, pass, url)) {
+            infoLog("WEBDAV_NEXTCLOUD_CHUNKS size=8388608 sourceReplay=0")
+            return NextcloudUpload.put(http, user, pass, url, input, contentLength,
+                { meter?.bodyFinished(); onBodyComplete?.invoke() }, responseHeadTimeoutMs)
+        }
         val headers = linkedMapOf("Content-Type" to "application/octet-stream")
         if (chunked || contentLength == null) headers["Transfer-Encoding"] = "chunked" else headers["Content-Length"] = contentLength.toString()
         var semanticFailure = false
@@ -3887,7 +3888,11 @@ object WebDavUtil {
         // this probe gates the real tar|zstd -> WebDAV path, so it must prove chunked PUT,
         // not merely a fixed Content-Length PUT. The tiny body is replayable only for probing.
         val partUrl = buildRelUrl(baseUrl, partRel)
-        val putAttempt = putReplayableChunkedBytesAttempt(user, pass, partUrl, bytes)
+        val putAttempt = if (NextcloudUpload.available(http, user, pass, partUrl)) {
+            val done = AtomicBoolean(false)
+            runCatching { PutAttempt(NextcloudUpload.put(http, user, pass, partUrl, ByteArrayInputStream(bytes), bytes.size.toLong(), { done.set(true) }), null, done.get()) }
+                .getOrElse { PutAttempt(HttpCore.extractCode(it), it, done.get()) }
+        } else putReplayableChunkedBytesAttempt(user, pass, partUrl, bytes)
         val putRecovered = putAttempt.code !in 200..299 && ambiguousPutVerifiedAfterStat(
             user, pass, partUrl, partRel, bytes.size.toLong(), putAttempt.code, putAttempt.failure,
             clientBodyComplete = putAttempt.clientBodyComplete, context = "managed-probe-chunked-put", allowSizeOnly = true
@@ -4725,6 +4730,16 @@ object WebDavUtil {
     }
 
     private fun finish(code: Int) {
+        val hint = when(code) {
+            401 -> "帳號、密碼或應用程式密碼不正確；請確認 WebDAV 驗證設定。"
+            403 -> "帳號沒有此資料夾的存取權限。"
+            404 -> "找不到 WebDAV 路徑；請使用伺服器提供的 WebDAV 位址。"
+            405 -> "伺服器不允許此 WebDAV 操作；請確認 WebDAV 服務及反向代理設定。"
+            413 -> "伺服器或反向代理拒絕此上傳大小；請調整大小限制。"
+            507 -> "伺服器儲存空間或帳號配額不足。"
+            else -> null
+        }
+        if (hint != null) System.err.println("WEBDAV_HELP $hint")
         println("HTTP $code")
         exitProcess(if (code in 200..299) 0 else 1)
     }

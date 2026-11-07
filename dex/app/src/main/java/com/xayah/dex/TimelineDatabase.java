@@ -247,7 +247,7 @@ final class TimelineDatabase {
     static void finishBackup(Live live,File out,String deviceBinding,boolean selective) throws Exception {
         require(out.isDirectory() && !new File(out,"manifest.json").exists(),"backup_output_invalid");
         if(selective) {
-            String account=rowAccount(new File(out,"odlh.db"),"semantic_segment_table");
+            String account=historyAccount(out);
             String edited=rowAccount(new File(out,"odlh.db"),"edited_segment_table");
             String auxiliary=rowAccount(new File(out,"aux.db"),"aux_semantic_segment_table");
             require(account!=null,"timeline_history_not_initialized");
@@ -258,7 +258,7 @@ final class TimelineDatabase {
                 .put("device",deviceBinding).put("account",digest(live.geller.getName().getBytes(StandardCharsets.UTF_8)))
                 .put("selective",selective);
         if(selective) {
-            String gaia=rowAccount(new File(out,"odlh.db"),"semantic_segment_table");
+            String gaia=historyAccount(out);
             require(GoogleAccountNames.select(live.user,manifest.getString("account")).gaia.equals(gaia),"timeline_source_account_mismatch");
             for(GoogleAccountNames.Account account:GoogleAccountNames.read(live.user))
                 if(account.gaia.equals(gaia))manifest.put("source_display_name",GoogleAccountNames.label(account));
@@ -284,6 +284,9 @@ final class TimelineDatabase {
             integrity(target);
             inventory.put(FILES[i],new JSONObject().put("sha256",hash(target)).put("schema",schema(target)).put("bytes",target.length()).put("wal",live.wal[i]));
         }
+        if(selective)try(SQLiteDatabase db=open(new File(out,"geller.db"),RO)) {
+            manifest.put("preserve_geller",number(db,"SELECT count(*) FROM geller_key_table WHERE data_type='"+TYPE+"'")==0);
+        }
         manifest.put("files",inventory);
         File marker=new File(out,"manifest.json");
         Files.write(marker.toPath(),manifest.toString(2).getBytes(StandardCharsets.UTF_8));
@@ -300,6 +303,14 @@ final class TimelineDatabase {
             require(value!=null && !value.isEmpty() && !c.moveToNext(),"cross_account_rows_ambiguous");
             return value;
         }
+    }
+    static String historyAccount(File directory)throws Exception {
+        String found=null;
+        for(String table:new String[]{"semantic_segment_table","edited_segment_table","aux_semantic_segment_table"}) {
+            String value=rowAccount(new File(directory,table.startsWith("aux")?"aux.db":"odlh.db"),table);
+            require(value==null||found==null||value.equals(found),"cross_row_account_mismatch");if(value!=null)found=value;
+        }
+        return found;
     }
     static JSONObject validateSnapshot(File input) throws Exception {
         File mf=new File(input,"manifest.json"); regular(mf);
@@ -330,7 +341,7 @@ final class TimelineDatabase {
         if(cross) {
             String account=importGaia==null?rowAccount(live.odlh,"semantic_segment_table"):importGaia;
             if(importGaia!=null)require(GoogleAccountNames.select(live.user,m.getString("account")).gaia.equals(importGaia),"timeline_target_account_changed");
-            require(account!=null && account.equals(rowAccount(new File(input,"odlh.db"),"semantic_segment_table")),"cross_row_account_mismatch");
+            require(account!=null && account.equals(historyAccount(input)),"cross_row_account_mismatch");
             for(File folder:importGaia==null?Arrays.asList(input,live.odlh.getParentFile()):Arrays.asList(input)) {
                 File odlh=folder.equals(input)?new File(input,"odlh.db"):live.odlh;
                 File aux=folder.equals(input)?new File(input,"aux.db"):live.aux;
@@ -343,17 +354,21 @@ final class TimelineDatabase {
 
     /** Mutates only the validated, root-private staged input. Original backup stays immutable. */
     static void prepareAccountImport(Live live,File input,String binding,GoogleAccountNames.Account target) throws Exception {
+        prepareAccountImport(live,input,binding,target,false);
+    }
+    static void prepareAccountImport(Live live,File input,String binding,GoogleAccountNames.Account target,boolean allowCross) throws Exception {
         JSONObject manifest=validateSnapshot(input);
         checkIncomingAuxiliary(live,input);
         require(manifest.getBoolean("selective"),"cross_requires_selective_backup");
         File[] targets=live.files();
         for(int i=0;i<FILES.length;i++)require(schema(targets[i],i==0).equals(schema(new File(input,FILES[i]),i==0)),"snapshot_schema_mismatch_"+FILES[i].replace(".db",""));
-        String source=rowAccount(new File(input,"odlh.db"),"semantic_segment_table");
+        String source=historyAccount(input);
         require(source!=null,"timeline_history_not_initialized");
         for(String table:Arrays.asList("edited_segment_table","aux_semantic_segment_table")) {
             String account=rowAccount(new File(input,table.startsWith("aux")?"aux.db":"odlh.db"),table);
             require(account==null||account.equals(source),"cross_row_account_mismatch");
         }
+        require(allowCross||source.equals(target.gaia),"timeline_target_account_mismatch");
         if(!source.equals(target.gaia)) {
             for(String name:Arrays.asList("odlh.db","aux.db"))try(SQLiteDatabase db=open(new File(input,name),SQLiteDatabase.OPEN_READWRITE|SQLiteDatabase.NO_LOCALIZED_COLLATORS)) {
                 db.beginTransaction();try {
@@ -377,13 +392,14 @@ final class TimelineDatabase {
             // Import the verified semantic history only; keep unrelated live Geller data untouched.
             clearImportGeller(input);
         }
+
         if(TimelineIdentity.rekeyConflicts(input,live.odlh,live.aux,target.gaia))clearImportGeller(input);
         Files.delete(new File(input,"manifest.json").toPath());
         finishBackup(live,input,binding,true);
         validate(live,input,binding,true,target.gaia);
     }
 
-    private static void clearImportGeller(File input)throws Exception {
+    static void clearImportGeller(File input)throws Exception {
         try(SQLiteDatabase db=open(new File(input,"geller.db"),SQLiteDatabase.OPEN_READWRITE|SQLiteDatabase.NO_LOCALIZED_COLLATORS)) {
             db.beginTransaction();try {
                 for(String table:Arrays.asList("geller_key_table","geller_file_table","geller_data_table","geller_metadata_table","geller_database_info_table"))db.execSQL("DELETE FROM "+table);
@@ -433,7 +449,8 @@ final class TimelineDatabase {
         restore(live,input,rollback,binding,guard,false,null);
     }
     static void restore(Live live,File input,File rollback,String binding,Barrier guard,boolean cross,String importGaia) throws Exception {
-        validate(live,input,binding,cross,importGaia); validate(live,rollback,binding); guard.check();live.checkAuxiliary();
+        JSONObject incomingManifest=validate(live,input,binding,cross,importGaia); validate(live,rollback,binding); guard.check();live.checkAuxiliary();
+        boolean preserveGeller=importGaia!=null&&incomingManifest.optBoolean("preserve_geller",false);
         try(SQLiteDatabase d=open(live.geller,RW)) {
             attach(d,new File(input,"geller.db"),"incoming");
             attach(d,live.odlh,"odlh"); attach(d,live.aux,"aux");
@@ -450,6 +467,7 @@ final class TimelineDatabase {
             try {
                 require(number(d,"SELECT count(*) FROM incoming.geller_file_table WHERE data_type='"+TYPE+"'")==0,"file_based_timeline_unsupported");
                 require(number(d,"SELECT count(*) FROM incoming.geller_key_table k LEFT JOIN incoming.geller_data_table b ON b._id=k.data_id WHERE k.data_type='"+TYPE+"' AND b._id IS NULL")==0,"snapshot_missing_payload");
+                if(!preserveGeller) {
                 long count=number(d,"SELECT count(*) FROM incoming.geller_data_table");
                 long max=number(d,"SELECT coalesce(max(_id),0) FROM main.geller_data_table");
                 require(max>=0 && count>=0 && max<Long.MAX_VALUE-count,"data_id_overflow");
@@ -462,6 +480,7 @@ final class TimelineDatabase {
                 d.execSQL("DELETE FROM main.geller_data_table WHERE _id IN (SELECT data_id FROM old_ids) AND NOT EXISTS (SELECT 1 FROM main.geller_key_table k WHERE k.data_id=main.geller_data_table._id)");
                 d.execSQL("DELETE FROM main.geller_metadata_table WHERE data_type=?",new Object[]{TYPE});
                 d.execSQL("INSERT INTO main.geller_metadata_table SELECT * FROM incoming.geller_metadata_table WHERE data_type=?",new Object[]{TYPE});
+                }
                 if(importGaia!=null) {
                     restoreAccountRows(d,"odlh","semantic_segment_table",importGaia,0);
                     restoreAccountRows(d,"odlh","edited_segment_table",importGaia,1);
@@ -481,7 +500,9 @@ final class TimelineDatabase {
                     require(number(d,"SELECT count(*) FROM (SELECT *,count(*) AS copies FROM "+side+".geller_metadata_table WHERE data_type<>'"+TYPE+"' GROUP BY 1,2,3 EXCEPT SELECT *,count(*) FROM "+other+".geller_metadata_table WHERE data_type<>'"+TYPE+"' GROUP BY 1,2,3)")==0,"unrelated_metadata_changed");
                 }
                 require(number(d,"SELECT count(*) FROM "+prior+".geller_data_table p WHERE p._id IN (SELECT data_id FROM "+prior+".geller_key_table WHERE data_type<>'"+TYPE+"') AND NOT EXISTS (SELECT 1 FROM main.geller_data_table b WHERE b._id=p._id AND b.data=p.data)")==0,"unrelated_payload_changed");
-                require(number(d,"SELECT count(*) FROM incoming.geller_data_table p JOIN id_map m ON m.old_id=p._id WHERE NOT EXISTS (SELECT 1 FROM main.geller_data_table b WHERE b._id=m.new_id AND b.data=p.data)")==0,"restored_payload_mismatch");
+                if(preserveGeller) {
+                    for(String table:Arrays.asList("geller_key_table","geller_data_table","geller_metadata_table"))equalTable(d,"main",prior,table);
+                } else require(number(d,"SELECT count(*) FROM incoming.geller_data_table p JOIN id_map m ON m.old_id=p._id WHERE NOT EXISTS (SELECT 1 FROM main.geller_data_table b WHERE b._id=m.new_id AND b.data=p.data)")==0,"restored_payload_mismatch");
                 require(number(d,"SELECT count(*) FROM pragma_foreign_key_check")==0,"restored_foreign_key_failed");
                 guard.check(); d.setTransactionSuccessful();
             } finally { d.endTransaction(); }

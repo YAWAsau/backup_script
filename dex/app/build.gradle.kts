@@ -11,9 +11,9 @@ val releaseInfo = Properties().apply {
     rootProject.file("release-version.properties").inputStream().use { load(it) }
 }
 val componentVersion = releaseInfo.getProperty("version")
-require(componentVersion.matches(Regex("v[1-9][0-9]{2}"))) { "Invalid release version; run sync_version.ps1" }
+require(componentVersion.matches(Regex("v[1-9][0-9]{2,3}"))) { "Invalid release version; run sync_version.ps1" }
 val buildVersion = releaseInfo.getProperty("build")
-require(buildVersion.matches(Regex("v[1-9][0-9]{2}"))) { "Invalid build version; run sync_version.ps1" }
+require(buildVersion.matches(Regex("v[1-9][0-9]{2,3}"))) { "Invalid build version; run sync_version.ps1" }
 val buildVersionCode = releaseInfo.getProperty("versionCode").toInt()
 
 android {
@@ -23,7 +23,7 @@ android {
         includeInBundle = false
     }
     namespace = "com.xayah.dex"
-    compileSdk = 34
+    compileSdkVersion("android-37.0")
 
     defaultConfig {
         applicationId = "com.xayah.dex"
@@ -45,9 +45,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-    kotlinOptions {
-        jvmTarget = "17"
     }
     buildFeatures {
         buildConfig = true
@@ -77,11 +74,25 @@ configurations.configureEach {
 }
 
 dependencies {
-    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.2")
     testImplementation(libs.junit)
     implementation(libs.refine.runtime)
     implementation(libs.gson)
 
-    compileOnly("androidx.annotation:annotation:1.9.1")
+    compileOnly("com.google.errorprone:error_prone_annotations:2.52.0")
+    compileOnly("androidx.annotation:annotation:1.11.0")
     compileOnly(project(":hiddenapi"))
 }
+
+kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
+
+// Audited stable dependency alignment; constraints do not add unused libraries.
+dependencies { constraints {
+ implementation("androidx.annotation:annotation:1.11.0")
+ implementation("androidx.annotation:annotation-jvm:1.11.0")
+ implementation("com.google.code.gson:gson:2.15.0")
+ implementation("com.google.errorprone:error_prone_annotations:2.52.0")
+ implementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.21")
+ implementation("org.jetbrains:annotations:26.1.0")
+ implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.2")
+} }

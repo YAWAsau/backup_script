@@ -27,7 +27,7 @@ fn main() {
         let (key, version) = line.split_once('=').expect("Invalid version entry");
         assert!(keys.contains(&key), "Unknown version component: {key}");
         assert!(
-            version.len() == 4
+            matches!(version.len(), 4 | 5)
                 && version.starts_with('v')
                 && (b'1'..=b'9').contains(&version.as_bytes()[1])
                 && version.as_bytes()[1..].iter().all(u8::is_ascii_digit),

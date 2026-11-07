@@ -3,19 +3,19 @@
 # 不再鎖 Dex 版本字串、build 號、tools.sh patch marker 或歷史回歸 grep；只檢查目前 tools 真正依賴的 Dex 核心能力是否可用。
 PKG="${1:-${PKG:-com.tencent.mobileqq}}"
 USER_ID="${2:-${USER_ID:-0}}"
-CLASSPATH_PATH="${CLASSPATH_PATH:-/data/backup_tools/classes.dex}"
+CLASSPATH_PATH="${CLASSPATH_PATH:-/data/.speedbackup/tools/classes.dex}"
 TOOLS_PATH="${TOOLS_PATH:-}"
 TEST_LOG_DIR="${TEST_LOG_DIR:-${PWD:-.}}"
 TEST_LOG_FILE="${TEST_LOG_FILE:-$TEST_LOG_DIR/dex_check.log}"
 TEST_SUMMARY_FILE="${TEST_SUMMARY_FILE:-$TEST_LOG_DIR/dex_full_test.summary}"
-DEX_CHECK_VERSION="v930"
-DEX_CHECK_BUILD="v930"
+DEX_CHECK_VERSION="v1101"
+DEX_CHECK_BUILD="v1101"
 BACKUP_WIFI_ENABLE="${BACKUP_WIFI_ENABLE:-1}"
 SB_SELFTEST_LEVEL="${SB_SELFTEST_LEVEL:-quick}"
 CHANGELOG_URL="${CHANGELOG_URL:-https://api.github.com/repos/XayahSuSuSu/Android-DataBackup/releases/latest}"
 SELFTEST_SCRIPT_VERSION="${SELFTEST_SCRIPT_VERSION:-$DEX_CHECK_VERSION}"
 SPEEDBACKUP_PATCH_BUILD="${SPEEDBACKUP_PATCH_BUILD:-$DEX_CHECK_BUILD}"
-PATH="$(dirname "$CLASSPATH_PATH" 2>/dev/null):/data/backup_tools:$PATH"
+PATH="$(dirname "$CLASSPATH_PATH" 2>/dev/null):/data/.speedbackup/tools:$PATH"
 export PATH
 _json_cmd(){ speednative speedscan json "$@"; }
 HIDDEN_CLASS="com.xayah.dex.HiddenApiUtil"
@@ -43,7 +43,7 @@ fi
 # Match GuardLifecycle's private, canonical run-directory contract. Never
 # fall back to shared /data/local/tmp or remove a caller-owned directory.
 case "$DEX_CHECK_TMPDIR" in
-	/data/local/tmp/.speedbackup_run_*|/data/.speedbackup_tmp/.speedbackup_run_*) ;;
+	/data/local/tmp/.speedbackup_run_*|/data/.speedbackup/tmp/.speedbackup_run_*|/data/.speedbackup_tmp/.speedbackup_run_*) ;;
 	*) echo 'Unsafe dex_check run directory' >&2; exit 1 ;;
 esac
 if [ ! -d "$DEX_CHECK_TMPDIR" ] || [ -L "$DEX_CHECK_TMPDIR" ] ||
@@ -212,9 +212,9 @@ for _root_cap in unixsock.stream_relay.v1 unixsock.plain_response_eof.v1 unixsoc
 	esac
 done
 
-_uidexec="$(command -v uidexec 2>/dev/null)"; [ -n "$_uidexec" ] || _uidexec="/data/backup_tools/uidexec"
+_uidexec="$(command -v uidexec 2>/dev/null)"; [ -n "$_uidexec" ] || _uidexec="/data/.speedbackup/tools/uidexec"
 if [ -x "$_uidexec" ]; then
-	_out="$(uidexec 0 0 /data "$CLASSPATH_PATH" /system/bin/id 2>&1 | head -n 1)"
+	_out="$(uidexec 0 0 "$DEX_CHECK_TMPDIR" "$CLASSPATH_PATH" /system/bin/id 2>&1 | head -n 1)"
 	echo "$_out" | grep -q 'uid=0' && ok "Root 權限執行環境" "rc=0" || warn "Root 權限執行環境" "$_out"
 	_play_uid="$(get_pkg_uid "$PLAY_PKG" 2>/dev/null)"
 	if echo "$_play_uid" | grep -qE '^[0-9]+$'; then
@@ -321,7 +321,7 @@ if [ -x "$_cg_bin" ]; then
 else
 	critical_fail "cgfreezer 批量診斷能力" "missing binary $_cg_bin"
 fi
-_ew_bin="$(command -v eventwait 2>/dev/null)"; [ -n "$_ew_bin" ] || _ew_bin="/data/backup_tools/eventwait"
+_ew_bin="$(command -v eventwait 2>/dev/null)"; [ -n "$_ew_bin" ] || _ew_bin="/data/.speedbackup/tools/eventwait"
 if [ -x "$_ew_bin" ]; then
 	_ew_ver="$($_ew_bin --version 2>/dev/null)"; _ew_ver_rc=$?
 	_ew_ver="$(printf '%s\n' "$_ew_ver" | head -n 1)"
@@ -364,7 +364,7 @@ else
 	critical_fail "eventwait pidfd capability" "eventwait_not_found"
 fi
 
-_cg_bin="$(command -v cgfreezer 2>/dev/null)"; [ -n "$_cg_bin" ] || _cg_bin="/data/backup_tools/cgfreezer"
+_cg_bin="$(command -v cgfreezer 2>/dev/null)"; [ -n "$_cg_bin" ] || _cg_bin="/data/.speedbackup/tools/cgfreezer"
 if [ -x "$_cg_bin" ]; then
 	_cg_usage="$($_cg_bin 2>&1 | head -n 5)"
 	printf '%s\n' "$_cg_usage" | grep -F "proc-wchan" >/dev/null 2>&1 && ok "cgroup WCHAN native 指令" "present" || critical_fail "cgroup WCHAN native 指令" "missing proc-wchan，請重編/替換 cgfreezer"
@@ -390,7 +390,7 @@ else
 	critical_fail "cgroup WCHAN 狀態確認" "cgfreezer_not_found"
 fi
 
-_ss_bin="$(command -v speedscan 2>/dev/null)"; [ -n "$_ss_bin" ] || _ss_bin="/data/backup_tools/speedscan"
+_ss_bin="$(command -v speedscan 2>/dev/null)"; [ -n "$_ss_bin" ] || _ss_bin="/data/.speedbackup/tools/speedscan"
 if [ -x "$_ss_bin" ]; then
 		# speedscan contract is capability-only. Do not grep usage/help text or exact --version;
 		# help wording and VERSION are diagnostic-only and may legitimately lag behind capabilities.
@@ -405,6 +405,10 @@ if [ -x "$_ss_bin" ]; then
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.appdetails_seed_index_strict_meta.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.appdetails_seed_index.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.backup_prescan_exact_input_batch.v1" >/dev/null 2>&1 \
+		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.backup_prescan_plan.v1" >/dev/null 2>&1 \
+		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.remote_maps.v1" >/dev/null 2>&1 \
+		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.remaining_batch.v1" >/dev/null 2>&1 \
+		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.changed_apps_plan.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.tar_input_hardlink_type_safe.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.dir_size_tar_input_map.v1" >/dev/null 2>&1 \
 		&& printf '%s\n' "$_ss_caps" | grep -F "speedscan.tree_pack_plan.v1" >/dev/null 2>&1 \
@@ -728,10 +732,11 @@ if [ -f "$_tools_self" ] \
 	fi
 	# Capability names are validated from Dex JSON by caps-diagnostic below;
 	# their Rust migration must not require duplicate literals in tools.sh.
-	if grep -q "XPOSED_RUNTIME_FACTS" "$_tools_self" 2>/dev/null \
-		&& grep -q "XPOSED_MODULE_SUMMARY" "$_tools_self" 2>/dev/null \
-		&& grep -q "xposed_runtime_facts_last.tsv" "$_tools_self" 2>/dev/null; then
-		ok "Xposed facts integration" "module-format+runtime-positive-evidence"
+	if grep -F 'appinventory_getlist "$_filter" refresh > "$_stage/inventory" || return 1' "$_tools_self" >/dev/null 2>&1 \
+		&& grep -F '_speedscan_cmd applist-merge "$_stage/old" "$_stage/inventory"' "$_tools_self" >/dev/null 2>&1 \
+		&& grep -F '_getlist_display_classified > "$_stage/ui" || return 1' "$_tools_self" >/dev/null 2>&1 \
+		&& grep -F '[[ $_seen = "$Apk_Quantity" ]] || return 1' "$_tools_self" >/dev/null 2>&1; then
+		ok "Xposed facts integration" "fresh-inventory+rust-classification+count-validation"
 	else
 		critical_fail "Xposed facts integration" "tools integration missing"
 	fi
@@ -745,7 +750,7 @@ if [ -f "$_tools_self" ] \
 		&& grep -q "tools.payload_prescan_exact_tar_input.v1" "$_tools_self" 2>/dev/null \
 		&& grep -q "_backup_prescan_exact_payload_plan" "$_tools_self" 2>/dev/null \
 		&& grep -q "_backup_prescan_exact_remote_rows" "$_tools_self" 2>/dev/null \
-		&& grep -q "backup-prescan-exact-input" "$_tools_self" 2>/dev/null \
+		&& grep -q "backup-prescan-plan" "$_tools_self" 2>/dev/null \
 		&& grep -q "perEntryForks=0" "$_tools_self" 2>/dev/null \
 		&& grep -q "BACKUP_PRESCAN_EXACT_INPUT_READY" "$_tools_self" 2>/dev/null \
 		&& grep -q "BACKUP_PAYLOAD_STATS_PLAN_RECONCILE" "$_tools_self" 2>/dev/null \

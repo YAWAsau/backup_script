@@ -1,3 +1,5 @@
+pub(super) const HOST_PACKAGE: &str = "io.github.yawasau.speedbackup.webview";
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
@@ -6,6 +8,13 @@ use std::os::unix::fs::OpenOptionsExt;
 fn package(value: &str) -> bool {
     value.len() <= 255 && value.contains('.') && value.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
         && value.split('.').all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_'))
+}
+
+// PackageManager may expose dotless platform resource packages (android,
+// oplus). Accept them only as installed facts, never as actionable app rows.
+fn installed_package(value: &str) -> bool {
+    package(value) || (value.len() <= 255 && value.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
+        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_'))
 }
 
 fn comment(line: &str) -> bool {
@@ -39,12 +48,54 @@ fn safe_label(label: &str, pkg: &str) -> String {
     value
 }
 
+// Legacy generated labels such as I'mPad are literal directory names. Keep
+// their spelling and selection; only newly generated labels are normalized.
+fn existing_label(label: &str, pkg: &str) -> bool {
+    let checked = label.replace('\'', "_");
+    !label.is_empty() && safe_label(&checked, pkg) == checked
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn inventory() -> String {
         "#META\tinventoryBegin\t1\t0\n#META\tinstalled\tcom.test.app\n#META\tinstalled\tcom.android.system\n#META\tdefaultHome\t\t\tnone\n#META\tdefaultIme\t\t\tnone\nApp com.test.app user\n#META\tinventoryEnd\t0\t2\t1\n".into()
+    }
+
+    #[test]
+    fn host_is_excluded_from_generated_and_existing_rows() {
+        let inv = inventory().replace("#META\tinstalled\tcom.test.app\n", &format!("#META\tinstalled\t{}\n#META\tinstalled\tcom.test.app\n", HOST_PACKAGE))
+            .replace("App com.test.app user", &format!("SpeedBackup {} user\nApp com.test.app user", HOST_PACKAGE))
+            .replace("inventoryEnd\t0\t2\t1", "inventoryEnd\t0\t3\t2");
+        for old in [String::new(), format!("SpeedBackup {}\n", HOST_PACKAGE), format!("#SpeedBackup {}\n", HOST_PACKAGE), format!("!SpeedBackup {}\n", HOST_PACKAGE)] {
+            let report = merge_report(&old, &inv, HOST_PACKAGE, "", "true", "0").unwrap();
+            assert!(!report.text.contains(HOST_PACKAGE));
+            assert!(!report.events.contains(HOST_PACKAGE));
+            assert_eq!(report.count, 1);
+        }
+    }
+    #[test]
+    fn legacy_apostrophe_label_keeps_name_and_selection() {
+        for row in ["I'mPad com.test.app", "#I'mPad com.test.app", "!I'mPad com.test.app"] {
+            let old=format!("# user note\n{row}\n");
+            assert_eq!(merge(&old,&inventory(),"","","true","0").unwrap().0,old);
+        }
+        assert!(!existing_label("a$(id)","com.test.app"));
+        assert!(!existing_label("../a","com.test.app"));
+    }
+
+    #[test]
+    fn dotless_platform_inventory_does_not_relax_actionable_rows() {
+        let data = inventory().replace("#META\tinstalled\tcom.test.app\n", "#META\tinstalled\toplus\n#META\tinstalled\tcom.test.app\n")
+            .replace("inventoryEnd\t0\t2\t1", "inventoryEnd\t0\t3\t1");
+        assert_eq!(merge("", &data, "", "", "true", "0").unwrap().0,
+            merge("", &inventory(), "", "", "true", "0").unwrap().0);
+        let selected = data.replace("App com.test.app user", "App oplus user");
+        assert!(merge("", &selected, "", "", "true", "0").is_err());
+        for bad in ["../oplus", "oplus/", "$oplus", "1oplus", "", "oplus..core"] {
+            assert!(merge("", &data.replace("installed\toplus\n", &format!("installed\t{bad}\n")), "", "", "true", "0").is_err());
+        }
     }
 
     #[test]
@@ -76,9 +127,13 @@ mod tests {
     }
 
     #[test]
-    fn comments_and_blank_lines_preserved() {
-        let old = "#說明\n\n＃舊 com.gone.app\n!停用 com.test.app\n";
-        assert_eq!(merge(old, &inventory(), "", "", "true", "0").unwrap().0, old);
+    fn prose_and_choices_preserved_but_missing_disabled_record_pruned() {
+        let old = "#說明\n# 說明 com.gone.app\n\n＃舊 com.gone.app\n!停用 com.test.app\n";
+        let report=merge_report(old, &inventory(), "", "", "true", "0").unwrap();
+        // old_count counts unprefixed inputs; removed also reports disabled rows.
+        // Shell validates numeric fields, not an active-minus-all-removed equation.
+        assert_eq!((report.count,report.removed,report.old_count,report.added),(0,1,0,0));
+        assert_eq!(merge(old, &inventory(), "", "", "true", "0").unwrap().0, "#說明\n# 說明 com.gone.app\n\n!停用 com.test.app\n");
     }
 
     #[test]
@@ -97,9 +152,28 @@ mod tests {
 
     #[test]
     fn invalid_old_rows_do_not_publish() {
-        for old in ["bad\n", "Name com.test.app extra\n", "one com.test.app\ntwo com.test.app\n", "Same com.test.app\nSame com.android.system\n", "$(bad) com.test.app\n"] {
+        for old in ["bad\n", "Name com.test.app extra\n", "one com.test.app\ntwo com.test.app\n", "$(bad) com.test.app\n"] {
             assert!(merge(old, &inventory(), "", "", "true", "0").is_err());
         }
+    }
+
+    #[test]
+    fn invalid_old_rows_identify_line_and_field_without_echoing_input() {
+        for (row, reason) in [("bad", "兩個欄位"), ("Name invalid", "包名格式"), ("$(secret) com.test.app", "應用名稱")] {
+            let error=merge(&format!("# note\n\n{row}\n"), &inventory(), "", "", "true", "0").unwrap_err();
+            assert!(error.contains("第 3 行") && error.contains(reason), "{error}");
+            assert!(!error.contains("secret"));
+        }
+    }
+
+    #[test]
+    fn same_label_different_packages_preserved() {
+        let old = "Same com.test.app\nSame com.android.system\n";
+        let (text, count, removed) = merge(old, &inventory(), "", "", "true", "0").unwrap();
+        assert!(text.contains("Same_1 com.test.app\n"));
+        assert!(text.contains("Same com.android.system\n"));
+        assert_eq!((count, removed), (2, 0));
+        assert_eq!(merge(&text, &inventory(), "", "", "true", "0").unwrap().0, text);
     }
 
     #[test]
@@ -108,11 +182,11 @@ mod tests {
     }
 
     #[test]
-    fn home_forces_active_and_last() {
+    fn commented_home_stays_disabled() {
         let data = inventory().replace("defaultHome\t\t", "defaultHome\tcom.test.app\t");
         let text = merge("#App com.test.app\nSystem com.android.system\n", &data, "", "com.test.app", "true", "0").unwrap().0;
         assert!(text.starts_with("#App com.test.app\n"));
-        assert!(text.ends_with("App com.test.app\n"));
+        assert!(!text.lines().any(|l|l=="App com.test.app"));
     }
 
     #[test]
@@ -124,6 +198,7 @@ mod tests {
     }
 }
 
+#[cfg(test)]
 pub fn merge(old: &str, inventory: &str, whitelist: &str, blacklist: &str, mode: &str, user: &str) -> Result<(String, usize, usize), String> {
     let result = merge_report(old, inventory, whitelist, blacklist, mode, user)?;
     Ok((result.text, result.count, result.removed))
@@ -143,6 +218,68 @@ struct MergeReport {
     blacklist_enabled: bool,
 }
 
+// Preserve selection/APK prefixes, but ensure package-distinct rows cannot share
+// a backup directory. Reserve every existing label before allocating suffixes.
+fn disambiguate_labels(text: &str, home: &str) -> String {
+    let mut groups = BTreeMap::<String, BTreeMap<String, bool>>::new();
+    let mut reserved = BTreeSet::new();
+    for line in text.lines() {
+        let fields: Vec<_> = line.split_whitespace().collect();
+        if fields.len() != 2 || !package(fields[1]) { continue; }
+        let label = fields[0].trim_start_matches(['#', '＃', '!', '！']);
+        if !existing_label(label, fields[1]) { continue; }
+        reserved.insert(label.to_string());
+        let inactive = fields[0].starts_with(['#', '＃']);
+        groups.entry(label.to_string()).or_default().entry(fields[1].to_string())
+            .and_modify(|old| *old &= inactive).or_insert(inactive);
+    }
+    let mut replacements = BTreeMap::new();
+    for (label, packages) in groups {
+        let mut packages: Vec<_> = packages.into_iter().collect();
+        packages.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+        for (pkg, _) in packages.into_iter().skip(1) {
+            let mut suffix = 1;
+            let replacement = loop {
+                let candidate = format!("{label}_{suffix}");
+                if reserved.insert(candidate.clone()) { break candidate; }
+                suffix += 1;
+            };
+            replacements.insert((label.clone(), pkg), replacement);
+        }
+    }
+    let mut result = String::new();
+    for line in text.lines() {
+        let fields: Vec<_> = line.split_whitespace().collect();
+        if fields.len() == 2 {
+            let label = fields[0].trim_start_matches(['#', '＃', '!', '！']);
+            if let Some(replacement) = replacements.get(&(label.to_string(), fields[1].to_string())) {
+                let offset = line.len() - line.trim_start().len() + fields[0].len() - label.len();
+                result.push_str(&line[..offset]);
+                result.push_str(replacement);
+                result.push_str(&line[offset + label.len()..]);
+                result.push('\n');
+                continue;
+            }
+        }
+        result.push_str(line);
+        result.push('\n');
+    }
+    // Renaming may change lexical order; sort final active rows now so the
+    // next generation is byte-stable, preserving comments and HOME-last.
+    let mut comments = Vec::new();
+    let mut active = Vec::new();
+    let mut home_line = None;
+    for line in result.lines() {
+        if line.trim().is_empty() || comment(line) { comments.push(line); }
+        else if line.split_whitespace().nth(1) == Some(home) { home_line = Some(line); }
+        else { active.push(line); }
+    }
+    active.sort();
+    comments.extend(active);
+    if let Some(line) = home_line { comments.push(line); }
+    comments.join("\n") + "\n"
+}
+
 fn merge_report(old: &str, inventory: &str, whitelist: &str, blacklist: &str, mode: &str, user: &str) -> Result<MergeReport, String> {
     if !matches!(mode, "true" | "false") || user.parse::<u32>().is_err() { return Err("invalid mode/user".into()); }
     let mut installed = BTreeSet::new();
@@ -157,7 +294,7 @@ fn merge_report(old: &str, inventory: &str, whitelist: &str, blacklist: &str, mo
         if fields.first() == Some(&"#META") {
             match fields.get(1).copied() {
                 Some("inventoryBegin") if fields.len() == 4 && fields[2] == "1" && fields[3] == user && !begin => begin = true,
-                Some("installed") if begin && fields.len() == 3 && (package(fields[2]) || fields[2] == "android") => {
+                Some("installed") if begin && fields.len() == 3 && installed_package(fields[2]) => {
                     if !installed.insert(fields[2].to_string()) { return Err("duplicate installed package".into()); }
                 }
                 Some("defaultHome") | Some("defaultIme") if begin && fields.len() == 5 => {
@@ -188,26 +325,33 @@ fn merge_report(old: &str, inventory: &str, whitelist: &str, blacklist: &str, mo
     let mut active = BTreeMap::<String, String>::new();
     let mut comments = Vec::new();
     let mut commented = BTreeSet::new();
-    let mut labels = BTreeMap::new();
+    let mut labels = BTreeSet::new();
     let mut removed = 0;
     let mut missing = String::new();
     let mut events = String::new();
     let mut old_count = 0;
-    for line in old.lines() {
+    for (index, line) in old.lines().enumerate() {
+        if line.split_whitespace().last() == Some(HOST_PACKAGE) { continue; }
         if line.trim().is_empty() || comment(line) {
-            if let Some(last) = line.split_whitespace().last() { if package(last) { commented.insert(last.to_string()); } }
+            if let Some(last) = line.split_whitespace().last() { if package(last) {
+                let body=line.trim_start().trim_start_matches(['#','＃']).trim_start();
+                if !line.trim_start().trim_start_matches(['#','＃']).starts_with(char::is_whitespace) && body.split_whitespace().count()==2 && !installed.contains(last) {removed+=1;missing.push_str(body);missing.push('\n');continue;}
+                commented.insert(last.to_string());
+            } }
             comments.push(line.to_string());
             continue;
         }
         let fields: Vec<_> = line.split_whitespace().collect();
-        if fields.len() != 2 || !package(fields[1]) || safe_label(fields[0], fields[1]) != fields[0] { return Err("invalid old active row".into()); }
-        if let Some(previous) = labels.insert(fields[0].to_string(), fields[1].to_string()) {
-            if previous != fields[1] { return Err("conflicting old labels".into()); }
-        }
+        let line_number = index + 1;
+        if fields.len() != 2 { return Err(format!("清單第 {line_number} 行：應為「應用名稱 包名」兩個欄位，實際有 {} 個欄位", fields.len())); }
+        if !package(fields[1]) { return Err(format!("清單第 {line_number} 行：包名格式無效，請檢查第二個欄位")); }
+        if !existing_label(fields[0], fields[1]) { return Err(format!("清單第 {line_number} 行：應用名稱含不支援的路徑或命令字元，請檢查第一個欄位")); }
+        // Package names identify existing rows; display labels may be shared.
+        labels.insert(fields[0].to_string());
         old_count += 1;
         if !installed.contains(fields[1]) { removed += 1; missing.push_str(line); missing.push('\n'); continue; }
         if let Some(previous) = active.insert(fields[1].into(), line.to_string()) {
-            if previous != line { return Err("conflicting duplicate package".into()); }
+            if previous != line { return Err(format!("清單第 {line_number} 行：同一包名出現不同名稱或選擇狀態，請移除重複項目")); }
         }
     }
     let mut candidates: Vec<_> = selected.into_iter().collect();
@@ -215,7 +359,7 @@ fn merge_report(old: &str, inventory: &str, whitelist: &str, blacklist: &str, mo
     let mut quantity = 0;
     let mut added = 0;
     for (pkg, (label, xposed)) in candidates {
-        if pkg == "ice.message" || pkg == "com.topjohnwu.magisk" { continue; }
+        if pkg == HOST_PACKAGE || pkg == "ice.message" || pkg == "com.topjohnwu.magisk" { continue; }
         let label = safe_label(&label, &pkg);
         quantity += 1;
         if active.contains_key(&pkg) {
@@ -223,17 +367,17 @@ fn merge_report(old: &str, inventory: &str, whitelist: &str, blacklist: &str, mo
             continue;
         }
         let force = pkg == home || pkg == ime;
-        if commented.contains(&pkg) && !force {
+        if commented.contains(&pkg) {
             events.push_str(&format!("EXIST_CMT\t{label}\t{pkg}\n"));
             continue;
         }
         let mut final_label = label.clone();
         let mut suffix = 1;
-        while labels.contains_key(&final_label) {
+        while labels.contains(&final_label) {
             final_label = format!("{label}_{suffix}");
             suffix += 1;
         }
-        labels.insert(final_label.clone(), pkg.clone());
+        labels.insert(final_label.clone());
         let kind = if pkg == home && pkg == ime { "HOME_IME" }
             else if pkg == home { "HOME" }
             else if pkg == ime { "IME" }
@@ -250,6 +394,12 @@ fn merge_report(old: &str, inventory: &str, whitelist: &str, blacklist: &str, mo
             comments.push(format!("#{line}"));
         } else { active.insert(pkg, line); added += 1; }
     }
+    // Remove only an exact disabled shadow of an effective active row.
+    // Other comments and genuinely conflicting rows remain untouched.
+    comments.retain(|line| {
+        let body=line.trim_start().strip_prefix(['#','＃']).map(str::trim_start);
+        !body.is_some_and(|body| body.split_whitespace().last().and_then(|pkg|active.get(pkg)).is_some_and(|live|live==body))
+    });
     let count = active.len();
     let home_line = active.remove(&home);
     let mut rows: Vec<_> = active.into_values().collect();
@@ -258,6 +408,7 @@ fn merge_report(old: &str, inventory: &str, whitelist: &str, blacklist: &str, mo
     if let Some(line) = home_line { comments.push(line); }
     let mut text = comments.join("\n");
     text.push('\n');
+    let text = disambiguate_labels(&text, &home);
     Ok(MergeReport { text, count, removed, events, home, ime, quantity, old_count, added, missing, blacklist_enabled })
 }
 

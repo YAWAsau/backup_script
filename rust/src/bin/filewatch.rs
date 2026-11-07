@@ -56,7 +56,7 @@ extern "C" {
     fn inotify_init1(flags: c_int) -> c_int;
     fn inotify_init() -> c_int;
     fn inotify_add_watch(fd: c_int, path: *const c_char, mask: u32) -> c_int;
-    fn fcntl(fd: c_int, cmd: c_int, arg: c_int) -> c_int;
+    fn fcntl(fd: c_int, cmd: c_int, ...) -> c_int;
     fn read(fd: c_int, buf: *mut c_void, count: usize) -> isize;
     fn sigaction(signum: c_int, act: *const Sigaction, oldact: *mut Sigaction) -> c_int;
     fn __errno() -> *mut c_int;

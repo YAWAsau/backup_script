@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace = "com.xayah.hiddenapi"
-    compileSdk = 34
+    compileSdkVersion("android-37.0")
 
     buildTypes {
         release {
@@ -16,9 +16,10 @@ android {
         aidl = true
     }
 
+    // Refine 4.4 processor supports Java 11; these compile-only API stubs need no Java 17 features.
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
 }
 

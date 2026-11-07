@@ -11,6 +11,16 @@ $ErrorActionPreference = 'Stop'
 $hostExe = Join-Path $PSHOME 'pwsh.exe'
 if (-not (Test-Path -LiteralPath $hostExe)) { $hostExe = Join-Path $PSHOME 'powershell.exe' }
 
+# Pinned dependency metadata is shared by the native license screens.
+& python -X utf8 (Join-Path $PSScriptRoot 'ci/generate_licenses.py') --check
+if ($LASTEXITCODE -ne 0) { throw "License catalogue validation failed: $LASTEXITCODE" }
+
+# The UI host has an independent version and signing identity. Embed before Rust compilation.
+if ($JavaHome) { $env:JAVA_HOME = $JavaHome }
+if ($SdkRoot) { $env:ANDROID_HOME = $SdkRoot }
+& python -X utf8 (Join-Path $PSScriptRoot 'webview/build.py')
+if ($LASTEXITCODE -ne 0) { throw "Native APK build/verification failed: $LASTEXITCODE" }
+
 $nativeArgs = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'rust/build.ps1'))
 if ($Ndk) { $nativeArgs += @('-Ndk', $Ndk) }
 if ($SdkRoot) { $nativeArgs += @('-Sdk', $SdkRoot) }

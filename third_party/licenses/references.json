@@ -1,0 +1,410 @@
+[
+  {
+    "id": "reference:liquidglass",
+    "name": "AndroidLiquidGlass",
+    "author": "Kyant0",
+    "version": "65ab177e90e5",
+    "license": "Apache-2.0",
+    "url": "https://github.com/Kyant0/AndroidLiquidGlass",
+    "description": "液態玻璃控制項與視窗座標取樣來源；已作本專案修改。",
+    "components": [
+      "APK／WebUI",
+      "原始碼引用"
+    ]
+  },
+  {
+    "id": "reference:tweak",
+    "name": "Tweak-Alpha",
+    "author": "lumkit",
+    "version": "785261ce45b0",
+    "license": "GPL-3.0",
+    "url": "https://github.com/lumkit/Tweak-Alpha",
+    "description": "目錄選擇與動畫互動參照。",
+    "components": [
+      "APK／WebUI",
+      "原始碼與互動參照"
+    ]
+  },
+  {
+    "id": "reference:databackup",
+    "name": "Android-DataBackup",
+    "author": "XayahSuSuSu",
+    "version": "fa0a0f74a1fc",
+    "license": "GPL-3.0-only",
+    "url": "https://github.com/XayahSuSuSu/Android-DataBackup",
+    "description": "ExternalRestorePolicy 的外部資料恢復策略來源。",
+    "components": [
+      "Dex",
+      "原始碼引用"
+    ]
+  },
+  {
+    "id": "reference:hiddenapi",
+    "name": "HiddenApi",
+    "author": "RikkaW",
+    "version": "架構參照",
+    "license": "MIT",
+    "url": "https://github.com/RikkaW/HiddenApi",
+    "description": "隱藏 API 相容層架構參照。",
+    "components": [
+      "Dex",
+      "設計參照"
+    ]
+  },
+  {
+    "id": "reference:refine",
+    "name": "HiddenApiRefinePlugin",
+    "author": "RikkaApps",
+    "version": "4.4.0",
+    "license": "MIT",
+    "url": "https://github.com/RikkaApps/HiddenApiRefinePlugin",
+    "description": "隱藏 API 型別修飾及建置外掛；相關模組亦列於解析依賴。",
+    "components": [
+      "Dex",
+      "建置工具"
+    ]
+  },
+  {
+    "id": "reference:mcu",
+    "name": "Material Color Utilities",
+    "author": "Google",
+    "version": "bd811e4ca2ab",
+    "license": "Apache-2.0",
+    "url": "https://github.com/material-foundation/material-color-utilities",
+    "description": "隨附 Java 色彩演算法；明確使用 2025 規格。",
+    "components": [
+      "Dex",
+      "原始碼引用"
+    ]
+  },
+  {
+    "id": "reference:ksu",
+    "name": "KernelSU",
+    "author": "tiann / KernelSU contributors",
+    "version": "75e179d378d7",
+    "license": "GPL-3.0",
+    "url": "https://github.com/tiann/KernelSU",
+    "description": "主題流程及參數參照，未納入 KernelSU 管理器或核心模組。",
+    "components": [
+      "APK／WebUI",
+      "設計參照"
+    ]
+  },
+  {
+    "id": "reference:miuix",
+    "name": "Miuix",
+    "author": "compose-miuix-ui",
+    "version": "0.9.4 / 39c40f998442",
+    "license": "Apache-2.0",
+    "url": "https://github.com/compose-miuix-ui/miuix",
+    "description": "原生介面使用的 Miuix 執行期程式庫；版本亦列於解析依賴。",
+    "components": [
+      "APK／WebUI",
+      "設計參照"
+    ]
+  },
+  {
+    "id": "reference:materialkolor",
+    "name": "MaterialKolor",
+    "author": "Jordon de Hoog",
+    "version": "6.0.0",
+    "license": "MIT",
+    "url": "https://github.com/jordond/MaterialKolor",
+    "description": "Miuix 傳遞使用的色彩引擎；版本亦列於解析依賴。",
+    "components": [
+      "APK／WebUI",
+      "設計參照"
+    ]
+  },
+  {
+    "id": "reference:rust",
+    "name": "Rust Standard Library",
+    "author": "The Rust Project Developers",
+    "version": "1.99.1",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/rust-lang/rust",
+    "description": "Rust 使用標準函式庫與 Android 系統介面；Cargo.lock 無外部 crate。",
+    "components": [
+      "Rust"
+    ]
+  },
+  {
+    "id": "reference:android",
+    "name": "Android Open Source Project / Bionic",
+    "author": "Android Open Source Project",
+    "version": "Android API 28+ / NDK r30",
+    "license": "Apache-2.0 / BSD / 個別來源授權",
+    "url": "https://android.googlesource.com/platform/bionic/",
+    "description": "Android 系統介面與原生 C 執行期；各原始檔依其標示授權。",
+    "components": [
+      "Dex",
+      "Rust",
+      "原生工具"
+    ]
+  },
+  {
+    "id": "reference:busybox",
+    "name": "BusyBox",
+    "author": "BusyBox contributors",
+    "version": "1.38.0 Android",
+    "license": "GPL-2.0-only",
+    "url": "https://busybox.net/",
+    "description": "腳本隨附的命令列工具集。",
+    "components": [
+      "Shell／原生工具"
+    ]
+  },
+  {
+    "id": "reference:tar",
+    "name": "GNU tar",
+    "author": "Free Software Foundation",
+    "version": "1.35.90",
+    "license": "GPL-3.0-or-later",
+    "url": "https://www.gnu.org/software/tar/",
+    "description": "串流封存與恢復。",
+    "components": [
+      "Shell／原生工具"
+    ]
+  },
+  {
+    "id": "reference:zstd",
+    "name": "Zstandard",
+    "author": "Meta Platforms, Inc. and affiliates",
+    "version": "1.6.0 / 01b7154f1172",
+    "license": "BSD-3-Clause OR GPL-2.0",
+    "url": "https://github.com/facebook/zstd",
+    "description": "串流壓縮與解壓縮。",
+    "components": [
+      "Shell／原生工具"
+    ]
+  },
+  {
+    "id": "reference:samba",
+    "name": "Samba / smbclient",
+    "author": "Samba Team",
+    "version": "4.25.1",
+    "license": "GPL-3.0-or-later / 個別來源授權",
+    "url": "https://www.samba.org/",
+    "description": "SMB 遠端傳輸；隨附版本含 Android 相容補丁。",
+    "components": [
+      "Shell／原生工具"
+    ]
+  },
+  {
+    "id": "reference:gmp",
+    "name": "GNU Multiple Precision Arithmetic Library",
+    "author": "GMP developers",
+    "version": "6.3.0",
+    "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
+    "url": "https://gmplib.org/",
+    "description": "SMB 靜態建置的高精度算術依賴。",
+    "components": [
+      "SMB 間接依賴"
+    ]
+  },
+  {
+    "id": "reference:nettle",
+    "name": "Nettle",
+    "author": "Nettle developers",
+    "version": "4.0",
+    "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
+    "url": "https://www.lysator.liu.se/~nisse/nettle/",
+    "description": "SMB 靜態建置的密碼學依賴。",
+    "components": [
+      "SMB 間接依賴"
+    ]
+  },
+  {
+    "id": "reference:gnutls",
+    "name": "GnuTLS",
+    "author": "GnuTLS contributors",
+    "version": "3.8.13",
+    "license": "LGPL-2.1-or-later / 個別來源授權",
+    "url": "https://www.gnutls.org/",
+    "description": "SMB 靜態建置的 TLS 依賴。",
+    "components": [
+      "SMB 間接依賴"
+    ]
+  },
+  {
+    "id": "reference:yapp",
+    "name": "Parse::Yapp",
+    "author": "François Desarmenien / contributors",
+    "version": "1.21",
+    "license": "GPL / Artistic（依上游）",
+    "url": "https://metacpan.org/dist/Parse-Yapp",
+    "description": "Samba 建置階段解析器產生工具。",
+    "components": [
+      "SMB（建置時）"
+    ]
+  },
+  {
+    "id": "reference:find",
+    "name": "GNU findutils",
+    "author": "Free Software Foundation",
+    "version": "4.11.0",
+    "license": "GPL-3.0-or-later",
+    "url": "https://www.gnu.org/software/findutils/",
+    "description": "隨附完整上游來源壓縮檔與 Android ARM64／API28／16KiB 靜態建置配方。",
+    "components": [
+      "Shell／原生工具"
+    ]
+  },
+  {
+    "id": "reference:legacy-tools",
+    "name": "cmd / keycheck（既有隨附工具）",
+    "author": "目前來源包未記錄原作者",
+    "version": "來源版本未記錄",
+    "license": "原始授權資訊待補",
+    "url": "https://github.com/YAWAsau/backup_script",
+    "description": "連結為 SpeedBackup 發佈來源；目前來源包沒有足以確認其上游來源的資料。",
+    "components": [
+      "Shell／原生工具"
+    ]
+  },
+  {
+    "id": "reference:aosp-starfield",
+    "name": "Android 17 Starfield",
+    "author": "The Android Open Source Project",
+    "version": "android-17.0.0_r1",
+    "license": "Apache-2.0",
+    "url": "https://android.googlesource.com/platform/frameworks/base/+/android-17.0.0_r1/core/java/com/android/internal/app/PlatLogoActivity.java",
+    "description": "夜空背景改編自 Starfield；移除徽章、互動加速及 HDR 閃光，改用 Compose 生命週期與一般亮度。",
+    "components": [
+      "APK／WebUI",
+      "原始碼引用"
+    ]
+  },
+  {
+    "id": "cargo:itoa",
+    "name": "itoa",
+    "author": "David Tolnay <dtolnay@gmail.com>",
+    "version": "1.0.18",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/dtolnay/itoa",
+    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:memchr",
+    "name": "memchr",
+    "author": "Andrew Gallant <jamslam@gmail.com>, bluss",
+    "version": "2.8.3",
+    "license": "Unlicense OR MIT",
+    "url": "https://github.com/BurntSushi/memchr",
+    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:proc-macro2",
+    "name": "proc-macro2",
+    "author": "David Tolnay <dtolnay@gmail.com>, Alex Crichton <alex@alexcrichton.com>",
+    "version": "1.0.107",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/dtolnay/proc-macro2",
+    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:quote",
+    "name": "quote",
+    "author": "David Tolnay <dtolnay@gmail.com>",
+    "version": "1.0.47",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/dtolnay/quote",
+    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:serde",
+    "name": "serde",
+    "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
+    "version": "1.0.229",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/serde-rs/serde",
+    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:serde_core",
+    "name": "serde_core",
+    "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
+    "version": "1.0.229",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/serde-rs/serde",
+    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:serde_derive",
+    "name": "serde_derive",
+    "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
+    "version": "1.0.229",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/serde-rs/serde",
+    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:serde_json",
+    "name": "serde_json",
+    "author": "Upstream contributors",
+    "version": "1.0.154",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/serde-rs/json",
+    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:syn",
+    "name": "syn",
+    "author": "David Tolnay <dtolnay@gmail.com>",
+    "version": "3.0.9",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/dtolnay/syn",
+    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:unicode-ident",
+    "name": "unicode-ident",
+    "author": "David Tolnay <dtolnay@gmail.com>",
+    "version": "1.0.27",
+    "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
+    "url": "https://github.com/dtolnay/unicode-ident",
+    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:zmij",
+    "name": "zmij",
+    "author": "David Tolnay <dtolnay@gmail.com>",
+    "version": "1.0.23",
+    "license": "MIT",
+    "url": "https://github.com/dtolnay/zmij",
+    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  }
+]

@@ -2,7 +2,7 @@
 //! The flock serializes lease changes only; the shell's PID/start/boot identity
 //! owns the directory until release or verified process death.
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::raw::{c_int, c_void};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
@@ -110,26 +110,79 @@ fn stop_process(pid: u32, token: &str) -> io::Result<StopProcess> {
     Ok(p)
 }
 
+// Legacy releases wrote only pid. Never invent an owner record for them.
+// Snapshot a root-owned, non-writable lease and a verified script process before
+// user confirmation, then recheck both inode and process identity at stop time.
+fn legacy_lease(path:&Path)->io::Result<(u32,u64,u64)> {
+    let m=fs::symlink_metadata(path)?;
+    if !m.is_dir()||m.file_type().is_symlink()||m.uid()!=0||m.mode()&0o022!=0{return Err(io::ErrorKind::PermissionDenied.into());}
+    for e in fs::read_dir(path)?{if e?.file_name()!="pid"{return Err(io::ErrorKind::PermissionDenied.into());}}
+    let f=OpenOptions::new().read(true).custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE).open(path.join("pid"))?;
+    let p=f.metadata()?;
+    if !p.is_file()||p.uid()!=0||p.nlink()!=1||p.mode()&0o022!=0||p.len()>64{return Err(io::ErrorKind::PermissionDenied.into());}
+    let mut raw=String::new();f.take(65).read_to_string(&mut raw)?;
+    let pid=raw.trim().parse::<u32>().ok().filter(|p|*p>1&&*p<=i32::MAX as u32).ok_or(io::ErrorKind::InvalidData)?;
+    Ok((pid,m.dev(),m.ino()))
+}
+fn legacy_script_identity(pid:u32)->io::Result<String>{
+    let token=identity(pid)?;
+    if fs::metadata(format!("/proc/{pid}"))?.uid()!=0{return Err(io::ErrorKind::PermissionDenied.into());}
+    let raw=fs::read(format!("/proc/{pid}/cmdline"))?;
+    if raw.len()>65536{return Err(io::ErrorKind::InvalidData.into());}
+    let args:Vec<_>=raw.split(|b|*b==0).filter(|s|!s.is_empty()).collect();
+    let shell=args.first().and_then(|s|std::str::from_utf8(s).ok()).and_then(|s|Path::new(s).file_name()).and_then(|s|s.to_str()).unwrap_or("");
+    if !matches!(shell,"sh"|"bash"|"mksh"){return Err(io::ErrorKind::PermissionDenied.into());}
+    let script=std::str::from_utf8(args.get(1).ok_or(io::ErrorKind::InvalidData)?).map_err(|_|io::ErrorKind::InvalidData)?;
+    if !matches!(Path::new(script).file_name().and_then(|s|s.to_str()),Some("start.sh"|"recover.sh")){return Err(io::ErrorKind::PermissionDenied.into());}
+    let script=if Path::new(script).is_absolute(){Path::new(script).to_owned()}else{fs::read_link(format!("/proc/{pid}/cwd"))?.join(script)};
+    let source_file=OpenOptions::new().read(true).custom_flags(speedbackup_native_rs::O_NONBLOCK).open(script)?;
+    if !source_file.metadata()?.is_file(){return Err(io::ErrorKind::PermissionDenied.into());}
+    let mut source=String::new();source_file.take(131073).read_to_string(&mut source)?;
+    if source.len()>131072||!source.contains("tools.sh")||!(source.contains("SpeedBackup")||source.contains("kill_Serve")){return Err(io::ErrorKind::PermissionDenied.into());}
+    if identity(pid)?!=token{return Err(io::ErrorKind::PermissionDenied.into());}Ok(token)
+}
+pub fn lock_legacy_snapshot(args:&[String])->i32{
+    if args.len()!=1{return 2;}
+    let result=(||->io::Result<String>{let p=Path::new(&args[0]);let _g=guard(p)?;let(pid,dev,ino)=legacy_lease(p)?;let token=legacy_script_identity(pid)?;Ok(format!("legacy:{token}:{dev}:{ino}"))})();
+    match result{Ok(s)=>{println!("{s}");0},Err(e)=>{eprintln!("LOCK_LEGACY_UNVERIFIED error={e}");1}}
+}
+
 /// Stop only the lease snapshot selected by the user, never a replacement owner.
-pub fn lock_stop(args: &[String]) -> i32 {
+pub fn lock_stop(args: &[String]) -> i32 { lock_stop_impl(args,None) }
+fn lock_stop_impl(args: &[String], pinned_owner:Option<&StopProcess>) -> i32 {
     if args.len() != 2 {
         return 2;
     }
     let mut stage = "guard";
     let result = (|| -> io::Result<usize> {
         let path = Path::new(&args[0]);
-        let expected = &args[1];
+        let legacy=args[1].strip_prefix("legacy:");
+        let mut legacy_stamp=None;
+        let legacy_token;
+        let expected=if let Some(raw)=legacy{
+            let parts:Vec<_>=raw.split(':').collect();
+            if parts.len()!=5{return Err(io::ErrorKind::InvalidData.into());}
+            legacy_token=parts[..3].join(":");
+            legacy_stamp=Some((parts[3].parse::<u64>().map_err(|_|io::ErrorKind::InvalidData)?,parts[4].parse::<u64>().map_err(|_|io::ErrorKind::InvalidData)?));
+            &legacy_token
+        }else{&args[1]};
         let _guard = guard(path)?;
         stage = "lease_directory";
-        let meta = fs::symlink_metadata(path)?;
-        if !meta.is_dir() || meta.file_type().is_symlink() {
-            return Err(io::ErrorKind::PermissionDenied.into());
+        if let Some(owner)=pinned_owner {
+            if owner.token!=*expected || owner.exited()? {return Err(io::ErrorKind::PermissionDenied.into());}
+        }else{
+            let meta = fs::symlink_metadata(path)?;
+            if !meta.is_dir() || meta.file_type().is_symlink() {return Err(io::ErrorKind::PermissionDenied.into());}
+            if let Some((dev,ino))=legacy_stamp{
+                stage="legacy_owner_identity";
+                let(pid,d,i)=legacy_lease(path)?;
+                if (d,i)!=(dev,ino)||legacy_script_identity(pid)?!=*expected{return Err(io::ErrorKind::PermissionDenied.into());}
+            }else{
+                stage = "owner_record";
+                if fs::read_to_string(path.join("owner"))?.trim() != expected {return Err(io::ErrorKind::PermissionDenied.into());}
+            }
         }
-        stage = "owner_record";
-        if fs::read_to_string(path.join("owner"))?.trim() != expected {
-            return Err(io::ErrorKind::PermissionDenied.into());
-        }
-        let pid_raw = match fs::read_to_string(path.join("pid")) {
+        let pid_raw = if let Some(owner)=pinned_owner {owner.pid.to_string()}else{match fs::read_to_string(path.join("pid")) {
             Ok(value) => value,
             Err(e) if e.kind() == io::ErrorKind::NotFound => expected
                 .split(':')
@@ -137,7 +190,7 @@ pub fn lock_stop(args: &[String]) -> i32 {
                 .ok_or(io::ErrorKind::InvalidData)?
                 .to_owned(),
             Err(e) => return Err(e),
-        };
+        }};
         let pid: u32 = pid_raw
             .trim()
             .parse()
@@ -228,11 +281,11 @@ pub fn lock_stop(args: &[String]) -> i32 {
             }
             std::thread::sleep(std::time::Duration::from_millis(25));
         }
-        if fs::read_to_string(path.join("owner"))?.trim() != expected {
-            return Err(io::ErrorKind::PermissionDenied.into());
-        }
-        stage = "remove_verified_lease";
-        remove_owned(path)?;
+        let legacy_matches=legacy_stamp.is_some_and(|(dev,ino)|legacy_lease(path).ok()==Some((pid,dev,ino)));
+        if legacy_matches || (legacy_stamp.is_none()&&fs::read_to_string(path.join("owner")).ok().as_deref().map(str::trim)==Some(expected.as_str())) {
+            stage = "remove_verified_lease";
+            remove_owned(path)?;
+        }else if pinned_owner.is_none(){return Err(io::ErrorKind::PermissionDenied.into());}
         Ok(processes.len())
     })();
     match result {
@@ -249,6 +302,71 @@ pub fn lock_stop(args: &[String]) -> i32 {
             1
         }
     }
+}
+
+/// Graceful Ctrl+C-style cancellation for the supervisor's isolated worker
+/// process group. No kill(-pgid): every recipient is pinned by pidfd.
+/// Return 0 for graceful exit, 10 for forced exit, 1 for refusal/incomplete.
+pub fn lock_cancel(args:&[String],grace:std::time::Duration)->i32 {
+    let result=(||->io::Result<i32>{
+        if args.len()!=2{return Err(io::ErrorKind::InvalidInput.into());}
+        let path=Path::new(&args[0]);let expected=&args[1];
+        let lease=guard(path)?;
+        let meta=fs::symlink_metadata(path)?;
+        if !meta.is_dir()||meta.file_type().is_symlink()||fs::read_to_string(path.join("owner"))?.trim()!=expected{return Err(io::ErrorKind::PermissionDenied.into());}
+        let pid:u32=expected.split(':').next().unwrap_or("").parse().map_err(|_|io::ErrorKind::InvalidData)?;
+        if pid<=1||identity(pid)?!=*expected{return Err(io::ErrorKind::PermissionDenied.into());}
+        fn group(pid:u32)->io::Result<u32>{
+            fs::read_to_string(format!("/proc/{pid}/stat"))?.rsplit_once(") ").and_then(|(_,s)|s.split_whitespace().nth(2)).ok_or(io::ErrorKind::InvalidData)?.parse().map_err(|_|io::ErrorKind::InvalidData.into())
+        }
+        // console-service creates this private group via setsid before exec.
+        if group(pid)?!=pid||group(std::process::id())?==pid{return Err(io::ErrorKind::PermissionDenied.into());}
+        let mut ancestor=std::process::id();
+        for _ in 0..256{if ancestor==pid{return Err(io::ErrorKind::PermissionDenied.into());}if ancestor<=1{break;}ancestor=process_parent_state(ancestor)?.0;}
+        let mut processes=vec![stop_process(pid,expected)?];let started=Instant::now();
+        // Freeze briefly while snapshotting so foreground commands cannot fork
+        // past the interrupt. This is done only on explicit cancellation.
+        loop{
+            let before=processes.len();
+            for entry in fs::read_dir("/proc")?{
+                let entry=entry?;let Ok(child)=entry.file_name().to_string_lossy().parse::<u32>()else{continue;};
+                if child<=1||processes.iter().any(|p|p.pid==child)||group(child).ok()!=Some(pid){continue;}
+                let Ok(token)=identity(child)else{continue;};
+                match stop_process(child,&token){Ok(p)=>processes.push(p),Err(e)if e.raw_os_error()==Some(3)||e.kind()==io::ErrorKind::NotFound=>{},Err(e)=>return Err(e)}
+            }
+            if before==processes.len(){break;}
+            if processes.len()>4096||started.elapsed().as_secs()>=3{return Err(io::ErrorKind::TimedOut.into());}
+        }
+        // Cleanup needs to release this lease: never hold its flock while waiting.
+        drop(lease);
+        for p in processes.iter().rev(){if !p.exited()?{if let Err(e)=p.signal(2){if !p.exited()?{return Err(e);}}}}
+        for p in processes.iter_mut().rev(){if p.resume{let _=p.signal(18);p.resume=false;}}
+        fn wait_all(processes:&[StopProcess],timeout:std::time::Duration)->io::Result<bool>{
+            let start=Instant::now();
+            loop{
+                let mut fds=Vec::new();
+                for p in processes{if !p.exited()?{fds.push(speedbackup_native_rs::PollFd{fd:p.fd.as_raw_fd(),events:1,revents:0});}}
+                if fds.is_empty(){return Ok(true);}
+                let remaining=timeout.saturating_sub(start.elapsed());if remaining.is_zero(){return Ok(false);}
+                let ms=remaining.as_millis().min(i32::MAX as u128).max(1) as i32;
+                let rc=unsafe{speedbackup_native_rs::poll(fds.as_mut_ptr(),fds.len() as _,ms)};
+                if rc<0{let e=io::Error::last_os_error();if e.kind()!=io::ErrorKind::Interrupted{return Err(e);}}
+            }
+        }
+        if wait_all(&processes,grace)?{println!("LOCK_CANCEL_GRACEFUL processes={}",processes.len());return Ok(0);}
+        println!("LOCK_CANCEL_ESCALATE grace_ms={}",grace.as_millis());
+        if !processes[0].exited()?{
+            // Revalidate the lease and rescan descendants, including helpers
+            // created by cleanup or running in a different process group.
+            if lock_stop(args)!=0{eprintln!("LOCK_CANCEL_ESCALATE_PINNED lease released or changed; rescan original pinned owner only");if !processes[0].exited()?{let _=lock_stop_impl(args,Some(&processes[0]));}}
+        }
+        // A parent can exit leaving an ignored-INT child. These are old pinned
+        // recipients, never a new lease owner or a numeric PID fallback.
+        for p in processes.iter().rev(){if !p.exited()?{if let Err(e)=p.signal(9){if !p.exited()?{return Err(e);}}}}
+        if !wait_all(&processes,std::time::Duration::from_secs(5))?{return Err(io::ErrorKind::TimedOut.into());}
+        println!("LOCK_CANCEL_FORCED");Ok(10)
+    })();
+    match result{Ok(rc)=>rc,Err(e)=>{eprintln!("LOCK_CANCEL_REFUSED_OR_INCOMPLETE {e}");1}}
 }
 
 extern "C" {
@@ -443,4 +561,63 @@ pub fn lock(args: &[String], release: bool) -> i32 {
             1
         }
     }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+ use super::*;
+ use std::process::{Command,Stdio,Child};
+ use std::os::unix::process::CommandExt;
+ use std::time::Duration;
+ unsafe extern "C" {fn setsid()->i32;fn signal(sig:i32,handler:usize)->usize;}
+ struct Fixture{path:std::path::PathBuf,child:Child}
+ impl Drop for Fixture{fn drop(&mut self){let _=self.child.kill();let _=self.child.wait();let _=fs::remove_dir_all(&self.path);}}
+ fn fixture(script:&str)->Fixture{
+  let path=std::path::PathBuf::from(format!("/data/local/tmp/sb-cancel-test-{}",fs::read_to_string("/proc/sys/kernel/random/uuid").unwrap().trim()));
+  fs::create_dir(&path).unwrap();
+  let mut cmd=Command::new("/system/bin/sh");cmd.arg("-c").arg(script).current_dir(&path).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+  unsafe{cmd.pre_exec(||{signal(2,0);if setsid()<0{return Err(io::Error::last_os_error());}Ok(())});}
+  let child=cmd.spawn().unwrap();let f=Fixture{path,child};let start=Instant::now();while !f.path.join("ready").exists(){assert!(start.elapsed()<Duration::from_secs(3));std::thread::sleep(Duration::from_millis(5));}f
+ }
+ #[test]fn sigint_runs_cleanup_without_grace_delay(){
+  let mut f=fixture("trap 'trap \"\" INT; echo INT > signal; exit 130' INT; trap 'ec=$?; sleep 0.15; echo cleaned > cleanup; exit \"$ec\"' EXIT; echo ready > ready; while :; do sleep 30; done");
+  let lock=f.path.join("lease");let token=acquire(&lock,f.child.id()).unwrap();let start=Instant::now();
+  assert_eq!(lock_cancel(&[lock.to_string_lossy().into(),token],Duration::from_secs(2)),0);
+  assert!(start.elapsed()<Duration::from_secs(2));assert_eq!(f.child.wait().unwrap().code(),Some(130));assert!(f.path.join("signal").exists());assert!(f.path.join("cleanup").exists());
+ }
+ #[test]fn ignored_sigint_escalates_and_wrong_owner_is_refused(){
+  let mut f=fixture("trap '' INT; echo ready > ready; while :; do sleep 30; done");let lock=f.path.join("lease");let token=acquire(&lock,f.child.id()).unwrap();
+  assert_eq!(lock_cancel(&[lock.to_string_lossy().into(),format!("{token}-wrong")],Duration::from_millis(100)),1);assert!(f.child.try_wait().unwrap().is_none());
+  let start=Instant::now();assert_eq!(lock_cancel(&[lock.to_string_lossy().into(),token],Duration::from_millis(150)),10);assert!(start.elapsed()>=Duration::from_millis(150));assert!(start.elapsed()<Duration::from_secs(6));assert!(!f.child.wait().unwrap().success());assert!(!lock.exists());
+ }
+ #[test]fn production_shell_interrupt_and_exit_hooks_preserve_cancel_status(){
+  let source=include_str!("../../tools/tools.sh");
+  let interrupt=source.split("_speedbackup_on_interrupt() {").nth(1).unwrap().split("_speedbackup_install_interrupt_traps()").next().unwrap();
+  let exit=source.split("    _speedbackup_exit_trap() {").nth(1).unwrap().split("    trap '_speedbackup_exit_trap' EXIT").next().unwrap();
+  let mut script=String::new();
+  for name in ["_speedbackup_background_finish_consume","_speedbackup_lock_cleanup","_speed_debug_disarm_if_run_gone","_speed_debug_log","echoRgb","_power_workers_snapshot","_speed_debug_pack","_speedbackup_run_tmpdir_final_cleanup","_speedbackup_background_finish_publish"]{script.push_str(&format!("{name}() {{ :; }}\n"));}
+  script.push_str("_speedbackup_exit_code_normalize() { echo \"$1\"; }\n_speed_debug_stderr_target() { echo /dev/null; }\n_speedbackup_display_restore_after_debug_pack() { return 0; }\nremote_cleanup() { echo \"$REMOTE_TRIGGER\" > upload; }\n_power_complete_offer() { echo \"$_POWER_ELIGIBLE:$1\" > power; }\n_speedbackup_operation_finish() { echo \"$1\" > result; }\n_cleanup_tmp_files() { sleep 0.1; echo cleaned > cleanup; }\n");
+  script.push_str(&format!("_speedbackup_on_interrupt() {{{interrupt}\n_speedbackup_exit_trap() {{{exit}\n"));
+  script.push_str("REMOTE_TRIGGER=1; _POWER_ELIGIBLE=1; trap '_speedbackup_exit_trap' EXIT; trap '_speedbackup_on_interrupt' INT; echo ready > ready; while :; do sleep 30; done");
+  let mut f=fixture(&script);let lease=f.path.join("lease");let token=acquire(&lease,f.child.id()).unwrap();assert_eq!(lock_cancel(&[lease.to_string_lossy().into(),token],Duration::from_secs(3)),0);
+  assert_eq!(f.child.wait().unwrap().code(),Some(130));assert_eq!(fs::read_to_string(f.path.join("result")).unwrap().trim(),"130");assert_eq!(fs::read_to_string(f.path.join("upload")).unwrap().trim(),"0");assert_eq!(fs::read_to_string(f.path.join("power")).unwrap().trim(),"0:130");assert!(f.path.join("cleanup").exists());
+ }
+ #[test]fn removed_lease_does_not_prevent_forcing_pinned_worker(){
+  let mut f=fixture("trap 'exit 130' INT; trap 'trap \"\" INT; sleep 30 & echo $! > cleanup_pid; echo cleaning > cleaning; wait' EXIT; echo ready > ready; while :; do sleep 30; done");
+  let lease=f.path.join("lease");let token=acquire(&lease,f.child.id()).unwrap();let path=f.path.clone();let args=vec![lease.to_string_lossy().into_owned(),token];
+  let t=std::thread::spawn(move||lock_cancel(&args,Duration::from_millis(300)));let start=Instant::now();while !path.join("cleaning").exists(){assert!(start.elapsed()<Duration::from_secs(2));std::thread::sleep(Duration::from_millis(5));}
+  {let _g=guard(&lease).unwrap();remove_owned(&lease).unwrap();}
+  let replacement=acquire(&lease,std::process::id()).unwrap();
+  let cleanup_pid:u32=fs::read_to_string(path.join("cleanup_pid")).unwrap().trim().parse().unwrap();let fd=speedbackup_native_rs::pidfd_open(cleanup_pid as i32).unwrap();let pinned=StopProcess{pid:cleanup_pid,token:identity(cleanup_pid).unwrap(),fd:unsafe{File::from_raw_fd(fd)},resume:false};
+  assert_eq!(t.join().unwrap(),10);assert!(!f.child.wait().unwrap().success());assert!(pinned.exited().unwrap());assert_eq!(fs::read_to_string(lease.join("owner")).unwrap(),replacement);
+ }
+ #[test]fn async_subshell_can_receive_sigint_and_cleanup(){
+  let mut f=fixture("trap 'wait; exit 130' INT; (trap 'exit 130' INT; trap 'ec=$?; echo cleaned > child_cleanup; exit \"$ec\"' EXIT; echo ready > ready; while :; do sleep 30; done) & wait");
+  let lease=f.path.join("lease");let token=acquire(&lease,f.child.id()).unwrap();assert_eq!(lock_cancel(&[lease.to_string_lossy().into(),token],Duration::from_secs(2)),0);let _=f.child.wait();assert!(f.path.join("child_cleanup").exists());
+ }
+ #[test]fn lease_guard_available_during_cleanup(){
+  let mut f=fixture("trap 'exit 130' INT; trap 'ec=$?; echo cleaning > cleaning; while [ ! -f released ]; do sleep 0.02; done; echo cleaned > cleanup; exit \"$ec\"' EXIT; echo ready > ready; while :; do sleep 30; done");let lock=f.path.join("lease");let token=acquire(&lock,f.child.id()).unwrap();let path=f.path.clone();let args=vec![lock.to_string_lossy().into_owned(),token];
+  let t=std::thread::spawn(move||lock_cancel(&args,Duration::from_secs(2)));let start=Instant::now();while !path.join("cleaning").exists(){assert!(start.elapsed()<Duration::from_secs(2));std::thread::sleep(Duration::from_millis(5));}
+  {let _g=guard(&lock).expect("cleanup must be able to acquire lease");remove_owned(&lock).unwrap();}fs::write(path.join("released"),b"ok").unwrap();assert_eq!(t.join().unwrap(),0);assert_eq!(f.child.wait().unwrap().code(),Some(130));assert!(path.join("cleanup").exists());
+ }
 }

@@ -1,0 +1,96 @@
+/*
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package scheme;
+
+import dynamiccolor.ColorSpec.SpecVersion;
+import dynamiccolor.ColorSpecs;
+import dynamiccolor.DynamicScheme;
+import dynamiccolor.Variant;
+import hct.Hct;
+import palettes.TonalPalette;
+import java.util.Collections;
+import java.util.List;
+
+/**
+ * A scheme that places the source color in Scheme.primaryContainer.
+ *
+ * <p>Primary Container is the source color, adjusted for color relativity. It maintains constant
+ * appearance in light mode and dark mode. This adds ~5 tone in light mode, and subtracts ~5 tone in
+ * dark mode.
+ *
+ * <p>Tertiary Container is an analogous color, specifically, the analog of a color wheel divided
+ * into 6, and the precise analog is the one found by increasing hue. This is a scientifically
+ * grounded equivalent to rotating hue clockwise by 60 degrees. It also maintains constant
+ * appearance.
+ */
+public class SchemeContent extends DynamicScheme {
+
+  public SchemeContent(Hct sourceColorHct, boolean isDark, double contrastLevel) {
+    this(sourceColorHct, isDark, contrastLevel, DEFAULT_SPEC_VERSION, DEFAULT_PLATFORM);
+  }
+
+  public SchemeContent(
+      Hct sourceColorHct,
+      boolean isDark,
+      double contrastLevel,
+      SpecVersion specVersion,
+      Platform platform) {
+    this(Collections.singletonList(sourceColorHct), isDark, contrastLevel, specVersion, platform);
+  }
+
+  public SchemeContent(List<Hct> sourceColorHctList, boolean isDark, double contrastLevel) {
+    this(sourceColorHctList, isDark, contrastLevel, DEFAULT_SPEC_VERSION, DEFAULT_PLATFORM);
+  }
+
+  public SchemeContent(
+      List<Hct> sourceColorHctList,
+      boolean isDark,
+      double contrastLevel,
+      SpecVersion specVersion,
+      Platform platform) {
+    super(
+        sourceColorHctList,
+        Variant.CONTENT,
+        isDark,
+        contrastLevel,
+        platform,
+        specVersion,
+        ColorSpecs.get(specVersion)
+            .getPrimaryPalette(
+                Variant.CONTENT, sourceColorHctList.get(0), isDark, platform, contrastLevel),
+        ColorSpecs.get(specVersion)
+            .getSecondaryPalette(
+                Variant.CONTENT, sourceColorHctList.get(0), isDark, platform, contrastLevel),
+        sourceColorHctList.size() > 1
+                && platform == Platform.WATCH
+                && sourceColorHctList.get(0).toInt() != sourceColorHctList.get(1).toInt()
+            ? TonalPalette.fromHueAndChroma(
+                sourceColorHctList.get(1).getHue(), sourceColorHctList.get(1).getChroma())
+            : ColorSpecs.get(specVersion)
+                .getTertiaryPalette(
+                    Variant.CONTENT, sourceColorHctList.get(0), isDark, platform, contrastLevel),
+        ColorSpecs.get(specVersion)
+            .getNeutralPalette(
+                Variant.CONTENT, sourceColorHctList.get(0), isDark, platform, contrastLevel),
+        ColorSpecs.get(specVersion)
+            .getNeutralVariantPalette(
+                Variant.CONTENT, sourceColorHctList.get(0), isDark, platform, contrastLevel),
+        ColorSpecs.get(specVersion)
+            .getErrorPalette(
+                Variant.CONTENT, sourceColorHctList.get(0), isDark, platform, contrastLevel));
+  }
+}

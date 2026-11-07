@@ -414,7 +414,7 @@ pub const O_NONBLOCK: c_int = 0o4000;
 pub const O_CLOEXEC: c_int = 0o2000000;
 
 extern "C" {
-    pub fn open(path: *const c_char, flags: c_int, mode: c_int) -> c_int;
+    pub fn open(path: *const c_char, flags: c_int, ...) -> c_int;
 }
 
 extern "C" {

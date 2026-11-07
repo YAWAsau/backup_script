@@ -9,6 +9,7 @@ use std::ffi::{CStr, CString};
 use std::io::{self, BufReader, ErrorKind, Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::os::fd::FromRawFd;
+use std::os::unix::ffi::OsStringExt;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::UnixStream;
 
@@ -42,7 +43,7 @@ struct AddrInfo {
 }
 
 extern "C" {
-    fn open(path: *const std::os::raw::c_char, flags: i32, mode: u32) -> i32;
+    fn open(path: *const std::os::raw::c_char, flags: i32, ...) -> i32;
     fn write(fd: i32, buf: *const std::os::raw::c_void, count: usize) -> isize;
     fn fchmod(fd: i32, mode: u32) -> i32;
     fn getaddrinfo(
@@ -845,6 +846,8 @@ fn relay_connection(
     mut conn: Conn,
     header_file: Option<String>,
     allow_plain_response: bool,
+    request_prefix: Option<&[u8]>,
+    copy_stdin: bool,
 ) -> i32 {
     unsafe {
         signal(SIGPIPE, SIG_IGN);
@@ -863,7 +866,12 @@ fn relay_connection(
         if unsafe { prctl(1, 9, 0, 0, 0) } != 0 || unsafe { getppid() } != parent_pid {
             unsafe { _exit(4) }
         }
-        let mut result = copy_request_to_socket(&mut conn);
+        // Prefix must be written in the writer child: an early daemon reply
+        // must still be consumed concurrently, exactly like the generic relay.
+        let mut result = if let Some(prefix) = request_prefix {
+            if conn.write_all(prefix).is_ok() { 0 } else { -1 }
+        } else { 0 };
+        if result == 0 && copy_stdin { result = copy_request_to_socket(&mut conn); }
         if let Err(e) = conn.shutdown(Shutdown::Write) {
             let er = e.raw_os_error().unwrap_or(0);
             if er != 107 && er != 32 {
@@ -953,7 +961,7 @@ fn dav_precheck(path: &str) -> i32 {
             && fields[1].parse::<u64>().is_ok_and(|n|n>0);
         Ok((code,valid))
     })();
-    eprintln!("DAV_PRECHECK_TIMING inputUs={} connectUs={} writeUs={} responseWaitUs={} parseUs={} totalUs={} complete={}",
+    println!("DAV_PRECHECK_TIMING inputUs={} connectUs={} writeUs={} responseWaitUs={} parseUs={} totalUs={} complete={}",
         stamps[0], stamps[1].saturating_sub(stamps[0]), stamps[2].saturating_sub(stamps[1]),
         stamps[3].saturating_sub(stamps[2]), timing_start.elapsed().as_micros().saturating_sub(stamps[3]),
         timing_start.elapsed().as_micros(), result.is_ok());
@@ -987,7 +995,25 @@ pub(crate) fn run() {
         std::process::exit(2);
     }
 
-    let rc = if args[1] == "root-file-unix" {
+    let rc = if matches!(args[1].as_str(), "webdav-env-unix" | "webdav-env-tcp") {
+        let tcp = args[1] == "webdav-env-tcp";
+        let at = if tcp { 4 } else { 3 };
+        // Header bytes never enter argv or logs, and may be non-UTF-8 just as
+        // the old Shell pipe permitted. environ is restricted to the owner.
+        let prefix = std::env::var_os("SPEEDBACKUP_DAV_REQUEST").map(|s| s.into_vec());
+        std::env::remove_var("SPEEDBACKUP_DAV_REQUEST");
+        if args.len() != at + 2 || !matches!(args.last().map(String::as_str), Some("0" | "-1")) || prefix.is_none() {
+            2
+        } else {
+            let conn = if tcp { connect_tcp_socket(&args[2], &args[3]).map(Conn::Tcp) }
+                       else { connect_unix_socket(&args[2]).map(Conn::Unix) };
+            match conn {
+                Ok(conn) => relay_connection(conn, Some(args[at].clone()), false,
+                    prefix.as_deref(), args[at+1] == "-1"),
+                Err(e) => { eprintln!("unixsock: connect failed: {}", c_strerror(&e)); 3 }
+            }
+        }
+    } else if args[1] == "root-file-unix" {
         let shape_ok = (args.len() == 7 && args[3] != "appstate")
             || (args.len() == 9 && args[3] == "appstate");
         if !shape_ok || args[5].is_empty() {
@@ -1043,7 +1069,7 @@ pub(crate) fn run() {
                 rc
             }
             Ok((hf, allow)) => match connect_unix_socket(&args[2]) {
-                Ok(s) => relay_connection(Conn::Unix(s), hf, allow),
+                Ok(s) => relay_connection(Conn::Unix(s), hf, allow, None, true),
                 Err(e) => {
                     eprintln!("unixsock: connect failed: {}", c_strerror(&e));
                     3
@@ -1061,7 +1087,7 @@ pub(crate) fn run() {
                     rc
                 }
                 Ok((hf, allow)) => match connect_tcp_socket(&args[2], &args[3]) {
-                    Ok(s) => relay_connection(Conn::Tcp(s), hf, allow),
+                    Ok(s) => relay_connection(Conn::Tcp(s), hf, allow, None, true),
                     Err(e) => {
                         eprintln!("unixsock: connect failed: {}", c_strerror(&e));
                         3
@@ -1451,7 +1477,7 @@ mod root_args_tests {
         ];
         for (name, response, success) in cases {
             let mut prior: Option<(i32, Vec<u8>, Vec<u8>)> = None;
-            for route in ["relay", "args", "file"] {
+            for route in ["relay", "args", "file", "webdav", "webdav-stream"] {
                 let seq = SEQ.fetch_add(1, Ordering::Relaxed);
                 let socket = format!("{}/s_{}_{}", root, std::process::id(), seq);
                 let header = format!("{}/h_{}_{}", root, std::process::id(), seq);
@@ -1472,7 +1498,12 @@ mod root_args_tests {
                 let mut command = Command::new(&binary);
                 command.arg("unixsock");
                 let body_path = format!("{}/b_{}_{}", root, std::process::id(), seq);
-                if route == "args" {
+                if route == "webdav" || route == "webdav-stream" {
+                    let split = if route == "webdav-stream" { 7 } else { request.len() };
+                    command.args(["webdav-env-unix", &socket, &header,
+                        if route == "webdav-stream" { "-1" } else { "0" }]);
+                    command.env("SPEEDBACKUP_DAV_REQUEST", std::ffi::OsString::from_vec(request[..split].to_vec()));
+                } else if route == "args" {
                     command
                         .args(["root-args-unix", &socket, "hiddenapi", "probe", &header])
                         .args(&args);
@@ -1498,6 +1529,8 @@ mod root_args_tests {
                 let mut stdin = child.stdin.take().unwrap();
                 if route == "relay" {
                     stdin.write_all(&request).unwrap();
+                } else if route == "webdav-stream" {
+                    stdin.write_all(&request[7..]).unwrap();
                 }
                 drop(stdin);
                 let out = child.wait_with_output().unwrap();

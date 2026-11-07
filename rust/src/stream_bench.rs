@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use speedbackup_native_rs::{O_CLOEXEC, O_NONBLOCK};
 
 fn frame(total: u64, expected: u64, speed: f64, generate: bool, color: u8) -> String {
-    format!("\r\x1b[38;5;{color}m -{} {:.1}% | {:.1} MiB/s\x1b[0m\x1b[K",
+    format!("\r\x1b[38;5;{color}m {} {:.1}% | {:.1} MiB/s\x1b[0m\x1b[K",
         if generate { "上傳" } else { "下載" },
         total as f64 * 100.0 / expected as f64, speed)
 }
@@ -24,9 +24,10 @@ impl Progress {
     fn new() -> Self {
         // Like tar progress: separate nonblocking tty, never alter payload fd flags.
         // With no terminal, stay quiet; the shell still prints the final summary.
-        let tty = ["/dev/tty", "/proc/self/fd/2"].iter().find_map(|path| {
+        let web=std::env::var("SPEEDBACKUP_WEB_PROGRESS_FIFO").ok();
+        let tty = web.as_deref().into_iter().chain(["/dev/tty", "/proc/self/fd/2"]).find_map(|path| {
             OpenOptions::new().write(true).custom_flags(O_NONBLOCK | O_CLOEXEC | 0o400)
-                .open(path).ok().filter(|f| f.is_terminal())
+                .open(path).ok().filter(|f| web.as_deref()==Some(path) || f.is_terminal())
         });
         let now = Instant::now();
         Self { tty, drawn: false, last_draw: now, sample_at: now, sample_bytes: 0,
@@ -105,7 +106,7 @@ mod tests {
     #[test]
     fn terminal_frames_replace_one_line_without_payload_or_newlines() {
         let up = frame(2684354560, 5368709120, 174.7, true, 213);
-        assert_eq!(up, "\r\x1b[38;5;213m -上傳 50.0% | 174.7 MiB/s\x1b[0m\x1b[K");
+        assert_eq!(up, "\r\x1b[38;5;213m 上傳 50.0% | 174.7 MiB/s\x1b[0m\x1b[K");
         let down = frame(5368709120, 5368709120, 231.8, false, 51);
         assert!(down.contains("下載 100.0%"));
         assert!(!up.contains('\n') && !down.contains('\n'));

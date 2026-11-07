@@ -24,7 +24,9 @@ import java.util.zip.ZipOutputStream;
 
 /** Maps-attached Timeline operations. Personal snapshots never enter diagnostic output. */
 public final class TimelineUtil {
-    private static final File ROOT=new File("/data/.speedbackup_timeline");
+    // Preserve pending recovery journals and their absolute paths on upgraded devices.
+    private static final File ROOT=new File(new File("/data/.speedbackup_timeline").exists()
+            ?"/data/.speedbackup_timeline":"/data/.speedbackup/timeline");
     private static final String PKG="com.google.android.gms";
     private static final long DEADLINE_MS=30000;
     private static void need(boolean value,String reason) throws IOException { TimelineDatabase.require(value,reason); }
@@ -354,6 +356,13 @@ public final class TimelineUtil {
         need(result.getString("account").matches("[a-f0-9]{64}"),"account_selector_invalid");
         return result;
     }
+    private static File stageSource(File archive,File work,String selected)throws Exception {
+        need(selected!=null&&selected.matches("[a-f0-9]{64}"),"timeline_source_selection_required");
+        File input=TimelineArchiveV3.stage(archive,work,selected);
+        if(input==null)input=stageArchive(TimelineCollection.select(archive,work,selected),work);
+        need(snapshotManifest(input).getString("account").equals(selected),"timeline_source_account_mismatch");
+        return input;
+    }
     private static void worker(String[] args) throws Exception {
         String operation=args[1]; int user=Integer.parseInt(args[2]);
         File work=ownedWork(args[4]); lease();
@@ -372,27 +381,41 @@ public final class TimelineUtil {
             try(android.database.sqlite.SQLiteDatabase db=TimelineDatabase.open(odlh,TimelineDatabase.RO)) {
                 empty=!hasArchiveHistory(db);
             } finally { TimelineDatabase.fixSidecars(odlh); }
+            File aux=new File(odlh.getParentFile(),"aux-odlh-storage.db");
+            if(empty&&aux.exists())try(android.database.sqlite.SQLiteDatabase db=TimelineDatabase.open(aux,TimelineDatabase.RO)) {
+                empty=TimelineDatabase.number(db,"SELECT EXISTS(SELECT 1 FROM aux_semantic_segment_table)")==0;
+            }finally{TimelineDatabase.fixSidecars(aux);}
             if(empty) { System.err.println("TIMELINE_BACKUP_ABSENT"); return; }
         }
         if(archiveBackup) {
-            List<GoogleAccountNames.Account> accounts=GoogleAccountNames.histories(user);
-            if(accounts.size()>1) {
-                try {
-                    long inputBytes=0;
-                    for(GoogleAccountNames.Account account:accounts) {
-                        TimelineDatabase.Live source=new TimelineDatabase.Live(user,false,account.selector,work);
-                        File capture=new File(work,"capture");privateDir(capture);
-                        try(Scope guard=new Scope(work,user,source.uid)){TimelineDatabase.capture(source,capture,guard);}
-                        TimelineDatabase.filterAccount(capture,account.gaia);
-                        TimelineDatabase.finishBackup(source,capture,binding(),true);
-                        inputBytes=Math.addExact(inputBytes,publishArchive(capture,TimelineCollection.part(work,account.selector)));
-                        discardTransient(work,"capture");
+            File base=new File("/data/user/"+user+"/com.google.android.gms/databases");
+            File[] gellers=base.listFiles((directory,name)->name.startsWith("portable_geller_")&&name.endsWith(".db"));
+            need(gellers!=null&&gellers.length>0&&gellers.length<=32,"timeline_geller_inventory_unavailable");
+            Arrays.sort(gellers,java.util.Comparator.comparing(File::getName));
+            String first=TimelineDatabase.digest(gellers[0].getName().getBytes(StandardCharsets.UTF_8));
+            TimelineDatabase.Live source=new TimelineDatabase.Live(user,false,first,work);
+            File capture=new File(work,"capture");privateDir(capture);
+            try {
+                try(Scope guard=new Scope(work,user,source.uid)) {
+                    TimelineDatabase.capture(source,capture,guard);
+                    Files.move(new File(capture,"geller.db").toPath(),new File(capture,"geller-"+first+".db").toPath());
+                    for(int i=1;i<gellers.length;i++) {
+                        guard.check();TimelineDatabase.regular(gellers[i]);
+                        need(Os.stat(gellers[i].getPath()).st_uid==source.uid,"database_owner_mismatch");
+                        String id=TimelineDatabase.digest(gellers[i].getName().getBytes(StandardCharsets.UTF_8));
+                        TimelineDatabase.snapshot(gellers[i],new File(capture,"geller-"+id+".db"));TimelineDatabase.fixSidecars(gellers[i]);
                     }
-                    inputBytes=Math.addExact(inputBytes,TimelineCollection.publish(work,new File(args[3]),accounts));
-                    System.out.println("SBRESULT\t1\ttimeline-backup-bytes\t"+inputBytes+"\t"+new File(args[3]).length());
-                    DiagnosticInfo.write("TIMELINE_BACKUP_OK accounts="+accounts.size());return;
-                }finally{TimelineCollection.cleanup(work);}
-            }
+                    File[] after=base.listFiles((directory,name)->name.startsWith("portable_geller_")&&name.endsWith(".db"));
+                    need(after!=null,"timeline_geller_inventory_changed");Arrays.sort(after,java.util.Comparator.comparing(File::getName));
+                    need(Arrays.equals(gellers,after),"timeline_geller_inventory_changed");guard.check();
+                }
+                List<GoogleAccountNames.Account> known;
+                try { known=GoogleAccountNames.fresh(user); } catch(Exception unavailable) { known=new ArrayList<>(); }
+                long inputBytes=TimelineArchiveV3.publish(capture,new File(args[3]),user,source.uid,known);
+                System.out.println("SBRESULT\t1\ttimeline-backup-bytes\t"+inputBytes+"\t"+new File(args[3]).length());
+                DiagnosticInfo.write("TIMELINE_BACKUP_OK format=3 allAccountHistoriesPreserved=true gellerDatabases="+gellers.length);
+                return;
+            } finally { try{TimelineArchiveV3.cleanup(capture);}catch(Exception cleanup){System.err.println("TIMELINE_PRIVATE_CLEANUP_FAILED type="+cleanup.getClass().getSimpleName());} }
         }
         boolean captureOperation=archiveBackup || operation.equals("backup") || operation.equals("probe");
         TimelineDatabase.Live live=null;
@@ -417,6 +440,20 @@ public final class TimelineUtil {
             } else publish(capture,new File(args[3]));
             discardTransient(work,"capture"); DiagnosticInfo.write("TIMELINE_BACKUP_OK"); return;
         }
+        String mode=System.getenv("SPEEDBACKUP_TIMELINE_MODE");if(mode==null||mode.isEmpty())mode="match";
+        need(Arrays.asList("match","account","cross","merge").contains(mode),"timeline_restore_mode_invalid");
+        if(archiveRestore){String targetSelector=System.getenv("SPEEDBACKUP_TIMELINE_ACCOUNT_SHA256");need(targetSelector!=null&&targetSelector.matches("[a-f0-9]{64}"),"timeline_target_account_required");}
+        List<File> mergeSources=new ArrayList<>();
+        String[] sourceIds=null;
+        if(archiveRestore&&mode.equals("merge")) {
+            String selected=System.getenv("SPEEDBACKUP_TIMELINE_SOURCE_SHA256");need(selected!=null,"timeline_source_selection_required");
+            sourceIds=selected.split(",",-1);need(sourceIds.length>0&&sourceIds.length<=32,"timeline_collection_count_invalid");
+            HashSet<String> unique=new HashSet<>();
+            for(int i=0;i<sourceIds.length;i++) {
+                need(unique.add(sourceIds[i])&&sourceIds[i].matches("[a-f0-9]{64}"),"timeline_source_selection_required");
+                if(i==0){File directory=new File(work,"merge-0");privateDir(directory);mergeSources.add(stageSource(new File(args[3]),directory,sourceIds[i]));}
+            }
+        }
         File input;
         if(operation.equals("recover")) {
             need(marker.isFile(),"timeline_no_pending_recovery");
@@ -424,19 +461,22 @@ public final class TimelineUtil {
             input=new File(ownedWork(journal.getString("work")),"rollback");
         } else {
             need(operation.equals("restore") || cross || archiveRestore,"timeline_command_invalid");
-            input=archiveRestore?stageArchive(TimelineCollection.select(new File(args[3]),work,System.getenv("SPEEDBACKUP_TIMELINE_SOURCE_SHA256")),work):stageInput(new File(args[3]),work);
+            if(archiveRestore)input=mergeSources.isEmpty()?stageSource(new File(args[3]),work,System.getenv("SPEEDBACKUP_TIMELINE_SOURCE_SHA256")):mergeSources.get(0);
+            else input=stageInput(new File(args[3]),work);
         }
         String importGaia=null;
         try {
             JSONObject manifest=snapshotManifest(input);
             if(archiveRestore) {
                 String selectedSource=System.getenv("SPEEDBACKUP_TIMELINE_SOURCE_SHA256");
-                need(selectedSource==null||selectedSource.isEmpty()||selectedSource.equals(manifest.getString("account")),"timeline_source_account_mismatch");
+                need(mode.equals("merge")||selectedSource==null||selectedSource.isEmpty()||selectedSource.equals(manifest.getString("account")),"timeline_source_account_mismatch");
                 GoogleAccountNames.Account target=GoogleAccountNames.select(user,System.getenv("SPEEDBACKUP_TIMELINE_ACCOUNT_SHA256"));
                 live=new TimelineDatabase.Live(user,false,target.selector,work);
                 TimelineDatabase.validateSnapshot(input);
                 System.out.println("此時間軸來自「"+GoogleAccountNames.sourceLabel(user,input,manifest)+"」，將匯入至「"+GoogleAccountNames.label(target)+"」的時間軸。");
-                TimelineDatabase.prepareAccountImport(live,input,device,target);
+                if(mode.equals("merge")) {
+                    for(File part:mergeSources)TimelineDatabase.prepareAccountImport(live,part,device,target,true);
+                } else TimelineDatabase.prepareAccountImport(live,input,device,target,mode.equals("cross"));
                 cross=true; importGaia=target.gaia;
             } else {
                 live=new TimelineDatabase.Live(user,operation.equals("recover"),manifest.getString("account"),work);
@@ -444,6 +484,36 @@ public final class TimelineUtil {
             TimelineDatabase.validate(live,input,device,cross,importGaia);
         }
         catch(Exception invalid) { if(!operation.equals("recover")) discardTransient(work,"input"); throw invalid; }
+        if(archiveRestore&&mode.equals("merge")) {
+            long required=67108864;
+            for(File file:live.files())required=Math.addExact(required,Math.multiplyExact(5,file.length()));
+            need(work.getUsableSpace()>required,"timeline_merge_space_insufficient");
+            File base=new File(work,"capture");privateDir(base);
+            try(Scope guard=new Scope(work,user,live.uid)){TimelineDatabase.capture(live,base,guard);}
+            // All heavy merging runs after thaw. Final capture must still match this baseline.
+            File aggregate=new File(work,"input");privateDir(aggregate);
+            for(String name:TimelineDatabase.FILES)Files.copy(new File(base,name).toPath(),new File(aggregate,name).toPath());
+            TimelineDatabase.filterAccount(aggregate,importGaia);
+            long duplicates=0;
+            for(int i=0;i<sourceIds.length;i++) {
+                File directory=new File(work,"merge-0");
+                File part;
+                if(i==0)part=mergeSources.get(0);
+                else {
+                    part=stageSource(new File(args[3]),directory,sourceIds[i]);
+                    TimelineDatabase.prepareAccountImport(live,part,device,GoogleAccountNames.select(user,System.getenv("SPEEDBACKUP_TIMELINE_ACCOUNT_SHA256")),true);
+                }
+                long needed=67108864;
+                for(String name:TimelineDatabase.FILES)needed=Math.addExact(needed,Math.multiplyExact(3,Math.addExact(new File(aggregate,name).length(),new File(part,name).length())));
+                need(work.getUsableSpace()>needed,"timeline_merge_space_insufficient");
+                duplicates+=TimelineMerge.append(aggregate,part,sourceIds[i]+":"+importGaia);
+                discardTransient(directory,"input");TimelineCollection.cleanup(directory);
+            }
+            TimelineDatabase.finishBackup(live,aggregate,device,true);
+            TimelineDatabase.validate(live,aggregate,device,true,importGaia);input=aggregate;
+            System.out.println("合併來源："+sourceIds.length+"；略過完全重複紀錄："+duplicates+"。保留目的帳號既有紀錄。");
+            System.err.println("TIMELINE_MERGE_READY sources="+sourceIds.length+" duplicatesSkipped="+duplicates+" existingHistoryPreserved=true");
+        }
         if(operation.equals("check-archive")) {
             discardTransient(work,"input");
             System.err.println("TIMELINE_RESTORE_PREFLIGHT_OK");return;
@@ -453,6 +523,9 @@ public final class TimelineUtil {
         try(Scope guard=new Scope(work,user,live.uid)) {
             TimelineDatabase.capture(live,rollback,guard);
             TimelineDatabase.finishBackup(live,rollback,device,false);
+            if(archiveRestore&&mode.equals("merge")) {
+                for(String name:TimelineDatabase.FILES)need(TimelineDatabase.hash(new File(work,"capture/"+name)).equals(TimelineDatabase.hash(new File(rollback,name))),"timeline_destination_changed_retry");
+            }
             if(!operation.equals("recover")) durable(marker,new JSONObject().put("work",work.getPath()).put("user",user).put("phase","prepared").toString());
             try {
                 TimelineDatabase.restore(live,input,rollback,device,guard,cross,importGaia);
@@ -507,6 +580,19 @@ public final class TimelineUtil {
             if(args.length==3&&args[0].equals("sources")) {
                 System.out.print(TimelineCollection.sources(new File(args[2])));System.exit(0);return;
             }
+            if(args.length==3&&args[0].equals("aliases")) {
+                GoogleAccountNames.Account a=GoogleAccountNames.select(Integer.parseInt(args[1]),args[2]);
+                System.out.println(TimelineArchiveV3.selector(a.gaia));System.out.println(a.selector);System.exit(0);return;
+            }
+            if(args.length==3&&args[0].equals("options")) {
+                JSONArray sources=new JSONArray(),targets=new JSONArray();
+                for(String line:read(new File(args[2])).split("\n")) {
+                    if(line.isEmpty())continue;String[] fields=line.split("\t",2);need(fields.length==2&&fields[0].matches("[a-f0-9]{64}"),"timeline_source_list_invalid");
+                    sources.put(new JSONObject().put("id",fields[0]).put("label",GoogleAccountNames.clean(fields[1])));
+                }
+                for(GoogleAccountNames.Account a:GoogleAccountNames.fresh(Integer.parseInt(args[1])))targets.put(new JSONObject().put("id",TimelineArchiveV3.selector(a.gaia)).put("legacy",a.selector).put("label",GoogleAccountNames.label(a)));
+                System.out.println(new JSONObject().put("sources",sources).put("targets",targets));System.exit(0);return;
+            }
             if(args.length==2&&args[0].equals("accounts")) {
                 System.out.print(GoogleAccountNames.fields(Integer.parseInt(args[1])));System.exit(0);return;
             }
@@ -538,6 +624,11 @@ public final class TimelineUtil {
                         discardTransient(work,"input");
                         discardTransient(work,"rollback");
                         discardTransient(work,"auxiliary");
+                        File mergeDirectory=new File(work,"merge-0");
+                        if(mergeDirectory.exists()) {
+                            need(!Files.isSymbolicLink(mergeDirectory.toPath())&&mergeDirectory.getCanonicalFile().getParentFile().equals(work.getCanonicalFile()),"transient_directory_invalid");
+                            discardTransient(mergeDirectory,"input");TimelineCollection.cleanup(mergeDirectory);Files.delete(mergeDirectory.toPath());
+                        }
                         TimelineCollection.cleanup(work);
                         durable(new File(work,"finished"),Integer.toString(rc));
                     }

@@ -1,11 +1,15 @@
 [package]
 name = "speedbackup-native-rs"
-version = "930.0.0"
+version = "1102.0.0"
 edition = "2021"
 autobins = false
 license = "GPL-3.0-only"
 
-# No third-party crates. Android builds do not need network access.
+# Dependencies are locked and vendored for offline Android builds.
+[dependencies]
+serde = "=1.0.229"
+serde_json = { version = "=1.0.154", features = ["raw_value"] }
+
 [profile.release]
 opt-level = "z"
 lto = true

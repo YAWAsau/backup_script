@@ -757,6 +757,10 @@ public class HiddenApiUtil {
         if ("cgroupFreezeStop".equals(command)) {
             return cgroupFreezeStopDaemonCommand(cmdArgs);
         }
+        if ("cgroupFreezeIntegrity".equals(command)) {
+            boolean failed = CgroupFreezeUtil.primaryIntegrityFailed();
+            return new DaemonRunResult(failed ? 74 : 0, CgroupFreezeUtil.primaryIntegrityReceipt());
+        }
         if ("cgroupFreezeStatus".equals(command)) {
             return new DaemonRunResult(0, CgroupFreezeUtil.status());
         }

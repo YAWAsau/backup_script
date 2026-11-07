@@ -2,6 +2,42 @@
 use std::collections::BTreeMap;
 use std::{fs, io};
 
+extern "C" {
+    fn snprintf(s: *mut std::os::raw::c_char, n: usize, fmt: *const std::os::raw::c_char, ...) -> i32;
+}
+fn transfer_speed(bytes: u64, ms: u64) -> Option<String> {
+    // Above the exact f64 integer range retain Shell/awk compatibility.
+    if bytes > (1u64 << 53) || ms == 0 || ms > (1u64 << 53) { return None; }
+    let speed = (bytes as f64 / 1048576.0) / (ms as f64 / 1000.0);
+    let mut buf = [0u8; 128];
+    // Same Android libc %.2f rounding as the existing awk, same operation order.
+    let n = unsafe { snprintf(buf.as_mut_ptr().cast(), buf.len(), b"%.2f\0".as_ptr().cast(), speed) };
+    if n < 0 || n as usize >= buf.len() { return None; }
+    String::from_utf8(buf[..n as usize].to_vec()).ok()
+}
+pub fn file_transfer_value(path: &str, elapsed: &str) -> Option<String> {
+    if !path.starts_with('/') || elapsed.is_empty()
+        || !elapsed.bytes().all(|b| b.is_ascii_digit()) { return None; }
+    let ms = match elapsed.parse::<u64>() { Ok(n) if n>0 => n, _=>return None };
+    // Match `test -f` followed by non-dereferencing `stat -c %s`. Never read
+    // payload contents. A failed second metadata lookup uses the old fallback.
+    let bytes = if fs::metadata(path).is_ok_and(|m| m.is_file()) {
+        match fs::symlink_metadata(path) { Ok(m)=>m.len(), Err(_)=>return None }
+    } else { 0 };
+    match transfer_speed(bytes,ms) {
+        Some(speed)=>Some(format!("{bytes}|{speed}")),
+        None=>None,
+    }
+}
+
+pub fn file_transfer_command(args: &[String]) -> i32 {
+    if args.len()!=2 { return 125; }
+    match file_transfer_value(&args[0], &args[1]) {
+        Some(value)=>{ print!("{value}"); 0 },
+        None=>125,
+    }
+}
+
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }

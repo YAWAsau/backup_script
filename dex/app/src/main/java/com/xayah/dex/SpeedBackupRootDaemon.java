@@ -192,7 +192,11 @@ public final class SpeedBackupRootDaemon {
     private static void handleClient(LocalSocket client) throws Exception {
         try (LocalSocket c = client) {
             if (peerUid(c, -1) != 0) throw new SecurityException("root peer required");
-            InputStream in = c.getInputStream();
+            java.io.PushbackInputStream in = new java.io.PushbackInputStream(c.getInputStream(),1);
+            int first=in.read();
+            // A connect-only liveness probe has not submitted a command.
+            if(first<0)return;
+            in.unread(first);
             OutputStream out = c.getOutputStream();
             String namespace = DaemonBootstrap.readUtf8Line(in).trim();
             if ("ping".equals(namespace)) {
@@ -229,17 +233,31 @@ public final class SpeedBackupRootDaemon {
         }
         byte[] bodyBytes = bodyLength == -1L ? DaemonBootstrap.readAll(in) : DaemonBootstrap.readExactly(in, bodyLength);
         if (hiddenApi) {
+            if (BackupUtilities.accepts(command)) {
+                DisplayTimeoutSettings.Result result=BackupUtilities.run(command,bodyBytes);
+                writeHotResult(out,command,result.rc,result.name,result.body);
+                return;
+            }
             if (DisplayTimeoutSettings.accepts(command)) {
                 DisplayTimeoutSettings.Result result = DisplayTimeoutSettings.run(command, bodyBytes);
-                writeResult(out, result.rc, result.name, result.body);
+                writeHotResult(out, command, result.rc, result.name, result.body);
                 return;
             }
             HiddenApiBypassBridge.installExemptionsOnce();
             HiddenApiUtil.DaemonRunResult result = HiddenApiUtil.runDaemonCommand(command, bodyBytes);
-            writeResult(out, result.rc, result.rc == 0 ? "OK" : "FAIL", result.stdout);
+            writeHotResult(out, command, result.rc, result.rc == 0 ? "OK" : "FAIL", result.stdout);
         } else {
             NotificationUtil.DaemonRunResult result = NotificationUtil.runDaemonCommand(command, bodyBytes, peerUid);
-            writeResult(out, result.rc, result.rc == 0 ? "OK" : "FAIL", result.stdout);
+            writeHotResult(out, command, result.rc, result.rc == 0 ? "OK" : "FAIL", result.stdout);
+        }
+    }
+
+    private static void writeHotResult(OutputStream out,String command,int rc,String name,String body) throws IOException {
+        try{writeResult(out,rc,name,body);}
+        catch(IOException e){
+            // Never retry a completed mutation or hide its delivery failure.
+            String safe=command!=null&&command.matches("[A-Za-z][A-Za-z0-9_-]{0,79}")?command:"invalid";
+            throw new IOException("ROOT_REPLY_FAILED command="+safe+" stage=response-write operationRc="+rc+" delivery=unknown cause="+e.getClass().getSimpleName(),e);
         }
     }
 

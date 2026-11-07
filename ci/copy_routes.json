@@ -4,10 +4,10 @@
     {
       "file": "tools/tools.sh",
       "context": "_getlist_rust_impl",
-      "line": "cp \"$MODDIR/appList.txt\" \"$_stage/old\" || return 1",
+      "line": "cp \"$_target\" \"$_stage/old\" || return 1",
       "count": 1,
       "category": "fresh-stage",
-      "reason": "Snapshot the existing application list into a fresh mktemp private directory for Rust validation and the pre-publication cmp guard. This copy never overwrites the public list; the verified result is published separately through _generated_file_publish."
+      "reason": "Copy the requested existing application-list target into the fresh private mktemp stage/old snapshot for Rust merge validation and the before-publication cmp guard. The destination is never the public list; publication of the verified result to the same requested path uses _generated_file_publish."
     },
     {
       "file": "tools/tools.sh",
@@ -264,22 +264,6 @@
       "count": 1,
       "category": "retained-existing",
       "reason": "Existing v925 retained copy in _stream_upload_impl; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
-    },
-    {
-      "file": "tools/tools.sh",
-      "context": "remote_list_backups",
-      "line": "cp -f \"$out\" \"$out_cache\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true",
-      "count": 1,
-      "category": "retained-existing",
-      "reason": "Existing v925 retained copy in remote_list_backups; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
-    },
-    {
-      "file": "tools/tools.sh",
-      "context": "remote_list_backups",
-      "line": "cp \"$TMPDIR/.apps_sorted\" \"$TMPDIR/.apps_sorted_keep\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
-      "count": 1,
-      "category": "private-copy",
-      "reason": "Runtime working/debug copy in remote_list_backups; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
     },
     {
       "file": "tools/tools.sh",
@@ -1208,6 +1192,78 @@
       "count": 1,
       "category": "retained-existing",
       "reason": "Existing v925 retained copy in wifi; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_backup_guard_abort_if_invalid",
+      "line": "cp -f \"${SPEEDBACKUP_RUN_TMPDIR:-$TMPDIR}/.cgroup_freezer_tainted\" \"$SPEED_DEBUG_RUN_DIR/freezer_first_failure.txt\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Preserve the run-owned freezer first-failure marker in the private speed_debug run directory before EXIT removes runtime state. This is diagnostic evidence only, not a public backup payload, executable, or settings replacement."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_backup_freezer_warning_report",
+      "line": "cp -f \"${SPEEDBACKUP_RUN_TMPDIR:-$TMPDIR}/.cgroup_freezer_warning\" \"$SPEED_DEBUG_RUN_DIR/freezer_warning.txt\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Snapshot the root-owned thaw warning into this run's private debug directory before runtime cleanup; overwrite refreshes optional diagnostic detail at final notification. This destination is debug evidence only, never a backup payload or user configuration; copy failure remains diagnostic-only."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_current_upload_metadata_snapshot",
+      "line": "mkdir -p \"${_saved%/*}\" && cp -f \"$_file\" \"$_saved\" || return 1",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Snapshot only selected application metadata into the per-operation reset private TMPDIR/.nonstream_metadata_saved tree before upload can remove local files. The snapshot is a private input to the later audited bundle merge, not a public generated-file replacement; cp preserves the original JSON bytes."
+    },
+    {
+      "file": "start.sh",
+      "context": "_sb_abs_dir",
+      "line": "(umask 077; cp \"$_sb_console_from\" \"$_sb_console_to.$$.part\") || exit 1",
+      "count": 1,
+      "category": "fresh-stage",
+      "reason": "Stage checksum-verified native executable and Dex in the private executable directory, then atomically rename without truncating a live executable. Bootstrap is embedded in existing entry wrappers."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "<top-level>",
+      "line": "(umask 077; cp \"$_sb_console_from\" \"$_sb_console_to.$$.part\") || exit 1",
+      "count": 1,
+      "category": "fresh-stage",
+      "reason": "Stage checksum-verified native executable and Dex in the private executable directory, then atomically rename without truncating a live executable. Bootstrap is embedded in existing entry wrappers."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_sb_abs_dir",
+      "line": "(umask 077; cp \"$_sb_console_from\" \"$_sb_console_to.$$.part\") || exit 1",
+      "count": 1,
+      "category": "fresh-stage",
+      "reason": "Stage checksum-verified native executable and Dex in the private executable directory, then atomically rename without truncating a live executable. Bootstrap is embedded in existing entry wrappers."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_selection_prepare",
+      "line": "cp \"$_list\" \"$SPEEDBACKUP_SELECTION_REPORT/old\" || { _selection_report_cleanup; _selection_receipt_cleanup; return 65; }",
+      "count": 2,
+      "category": "fresh-stage",
+      "reason": "Copy the pre-refresh list and inventory into the fresh root-only selection report directory for new/removed/Xposed annotations. These are private read snapshots, never overwrites of a user list; guarded publication handles public list updates."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "Getlist",
+      "line": "cp \"$_stage/old\" \"$SPEEDBACKUP_SELECTION_REPORT/old\" && cp \"$_stage/inventory\" \"$SPEEDBACKUP_SELECTION_REPORT/inventory\" || _rc=1",
+      "count": 1,
+      "category": "fresh-stage",
+      "reason": "Copy the pre-refresh list and inventory into the fresh root-only selection report directory for new/removed/Xposed annotations. These are private read snapshots, never overwrites of a user list; guarded publication handles public list updates."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_selection_timeline_cache",
+      "line": "cp \"$_source\" \"$SPEEDBACKUP_SELECTION_REPORT/timeline-metadata.json\" || return 1",
+      "count": 1,
+      "category": "fresh-stage",
+      "reason": "Retain the selected Maps app_details.json from the verified remote bundle before its icon extraction directory is removed. Destination is a fresh private selection-flow report, checked non-symlink and cleared before copy; failure is logged and metadata preparation rejects missing or mismatched cache. Never overwrites the user list or remote backup."
     }
   ]
 }

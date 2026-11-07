@@ -11,7 +11,7 @@ public final class GuardLifecycle {
     static synchronized String fallbackRunDirectory() {
         try {
             if (android.os.Process.myUid() != 0) throw new IOException("root required");
-            File parent = new File("/data/.speedbackup_tmp");
+            File parent = new File("/data/.speedbackup/tmp");
             try { Files.createDirectory(parent.toPath(), java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
                     java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"))); }
             catch (FileAlreadyExistsException ignored) { }
@@ -52,7 +52,7 @@ public final class GuardLifecycle {
         File canonical=dir.getCanonicalFile();
         if(!canonical.equals(dir.getAbsoluteFile()) || !canonical.isDirectory()
                 || !canonical.getName().startsWith(".speedbackup_run_")
-                || !(canonical.getParent().equals("/data/.speedbackup_tmp") || canonical.getParent().equals("/data/local/tmp"))) throw new IOException("run directory");
+                || !(canonical.getParent().equals("/data/.speedbackup/tmp") || canonical.getParent().equals("/data/.speedbackup_tmp") || canonical.getParent().equals("/data/local/tmp"))) throw new IOException("run directory");
         android.system.StructStat stat=android.system.Os.lstat(canonical.getPath());
         if(stat.st_uid!=android.os.Process.myUid() || (stat.st_mode & 0077)!=0)
             throw new IOException("run directory ownership or permissions");

@@ -1,0 +1,27 @@
+import groovy.json.JsonOutput
+gradle.projectsEvaluated {
+ rootProject.tasks.register('exportLicenseCoordinates') {
+  doLast {
+   def rows=[]
+   def poms=[:]
+   rootProject.allprojects.each { p ->
+    ['releaseRuntimeClasspath','releaseCompileClasspath','releaseAnnotationProcessor'].each { name ->
+     def c=p.configurations.findByName(name)
+     if(c!=null && c.canBeResolved) c.incoming.resolutionResult.allComponents.each { component ->
+      def m=component.moduleVersion
+      if(m!=null && component.id instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier) {
+       def key="${m.group}:${m.name}:${m.version}"
+       if(!poms.containsKey(key)) {
+        def query=p.dependencies.createArtifactResolutionQuery().forComponents(component.id).withArtifacts(org.gradle.maven.MavenModule,org.gradle.maven.MavenPomArtifact).execute()
+        def found=query.resolvedComponents.collectMany{it.getArtifacts(org.gradle.maven.MavenPomArtifact)}.find{it instanceof org.gradle.api.artifacts.result.ResolvedArtifactResult}
+        poms[key]=found?.file?.absolutePath ?: ''
+       }
+       rows.add([group:m.group,name:m.name,version:m.version,project:p.path,configuration:name,pom:poms[key]])
+      }
+     }
+    }
+   }
+   new File(rootProject.property('catalogOut').toString()).text=JsonOutput.prettyPrint(JsonOutput.toJson(rows))
+  }
+ }
+}

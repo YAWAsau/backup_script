@@ -62,7 +62,7 @@ finally { $sha.Dispose() }
 $pending[$scriptRelative] = Replace-One $pending[$scriptRelative] '(?m)^dex_check\.sh [0-9a-f]{64}$' ('dex_check.sh ' + $selfCheckHash)
 foreach ($entry in $pending.GetEnumerator()) {
     $path = Join-Path $rootDir $entry.Key
-    $wanted = $entry.Value.Replace("`r`n", "`n")
+    $wanted = $entry.Value.Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n"
     $current = if (Test-Path -LiteralPath $path) { [IO.File]::ReadAllText($path) } else { '' }
     if ($current -ne $wanted) {
         if ($Check) { throw "Release version metadata is stale: $($entry.Key)" }

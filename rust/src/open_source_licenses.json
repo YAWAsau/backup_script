@@ -1,0 +1,4537 @@
+{
+  "schema": 1,
+  "note": "直接與間接依賴、原始碼引用及設計參照；編譯時項目另行標示。Rust Cargo 依賴已鎖版並隨源碼附上授權。",
+  "entries": [
+    {
+      "id": "reference:aosp-starfield",
+      "name": "Android 17 Starfield",
+      "author": "The Android Open Source Project",
+      "version": "android-17.0.0_r1",
+      "license": "Apache-2.0",
+      "url": "https://android.googlesource.com/platform/frameworks/base/+/android-17.0.0_r1/core/java/com/android/internal/app/PlatLogoActivity.java",
+      "description": "夜空背景改編自 Starfield；移除徽章、互動加速及 HDR 閃光，改用 Compose 生命週期與一般亮度。",
+      "components": [
+        "APK／WebUI",
+        "原始碼引用"
+      ],
+      "members": [
+        {
+          "id": "reference:aosp-starfield",
+          "name": "Android 17 Starfield",
+          "author": "The Android Open Source Project",
+          "version": "android-17.0.0_r1",
+          "license": "Apache-2.0",
+          "url": "https://android.googlesource.com/platform/frameworks/base/+/android-17.0.0_r1/core/java/com/android/internal/app/PlatLogoActivity.java",
+          "description": "夜空背景改編自 Starfield；移除徽章、互動加速及 HDR 閃光，改用 Compose 生命週期與一般亮度。",
+          "components": [
+            "APK／WebUI",
+            "原始碼引用"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "org.lsposed.hiddenapibypass:hiddenapibypass:6.2",
+      "name": "Android Hidden Api Bypass",
+      "author": "LSPosed",
+      "version": "6.2",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/LSPosed/AndroidHiddenApiBypass",
+      "description": "Bypass restrictions on non-SDK interfaces",
+      "components": [
+        "Dex"
+      ],
+      "coordinate": "org.lsposed.hiddenapibypass:hiddenapibypass:6.2",
+      "members": [
+        {
+          "id": "org.lsposed.hiddenapibypass:hiddenapibypass:6.2",
+          "name": "Android Hidden Api Bypass",
+          "author": "LSPosed",
+          "version": "6.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/LSPosed/AndroidHiddenApiBypass",
+          "description": "Bypass restrictions on non-SDK interfaces",
+          "components": [
+            "Dex"
+          ],
+          "coordinate": "org.lsposed.hiddenapibypass:hiddenapibypass:6.2"
+        }
+      ],
+      "coordinates": [
+        "org.lsposed.hiddenapibypass:hiddenapibypass:6.2"
+      ]
+    },
+    {
+      "id": "reference:android",
+      "name": "Android Open Source Project / Bionic",
+      "author": "Android Open Source Project",
+      "version": "Android API 28+ / NDK r30",
+      "license": "Apache-2.0 / BSD / 個別來源授權",
+      "url": "https://android.googlesource.com/platform/bionic/",
+      "description": "Android 系統介面與原生 C 執行期；各原始檔依其標示授權。",
+      "components": [
+        "Dex",
+        "Rust",
+        "原生工具"
+      ],
+      "members": [
+        {
+          "id": "reference:android",
+          "name": "Android Open Source Project / Bionic",
+          "author": "Android Open Source Project",
+          "version": "Android API 28+ / NDK r30",
+          "license": "Apache-2.0 / BSD / 個別來源授權",
+          "url": "https://android.googlesource.com/platform/bionic/",
+          "description": "Android 系統介面與原生 C 執行期；各原始檔依其標示授權。",
+          "components": [
+            "Dex",
+            "Rust",
+            "原生工具"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "reference:databackup",
+      "name": "Android-DataBackup",
+      "author": "XayahSuSuSu",
+      "version": "fa0a0f74a1fc",
+      "license": "GPL-3.0-only",
+      "url": "https://github.com/XayahSuSuSu/Android-DataBackup",
+      "description": "ExternalRestorePolicy 的外部資料恢復策略來源。",
+      "components": [
+        "Dex",
+        "原始碼引用"
+      ],
+      "members": [
+        {
+          "id": "reference:databackup",
+          "name": "Android-DataBackup",
+          "author": "XayahSuSuSu",
+          "version": "fa0a0f74a1fc",
+          "license": "GPL-3.0-only",
+          "url": "https://github.com/XayahSuSuSu/Android-DataBackup",
+          "description": "ExternalRestorePolicy 的外部資料恢復策略來源。",
+          "components": [
+            "Dex",
+            "原始碼引用"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "reference:liquidglass",
+      "name": "AndroidLiquidGlass",
+      "author": "Kyant0",
+      "version": "65ab177e90e5",
+      "license": "Apache-2.0",
+      "url": "https://github.com/Kyant0/AndroidLiquidGlass",
+      "description": "液態玻璃控制項與視窗座標取樣來源；已作本專案修改。",
+      "components": [
+        "APK／WebUI",
+        "原始碼引用"
+      ],
+      "members": [
+        {
+          "id": "reference:liquidglass",
+          "name": "AndroidLiquidGlass",
+          "author": "Kyant0",
+          "version": "65ab177e90e5",
+          "license": "Apache-2.0",
+          "url": "https://github.com/Kyant0/AndroidLiquidGlass",
+          "description": "液態玻璃控制項與視窗座標取樣來源；已作本專案修改。",
+          "components": [
+            "APK／WebUI",
+            "原始碼引用"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "androidx.activity:activity:1.13.0",
+      "name": "AndroidX Activity",
+      "author": "The Android Open Source Project",
+      "version": "1.13.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/activity#1.13.0",
+      "description": "Provides the base Activity subclass and the relevant hooks to build a composable structure on top.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.activity:activity:1.13.0",
+      "members": [
+        {
+          "id": "androidx.activity:activity:1.13.0",
+          "name": "AndroidX Activity",
+          "author": "The Android Open Source Project",
+          "version": "1.13.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/activity#1.13.0",
+          "description": "Provides the base Activity subclass and the relevant hooks to build a composable structure on top.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.activity:activity:1.13.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.activity:activity:1.13.0"
+      ]
+    },
+    {
+      "id": "androidx.activity:activity-compose:1.13.0",
+      "name": "AndroidX Activity Compose",
+      "author": "The Android Open Source Project",
+      "version": "1.13.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/activity#1.13.0",
+      "description": "Compose integration with Activity",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.activity:activity-compose:1.13.0",
+      "members": [
+        {
+          "id": "androidx.activity:activity-compose:1.13.0",
+          "name": "AndroidX Activity Compose",
+          "author": "The Android Open Source Project",
+          "version": "1.13.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/activity#1.13.0",
+          "description": "Compose integration with Activity",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.activity:activity-compose:1.13.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.activity:activity-compose:1.13.0"
+      ]
+    },
+    {
+      "id": "androidx.activity:activity-ktx:1.13.0",
+      "name": "AndroidX Activity Kotlin Extensions",
+      "author": "The Android Open Source Project",
+      "version": "1.13.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/activity#1.13.0",
+      "description": "Kotlin extensions for 'activity' artifact",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.activity:activity-ktx:1.13.0",
+      "members": [
+        {
+          "id": "androidx.activity:activity-ktx:1.13.0",
+          "name": "AndroidX Activity Kotlin Extensions",
+          "author": "The Android Open Source Project",
+          "version": "1.13.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/activity#1.13.0",
+          "description": "Kotlin extensions for 'activity' artifact",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.activity:activity-ktx:1.13.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.activity:activity-ktx:1.13.0"
+      ]
+    },
+    {
+      "id": "androidx.arch.core:core-common:2.2.0",
+      "name": "AndroidX Android Arch-Common",
+      "author": "The Android Open Source Project",
+      "version": "2.2.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/arch-core#2.2.0",
+      "description": "Android Arch-Common",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.arch.core:core-common:2.2.0",
+      "members": [
+        {
+          "id": "androidx.arch.core:core-common:2.2.0",
+          "name": "AndroidX Android Arch-Common",
+          "author": "The Android Open Source Project",
+          "version": "2.2.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/arch-core#2.2.0",
+          "description": "Android Arch-Common",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.arch.core:core-common:2.2.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.arch.core:core-common:2.2.0"
+      ]
+    },
+    {
+      "id": "androidx.arch.core:core-runtime:2.2.0",
+      "name": "AndroidX Android Arch-Runtime",
+      "author": "The Android Open Source Project",
+      "version": "2.2.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/arch-core#2.2.0",
+      "description": "Android Arch-Runtime",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.arch.core:core-runtime:2.2.0",
+      "members": [
+        {
+          "id": "androidx.arch.core:core-runtime:2.2.0",
+          "name": "AndroidX Android Arch-Runtime",
+          "author": "The Android Open Source Project",
+          "version": "2.2.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/arch-core#2.2.0",
+          "description": "Android Arch-Runtime",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.arch.core:core-runtime:2.2.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.arch.core:core-runtime:2.2.0"
+      ]
+    },
+    {
+      "id": "androidx.graphics:graphics-path:1.1.0",
+      "name": "AndroidX Android Graphics Path",
+      "author": "The Android Open Source Project",
+      "version": "1.1.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/graphics#1.1.0",
+      "description": "Query segment data for android.graphics.Path objects",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.graphics:graphics-path:1.1.0",
+      "members": [
+        {
+          "id": "androidx.graphics:graphics-path:1.1.0",
+          "name": "AndroidX Android Graphics Path",
+          "author": "The Android Open Source Project",
+          "version": "1.1.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/graphics#1.1.0",
+          "description": "Query segment data for android.graphics.Path objects",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.graphics:graphics-path:1.1.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.graphics:graphics-path:1.1.0"
+      ]
+    },
+    {
+      "id": "androidx.interpolator:interpolator:1.0.0",
+      "name": "AndroidX Android Support Library Interpolators",
+      "author": "The Android Open Source Project",
+      "version": "1.0.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/tools/extras/support-library.html",
+      "description": "The Support Library is a static library that you can add to your Android application in order to use APIs that are either not available for older platform versions or utility APIs that aren't a part of the framework APIs. Compatible on devices running API 14 or later.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.interpolator:interpolator:1.0.0",
+      "members": [
+        {
+          "id": "androidx.interpolator:interpolator:1.0.0",
+          "name": "AndroidX Android Support Library Interpolators",
+          "author": "The Android Open Source Project",
+          "version": "1.0.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/tools/extras/support-library.html",
+          "description": "The Support Library is a static library that you can add to your Android application in order to use APIs that are either not available for older platform versions or utility APIs that aren't a part of the framework APIs. Compatible on devices running API 14 or later.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.interpolator:interpolator:1.0.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.interpolator:interpolator:1.0.0"
+      ]
+    },
+    {
+      "id": "androidx.core:core-viewtree:1.0.0",
+      "name": "AndroidX androidx.core:core-viewtree",
+      "author": "The Android Open Source Project",
+      "version": "1.0.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/core#1.0.0",
+      "description": "Provides ViewTree extensions packaged for use by other core androidx libraries",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.core:core-viewtree:1.0.0",
+      "members": [
+        {
+          "id": "androidx.core:core-viewtree:1.0.0",
+          "name": "AndroidX androidx.core:core-viewtree",
+          "author": "The Android Open Source Project",
+          "version": "1.0.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/core#1.0.0",
+          "description": "Provides ViewTree extensions packaged for use by other core androidx libraries",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.core:core-viewtree:1.0.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.core:core-viewtree:1.0.0"
+      ]
+    },
+    {
+      "id": "androidx.annotation:annotation-jvm:1.11.0",
+      "name": "AndroidX Annotation",
+      "author": "The Android Open Source Project",
+      "version": "1.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/annotation#1.11.0",
+      "description": "Provides source annotations for tooling and readability.",
+      "components": [
+        "APK／WebUI",
+        "Dex（編譯時）"
+      ],
+      "coordinate": "androidx.annotation:annotation-jvm:1.11.0",
+      "members": [
+        {
+          "id": "androidx.annotation:annotation-jvm:1.11.0",
+          "name": "AndroidX Annotation",
+          "author": "The Android Open Source Project",
+          "version": "1.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/annotation#1.11.0",
+          "description": "Provides source annotations for tooling and readability.",
+          "components": [
+            "APK／WebUI",
+            "Dex（編譯時）"
+          ],
+          "coordinate": "androidx.annotation:annotation-jvm:1.11.0"
+        },
+        {
+          "id": "androidx.annotation:annotation:1.11.0",
+          "name": "AndroidX Annotation",
+          "author": "The Android Open Source Project",
+          "version": "1.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/annotation#1.11.0",
+          "description": "Provides source annotations for tooling and readability.",
+          "components": [
+            "APK／WebUI",
+            "Dex（編譯時）"
+          ],
+          "coordinate": "androidx.annotation:annotation:1.11.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.annotation:annotation-jvm:1.11.0",
+        "androidx.annotation:annotation:1.11.0"
+      ]
+    },
+    {
+      "id": "androidx.autofill:autofill:1.3.0",
+      "name": "AndroidX Autofill",
+      "author": "The Android Open Source Project",
+      "version": "1.3.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/autofill#1.3.0",
+      "description": "AndroidX Autofill",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.autofill:autofill:1.3.0",
+      "members": [
+        {
+          "id": "androidx.autofill:autofill:1.3.0",
+          "name": "AndroidX Autofill",
+          "author": "The Android Open Source Project",
+          "version": "1.3.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/autofill#1.3.0",
+          "description": "AndroidX Autofill",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.autofill:autofill:1.3.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.autofill:autofill:1.3.0"
+      ]
+    },
+    {
+      "id": "androidx.collection:collection-jvm:1.7.0",
+      "name": "AndroidX collections",
+      "author": "The Android Open Source Project",
+      "version": "1.7.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/collection#1.7.0",
+      "description": "Standalone efficient collections.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.collection:collection-jvm:1.7.0",
+      "members": [
+        {
+          "id": "androidx.collection:collection-jvm:1.7.0",
+          "name": "AndroidX collections",
+          "author": "The Android Open Source Project",
+          "version": "1.7.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/collection#1.7.0",
+          "description": "Standalone efficient collections.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.collection:collection-jvm:1.7.0"
+        },
+        {
+          "id": "androidx.collection:collection:1.7.0",
+          "name": "AndroidX collections",
+          "author": "The Android Open Source Project",
+          "version": "1.7.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/collection#1.7.0",
+          "description": "Standalone efficient collections.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.collection:collection:1.7.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.collection:collection-jvm:1.7.0",
+        "androidx.collection:collection:1.7.0"
+      ]
+    },
+    {
+      "id": "androidx.collection:collection-ktx:1.7.0",
+      "name": "AndroidX Collections Kotlin Extensions",
+      "author": "The Android Open Source Project",
+      "version": "1.7.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/collection#1.7.0",
+      "description": "Kotlin extensions for 'collection' artifact",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.collection:collection-ktx:1.7.0",
+      "members": [
+        {
+          "id": "androidx.collection:collection-ktx:1.7.0",
+          "name": "AndroidX Collections Kotlin Extensions",
+          "author": "The Android Open Source Project",
+          "version": "1.7.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/collection#1.7.0",
+          "description": "Kotlin extensions for 'collection' artifact",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.collection:collection-ktx:1.7.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.collection:collection-ktx:1.7.0"
+      ]
+    },
+    {
+      "id": "androidx.compose.animation:animation-android:1.12.1",
+      "name": "AndroidX Compose Animation",
+      "author": "The Android Open Source Project",
+      "version": "1.12.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-animation#1.12.1",
+      "description": "Compose animation library",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.animation:animation-android:1.12.1",
+      "members": [
+        {
+          "id": "androidx.compose.animation:animation-android:1.12.1",
+          "name": "AndroidX Compose Animation",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-animation#1.12.1",
+          "description": "Compose animation library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.animation:animation-android:1.12.1"
+        },
+        {
+          "id": "androidx.compose.animation:animation:1.12.1",
+          "name": "AndroidX Compose Animation",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-animation#1.12.1",
+          "description": "Compose animation library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.animation:animation:1.12.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.animation:animation-android:1.12.1",
+        "androidx.compose.animation:animation:1.12.1"
+      ]
+    },
+    {
+      "id": "androidx.compose.animation:animation-core-android:1.12.1",
+      "name": "AndroidX Compose Animation Core",
+      "author": "The Android Open Source Project",
+      "version": "1.12.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-animation#1.12.1",
+      "description": "Animation engine and animation primitives that are the building blocks of the Compose animation library",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.animation:animation-core-android:1.12.1",
+      "members": [
+        {
+          "id": "androidx.compose.animation:animation-core-android:1.12.1",
+          "name": "AndroidX Compose Animation Core",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-animation#1.12.1",
+          "description": "Animation engine and animation primitives that are the building blocks of the Compose animation library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.animation:animation-core-android:1.12.1"
+        },
+        {
+          "id": "androidx.compose.animation:animation-core:1.12.1",
+          "name": "AndroidX Compose Animation Core",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-animation#1.12.1",
+          "description": "Animation engine and animation primitives that are the building blocks of the Compose animation library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.animation:animation-core:1.12.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.animation:animation-core-android:1.12.1",
+        "androidx.compose.animation:animation-core:1.12.1"
+      ]
+    },
+    {
+      "id": "androidx.compose.foundation:foundation-android:1.12.1",
+      "name": "AndroidX Compose Foundation",
+      "author": "The Android Open Source Project",
+      "version": "1.12.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-foundation#1.12.1",
+      "description": "Higher level abstractions of the Compose UI primitives. This library is design system agnostic, providing the high-level building blocks for both application and design-system developers",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.foundation:foundation-android:1.12.1",
+      "members": [
+        {
+          "id": "androidx.compose.foundation:foundation-android:1.12.1",
+          "name": "AndroidX Compose Foundation",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-foundation#1.12.1",
+          "description": "Higher level abstractions of the Compose UI primitives. This library is design system agnostic, providing the high-level building blocks for both application and design-system developers",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.foundation:foundation-android:1.12.1"
+        },
+        {
+          "id": "androidx.compose.foundation:foundation:1.12.1",
+          "name": "AndroidX Compose Foundation",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-foundation#1.12.1",
+          "description": "Higher level abstractions of the Compose UI primitives. This library is design system agnostic, providing the high-level building blocks for both application and design-system developers",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.foundation:foundation:1.12.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.foundation:foundation-android:1.12.1",
+        "androidx.compose.foundation:foundation:1.12.1"
+      ]
+    },
+    {
+      "id": "androidx.compose.ui:ui-geometry-android:1.12.1",
+      "name": "AndroidX Compose Geometry",
+      "author": "The Android Open Source Project",
+      "version": "1.12.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+      "description": "Compose classes related to dimensions without units",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.ui:ui-geometry-android:1.12.1",
+      "members": [
+        {
+          "id": "androidx.compose.ui:ui-geometry-android:1.12.1",
+          "name": "AndroidX Compose Geometry",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+          "description": "Compose classes related to dimensions without units",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.ui:ui-geometry-android:1.12.1"
+        },
+        {
+          "id": "androidx.compose.ui:ui-geometry:1.12.1",
+          "name": "AndroidX Compose Geometry",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+          "description": "Compose classes related to dimensions without units",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.ui:ui-geometry:1.12.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.ui:ui-geometry-android:1.12.1",
+        "androidx.compose.ui:ui-geometry:1.12.1"
+      ]
+    },
+    {
+      "id": "androidx.compose.ui:ui-graphics-android:1.12.1",
+      "name": "AndroidX Compose Graphics",
+      "author": "The Android Open Source Project",
+      "version": "1.12.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+      "description": "Compose graphics",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.ui:ui-graphics-android:1.12.1",
+      "members": [
+        {
+          "id": "androidx.compose.ui:ui-graphics-android:1.12.1",
+          "name": "AndroidX Compose Graphics",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+          "description": "Compose graphics",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.ui:ui-graphics-android:1.12.1"
+        },
+        {
+          "id": "androidx.compose.ui:ui-graphics:1.12.1",
+          "name": "AndroidX Compose Graphics",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+          "description": "Compose graphics",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.ui:ui-graphics:1.12.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.ui:ui-graphics-android:1.12.1",
+        "androidx.compose.ui:ui-graphics:1.12.1"
+      ]
+    },
+    {
+      "id": "androidx.compose.foundation:foundation-layout-android:1.12.1",
+      "name": "AndroidX Compose Layouts",
+      "author": "The Android Open Source Project",
+      "version": "1.12.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-foundation#1.12.1",
+      "description": "Compose layout implementations",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.foundation:foundation-layout-android:1.12.1",
+      "members": [
+        {
+          "id": "androidx.compose.foundation:foundation-layout-android:1.12.1",
+          "name": "AndroidX Compose Layouts",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-foundation#1.12.1",
+          "description": "Compose layout implementations",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.foundation:foundation-layout-android:1.12.1"
+        },
+        {
+          "id": "androidx.compose.foundation:foundation-layout:1.12.1",
+          "name": "AndroidX Compose Layouts",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-foundation#1.12.1",
+          "description": "Compose layout implementations",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.foundation:foundation-layout:1.12.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.foundation:foundation-layout-android:1.12.1",
+        "androidx.compose.foundation:foundation-layout:1.12.1"
+      ]
+    },
+    {
+      "id": "androidx.compose.material3:material3-window-size-class-android:1.5.0-alpha22",
+      "name": "AndroidX Compose Material 3 Window Size Class",
+      "author": "The Android Open Source Project",
+      "version": "1.5.0-alpha22",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3#1.5.0-alpha22",
+      "description": "Provides window size classes for building responsive UIs",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.material3:material3-window-size-class-android:1.5.0-alpha22",
+      "members": [
+        {
+          "id": "androidx.compose.material3:material3-window-size-class-android:1.5.0-alpha22",
+          "name": "AndroidX Compose Material 3 Window Size Class",
+          "author": "The Android Open Source Project",
+          "version": "1.5.0-alpha22",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3#1.5.0-alpha22",
+          "description": "Provides window size classes for building responsive UIs",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.material3:material3-window-size-class-android:1.5.0-alpha22"
+        },
+        {
+          "id": "androidx.compose.material3:material3-window-size-class:1.5.0-alpha22",
+          "name": "AndroidX Compose Material 3 Window Size Class",
+          "author": "The Android Open Source Project",
+          "version": "1.5.0-alpha22",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3#1.5.0-alpha22",
+          "description": "Provides window size classes for building responsive UIs",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.material3:material3-window-size-class:1.5.0-alpha22"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.material3:material3-window-size-class-android:1.5.0-alpha22",
+        "androidx.compose.material3:material3-window-size-class:1.5.0-alpha22"
+      ]
+    },
+    {
+      "id": "androidx.compose.runtime:runtime-android:1.12.1",
+      "name": "AndroidX Compose Runtime",
+      "author": "The Android Open Source Project",
+      "version": "1.12.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-runtime#1.12.1",
+      "description": "Tree composition support for code generated by the Compose compiler plugin and corresponding public API",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.runtime:runtime-android:1.12.1",
+      "members": [
+        {
+          "id": "androidx.compose.runtime:runtime-android:1.12.1",
+          "name": "AndroidX Compose Runtime",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-runtime#1.12.1",
+          "description": "Tree composition support for code generated by the Compose compiler plugin and corresponding public API",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.runtime:runtime-android:1.12.1"
+        },
+        {
+          "id": "androidx.compose.runtime:runtime:1.12.1",
+          "name": "AndroidX Compose Runtime",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-runtime#1.12.1",
+          "description": "Tree composition support for code generated by the Compose compiler plugin and corresponding public API",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.runtime:runtime:1.12.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.runtime:runtime-android:1.12.1",
+        "androidx.compose.runtime:runtime:1.12.1"
+      ]
+    },
+    {
+      "id": "androidx.compose.runtime:runtime-annotation-android:1.12.1",
+      "name": "AndroidX Compose Runtime Annotation",
+      "author": "The Android Open Source Project",
+      "version": "1.12.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-runtime#1.12.1",
+      "description": "Provides Compose-specific annotations used by the compiler and tooling",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.runtime:runtime-annotation-android:1.12.1",
+      "members": [
+        {
+          "id": "androidx.compose.runtime:runtime-annotation-android:1.12.1",
+          "name": "AndroidX Compose Runtime Annotation",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-runtime#1.12.1",
+          "description": "Provides Compose-specific annotations used by the compiler and tooling",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.runtime:runtime-annotation-android:1.12.1"
+        },
+        {
+          "id": "androidx.compose.runtime:runtime-annotation:1.12.1",
+          "name": "AndroidX Compose Runtime Annotation",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-runtime#1.12.1",
+          "description": "Provides Compose-specific annotations used by the compiler and tooling",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.runtime:runtime-annotation:1.12.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.runtime:runtime-annotation-android:1.12.1",
+        "androidx.compose.runtime:runtime-annotation:1.12.1"
+      ]
+    },
+    {
+      "id": "androidx.compose.runtime:runtime-retain-android:1.12.1",
+      "name": "AndroidX Compose Runtime Retain",
+      "author": "The Android Open Source Project",
+      "version": "1.12.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-runtime#1.12.1",
+      "description": "Preserve state in composable methods across configuration changes and other transient content destruction scenarios",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.runtime:runtime-retain-android:1.12.1",
+      "members": [
+        {
+          "id": "androidx.compose.runtime:runtime-retain-android:1.12.1",
+          "name": "AndroidX Compose Runtime Retain",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-runtime#1.12.1",
+          "description": "Preserve state in composable methods across configuration changes and other transient content destruction scenarios",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.runtime:runtime-retain-android:1.12.1"
+        },
+        {
+          "id": "androidx.compose.runtime:runtime-retain:1.12.1",
+          "name": "AndroidX Compose Runtime Retain",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-runtime#1.12.1",
+          "description": "Preserve state in composable methods across configuration changes and other transient content destruction scenarios",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.runtime:runtime-retain:1.12.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.runtime:runtime-retain-android:1.12.1",
+        "androidx.compose.runtime:runtime-retain:1.12.1"
+      ]
+    },
+    {
+      "id": "androidx.compose.runtime:runtime-saveable-android:1.12.1",
+      "name": "AndroidX Compose Saveable",
+      "author": "The Android Open Source Project",
+      "version": "1.12.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-runtime#1.12.1",
+      "description": "Compose components that allow saving and restoring the local ui state",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.runtime:runtime-saveable-android:1.12.1",
+      "members": [
+        {
+          "id": "androidx.compose.runtime:runtime-saveable-android:1.12.1",
+          "name": "AndroidX Compose Saveable",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-runtime#1.12.1",
+          "description": "Compose components that allow saving and restoring the local ui state",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.runtime:runtime-saveable-android:1.12.1"
+        },
+        {
+          "id": "androidx.compose.runtime:runtime-saveable:1.12.1",
+          "name": "AndroidX Compose Saveable",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-runtime#1.12.1",
+          "description": "Compose components that allow saving and restoring the local ui state",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.runtime:runtime-saveable:1.12.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.runtime:runtime-saveable-android:1.12.1",
+        "androidx.compose.runtime:runtime-saveable:1.12.1"
+      ]
+    },
+    {
+      "id": "androidx.compose.ui:ui-android:1.12.1",
+      "name": "AndroidX Compose UI",
+      "author": "The Android Open Source Project",
+      "version": "1.12.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+      "description": "Compose UI primitives. This library contains the primitives that form the Compose UI Toolkit, such as drawing, measurement and layout.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.ui:ui-android:1.12.1",
+      "members": [
+        {
+          "id": "androidx.compose.ui:ui-android:1.12.1",
+          "name": "AndroidX Compose UI",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+          "description": "Compose UI primitives. This library contains the primitives that form the Compose UI Toolkit, such as drawing, measurement and layout.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.ui:ui-android:1.12.1"
+        },
+        {
+          "id": "androidx.compose.ui:ui:1.12.1",
+          "name": "AndroidX Compose UI",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+          "description": "Compose UI primitives. This library contains the primitives that form the Compose UI Toolkit, such as drawing, measurement and layout.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.ui:ui:1.12.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.ui:ui-android:1.12.1",
+        "androidx.compose.ui:ui:1.12.1"
+      ]
+    },
+    {
+      "id": "androidx.compose.ui:ui-text-android:1.12.1",
+      "name": "AndroidX Compose UI Text",
+      "author": "The Android Open Source Project",
+      "version": "1.12.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+      "description": "Compose Text primitives and utilities",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.ui:ui-text-android:1.12.1",
+      "members": [
+        {
+          "id": "androidx.compose.ui:ui-text-android:1.12.1",
+          "name": "AndroidX Compose UI Text",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+          "description": "Compose Text primitives and utilities",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.ui:ui-text-android:1.12.1"
+        },
+        {
+          "id": "androidx.compose.ui:ui-text:1.12.1",
+          "name": "AndroidX Compose UI Text",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+          "description": "Compose Text primitives and utilities",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.ui:ui-text:1.12.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.ui:ui-text-android:1.12.1",
+        "androidx.compose.ui:ui-text:1.12.1"
+      ]
+    },
+    {
+      "id": "androidx.compose.ui:ui-unit-android:1.12.1",
+      "name": "AndroidX Compose Unit",
+      "author": "The Android Open Source Project",
+      "version": "1.12.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+      "description": "Compose classes for simple units",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.ui:ui-unit-android:1.12.1",
+      "members": [
+        {
+          "id": "androidx.compose.ui:ui-unit-android:1.12.1",
+          "name": "AndroidX Compose Unit",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+          "description": "Compose classes for simple units",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.ui:ui-unit-android:1.12.1"
+        },
+        {
+          "id": "androidx.compose.ui:ui-unit:1.12.1",
+          "name": "AndroidX Compose Unit",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+          "description": "Compose classes for simple units",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.ui:ui-unit:1.12.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.ui:ui-unit-android:1.12.1",
+        "androidx.compose.ui:ui-unit:1.12.1"
+      ]
+    },
+    {
+      "id": "androidx.compose.ui:ui-util-android:1.12.1",
+      "name": "AndroidX Compose Util",
+      "author": "The Android Open Source Project",
+      "version": "1.12.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+      "description": "Internal Compose utilities used by other modules",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.ui:ui-util-android:1.12.1",
+      "members": [
+        {
+          "id": "androidx.compose.ui:ui-util-android:1.12.1",
+          "name": "AndroidX Compose Util",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+          "description": "Internal Compose utilities used by other modules",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.ui:ui-util-android:1.12.1"
+        },
+        {
+          "id": "androidx.compose.ui:ui-util:1.12.1",
+          "name": "AndroidX Compose Util",
+          "author": "The Android Open Source Project",
+          "version": "1.12.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-ui#1.12.1",
+          "description": "Internal Compose utilities used by other modules",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.ui:ui-util:1.12.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.ui:ui-util-android:1.12.1",
+        "androidx.compose.ui:ui-util:1.12.1"
+      ]
+    },
+    {
+      "id": "androidx.core:core:1.19.1",
+      "name": "AndroidX Core",
+      "author": "The Android Open Source Project",
+      "version": "1.19.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/core#1.19.1",
+      "description": "Provides backward-compatible implementations of Android platform APIs and features.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.core:core:1.19.1",
+      "members": [
+        {
+          "id": "androidx.core:core:1.19.1",
+          "name": "AndroidX Core",
+          "author": "The Android Open Source Project",
+          "version": "1.19.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/core#1.19.1",
+          "description": "Provides backward-compatible implementations of Android platform APIs and features.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.core:core:1.19.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.core:core:1.19.1"
+      ]
+    },
+    {
+      "id": "androidx.core:core-ktx:1.19.1",
+      "name": "AndroidX Core Kotlin Extensions",
+      "author": "The Android Open Source Project",
+      "version": "1.19.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/core#1.19.1",
+      "description": "Kotlin extensions for 'core' artifact",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.core:core-ktx:1.19.1",
+      "members": [
+        {
+          "id": "androidx.core:core-ktx:1.19.1",
+          "name": "AndroidX Core Kotlin Extensions",
+          "author": "The Android Open Source Project",
+          "version": "1.19.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/core#1.19.1",
+          "description": "Kotlin extensions for 'core' artifact",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.core:core-ktx:1.19.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.core:core-ktx:1.19.1"
+      ]
+    },
+    {
+      "id": "androidx.customview:customview-poolingcontainer:1.1.0",
+      "name": "AndroidX CustomView Pooling Container",
+      "author": "The Android Open Source Project",
+      "version": "1.1.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/customview#1.1.0",
+      "description": "Utilities for listening to the lifecycle of containers that manage their child Views' lifecycle, such as RecyclerView",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.customview:customview-poolingcontainer:1.1.0",
+      "members": [
+        {
+          "id": "androidx.customview:customview-poolingcontainer:1.1.0",
+          "name": "AndroidX CustomView Pooling Container",
+          "author": "The Android Open Source Project",
+          "version": "1.1.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/customview#1.1.0",
+          "description": "Utilities for listening to the lifecycle of containers that manage their child Views' lifecycle, such as RecyclerView",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.customview:customview-poolingcontainer:1.1.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.customview:customview-poolingcontainer:1.1.0"
+      ]
+    },
+    {
+      "id": "androidx.emoji2:emoji2:1.7.0",
+      "name": "AndroidX Emoji2",
+      "author": "The Android Open Source Project",
+      "version": "1.7.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/emoji2#1.7.0",
+      "description": "Core library to enable emoji compatibility in Kitkat and newer devices to avoid the empty emoji characters.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.emoji2:emoji2:1.7.0",
+      "members": [
+        {
+          "id": "androidx.emoji2:emoji2:1.7.0",
+          "name": "AndroidX Emoji2",
+          "author": "The Android Open Source Project",
+          "version": "1.7.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/emoji2#1.7.0",
+          "description": "Core library to enable emoji compatibility in Kitkat and newer devices to avoid the empty emoji characters.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.emoji2:emoji2:1.7.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.emoji2:emoji2:1.7.0"
+      ]
+    },
+    {
+      "id": "androidx.annotation:annotation-experimental:1.6.0",
+      "name": "AndroidX Experimental annotation",
+      "author": "The Android Open Source Project",
+      "version": "1.6.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/annotation#1.6.0",
+      "description": "Java annotation for use on unstable Android API surfaces. When used in conjunction with the Experimental annotation lint checks, this annotation provides functional parity with Kotlin's Experimental annotation.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.annotation:annotation-experimental:1.6.0",
+      "members": [
+        {
+          "id": "androidx.annotation:annotation-experimental:1.6.0",
+          "name": "AndroidX Experimental annotation",
+          "author": "The Android Open Source Project",
+          "version": "1.6.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/annotation#1.6.0",
+          "description": "Java annotation for use on unstable Android API surfaces. When used in conjunction with the Experimental annotation lint checks, this annotation provides functional parity with Kotlin's Experimental annotation.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.annotation:annotation-experimental:1.6.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.annotation:annotation-experimental:1.6.0"
+      ]
+    },
+    {
+      "id": "androidx.concurrent:concurrent-futures:1.3.0",
+      "name": "AndroidX Futures",
+      "author": "The Android Open Source Project",
+      "version": "1.3.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/concurrent#1.3.0",
+      "description": "Androidx implementation of Guava's ListenableFuture",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.concurrent:concurrent-futures:1.3.0",
+      "members": [
+        {
+          "id": "androidx.concurrent:concurrent-futures:1.3.0",
+          "name": "AndroidX Futures",
+          "author": "The Android Open Source Project",
+          "version": "1.3.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/concurrent#1.3.0",
+          "description": "Androidx implementation of Guava's ListenableFuture",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.concurrent:concurrent-futures:1.3.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.concurrent:concurrent-futures:1.3.0"
+      ]
+    },
+    {
+      "id": "androidx.lifecycle:lifecycle-runtime-ktx-android:2.11.0",
+      "name": "AndroidX Lifecycle Kotlin Extensions",
+      "author": "The Android Open Source Project",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+      "description": "Kotlin extensions for 'lifecycle' artifact",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.lifecycle:lifecycle-runtime-ktx-android:2.11.0",
+      "members": [
+        {
+          "id": "androidx.lifecycle:lifecycle-runtime-ktx-android:2.11.0",
+          "name": "AndroidX Lifecycle Kotlin Extensions",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Kotlin extensions for 'lifecycle' artifact",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-runtime-ktx-android:2.11.0"
+        },
+        {
+          "id": "androidx.lifecycle:lifecycle-runtime-ktx:2.11.0",
+          "name": "AndroidX Lifecycle Kotlin Extensions",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Kotlin extensions for 'lifecycle' artifact",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-runtime-ktx:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.lifecycle:lifecycle-runtime-ktx-android:2.11.0",
+        "androidx.lifecycle:lifecycle-runtime-ktx:2.11.0"
+      ]
+    },
+    {
+      "id": "androidx.lifecycle:lifecycle-livedata-core:2.11.0",
+      "name": "AndroidX Lifecycle LiveData Core",
+      "author": "The Android Open Source Project",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+      "description": "Android Lifecycle LiveData Core",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.lifecycle:lifecycle-livedata-core:2.11.0",
+      "members": [
+        {
+          "id": "androidx.lifecycle:lifecycle-livedata-core:2.11.0",
+          "name": "AndroidX Lifecycle LiveData Core",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Android Lifecycle LiveData Core",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-livedata-core:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.lifecycle:lifecycle-livedata-core:2.11.0"
+      ]
+    },
+    {
+      "id": "androidx.lifecycle:lifecycle-process:2.11.0",
+      "name": "AndroidX Lifecycle Process",
+      "author": "The Android Open Source Project",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+      "description": "Android Lifecycle Process",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.lifecycle:lifecycle-process:2.11.0",
+      "members": [
+        {
+          "id": "androidx.lifecycle:lifecycle-process:2.11.0",
+          "name": "AndroidX Lifecycle Process",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Android Lifecycle Process",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-process:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.lifecycle:lifecycle-process:2.11.0"
+      ]
+    },
+    {
+      "id": "androidx.lifecycle:lifecycle-runtime-android:2.11.0",
+      "name": "AndroidX Lifecycle Runtime",
+      "author": "The Android Open Source Project",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+      "description": "Android Lifecycle Runtime",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.lifecycle:lifecycle-runtime-android:2.11.0",
+      "members": [
+        {
+          "id": "androidx.lifecycle:lifecycle-runtime-android:2.11.0",
+          "name": "AndroidX Lifecycle Runtime",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Android Lifecycle Runtime",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-runtime-android:2.11.0"
+        },
+        {
+          "id": "androidx.lifecycle:lifecycle-runtime:2.11.0",
+          "name": "AndroidX Lifecycle Runtime",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Android Lifecycle Runtime",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-runtime:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.lifecycle:lifecycle-runtime-android:2.11.0",
+        "androidx.lifecycle:lifecycle-runtime:2.11.0"
+      ]
+    },
+    {
+      "id": "androidx.lifecycle:lifecycle-runtime-compose-android:2.11.0",
+      "name": "AndroidX Lifecycle Runtime Compose",
+      "author": "The Android Open Source Project",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+      "description": "Compose integration with Lifecycle",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.lifecycle:lifecycle-runtime-compose-android:2.11.0",
+      "members": [
+        {
+          "id": "androidx.lifecycle:lifecycle-runtime-compose-android:2.11.0",
+          "name": "AndroidX Lifecycle Runtime Compose",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Compose integration with Lifecycle",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-runtime-compose-android:2.11.0"
+        },
+        {
+          "id": "androidx.lifecycle:lifecycle-runtime-compose:2.11.0",
+          "name": "AndroidX Lifecycle Runtime Compose",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Compose integration with Lifecycle",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-runtime-compose:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.lifecycle:lifecycle-runtime-compose-android:2.11.0",
+        "androidx.lifecycle:lifecycle-runtime-compose:2.11.0"
+      ]
+    },
+    {
+      "id": "androidx.lifecycle:lifecycle-viewmodel-android:2.11.0",
+      "name": "AndroidX Lifecycle ViewModel",
+      "author": "The Android Open Source Project",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+      "description": "Android Lifecycle ViewModel",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.lifecycle:lifecycle-viewmodel-android:2.11.0",
+      "members": [
+        {
+          "id": "androidx.lifecycle:lifecycle-viewmodel-android:2.11.0",
+          "name": "AndroidX Lifecycle ViewModel",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Android Lifecycle ViewModel",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-viewmodel-android:2.11.0"
+        },
+        {
+          "id": "androidx.lifecycle:lifecycle-viewmodel:2.11.0",
+          "name": "AndroidX Lifecycle ViewModel",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Android Lifecycle ViewModel",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-viewmodel:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.lifecycle:lifecycle-viewmodel-android:2.11.0",
+        "androidx.lifecycle:lifecycle-viewmodel:2.11.0"
+      ]
+    },
+    {
+      "id": "androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0",
+      "name": "AndroidX Lifecycle ViewModel Kotlin Extensions",
+      "author": "The Android Open Source Project",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+      "description": "Kotlin extensions for 'viewmodel' artifact",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0",
+      "members": [
+        {
+          "id": "androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0",
+          "name": "AndroidX Lifecycle ViewModel Kotlin Extensions",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Kotlin extensions for 'viewmodel' artifact",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0"
+      ]
+    },
+    {
+      "id": "androidx.lifecycle:lifecycle-viewmodel-savedstate-android:2.11.0",
+      "name": "AndroidX Lifecycle ViewModel with SavedState",
+      "author": "The Android Open Source Project",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+      "description": "Android Lifecycle ViewModel",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.lifecycle:lifecycle-viewmodel-savedstate-android:2.11.0",
+      "members": [
+        {
+          "id": "androidx.lifecycle:lifecycle-viewmodel-savedstate-android:2.11.0",
+          "name": "AndroidX Lifecycle ViewModel with SavedState",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Android Lifecycle ViewModel",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-viewmodel-savedstate-android:2.11.0"
+        },
+        {
+          "id": "androidx.lifecycle:lifecycle-viewmodel-savedstate:2.11.0",
+          "name": "AndroidX Lifecycle ViewModel with SavedState",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Android Lifecycle ViewModel",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-viewmodel-savedstate:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.lifecycle:lifecycle-viewmodel-savedstate-android:2.11.0",
+        "androidx.lifecycle:lifecycle-viewmodel-savedstate:2.11.0"
+      ]
+    },
+    {
+      "id": "androidx.lifecycle:lifecycle-common-jvm:2.11.0",
+      "name": "AndroidX Lifecycle-Common",
+      "author": "The Android Open Source Project",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+      "description": "Android Lifecycle-Common",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.lifecycle:lifecycle-common-jvm:2.11.0",
+      "members": [
+        {
+          "id": "androidx.lifecycle:lifecycle-common-jvm:2.11.0",
+          "name": "AndroidX Lifecycle-Common",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Android Lifecycle-Common",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-common-jvm:2.11.0"
+        },
+        {
+          "id": "androidx.lifecycle:lifecycle-common:2.11.0",
+          "name": "AndroidX Lifecycle-Common",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Android Lifecycle-Common",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-common:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.lifecycle:lifecycle-common-jvm:2.11.0",
+        "androidx.lifecycle:lifecycle-common:2.11.0"
+      ]
+    },
+    {
+      "id": "androidx.navigationevent:navigationevent-android:1.2.0",
+      "name": "AndroidX Navigation Event",
+      "author": "The Android Open Source Project",
+      "version": "1.2.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/navigationevent#1.2.0",
+      "description": "Provides APIs to easily intercept platform navigation events, including swipes and clicks, to provide a consistent API surface for handling these events.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.navigationevent:navigationevent-android:1.2.0",
+      "members": [
+        {
+          "id": "androidx.navigationevent:navigationevent-android:1.2.0",
+          "name": "AndroidX Navigation Event",
+          "author": "The Android Open Source Project",
+          "version": "1.2.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/navigationevent#1.2.0",
+          "description": "Provides APIs to easily intercept platform navigation events, including swipes and clicks, to provide a consistent API surface for handling these events.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.navigationevent:navigationevent-android:1.2.0"
+        },
+        {
+          "id": "androidx.navigationevent:navigationevent:1.2.0",
+          "name": "AndroidX Navigation Event",
+          "author": "The Android Open Source Project",
+          "version": "1.2.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/navigationevent#1.2.0",
+          "description": "Provides APIs to easily intercept platform navigation events, including swipes and clicks, to provide a consistent API surface for handling these events.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.navigationevent:navigationevent:1.2.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.navigationevent:navigationevent-android:1.2.0",
+        "androidx.navigationevent:navigationevent:1.2.0"
+      ]
+    },
+    {
+      "id": "androidx.navigationevent:navigationevent-compose-android:1.2.0",
+      "name": "AndroidX NavigationEvent Compose",
+      "author": "The Android Open Source Project",
+      "version": "1.2.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/navigationevent#1.2.0",
+      "description": "Compose integration with NavigationEvent",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.navigationevent:navigationevent-compose-android:1.2.0",
+      "members": [
+        {
+          "id": "androidx.navigationevent:navigationevent-compose-android:1.2.0",
+          "name": "AndroidX NavigationEvent Compose",
+          "author": "The Android Open Source Project",
+          "version": "1.2.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/navigationevent#1.2.0",
+          "description": "Compose integration with NavigationEvent",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.navigationevent:navigationevent-compose-android:1.2.0"
+        },
+        {
+          "id": "androidx.navigationevent:navigationevent-compose:1.2.0",
+          "name": "AndroidX NavigationEvent Compose",
+          "author": "The Android Open Source Project",
+          "version": "1.2.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/navigationevent#1.2.0",
+          "description": "Compose integration with NavigationEvent",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.navigationevent:navigationevent-compose:1.2.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.navigationevent:navigationevent-compose-android:1.2.0",
+        "androidx.navigationevent:navigationevent-compose:1.2.0"
+      ]
+    },
+    {
+      "id": "androidx.profileinstaller:profileinstaller:1.4.1",
+      "name": "AndroidX Profile Installer",
+      "author": "The Android Open Source Project",
+      "version": "1.4.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/profileinstaller#1.4.1",
+      "description": "Allows libraries to prepopulate ahead of time compilation traces to be read by ART",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.profileinstaller:profileinstaller:1.4.1",
+      "members": [
+        {
+          "id": "androidx.profileinstaller:profileinstaller:1.4.1",
+          "name": "AndroidX Profile Installer",
+          "author": "The Android Open Source Project",
+          "version": "1.4.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/profileinstaller#1.4.1",
+          "description": "Allows libraries to prepopulate ahead of time compilation traces to be read by ART",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.profileinstaller:profileinstaller:1.4.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.profileinstaller:profileinstaller:1.4.1"
+      ]
+    },
+    {
+      "id": "androidx.savedstate:savedstate-android:1.5.0",
+      "name": "AndroidX Saved State",
+      "author": "The Android Open Source Project",
+      "version": "1.5.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/savedstate#1.5.0",
+      "description": "Android Lifecycle Saved State",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.savedstate:savedstate-android:1.5.0",
+      "members": [
+        {
+          "id": "androidx.savedstate:savedstate-android:1.5.0",
+          "name": "AndroidX Saved State",
+          "author": "The Android Open Source Project",
+          "version": "1.5.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/savedstate#1.5.0",
+          "description": "Android Lifecycle Saved State",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.savedstate:savedstate-android:1.5.0"
+        },
+        {
+          "id": "androidx.savedstate:savedstate:1.5.0",
+          "name": "AndroidX Saved State",
+          "author": "The Android Open Source Project",
+          "version": "1.5.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/savedstate#1.5.0",
+          "description": "Android Lifecycle Saved State",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.savedstate:savedstate:1.5.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.savedstate:savedstate-android:1.5.0",
+        "androidx.savedstate:savedstate:1.5.0"
+      ]
+    },
+    {
+      "id": "androidx.savedstate:savedstate-compose-android:1.5.0",
+      "name": "AndroidX Saved State Compose",
+      "author": "The Android Open Source Project",
+      "version": "1.5.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/savedstate#1.5.0",
+      "description": "Compose integration with Saved State",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.savedstate:savedstate-compose-android:1.5.0",
+      "members": [
+        {
+          "id": "androidx.savedstate:savedstate-compose-android:1.5.0",
+          "name": "AndroidX Saved State Compose",
+          "author": "The Android Open Source Project",
+          "version": "1.5.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/savedstate#1.5.0",
+          "description": "Compose integration with Saved State",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.savedstate:savedstate-compose-android:1.5.0"
+        },
+        {
+          "id": "androidx.savedstate:savedstate-compose:1.5.0",
+          "name": "AndroidX Saved State Compose",
+          "author": "The Android Open Source Project",
+          "version": "1.5.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/savedstate#1.5.0",
+          "description": "Compose integration with Saved State",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.savedstate:savedstate-compose:1.5.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.savedstate:savedstate-compose-android:1.5.0",
+        "androidx.savedstate:savedstate-compose:1.5.0"
+      ]
+    },
+    {
+      "id": "androidx.savedstate:savedstate-ktx:1.5.0",
+      "name": "AndroidX SavedState Kotlin Extensions",
+      "author": "The Android Open Source Project",
+      "version": "1.5.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/savedstate#1.5.0",
+      "description": "Kotlin extensions for 'savedstate' artifact",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.savedstate:savedstate-ktx:1.5.0",
+      "members": [
+        {
+          "id": "androidx.savedstate:savedstate-ktx:1.5.0",
+          "name": "AndroidX SavedState Kotlin Extensions",
+          "author": "The Android Open Source Project",
+          "version": "1.5.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/savedstate#1.5.0",
+          "description": "Kotlin extensions for 'savedstate' artifact",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.savedstate:savedstate-ktx:1.5.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.savedstate:savedstate-ktx:1.5.0"
+      ]
+    },
+    {
+      "id": "androidx.startup:startup-runtime:1.2.0",
+      "name": "AndroidX Startup Runtime",
+      "author": "The Android Open Source Project",
+      "version": "1.2.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/startup#1.2.0",
+      "description": "Android App Startup Runtime",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.startup:startup-runtime:1.2.0",
+      "members": [
+        {
+          "id": "androidx.startup:startup-runtime:1.2.0",
+          "name": "AndroidX Startup Runtime",
+          "author": "The Android Open Source Project",
+          "version": "1.2.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/startup#1.2.0",
+          "description": "Android App Startup Runtime",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.startup:startup-runtime:1.2.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.startup:startup-runtime:1.2.0"
+      ]
+    },
+    {
+      "id": "androidx.tracing:tracing-android:2.0.5",
+      "name": "AndroidX Tracing",
+      "author": "The Android Open Source Project",
+      "version": "2.0.5",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/tracing#2.0.5",
+      "description": "Android Tracing",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.tracing:tracing-android:2.0.5",
+      "members": [
+        {
+          "id": "androidx.tracing:tracing-android:2.0.5",
+          "name": "AndroidX Tracing",
+          "author": "The Android Open Source Project",
+          "version": "2.0.5",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/tracing#2.0.5",
+          "description": "Android Tracing",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.tracing:tracing-android:2.0.5"
+        },
+        {
+          "id": "androidx.tracing:tracing:2.0.5",
+          "name": "AndroidX Tracing",
+          "author": "The Android Open Source Project",
+          "version": "2.0.5",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/tracing#2.0.5",
+          "description": "Android Tracing",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.tracing:tracing:2.0.5"
+        }
+      ],
+      "coordinates": [
+        "androidx.tracing:tracing-android:2.0.5",
+        "androidx.tracing:tracing:2.0.5"
+      ]
+    },
+    {
+      "id": "androidx.versionedparcelable:versionedparcelable:1.2.1",
+      "name": "AndroidX VersionedParcelable",
+      "author": "The Android Open Source Project",
+      "version": "1.2.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/versionedparcelable#1.2.1",
+      "description": "Provides a stable but relatively compact binary serialization format that can be passed across processes or persisted safely.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.versionedparcelable:versionedparcelable:1.2.1",
+      "members": [
+        {
+          "id": "androidx.versionedparcelable:versionedparcelable:1.2.1",
+          "name": "AndroidX VersionedParcelable",
+          "author": "The Android Open Source Project",
+          "version": "1.2.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/versionedparcelable#1.2.1",
+          "description": "Provides a stable but relatively compact binary serialization format that can be passed across processes or persisted safely.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.versionedparcelable:versionedparcelable:1.2.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.versionedparcelable:versionedparcelable:1.2.1"
+      ]
+    },
+    {
+      "id": "androidx.window:window:1.5.1",
+      "name": "AndroidX WindowManager",
+      "author": "The Android Open Source Project",
+      "version": "1.5.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/window#1.5.1",
+      "description": "WindowManager Jetpack library. Currently only provides additional functionality on foldable devices.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.window:window:1.5.1",
+      "members": [
+        {
+          "id": "androidx.window:window:1.5.1",
+          "name": "AndroidX WindowManager",
+          "author": "The Android Open Source Project",
+          "version": "1.5.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/window#1.5.1",
+          "description": "WindowManager Jetpack library. Currently only provides additional functionality on foldable devices.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.window:window:1.5.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.window:window:1.5.1"
+      ]
+    },
+    {
+      "id": "androidx.window:window-core-android:1.5.1",
+      "name": "AndroidX WindowManager Core",
+      "author": "The Android Open Source Project",
+      "version": "1.5.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/window#1.5.1",
+      "description": "WindowManager Core Library.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.window:window-core-android:1.5.1",
+      "members": [
+        {
+          "id": "androidx.window:window-core-android:1.5.1",
+          "name": "AndroidX WindowManager Core",
+          "author": "The Android Open Source Project",
+          "version": "1.5.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/window#1.5.1",
+          "description": "WindowManager Core Library.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.window:window-core-android:1.5.1"
+        },
+        {
+          "id": "androidx.window:window-core:1.5.1",
+          "name": "AndroidX WindowManager Core",
+          "author": "The Android Open Source Project",
+          "version": "1.5.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/window#1.5.1",
+          "description": "WindowManager Core Library.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.window:window-core:1.5.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.window:window-core-android:1.5.1",
+        "androidx.window:window-core:1.5.1"
+      ]
+    },
+    {
+      "id": "io.github.kyant0:backdrop-android:2.0.1",
+      "name": "Backdrop",
+      "author": "Kyant",
+      "version": "2.0.1",
+      "license": "The Apache License, Version 2.0",
+      "url": "https://github.com/Kyant0/AndroidLiquidGlass",
+      "description": "Compose Multiplatform Liquid Glass effects",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "io.github.kyant0:backdrop-android:2.0.1",
+      "members": [
+        {
+          "id": "io.github.kyant0:backdrop-android:2.0.1",
+          "name": "Backdrop",
+          "author": "Kyant",
+          "version": "2.0.1",
+          "license": "The Apache License, Version 2.0",
+          "url": "https://github.com/Kyant0/AndroidLiquidGlass",
+          "description": "Compose Multiplatform Liquid Glass effects",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "io.github.kyant0:backdrop-android:2.0.1"
+        }
+      ],
+      "coordinates": [
+        "io.github.kyant0:backdrop-android:2.0.1"
+      ]
+    },
+    {
+      "id": "reference:busybox",
+      "name": "BusyBox",
+      "author": "BusyBox contributors",
+      "version": "1.38.0 Android",
+      "license": "GPL-2.0-only",
+      "url": "https://busybox.net/",
+      "description": "腳本隨附的命令列工具集。",
+      "components": [
+        "Shell／原生工具"
+      ],
+      "members": [
+        {
+          "id": "reference:busybox",
+          "name": "BusyBox",
+          "author": "BusyBox contributors",
+          "version": "1.38.0 Android",
+          "license": "GPL-2.0-only",
+          "url": "https://busybox.net/",
+          "description": "腳本隨附的命令列工具集。",
+          "components": [
+            "Shell／原生工具"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "reference:legacy-tools",
+      "name": "cmd / keycheck（既有隨附工具）",
+      "author": "目前來源包未記錄原作者",
+      "version": "來源版本未記錄",
+      "license": "原始授權資訊待補",
+      "url": "https://github.com/YAWAsau/backup_script",
+      "description": "連結為 SpeedBackup 發佈來源；目前來源包沒有足以確認其上游來源的資料。",
+      "components": [
+        "Shell／原生工具"
+      ],
+      "members": [
+        {
+          "id": "reference:legacy-tools",
+          "name": "cmd / keycheck（既有隨附工具）",
+          "author": "目前來源包未記錄原作者",
+          "version": "來源版本未記錄",
+          "license": "原始授權資訊待補",
+          "url": "https://github.com/YAWAsau/backup_script",
+          "description": "連結為 SpeedBackup 發佈來源；目前來源包沒有足以確認其上游來源的資料。",
+          "components": [
+            "Shell／原生工具"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "org.jetbrains.compose.animation:animation-android:1.12.2",
+      "name": "Compose Animation",
+      "author": "Compose Multiplatform Team",
+      "version": "1.12.2",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Compose animation library",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.compose.animation:animation-android:1.12.2",
+      "members": [
+        {
+          "id": "org.jetbrains.compose.animation:animation-android:1.12.2",
+          "name": "Compose Animation",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose animation library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.animation:animation-android:1.12.2"
+        },
+        {
+          "id": "org.jetbrains.compose.animation:animation:1.12.2",
+          "name": "Compose Animation",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose animation library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.animation:animation:1.12.2"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.compose.animation:animation-android:1.12.2",
+        "org.jetbrains.compose.animation:animation:1.12.2"
+      ]
+    },
+    {
+      "id": "org.jetbrains.compose.animation:animation-core-android:1.12.2",
+      "name": "Compose Animation Core",
+      "author": "Compose Multiplatform Team",
+      "version": "1.12.2",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Animation engine and animation primitives that are the building blocks of the Compose animation library",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.compose.animation:animation-core-android:1.12.2",
+      "members": [
+        {
+          "id": "org.jetbrains.compose.animation:animation-core-android:1.12.2",
+          "name": "Compose Animation Core",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Animation engine and animation primitives that are the building blocks of the Compose animation library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.animation:animation-core-android:1.12.2"
+        },
+        {
+          "id": "org.jetbrains.compose.animation:animation-core:1.12.2",
+          "name": "Compose Animation Core",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Animation engine and animation primitives that are the building blocks of the Compose animation library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.animation:animation-core:1.12.2"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.compose.animation:animation-core-android:1.12.2",
+        "org.jetbrains.compose.animation:animation-core:1.12.2"
+      ]
+    },
+    {
+      "id": "org.jetbrains.compose.foundation:foundation-android:1.12.2",
+      "name": "Compose Foundation",
+      "author": "Compose Multiplatform Team",
+      "version": "1.12.2",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Higher level abstractions of the Compose UI primitives. This library is design system agnostic, providing the high-level building blocks for both application and design-system developers",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.compose.foundation:foundation-android:1.12.2",
+      "members": [
+        {
+          "id": "org.jetbrains.compose.foundation:foundation-android:1.12.2",
+          "name": "Compose Foundation",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Higher level abstractions of the Compose UI primitives. This library is design system agnostic, providing the high-level building blocks for both application and design-system developers",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.foundation:foundation-android:1.12.2"
+        },
+        {
+          "id": "org.jetbrains.compose.foundation:foundation:1.12.2",
+          "name": "Compose Foundation",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Higher level abstractions of the Compose UI primitives. This library is design system agnostic, providing the high-level building blocks for both application and design-system developers",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.foundation:foundation:1.12.2"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.compose.foundation:foundation-android:1.12.2",
+        "org.jetbrains.compose.foundation:foundation:1.12.2"
+      ]
+    },
+    {
+      "id": "org.jetbrains.compose.ui:ui-geometry-android:1.12.2",
+      "name": "Compose Geometry",
+      "author": "Compose Multiplatform Team",
+      "version": "1.12.2",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Compose classes related to dimensions without units",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.compose.ui:ui-geometry-android:1.12.2",
+      "members": [
+        {
+          "id": "org.jetbrains.compose.ui:ui-geometry-android:1.12.2",
+          "name": "Compose Geometry",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose classes related to dimensions without units",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.ui:ui-geometry-android:1.12.2"
+        },
+        {
+          "id": "org.jetbrains.compose.ui:ui-geometry:1.12.2",
+          "name": "Compose Geometry",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose classes related to dimensions without units",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.ui:ui-geometry:1.12.2"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.compose.ui:ui-geometry-android:1.12.2",
+        "org.jetbrains.compose.ui:ui-geometry:1.12.2"
+      ]
+    },
+    {
+      "id": "org.jetbrains.compose.ui:ui-graphics-android:1.12.2",
+      "name": "Compose Graphics",
+      "author": "Compose Multiplatform Team",
+      "version": "1.12.2",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Compose graphics",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.compose.ui:ui-graphics-android:1.12.2",
+      "members": [
+        {
+          "id": "org.jetbrains.compose.ui:ui-graphics-android:1.12.2",
+          "name": "Compose Graphics",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose graphics",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.ui:ui-graphics-android:1.12.2"
+        },
+        {
+          "id": "org.jetbrains.compose.ui:ui-graphics:1.12.2",
+          "name": "Compose Graphics",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose graphics",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.ui:ui-graphics:1.12.2"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.compose.ui:ui-graphics-android:1.12.2",
+        "org.jetbrains.compose.ui:ui-graphics:1.12.2"
+      ]
+    },
+    {
+      "id": "org.jetbrains.compose.foundation:foundation-layout-android:1.12.2",
+      "name": "Compose Layouts",
+      "author": "Compose Multiplatform Team",
+      "version": "1.12.2",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Compose layout implementations",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.compose.foundation:foundation-layout-android:1.12.2",
+      "members": [
+        {
+          "id": "org.jetbrains.compose.foundation:foundation-layout-android:1.12.2",
+          "name": "Compose Layouts",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose layout implementations",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.foundation:foundation-layout-android:1.12.2"
+        },
+        {
+          "id": "org.jetbrains.compose.foundation:foundation-layout:1.12.2",
+          "name": "Compose Layouts",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose layout implementations",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.foundation:foundation-layout:1.12.2"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.compose.foundation:foundation-layout-android:1.12.2",
+        "org.jetbrains.compose.foundation:foundation-layout:1.12.2"
+      ]
+    },
+    {
+      "id": "org.jetbrains.compose.material3:material3-window-size-class-android:1.12.0-alpha03",
+      "name": "Compose Material 3 Window Size Class",
+      "author": "Compose Multiplatform Team",
+      "version": "1.12.0-alpha03",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Provides window size classes for building responsive UIs",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.compose.material3:material3-window-size-class-android:1.12.0-alpha03",
+      "members": [
+        {
+          "id": "org.jetbrains.compose.material3:material3-window-size-class-android:1.12.0-alpha03",
+          "name": "Compose Material 3 Window Size Class",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.0-alpha03",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Provides window size classes for building responsive UIs",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.material3:material3-window-size-class-android:1.12.0-alpha03"
+        },
+        {
+          "id": "org.jetbrains.compose.material3:material3-window-size-class:1.12.0-alpha03",
+          "name": "Compose Material 3 Window Size Class",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.0-alpha03",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Provides window size classes for building responsive UIs",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.material3:material3-window-size-class:1.12.0-alpha03"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.compose.material3:material3-window-size-class-android:1.12.0-alpha03",
+        "org.jetbrains.compose.material3:material3-window-size-class:1.12.0-alpha03"
+      ]
+    },
+    {
+      "id": "org.jetbrains.compose.runtime:runtime-android:1.12.2",
+      "name": "Compose Runtime",
+      "author": "Compose Multiplatform Team",
+      "version": "1.12.2",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Tree composition support for code generated by the Compose compiler plugin and corresponding public API",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.compose.runtime:runtime-android:1.12.2",
+      "members": [
+        {
+          "id": "org.jetbrains.compose.runtime:runtime-android:1.12.2",
+          "name": "Compose Runtime",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Tree composition support for code generated by the Compose compiler plugin and corresponding public API",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.runtime:runtime-android:1.12.2"
+        },
+        {
+          "id": "org.jetbrains.compose.runtime:runtime:1.12.2",
+          "name": "Compose Runtime",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Tree composition support for code generated by the Compose compiler plugin and corresponding public API",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.runtime:runtime:1.12.2"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.compose.runtime:runtime-android:1.12.2",
+        "org.jetbrains.compose.runtime:runtime:1.12.2"
+      ]
+    },
+    {
+      "id": "org.jetbrains.compose.runtime:runtime-saveable-android:1.12.2",
+      "name": "Compose Saveable",
+      "author": "Compose Multiplatform Team",
+      "version": "1.12.2",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Compose components that allow saving and restoring the local ui state",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.compose.runtime:runtime-saveable-android:1.12.2",
+      "members": [
+        {
+          "id": "org.jetbrains.compose.runtime:runtime-saveable-android:1.12.2",
+          "name": "Compose Saveable",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose components that allow saving and restoring the local ui state",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.runtime:runtime-saveable-android:1.12.2"
+        },
+        {
+          "id": "org.jetbrains.compose.runtime:runtime-saveable:1.12.2",
+          "name": "Compose Saveable",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose components that allow saving and restoring the local ui state",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.runtime:runtime-saveable:1.12.2"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.compose.runtime:runtime-saveable-android:1.12.2",
+        "org.jetbrains.compose.runtime:runtime-saveable:1.12.2"
+      ]
+    },
+    {
+      "id": "org.jetbrains.compose.ui:ui-android:1.12.2",
+      "name": "Compose UI",
+      "author": "Compose Multiplatform Team",
+      "version": "1.12.2",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Compose UI primitives. This library contains the primitives that form the Compose UI Toolkit, such as drawing, measurement and layout.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.compose.ui:ui-android:1.12.2",
+      "members": [
+        {
+          "id": "org.jetbrains.compose.ui:ui-android:1.12.2",
+          "name": "Compose UI",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose UI primitives. This library contains the primitives that form the Compose UI Toolkit, such as drawing, measurement and layout.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.ui:ui-android:1.12.2"
+        },
+        {
+          "id": "org.jetbrains.compose.ui:ui:1.12.2",
+          "name": "Compose UI",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose UI primitives. This library contains the primitives that form the Compose UI Toolkit, such as drawing, measurement and layout.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.ui:ui:1.12.2"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.compose.ui:ui-android:1.12.2",
+        "org.jetbrains.compose.ui:ui:1.12.2"
+      ]
+    },
+    {
+      "id": "org.jetbrains.compose.ui:ui-text-android:1.12.2",
+      "name": "Compose UI Text",
+      "author": "Compose Multiplatform Team",
+      "version": "1.12.2",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Compose Text primitives and utilities",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.compose.ui:ui-text-android:1.12.2",
+      "members": [
+        {
+          "id": "org.jetbrains.compose.ui:ui-text-android:1.12.2",
+          "name": "Compose UI Text",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose Text primitives and utilities",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.ui:ui-text-android:1.12.2"
+        },
+        {
+          "id": "org.jetbrains.compose.ui:ui-text:1.12.2",
+          "name": "Compose UI Text",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose Text primitives and utilities",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.ui:ui-text:1.12.2"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.compose.ui:ui-text-android:1.12.2",
+        "org.jetbrains.compose.ui:ui-text:1.12.2"
+      ]
+    },
+    {
+      "id": "org.jetbrains.compose.ui:ui-unit-android:1.12.2",
+      "name": "Compose Unit",
+      "author": "Compose Multiplatform Team",
+      "version": "1.12.2",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Compose classes for simple units",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.compose.ui:ui-unit-android:1.12.2",
+      "members": [
+        {
+          "id": "org.jetbrains.compose.ui:ui-unit-android:1.12.2",
+          "name": "Compose Unit",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose classes for simple units",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.ui:ui-unit-android:1.12.2"
+        },
+        {
+          "id": "org.jetbrains.compose.ui:ui-unit:1.12.2",
+          "name": "Compose Unit",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose classes for simple units",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.ui:ui-unit:1.12.2"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.compose.ui:ui-unit-android:1.12.2",
+        "org.jetbrains.compose.ui:ui-unit:1.12.2"
+      ]
+    },
+    {
+      "id": "org.jetbrains.compose.ui:ui-util-android:1.12.2",
+      "name": "Compose Util",
+      "author": "Compose Multiplatform Team",
+      "version": "1.12.2",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Internal Compose utilities used by other modules",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.compose.ui:ui-util-android:1.12.2",
+      "members": [
+        {
+          "id": "org.jetbrains.compose.ui:ui-util-android:1.12.2",
+          "name": "Compose Util",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Internal Compose utilities used by other modules",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.ui:ui-util-android:1.12.2"
+        },
+        {
+          "id": "org.jetbrains.compose.ui:ui-util:1.12.2",
+          "name": "Compose Util",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Internal Compose utilities used by other modules",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.ui:ui-util:1.12.2"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.compose.ui:ui-util-android:1.12.2",
+        "org.jetbrains.compose.ui:ui-util:1.12.2"
+      ]
+    },
+    {
+      "id": "com.google.errorprone:error_prone_annotations:2.52.0",
+      "name": "error-prone annotations",
+      "author": "Google",
+      "version": "2.52.0",
+      "license": "Apache 2.0",
+      "url": "https://github.com/google/error-prone",
+      "description": "",
+      "components": [
+        "Dex"
+      ],
+      "coordinate": "com.google.errorprone:error_prone_annotations:2.52.0",
+      "members": [
+        {
+          "id": "com.google.errorprone:error_prone_annotations:2.52.0",
+          "name": "error-prone annotations",
+          "author": "Google",
+          "version": "2.52.0",
+          "license": "Apache 2.0",
+          "url": "https://github.com/google/error-prone",
+          "description": "",
+          "components": [
+            "Dex"
+          ],
+          "coordinate": "com.google.errorprone:error_prone_annotations:2.52.0"
+        }
+      ],
+      "coordinates": [
+        "com.google.errorprone:error_prone_annotations:2.52.0"
+      ]
+    },
+    {
+      "id": "reference:find",
+      "name": "GNU findutils",
+      "author": "Free Software Foundation",
+      "version": "4.11.0",
+      "license": "GPL-3.0-or-later",
+      "url": "https://www.gnu.org/software/findutils/",
+      "description": "隨附完整上游來源壓縮檔與 Android ARM64／API28／16KiB 靜態建置配方。",
+      "components": [
+        "Shell／原生工具"
+      ],
+      "members": [
+        {
+          "id": "reference:find",
+          "name": "GNU findutils",
+          "author": "Free Software Foundation",
+          "version": "4.11.0",
+          "license": "GPL-3.0-or-later",
+          "url": "https://www.gnu.org/software/findutils/",
+          "description": "隨附完整上游來源壓縮檔與 Android ARM64／API28／16KiB 靜態建置配方。",
+          "components": [
+            "Shell／原生工具"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "reference:gmp",
+      "name": "GNU Multiple Precision Arithmetic Library",
+      "author": "GMP developers",
+      "version": "6.3.0",
+      "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
+      "url": "https://gmplib.org/",
+      "description": "SMB 靜態建置的高精度算術依賴。",
+      "components": [
+        "SMB 間接依賴"
+      ],
+      "members": [
+        {
+          "id": "reference:gmp",
+          "name": "GNU Multiple Precision Arithmetic Library",
+          "author": "GMP developers",
+          "version": "6.3.0",
+          "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
+          "url": "https://gmplib.org/",
+          "description": "SMB 靜態建置的高精度算術依賴。",
+          "components": [
+            "SMB 間接依賴"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "reference:tar",
+      "name": "GNU tar",
+      "author": "Free Software Foundation",
+      "version": "1.35.90",
+      "license": "GPL-3.0-or-later",
+      "url": "https://www.gnu.org/software/tar/",
+      "description": "串流封存與恢復。",
+      "components": [
+        "Shell／原生工具"
+      ],
+      "members": [
+        {
+          "id": "reference:tar",
+          "name": "GNU tar",
+          "author": "Free Software Foundation",
+          "version": "1.35.90",
+          "license": "GPL-3.0-or-later",
+          "url": "https://www.gnu.org/software/tar/",
+          "description": "串流封存與恢復。",
+          "components": [
+            "Shell／原生工具"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "reference:gnutls",
+      "name": "GnuTLS",
+      "author": "GnuTLS contributors",
+      "version": "3.8.13",
+      "license": "LGPL-2.1-or-later / 個別來源授權",
+      "url": "https://www.gnutls.org/",
+      "description": "SMB 靜態建置的 TLS 依賴。",
+      "components": [
+        "SMB 間接依賴"
+      ],
+      "members": [
+        {
+          "id": "reference:gnutls",
+          "name": "GnuTLS",
+          "author": "GnuTLS contributors",
+          "version": "3.8.13",
+          "license": "LGPL-2.1-or-later / 個別來源授權",
+          "url": "https://www.gnutls.org/",
+          "description": "SMB 靜態建置的 TLS 依賴。",
+          "components": [
+            "SMB 間接依賴"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "com.google.code.gson:gson:2.15.0",
+      "name": "Gson",
+      "author": "Google",
+      "version": "2.15.0",
+      "license": "Apache-2.0",
+      "url": "https://github.com/google/gson",
+      "description": "",
+      "components": [
+        "Dex"
+      ],
+      "coordinate": "com.google.code.gson:gson:2.15.0",
+      "members": [
+        {
+          "id": "com.google.code.gson:gson:2.15.0",
+          "name": "Gson",
+          "author": "Google",
+          "version": "2.15.0",
+          "license": "Apache-2.0",
+          "url": "https://github.com/google/gson",
+          "description": "",
+          "components": [
+            "Dex"
+          ],
+          "coordinate": "com.google.code.gson:gson:2.15.0"
+        }
+      ],
+      "coordinates": [
+        "com.google.code.gson:gson:2.15.0"
+      ]
+    },
+    {
+      "id": "com.google.guava:listenablefuture:1.0",
+      "name": "Guava ListenableFuture only",
+      "author": "Google",
+      "version": "1.0",
+      "license": "Apache-2.0",
+      "url": "https://github.com/google/guava",
+      "description": "Contains Guava's com.google.common.util.concurrent.ListenableFuture class, without any of its other classes -- but is also available in a second \"version\" that omits the class to avoid conflicts with the copy in Guava itself. The idea is: - If users want only ListenableFuture, they depend on listenablefuture-1.0. - If users want all of Guava, they depend on guava, which, as of Guava 27.0, depends on listenablefuture-9999.0-empty-to-avoid-conflict-with-guava. The 9999.0-... version number is enough for some build systems (notably, Gradle) to select that empty artifact over the \"real\" listenablefuture-1.0 -- avoiding a conflict with the copy of ListenableFuture in guava itself. If users are us",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "com.google.guava:listenablefuture:1.0",
+      "members": [
+        {
+          "id": "com.google.guava:listenablefuture:1.0",
+          "name": "Guava ListenableFuture only",
+          "author": "Google",
+          "version": "1.0",
+          "license": "Apache-2.0",
+          "url": "https://github.com/google/guava",
+          "description": "Contains Guava's com.google.common.util.concurrent.ListenableFuture class, without any of its other classes -- but is also available in a second \"version\" that omits the class to avoid conflicts with the copy in Guava itself. The idea is: - If users want only ListenableFuture, they depend on listenablefuture-1.0. - If users want all of Guava, they depend on guava, which, as of Guava 27.0, depends on listenablefuture-9999.0-empty-to-avoid-conflict-with-guava. The 9999.0-... version number is enough for some build systems (notably, Gradle) to select that empty artifact over the \"real\" listenablefuture-1.0 -- avoiding a conflict with the copy of ListenableFuture in guava itself. If users are us",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "com.google.guava:listenablefuture:1.0"
+        }
+      ],
+      "coordinates": [
+        "com.google.guava:listenablefuture:1.0"
+      ]
+    },
+    {
+      "id": "reference:hiddenapi",
+      "name": "HiddenApi",
+      "author": "RikkaW",
+      "version": "架構參照",
+      "license": "MIT",
+      "url": "https://github.com/RikkaW/HiddenApi",
+      "description": "隱藏 API 相容層架構參照。",
+      "components": [
+        "Dex",
+        "設計參照"
+      ],
+      "members": [
+        {
+          "id": "reference:hiddenapi",
+          "name": "HiddenApi",
+          "author": "RikkaW",
+          "version": "架構參照",
+          "license": "MIT",
+          "url": "https://github.com/RikkaW/HiddenApi",
+          "description": "隱藏 API 相容層架構參照。",
+          "components": [
+            "Dex",
+            "設計參照"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "dev.rikka.tools.refine:annotation:4.4.0",
+      "name": "HiddenApiRefine",
+      "author": "Kr328 & RikkaW",
+      "version": "4.4.0",
+      "license": "MIT License",
+      "url": "https://github.com/RikkaApps/HiddenApiRefinePlugin",
+      "description": "A Gradle plugin that improves the experience when developing Android apps, especially system tools, that use hidden APIs.",
+      "components": [
+        "Dex",
+        "Dex（編譯時）"
+      ],
+      "coordinate": "dev.rikka.tools.refine:annotation:4.4.0",
+      "members": [
+        {
+          "id": "dev.rikka.tools.refine:annotation:4.4.0",
+          "name": "HiddenApiRefine",
+          "author": "Kr328 & RikkaW",
+          "version": "4.4.0",
+          "license": "MIT License",
+          "url": "https://github.com/RikkaApps/HiddenApiRefinePlugin",
+          "description": "A Gradle plugin that improves the experience when developing Android apps, especially system tools, that use hidden APIs.",
+          "components": [
+            "Dex（編譯時）"
+          ],
+          "coordinate": "dev.rikka.tools.refine:annotation:4.4.0"
+        },
+        {
+          "id": "dev.rikka.tools.refine:runtime:4.4.0",
+          "name": "HiddenApiRefine",
+          "author": "Kr328 & RikkaW",
+          "version": "4.4.0",
+          "license": "MIT License",
+          "url": "https://github.com/RikkaApps/HiddenApiRefinePlugin",
+          "description": "A Gradle plugin that improves the experience when developing Android apps, especially system tools, that use hidden APIs.",
+          "components": [
+            "Dex"
+          ],
+          "coordinate": "dev.rikka.tools.refine:runtime:4.4.0"
+        }
+      ],
+      "coordinates": [
+        "dev.rikka.tools.refine:annotation:4.4.0",
+        "dev.rikka.tools.refine:runtime:4.4.0"
+      ]
+    },
+    {
+      "id": "reference:refine",
+      "name": "HiddenApiRefinePlugin",
+      "author": "RikkaApps",
+      "version": "4.4.0",
+      "license": "MIT",
+      "url": "https://github.com/RikkaApps/HiddenApiRefinePlugin",
+      "description": "隱藏 API 型別修飾及建置外掛；相關模組亦列於解析依賴。",
+      "components": [
+        "Dex",
+        "建置工具"
+      ],
+      "members": [
+        {
+          "id": "reference:refine",
+          "name": "HiddenApiRefinePlugin",
+          "author": "RikkaApps",
+          "version": "4.4.0",
+          "license": "MIT",
+          "url": "https://github.com/RikkaApps/HiddenApiRefinePlugin",
+          "description": "隱藏 API 型別修飾及建置外掛；相關模組亦列於解析依賴。",
+          "components": [
+            "Dex",
+            "建置工具"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "cargo:itoa",
+      "name": "itoa",
+      "author": "David Tolnay <dtolnay@gmail.com>",
+      "version": "1.0.18",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/dtolnay/itoa",
+      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:itoa",
+          "name": "itoa",
+          "author": "David Tolnay <dtolnay@gmail.com>",
+          "version": "1.0.18",
+          "license": "MIT OR Apache-2.0",
+          "url": "https://github.com/dtolnay/itoa",
+          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "org.jetbrains:annotations:26.1.0",
+      "name": "JetBrains Java Annotations",
+      "author": "JetBrains Team",
+      "version": "26.1.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/java-annotations",
+      "description": "A set of annotations used for code inspection support and code documentation.",
+      "components": [
+        "APK／WebUI",
+        "Dex"
+      ],
+      "coordinate": "org.jetbrains:annotations:26.1.0",
+      "members": [
+        {
+          "id": "org.jetbrains:annotations:26.1.0",
+          "name": "JetBrains Java Annotations",
+          "author": "JetBrains Team",
+          "version": "26.1.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/java-annotations",
+          "description": "A set of annotations used for code inspection support and code documentation.",
+          "components": [
+            "APK／WebUI",
+            "Dex"
+          ],
+          "coordinate": "org.jetbrains:annotations:26.1.0"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains:annotations:26.1.0"
+      ]
+    },
+    {
+      "id": "org.jspecify:jspecify:1.0.1",
+      "name": "JSpecify annotations",
+      "author": "Kevin Bourrillion, David P. Baker, Chris Povirk",
+      "version": "1.0.1",
+      "license": "The Apache License, Version 2.0",
+      "url": "https://jspecify.dev/",
+      "description": "An artifact of well-named and well-specified annotations to power static analysis checks",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jspecify:jspecify:1.0.1",
+      "members": [
+        {
+          "id": "org.jspecify:jspecify:1.0.1",
+          "name": "JSpecify annotations",
+          "author": "Kevin Bourrillion, David P. Baker, Chris Povirk",
+          "version": "1.0.1",
+          "license": "The Apache License, Version 2.0",
+          "url": "https://jspecify.dev/",
+          "description": "An artifact of well-named and well-specified annotations to power static analysis checks",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jspecify:jspecify:1.0.1"
+        }
+      ],
+      "coordinates": [
+        "org.jspecify:jspecify:1.0.1"
+      ]
+    },
+    {
+      "id": "reference:ksu",
+      "name": "KernelSU",
+      "author": "tiann / KernelSU contributors",
+      "version": "75e179d378d7",
+      "license": "GPL-3.0",
+      "url": "https://github.com/tiann/KernelSU",
+      "description": "主題流程及參數參照，未納入 KernelSU 管理器或核心模組。",
+      "components": [
+        "APK／WebUI",
+        "設計參照"
+      ],
+      "members": [
+        {
+          "id": "reference:ksu",
+          "name": "KernelSU",
+          "author": "tiann / KernelSU contributors",
+          "version": "75e179d378d7",
+          "license": "GPL-3.0",
+          "url": "https://github.com/tiann/KernelSU",
+          "description": "主題流程及參數參照，未納入 KernelSU 管理器或核心模組。",
+          "components": [
+            "APK／WebUI",
+            "設計參照"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "org.jetbrains.kotlin:kotlin-stdlib:2.4.21",
+      "name": "Kotlin Stdlib",
+      "author": "Kotlin Team",
+      "version": "2.4.21",
+      "license": "Apache-2.0",
+      "url": "https://kotlinlang.org/",
+      "description": "Kotlin Standard Library",
+      "components": [
+        "APK／WebUI",
+        "Dex"
+      ],
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.4.21",
+      "members": [
+        {
+          "id": "org.jetbrains.kotlin:kotlin-stdlib:2.4.21",
+          "name": "Kotlin Stdlib",
+          "author": "Kotlin Team",
+          "version": "2.4.21",
+          "license": "Apache-2.0",
+          "url": "https://kotlinlang.org/",
+          "description": "Kotlin Standard Library",
+          "components": [
+            "APK／WebUI",
+            "Dex"
+          ],
+          "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.4.21"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.kotlin:kotlin-stdlib:2.4.21"
+      ]
+    },
+    {
+      "id": "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0",
+      "name": "kotlinx-coroutines-android",
+      "author": "JetBrains Team",
+      "version": "1.11.0",
+      "license": "Apache-2.0",
+      "url": "https://github.com/Kotlin/kotlinx.coroutines",
+      "description": "Coroutines support libraries for Kotlin",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0",
+      "members": [
+        {
+          "id": "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0",
+          "name": "kotlinx-coroutines-android",
+          "author": "JetBrains Team",
+          "version": "1.11.0",
+          "license": "Apache-2.0",
+          "url": "https://github.com/Kotlin/kotlinx.coroutines",
+          "description": "Coroutines support libraries for Kotlin",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0"
+      ]
+    },
+    {
+      "id": "org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.11.0",
+      "name": "kotlinx-coroutines-bom",
+      "author": "JetBrains Team",
+      "version": "1.11.0",
+      "license": "Apache-2.0",
+      "url": "https://github.com/Kotlin/kotlinx.coroutines",
+      "description": "Coroutines support libraries for Kotlin",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.11.0",
+      "members": [
+        {
+          "id": "org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.11.0",
+          "name": "kotlinx-coroutines-bom",
+          "author": "JetBrains Team",
+          "version": "1.11.0",
+          "license": "Apache-2.0",
+          "url": "https://github.com/Kotlin/kotlinx.coroutines",
+          "description": "Coroutines support libraries for Kotlin",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.11.0"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.11.0"
+      ]
+    },
+    {
+      "id": "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.11.0",
+      "name": "kotlinx-coroutines-core",
+      "author": "JetBrains Team",
+      "version": "1.11.0",
+      "license": "Apache-2.0",
+      "url": "https://github.com/Kotlin/kotlinx.coroutines",
+      "description": "Coroutines support libraries for Kotlin",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.11.0",
+      "members": [
+        {
+          "id": "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.11.0",
+          "name": "kotlinx-coroutines-core",
+          "author": "JetBrains Team",
+          "version": "1.11.0",
+          "license": "Apache-2.0",
+          "url": "https://github.com/Kotlin/kotlinx.coroutines",
+          "description": "Coroutines support libraries for Kotlin",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.11.0"
+        },
+        {
+          "id": "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0",
+          "name": "kotlinx-coroutines-core",
+          "author": "JetBrains Team",
+          "version": "1.11.0",
+          "license": "Apache-2.0",
+          "url": "https://github.com/Kotlin/kotlinx.coroutines",
+          "description": "Coroutines support libraries for Kotlin",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.11.0",
+        "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0"
+      ]
+    },
+    {
+      "id": "org.jetbrains.kotlinx:kotlinx-serialization-bom:1.12.0",
+      "name": "kotlinx-serialization-bom",
+      "author": "JetBrains Team",
+      "version": "1.12.0",
+      "license": "Apache-2.0",
+      "url": "https://github.com/Kotlin/kotlinx.serialization",
+      "description": "Kotlin multiplatform serialization runtime library",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-bom:1.12.0",
+      "members": [
+        {
+          "id": "org.jetbrains.kotlinx:kotlinx-serialization-bom:1.12.0",
+          "name": "kotlinx-serialization-bom",
+          "author": "JetBrains Team",
+          "version": "1.12.0",
+          "license": "Apache-2.0",
+          "url": "https://github.com/Kotlin/kotlinx.serialization",
+          "description": "Kotlin multiplatform serialization runtime library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-bom:1.12.0"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.kotlinx:kotlinx-serialization-bom:1.12.0"
+      ]
+    },
+    {
+      "id": "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.12.0",
+      "name": "kotlinx-serialization-core",
+      "author": "JetBrains Team",
+      "version": "1.12.0",
+      "license": "Apache-2.0",
+      "url": "https://github.com/Kotlin/kotlinx.serialization",
+      "description": "Kotlin multiplatform serialization runtime library",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.12.0",
+      "members": [
+        {
+          "id": "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.12.0",
+          "name": "kotlinx-serialization-core",
+          "author": "JetBrains Team",
+          "version": "1.12.0",
+          "license": "Apache-2.0",
+          "url": "https://github.com/Kotlin/kotlinx.serialization",
+          "description": "Kotlin multiplatform serialization runtime library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.12.0"
+        },
+        {
+          "id": "org.jetbrains.kotlinx:kotlinx-serialization-core:1.12.0",
+          "name": "kotlinx-serialization-core",
+          "author": "JetBrains Team",
+          "version": "1.12.0",
+          "license": "Apache-2.0",
+          "url": "https://github.com/Kotlin/kotlinx.serialization",
+          "description": "Kotlin multiplatform serialization runtime library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core:1.12.0"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.12.0",
+        "org.jetbrains.kotlinx:kotlinx-serialization-core:1.12.0"
+      ]
+    },
+    {
+      "id": "org.jetbrains.androidx.lifecycle:lifecycle-runtime-android:2.11.0",
+      "name": "Lifecycle Runtime",
+      "author": "Compose Multiplatform Team",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Android Lifecycle Runtime",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-runtime-android:2.11.0",
+      "members": [
+        {
+          "id": "org.jetbrains.androidx.lifecycle:lifecycle-runtime-android:2.11.0",
+          "name": "Lifecycle Runtime",
+          "author": "Compose Multiplatform Team",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Android Lifecycle Runtime",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-runtime-android:2.11.0"
+        },
+        {
+          "id": "org.jetbrains.androidx.lifecycle:lifecycle-runtime:2.11.0",
+          "name": "Lifecycle Runtime",
+          "author": "Compose Multiplatform Team",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Android Lifecycle Runtime",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-runtime:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.androidx.lifecycle:lifecycle-runtime-android:2.11.0",
+        "org.jetbrains.androidx.lifecycle:lifecycle-runtime:2.11.0"
+      ]
+    },
+    {
+      "id": "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose-android:2.11.0",
+      "name": "Lifecycle Runtime Compose",
+      "author": "Compose Multiplatform Team",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Compose integration with Lifecycle",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose-android:2.11.0",
+      "members": [
+        {
+          "id": "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose-android:2.11.0",
+          "name": "Lifecycle Runtime Compose",
+          "author": "Compose Multiplatform Team",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose integration with Lifecycle",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose-android:2.11.0"
+        },
+        {
+          "id": "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.11.0",
+          "name": "Lifecycle Runtime Compose",
+          "author": "Compose Multiplatform Team",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose integration with Lifecycle",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose-android:2.11.0",
+        "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.11.0"
+      ]
+    },
+    {
+      "id": "org.jetbrains.androidx.lifecycle:lifecycle-common-jvm:2.11.0",
+      "name": "Lifecycle-Common",
+      "author": "Compose Multiplatform Team",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Android Lifecycle-Common",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-common-jvm:2.11.0",
+      "members": [
+        {
+          "id": "org.jetbrains.androidx.lifecycle:lifecycle-common-jvm:2.11.0",
+          "name": "Lifecycle-Common",
+          "author": "Compose Multiplatform Team",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Android Lifecycle-Common",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-common-jvm:2.11.0"
+        },
+        {
+          "id": "org.jetbrains.androidx.lifecycle:lifecycle-common:2.11.0",
+          "name": "Lifecycle-Common",
+          "author": "Compose Multiplatform Team",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Android Lifecycle-Common",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-common:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.androidx.lifecycle:lifecycle-common-jvm:2.11.0",
+        "org.jetbrains.androidx.lifecycle:lifecycle-common:2.11.0"
+      ]
+    },
+    {
+      "id": "reference:mcu",
+      "name": "Material Color Utilities",
+      "author": "Google",
+      "version": "bd811e4ca2ab",
+      "license": "Apache-2.0",
+      "url": "https://github.com/material-foundation/material-color-utilities",
+      "description": "隨附 Java 色彩演算法；明確使用 2025 規格。",
+      "components": [
+        "Dex",
+        "原始碼引用"
+      ],
+      "members": [
+        {
+          "id": "reference:mcu",
+          "name": "Material Color Utilities",
+          "author": "Google",
+          "version": "bd811e4ca2ab",
+          "license": "Apache-2.0",
+          "url": "https://github.com/material-foundation/material-color-utilities",
+          "description": "隨附 Java 色彩演算法；明確使用 2025 規格。",
+          "components": [
+            "Dex",
+            "原始碼引用"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "reference:materialkolor",
+      "name": "MaterialKolor",
+      "author": "Jordon de Hoog",
+      "version": "6.0.0",
+      "license": "MIT",
+      "url": "https://github.com/jordond/MaterialKolor",
+      "description": "Miuix 傳遞使用的色彩引擎；版本亦列於解析依賴。",
+      "components": [
+        "APK／WebUI",
+        "設計參照"
+      ],
+      "members": [
+        {
+          "id": "reference:materialkolor",
+          "name": "MaterialKolor",
+          "author": "Jordon de Hoog",
+          "version": "6.0.0",
+          "license": "MIT",
+          "url": "https://github.com/jordond/MaterialKolor",
+          "description": "Miuix 傳遞使用的色彩引擎；版本亦列於解析依賴。",
+          "components": [
+            "APK／WebUI",
+            "設計參照"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "com.materialkolor:material-color-utilities-android:6.0.0",
+      "name": "MaterialKolor",
+      "author": "Jordon de Hoog",
+      "version": "6.0.0",
+      "license": "The MIT License / Apache License, Version 2.0 (upstream Material Color Utilities)",
+      "url": "https://github.com/jordond/materialkolor",
+      "description": "Material You dynamic color for Compose Multiplatform",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "com.materialkolor:material-color-utilities-android:6.0.0",
+      "members": [
+        {
+          "id": "com.materialkolor:material-color-utilities-android:6.0.0",
+          "name": "MaterialKolor",
+          "author": "Jordon de Hoog",
+          "version": "6.0.0",
+          "license": "The MIT License / Apache License, Version 2.0 (upstream Material Color Utilities)",
+          "url": "https://github.com/jordond/materialkolor",
+          "description": "Material You dynamic color for Compose Multiplatform",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "com.materialkolor:material-color-utilities-android:6.0.0"
+        },
+        {
+          "id": "com.materialkolor:material-color-utilities:6.0.0",
+          "name": "MaterialKolor",
+          "author": "Jordon de Hoog",
+          "version": "6.0.0",
+          "license": "The MIT License / Apache License, Version 2.0 (upstream Material Color Utilities)",
+          "url": "https://github.com/jordond/materialkolor",
+          "description": "Material You dynamic color for Compose Multiplatform",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "com.materialkolor:material-color-utilities:6.0.0"
+        }
+      ],
+      "coordinates": [
+        "com.materialkolor:material-color-utilities-android:6.0.0",
+        "com.materialkolor:material-color-utilities:6.0.0"
+      ]
+    },
+    {
+      "id": "cargo:memchr",
+      "name": "memchr",
+      "author": "Andrew Gallant <jamslam@gmail.com>, bluss",
+      "version": "2.8.3",
+      "license": "Unlicense OR MIT",
+      "url": "https://github.com/BurntSushi/memchr",
+      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:memchr",
+          "name": "memchr",
+          "author": "Andrew Gallant <jamslam@gmail.com>, bluss",
+          "version": "2.8.3",
+          "license": "Unlicense OR MIT",
+          "url": "https://github.com/BurntSushi/memchr",
+          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "reference:miuix",
+      "name": "Miuix",
+      "author": "compose-miuix-ui",
+      "version": "0.9.4 / 39c40f998442",
+      "license": "Apache-2.0",
+      "url": "https://github.com/compose-miuix-ui/miuix",
+      "description": "原生介面使用的 Miuix 執行期程式庫；版本亦列於解析依賴。",
+      "components": [
+        "APK／WebUI",
+        "設計參照"
+      ],
+      "members": [
+        {
+          "id": "reference:miuix",
+          "name": "Miuix",
+          "author": "compose-miuix-ui",
+          "version": "0.9.4 / 39c40f998442",
+          "license": "Apache-2.0",
+          "url": "https://github.com/compose-miuix-ui/miuix",
+          "description": "原生介面使用的 Miuix 執行期程式庫；版本亦列於解析依賴。",
+          "components": [
+            "APK／WebUI",
+            "設計參照"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "top.yukonga.miuix.kmp:miuix-core-android:0.9.4",
+      "name": "miuix-core",
+      "author": "compose-miuix-ui",
+      "version": "0.9.4",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/compose-miuix-ui/miuix",
+      "description": "Core utilities for Miuix",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "top.yukonga.miuix.kmp:miuix-core-android:0.9.4",
+      "members": [
+        {
+          "id": "top.yukonga.miuix.kmp:miuix-core-android:0.9.4",
+          "name": "miuix-core",
+          "author": "compose-miuix-ui",
+          "version": "0.9.4",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/compose-miuix-ui/miuix",
+          "description": "Core utilities for Miuix",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "top.yukonga.miuix.kmp:miuix-core-android:0.9.4"
+        },
+        {
+          "id": "top.yukonga.miuix.kmp:miuix-core:0.9.4",
+          "name": "miuix-core",
+          "author": "compose-miuix-ui",
+          "version": "0.9.4",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/compose-miuix-ui/miuix",
+          "description": "Core utilities for Miuix",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "top.yukonga.miuix.kmp:miuix-core:0.9.4"
+        }
+      ],
+      "coordinates": [
+        "top.yukonga.miuix.kmp:miuix-core-android:0.9.4",
+        "top.yukonga.miuix.kmp:miuix-core:0.9.4"
+      ]
+    },
+    {
+      "id": "top.yukonga.miuix.kmp:miuix-shader-android:0.9.4",
+      "name": "miuix-shader",
+      "author": "compose-miuix-ui",
+      "version": "0.9.4",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/compose-miuix-ui/miuix",
+      "description": "Runtime shader abstraction for Miuix",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "top.yukonga.miuix.kmp:miuix-shader-android:0.9.4",
+      "members": [
+        {
+          "id": "top.yukonga.miuix.kmp:miuix-shader-android:0.9.4",
+          "name": "miuix-shader",
+          "author": "compose-miuix-ui",
+          "version": "0.9.4",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/compose-miuix-ui/miuix",
+          "description": "Runtime shader abstraction for Miuix",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "top.yukonga.miuix.kmp:miuix-shader-android:0.9.4"
+        },
+        {
+          "id": "top.yukonga.miuix.kmp:miuix-shader:0.9.4",
+          "name": "miuix-shader",
+          "author": "compose-miuix-ui",
+          "version": "0.9.4",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/compose-miuix-ui/miuix",
+          "description": "Runtime shader abstraction for Miuix",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "top.yukonga.miuix.kmp:miuix-shader:0.9.4"
+        }
+      ],
+      "coordinates": [
+        "top.yukonga.miuix.kmp:miuix-shader-android:0.9.4",
+        "top.yukonga.miuix.kmp:miuix-shader:0.9.4"
+      ]
+    },
+    {
+      "id": "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4",
+      "name": "miuix-squircle",
+      "author": "compose-miuix-ui",
+      "version": "0.9.4",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/compose-miuix-ui/miuix",
+      "description": "Squircle corner library for Miuix",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4",
+      "members": [
+        {
+          "id": "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4",
+          "name": "miuix-squircle",
+          "author": "compose-miuix-ui",
+          "version": "0.9.4",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/compose-miuix-ui/miuix",
+          "description": "Squircle corner library for Miuix",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4"
+        },
+        {
+          "id": "top.yukonga.miuix.kmp:miuix-squircle:0.9.4",
+          "name": "miuix-squircle",
+          "author": "compose-miuix-ui",
+          "version": "0.9.4",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/compose-miuix-ui/miuix",
+          "description": "Squircle corner library for Miuix",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "top.yukonga.miuix.kmp:miuix-squircle:0.9.4"
+        }
+      ],
+      "coordinates": [
+        "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4",
+        "top.yukonga.miuix.kmp:miuix-squircle:0.9.4"
+      ]
+    },
+    {
+      "id": "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4",
+      "name": "miuix-ui",
+      "author": "compose-miuix-ui",
+      "version": "0.9.4",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/compose-miuix-ui/miuix",
+      "description": "A UI library for Compose Multiplatform",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4",
+      "members": [
+        {
+          "id": "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4",
+          "name": "miuix-ui",
+          "author": "compose-miuix-ui",
+          "version": "0.9.4",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/compose-miuix-ui/miuix",
+          "description": "A UI library for Compose Multiplatform",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4"
+        }
+      ],
+      "coordinates": [
+        "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4"
+      ]
+    },
+    {
+      "id": "reference:nettle",
+      "name": "Nettle",
+      "author": "Nettle developers",
+      "version": "4.0",
+      "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
+      "url": "https://www.lysator.liu.se/~nisse/nettle/",
+      "description": "SMB 靜態建置的密碼學依賴。",
+      "components": [
+        "SMB 間接依賴"
+      ],
+      "members": [
+        {
+          "id": "reference:nettle",
+          "name": "Nettle",
+          "author": "Nettle developers",
+          "version": "4.0",
+          "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
+          "url": "https://www.lysator.liu.se/~nisse/nettle/",
+          "description": "SMB 靜態建置的密碼學依賴。",
+          "components": [
+            "SMB 間接依賴"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "reference:yapp",
+      "name": "Parse::Yapp",
+      "author": "François Desarmenien / contributors",
+      "version": "1.21",
+      "license": "GPL / Artistic（依上游）",
+      "url": "https://metacpan.org/dist/Parse-Yapp",
+      "description": "Samba 建置階段解析器產生工具。",
+      "components": [
+        "SMB（建置時）"
+      ],
+      "members": [
+        {
+          "id": "reference:yapp",
+          "name": "Parse::Yapp",
+          "author": "François Desarmenien / contributors",
+          "version": "1.21",
+          "license": "GPL / Artistic（依上游）",
+          "url": "https://metacpan.org/dist/Parse-Yapp",
+          "description": "Samba 建置階段解析器產生工具。",
+          "components": [
+            "SMB（建置時）"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "dev.drewhamilton.poko:poko-annotations-jvm:0.23.2",
+      "name": "Poko Annotations",
+      "author": "Drew Hamilton",
+      "version": "0.23.2",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/drewhamilton/Poko",
+      "description": "A Kotlin compiler plugin for generating equals, hashCode, and toString for plain old Kotlin objects.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "dev.drewhamilton.poko:poko-annotations-jvm:0.23.2",
+      "members": [
+        {
+          "id": "dev.drewhamilton.poko:poko-annotations-jvm:0.23.2",
+          "name": "Poko Annotations",
+          "author": "Drew Hamilton",
+          "version": "0.23.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/drewhamilton/Poko",
+          "description": "A Kotlin compiler plugin for generating equals, hashCode, and toString for plain old Kotlin objects.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "dev.drewhamilton.poko:poko-annotations-jvm:0.23.2"
+        },
+        {
+          "id": "dev.drewhamilton.poko:poko-annotations:0.23.2",
+          "name": "Poko Annotations",
+          "author": "Drew Hamilton",
+          "version": "0.23.2",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/drewhamilton/Poko",
+          "description": "A Kotlin compiler plugin for generating equals, hashCode, and toString for plain old Kotlin objects.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "dev.drewhamilton.poko:poko-annotations:0.23.2"
+        }
+      ],
+      "coordinates": [
+        "dev.drewhamilton.poko:poko-annotations-jvm:0.23.2",
+        "dev.drewhamilton.poko:poko-annotations:0.23.2"
+      ]
+    },
+    {
+      "id": "cargo:proc-macro2",
+      "name": "proc-macro2",
+      "author": "David Tolnay <dtolnay@gmail.com>, Alex Crichton <alex@alexcrichton.com>",
+      "version": "1.0.107",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/dtolnay/proc-macro2",
+      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:proc-macro2",
+          "name": "proc-macro2",
+          "author": "David Tolnay <dtolnay@gmail.com>, Alex Crichton <alex@alexcrichton.com>",
+          "version": "1.0.107",
+          "license": "MIT OR Apache-2.0",
+          "url": "https://github.com/dtolnay/proc-macro2",
+          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "cargo:quote",
+      "name": "quote",
+      "author": "David Tolnay <dtolnay@gmail.com>",
+      "version": "1.0.47",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/dtolnay/quote",
+      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:quote",
+          "name": "quote",
+          "author": "David Tolnay <dtolnay@gmail.com>",
+          "version": "1.0.47",
+          "license": "MIT OR Apache-2.0",
+          "url": "https://github.com/dtolnay/quote",
+          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "reference:rust",
+      "name": "Rust Standard Library",
+      "author": "The Rust Project Developers",
+      "version": "1.99.1",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/rust-lang/rust",
+      "description": "Rust 使用標準函式庫與 Android 系統介面；Cargo.lock 無外部 crate。",
+      "components": [
+        "Rust"
+      ],
+      "members": [
+        {
+          "id": "reference:rust",
+          "name": "Rust Standard Library",
+          "author": "The Rust Project Developers",
+          "version": "1.99.1",
+          "license": "MIT OR Apache-2.0",
+          "url": "https://github.com/rust-lang/rust",
+          "description": "Rust 使用標準函式庫與 Android 系統介面；Cargo.lock 無外部 crate。",
+          "components": [
+            "Rust"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "reference:samba",
+      "name": "Samba / smbclient",
+      "author": "Samba Team",
+      "version": "4.25.1",
+      "license": "GPL-3.0-or-later / 個別來源授權",
+      "url": "https://www.samba.org/",
+      "description": "SMB 遠端傳輸；隨附版本含 Android 相容補丁。",
+      "components": [
+        "Shell／原生工具"
+      ],
+      "members": [
+        {
+          "id": "reference:samba",
+          "name": "Samba / smbclient",
+          "author": "Samba Team",
+          "version": "4.25.1",
+          "license": "GPL-3.0-or-later / 個別來源授權",
+          "url": "https://www.samba.org/",
+          "description": "SMB 遠端傳輸；隨附版本含 Android 相容補丁。",
+          "components": [
+            "Shell／原生工具"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "org.jetbrains.androidx.savedstate:savedstate:1.4.0",
+      "name": "Saved State",
+      "author": "Compose Multiplatform Team",
+      "version": "1.4.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-jb",
+      "description": "Android Lifecycle Saved State",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.androidx.savedstate:savedstate:1.4.0",
+      "members": [
+        {
+          "id": "org.jetbrains.androidx.savedstate:savedstate:1.4.0",
+          "name": "Saved State",
+          "author": "Compose Multiplatform Team",
+          "version": "1.4.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-jb",
+          "description": "Android Lifecycle Saved State",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.androidx.savedstate:savedstate:1.4.0"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.androidx.savedstate:savedstate:1.4.0"
+      ]
+    },
+    {
+      "id": "org.jetbrains.androidx.savedstate:savedstate-compose:1.4.0",
+      "name": "Saved State Compose",
+      "author": "Compose Multiplatform Team",
+      "version": "1.4.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-jb",
+      "description": "Compose integration with Saved State",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.androidx.savedstate:savedstate-compose:1.4.0",
+      "members": [
+        {
+          "id": "org.jetbrains.androidx.savedstate:savedstate-compose:1.4.0",
+          "name": "Saved State Compose",
+          "author": "Compose Multiplatform Team",
+          "version": "1.4.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-jb",
+          "description": "Compose integration with Saved State",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.androidx.savedstate:savedstate-compose:1.4.0"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.androidx.savedstate:savedstate-compose:1.4.0"
+      ]
+    },
+    {
+      "id": "cargo:serde",
+      "name": "serde",
+      "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
+      "version": "1.0.229",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/serde-rs/serde",
+      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:serde",
+          "name": "serde",
+          "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
+          "version": "1.0.229",
+          "license": "MIT OR Apache-2.0",
+          "url": "https://github.com/serde-rs/serde",
+          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "cargo:serde_core",
+      "name": "serde_core",
+      "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
+      "version": "1.0.229",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/serde-rs/serde",
+      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:serde_core",
+          "name": "serde_core",
+          "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
+          "version": "1.0.229",
+          "license": "MIT OR Apache-2.0",
+          "url": "https://github.com/serde-rs/serde",
+          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "cargo:serde_derive",
+      "name": "serde_derive",
+      "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
+      "version": "1.0.229",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/serde-rs/serde",
+      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:serde_derive",
+          "name": "serde_derive",
+          "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
+          "version": "1.0.229",
+          "license": "MIT OR Apache-2.0",
+          "url": "https://github.com/serde-rs/serde",
+          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "cargo:serde_json",
+      "name": "serde_json",
+      "author": "Upstream contributors",
+      "version": "1.0.154",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/serde-rs/json",
+      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:serde_json",
+          "name": "serde_json",
+          "author": "Upstream contributors",
+          "version": "1.0.154",
+          "license": "MIT OR Apache-2.0",
+          "url": "https://github.com/serde-rs/json",
+          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "io.github.kyant0:shapes-android:1.2.1",
+      "name": "Shapes",
+      "author": "Kyant",
+      "version": "1.2.1",
+      "license": "The Apache License, Version 2.0",
+      "url": "https://github.com/Kyant0/Shapes",
+      "description": "iOS-like shapes for Compose Multiplatform",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "io.github.kyant0:shapes-android:1.2.1",
+      "members": [
+        {
+          "id": "io.github.kyant0:shapes-android:1.2.1",
+          "name": "Shapes",
+          "author": "Kyant",
+          "version": "1.2.1",
+          "license": "The Apache License, Version 2.0",
+          "url": "https://github.com/Kyant0/Shapes",
+          "description": "iOS-like shapes for Compose Multiplatform",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "io.github.kyant0:shapes-android:1.2.1"
+        },
+        {
+          "id": "io.github.kyant0:shapes:1.2.1",
+          "name": "Shapes",
+          "author": "Kyant",
+          "version": "1.2.1",
+          "license": "The Apache License, Version 2.0",
+          "url": "https://github.com/Kyant0/Shapes",
+          "description": "iOS-like shapes for Compose Multiplatform",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "io.github.kyant0:shapes:1.2.1"
+        }
+      ],
+      "coordinates": [
+        "io.github.kyant0:shapes-android:1.2.1",
+        "io.github.kyant0:shapes:1.2.1"
+      ]
+    },
+    {
+      "id": "cargo:syn",
+      "name": "syn",
+      "author": "David Tolnay <dtolnay@gmail.com>",
+      "version": "3.0.9",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/dtolnay/syn",
+      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:syn",
+          "name": "syn",
+          "author": "David Tolnay <dtolnay@gmail.com>",
+          "version": "3.0.9",
+          "license": "MIT OR Apache-2.0",
+          "url": "https://github.com/dtolnay/syn",
+          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "reference:tweak",
+      "name": "Tweak-Alpha",
+      "author": "lumkit",
+      "version": "785261ce45b0",
+      "license": "GPL-3.0",
+      "url": "https://github.com/lumkit/Tweak-Alpha",
+      "description": "目錄選擇與動畫互動參照。",
+      "components": [
+        "APK／WebUI",
+        "原始碼與互動參照"
+      ],
+      "members": [
+        {
+          "id": "reference:tweak",
+          "name": "Tweak-Alpha",
+          "author": "lumkit",
+          "version": "785261ce45b0",
+          "license": "GPL-3.0",
+          "url": "https://github.com/lumkit/Tweak-Alpha",
+          "description": "目錄選擇與動畫互動參照。",
+          "components": [
+            "APK／WebUI",
+            "原始碼與互動參照"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "cargo:unicode-ident",
+      "name": "unicode-ident",
+      "author": "David Tolnay <dtolnay@gmail.com>",
+      "version": "1.0.27",
+      "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
+      "url": "https://github.com/dtolnay/unicode-ident",
+      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:unicode-ident",
+          "name": "unicode-ident",
+          "author": "David Tolnay <dtolnay@gmail.com>",
+          "version": "1.0.27",
+          "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
+          "url": "https://github.com/dtolnay/unicode-ident",
+          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "cargo:zmij",
+      "name": "zmij",
+      "author": "David Tolnay <dtolnay@gmail.com>",
+      "version": "1.0.23",
+      "license": "MIT",
+      "url": "https://github.com/dtolnay/zmij",
+      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:zmij",
+          "name": "zmij",
+          "author": "David Tolnay <dtolnay@gmail.com>",
+          "version": "1.0.23",
+          "license": "MIT",
+          "url": "https://github.com/dtolnay/zmij",
+          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "reference:zstd",
+      "name": "Zstandard",
+      "author": "Meta Platforms, Inc. and affiliates",
+      "version": "1.6.0 / 01b7154f1172",
+      "license": "BSD-3-Clause OR GPL-2.0",
+      "url": "https://github.com/facebook/zstd",
+      "description": "串流壓縮與解壓縮。",
+      "components": [
+        "Shell／原生工具"
+      ],
+      "members": [
+        {
+          "id": "reference:zstd",
+          "name": "Zstandard",
+          "author": "Meta Platforms, Inc. and affiliates",
+          "version": "1.6.0 / 01b7154f1172",
+          "license": "BSD-3-Clause OR GPL-2.0",
+          "url": "https://github.com/facebook/zstd",
+          "description": "串流壓縮與解壓縮。",
+          "components": [
+            "Shell／原生工具"
+          ]
+        }
+      ],
+      "coordinates": []
+    }
+  ]
+}

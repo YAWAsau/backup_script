@@ -1,0 +1,6 @@
+Native glass components adapted from Kyant0/AndroidLiquidGlass commit 65ab177e90e5c1d8c62e70cf7755841982da65f6 (Apache-2.0).
+Native directory picker interaction adapted from lumkit/Tweak-Alpha commit 785261ce45b028ef36d477055d6bdc0b787b26c1 (GPL-3.0). Root filesystem transport remains SpeedBackup Rust API.
+Corresponding modified source is distributed in SpeedBackup FULL_SOURCE_CLEAN.zip.
+GlassInverseLayerScope adapted from Kyant0/AndroidLiquidGlass commit 65ab177e90e5c1d8c62e70cf7755841982da65f6 (Apache-2.0), for direct window-coordinate sampling across Compose owners.
+Native forward/back transition motion references lumkit/Tweak-Alpha commit 785261ce45b028ef36d477055d6bdc0b787b26c1 (GPL-3.0); implemented with Android native view animation and one-shot frame cover.
+Typography and anchored menu presentation reference tiann/KernelSU commit 28db74f6f4692e97006ce9ebd8b19b9cc614b5b7; official Miuix 0.9.4 components provide popup animation.

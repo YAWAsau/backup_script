@@ -212,6 +212,15 @@ fn parallel_plan(root:&File,dev:u64)->io::Result<(u64,Heap,usize)>{
  })
 }
 
+// Small trees retain the same per-entry checks without creating a worker pool.
+fn clear_small(root:&File,dev:u64)->io::Result<u64>{
+ let failed=AtomicBool::new(false);let mut removed=1;
+ for item in fs::read_dir(format!("/proc/self/fd/{}",root.as_raw_fd()))? {
+  let name=CString::new(item?.file_name().as_bytes()).map_err(|_|bad())?;
+  removed+=visit(root,&name,dev,1,&failed)?;
+ }
+ Ok(removed)
+}
 fn clear_scheduled(root:&File,dev:u64,heavy:&std::collections::HashSet<std::path::PathBuf>)->io::Result<u64>{
  type Job=(File,CString,usize);
  type Record=(std::path::PathBuf,u64);
@@ -319,11 +328,11 @@ fn run(args:&[String])->io::Result<()> {
  let threshold=(checked/32).max(MIN_HEAVY);
  let heavy=heap.into_iter().filter(|x|(x.0).0>=threshold).map(|x|(x.0).1).collect();
  let check_ms=start.elapsed().as_millis();
- let removed=if empty{1}else{clear_scheduled(&f,before.dev(),&heavy)?};
+ let removed=if empty{1}else{if checked<=256 {clear_small(&f,before.dev())?} else {clear_scheduled(&f,before.dev(),&heavy)?}};
  if removed!=checked{return Err(bad());}
  check_root()?;no_mounts(&root)?;no_mounts(&expected)?;
  if fs::read_dir(format!("/proc/self/fd/{}",f.as_raw_fd()))?.next().transpose()?.is_some(){return Err(bad());}
- println!("INTERNAL_TREE_CLEAR_OK checked={checked} removed={} checkMs={check_ms} clearMs={} elapsedMs={} workers={} rootPreserved=true",removed-1,start.elapsed().as_millis()-check_ms,start.elapsed().as_millis(),if empty{0}else{8});
+ println!("INTERNAL_TREE_CLEAR_OK checked={checked} removed={} checkMs={check_ms} clearMs={} elapsedMs={} workers={} rootPreserved=true",removed-1,start.elapsed().as_millis()-check_ms,start.elapsed().as_millis(),if empty{0}else if checked<=256{1}else{8});
  Ok(())
 }
 pub fn quiet_command(args:&[String])->i32 {

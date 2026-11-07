@@ -597,6 +597,33 @@ public class NotificationUtil extends BaseUtil {
         }
     }
 
+    // Root-owned fallback, independent of the host APK and its foreground service.
+    static void hostFallback(Context ctx, String tag, int user, boolean show) throws Exception {
+        android.os.UserHandle handle = (android.os.UserHandle) android.os.UserHandle.class
+                .getMethod("of", int.class).invoke(null, user);
+        Context userContext = (Context) Context.class.getMethod("createContextAsUser",
+                android.os.UserHandle.class, int.class).invoke(ctx, handle, 0);
+        NotificationManager manager = (NotificationManager) userContext.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (!show) { manager.cancel(tag, 2024); return; }
+        String channel = "speedbackup_host_fallback";
+        ArrayList<NotificationChannel> channels = new ArrayList<>();
+        channels.add(makeChannel(channel, NotificationManager.IMPORTANCE_DEFAULT));
+        getService().createNotificationChannelsForPackage(userContext.getPackageName(),
+                userContext.getPackageManager().getPackageUid(userContext.getPackageName(), 0), new ParceledListSlice<>(channels));
+        android.content.Intent intent = new android.content.Intent().setComponent(new android.content.ComponentName(
+                "io.github.yawasau.speedbackup.webview", "io.github.yawasau.speedbackup.webview.MainActivity"))
+                .setAction("io.github.yawasau.speedbackup.RESUME").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                        | android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        android.app.PendingIntent click = android.app.PendingIntent.getActivity(userContext, 2024, intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder builder = new Notification.Builder(userContext, channel)
+                .setContentTitle("SpeedBackup 工作仍在進行")
+                .setContentText("介面已停止；點此接回目前工作")
+                .setContentIntent(click).setTimeoutAfter(30000).setOngoing(true).setOnlyAlertOnce(true).setShowWhen(false);
+        applySpeedBackupNotificationIcon(builder);
+        manager.notify(tag, 2024, builder.build());
+    }
+
     private static void applySpeedBackupNotificationIcon(Notification.Builder builder) {
         try {
             builder.setSmallIcon(getSpeedBackupSmallIcon());
@@ -709,9 +736,47 @@ public class NotificationUtil extends BaseUtil {
         sService.createNotificationChannels(callingPackage, new ParceledListSlice<>(channels));
     }
 
+    private static final Object STATE_LOCK = new Object();
     private static File fallbackStateDir;
+    private static long fallbackStateDev, fallbackStateIno;
+    private static boolean fallbackStateClosing, fallbackStateCleaned;
 
-    private static synchronized File stateDir() {
+    // Only this process's unscoped notification scratch is disposable. Run-owned
+    // notification/guard state remains under the existing shell cleanup contract.
+    private static void cleanupFallbackState() {
+        synchronized (STATE_LOCK) {
+        fallbackStateClosing = true;
+        if (fallbackStateCleaned) return;
+        File dir = fallbackStateDir;
+        if (dir == null) return;
+        try {
+            checkedStateDir(dir);
+            android.system.StructStat st = android.system.Os.lstat(dir.getPath());
+            if (st.st_dev != fallbackStateDev || st.st_ino != fallbackStateIno
+                    || !new File("/data/local/tmp").equals(dir.getParentFile())
+                    || !dir.getName().startsWith(".speedbackup_notify_"))
+                throw new IOException("fallback notification state identity changed");
+            // Unlink entries only: never follow symlinks or recursively erase
+            // unexpected directories. Work is O(files) once at process exit.
+            try (java.nio.file.DirectoryStream<java.nio.file.Path> entries =
+                         java.nio.file.Files.newDirectoryStream(dir.toPath())) {
+                for (java.nio.file.Path entry : entries) {
+                    android.system.StructStat item = android.system.Os.lstat(entry.toString());
+                    if (android.system.OsConstants.S_ISDIR(item.st_mode))
+                        throw new IOException("unexpected notification state directory");
+                    java.nio.file.Files.deleteIfExists(entry);
+                }
+            }
+            java.nio.file.Files.deleteIfExists(dir.toPath());
+            fallbackStateCleaned = true;
+        } catch (Exception e) {
+            System.err.println("NOTIFICATION_FALLBACK_CLEANUP_FAILED " + e.getClass().getSimpleName());
+        }
+            }
+    }
+
+    private static File stateDir() {
+        synchronized (STATE_LOCK) {
         try {
         String env = System.getenv("SPEEDBACKUP_NOTIFY_STATE_DIR");
         String base = env;
@@ -722,11 +787,30 @@ public class NotificationUtil extends BaseUtil {
                 if (tmp != null && tmp.contains(".speedbackup_run_")) run = tmp;
             }
             if (run == null || run.length() == 0) {
+                if (fallbackStateClosing) throw new IOException("notification state closing");
                 if (fallbackStateDir == null) {
-                    fallbackStateDir = java.nio.file.Files.createTempDirectory(
+                    File created = java.nio.file.Files.createTempDirectory(
                             new File("/data/local/tmp").toPath(), ".speedbackup_notify_",
                             java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
                                     java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"))).toFile();
+                    try {
+                        android.system.StructStat owned = android.system.Os.lstat(created.getPath());
+                        Runtime.getRuntime().addShutdownHook(new Thread(
+                                NotificationUtil::cleanupFallbackState, "notification-fallback-cleanup"));
+                        // Publish only after identity and hook registration succeed.
+                        // STATE_LOCK prevents the hook from running before this.
+                        fallbackStateDev = owned.st_dev; fallbackStateIno = owned.st_ino;
+                        fallbackStateDir = created;
+                    } catch (Exception | Error e) {
+                        // No state files are exposed yet: remove only this empty
+                        // newly created directory, never recurse on failed setup.
+                        try { java.nio.file.Files.deleteIfExists(created.toPath()); }
+                        catch (Exception cleanup) {
+                            e.addSuppressed(cleanup);
+                            System.err.println("NOTIFICATION_FALLBACK_INIT_CLEANUP_FAILED " + cleanup.getClass().getSimpleName());
+                        }
+                        throw e;
+                    }
                 }
                 return checkedStateDir(fallbackStateDir);
             }
@@ -743,6 +827,7 @@ public class NotificationUtil extends BaseUtil {
         } catch (Exception e) {
             throw new IllegalStateException("unsafe notification state directory", e);
         }
+            }
     }
 
     private static File checkedStateDir(File dir) throws Exception {
@@ -755,6 +840,11 @@ public class NotificationUtil extends BaseUtil {
     }
 
     private static java.io.FileDescriptor stateDescriptor(File file, boolean write) throws Exception {
+        synchronized (STATE_LOCK) {
+        // Serialize path opening with the exit hook. Open descriptors may finish
+        // after unlink, but no new file can appear after cleanup starts.
+        if (fallbackStateClosing && file.getParentFile().equals(fallbackStateDir))
+            throw new IOException("notification state closing");
         checkedStateDir(file.getParentFile());
         int flags = android.system.OsConstants.O_NOFOLLOW | android.system.OsConstants.O_CLOEXEC
                 | android.system.OsConstants.O_NONBLOCK;
@@ -775,6 +865,7 @@ public class NotificationUtil extends BaseUtil {
             android.system.Os.close(fd);
             throw e;
         }
+            }
     }
 
     private static File recentFile() { return new File(stateDir(), "recent.log"); }

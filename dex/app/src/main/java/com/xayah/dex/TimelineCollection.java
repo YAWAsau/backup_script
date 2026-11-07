@@ -34,6 +34,7 @@ final class TimelineCollection {
         require(actual.equals(expected),"timeline_collection_incomplete");return root;
     }
     static String sources(File file)throws Exception {
+        String preserved=TimelineArchiveV3.sources(file);if(preserved!=null)return preserved;
         try(ZipFile zip=new ZipFile(file)){
             JSONObject root=index(zip);
             if(root==null){

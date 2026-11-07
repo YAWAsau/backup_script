@@ -51,7 +51,7 @@ pub fn excluded(member: &[u8], root: &[u8], external: bool) -> bool {
             continue;
         }
         if external {
-            if c.starts_with(b".") || [b"cache".as_slice(), b"QQ", b"Telegram"].contains(&c) {
+            if [b"cache".as_slice(), b"QQ", b"Telegram"].contains(&c) {
                 return true;
             }
         } else if [
@@ -85,9 +85,25 @@ mod tests {
         assert!(excluded(b"pkg/a/pkg/cache/x", b"pkg", false));
         assert!(!excluded(b"pkg/a/cache/x", b"pkg", false));
         assert!(excluded(b"pkg/a/Backup_x/y", b"pkg", true));
-        assert!(excluded(b"pkg/.hidden/x", b"pkg", true));
+        assert!(!excluded(b"pkg/.hidden/x", b"pkg", true));
         assert!(!excluded(b"pkg/a/.hidden/x", b"pkg", true));
         assert!(!excluded(b"pkg/cachex", b"pkg", false));
+    }
+    #[test]
+    fn hidden_payloads_preserved_but_explicit_exclusions_remain() {
+        for external in [false, true] {
+            for member in [b"pkg/.fun/save".as_slice(), b"pkg/.settings", b"pkg/visible/.nested/x", b"pkg/.cachex/file", b"pkg/.fun/cache/payload"] {
+                assert!(!excluded(member, b"pkg", external), "{:?}", member);
+            }
+            assert!(excluded(b"pkg/cache/.hidden", b"pkg", external));
+        }
+        for entry in [b".ota".as_slice(), b"cache", b"lib", b"code_cache", b"no_backup"] {
+            let member = [b"pkg/".as_slice(), entry, b"/.hidden"].concat();
+            assert!(excluded(&member, b"pkg", false));
+        }
+        for member in [b"pkg/QQ/file".as_slice(), b"pkg/Telegram/file", b"pkg/Backup_old/file"] {
+            assert!(excluded(member, b"pkg", true));
+        }
     }
     #[test]
     fn hardlink_longlink_and_special_members() {

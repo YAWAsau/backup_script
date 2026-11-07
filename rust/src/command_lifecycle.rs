@@ -123,7 +123,7 @@ fn result(args:&[String])->io::Result<()> {
 pub fn facts_result(args:&[String])->i32{match result(args){Ok(())=>0,Err(e)=>{eprintln!("FACTS_RESULT_FAILED {}",e);1}}}
 
 pub fn prune_legacy(args:&[String])->i32 {
-    if args.len()!=1 || args[0]!="/data/.speedbackup_tmp" {return 2;}
+    if args.len()!=1 || args[0]!="/data/.speedbackup/tmp" {return 2;}
     let base=Path::new(&args[0]);
     if !base.exists(){return 0;}
     if fs::canonicalize(base).ok().as_deref()!=Some(base){return 1;}

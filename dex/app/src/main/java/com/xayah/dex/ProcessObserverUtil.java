@@ -61,6 +61,13 @@ import java.util.concurrent.atomic.AtomicInteger;
  * waiting for the requested test duration while Binder callbacks arrive.
  */
 final class ProcessObserverUtil {
+    private static boolean audioBlocksPrimarySafe(int userId, String packageName) {
+        if (!AudioPlaybackGuard.blocks(userId, packageName)) return false;
+        if (CgroupFreezeUtil.hasActivePrimaryAppScopeSession(userId, packageName, -1))
+            CgroupFreezeUtil.markPrimaryIntegrityFailure(userId, packageName, "audio-guard-primary");
+        return true;
+    }
+
     static final String VERSION = DexBuildInfo.VERSION;
     private static final String DESCRIPTOR = "android.app.IProcessObserver";
     private static final String TASK_STACK_DESCRIPTOR = "android.app.ITaskStackListener";
@@ -282,7 +289,7 @@ final class ProcessObserverUtil {
                         continue;
                     }
                     factsRows += appendRestoreSessionFactRow(factsOut, realPm, pmHidden, userId, "PKG", "RESTORE", pkg, label, decision.action, decision.reason, "compare-map");
-                    if (AudioPlaybackGuard.blocks(userId, pkg)) {
+                    if (audioBlocksPrimarySafe(userId, pkg)) {
                         out.append("PROCESS_OBSERVER_RESTORE_SESSION_DIRECT_SKIP package=").append(pkg).append(" reason=audio_playback_guard\n");
                         continue;
                     }
@@ -632,7 +639,7 @@ final class ProcessObserverUtil {
                             .append(" reason=empty_package label=").append(sanitize(label)).append('\n');
                     continue;
                 }
-                if (AudioPlaybackGuard.blocks(userId, pkg)) {
+                if (audioBlocksPrimarySafe(userId, pkg)) {
                     out.append("PROCESS_OBSERVER_BATCH_START_SKIP package=").append(pkg).append(" reason=audio_playback_guard\n");
                     continue;
                 }
@@ -1516,7 +1523,7 @@ final class ProcessObserverUtil {
         if (timeoutMs < 100) timeoutMs = 100;
         if (timeoutMs > 3000) timeoutMs = 3000;
         if (pkg.isEmpty()) return "FORCE_STOP_VERIFY ok=false reason=bad_package user=" + userId + "\n";
-        if (AudioPlaybackGuard.blocks(userId, pkg)) return "FORCE_STOP_VERIFY ok=false reason=audio_playback_guard user=" + userId + "\n";
+        if (audioBlocksPrimarySafe(userId, pkg)) return "FORCE_STOP_VERIFY ok=false reason=audio_playback_guard user=" + userId + "\n";
         TopSnapshot beforeTop = findTopApp(userId);
         int uid = resolveTargetUid(userId, pkg);
         List<PidInfo> before = findAliveProcesses(userId, pkg, uid);
@@ -1530,7 +1537,7 @@ final class ProcessObserverUtil {
         TopSnapshot afterTop = findTopApp(userId);
         boolean ok = forceStopOk && after.isEmpty() && !isTargetTop(afterTop, pkg);
         out.append("FORCE_STOP_VERIFY ok=").append(ok)
-                
+
                 .append(" user=").append(userId)
                 .append(" package=").append(pkg)
                 .append(" forceStopOk=").append(forceStopOk)
@@ -2014,12 +2021,32 @@ final class ProcessObserverUtil {
         }
 
 
-        private boolean refreshPrimaryCgroupIfActive(String callback, List<PidInfo> alive, String stage) {
-            if (!cgroupFreezerPreferredForAction(packageName, action)) return false;
+        private boolean primaryEventNeedsCoverage(int pid) {
+            if (pid <= 0 || readStatusUid(pid) != targetUid) return false;
+            String name = readCmdline(pid);
+            // Binder may report a shared-UID process before its cmdline is ready.
+            // Once it resolves to another package, it is not our freezer target.
+            return name.isEmpty() || name.equals(packageName) || name.startsWith(packageName + ":")
+                    || name.contains("zygote") || name.endsWith("app_process")
+                    || name.endsWith("app_process64") || name.endsWith("app_process32");
+        }
+
+        private boolean refreshPrimaryCgroupIfActive(String callback, List<PidInfo> alive, String stage, int eventPid) {
+            // Primary ownership overrides observer policy, including guard-stop for IME.
             if (!CgroupFreezeUtil.hasActivePrimaryAppScopeSession(userId, packageName, -1)) return false;
+            if (CgroupFreezeUtil.primaryIntegrityFailed()) return true;
+            try {
             long nowMs = System.currentTimeMillis();
             long elapsed = lastPrimaryCgroupRefreshMs <= 0L ? Long.MAX_VALUE : nowMs - lastPrimaryCgroupRefreshMs;
-            if (elapsed >= 0L && elapsed < 250L) {
+            boolean covered = elapsed >= 0L && elapsed < 250L && !alive.isEmpty();
+            if (covered) {
+                for (PidInfo info : alive) {
+                    if (info == null || !CgroupFreezeUtil.isOwnedPidFrozen(userId, packageName, info.pid)) { covered = false; break; }
+                }
+            }
+            if (covered && primaryEventNeedsCoverage(eventPid)
+                    && !CgroupFreezeUtil.isOwnedPidFrozen(userId, packageName, eventPid)) covered = false;
+            if (covered) {
                 logLine("PROCESS_OBSERVER_PRIMARY_CGROUP_REFRESH_SKIP reason=debounce"
                         + " stage=" + sanitize(stage)
                         + " elapsedMs=" + elapsed
@@ -2031,8 +2058,22 @@ final class ProcessObserverUtil {
             }
             String result = CgroupFreezeUtil.refreshPrimaryAppScopePackageFreeze(userId, packageName,
                     "processObserver-" + safeWord(stage) + "-" + safeWord(callback), 1000);
+            // am_proc_start may precede the child's package cmdline. A package scan
+            // can otherwise succeed for only the old parent and miss this sole event.
+            long eventDeadline = android.os.SystemClock.elapsedRealtime() + 500L;
+            while (primaryEventNeedsCoverage(eventPid)
+                    && !CgroupFreezeUtil.isOwnedPidFrozen(userId, packageName, eventPid)
+                    && CgroupFreezeUtil.hasActivePrimaryAppScopeSession(userId, packageName, -1)
+                    && result != null && result.contains("CGROUP_FREEZE_PRIMARY_REFRESH_DONE ok=true")
+                    && android.os.SystemClock.elapsedRealtime() < eventDeadline) {
+                try { Thread.sleep(10L); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); break; }
+                result = CgroupFreezeUtil.refreshPrimaryAppScopePackageFreeze(userId, packageName,
+                        "processObserver-event-pid", 1000);
+            }
+            boolean eventCovered = !primaryEventNeedsCoverage(eventPid)
+                    || CgroupFreezeUtil.isOwnedPidFrozen(userId, packageName, eventPid);
             lastPrimaryCgroupRefreshMs = System.currentTimeMillis();
-            boolean ok = result != null && result.contains("CGROUP_FREEZE_PRIMARY_REFRESH_DONE ok=true");
+            boolean ok = eventCovered && result != null && result.contains("CGROUP_FREEZE_PRIMARY_REFRESH_DONE ok=true");
             logLine("PROCESS_OBSERVER_PRIMARY_CGROUP_REFRESH stage=" + sanitize(stage)
                     + " ok=" + ok
                     + " package=" + packageName
@@ -2043,7 +2084,16 @@ final class ProcessObserverUtil {
                 lastFinalOkMs = System.currentTimeMillis();
                 return true;
             }
-            return false;
+            if (CgroupFreezeUtil.hasActivePrimaryAppScopeSession(userId, packageName, -1))
+                CgroupFreezeUtil.markPrimaryIntegrityFailure(userId, packageName, "observer-refresh-failed");
+            return true; // handled: never fall through to force-stop a protected package
+            } catch (Throwable failure) {
+                if (CgroupFreezeUtil.hasActivePrimaryAppScopeSession(userId, packageName, -1))
+                    CgroupFreezeUtil.markPrimaryIntegrityFailure(userId, packageName, "observer-refresh-exception");
+                logLine("PROCESS_OBSERVER_PRIMARY_CGROUP_REFRESH_EXCEPTION package=" + packageName
+                        + " exception=" + failure.getClass().getSimpleName() + " killFallback=false");
+                return true;
+            }
         }
 
         private void markGapDuringBootstrap() {
@@ -2067,7 +2117,7 @@ final class ProcessObserverUtil {
 
         private synchronized void performAction(String callback, int pid, int uid, String processName) {
             if (!running.get()) return;
-            if (AudioPlaybackGuard.blocks(userId, packageName)) {
+            if (audioBlocksPrimarySafe(userId, packageName)) {
                 logLine("PROCESS_OBSERVER_AUDIO_SKIP callback=" + sanitize(callback) + " package=" + packageName);
                 return;
             }
@@ -2079,7 +2129,7 @@ final class ProcessObserverUtil {
             TopSnapshot top = findTopApp(userId);
             List<PidInfo> alive = findAliveProcesses(userId, packageName, targetUid >= 0 ? targetUid : uid);
             boolean targetTop = top != null && packageName.equals(top.packageName);
-            if (refreshPrimaryCgroupIfActive(callback, alive, "action")) {
+            if (refreshPrimaryCgroupIfActive(callback, alive, "action", pid)) {
                 return;
             }
             long rawElapsed = lastFinalOkMs > 0L ? nowMs - lastFinalOkMs : Long.MAX_VALUE;
@@ -2213,10 +2263,10 @@ final class ProcessObserverUtil {
 
         private synchronized boolean tryFastCgroupFreezeTopTarget(String callback, List<PidInfo> alive) {
             if (!running.get() || "monitor".equals(action) || "log".equals(action)) return false;
-            if (AudioPlaybackGuard.blocks(userId, packageName)) return true;
+            if (audioBlocksPrimarySafe(userId, packageName)) return true;
             if (!cgroupFreezerPreferredForAction(packageName, action)) return false;
             if (alive == null || alive.isEmpty()) return false;
-            if (refreshPrimaryCgroupIfActive(callback, alive, "top-fast")) return true;
+            if (refreshPrimaryCgroupIfActive(callback, alive, "top-fast", -1)) return true;
             pruneStaleCgroupTokens(alive, callback);
             if (allAlivePidsAlreadyFrozen(alive)) {
                 logLine("PROCESS_OBSERVER_CGROUP_FREEZE_REUSE reason=top-target-fast-already-frozen"
@@ -2298,7 +2348,7 @@ final class ProcessObserverUtil {
         }
 
         private void startIntegratedWakeBlockIfNeeded() {
-            if (AudioPlaybackGuard.blocks(userId, packageName)) return;
+            if (audioBlocksPrimarySafe(userId, packageName)) return;
             if (wakeBlockMode == null || wakeBlockMode.isEmpty()) {
                 return;
             }
@@ -2665,7 +2715,7 @@ final class ProcessObserverUtil {
     private static GuardResult runGuardStopTracked(GuardResult result, int userId, String packageName,
                                            int targetUid, String action, String callback,
                                            int eventPid, int eventUid, String eventProcess) {
-        if (AudioPlaybackGuard.blocks(userId, packageName)) {
+        if (audioBlocksPrimarySafe(userId, packageName)) {
             result.finalAlive = true;
             result.lines.add("ACTION_RESULT stage=audio-playback-guard skipped=true noForceStop=true noCgroup=true");
             return result;

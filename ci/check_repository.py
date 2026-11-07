@@ -36,7 +36,7 @@ def git(*args):
 
 
 def runtime_table(script):
-    blocks = list(re.finditer(r"(?m)^\s*cat <<'SB_TOOL_SHA_TABLE'\n(.*?)^SB_TOOL_SHA_TABLE$", script, re.S))
+    blocks = list(re.finditer(r"(?m)^\s*done <<'SB_TOOL_SHA_TABLE'\n(.*?)^SB_TOOL_SHA_TABLE$", script, re.S))
     require(len(blocks) == 1, 'Expected exactly one runtime SHA table')
     entries = {}
     for line in blocks[0].group(1).splitlines():
@@ -59,6 +59,9 @@ def verify_runtime(directory):
         require(path.is_file() and not path.is_symlink(), f'Missing regular runtime file: {name}')
         actual = sha256(path.read_bytes())
         require(actual == expected, f'{name}: runtime SHA mismatch; expected {expected}, got {actual}')
+    import runpy
+    guard = runpy.run_path(str(ROOT / 'smb/tools/samba_android/verify-rng-elf.py'))
+    guard['verify'](directory / 'smbclient')
     print(f'Runtime SHA: {len(entries)} files match')
 
 
@@ -140,7 +143,7 @@ def check_versions():
             continue
         key, value = line.split('=', 1)
         require(key not in values, f'Duplicate version key: {key}')
-        require(re.fullmatch(r'v[1-9][0-9]{2}', value), f'Invalid version: {key}={value}')
+        require(re.fullmatch(r'v[1-9][0-9]{2,3}', value), f'Invalid version: {key}={value}')
         values[key] = value
     required = {'build', 'script', 'dex', 'cgfreezer', 'eventwait', 'filewatch',
                 'netwatch', 'procwait', 'speedscan', 'uidexec', 'unixsock'}
@@ -162,10 +165,28 @@ def check_versions():
             f'DEX_CHECK_BUILD="{values["build"]}"' in self_check, 'Self-check component/build version differs')
     cargo = tomllib.loads((ROOT / 'rust/Cargo.toml').read_text(encoding='utf-8'))
     require(cargo['package']['version'] == f'{int(values["build"][1:])}.0.0', 'Cargo build version differs')
+    host = json.loads((ROOT / 'webview/embedded/metadata.json').read_text(encoding='utf-8'))
+    manifest = (ROOT / 'webview/AndroidManifest.xml').read_text(encoding='utf-8')
+    checker = (ROOT / 'dex/app/src/main/java/com/xayah/dex/AppListReturn.java').read_text(encoding='utf-8')
+    gradle = ROOT / 'webview/app/build.gradle.kts'
+    version = re.search(r'\bversionCode\s*=\s*(\d+)', gradle.read_text(encoding='utf-8')) if gradle.exists() else re.search(r'android:versionCode="(\d+)"', manifest)
+    minimum = re.search(r'private\s+static\s+final\s+long\s+APK_VERSION\s*=\s*(\d+)\s*;', checker)
+    require(re.search(r'getLongVersionCode\(\)\s*>=\s*APK_VERSION\b', checker),
+            'APK minimum constant is not used by install check')
+    require(version and minimum and int(version[1]) == int(minimum[1]) == host['version'],
+            'Embedded APK version and Dex minimum differ; old APK would not auto-upgrade')
+    for name, digest in host['sources'].items():
+        require(hashlib.sha256((ROOT / 'webview' / name).read_bytes()).hexdigest() == digest,
+                f'Embedded APK source is stale: {name}')
+    require(hashlib.sha256((ROOT / 'webview/embedded/speedbackup-webview.apk').read_bytes()).hexdigest() == host['apk_sha256'],
+            'Embedded APK APK hash differs')
+    require('APK_SHA="'+host['apk_sha256']+'"' in checker, 'Dex host content fingerprint differs from embedded APK')
+    print('APK: embedded sources/hash and auto-upgrade minimum match')
     print('Versions: centralized component metadata checked')
 
 
 def check(shells=False):
+    subprocess.run([sys.executable, str(ROOT / "ci/check_whitespace.py")], check=True)
     names = git('ls-files', '-z').decode('utf-8').rstrip('\0').split('\0')
     for name in ['start.sh', 'tools/tools.sh', 'tools/dex_check.sh', 'tools/soc.json',
                  'rust/Cargo.toml', 'rust/Cargo.lock', 'rust/src/main.rs', 'rust/build.ps1',
@@ -184,8 +205,15 @@ def check(shells=False):
     check_copy_routes(ROOT)
     cargo = tomllib.loads((ROOT / 'rust/Cargo.toml').read_text(encoding='utf-8'))
     lock = tomllib.loads((ROOT / 'rust/Cargo.lock').read_text(encoding='utf-8'))
-    packages = [p for p in lock['package'] if p['name'] == cargo['package']['name']]
-    require(len(packages) == 1 and packages[0]['version'] == cargo['package']['version'], 'Cargo.lock package version differs')
+    packages = lock['package']
+    own = [p for p in packages if p['name'] == cargo['package']['name']]
+    require(len(own) == 1 and own[0]['version'] == cargo['package']['version'], 'Cargo.lock package version differs')
+    for package in packages:
+        if package.get('source', '').startswith('registry+'):
+            vendor = ROOT / 'rust/vendor' / package['name']
+            require((vendor / '.cargo-checksum.json').is_file(), f"Missing vendored crate: {package['name']}")
+            meta = tomllib.loads((vendor / 'Cargo.toml').read_text(encoding='utf-8'))
+            require(meta['package']['version'] == package['version'], f"Vendored crate version differs: {package['name']}")
     with zipfile.ZipFile(ROOT / 'dex/gradle/wrapper/gradle-wrapper.jar') as wrapper:
         require(wrapper.testzip() is None, 'Corrupt Gradle wrapper JAR')
         require('org/gradle/wrapper/GradleWrapperMain.class' in wrapper.namelist(), 'Missing wrapper entry point')
@@ -201,6 +229,7 @@ def check(shells=False):
                 if name.endswith('.sh') or name == 'dex/gradlew':
                     subprocess.run([shell, '-n', str(ROOT / name)], cwd=ROOT, check=True)
         print('Shell syntax: Bash and mksh passed (scripts not executed)')
+    subprocess.run([sys.executable, str(ROOT / 'ci/generate_licenses.py'), '--check'], check=True)
     print('Repository checks passed')
 
 
@@ -236,7 +265,7 @@ def package():
         # Export tracked files only: exclude logs, machine configuration and build caches.
         tracked = git('ls-files', '-z').decode().rstrip('\0').split('\0')
         for name in tracked:
-            if name.startswith('tools/') or name in ('start.sh', 'README.md', 'LICENSE'):
+            if name.startswith('tools/') or name in ('start.sh', 'README.md', 'CHANGELOG.md', 'LICENSE'):
                 dest = stage / name
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / name, dest)

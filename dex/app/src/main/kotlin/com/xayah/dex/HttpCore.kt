@@ -46,6 +46,29 @@ object HttpCore {
     }
 
     private val authCache = ConcurrentHashMap<String, String>()
+    private val digestCache = ConcurrentHashMap<String, HttpDigest>()
+    private val authPrepared = ConcurrentHashMap<String, Boolean>()
+    private fun authKey(target: Target, user: String, pass: String): String {
+        val scope = "${target.connKey}|${target.urlObj.path.substringBeforeLast('/')}|$user|$pass"
+        return java.security.MessageDigest.getInstance("SHA-256").digest(scope.toByteArray(StandardCharsets.UTF_8)).joinToString("") { "%02x".format(it.toInt() and 255) }
+    }
+    private fun prepareBodyAuth(target: Target, user: String, pass: String, key: String, force: Boolean) {
+        if (!force && authPrepared[key] == true) return
+        // A separate HEAD socket negotiates before a non-replayable producer is consumed.
+        openSocket(target).use { socket ->
+            val headers = digestCache[key]?.let { mapOf("Authorization" to it.authorization("HEAD", target.requestTarget, user, pass)) } ?: emptyMap()
+            writeRequestHead(socket.getOutputStream(), "HEAD", target, user, pass, headers)
+            socket.getOutputStream().flush()
+            val response = readResponseHead(socket.getInputStream())
+            if (response.code == 401) {
+                val digest = HttpDigest.from(response.headers)
+                if (digest != null) digestCache[key] = digest
+                else throw IOException("HTTP 401: authentication rejected before request body")
+            }
+            if (authPrepared.size > 512) { authPrepared.clear(); digestCache.clear() }
+            authPrepared[key] = true
+        }
+    }
 
     enum class PathMode { ENCODED, RAW_UTF8 }
 
@@ -256,7 +279,7 @@ object HttpCore {
             val retrySafe = { replaySafe && retryOnConnectionFailure() }
             val first = requestOnceWithMode(
                 method, url, preferredMode, user, pass, headers, bodyWriter,
-                retrySafe, closeConnectionOnNon2xx, responseHeadTimeoutMs, onRequestBodyComplete, onConnection, responseConsumer
+                retrySafe, replaySafe, closeConnectionOnNon2xx, responseHeadTimeoutMs, onRequestBodyComplete, onConnection, responseConsumer
             )
             val code = first.first
             val pathModeRetryableStatus = code == 400 || code == 404
@@ -272,7 +295,7 @@ object HttpCore {
             val altMode = if (preferredMode == PathMode.ENCODED) PathMode.RAW_UTF8 else PathMode.ENCODED
             val alt = requestOnceWithMode(
                 method, url, altMode, user, pass, headers, bodyWriter,
-                retrySafe, closeConnectionOnNon2xx, responseHeadTimeoutMs, onRequestBodyComplete, onConnection, responseConsumer
+                retrySafe, replaySafe, closeConnectionOnNon2xx, responseHeadTimeoutMs, onRequestBodyComplete, onConnection, responseConsumer
             )
             if (alt.first in 200..299) {
                 pathModeCache[seed.connKey] = altMode
@@ -359,6 +382,7 @@ object HttpCore {
             headers: Map<String, String>,
             bodyWriter: (OutputStream) -> Unit,
             retryOnConnectionFailure: () -> Boolean,
+            authReplaySafe: Boolean,
             closeConnectionOnNon2xx: Boolean,
             responseHeadTimeoutMs: Int,
             onRequestBodyComplete: () -> Unit,
@@ -367,6 +391,10 @@ object HttpCore {
         ): Pair<Int, String?> {
             val target = Target(url, pathMode)
             var attempt = 0
+            var authAttempts = 0
+            val key = authKey(target, user, pass)
+            val customAuth = headers.keys.any { it.equals("Authorization", true) }
+            if (user.isNotEmpty() && !customAuth && requestHasBody(method, headers)) prepareBodyAuth(target, user, pass, key, !authReplaySafe)
             while (true) {
                 val conn = acquireConnection(target)
                 try {
@@ -374,7 +402,9 @@ object HttpCore {
                     conn.socket.soTimeout = LONG_TRANSFER_TIMEOUT_MS
                     val input = conn.socket.getInputStream()
                     val output = conn.socket.getOutputStream()
-                    writeRequestHead(output, method, target, user, pass, headers)
+                    val requestHeaders = headers.toMutableMap()
+                    if (user.isNotEmpty() && !customAuth) digestCache[key]?.let { requestHeaders["Authorization"] = it.authorization(method, target.requestTarget, user, pass) }
+                    writeRequestHead(output, method, target, user, pass, requestHeaders)
                     guardedBodyWriter(conn, output, requestHasBody(method, headers), bodyWriter)
                     output.flush()
                     onRequestBodyComplete()
@@ -389,6 +419,17 @@ object HttpCore {
                     conn.socket.soTimeout = LONG_TRANSFER_TIMEOUT_MS
                     lastRetryAfterMs.set(parseRetryAfterMs(response.headers.firstHeader("retry-after")))
                     val location = response.headers.firstHeader("location")
+                    if (response.code == 401 && user.isNotEmpty() && !customAuth) {
+                        val digest = HttpDigest.from(response.headers)
+                        if (digest != null) {
+                            digestCache[key] = digest
+                            authPrepared[key] = true
+                            if (authReplaySafe && authAttempts++ < 2) {
+                                closeConnection(conn)
+                                continue
+                            }
+                        }
+                    }
                     try {
                         responseConsumer(response.code, response.headers, input)
                     } catch (_: NonFatalErrorBodyReadException) {
@@ -603,7 +644,7 @@ object HttpCore {
         sb.append("User-Agent: SpeedBackup-DexHttpCore/Socket\r\n")
         sb.append("Accept: */*\r\n")
         sb.append("Connection: keep-alive\r\n")
-        authHeader(user, pass)?.let { sb.append("Authorization: ").append(it).append("\r\n") }
+        if (headers.keys.none { it.equals("Authorization", true) }) authHeader(user, pass)?.let { sb.append("Authorization: ").append(it).append("\r\n") }
         for ((k, v) in headers) sb.append(k).append(": ").append(v).append("\r\n")
         sb.append("\r\n")
         out.write(sb.toString().toByteArray(target.requestCharset))

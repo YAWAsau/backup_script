@@ -13,6 +13,8 @@ import java.util.concurrent.*;
 
 /** Per-run root file broker; never retries a transmitted mutation. */
 final class NativeFileClient {
+    // Component release versions advance independently; gate the actual contract.
+    private static final String FILE_CONTRACT="speedbackup.file-operations.v1";
     private static Process process;
     private static File socket;
     private static int pid;
@@ -62,7 +64,7 @@ final class NativeFileClient {
         while(!socket.exists()&&process.isAlive()&&SystemClock.elapsedRealtime()<until)Thread.sleep(10);
         need(socket.exists()&&process.isAlive()&&started!=null,"file RPC startup failed");
         Reply hello=exchange(Arrays.asList("SBFILE1",id(),"HELLO"),3000,false);
-        need(hello.state.equals("hello")&&hello.rc==0&&new String(hello.body,StandardCharsets.UTF_8).equals(DexBuildInfo.PATCH_BUILD),"file RPC version mismatch");
+        need(hello.state.equals("hello")&&hello.rc==0&&new String(hello.body,StandardCharsets.UTF_8).equals(FILE_CONTRACT),"file RPC protocol mismatch");
         ready=true;
     }
     private static String id(){return UUID.randomUUID().toString().replace("-","");}

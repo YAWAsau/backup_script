@@ -16,9 +16,16 @@ import java.util.*;
 final class TimelineIdentity {
     private static final String[] TABLES={"semantic_segment_table","edited_segment_table","aux_semantic_segment_table"};
     private static void need(boolean ok,String reason)throws IOException { TimelineDatabase.require(ok,reason); }
-    private static String mapped(String id,String gaia,boolean semantic)throws Exception {
+    static String mapped(String id,String gaia,boolean semantic)throws Exception {
         byte[] name=("SpeedBackupTimeline\u0000"+gaia+"\u0000"+id).getBytes(StandardCharsets.UTF_8);
         return semantic?UUID.nameUUIDFromBytes(name).toString():new BigInteger(1,MessageDigest.getInstance("SHA-1").digest(name)).toString(16);
+    }
+    static long mappedDatabase(long id,String gaia)throws Exception {
+        return ByteBuffer.wrap(MessageDigest.getInstance("SHA-256").digest(("SpeedBackupTimelineOrigin\u0000"+gaia+"\u0000"+id).getBytes(StandardCharsets.UTF_8))).getLong()&Long.MAX_VALUE;
+    }
+    static boolean containsOrigin(byte[] data,long id) {
+        ByteArrayOutputStream out=new ByteArrayOutputStream();writeVarint(out,id);byte[] encoded=out.toByteArray();
+        outer:for(int i=0;i<=data.length-encoded.length;i++){for(int j=0;j<encoded.length;j++)if(data[i+j]!=encoded[j])continue outer;return true;}return false;
     }
     private static long varint(byte[] data,int[] at)throws IOException {
         long value=0;
@@ -73,7 +80,7 @@ final class TimelineIdentity {
             while(c.moveToNext()){long id=c.getLong(0);databases.add(id);if(!c.isNull(1)&&origins.contains(id+":"+c.getLong(1)))databaseMap.put(id,null);}
         }
         for(Long id:new ArrayList<>(databaseMap.keySet())) {
-            long next=ByteBuffer.wrap(MessageDigest.getInstance("SHA-256").digest(("SpeedBackupTimelineOrigin\u0000"+gaia+"\u0000"+id).getBytes(StandardCharsets.UTF_8))).getLong()&Long.MAX_VALUE;
+            long next=mappedDatabase(id,gaia);
             need(next!=0&&databases.add(next),"timeline_origin_namespace_collision");databaseMap.put(id,next);
         }
         for(int i=0;i<TABLES.length;i++){

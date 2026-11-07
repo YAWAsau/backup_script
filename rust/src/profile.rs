@@ -7,52 +7,6 @@ enum V {
     String(String),
     Atom(String),
 }
-fn decode(s: &str) -> Result<String, String> {
-    let mut it = s[1..s.len() - 1].chars();
-    let mut out = String::new();
-    while let Some(c) = it.next() {
-        if c != '\\' {
-            out.push(c);
-            continue;
-        }
-        out.push(match it.next().ok_or("escape")? {
-            '"' => '"',
-            '\\' => '\\',
-            '/' => '/',
-            'b' => '\u{8}',
-            'f' => '\u{c}',
-            'n' => '\n',
-            'r' => '\r',
-            't' => '\t',
-            'u' => {
-                let mut hex = || -> Result<u32, String> {
-                    let h: String = it.by_ref().take(4).collect();
-                    if h.len() != 4 {
-                        return Err("unicode".into());
-                    }
-                    u32::from_str_radix(&h, 16).map_err(|_| "unicode".into())
-                };
-                let a = hex()?;
-                let cp = if (0xd800..=0xdbff).contains(&a) {
-                    if it.next() != Some('\\') || it.next() != Some('u') {
-                        return Err("surrogate".into());
-                    }
-                    let h: String = it.by_ref().take(4).collect();
-                    let b = u32::from_str_radix(&h, 16).map_err(|_| "surrogate")?;
-                    if !(0xdc00..=0xdfff).contains(&b) {
-                        return Err("surrogate".into());
-                    }
-                    0x10000 + ((a - 0xd800) << 10) + (b - 0xdc00)
-                } else {
-                    a
-                };
-                char::from_u32(cp).ok_or("unicode scalar")?
-            }
-            _ => return Err("escape".into()),
-        });
-    }
-    Ok(out)
-}
 fn quote(s: &str) -> String {
     let mut o = String::from("\"");
     for c in s.chars() {
@@ -71,32 +25,9 @@ fn quote(s: &str) -> String {
     o.push('"');
     o
 }
-fn parse(s: &str) -> Result<V, String> {
-    let s = s.trim();
-    if !json_document_parse_ok(s) {
-        return Err("invalid JSON".into());
-    }
-    parse_valid(s)
-}
-fn parse_valid(s: &str) -> Result<V, String> {
-    Ok(match s.as_bytes().first() {
-        Some(b'{') => {
-            let mut v = V::Object(vec![]);
-            for (k, x) in json_object_entries_raw(s) {
-                v.put(&decode(&k)?, parse_valid(&x)?)
-            }
-            v
-        }
-        Some(b'[') => V::Array(
-            json_array_items_raw(s)
-                .iter()
-                .map(|x| parse_valid(x))
-                .collect::<Result<_, _>>()?,
-        ),
-        Some(b'"') => V::String(decode(s)?),
-        _ => V::Atom(s.to_string()),
-    })
-}
+#[path = "json_parse.rs"]
+mod json_parse;
+fn parse(s: &str) -> Result<V, String> { json_parse::parse(s) }
 impl V {
     fn get(&self, k: &str) -> Option<&V> {
         if let V::Object(v) = self {
@@ -186,6 +117,7 @@ fn pick(v: &V, keys: &[&str], nulls: bool) -> V {
     let mut o = obj();
     for k in keys {
         if let Some(x) = v.get(k) {
+            if *k=="icon_png_base64" && !x.text().is_some_and(valid_icon){continue;}
             if nulls || !matches!(x,V::Atom(s)if s=="null") {
                 o.put(k, x.clone())
             }
@@ -242,6 +174,8 @@ const OP: &[&str] = &[
     "modeCn",
 ];
 const ENTRY: &[&str] = &[
+    "xposed",
+    "icon_png_base64",
     "keystore",
     "path",
     "Size",
@@ -259,6 +193,8 @@ const ENTRY: &[&str] = &[
     "PackageName",
 ];
 const REFRESH: &[&str] = &[
+    "xposed",
+    "icon_png_base64",
     "Size",
     "size",
     "apk_size",
@@ -343,6 +279,129 @@ fn compact(s: &V) -> Result<V, String> {
     }
     o.put("ssaid", alt(s, "ssaid", atom("null")));
     Ok(o)
+}
+// Only bounded, checksum-valid 48/64/128-square RGBA PNGs can enter a persisted icon or WebUI.
+pub(super) fn valid_icon(value:&str)->bool {
+    if value.is_empty()||value.len()>43692||value.len()%4!=0{return false;}
+    let mut bytes=Vec::with_capacity(value.len()/4*3);
+    let digit=|b:u8|->Option<u32>{Some(match b{b'A'..=b'Z'=>(b-b'A') as u32,b'a'..=b'z'=>(b-b'a'+26) as u32,b'0'..=b'9'=>(b-b'0'+52) as u32,b'+'=>62,b'/'=>63,_=>return None})};
+    for (i,c) in value.as_bytes().chunks_exact(4).enumerate(){
+        let Some(a)=digit(c[0]) else{return false;};let Some(b)=digit(c[1]) else{return false;};
+        let pad=if c[2]==b'=' {if c[3]!=b'='||b&15!=0{return false;}2}else if c[3]==b'=' {1}else{0};
+        if pad>0 && (i+1)*4!=value.len(){return false;}
+        let d=if pad==2{0}else{let Some(d)=digit(c[2]) else{return false;};d};
+        if pad==1&&d&3!=0{return false;}
+        let e=if pad>0{0}else{let Some(e)=digit(c[3]) else{return false;};e};
+        let n=(a<<18)|(b<<12)|(d<<6)|e;bytes.push((n>>16)as u8);if pad<2{bytes.push((n>>8)as u8);}if pad==0{bytes.push(n as u8);}
+    }
+    if bytes.len()>32768||!bytes.starts_with(b"\x89PNG\r\n\x1a\n"){return false;}
+    let mut pos=8;let mut first=true;let mut data=false;
+    while pos+12<=bytes.len(){
+        let n=u32::from_be_bytes(bytes[pos..pos+4].try_into().unwrap())as usize;
+        if n>32768||pos+12+n>bytes.len(){return false;}
+        let kind=&bytes[pos+4..pos+8];let body=&bytes[pos+8..pos+8+n];
+        let mut crc=0xffffffffu32;for b in &bytes[pos+4..pos+8+n]{crc^=*b as u32;for _ in 0..8{crc=(crc>>1)^if crc&1!=0{0xedb88320}else{0};}}
+        if (crc^0xffffffff)!=u32::from_be_bytes(bytes[pos+8+n..pos+12+n].try_into().unwrap()){return false;}
+        if first {if kind!=b"IHDR"||!(body==[0,0,0,48,0,0,0,48,8,6,0,0,0]||body==[0,0,0,64,0,0,0,64,8,6,0,0,0]||body==[0,0,0,128,0,0,0,128,8,6,0,0,0]){return false;}first=false;}
+        else if kind==b"IHDR"{return false;}
+        if kind==b"IDAT"{data=true;}
+        pos+=12+n;
+        if kind==b"IEND"{return n==0&&data&&pos==bytes.len();}
+    }
+    false
+}
+pub(super) fn module_metadata(body:&str,pkg:&str)->bool {
+    let Ok(root)=parse(body)else{return false;};
+    let records=if root.get("PackageName").is_some(){vec![&root]}else{match &root{V::Object(fields)=>fields.iter().map(|(_,v)|v).collect(),_=>Vec::new()}};
+    records.iter().any(|r|r.get("PackageName").and_then(V::text)==Some(pkg)&&matches!(r.get("xposed"),Some(V::Atom(v))if v=="true"))
+}
+fn attach_module_value(file:&str,entry:&str,pkg:&str)->Result<bool,String>{
+    if !pkg.bytes().all(|b|b.is_ascii_alphanumeric()||matches!(b,b'.'|b'_'))||!pkg.contains('.'){return Err("module package".into());}
+    let Some(cache)=std::env::var_os("SPEEDBACKUP_MODULE_FACTS")else{return Ok(false);};
+    let path=std::path::PathBuf::from(cache);let meta=fs::symlink_metadata(&path).map_err(|e|e.to_string())?;
+    if !meta.is_dir()||meta.uid()!=0||meta.mode()&0o777!=0o700{return Err("module cache identity".into());}
+    if fs::read(path.join("READY")).ok().as_deref()!=Some(b"1"){return Err("module cache incomplete".into());}
+    let Ok(value)=fs::read_to_string(path.join(pkg))else{return Ok(false);};
+    let flag=match value.as_str(){"0"=>"false","1"=>"true",_=>return Err("module fact".into())};
+    let mut root=read(file)?;let flat=root.get("PackageName").and_then(V::text)==Some(pkg);let mut record=if flat{root.clone()}else{root.get(entry).ok_or("module record")?.clone()};
+    if record.get("PackageName").and_then(V::text)!=Some(pkg){return Err("module identity".into());}
+    if matches!(record.get("xposed"),Some(V::Atom(v))if v==flag){return Ok(false);}
+    record.put("xposed",V::Atom(flag.into()));if flat{root=record;}else{root.put(entry,record);}
+    publish_document(file,format!("{}\n",root.emit(true,0)).as_bytes())?;Ok(true)
+}
+fn attach_module(file:&str,entry:&str,pkg:&str)->Result<(),String>{println!("{}",u8::from(attach_module_value(file,entry,pkg)?));Ok(())}
+pub(super) fn icon_metadata(body:&str)->Option<(String,String)>{
+    let root=parse(body).ok()?;
+    let records:Vec<&V>=if root.get("PackageName").and_then(V::text).is_some(){vec![&root]}else{
+        let V::Object(fields)=&root else{return None;};fields.iter().map(|(_,v)|v).collect()
+    };
+    let mut package:Option<String>=None;let mut icon=String::new();
+    for record in records {
+        if let Some(pkg)=record.get("PackageName").and_then(V::text){
+            if package.as_deref().is_some_and(|p|p!=pkg){return None;}
+            package=Some(pkg.to_owned());
+            if icon.is_empty(){if let Some(value)=record.get("icon_png_base64").and_then(V::text).filter(|v|valid_icon(v)){icon=value.to_owned();}}
+        }
+    }
+    Some((package?,icon))
+}
+fn attach_icon_value(file:&str,entry:&str,pkg:&str,icon:&str)->Result<bool,String>{
+    let mut root=read(file)?;
+    let key=if root.get(entry).and_then(|v|v.get("PackageName")).and_then(V::text)==Some(pkg){entry.to_owned()}
+        else {match &root {V::Object(rows)=>{let keys:Vec<_>=rows.iter().filter(|(_,v)|v.get("PackageName").and_then(V::text)==Some(pkg)).map(|(k,_)|k.clone()).collect();if keys.len()!=1{return Err("icon package mismatch".into());}keys[0].clone()},_=>return Err("icon object".into())}};
+    let mut input=super::applist_web::open_icon_file(std::path::Path::new(icon)).map_err(|e|e.to_string())?;
+    let mut value=String::new();std::io::Read::take(&mut input,43693).read_to_string(&mut value).map_err(|e|e.to_string())?;
+    if !valid_icon(&value){return Err("invalid optional icon".into());}
+    let mut record=root.get(&key).unwrap().clone();
+    if record.get("icon_png_base64").and_then(V::text)==Some(value.as_str()){return Ok(false);}
+    record.put("icon_png_base64",V::String(value));root.put(&key,record);
+    publish_document(file,format!("{}\n",root.emit(true,0)).as_bytes())?;Ok(true)
+}
+fn attach_icon(file:&str,entry:&str,pkg:&str,icon:&str)->Result<(),String>{
+    println!("{}",if attach_icon_value(file,entry,pkg,icon)?{1}else{0});Ok(())
+}
+// A valid legacy 48-square PNG remains a fallback, but must not suppress an HD refresh.
+pub(super) fn legacy_icon(value:&str)->bool {
+    // First 24 PNG bytes include signature, IHDR type, width and height.
+    value.starts_with("iVBORw0KGgoAAAANSUhEUgAAADAAAAAw") && valid_icon(value)
+}
+fn icon_records(root:&str)->Result<Vec<(String,String,String,bool)>,String>{
+    let mut rows=Vec::new();
+    let base=std::path::Path::new(root);
+    if !fs::symlink_metadata(base).is_ok_and(|m|m.is_dir()){return Ok(rows);}
+    for entry in fs::read_dir(base).map_err(|e|e.to_string())?.take(10000){
+        let entry=entry.map_err(|e|e.to_string())?;
+        if !entry.file_type().is_ok_and(|m|m.is_dir()){continue;}
+        let name=entry.file_name().to_string_lossy().into_owned();
+        if name.contains(['\t','\n','\r']){continue;}
+        let file=entry.path().join("app_details.json");
+        let Ok(mut input)=super::applist_web::open_icon_file(&file) else{continue;};
+        let mut text=String::new();
+        if std::io::Read::take(&mut input,4*1024*1024+1).read_to_string(&mut text).is_err()||text.len()>4*1024*1024{continue;}
+        if let Some((pkg,icon))=icon_metadata(&text){
+            if pkg.len()>255||!pkg.contains('.')||!pkg.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'.'||b==b'_'){continue;}
+            rows.push((file.to_string_lossy().into_owned(),name,pkg,!icon.is_empty()&&!legacy_icon(&icon)));
+        }
+    }
+    Ok(rows)
+}
+fn icons_plan(root:&str,packages:&str,out:&str)->Result<(),String>{
+    let have:std::collections::BTreeSet<_>=icon_records(root)?.into_iter().filter(|r|r.3).map(|r|r.2).collect();
+    let text=fs::read_to_string(packages).map_err(|e|e.to_string())?;
+    let wanted:std::collections::BTreeSet<_>=text.lines().filter(|p|!have.contains(*p)).collect();
+    publish_document(out,wanted.into_iter().collect::<Vec<_>>().join("\n").as_bytes())
+}
+fn icons_batch(root:&str,cache:&str,report:&str)->Result<(),String>{
+    let mut out=String::new();
+    for (file,name,pkg,_) in icon_records(root)? {
+        let icon=std::path::Path::new(cache).join(format!("{pkg}.b64"));
+        // Missing/truncated/unavailable optional icons are skips, never backup failures.
+        let module_changed=attach_module_value(&file,&name,&pkg).unwrap_or(false);
+        let changed=match attach_icon_value(&file,&name,&pkg,&icon.to_string_lossy()){Ok(true)=>1,_ if module_changed=>1,Ok(false)=>0,Err(_)=>2};
+        let size=fs::metadata(&file).map(|m|m.len()).unwrap_or(0);
+        out.push_str(&format!("{changed}\t{name}\t{pkg}\t{size}\n"));
+    }
+    publish_document(report,out.as_bytes())
 }
 fn normalize(root: &V) -> Result<V, String> {
     let mut out = obj();
@@ -594,6 +653,10 @@ fn queue(input: &str, output: &str) -> Result<(), String> {
 pub(super) fn run(args: &[String]) -> i32 {
     let r = (|| -> Result<(), String> {
         match args.get(2).map(String::as_str) {
+            Some("icons-plan") if args.len()==6 => icons_plan(&args[3],&args[4],&args[5]),
+            Some("icons-batch") if args.len()==6 => icons_batch(&args[3],&args[4],&args[5]),
+            Some("module-attach") if args.len()==6 => attach_module(&args[3],&args[4],&args[5]),
+            Some("icon-attach") if args.len()==7 => attach_icon(&args[3],&args[4],&args[5],&args[6]),
             Some("queue") if args.len() == 5 => queue(&args[3], &args[4]),
             Some("compact") if args.len() == 3 => {
                 let mut s = String::new();
@@ -633,8 +696,23 @@ pub(super) fn run(args: &[String]) -> i32 {
 
 #[path = "json_ops.rs"]
 mod json_ops;
+pub(super) fn backup_update_plan(args: &[String]) -> i32 {
+    json_ops::backup_update_plan(args)
+}
 pub(super) fn json_run(args: &[String]) -> i32 {
     json_ops::run(args)
+}
+
+pub(super) fn restore_ssaid_state(args: &[String]) -> i32 {
+    json_ops::restore_ssaid_state(args)
+}
+
+pub(super) fn restore_ssaid_plan(list: &str, user: &str) -> i32 {
+    json_ops::restore_ssaid_plan(list, user)
+}
+
+pub(super) fn restore_ssaid_batch(list: &str) -> i32 {
+    json_ops::restore_ssaid_batch(list)
 }
 
 pub(super) fn persistable_json(raw: &str) -> bool {
@@ -688,3 +766,5 @@ pub(super) fn top_string(body: &str, keys: &[&str]) -> Option<String> {
         _ => None,
     })
 }
+
+pub(super) fn regen_identity(text:&str)->Result<(String,String),String>{json_ops::regen_identity(text)}

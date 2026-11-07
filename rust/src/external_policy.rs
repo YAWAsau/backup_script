@@ -45,11 +45,17 @@ fn walk(file:File, dev:u64, uid:u32, gid:u32, project:u32, cache_project:u32,
     let mut x=Fsx::default();
     check(unsafe {ioctl(fd,0x801c581f,(&mut x as *mut Fsx).cast())})?; // FS_IOC_FSGETXATTR
     if apply {
-        check(unsafe {fchown(fd,uid,gid)})?;
-        check(unsafe {fchmod(fd,if dir {0o2770} else {0o660})})?;
-        x.project=project;
-        if dir {x.flags|=0x200;} // FS_XFLAG_PROJINHERIT
-        check(unsafe {ioctl(fd,0x401c5820,(&mut x as *mut Fsx).cast())})?; // FS_IOC_FSSETXATTR
+        // Preserve all validation; avoid dirtying metadata already at the target.
+        // chown may clear special mode bits, so chmod remains mandatory after it.
+        let owner_changed=m.uid()!=uid || m.gid()!=gid;
+        if owner_changed {check(unsafe {fchown(fd,uid,gid)})?;}
+        let mode=if dir {0o2770} else {0o660};
+        if owner_changed || m.mode()&0o7777!=mode {check(unsafe {fchmod(fd,mode)})?;}
+        if x.project!=project || (dir && x.flags&0x200==0) {
+            x.project=project;
+            if dir {x.flags|=0x200;} // FS_XFLAG_PROJINHERIT
+            check(unsafe {ioctl(fd,0x401c5820,(&mut x as *mut Fsx).cast())})?;
+        }
         // vold owns the package-root access ACL (which may grant media_rw,
         // or be absent). Its default ACL is for descendants, not the root.
         if depth > 0 {acl_set(fd,b"system.posix_acl_access\0",if dir {acl} else {file_acl})?;}

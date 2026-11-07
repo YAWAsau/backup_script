@@ -138,6 +138,103 @@ fn symbol(name: &[u8]) -> io::Result<*mut c_void> {
     }
     Err(io::Error::new(io::ErrorKind::Unsupported, "system libselinux symbol unavailable; no legacy fallback"))
 }
+
+// Only the single-threaded per-run broker preloads file_contexts. Android ROMs
+// differ: the factory may return a process-global borrowed handle. Never close
+// it or assume it can reload. After invalidation, use fresh exec workers for the
+// rest of this broker lifetime, so all library once-state is reset safely.
+type FileHandle = unsafe extern "C" fn() -> *mut c_void;
+type SetHandle = unsafe extern "C" fn(*mut c_void);
+#[derive(Default)]
+pub(crate) struct FileContextCache {
+    api: Option<(FileHandle, SetHandle)>,
+    unavailable: bool,
+    loaded: bool,
+    fresh_only: bool,
+    stamp: Vec<u64>,
+}
+fn cache_note(args: std::fmt::Arguments<'_>) { use std::io::Write; let _ = writeln!(io::stderr(), "{args}"); }
+impl FileContextCache {
+    // true means exec a fresh worker; false retains the normal fork worker.
+    pub(crate) fn prepare(&mut self, app: bool) -> bool {
+        let start=Instant::now();
+        if self.fresh_only { return true; }
+        if self.unavailable || (!app && !self.loaded) { return false; }
+        if self.api.is_none() {
+            let found=(||->io::Result<(FileHandle,SetHandle)>{unsafe{
+                Ok((std::mem::transmute(symbol(b"selinux_android_file_context_handle\0")?),
+                    std::mem::transmute(symbol(b"selinux_android_set_sehandle\0")?)))
+            }})();
+            match found {Ok(api)=>self.api=Some(api),Err(_)=>{self.unavailable=true;cache_note(format_args!("FILE_POLICY_CACHE fallback=missing_api"));return false;}}
+        }
+        let stamp=match file_policy_stamp() {
+            Ok(s)=>s,
+            Err(_)=>{
+                self.fresh_only=self.loaded;
+                cache_note(format_args!("FILE_POLICY_CACHE fallback=unverifiable freshExec={}",self.fresh_only));
+                return self.fresh_only;
+            }
+        };
+        if self.loaded {
+            if self.stamp==stamp {return false;}
+            self.fresh_only=true;
+            cache_note(format_args!("FILE_POLICY_CACHE invalidated=fresh_exec"));
+            return true;
+        }
+        let (open,set)=self.api.unwrap();
+        let handle=unsafe{open()};
+        // Once the factory has run, even failure may leave library once-state.
+        if handle.is_null() || file_policy_stamp().ok().as_ref()!=Some(&stamp) {
+            self.fresh_only=true;
+            cache_note(format_args!("FILE_POLICY_CACHE fallback=load_unstable freshExec=true"));
+            return true;
+        }
+        unsafe{set(handle);}
+        self.loaded=true;self.stamp=stamp;
+        cache_note(format_args!("FILE_POLICY_CACHE loaded elapsedMs={}",start.elapsed().as_millis()));
+        false
+    }
+}
+fn policy_generation() -> io::Result<[u32; 4]> {
+    use std::os::fd::AsRawFd;
+    extern "C" {
+        fn mmap(addr:*mut c_void,len:usize,prot:c_int,flags:c_int,fd:c_int,offset:i64)->*mut c_void;
+        fn munmap(addr:*mut c_void,len:usize)->c_int;
+    }
+    let file=fs::File::open("/sys/fs/selinux/status")?;
+    let map=unsafe { mmap(std::ptr::null_mut(),20,1,1,file.as_raw_fd(),0) };
+    if map as isize == -1 { return Err(io::Error::last_os_error()); }
+    let p=map.cast::<u32>();
+    let mut found=None;
+    for _ in 0..4 {
+        let version=unsafe { std::ptr::read_volatile(p) };
+        let before=unsafe { std::ptr::read_volatile(p.add(1)) };
+        if version!=1 || before&1!=0 { continue; }
+        std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
+        let value=unsafe { [before,std::ptr::read_volatile(p.add(2)),std::ptr::read_volatile(p.add(3)),std::ptr::read_volatile(p.add(4))] };
+        std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
+        if before==unsafe { std::ptr::read_volatile(p.add(1)) } { found=Some(value); break; }
+    }
+    unsafe { munmap(map,20); }
+    found.ok_or_else(||io::Error::other("SELinux generation unavailable"))
+}
+fn file_policy_stamp() -> io::Result<Vec<u64>> {
+    let generation=policy_generation()?;
+    let mut out:Vec<u64>=generation.into_iter().map(u64::from).collect();
+    // Include every Android priority candidate, not only currently selected files:
+    // a new higher-priority file, bind mount, replacement or compiled companion
+    // must invalidate the cached handle. This is bounded metadata work, not a walk.
+    for path in policy_sources() {
+            match fs::metadata(&path) {
+                Ok(m) => { if !m.is_file() { return Err(io::Error::other("non-file SELinux source")); }
+                    out.extend([1,m.dev(),m.ino(),m.mode() as u64,m.uid() as u64,m.gid() as u64,m.len(),m.mtime() as u64,m.mtime_nsec() as u64,m.ctime() as u64,m.ctime_nsec() as u64]); },
+                Err(e) if e.kind()==io::ErrorKind::NotFound => out.push(0),
+                Err(e) => return Err(e),
+            }
+    }
+    if policy_generation()?!=generation { return Err(io::Error::other("SELinux generation changed")); }
+    Ok(out)
+}
 fn relabel(root: &Path, seinfo: Option<&str>, target: u32, flags: u32) -> io::Result<()> {
     let path = cpath(root)?;
     let rc = if let Some(info) = seinfo {
@@ -246,26 +343,60 @@ fn relabel_partitioned(root: &Path, seinfo: Option<&str>, target: u32, stats: &O
     }
     for id in &split { relabel(&nodes[*id].path, seinfo, target, 8)?; }
     for path in &parent_leaves { relabel(path, seinfo, target, 8)?; }
-    let exe = std::env::current_exe()?;
+    // This engine is single-threaded. The parent has already relabeled split
+    // directories, so fork inherits initialized libselinux tables without sharing
+    // mutable state. Keep the existing group cancellation and reap every worker.
+    extern "C" {
+        fn fork() -> c_int;
+        fn waitpid(pid: c_int, status: *mut c_int, flags: c_int) -> c_int;
+        fn _exit(status: c_int) -> !;
+    }
     let mut children = Vec::new();
     let mut failure = None;
     for (_, _, tasks) in groups {
-        let mut command = std::process::Command::new(&exe);
-        command.arg("speedscan").arg(if seinfo.is_some() { "selinux-restore-plan-group" }
-            else { "selinux-restore-generic-plan-group" }).arg(info).arg(target.to_string());
-        for (flags, path) in tasks { command.arg(flags.to_string()).arg(path); }
-        match command.stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null()).spawn() {
-            Ok(child) => children.push(child),
-            Err(e) => { failure = Some(e); break; }
+        let pid = unsafe { fork() };
+        if pid < 0 { failure = Some(io::Error::last_os_error()); break; }
+        if pid == 0 {
+            let outcome = std::panic::catch_unwind(|| -> io::Result<()> {
+                // Keep the old worker's whole-group validation before mutation.
+                for (flags, path) in &tasks {
+                    if !path.is_absolute() || path.as_os_str().as_bytes().contains(&0) {
+                        return Err(io::ErrorKind::InvalidInput.into());
+                    }
+                    if seinfo.is_none() && (!path.starts_with(root) || path == root || fs::canonicalize(path)? != *path) {
+                        return Err(io::ErrorKind::InvalidInput.into());
+                    }
+                    if fs::symlink_metadata(path)?.file_type().is_dir() != (*flags == 12) {
+                        return Err(io::Error::other("SELinux task type changed"));
+                    }
+                }
+                for (flags, path) in &tasks {
+                    relabel(path, seinfo, target, *flags).map_err(|e|
+                        io::Error::other(format!("SELinux task failed flags={flags} path={path:?}: {e}")))?;
+                }
+                Ok(())
+            });
+            let code = match outcome {
+                Ok(Ok(())) => 0,
+                Ok(Err(e)) => { use std::io::Write; let _ = writeln!(io::stderr(), "SELinux worker error: {e}"); 1 },
+                Err(_) => { use std::io::Write; let _ = writeln!(io::stderr(), "SELinux worker panic"); 1 },
+            };
+            unsafe { _exit(code); }
         }
+        children.push(pid);
     }
-    // Reap every started worker before returning, including partial spawn failure.
-    for mut child in children {
-        match child.wait() {
-            Ok(status) if status.success() => {},
-            Ok(status) => { failure.get_or_insert_with(|| io::Error::other(format!("SELinux worker failed: {status}"))); },
-            Err(e) => { let _ = child.kill(); let _ = child.wait(); failure.get_or_insert(e); }
+    for pid in children {
+        let mut status = 0;
+        loop {
+            let rc = unsafe { waitpid(pid, &mut status, 0) };
+            if rc == pid {
+                if status != 0 { failure.get_or_insert_with(|| io::Error::other(format!("SELinux worker failed: {status}"))); }
+                break;
+            }
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted { continue; }
+            failure.get_or_insert(error);
+            break;
         }
     }
     if let Some(e) = failure { return Err(e); }
@@ -519,4 +650,20 @@ pub(super) fn external_from_walk(root: &Path, stats: &OwnerStats) -> io::Result<
     let (workers, fallback, leaves) = relabel_external_batched(root, stats)?;
     println!("EXTERNAL_FUSED_LABEL_OK visited={} selinuxMs={} workers={} fallback={} parentLeaves={}",stats.visited,start.elapsed().as_millis(),workers,fallback,leaves);
     Ok(())
+}
+
+
+fn policy_sources() -> Vec<String> {
+    let mut sources=Vec::new();
+    for base in ["/system/etc/selinux/plat_file_contexts","/plat_file_contexts",
+        "/dev/selinux/apex_file_contexts","/system_ext/etc/selinux/system_ext_file_contexts","/system_ext_file_contexts",
+        "/product/etc/selinux/product_file_contexts","/product_file_contexts",
+        "/vendor/etc/selinux/vendor_file_contexts","/vendor_file_contexts",
+        "/vendor/etc/selinux/nonplat_file_contexts","/nonplat_file_contexts",
+        "/odm/etc/selinux/odm_file_contexts","/odm_file_contexts","/file_contexts"] {
+        for suffix in ["", ".bin", ".subs", ".subs_dist"] {
+            sources.push(format!("{base}{suffix}"));
+        }
+    }
+    sources
 }

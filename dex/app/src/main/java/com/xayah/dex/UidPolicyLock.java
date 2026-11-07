@@ -13,6 +13,7 @@ final class UidPolicyLock implements AutoCloseable {
     private UidPolicyLock(FileChannel channel, FileLock lock) { this.channel=channel; this.lock=lock; }
     static UidPolicyLock acquire(int uid) throws Exception {
         if (uid < 0 || android.os.Process.myUid()!=0) throw new IOException("uid policy lock requires root/valid uid");
+        // Keep this cross-version mutex at its stable legacy path.
         File base=privateDirectory(new File("/data/.speedbackup_tmp"));
         File dir=privateDirectory(new File(base,".uid_policy_locks"));
         Set<OpenOption> options=new HashSet<>(Arrays.asList(StandardOpenOption.CREATE,StandardOpenOption.READ,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS));
@@ -36,7 +37,7 @@ final class UidPolicyLock implements AutoCloseable {
     }
     static List<File> pendingStateFiles(File current)throws Exception {
         Set<File> dirs=new HashSet<>();dirs.add(current.getCanonicalFile());
-        for(String base:new String[]{"/data/.speedbackup_tmp","/data/local/tmp"}) {
+        for(String base:new String[]{"/data/.speedbackup/tmp","/data/.speedbackup_tmp","/data/local/tmp"}) {
             File parent=new File(base);if(!parent.exists())continue;
             File[] runs=parent.listFiles((d,n)->n.startsWith(".speedbackup_run_"));
             if(runs==null)throw new IOException("uid ownership directory unavailable");

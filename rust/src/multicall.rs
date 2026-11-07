@@ -47,6 +47,12 @@ pub fn args_os() -> std::vec::IntoIter<OsString> {
         .into_iter()
 }
 
+// Inspect routing without cloning or decoding payload/path argument bytes.
+pub fn is_command(name: &str) -> bool {
+    ARGS.get().and_then(|args| args.get(1))
+        .is_some_and(|arg| arg == std::ffi::OsStr::new(name))
+}
+
 pub fn args() -> std::vec::IntoIter<String> {
     args_os()
         .map(|s| s.into_string().unwrap_or_else(|_| {
@@ -65,7 +71,7 @@ mod tests {
     fn every_symlink_name_keeps_argv() {
         for name in APPLETS {
             let input = vec![
-                OsString::from(format!("/data/backup_tools/{name}")),
+                OsString::from(format!("/data/.speedbackup/tools/{name}")),
                 "--version".into(),
             ];
             let (selected, argv) = select(input.clone()).unwrap();

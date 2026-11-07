@@ -26,15 +26,62 @@ fn ram_vendor(id: Option<u32>) -> String {
         None => "未知".into(),
     }
 }
-fn ram_product() -> String {
+fn device_property(key: &str) -> String {
     #[cfg(target_os = "android")]
     {
         unsafe extern "C" { fn __system_property_get(name: *const std::ffi::c_char, value: *mut std::ffi::c_char) -> i32; }
+        let Ok(key) = std::ffi::CString::new(key) else { return String::new(); };
         let mut buf = [0u8; 92];
-        let n = unsafe { __system_property_get(c"ro.product.device".as_ptr(), buf.as_mut_ptr().cast()) };
+        let n = unsafe { __system_property_get(key.as_ptr(), buf.as_mut_ptr().cast()) };
         if n > 0 && (n as usize) < buf.len() { return String::from_utf8_lossy(&buf[..n as usize]).into_owned(); }
     }
+    let _ = key;
     String::new()
+}
+fn ram_product() -> String { device_property("ro.product.device") }
+fn usable_ram(text: &str) -> Option<u64> {
+    let mut rows=text.lines().filter_map(|line|line.strip_prefix("MemTotal:"));
+    let fields:Vec<_>=rows.next()?.split_whitespace().collect();
+    if rows.next().is_some() || fields.len()!=2 || fields[1]!="kB" {return None;}
+    let kb=fields[0].parse::<u64>().ok()?;
+    (kb>0 && kb<=1024*1024*1024).then_some(kb)
+}
+fn soc_key(value:&str)->String {value.trim().to_ascii_lowercase()}
+fn soc_resolve(table:&V,candidates:&[String])->(String,String) {
+    let usable=|s:&str|!s.trim().is_empty()&&!matches!(soc_key(s).as_str(),"null"|"unknown"|"n/a"|"none");
+    for candidate in candidates.iter().filter(|s|usable(s)) {
+        let exact=g(table,candidate.trim());
+        let d=if exact.object(){exact}else if let V::Object(rows)=table {
+            let mut hits=rows.iter().filter(|(k,_)|soc_key(k)==soc_key(candidate));
+            match (hits.next(),hits.next()){(Some((_,v)),None)=>v.clone(),_=>V::Object(Vec::new())}
+        }else{V::Object(Vec::new())};
+        let name=raw(&g(&d,"NAME"));
+        if usable(&name) {
+            let vendor=raw(&g(&d,"VENDOR"));
+            let label=if usable(&vendor){format!("{} {}",vendor.trim(),name.trim())}else{name.trim().into()};
+            return (label,raw(&alt(&d,"MEMORY",string(""))));
+        }
+    }
+    (candidates.iter().find(|s|usable(s)).map(|s|format!("{}（系統回報）",s.trim())).unwrap_or_else(||"未知".into()),String::new())
+}
+// Only use an independently verified device/platform pair after exact SoC lookup fails.
+// Xiaomi official 2025 interim report: REDMI K80 Ultra uses Dimensity 9400+.
+// Device codename dali is confirmed by the reporter and DevCheck device catalogue.
+fn soc_device_resolve(table: &V, candidates: &[String], brand: &str, product: &str) -> (String, String) {
+    let resolved = soc_resolve(table, candidates);
+    if !resolved.0.ends_with("（系統回報）") { return resolved; }
+    let platform = candidates.iter().any(|s| soc_key(s) == "mt6991");
+    // Conflicting platform/model properties must keep the system-reported fallback.
+    let conflict = candidates.iter().any(|s| {
+        let s = soc_key(s);
+        !matches!(s.as_str(), "" | "null" | "unknown" | "n/a" | "none" | "mt6991")
+    });
+    if platform && !conflict && soc_key(product) == "dali"
+        && matches!(soc_key(brand).as_str(), "redmi" | "xiaomi") {
+        // Do not infer RAM technology/speed from the phone's marketing specification.
+        return ("MediaTek Dimensity 9400+".into(), String::new());
+    }
+    resolved
 }
 fn ram_display(id: Option<u32>, size: Option<u32>, product: &str, spec: &str) -> String {
     // Only these boards' ddr_size units have been verified as nominal GB.
@@ -44,12 +91,17 @@ fn ram_display(id: Option<u32>, size: Option<u32>, product: &str, spec: &str) ->
     } else { None };
     let vendor = ram_vendor(id);
     let extra = if vendor.starts_with("未知") || size.is_none() { device_ram::fallback() } else { None };
+    let mv = if extra.is_none() && (vendor.starts_with("未知") || size.is_none()) { device_ram::mv_fallback() } else { None };
+    let extra = extra.or_else(|| mv.as_ref().and_then(|f|f.ram.as_ref()).map(|(v,n)|(v.as_str(),*n)));
     let (vendor, size) = device_ram::merge(vendor, size, extra);
     let mut parts = vec![vendor];
     if let Some(gb) = size { parts.push(format!("{} GB", gb)); }
+    else if let Some(kb)=std::fs::read_to_string("/proc/meminfo").ok().as_deref().and_then(usable_ram) {
+        parts.push(format!("系統可用實體容量 {:.2} GiB",kb as f64/1048576.0));
+    }
     let spec = spec.trim();
     if !spec.is_empty() && spec != "null" { parts.push(spec.to_owned()); }
-    format!("RAM:{}", parts.join(" "))
+    parts.join(" ")
 }
 fn ram_info(spec: &str) -> String {
     ram_display(
@@ -447,6 +499,36 @@ fn execute(op: &str, v: &V, a: &Vars, file: &str) -> Result<Vec<V>, String> {
         return Err("expected JSON collection".into());
     }
     match op {
+        "home-fields" | "ime-fields" | "foreground-packages-count" => {
+            let V::Array(docs) = v else { return Err("requires slurp".into()); };
+            let ops: &[&str] = match op {
+                "home-fields" => &["home-package", "home-label", "home-source", "home-resolver"],
+                "ime-fields" => &["ime-package", "ime-label", "ime-source"],
+                _ => &["foreground-packages"],
+            };
+            let mut fields = Vec::new();
+            for field_op in ops {
+                let mut stream = String::new();
+                for doc in docs {
+                    for value in execute(field_op, doc, a, file)? {
+                        stream.push_str(&if value.text().is_some() { raw(&value) } else { value.emit(true, 0) });
+                        stream.push('\n');
+                    }
+                }
+                // Shell cannot represent NUL; keep its legacy pipeline for these inputs.
+                if stream.contains('\0') { return Err("legacy NUL path".into()); }
+                let lines = stream.split('\n').filter(|s| !s.trim_matches([' ', '\t']).is_empty());
+                if op == "foreground-packages-count" {
+                    let mut seen = std::collections::HashSet::new();
+                    let rows: Vec<_> = lines.filter(|s| seen.insert((*s).to_string())).collect();
+                    fields.push(number(rows.len()));
+                    fields.extend(rows.into_iter().map(string));
+                } else {
+                    fields.push(string(lines.into_iter().next().unwrap_or_default()));
+                }
+            }
+            Ok(fields)
+        }
         "identity" => one(v.clone()),
         "length" => one(match v {
             V::Object(xs) => number(xs.len()),
@@ -499,19 +581,10 @@ fn execute(op: &str, v: &V, a: &Vars, file: &str) -> Result<Vec<V>, String> {
             .map(|v| alt(v, "digest", string("")))
             .collect()),
         "soc-info" => {
-            let d = g(v, &var(a, "device"));
-            if d.object() {
-                Ok(vec![
-                    string(format!(
-                        "DEVICE\t處理器:{} {}",
-                        raw(&alt(&d, "VENDOR", string("null"))),
-                        raw(&alt(&d, "NAME", string("null")))
-                    )),
-                    string(format!("RAM\t{}", ram_info(&raw(&alt(&d, "MEMORY", string("")))))),
-                ])
-            } else {
-                Ok(vec![string("DEVICE\t處理器:null"), string(format!("RAM\t{}", ram_info("")))])
-            }
+            let mut candidates=vec![var(a,"device")];
+            for key in ["ro.soc.model","ro.vendor.soc.model","ro.mediatek.platform","ro.board.platform","ro.hardware"] {candidates.push(device_property(key));}
+            let (name,spec)=soc_device_resolve(v,&candidates,&device_property("ro.product.brand"),&ram_product());
+            Ok(vec![string(format!("DEVICE\t{}",name.replace(['\t','\r','\n']," "))),string(format!("RAM\t{}",ram_info(&spec)))])
         }
         "webdav-contract" => {
             let mut xs = vec![raw(&g(v, "serverProfile"))];
@@ -570,6 +643,43 @@ fn execute(op: &str, v: &V, a: &Vars, file: &str) -> Result<Vec<V>, String> {
             v.truth() && ad(v, "ad_required_meta_ok")?.truth() && state_schema(v) && state_items(v),
         )),
         "metadata-identity" => Ok(vec![ad(v, "ad_first_pkg")?, ad(v, "ad_first_apk_version")?]),
+        "restore-ssaid-identity" => {
+            let V::Array(docs) = v else { return Err("requires slurp".into()); };
+            if docs.len() != 1 { return Err("legacy multi-document identity".into()); }
+            let entry = raw(&ad(&docs[0], "ad_first_entry_name")?);
+            let package = raw(&ad(&docs[0], "ad_first_pkg")?);
+            if entry.contains(['\t', '\r', '\n', '\0']) || package.contains(['\t', '\r', '\n', '\0']) {
+                return Err("legacy identity bytes".into());
+            }
+            one(string(format!("SBSSID1\t{entry}\t{package}")))
+        }
+        "restore-ssaid-package" => {
+            let V::Array(docs) = v else { return Err("requires slurp".into()); };
+            if docs.len() != 1 { return Err("legacy multi-document path".into()); }
+            let ssaid = raw(&ad(&docs[0], "ad_first_ssaid")?);
+            let package = raw(&ad(&docs[0], "ad_first_pkg")?);
+            if ssaid.contains(['\n', '\0']) || package.contains(['\n', '\0']) {
+                return Err("legacy multiline path".into());
+            }
+            one(string(if matches!(ssaid.as_str(), "" | "null" | "false") { "N".into() } else { format!("Y\n{package}") }))
+        }
+        "health-flags" => {
+            let V::Array(docs)=v else { return Err("health-flags requires slurp".into()); };
+            let last=docs.last().filter(|v| v.truth()).ok_or("invalid health document")?;
+            let present=|key: &str| -> Result<bool,String> {
+                let values=docs.iter().map(|v| ad(v,key).map(|v| raw(&v))).collect::<Result<Vec<_>,_>>()?;
+                Ok(!values.join("\n").trim_end_matches('\n').is_empty())
+            };
+            let count=|key: &str| -> Result<V,String> {
+                if docs.len()==1 { ad(last,key) } else { Ok(number(0)) }
+            };
+            one(tsv(&[
+                number(usize::from(present("ad_first_pkg")?)),
+                number(usize::from(present("ad_first_apk_version")?)),
+                count("ad_state_count")?,count("ad_legacy_state_count")?,count("ad_appstate_ssaid_count")?,
+                number(usize::from(state_schema(last))),number(usize::from(state_items(last))),number(usize::from(state_nullable(last))),
+            ])?)
+        }
         "restore-metadata-plan" => restore_metadata_plan(v, a),
         "health-row" => {
             let app = Path::new(file)
@@ -598,6 +708,21 @@ fn execute(op: &str, v: &V, a: &Vars, file: &str) -> Result<Vec<V>, String> {
             fallback(&[path(v, &[&var(a, "e"), "Size"]), string("")]),
             fallback(&[path(v, &[&var(a, "e"), "change_fingerprint"]), string("")]),
         ])?),
+        // Match the existing -e required-metadata check (last document wins),
+        // then emit exactly the existing summary stream. The shell still checks
+        // 13 lines, so multiple documents and embedded newlines remain rejected.
+        "backup-required-summary" => {
+            let V::Array(docs) = v else { return Err("summary requires slurp".into()); };
+            let last = docs.last().ok_or("missing metadata")?;
+            if !ad(last, "ad_required_meta_ok")?.truth() {
+                return Err("required metadata missing".into());
+            }
+            let mut rows = Vec::new();
+            for doc in docs {
+                rows.extend(execute("metadata-summary", doc, a, file)?);
+            }
+            Ok(rows)
+        }
         "metadata-summary" => {
             let mut xs = vec![
                 fallback(&[first(v, "apk_version"), empty.clone()]),
@@ -1262,19 +1387,169 @@ fn restore_metadata_plan(v: &V, a: &Vars) -> Result<Vec<V>, String> {
 }
 
 fn documents(s: &str) -> Result<Vec<V>, String> {
-    let mut p = 0;
-    let mut out = vec![];
-    while p < s.len() {
-        p = json_skip_ws_bytes(s.as_bytes(), p);
-        if p == s.len() {
-            break;
-        }
-        let end = json_parse_value_end_bytes(s.as_bytes(), p, 0).ok_or("invalid JSON input")?;
-        out.push(parse(&s[p..end])?);
-        p = end
-    }
-    Ok(out)
+    // Fully collect before emitting: an invalid later document cannot publish a prefix.
+    serde_json::Deserializer::from_str(s).into_iter::<&serde_json::value::RawValue>()
+        .map(|r| r.map_err(|e| e.to_string()).and_then(|r| parse(r.get())))
+        .collect()
 }
+
+// Batch the common update-check path. Any non-canonical input returns to the
+// unchanged Shell loop before publishing rows, including version-map misses
+// that require an inventory refresh. Read the map anew for each entry.
+pub(super) fn backup_update_plan(args: &[String]) -> i32 {
+    let work = (|| -> Result<String, String> {
+        if args.len() != 3 { return Err("args".into()); }
+        let input = fs::read_to_string(&args[0]).map_err(|_| "input")?;
+        let mut output = String::from("UPDATE_PLAN_1\n");
+        let mut count = 0;
+        for row in input.lines() {
+            let cells: Vec<_> = row.split('\t').collect();
+            if cells.len() != 3 { return Err("row".into()); }
+            let (label, pkg, safe) = (cells[0], cells[1], cells[2]);
+            if label.is_empty() || safe.is_empty() || safe.contains(['/', '\\', '\r', '\n']) || safe == "." || safe.contains("..")
+                || !pkg.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
+                || !pkg.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'.' || c == b'_') {
+                return Err("legacy input".into());
+            }
+            let file = Path::new(&args[1]).join(safe).join("app_details.json");
+            let absent = match fs::metadata(&file) {
+                Ok(m) if m.is_file() => m.len() == 0,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => true,
+                _ => return Err("legacy file".into()),
+            };
+            if absent {
+                output.push_str(&format!("M\t{label}\t{pkg}\t{safe}\t-\t-\n"));
+            } else {
+                let text = fs::read_to_string(&file).map_err(|_| "json read")?;
+                let docs = documents(&text)?;
+                if docs.len() != 1 { return Err("legacy document stream".into()); }
+                let record_pkg = raw(&ad(&docs[0], "ad_first_pkg")?);
+                let version = ad(&docs[0], "ad_first_apk_version")?;
+                let old = if version.text().is_some() { raw(&version) } else { version.emit(true, 0) };
+                let clean = |v: &str| v.chars().filter(|c| !matches!(c, ' ' | '\t' | '\r' | '\n')).collect::<String>();
+                let old = clean(&old);
+                // Original code queries current version before rejecting old version
+                // or package mismatch. Defer those cases to preserve that ordering.
+                if record_pkg != pkg || old.is_empty() || !old.bytes().all(|c| c.is_ascii_digit()) { return Err("legacy identity".into()); }
+                let map = fs::read_to_string(&args[2]).map_err(|_| "map read")?;
+                if map.contains('\0') { return Err("legacy map".into()); }
+                let current = map.split('\n').find_map(|line| {
+                    let mut fields = line.split('\t');
+                    if fields.next() == Some(pkg) { Some(clean(fields.next().unwrap_or_default())) } else { None }
+                }).ok_or("refresh needed")?;
+                if current.is_empty() || !current.bytes().all(|c| c.is_ascii_digit()) { return Err("refresh or legacy version".into()); }
+                output.push_str(&format!("V\t{label}\t{pkg}\t{safe}\t{old}\t{current}\n"));
+            }
+            count += 1;
+        }
+        output.push_str(&format!("END_UPDATE_PLAN_1\t{count}\n"));
+        Ok(output)
+    })();
+    match work {
+        Ok(output) => if io::stdout().write_all(output.as_bytes()).is_ok() { 0 } else { 1 },
+        Err(_) => 1,
+    }
+}
+
+// Shared pure conversion for the immutable batch plan and single-state command.
+// Keep modern-to-legacy fallback and the compact JSON serialization boundary.
+// This helper returns bytes; it does not write metadata or scratch files.
+// The batch caller publishes a complete plan before the shell uses any row.
+// Live installed, user, cache, journal and scratch checks remain in the shell.
+// Failed or invalidated plan rows retain the single-state compatibility path.
+fn restore_ssaid_convert_doc(doc: &V, path: &str, entry: &str, pkg: &str, user: &str) -> Result<(String, String), String> {
+    let vars = Vars::from([("entry".into(), entry.into()), ("pkg".into(), pkg.into()), ("user".into(), user.into())]);
+    let mut states = execute("state-v2", doc, &vars, path).unwrap_or_default();
+    if states.is_empty() { states = execute("state-migrate", doc, &vars, path)?; }
+    if states.is_empty() { return Err("empty state".into()); }
+    let mut record = String::new();
+    for state in states { record.push_str(&state.emit(false, 0)); record.push('\n'); }
+    let mut filtered = String::new();
+    for state in documents(&record)? {
+        for value in execute("snapshot-ssaid", &state, &Vars::new(), path)? {
+            filtered.push_str(&value.emit(false, 0)); filtered.push('\n');
+        }
+    }
+    Ok((record, filtered))
+}
+
+pub(super) fn restore_ssaid_state(args: &[String]) -> i32 {
+    if args.len() != 6 || args[2].is_empty() || args[4].is_empty() || args[5].is_empty() { return 1; }
+    let work = (|| -> Result<(), String> {
+        let metadata = fs::metadata(&args[0]).map_err(|e| e.to_string())?;
+        if !metadata.is_file() || metadata.len() == 0 { return Err("legacy source".into()); }
+        let body = fs::read_to_string(&args[0]).map_err(|e| e.to_string())?;
+        let docs = documents(&body)?;
+        if docs.len() != 1 { return Err("legacy multi-document path".into()); }
+        let (record, filtered) = restore_ssaid_convert_doc(&docs[0], &args[0], &args[1], &args[2], &args[3])?;
+        fs::write(&args[4], record.as_bytes()).map_err(|e| e.to_string())?;
+        fs::write(&args[5], filtered.as_bytes()).map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+    if work.is_ok() { 0 } else { 1 }
+}
+
+// One immutable metadata scan, no writes. Live installed and scratch-path checks
+// remain in the shell loop; a failed conversion only declines that row's state.
+pub(super) fn restore_ssaid_plan(list: &str, user: &str) -> i32 {
+    let work = (|| -> Result<String, String> {
+        let paths = fs::read_to_string(list).map_err(|e| e.to_string())?;
+        if paths.contains('\0') { return Err("binary list".into()); }
+        let mut out = String::from("SBSSID_PLAN1\n");
+        for line in paths.split_inclusive('\n') {
+            if !line.ends_with('\n') { break; }
+            let path = line[..line.len()-1].trim_matches([' ', '\t']);
+            let metadata = match fs::metadata(path) { Ok(m) if m.len() > 0 => m, _ => { out.push_str("N\n"); continue; } };
+            if !metadata.is_file() { return Err("nonregular input".into()); }
+            let body = fs::read_to_string(path).map_err(|e| e.to_string())?;
+            let docs = documents(&body)?;
+            let result = execute("restore-ssaid-identity", &V::Array(docs.clone()), &Vars::new(), path)?;
+            let value = raw(result.first().ok_or("missing identity")?);
+            let fields = value.strip_prefix("SBSSID1\t").ok_or("invalid identity")?;
+            let (entry, pkg) = fields.split_once('\t').ok_or("missing identity field")?;
+            let converted = if entry.is_empty() || pkg.is_empty() { None } else { restore_ssaid_convert_doc(&docs[0], path, entry, pkg, user).ok() };
+            out.push_str("Y\t"); out.push_str(fields);
+            if let Some((record, filtered)) = converted {
+                if let Some(compact) = record.strip_suffix('\n') {
+                    if !compact.contains(['\n', '\r', '\t', '\0']) && compact.starts_with('{') && compact.ends_with('}') && (filtered.is_empty() || filtered == record) {
+                        out.push_str(if filtered.is_empty() { "\tR\t0\t" } else { "\tR\t1\t" });
+                        out.push_str(compact); out.push('\n'); continue;
+                    }
+                }
+            }
+            out.push_str("\tF\t0\t\n");
+        }
+        out.push_str("END\n"); Ok(out)
+    })();
+    match work { Ok(out) => if io::stdout().write_all(out.as_bytes()).is_ok() { 0 } else { 1 }, Err(_) => 1 }
+}
+
+pub(super) fn restore_ssaid_batch(list: &str) -> i32 {
+    let work = (|| -> Result<String, String> {
+        let paths = fs::read_to_string(list).map_err(|e| e.to_string())?;
+        if paths.contains('\0') { return Err("binary list".into()); }
+        let mut out = String::from("SBSSAID1\n");
+        for line in paths.split_inclusive('\n') {
+            // Match while read -r: an unterminated last record is not processed.
+            if !line.ends_with('\n') { break; }
+            let path = line[..line.len()-1].trim_matches([' ', '\t']);
+            let metadata = match fs::metadata(path) { Ok(m) if m.len() > 0 => m, _ => { out.push_str("N\n"); continue; } };
+            if !metadata.is_file() { return Err("nonregular input".into()); }
+            let body = fs::read_to_string(path).map_err(|e| e.to_string())?;
+            let docs = documents(&body)?;
+            let result = execute("restore-ssaid-package", &V::Array(docs), &Vars::new(), path)?;
+            let value = raw(result.first().ok_or("missing result")?);
+            if value == "N" { out.push_str("N\n"); }
+            else if let Some(pkg) = value.strip_prefix("Y\n") {
+                if pkg.contains(['\t', '\r', '\n', '\0']) { return Err("legacy package".into()); }
+                out.push_str("Y\t"); out.push_str(pkg); out.push('\n');
+            } else { return Err("invalid result".into()); }
+        }
+        out.push_str("END\n"); Ok(out)
+    })();
+    match work { Ok(out) => if io::stdout().write_all(out.as_bytes()).is_ok() { 0 } else { 1 }, Err(_) => 1 }
+}
+
 pub(super) fn run(args: &[String]) -> i32 {
     let result = (|| -> Result<i32, (i32, String)> {
         let (mut r, mut c, mut e, mut slurp) = (false, false, false, false);
@@ -1372,6 +1647,38 @@ pub(super) fn run(args: &[String]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn soc_board_fallback_requires_verified_identity_and_preserves_exact_sku() {
+        let table=parse(r#"{"MT6991Z/CZB":{"VENDOR":"MediaTek","NAME":"Dimensity 9400"}}"#).unwrap();
+        let base=vec!["null".into()," MT6991 ".into()];
+        assert_eq!(soc_device_resolve(&table,&base,"Redmi","dali"),("MediaTek Dimensity 9400+".into(),String::new()));
+        assert_eq!(soc_device_resolve(&table,&base,"XIAOMI","DALI").0,"MediaTek Dimensity 9400+");
+        for (brand,board) in [("vivo","dali"),("Redmi","unknown"),("","dali")] {
+            assert_eq!(soc_device_resolve(&table,&base,brand,board).0,"MT6991（系統回報）");
+        }
+        assert_eq!(soc_device_resolve(&table,&["MT6991".into(),"MT6991Z/CZB".into()],"Redmi","dali").0,"MediaTek Dimensity 9400");
+        assert_eq!(soc_device_resolve(&table,&["MT6991".into(),"MT6991Z/NEW".into()],"Redmi","dali").0,"MT6991（系統回報）");
+        assert_eq!(soc_device_resolve(&table,&["SM8550".into()],"Redmi","dali").0,"SM8550（系統回報）");
+        assert_eq!(soc_device_resolve(&table,&[],"Redmi","dali").0,"未知");
+        assert_eq!(soc_device_resolve(&table,&["MT6989".into(),"MT6991".into()],"Redmi","dali").0,"MT6989（系統回報）");
+        let exact=parse(r#"{"MT6991":{"NAME":"Database model","MEMORY":"Verified memory"}}"#).unwrap();
+        assert_eq!(soc_device_resolve(&exact,&base,"Redmi","dali"),("Database model".into(),"Verified memory".into()));
+    }
+    #[test]
+    fn soc_fallback_exact_normalized_and_unknown() {
+        let table=parse(r#"{"MT6991Z/TCZB":{"VENDOR":"MediaTek","NAME":"Dimensity 9400+","MEMORY":"LPDDR5X"}}"#).unwrap();
+        assert_eq!(soc_resolve(&table,&[" mt6991z/tczb ".into()]),("MediaTek Dimensity 9400+".into(),"LPDDR5X".into()));
+        assert_eq!(soc_resolve(&table,&["null".into(),"MT6991Z/TCZB".into()]).0,"MediaTek Dimensity 9400+");
+        assert_eq!(soc_resolve(&table,&["MT6991".into()]).0,"MT6991（系統回報）");
+        assert_eq!(soc_resolve(&table,&["null".into(),"".into()]).0,"未知");
+        let bad=parse(r#"{"X":{"VENDOR":"bad","NAME":null}}"#).unwrap();
+        assert_eq!(soc_resolve(&bad,&["X".into()]).0,"X（系統回報）");
+    }
+    #[test]
+    fn memtotal_excludes_swap_and_rejects_invalid() {
+        assert_eq!(usable_ram("MemTotal: 15600000 kB\nSwapTotal: 8000000 kB\n"),Some(15600000));
+        for s in ["SwapTotal: 12000000 kB","MemTotal: 16 GB","MemTotal: 0 kB","MemTotal: 12 kB\nMemTotal: 24 kB","MemTotal: -1 kB"]{assert_eq!(usable_ram(s),None);}
+    }
     #[test]
     fn reject_partial_document_stream() {
         assert!(documents("{\"ok\":1}\n{bad").is_err());
@@ -1501,3 +1808,5 @@ mod tests {
         assert_eq!(raw(&rows[33]), "");
     }
 }
+
+pub(super) fn regen_identity(text:&str)->Result<(String,String),String>{let v=parse(text)?;Ok((raw(&ad(&v,"ad_first_entry_name")?),raw(&ad(&v,"ad_first_pkg")?)))}

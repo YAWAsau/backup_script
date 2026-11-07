@@ -271,7 +271,7 @@ fn frame(
     // Preserve the shell prefix; write the compact frame before clearing its old tail.
     // Reset color in the same write to avoid a blank-frame flash.
     format!(
-        "\r\x1b[38;5;{}m -{}{} 已處理約{} {}/s\x1b[0m\x1b[K",
+        "\r\x1b[38;5;{}m {}{} 已處理約{} {}/s\x1b[0m\x1b[K",
         color,
         label,
         percent,
@@ -344,7 +344,7 @@ pub(super) fn run(args: &[OsString]) -> i32 {
     let mut tty = match OpenOptions::new()
         .write(true)
         .custom_flags(O_NONBLOCK | O_CLOEXEC | O_NOCTTY)
-        .open("/dev/tty")
+        .open(std::env::var("SPEEDBACKUP_WEB_PROGRESS_FIFO").unwrap_or_else(|_|"/dev/tty".into()))
     {
         Ok(f) => f,
         Err(_) => return direct(args),
@@ -620,7 +620,7 @@ mod tests {
             assert_eq!(progress_color(value), 51);
         }
         let line = frame(Mode::Create, 12345, 4096, 0.5, Some(100000), 213);
-        assert!(line.starts_with("\r\x1b[38;5;213m -封裝約12.3% 已處理約"));
+        assert!(line.starts_with("\r\x1b[38;5;213m 封裝約12.3% 已處理約"));
         assert!(line.ends_with("\x1b[0m\x1b[K"));
         assert!(!line.contains("\x1b[2K") && !line.contains('\n'));
     }

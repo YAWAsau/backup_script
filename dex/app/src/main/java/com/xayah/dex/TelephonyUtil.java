@@ -114,7 +114,7 @@ public final class TelephonyUtil {
                 List<File> spool=new ArrayList<>(); File spoolDir=null;
                 try {
                     if(kind.equals("mms")) {
-                        File parent=new File("/data/.speedbackup_telephony");
+                        File parent=new File("/data/.speedbackup/telephony");
                         if(!parent.exists() && !parent.mkdir())throw new IOException("SPOOL_CREATE_FAILED");
                         android.system.StructStat st=android.system.Os.lstat(parent.getPath());
                         if(st.st_uid!=0 || !android.system.OsConstants.S_ISDIR(st.st_mode))throw new IOException("SPOOL_PARENT_INVALID");

@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<uses-permission android:name="android.permission.INTERNET"/>
+<uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+<application android:icon="@drawable/ic_app" android:label="SpeedBackup" android:allowBackup="false" android:usesCleartextTraffic="true" android:theme="@style/AppTheme" android:supportsRtl="true">
+<activity android:name=".MainActivity" android:permission="android.permission.DUMP" android:exported="true" android:excludeFromRecents="false" android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|uiMode|fontScale|density|layoutDirection|screenLayout|locale|keyboard|navigation|colorMode" android:enableOnBackInvokedCallback="true"/>
+<service android:name=".WorkGuardService" android:exported="false" android:process=":guardian" android:stopWithTask="false" android:foregroundServiceType="specialUse">
+<property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Monitor a user-started root backup or restore task and provide notification reconnection while its UI is closed."/>
+</service>
+<activity android:name=".ResumeActivity" android:permission="android.permission.DUMP" android:exported="true" android:process=":guardian" android:noHistory="true" android:excludeFromRecents="true"/>
+</application></manifest>

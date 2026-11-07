@@ -56,3 +56,14 @@
 
 # Preserve isolated protocol conformance entry without exposing another CLI command.
 -keepclassmembers class com.xayah.dex.PowerNotifyUtil { static java.lang.String execute(java.lang.String[], java.io.File); }
+
+-keep class com.xayah.dex.AppListIcons { public static void main(java.lang.String[]); }
+
+-keep class com.xayah.dex.AppListReturn { public static void main(java.lang.String[]); }
+
+
+-keep public class com.xayah.dex.AppListTheme { public static void main(java.lang.String[]); }
+
+# Keep the small completion coordinator inspectable for isolated no-network conformance probes.
+-keep class com.xayah.dex.PowerCompletion { *; }
+-keep interface com.xayah.dex.PowerCompletion$Calls { *; }

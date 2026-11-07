@@ -19,7 +19,7 @@ const POLLOUT: i16 = 4;
 const POLLFAIL: i16 = 8 | 16 | 32;
 static STOP: AtomicBool = AtomicBool::new(false);
 extern "C" {
-    fn fcntl(fd: i32, command: i32, argument: i32) -> i32;
+    fn fcntl(fd: i32, command: i32, ...) -> i32;
     fn ioctl(fd: i32, request: std::os::raw::c_ulong, argument: *mut std::os::raw::c_void) -> i32;
     fn isatty(fd: i32) -> i32;
     fn signal(sig: i32, handler: usize) -> usize;

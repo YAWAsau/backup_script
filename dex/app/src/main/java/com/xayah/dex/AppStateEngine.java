@@ -988,7 +988,7 @@ public final class AppStateEngine {
         String path = dir.getPath();
         if (!dir.isDirectory()) throw new IllegalArgumentException("output dir not directory");
         File parent = dir.getParentFile() == null ? null : dir.getParentFile().getCanonicalFile();
-        if (parent == null || !("/data/.speedbackup_tmp".equals(parent.getPath())
+        if (parent == null || !("/data/.speedbackup/tmp".equals(parent.getPath()) || "/data/.speedbackup_tmp".equals(parent.getPath())
                 || "/data/local/tmp".equals(parent.getPath()))
                 || !dir.getName().startsWith(".speedbackup_run_")) {
             throw new SecurityException("output dir outside SpeedBackup run tmpdir");

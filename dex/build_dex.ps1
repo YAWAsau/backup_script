@@ -232,7 +232,7 @@ if ($env:OS -eq "Windows_NT" -and ($PSScriptRoot -match '[^\x00-\x7F]' -or $PSSc
 
 # ---- 1. Set JAVA_HOME (Android Studio bundled JDK) ----
 if ([string]::IsNullOrWhiteSpace($JavaHome)) {
-    # Gradle 8.2: prefer an installed JDK17; Studio's current JBR may be newer.
+    # Gradle 9.9 / AGP 9.5: prefer an installed JDK17; Studio's current JBR may be newer.
     $jdk17Home = Get-ChildItem -LiteralPath (Join-Path $env:USERPROFILE ".jdks") -Directory -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -match "17([.-]|$)" -and (Test-Path -LiteralPath (Join-Path $_.FullName "bin/java.exe")) } |
         Select-Object -First 1

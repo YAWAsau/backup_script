@@ -1193,11 +1193,11 @@ fn pipeline_rate_watch(args: PipelineRateWatchArgs<'_>) -> i32 {
 }
 
 fn cleanup_owned(run_id: &str, tmpdir: &str) -> i32 {
-    let prefix = "/data/.speedbackup_tmp/.speedbackup_run_";
+    let prefix = "/data/.speedbackup/tmp/.speedbackup_run_";
     if run_id.is_empty() || tmpdir.is_empty() {
         return 2;
     }
-    if !tmpdir.starts_with(prefix) {
+    if !tmpdir.starts_with(prefix) && !tmpdir.starts_with("/data/.speedbackup_tmp/.speedbackup_run_") {
         println!("skip\t0\tcleanup-owned\tunsafe-path\tpath={}", tmpdir);
         return 0;
     }
@@ -1209,7 +1209,7 @@ fn cleanup_owned(run_id: &str, tmpdir: &str) -> i32 {
     // both ancestors before reading owner.pid; a prefix alone permits symlinks
     // and descendants outside the intended run root.
     let run = Path::new(tmpdir);
-    let base = Path::new("/data/.speedbackup_tmp");
+    let base = Path::new(if tmpdir.starts_with("/data/.speedbackup_tmp/") {"/data/.speedbackup_tmp"} else {"/data/.speedbackup/tmp"});
     let private_root_dir = |p: &Path| {
         fs::canonicalize(p).map(|v| v == p).unwrap_or(false)
             && fs::symlink_metadata(p)

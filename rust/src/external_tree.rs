@@ -284,6 +284,15 @@ fn parallel_plan(root:&File,dev:u64)->io::Result<(u64,Heap,usize)>{
  })
 }
 
+// Small trees retain the same per-entry checks without creating a worker pool.
+fn clear_small(root:&File,dev:u64)->io::Result<u64>{
+ let failed=AtomicBool::new(false);let mut removed=1;
+ for item in fs::read_dir(format!("/proc/self/fd/{}",root.as_raw_fd()))? {
+  let name=CString::new(item?.file_name().as_bytes()).map_err(|_|bad())?;
+  removed+=visit(root,&name,dev,1,&failed)?;
+ }
+ Ok(removed)
+}
 fn clear_scheduled(root:&File,dev:u64,heavy:&std::collections::HashSet<std::path::PathBuf>)->io::Result<u64>{
  type Job=(File,CString,usize);
  type Record=(std::path::PathBuf,u64);
@@ -386,8 +395,8 @@ fn run(args:&[String],clear:bool)->io::Result<()>{
   let now=open()?.metadata()?;if now.dev()!=before.dev() || now.ino()!=before.ino() || now.uid()!=uid{return Err(bad());}
   // Cross-check the native layout once before any deletion; fail closed.
   if checked>1 && !entry_stat(&f,&CString::new(".").unwrap())?.matches(&f.metadata()?){return Err(bad());}
-  let clear_workers=if checked==1{0}else{8};
-  let removed=if checked==1{println!("EXTERNAL_CLEAR_POOL_OK workers=0 heavy=0 removed=0");1}else{clear_scheduled(&f,before.dev(),&heavy)?};
+  let clear_workers=if checked==1{0}else if checked<=256{1}else{8};
+  let removed=if checked==1{println!("EXTERNAL_CLEAR_POOL_OK workers=0 heavy=0 removed=0");1}else{if checked<=256 {clear_small(&f,before.dev())?} else {clear_scheduled(&f,before.dev(),&heavy)?}};
   if removed!=checked{return Err(bad());}
   let after=open()?.metadata()?;if after.dev()!=before.dev() || after.ino()!=before.ino(){return Err(bad());}
   if fs::read_dir(format!("/proc/self/fd/{}",f.as_raw_fd()))?.next().is_some(){return Err(bad());}

@@ -1,3 +1,4 @@
+#![deny(clashing_extern_declarations, unused_unsafe)]
 #[path = "bin/cgfreezer.rs"]
 mod cgfreezer;
 #[path = "bin/eventwait.rs"]
@@ -7,6 +8,10 @@ mod filewatch;
 mod multicall;
 mod applist;
 mod file_rpc;
+mod smb_publisher;
+mod tool_sha_cache;
+mod runtime_cache;
+mod tool_diagnostics;
 mod pm_process;
 mod pm_session;
 #[path = "bin/netwatch.rs"]
@@ -22,6 +27,12 @@ mod unixsock;
 
 fn main() {
     let args: Vec<_> = std::env::args_os().collect();
+    if args.get(1).is_some_and(|s| s=="--diagnostic-tools")
+        && args.first().and_then(|s| std::path::Path::new(s).file_name()) == Some(std::ffi::OsStr::new("speednative")) {
+        let values:Result<Vec<_>,_>=args.into_iter().skip(2).map(|s|s.into_string()).collect();
+        std::process::exit(match values {Ok(v)=>tool_diagnostics::run(&v),Err(_)=>2});
+    }
+
     if args.get(1).and_then(|value| value.to_str()) == Some("--pm-session")
         && args.first().and_then(|value| std::path::Path::new(value).file_name())
             == Some(std::ffi::OsStr::new("speednative"))

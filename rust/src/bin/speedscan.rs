@@ -1,3 +1,74 @@
+#[path = "../terminal_host.rs"]
+mod terminal_host;
+fn media_list_has(path: &str, needle: &[u8]) -> std::io::Result<bool> {
+    use std::io::{BufRead, Read};
+    let unsupported = || std::io::Error::other("legacy_media_lookup");
+    if !std::fs::metadata(path)?.is_file() { return Err(unsupported()); }
+    let file = std::fs::File::open(path)?;
+    if !file.metadata()?.is_file() { return Err(unsupported()); }
+    let mut reader = std::io::BufReader::new(file);
+    let mut row = Vec::new();
+    loop {
+        row.clear();
+        let n = Read::by_ref(&mut reader).take(65537).read_until(b'\n', &mut row)?;
+        if n == 0 { return Ok(false); }
+        if n > 65536 || row.contains(&0) { return Err(unsupported()); }
+        if row.last() == Some(&b'\n') { row.pop(); }
+        if row == needle { return Ok(true); }
+    }
+}
+
+
+// Preserve the shell's ordered live lookups, including a separate final read.
+// No list cache. Escapes, binary rows, nonregular files and oversized rows
+// decline to the original awk path rather than approximating its semantics.
+fn media_entry_plan_value(path: &str, entry: &str) -> std::io::Result<(char,bool)> {
+    if entry.is_empty() || !entry.bytes().all(|b| (32..=126).contains(&b) && b != 92) {
+        return Err(std::io::Error::other("legacy_media_lookup"));
+    }
+
+        let (kind, payload) = if entry.ends_with(".tar") || entry.ends_with(".tar.zst") {
+            ('E', entry.to_owned())
+        } else {
+            let tar = format!("{entry}.tar");
+            let zst = format!("{entry}.tar.zst");
+            if std::fs::metadata(path).map(|m| m.len() > 0).unwrap_or(false) {
+                if media_list_has(path, tar.as_bytes())? { ('T', tar) }
+                else if media_list_has(path, zst.as_bytes())? { ('Z', zst) }
+                else { ('T', tar) }
+            } else { ('T', tar) }
+        };
+        Ok((kind, media_list_has(path, payload.as_bytes())?))
+
+}
+fn media_entry_plan(path: &str, entry: &str) -> i32 {
+    use std::io::Write;
+    match media_entry_plan_value(path,entry) {
+        Ok((kind,keep)) => if writeln!(std::io::stdout().lock(), "M1:{kind}:{}",u8::from(keep)).is_ok(){0}else{2},
+        Err(_) => 2,
+    }
+}
+
+// Batch the ordered guards of ONE item in one process. Never precompute later
+// items: each request observes all mutations preceding that item.
+fn media_selected_plan(keys: &str, stem: &str, payload: &str, remote: &str) -> i32 {
+    use std::io::Write;
+    // Restrict to unambiguously nonnumeric awk strings (including hex/NaN/Inf).
+    let supported = |s: &str| s.as_bytes().first().map(|b| b.is_ascii_alphabetic() || *b == b'_').unwrap_or(false)
+        && s.bytes().all(|b| (32..=126).contains(&b) && b != 92)
+        && !s.to_ascii_lowercase().starts_with("nan") && !s.to_ascii_lowercase().starts_with("inf");
+    if !supported(stem) || !supported(payload) { return 2; }
+    let result = (|| -> std::io::Result<char> {
+        if !std::fs::metadata(keys).map(|m| m.len() > 0).unwrap_or(false) { return Ok('K'); }
+        if !media_list_has(keys, stem.as_bytes())? { return Ok('K'); }
+        if !remote.is_empty() && !media_list_has(remote, payload.as_bytes())? { return Ok('R'); }
+        Ok('Y')
+    })();
+    match result {
+        Ok(status) => if writeln!(std::io::stdout().lock(), "S1:{status}").is_ok() { 0 } else { 2 },
+        Err(_) => 2,
+    }
+}
 
 // Ancestor descriptors change while an interactive app is running. A closed
 // descriptor is not an unreadable live descriptor. Never print private targets.
@@ -55,12 +126,22 @@ mod device_flash;
 mod device_ram;
 #[path = "../publish_file.rs"]
 mod publish_file;
+#[path = "../applist_web.rs"]
+mod applist_web;
+#[path = "../web_settings.rs"]
+mod web_settings;
 #[path = "../stream_bench.rs"]
 mod stream_bench;
 #[path = "../command_lifecycle.rs"]
 mod command_lifecycle;
 #[path = "../backup_run.rs"]
 mod backup_run;
+#[path = "../prescan_rows.rs"]
+mod prescan_rows;
+#[path = "../live_query.rs"]
+mod live_query;
+#[path = "../remote_maps.rs"]
+mod remote_maps;
 #[path = "../debug_consolidate.rs"]
 mod debug_consolidate;
 #[path = "../payload_stats.rs"]
@@ -69,10 +150,13 @@ mod payload_stats;
 mod profile;
 #[path = "../restore_apk_inventory.rs"]
 mod restore_apk_inventory;
+#[path = "../restore_catalog.rs"]
+mod restore_catalog;
 #[path = "../restore_safety.rs"]
 mod restore_safety;
 #[path = "../android_policy.rs"]
 mod android_policy;
+pub(crate) use android_policy::FileContextCache;
 #[path = "../external_policy.rs"]
 mod external_policy;
 #[path = "../restore_package_maps.rs"]
@@ -148,6 +232,7 @@ struct DirTar {
     math: tar_input::Accumulator,
     fingerprint: ChangeFingerprint,
     valid: bool,
+    member: Vec<u8>,
 }
 impl DirTar {
     fn add(&mut self, path: &Path, meta: &fs::Metadata) {
@@ -175,7 +260,11 @@ impl DirTar {
                 return;
             }
         };
-        let mut member = root.to_vec();
+        // Reuse storage across entries; preserve the exact member bytes used by
+        // exclusions, fingerprints and GNU tar size accounting.
+        let member = &mut self.member;
+        member.clear();
+        member.extend_from_slice(root);
         if !rel.as_os_str().is_empty() {
             member.push(b'/');
             member.extend_from_slice(rel.as_os_str().as_bytes());
@@ -251,6 +340,7 @@ mod fused_traversal_tests {
             math: tar_input::Accumulator::default(),
             fingerprint: ChangeFingerprint::default(),
             valid: true,
+            member: Vec::new(),
         }];
         let (values, stats) = scan_root_for_targets(&root, &targets, &mut tar);
         assert_eq!(values, vec![(0, 25515), (1, 5000)]);
@@ -387,11 +477,18 @@ fn usage() {
     eprintln!("usage:");
     eprintln!("  speedscan bounded-run TIMEOUT_MS TAG STDOUT_FILE COMMAND [ARGS...]");
     eprintln!("  speedscan facts-result DATA SUMMARY RC KEEP_DETAIL KEEP_ERROR LOG_DIR STEM ROW_PREFIX SCRATCH_DIR");
-    eprintln!("  speedscan cleanup-legacy-namespaces /data/.speedbackup_tmp");
+    eprintln!("  speedscan cleanup-legacy-namespaces /data/.speedbackup/tmp");
     eprintln!("  speedscan dir-size PATH");
     eprintln!("  speedscan dir-size-map MANIFEST");
     eprintln!("  speedscan dir-size-manifest PKG_LIST OUT_MANIFEST OUT_EXISTS BACKUP_MODE BACKUP_OBB BACKUP_USER ANDROID_ROOT USER_ROOT USER_DE_ROOT");
     eprintln!("  speedscan tsv-decimal-sum FILE COLUMN");
+    eprintln!("  speedscan smb-plan RAW PREFIX MAP_OUT SNAPSHOT_BASE|- (context on stdin)");
+    eprintln!("  speedscan smb-list RAW PREFIX");
+    eprintln!("  speedscan smb-snapshot BASE LIST_OUT (context on stdin)");
+    eprintln!("  speedscan upload-map INFO_LOG DETAIL_LOG ROOT MAP_OUT BEFORE_MAP");
+    eprintln!("  speedscan remote-list-filter REQUESTED EXISTING NEEDED_OUT MATCHED_OUT");
+    eprintln!("  speedscan upload-dirs LIST BACKUP_ROOT REMOTE_ROOT DIRS_OUT");
+    eprintln!("  speedscan changed-apps-plan LIST HOME_PACKAGE PLAN_OUT");
     eprintln!("  speedscan file-list ROOT");
     eprintln!("  speedscan list-total-size LIST");
     eprintln!("  speedscan batch-stat LIST");
@@ -409,6 +506,7 @@ fn usage() {
     eprintln!("  speedscan selected-list APPLIST BLACKLIST OUT BLACKLIST_MODE");
     eprintln!("  speedscan apk-size-map PKG_APK_PATHS OUT");
     eprintln!("  speedscan backup-prescan-exact-input EXACT_ROWS DIR_TAR_MAP PKG_APK_PATHS DETAILS_OUT STATS_OUT");
+    eprintln!("  speedscan backup-prescan-plan MODE ROOT DETAILS_OUT STATS_OUT BACKUP_MODE BACKUP_USER BACKUP_OBB");
     eprintln!("  speedscan backup-prescan-summary SELECTED DIRSIZES APKMAP RSKIP LSKIP OUT REMOTE_STREAM REMOTE_TYPE");
     eprintln!("  speedscan backup-root-index ROOT OUT [MAXDEPTH]");
     eprintln!("  speedscan storage-summary PATH");
@@ -839,10 +937,8 @@ fn dir_size_auto_workers(scan_roots: usize) -> usize {
     // worker policy is based only on actual top-level scan roots after
     // nested-target collapse. Auxiliary cache/code_cache rows must not inflate
     // concurrency. An explicit SPEEDSCAN_DIRSIZE_WORKERS still overrides this.
-    if scan_roots >= 600 {
+    if scan_roots >= 300 {
         16
-    } else if scan_roots >= 300 {
-        12
     } else {
         8
     }
@@ -967,14 +1063,17 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
         return rc;
     }
 
-    let mut raw_groups: Vec<(PathBuf, Vec<(usize, PathBuf)>)> = Vec::new();
+    // Components are lexical routing keys only. Keep the original paths and
+    // fresh filesystem checks in path_nested_collapse_safe for every candidate.
+    let mut raw_groups: Vec<(PathBuf, Vec<std::ffi::OsString>, Vec<(usize, PathBuf)>)> = Vec::new();
     for (idx, row) in rows.iter().enumerate() {
         let target = PathBuf::from(&row.2);
+        let key: Vec<_> = target.components().map(|c| c.as_os_str().to_os_string()).collect();
         let mut best: Option<usize> = None;
         let mut best_depth = usize::MAX;
-        for (gidx, (root, _)) in raw_groups.iter().enumerate() {
-            if path_nested_collapse_safe(root, &target) {
-                let depth = root.components().count();
+        for (gidx, (root, root_key, _)) in raw_groups.iter().enumerate() {
+            if key.starts_with(root_key) && path_nested_collapse_safe(root, &target) {
+                let depth = root_key.len();
                 if depth < best_depth {
                     best = Some(gidx);
                     best_depth = depth;
@@ -982,19 +1081,19 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
             }
         }
         if let Some(gidx) = best {
-            raw_groups[gidx].1.push((idx, target));
+            raw_groups[gidx].2.push((idx, target));
             continue;
         }
         let mut targets = vec![(idx, target.clone())];
         let mut keep = Vec::with_capacity(raw_groups.len() + 1);
-        for (old_root, old_targets) in raw_groups.drain(..) {
-            if path_nested_collapse_safe(&target, &old_root) {
+        for (old_root, old_key, old_targets) in raw_groups.drain(..) {
+            if old_key.starts_with(&key) && path_nested_collapse_safe(&target, &old_root) {
                 targets.extend(old_targets);
             } else {
-                keep.push((old_root, old_targets));
+                keep.push((old_root, old_key, old_targets));
             }
         }
-        keep.push((target, targets));
+        keep.push((target, key, targets));
         raw_groups = keep;
     }
 
@@ -1005,6 +1104,7 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
     let hint_rows = hints.len();
     let mut root_groups: Vec<DirSizeRootGroup> = raw_groups
         .into_iter()
+        .map(|(root, _, targets)| (root, targets))
         .map(|g| {
             let estimate_bytes = dir_size_group_estimate(&g, &rows, &hints);
             DirSizeRootGroup {
@@ -1103,6 +1203,7 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
                         math: tar_input::Accumulator::default(),
                         fingerprint: ChangeFingerprint::default(),
                         valid: true,
+                        member: Vec::new(),
                     })
                 })
                 .collect();
@@ -2735,9 +2836,6 @@ fn prescan_apk_tar_input_bytes(members: &mut Vec<PrescanApkTarMember>) -> Option
     Some(tar_input::finish(acc.bytes))
 }
 
-// single-process exact-input reducer.  The shell still decides WHICH archive
-// entries are changed; Rust performs all lookup/stat/math in one pass so the hot
-// path has no per-entry awk/stat/decimal helper forks.
 // exact_rows: KIND<TAB>app<TAB>pkg<TAB>entry<TAB>currentSize
 // dir_tar_map: pkg<TAB>entry<TAB>path<TAB>tarInputBytes
 // pkg_apk_paths: pkg<TAB>absolute.apk
@@ -2747,8 +2845,9 @@ fn cmd_backup_prescan_exact_input(
     pkg_apk_paths_s: &str,
     details_s: &str,
     stats_s: &str,
+    prepared: Option<prescan_rows::Plan>,
 ) -> i32 {
-    let start = Instant::now();
+    let start = prepared.as_ref().map(|plan| plan.started).unwrap_or_else(Instant::now);
     if exact_rows_s.is_empty()
         || dir_tar_map_s.is_empty()
         || details_s.is_empty()
@@ -2757,15 +2856,16 @@ fn cmd_backup_prescan_exact_input(
         return 2;
     }
 
-    #[derive(Clone)]
-    struct ExactRow {
-        kind: String,
-        app: String,
-        pkg: String,
-        entry: String,
-    }
+    use prescan_rows::ExactRow;
+    let prepared_input = prepared.is_some();
     let mut rows = Vec::<ExactRow>::new();
     let mut need_apk = HashSet::<String>::new();
+    let mut dir_map = HashMap::<(String, String), u64>::new();
+    if let Some(plan) = prepared {
+        rows = plan.rows;
+        dir_map = plan.dir_map;
+        need_apk.extend(rows.iter().filter(|row| row.kind == "APK").map(|row| row.pkg.clone()));
+    } else {
     let rf = match File::open(exact_rows_s) {
         Ok(v) => v,
         Err(e) => {
@@ -2815,8 +2915,8 @@ fn cmd_backup_prescan_exact_input(
         });
     }
 
-    let mut dir_map = HashMap::<(String, String), u64>::new();
-    if rows.iter().any(|r| r.kind == "DIR") {
+    }
+    if !prepared_input && rows.iter().any(|r| r.kind == "DIR") {
         let df = match File::open(dir_tar_map_s) {
             Ok(v) => v,
             Err(e) => {
@@ -6896,7 +6996,8 @@ fn cmd_stream_entry_finish(args: &[String]) -> i32 {
         };
         if !manifest.lines().any(|l| l == args[5]) {
             let mut f = OpenOptions::new().create(true).append(true).open(&args[16]).map_err(|e| e.to_string())?;
-            writeln!(f, "{}", args[5]).map_err(|e| e.to_string())?;
+            // Assemble the record before append: do not split path and newline into separate writes.
+            f.write_all(format!("{}\n", args[5]).as_bytes()).map_err(|e| e.to_string())?;
         }
         Ok((input.map(|v| v.to_string()).unwrap_or("-".into()), stored, rate))
     })();
@@ -8183,7 +8284,11 @@ fn cmd_appdetails_health_batch(args: &[String]) -> i32 {
     0
 }
 
-fn sha256_file_hex(path: &Path) -> std::io::Result<String> {
+pub(crate) fn sha256_file_hex(path: &Path) -> std::io::Result<String> {
+    sha256_reader_hex(File::open(path)?)
+}
+
+pub(crate) fn sha256_reader_hex(mut f: impl std::io::Read) -> std::io::Result<String> {
     const H0: [u32; 8] = [
         0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
         0x5be0cd19,
@@ -8201,7 +8306,6 @@ fn sha256_file_hex(path: &Path) -> std::io::Result<String> {
         0xc67178f2,
     ];
     let mut h = H0;
-    let mut f = File::open(path)?;
     let mut total_len: u64 = 0;
     let mut pending: Vec<u8> = Vec::with_capacity(8192 + 64);
     let mut buf = [0u8; 8192];
@@ -8573,7 +8677,20 @@ fn cmd_appdetails_bundle_manifest(args: &[String]) -> i32 {
             start.elapsed().as_millis()
         ));
     }
-    if total == 0 || bad > 0 || ok != total {
+    // Explicit manual deletion may remove the last App. Never infer emptiness
+    // from a failed/partial directory scan or from a directory without metadata.
+    let allow_empty = args.len() == 6 && args[5] == "allow-empty-manual-delete";
+    let empty_verified = allow_empty && total == 0 && fs::read_dir(root).and_then(|rd| {
+        for entry in rd {
+            let entry = entry?;
+            let kind = entry.file_type()?;
+            if !kind.is_file() || (entry.file_name() != "manifest.tsv" && entry.path() != tmp_manifest) {
+                return Err(io::Error::other("unknown entry remains in empty metadata stage"));
+            }
+        }
+        Ok(())
+    }).is_ok();
+    if (total == 0 && !empty_verified) || bad > 0 || ok != total {
         let _ = fs::remove_file(&tmp_manifest);
         println!("APPDETAILS_BUNDLE_MANIFEST\tBLOCK\ttotal={}\tok={}\tbad={}\tseen={}\telapsedMs={}\tschema=speedbackup.appdetails_bundle_manifest.v1", total, ok, bad, seen, start.elapsed().as_millis());
         return if total == 0 { 5 } else { 6 };
@@ -9604,7 +9721,7 @@ fn cmd_remote_orphan_plan(args: &[String]) -> i32 {
     if args.len() != 8 {
         return 2;
     }
-    match orphan_plan::run(
+    match orphan_plan::run_with_scope(
         Path::new(&args[2]),
         &args[3],
         &args[4],
@@ -9612,6 +9729,7 @@ fn cmd_remote_orphan_plan(args: &[String]) -> i32 {
         Path::new(&args[6]),
         &args[7],
         orphan_metadata_package,
+        args[1] == "remote-app-delete-plan",
     ) {
         Ok(summary) => {
             println!("{}", summary);
@@ -10036,6 +10154,7 @@ fn argv_utf8_or_exit() -> Vec<String> {
 
 pub(crate) fn file_rpc_dispatch(args: &[String]) -> i32 {
     match args.first().map(String::as_str) {
+        Some("terminal-host") => terminal_host::run(&args[1..]),
         Some("proc-fd-no-termux") => proc_fd_no_termux(&args[1..]),
         Some("internal-tree-clear") => internal_tree::command(&args[1..]),
         Some("internal-tree-clear-quiet") => internal_tree::quiet_command(&args[1..]),
@@ -10051,10 +10170,53 @@ pub(crate) fn file_rpc_dispatch(args: &[String]) -> i32 {
     }
 }
 
+// Replace this process with the grouping shell, bound to its immediate owner.
+// The post-prctl check closes the owner-death race before exec. SIGKILL cannot
+// be swallowed by an inherited trap; no grouping code runs on setup failure.
+fn smb_group_shell(args: &[std::ffi::OsString]) -> i32 {
+    use std::os::unix::process::CommandExt;
+    use std::os::raw::c_ulong;
+    unsafe extern "C" {
+        fn getppid() -> i32;
+        fn prctl(option: i32, a: c_ulong, b: c_ulong, c: c_ulong, d: c_ulong) -> i32;
+    }
+    if args.len() < 2 { return 2; }
+    let parent = unsafe { getppid() };
+    if parent <= 1 || unsafe { prctl(1, 9, 0, 0, 0) } != 0
+        || unsafe { getppid() } != parent {
+        eprintln!("smb-group-shell: owner lifetime guard failed");
+        return 125;
+    }
+    let error = std::process::Command::new("/system/bin/sh")
+        .arg("-c").args(args).exec();
+    eprintln!("smb-group-shell: shell exec failed: {error}");
+    125
+}
+
 pub(crate) fn run() {
+    // Root supervisor and short-lived UI servers also need protection before
+    // tools.sh is loaded. Children inherit it; never weaken an existing -1000.
+    unsafe extern "C" { fn getuid() -> u32; }
+    if unsafe { getuid() } == 0 {
+        let score=std::path::Path::new("/proc/self/oom_score_adj");
+        if std::fs::read_to_string(score).ok().and_then(|s|s.trim().parse::<i32>().ok()).is_some_and(|v|v > -900) {
+            if let Err(e)=std::fs::write(score,b"-900\n") { eprintln!("OOM_PROTECT speedscan failed: {e}"); }
+        }
+    }
+    // Shell paths and $0 may contain arbitrary non-NUL bytes. Keep this exec
+    // route byte-preserving; other commands retain their existing UTF-8 gate.
+    if crate::multicall::is_command("smb-group-shell") {
+        let raw: Vec<_> = crate::multicall::args_os().skip(2).collect();
+        std::process::exit(smb_group_shell(&raw));
+    }
     let args: Vec<String> = argv_utf8_or_exit();
     let rc = match args.get(1).map(|s| s.as_str()) {
+        Some("tool-sha-cache") => crate::tool_sha_cache::run(&args[2..]),
+        Some("file-transfer-metrics") => payload_stats::file_transfer_command(&args[2..]),
+        Some("live-query") => live_query::run(&args[2..]),
+        Some("smb-publisher") => crate::smb_publisher::run(&args[2..]),
         Some("file-daemon") => crate::file_rpc::command(&args[2..]),
+        Some("file-rpc-fresh-worker") => crate::file_rpc::fresh_worker(&args[2..]),
         Some("flash-info") => device_flash::run(&args[2..]),
         Some("ram-devinfo-read") => device_ram::reader(&args[2..]),
         Some("publish-file") => publish_file::run(&args[2..]),
@@ -10070,6 +10232,7 @@ pub(crate) fn run() {
         Some("android-policy-probe") => android_policy::command(&args[2..], "probe"),
         Some("selinux-external-stream") => android_policy::command(&args[2..],"external-stream"),
         Some("external-tree-check") => external_tree::command(&args[2..],false),
+        Some("terminal-host") => terminal_host::run(&args[2..]),
         Some("proc-fd-no-termux") => proc_fd_no_termux(&args[2..]),
         Some("internal-tree-clear") => internal_tree::command(&args[2..]),
         Some("internal-tree-clear-quiet") => internal_tree::quiet_command(&args[2..]),
@@ -10081,21 +10244,33 @@ pub(crate) fn run() {
         Some("cleanup-legacy-namespaces") => command_lifecycle::prune_legacy(&args[2..]),
         Some("lock-acquire") => restore_safety::lock(&args[2..], false),
         Some("lock-release") => restore_safety::lock(&args[2..], true),
+        Some("lock-legacy-snapshot") => restore_safety::lock_legacy_snapshot(&args[2..]),
         Some("lock-stop") => restore_safety::lock_stop(&args[2..]),
         Some("--version") | Some("version") => {
             println!("speedscan {VERSION} build={BUILD_VERSION}");
             0
         }
         Some("--capabilities") | Some("capabilities") => {
-            println!("speedscan.stream_bench.v1 speedscan.flash_info.v1");
+            println!("speedscan.stream_bench.v1 speedscan.flash_info.v1 speedscan.backup_prescan_plan.v1 speedscan.remote_maps.v1 speedscan.remaining_batch.v1 speedscan.changed_apps_plan.v1");
             println!("speedscan.restore_package_maps.v1");
-            println!("speedscan.owned_bounded_run.v1 speedscan.facts_result.v1 speedscan.profile_finalize_stage.v1 speedscan.stream_entry_finish.v1 speedscan.json_ops.v1 speedscan.profile_transform.v1 speedscan.profile_backup_map.v1 speedscan.bundle_audit_fields.v1 speedscan.app_permissions.android_policy.v2 speedscan.process_lease.v1 speedscan.process_lease_stop.v1 speedscan.backup_run_model.v1 speedscan.backup_plan_coverage.v1 speedscan.tar_source_manifest.v1 speedscan.restore_source_verify.v1 speedscan.debug_consolidate.v1 speedscan.payload_stats.v1 speedscan.restore_tree_audit_bytes.v1 speedscan.result_contract.v1 speedscan.remote_orphan_plan.v1 speedscan.restore_tree_manifest_bytes.v1 speedscan.appdetails_seed_index_strict_meta.v1 speedscan.appdetails_seed_index.v1 speedscan.backup_prescan_exact_input_batch.v1 speedscan.tar_input_hardlink_type_safe.v1 speedscan.dir_size_tar_input_map.v1 speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.posix_recursive_scan.v1 speedscan.dir_size_map_workers.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan.v1 speedscan.local_fastskip_presize_plan_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_audit_seed_expansion.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.rust_convergence_source.v1 speedscan.full_convergence_stage3.v1");
+            println!("speedscan.owned_bounded_run.v1 speedscan.facts_result.v1 speedscan.profile_finalize_stage.v1 speedscan.stream_entry_finish.v1 speedscan.smb_publisher.v1 speedscan.json_ops.v1 speedscan.profile_transform.v1 speedscan.profile_backup_map.v1 speedscan.bundle_audit_fields.v1 speedscan.app_permissions.android_policy.v2 speedscan.process_lease.v1 speedscan.process_lease_stop.v1 speedscan.backup_run_model.v1 speedscan.backup_plan_coverage.v1 speedscan.tar_source_manifest.v1 speedscan.restore_source_verify.v1 speedscan.debug_consolidate.v1 speedscan.payload_stats.v1 speedscan.restore_tree_audit_bytes.v1 speedscan.result_contract.v1 speedscan.remote_app_select.v1 speedscan.remote_orphan_plan.v1 speedscan.restore_tree_manifest_bytes.v1 speedscan.appdetails_seed_index_strict_meta.v1 speedscan.appdetails_seed_index.v1 speedscan.backup_prescan_exact_input_batch.v1 speedscan.tar_input_hardlink_type_safe.v1 speedscan.dir_size_tar_input_map.v1 speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.posix_recursive_scan.v1 speedscan.dir_size_map_workers.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan.v1 speedscan.local_fastskip_presize_plan_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_audit_seed_expansion.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.rust_convergence_source.v1 speedscan.full_convergence_stage3.v1");
             0
         }
+        Some("applist-web") => applist_web::run(&args[2..]),
+        Some("restore-catalog") => restore_catalog::run(&args[2..]),
+        Some("selection-web") => applist_web::selection(&args[2..]),
+        Some("console-start") => { let mut v=vec!["start".to_string()];v.extend_from_slice(&args[2..]);applist_web::console(&v) },
+        Some("console-service") => { let mut v=vec!["service".to_string()];v.extend_from_slice(&args[2..]);applist_web::console(&v) },
+        Some("menu-web") => applist_web::menu(&args[2..]),
+        Some("web-focus-origin") => applist_web::focus_origin(&args[2..]),
+        Some("web-origin-prepare") => applist_web::prepare_origin(&args[2..]),
         Some("applist-merge") => crate::applist::run(&args[2..]),
         Some("dir-size") if args.len() >= 3 => cmd_dir_size(&args[2]),
         Some("dir-size-map") if args.len() >= 3 => cmd_dir_size_map(&args[2]),
         Some("dir-size-manifest") if args.len() >= 11 => cmd_dir_size_manifest(&args),
+        Some("smb-entries" | "smb-plan" | "smb-list" | "smb-snapshot" | "upload-map" | "remote-list-filter" | "upload-dirs" | "changed-apps-plan") => {
+            match remote_maps::run(&args[1..]) { Ok(()) => 0, Err(error) => { eprintln!("speedscan: remote facts rejected: {error}"); 3 } }
+        }
         Some("tsv-decimal-sum") if args.len() >= 4 => cmd_tsv_decimal_sum(&args[2], &args[3]),
         Some("file-list") if args.len() >= 3 => cmd_file_list(&args[2]),
         Some("list-total-size") if args.len() >= 3 => cmd_list_total_size(&args[2]),
@@ -10138,7 +10313,14 @@ pub(crate) fn run() {
         }
         Some("apk-size-map") if args.len() >= 4 => cmd_apk_size_map(&args[2], &args[3]),
         Some("backup-prescan-exact-input") if args.len() >= 7 => {
-            cmd_backup_prescan_exact_input(&args[2], &args[3], &args[4], &args[5], &args[6])
+            cmd_backup_prescan_exact_input(&args[2], &args[3], &args[4], &args[5], &args[6], None)
+        }
+        Some("backup-prescan-plan") if args.len() == 9 => {
+            let root = Path::new(&args[3]);
+            match prescan_rows::generate(&args[2], root, args[6] == "true", args[7] == "true", args[8] == "true") {
+                Ok(plan) => cmd_backup_prescan_exact_input("in-memory", "in-memory", &root.join(".pkg_apk_paths").to_string_lossy(), &args[4], &args[5], Some(plan)),
+                Err(error) => { eprintln!("speedscan: prescan plan rejected: {error}"); 3 }
+            }
         }
         Some("backup-prescan-summary") if args.len() >= 10 => {
             cmd_backup_prescan_summary(CmdBackupPrescanSummaryArgs {
@@ -10227,6 +10409,12 @@ pub(crate) fn run() {
             args.get(6).map(|s| s.as_str()).unwrap_or("-"),
         ),
         Some("selected-apps-map") if args.len() >= 5 => cmd_selected_apps_map(&args),
+        Some("backup-update-plan") => profile::backup_update_plan(&args[2..]),
+        Some("media-entry-plan") if args.len() == 4 => media_entry_plan(&args[2], &args[3]),
+        Some("media-selected-plan") if args.len() == 6 => media_selected_plan(&args[2], &args[3], &args[4], &args[5]),
+        Some("restore-ssaid-state") if args.len() == 8 => profile::restore_ssaid_state(&args[2..]),
+        Some("restore-ssaid-plan") if args.len() == 4 => profile::restore_ssaid_plan(&args[2], &args[3]),
+        Some("restore-ssaid-batch") if args.len() == 3 => profile::restore_ssaid_batch(&args[2]),
         Some("json") => profile::json_run(&args),
         Some("payload-presence" | "frame-stream") => workflow::run(&args),
         Some("profile") => profile::run(&args),
@@ -10249,7 +10437,19 @@ pub(crate) fn run() {
         Some("restore-tree-audit-bytes") if args.len() == 4 => {
             restore_manifest::unix::audit(&args[2], &args[3])
         }
-        Some("remote-orphan-plan") => cmd_remote_orphan_plan(&args),
+        Some("appdetails-empty-bundle") if args.len() == 3 => {
+            match orphan_plan::empty_bundle(Path::new(&args[2])) { Ok(true) => 0, _ => 1 }
+        },
+        Some("remote-orphan-plan" | "remote-app-delete-plan") => cmd_remote_orphan_plan(&args),
+        Some("remote-app-select") if args.len() == 5 => {
+            let result = (|| -> std::io::Result<()> {
+                let rows = fs::read_to_string(&args[2])?;
+                let selection = fs::read_to_string(&args[3])?;
+                let selected = orphan_plan::select_rows(&rows, &selection)?;
+                fs::write(&args[4], selected)
+            })();
+            match result { Ok(()) => 0, Err(e) => { eprintln!("REMOTE_APP_SELECT FAIL {e}"); 4 } }
+        },
         Some("remote-manifest-plan") if args.len() >= 6 => cmd_remote_manifest_plan(&args),
         Some("restore-payload-plan") if args.len() >= 5 => cmd_restore_payload_plan(&args),
         Some("manifest-diff-cache-index") if args.len() >= 11 => {

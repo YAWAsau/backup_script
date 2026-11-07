@@ -31,13 +31,14 @@ final class GoogleAccountNames {
     static List<Account> read(int user) throws Exception {
         return read(user,false);
     }
+    static List<Account> fresh(int user)throws Exception { return read(user,true); }
     private static List<Account> read(int user,boolean fresh) throws Exception {
         TimelineDatabase.require(user>=0&&user<=1000,"user_invalid");
         List<Account> result=new ArrayList<>();
         if(!new File("/data/user/"+user+"/com.google.android.gms").isDirectory())return result;
         File file=new File("/data/system_ce/"+user+"/accounts_ce.db");
         if(!file.isFile())return result;
-        return GoogleAccountCache.read(file,new File("/data/.speedbackup_account_names"),user,fresh);
+        return GoogleAccountCache.read(file,new File("/data/.speedbackup/account_names"),user,fresh);
     }
     // Only called with an owned private copy, never with the system account database.
     static List<Account> queryCopy(File file) throws Exception {
@@ -59,7 +60,7 @@ final class GoogleAccountNames {
     static Account select(int user,String selector) throws Exception {
         // A display cache must never authorize backup/restore account binding.
         List<Account> accounts=read(user,true); Account found=null;
-        for(Account account:accounts)if(selector==null||selector.isEmpty()||selector.equals(account.selector)) {
+        for(Account account:accounts)if(selector==null||selector.isEmpty()||(selector.equals(account.selector)||selector.equals(TimelineArchiveV3.selector(account.gaia)))) {
             TimelineDatabase.require(found==null,"timeline_target_account_required"); found=account;
         }
         TimelineDatabase.require(found!=null,"timeline_target_account_unavailable");return found;
@@ -94,7 +95,7 @@ final class GoogleAccountNames {
     }
     static String fields(int user)throws Exception {
         StringBuilder out=new StringBuilder();
-        for(Account a:read(user,true))out.append(a.selector).append('\t').append(label(a)).append('\n');
+        for(Account a:read(user,true)){out.append(TimelineArchiveV3.selector(a.gaia)).append('\t').append(label(a)).append('\n');out.append(a.selector).append('\t').append(label(a)).append('\n');}
         return out.toString();
     }
     static String greeting(int user) {

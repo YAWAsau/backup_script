@@ -302,7 +302,7 @@ try {
     if (Test-Path -LiteralPath $repositoryTools -PathType Leaf) { $toolsFile = $repositoryTools }
     if (Test-Path -LiteralPath $toolsFile -PathType Leaf) {
         $text = [IO.File]::ReadAllText($toolsFile)
-        $table = [regex]::Match($text, "(?ms)^\tcat <<'SB_TOOL_SHA_TABLE'\r?\n.*?^SB_TOOL_SHA_TABLE\r?$")
+        $table = [regex]::Match($text, "(?ms)^\tdone <<'SB_TOOL_SHA_TABLE'\r?\n.*?^SB_TOOL_SHA_TABLE\r?$")
         if (-not $table.Success) { throw 'Cannot find the runtime SHA table in tools.sh' }
         $updated = $table.Value
         foreach ($bin in $Bins) {

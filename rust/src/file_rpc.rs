@@ -4,7 +4,7 @@ use std::os::raw::{c_int, c_void};
 use std::{
     fs::{self, OpenOptions},
     io::{self, Read, Write},
-    os::fd::AsRawFd,
+    os::fd::{AsRawFd, FromRawFd, OwnedFd},
     os::unix::{
         fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
         net::{UnixListener, UnixStream},
@@ -13,6 +13,8 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
 };
+// Bump only when file-operation framing/semantics become incompatible.
+const FILE_CONTRACT: &[u8] = b"speedbackup.file-operations.v1";
 const MAX: usize = 65536;
 const OUTPUT: usize = 1048576;
 const MAX_RECEIPTS: usize = 16384;
@@ -39,6 +41,7 @@ struct PollFd {
     revents: i16,
 }
 extern "C" {
+    fn syscall(number: std::os::raw::c_long, ...) -> std::os::raw::c_long;
     fn poll(fds: *mut PollFd, count: usize, timeout: c_int) -> c_int;
     fn geteuid() -> u32;
     fn getppid() -> c_int;
@@ -229,6 +232,7 @@ fn run_worker(
     owner_start: &str,
     ms: u64,
     close_fds: &[c_int],
+    fresh_exec: bool,
 ) -> io::Result<(i32, Vec<u8>)> {
     // Descendants retain this lease through exec. A killed broker cannot allow a
     // replacement broker to overlap a worker still blocked in kernel I/O.
@@ -266,6 +270,17 @@ fn run_worker(
             }
         }
         drop(writer);
+        if fresh_exec {
+            use std::os::unix::process::CommandExt;
+            // During exec only the leader exists. SIGKILL closes the handler-reset
+            // window; the entry point rearms group cancellation before dispatch.
+            if unsafe { prctl(1, 9, 0, 0, 0) } != 0 || unsafe { getppid() } != parent { unsafe { _exit(125); } }
+            // Execute this inode, even if an update replaced/unlinked its path.
+            // Resolving current_exe() to a pathname could mix runtime versions.
+            let _=std::process::Command::new("/proc/self/exe").arg("speedscan").arg("file-rpc-fresh-worker")
+                .arg(parent.to_string()).args(args).exec();
+            unsafe { _exit(125); }
+        }
         let rc = super::speedscan::file_rpc_dispatch(args);
         let _ = io::stdout().flush();
         let _ = io::stderr().flush();
@@ -278,6 +293,10 @@ fn run_worker(
     unsafe {
         setpgid(pid, pid);
     }
+    // pidfd readiness wakes us on worker exit without the former 20 ms tail.
+    // Unsupported/blocked kernels retain the bounded polling fallback.
+    let raw_pidfd = unsafe { syscall(434, pid as std::os::raw::c_long, 0 as std::os::raw::c_long) };
+    let pidfd = if raw_pidfd >= 0 { Some(unsafe { OwnedFd::from_raw_fd(raw_pidfd as c_int) }) } else { None };
     let deadline = Instant::now() + Duration::from_millis(ms);
     let mut output = Vec::new();
     let mut status = 0;
@@ -376,6 +395,13 @@ fn run_worker(
         }
         let mut events = [
             PollFd {
+                // Before EOF, retain the pipe-driven handling of descendants;
+                // a ready zombie pidfd would otherwise busy-spin.
+                fd: if eof { pidfd.as_ref().map_or(-1, AsRawFd::as_raw_fd) } else { -1 },
+                events: 1,
+                revents: 0,
+            },
+            PollFd {
                 fd: if eof { -1 } else { reader.as_raw_fd() },
                 events: 1,
                 revents: 0,
@@ -452,6 +478,7 @@ fn serve(socket: &Path, owner: i32, owner_start: &str) -> io::Result<()> {
         signal(13, 1);
     }
     let mut accepted = 0usize;
+    let mut policy_cache = super::speedscan::FileContextCache::default();
     while !STOP.load(Ordering::Relaxed) && starttime(owner).ok().as_deref() == Some(owner_start) {
         let (mut s, _) = match listener.accept() {
             Ok(v) => v,
@@ -489,7 +516,7 @@ fn serve(socket: &Path, owner: i32, owner_start: &str) -> io::Result<()> {
                 id,
                 "hello",
                 0,
-                speedbackup_native_rs::BUILD_VERSION.as_bytes(),
+                FILE_CONTRACT,
             );
             continue;
         }
@@ -546,6 +573,7 @@ fn serve(socket: &Path, owner: i32, owner_start: &str) -> io::Result<()> {
             record.write_all(b"not-started\n")?;
             continue;
         }
+        let fresh_exec=policy_cache.prepare(fields[4] == "app-permissions");
         let (state, rc, body) = match run_worker(
             &mut s,
             &listener,
@@ -554,6 +582,7 @@ fn serve(socket: &Path, owner: i32, owner_start: &str) -> io::Result<()> {
             owner_start,
             ms,
             &[lock.as_raw_fd(), record.as_raw_fd()],
+            fresh_exec,
         ) {
             Ok((rc, body)) => ("done", rc, body),
             Err(_) => ("not-started", 124, Vec::new()),
@@ -579,4 +608,13 @@ pub fn command(args: &[String]) -> i32 {
             1
         }
     }
+}
+
+// Internal exec continuation. No tree access occurs before parent/group checks.
+pub(crate) fn fresh_worker(args: &[String]) -> i32 {
+    let parent=match args.first().and_then(|s|s.parse::<i32>().ok()) {Some(p) if p>1=>p,_=>return 125};
+    if unsafe { geteuid() }!=0 || unsafe { getpgrp() }!=std::process::id() as i32 || !permitted(&args[1..]) {return 125;}
+    unsafe { signal(10,parent_died as *const () as usize); }
+    if unsafe { prctl(1,10,0,0,0) }!=0 || unsafe { getppid() }!=parent { parent_died(10); return 125; }
+    super::speedscan::file_rpc_dispatch(&args[1..])
 }

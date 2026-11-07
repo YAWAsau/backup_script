@@ -56,6 +56,9 @@ fn facts(sys: &Path, proc: &Path) -> (String, String, Option<String>) {
             }
         }
     }
+    if model.is_empty() && proc == Path::new("/proc") {
+        if let Some(value) = super::device_ram::mv_fallback().and_then(|f|f.flash) {model=value;kind="UFS".into();}
+    }
     if model.is_empty() { model = "unknown".to_owned(); }
     let mut manufactured = None;
     if kind == "UFS" {

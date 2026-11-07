@@ -7,7 +7,7 @@ function Read-SpeedBackupVersions([string]$RootDirectory) {
     foreach ($rawLine in [IO.File]::ReadAllLines($path)) {
         $line = $rawLine.Trim()
         if (-not $line -or $line.StartsWith('#')) { continue }
-        if ($line -cnotmatch '^([a-z]+)=(v[1-9][0-9]{2})$') { throw "Invalid version entry: $line" }
+        if ($line -cnotmatch '^([a-z]+)=(v[1-9][0-9]{2,3})$') { throw "Invalid version entry: $line" }
         $key, $value = $Matches[1], $Matches[2]
         if ($keys -cnotcontains $key) { throw "Unknown version component: $key" }
         if ($values.Contains($key)) { throw "Duplicate version component: $key" }

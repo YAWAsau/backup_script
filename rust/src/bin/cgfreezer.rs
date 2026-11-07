@@ -16,6 +16,8 @@ use std::cell::RefCell;
 
 #[path = "../subscription_watch.rs"]
 mod subscription_watch;
+#[path = "../cgroup_lease.rs"]
+mod cgroup_lease;
 
 #[derive(Clone, Copy)]
 struct CgfreezerPrintSink {
@@ -131,7 +133,7 @@ struct SockAddrUn {
 }
 
 extern "C" {
-    fn open(path: *const c_char, flags: c_int, mode: u32) -> c_int;
+    fn open(path: *const c_char, flags: c_int, ...) -> c_int;
     fn close(fd: c_int) -> c_int;
     fn write(fd: c_int, buf: *const c_void, count: usize) -> isize;
     fn ioctl(fd: c_int, request: c_ulong, argp: *mut c_void) -> c_int;
@@ -809,6 +811,11 @@ fn wait_frozen(freeze_path: &Path, expected: char, timeout_ms: i64) -> (bool, ch
             if f == expected {
                 return (true, last_frozen, start.elapsed().as_millis() as i64);
             }
+        } else if matches!(fs::symlink_metadata(&events_path), Err(ref e) if e.kind()==std::io::ErrorKind::NotFound) {
+            // A deleted cgroup cannot reach the requested state. Do not hold
+            // the daemon's event queue until the full freeze timeout; callers
+            // still reconcile the original PID/path and treat live failures as errors.
+            break;
         }
         if start.elapsed().as_millis() as i64 >= deadline_ms {
             break;
@@ -834,7 +841,24 @@ fn freeze_peer_closed() -> bool {
     })
 }
 
+fn freeze_lease_uncertain(pid:i32,path:&Path,legacy_rc:i32) -> i32 {
+    if !cgroup_lease::enabled() { return legacy_rc; }
+    let _=cgroup_lease::begin_release(pid,&path.to_string_lossy());
+    println!("CGFREEZER_FREEZE_UNCERTAIN pid={} noRetry=true stateRetained=true",pid);
+    74
+}
+
 fn cmd_freeze_pid_v2(pid: i32, timeout_ms: i64) -> i32 {
+    let rc=cmd_freeze_pid_v2_inner(pid,timeout_ms);
+    // Diagnostics never delay the freeze attempt. All returns (including failure)
+    // drain this call's pending evidence before another PID can be processed.
+    if cgroup_lease::finish_warning(rc).is_err() {
+        cgroup_lease::block("warning_persist_failed_after_refreeze");
+        return 74;
+    }
+    rc
+}
+fn cmd_freeze_pid_v2_inner(pid: i32, timeout_ms: i64) -> i32 {
     let st = Instant::now();
     let uid = parse_status_uid_c(pid);
     let cmd = read_cmdline_c(pid, 512).unwrap_or_default();
@@ -901,6 +925,10 @@ fn cmd_freeze_pid_v2(pid: i32, timeout_ms: i64) -> i32 {
 
     let already_frozen = before_freeze == '1' || before_frozen == '1';
     if !freeze_identity_valid(pid) { return 4; }
+    if !already_frozen && cgroup_lease::prepare(pid, uid, &path).is_err() {
+        println!("CGFREEZER_FREEZE_DONE ok=false pid={} reason=lease_not_durable noRetry=true", pid);
+        return 74;
+    }
     let binder_before = binder_get_status(pid);
     let binder_attempted = !already_frozen;
     let binder_freeze = if !already_frozen {
@@ -911,16 +939,17 @@ fn cmd_freeze_pid_v2(pid: i32, timeout_ms: i64) -> i32 {
     let binder_should_restore = binder_attempted && binder_freeze.ok;
     let binder_barrier_ok = !binder_attempted || binder_freeze.ok || !binder_freeze.supported;
     if !binder_barrier_ok {
+        if cgroup_lease::released(pid, &path.to_string_lossy()).is_err() { return freeze_lease_uncertain(pid,&path,4); }
         println!("CGFREEZER_FREEZE_DONE ok=false pid={} uid={} reason=binder_barrier_failed binderErrno={} elapsedMs={}",
             pid, uid, binder_freeze.err, monotonic_ms(&st));
         return 4;
     }
     if freeze_peer_closed() {
         if binder_should_restore { let _ = binder_freeze_set(pid, false, 0); }
-        return 75;
+        return if !already_frozen { freeze_lease_uncertain(pid,&path,75) } else {75};
     }
 
-    if !freeze_identity_valid(pid) { return 4; }
+    if !freeze_identity_valid(pid) { return if !already_frozen {freeze_lease_uncertain(pid,&path,4)} else {4}; }
     if let Err(e) = write_file_c(&path.to_string_lossy(), "1\n") {
         if binder_should_restore {
             let _ = binder_freeze_set(pid, false, 0);
@@ -932,7 +961,7 @@ fn cmd_freeze_pid_v2(pid: i32, timeout_ms: i64) -> i32 {
             binder_attempted, if already_frozen { "already_frozen" } else { "false" },
             binder_fields("before", &binder_before), binder_fields("freeze", &binder_freeze), monotonic_ms(&st)
         );
-        return 5;
+        return if !already_frozen {freeze_lease_uncertain(pid,&path,5)} else {5};
     }
 
     let rb = normalize_freeze(&read_file_c(&path.to_string_lossy(), 64).unwrap_or_default());
@@ -956,7 +985,7 @@ fn cmd_freeze_pid_v2(pid: i32, timeout_ms: i64) -> i32 {
     if ok {
         0
     } else {
-        6
+        if !already_frozen {freeze_lease_uncertain(pid,&path,6)} else {6}
     }
 }
 
@@ -1299,6 +1328,32 @@ fn cmd_thaw_pid_v1(pid: i32, orig_procs: &str, target: char, _timeout_ms: i64) -
 /// cgroup.procs file; otherwise writes target ('0'/'1') directly to a v2
 /// cgroup.freeze-style path and verifies via cgroup.events, coordinating a
 /// binder unfreeze when actually thawing (target=='0') with a known pid.
+// One worker, original ordered per-entry thaw rules. Parse the entire bounded
+// plan before mutation; recheck the live process identity immediately per row.
+fn cmd_thaw_batch(pkg:&str,user:i32,timeout:i64,raw:&str) -> i32 {
+    if !is_valid_pkg_name(pkg) || user<0 || raw.len()>3600 { return 64; }
+    let mut rows=Vec::new();
+    for row in raw.split(',') {
+        let a:Vec<_>=row.split(':').collect();
+        if a.len()!=4 || a[3].bytes().any(|b|b.is_ascii_whitespace()) { return 64; }
+        let (Ok(pid),Ok(uid),Ok(start))=(a[0].parse::<i32>(),a[1].parse::<i32>(),a[2].parse::<u64>()) else { return 64; };
+        if pid<=1 || uid<10000 || start==0 || user_id_from_uid_rs(uid as u32)!=user || !valid_thaw_control(a[3],true) { return 64; }
+        rows.push((pid,uid,start,a[3]));
+    }
+    if rows.is_empty() || rows.len()>MAX_UID_PIDS { return 64; }
+    let mut restored=0;
+    for (index,(pid,uid,start,path)) in rows.iter().enumerate() {
+        let identity=snapshot_package_target(*pid,pkg,user);
+        let ok=identity.is_some_and(|p|p.uid==*uid && p.start_time==*start)
+            && cmd_thaw_pid(*pid,path,"0",timeout)==0;
+        if ok { restored+=1; }
+        println!("CGFREEZER_THAW_BATCH_ENTRY index={} pid={} ok={}",index,pid,ok);
+    }
+    let failed=rows.len()-restored;
+    println!("CGFREEZER_THAW_BATCH_DONE ok={} checked={} restored={} failed={}",failed==0,rows.len(),restored,failed);
+    if failed==0 {0} else {4}
+}
+
 fn cmd_thaw_path_internal(
     pid: i32,
     path: &str,
@@ -1319,6 +1374,7 @@ fn cmd_thaw_path_internal(
     }
     let value = format!("{}\n", target);
     if let Err(e) = write_file_c(path, &value) {
+        if target=='0' { let _=cgroup_lease::begin_release(pid,path); }
         println!("CGFREEZER_THAW_DONE ok=false pid={} path={} target={} reason=write_errno_{} elapsedMs={}",
             if have_pid { pid } else { -1 }, shell_sanitize(path), target, e.raw_os_error().unwrap_or(-1), monotonic_ms(&st));
         return 3;
@@ -1335,7 +1391,11 @@ fn cmd_thaw_path_internal(
     };
     let binder_ok = !binder_attempted || binder_thaw.ok || !binder_thaw.supported
         || matches!(binder_thaw.err, EINVAL | 2 | 3); // No live Binder target remains.
-    let ok = cgroup_ok && binder_ok;
+    let mut ok = cgroup_ok && binder_ok;
+    if target=='0' {
+        let result=if ok { cgroup_lease::complete_release(pid,path) } else { cgroup_lease::begin_release(pid,path) };
+        if result.is_err() { ok=false; }
+    }
     println!(
         "CGFREEZER_THAW_DONE ok={} pid={} path={} target={} readback={} eventOk={} frozen={} waitMs={} cgroupOk={} binderAttempted={} binderSkipped={} reason={}{} binderRestoreOk={} elapsedMs={}",
         ok, if have_pid { pid } else { -1 }, shell_sanitize(path), target, rb, event_ok, last_frozen, wait_elapsed, cgroup_ok,
@@ -1527,6 +1587,7 @@ fn cmd_thaw_scope(uid_u: u32, timeout: i64, package: Option<(&str, i32)>) -> i32
             fs::metadata(parent).is_err_and(|e| e.kind() == io::ErrorKind::NotFound)) {
             ev = true;
         }
+        if cgroup_lease::begin_release(-1,p).is_err() { ev=false; }
         if ev {
             ok_paths += 1;
         } else {
@@ -1586,6 +1647,12 @@ fn cmd_thaw_scope(uid_u: u32, timeout: i64, package: Option<(&str, i32)>) -> i32
     let (mut binder_ok, mut binder_fail, mut binder_unsupported) = (0u64, 0u64, 0u64);
     for pid in &pids {
         let bs = binder_freeze_set(*pid, false, 0);
+        let binder_released=bs.ok || !bs.supported || matches!(bs.err,ENOTTY|EINVAL|2|3);
+        if binder_released {
+            if let Some(path)=cg_v2_dir_for_pid(*pid).map(|p|p.join("cgroup.freeze")) {
+                if paths.iter().any(|p|Path::new(p)==path) && cgroup_lease::complete_release(*pid,&path.to_string_lossy()).is_err() { binder_fail+=1; }
+            }
+        }
         if bs.ok {
             binder_ok += 1;
         } else if !bs.supported || bs.err == ENOTTY || bs.err == EINVAL || bs.err == 2 /*ENOENT*/ || bs.err == 3
@@ -2006,6 +2073,7 @@ fn cmd_freeze_pid_list(user: i32, target: &str, timeout_in: i64) -> i32 {
         let cmd = read_cmdline_c(pid, 512).unwrap_or_default();
         let pkg = cmd.split(':').next().unwrap_or("");
         let rc = cmd_freeze_pid_checked(pid, timeout, pkg, user_id_from_uid_rs(uid as u32));
+        if rc==74 { return 74; }
         if rc == 0 {
             frozen += 1;
         } else {
@@ -2124,6 +2192,7 @@ fn cmd_freeze_package(pkg: &str, user_id: i32, timeout_in: i64) -> i32 {
         EXPECTED_FREEZE.with(|slot| *slot.borrow_mut() = Some(identity.clone()));
         let rc = cmd_freeze_pid(t.pid, timeout_ms);
         EXPECTED_FREEZE.with(|slot| *slot.borrow_mut() = None);
+        if rc==74 { return 74; }
         if rc != 0 {
             failed += 1;
             println!("CGFREEZER_FREEZE_PKG_ENTRY ok=false package={} user={} pid={} uid={} process={} rc={} reason=freeze_failed", shell_sanitize(pkg), user_id, t.pid, t.uid, shell_sanitize(&t.process), rc);
@@ -3845,9 +3914,11 @@ struct StatClass {
 #[derive(Clone)]
 struct DaemonChild {
     pid: i32,
+    identity_start: u64,
     class: usize,
     start: Instant,
     command: String,
+    release_paths: Vec<String>,
 }
 
 struct DaemonStats {
@@ -3871,6 +3942,9 @@ struct DaemonStats {
 }
 
 impl DaemonStats {
+    fn active_mutators(&self) -> usize {
+        self.children.iter().filter(|c| c.command != "SUBSCRIBE").count()
+    }
     fn active_children(&self) -> usize {
         self.children.len()
     }
@@ -3993,9 +4067,11 @@ fn daemon_child_add(
         .collect();
     stats.children.push(DaemonChild {
         pid,
+        identity_start: read_proc_start_time(pid).unwrap_or(0),
         class,
         start,
         command,
+        release_paths: Vec::new(),
     });
 }
 
@@ -4013,6 +4089,13 @@ fn daemon_child_remove(stats: &mut DaemonStats, pid: i32, status: c_int) {
     if let Some(pos) = stats.children.iter().position(|c| c.pid == pid) {
         let child = stats.children.remove(pos);
         let failed = !(wifexited(status) && wexitstatus(status) == 0);
+        if !failed && !child.release_paths.is_empty() {
+            // Successful scoped release has durably disarmed the whole group.
+            // Other groups did not change; keep their existing event descriptors.
+            for path in &child.release_paths { cgroup_lease::released_watch(path); }
+        } else if child.command.starts_with("FREEZE") || child.command.starts_with("THAW") {
+            cgroup_lease::dirty();
+        }
         daemon_stat_note_done(
             stats,
             child.class,
@@ -4020,6 +4103,10 @@ fn daemon_child_remove(stats: &mut DaemonStats, pid: i32, status: c_int) {
             failed,
         );
         if failed {
+            if child.command.starts_with("FREEZE") || child.command.starts_with("THAW") {
+                if child.release_paths.is_empty() { cgroup_lease::queue_recovery(pid,child.identity_start); }
+                else { cgroup_lease::queue_release_recovery(child.release_paths.clone()); }
+            }
             stats.last_failed_command = child.command;
             stats.last_worker_pid = pid;
             stats.last_worker_exit = if wifexited(status) {
@@ -4216,6 +4303,9 @@ fn handle_worker_to<W: Write>(args: &[String], out: &mut W) -> i32 {
                     }
                 }
             }
+            Some("THAW_BATCH") => {
+                if args.len()!=5 {64} else {cmd_thaw_batch(&args[1],parse_i(args.get(2),-1),bounded_timeout_ms(parse_ms(args.get(3),1500),1500),&args[4])}
+            }
             Some("THAW_PKG") => {
                 if args.len() < 4 { 64 } else {
                     cmd_thaw_package(&args[1], parse_i(args.get(2), -1), bounded_timeout_ms(parse_ms(args.get(3), 700), 700))
@@ -4334,6 +4424,12 @@ fn handle_parent(line: &str, stats: &DaemonStats, socket: &str) -> Option<(bool,
     // argv[0]; trailing tokens do not force the command into worker dispatch.
     let cmd = daemon_ascii_fields(line, 1).into_iter().next()?;
     match cmd {
+        "RECOVER_LEASES" => {
+            let ok=stats.active_mutators()==0 && cgroup_lease::recover(None,false).is_ok();
+            if !ok { cgroup_lease::block("recover_command_failed"); }
+            cgroup_lease::dirty();
+            Some((false,format!("CGFREEZER_LEASE_RECOVERY_DONE ok={} activeChildren={}\n",ok,stats.active_children())))
+        }
         "HELLO" => Some((false, format!("CGFREEZER_DAEMON_HELLO ok=true pid={} protocol={} parentDirect=true\n", std::process::id(), PROTOCOL))),
         "CAPS" => Some((false, format!("CGFREEZER_DAEMON_CAPS ok=true protocol={} caps={} parentDirect=true\n", PROTOCOL, CAPS))),
         "PING" => Some((false, format!("CGFREEZER_DAEMON_PONG ok=true pid={} uptimeMs={} activeChildren={}\n", std::process::id(), uptime, stats.active_children()))),
@@ -4454,6 +4550,11 @@ fn cmd_daemon(socket_path: &str) -> i32 {
             return 6;
         }
     };
+    if let Err(e) = cgroup_lease::configure(socket_path) {
+        cgroup_lease::block("configure_failed");
+        eprintln!("CGFREEZER_DAEMON_START ok=false reason=lease_recovery error={e}");
+        return 74;
+    }
     match daemon_socket_available(socket_path) {
         Ok(true) => {}
         Ok(false) => { println!("CGFREEZER_DAEMON_START ok=false reason=already_running"); return 6; }
@@ -4540,14 +4641,42 @@ fn cmd_daemon(socket_path: &str) -> i32 {
     println!("CGFREEZER_DAEMON_START ok=true pid={} socket={} protocol={} parentControl=true backendPreferred={} backendReason={} backendProbeMs={}",
         std::process::id(), shell_sanitize(socket_path), PROTOCOL, backend_preferred, shell_sanitize(&backend_reason), backend_probe_ms);
 
+    let mut lease_owner_check = Instant::now();
     while G_RUNNING.load(Ordering::Relaxed) {
         reap_children_nonblock(&mut stats);
-        let mut ready = DaemonPollFd {
+        if lease_owner_check.elapsed() >= Duration::from_secs(1) {
+            lease_owner_check=Instant::now();
+            if cgroup_lease::owner_gone() {
+                cgroup_lease::block("owner_gone");
+                daemon_stop_children_bounded(&mut stats);
+                if stats.active_mutators()==0 {
+                    if let Err(e)=cgroup_lease::recover(None,false) {
+                        eprintln!("CGFREEZER_OWNER_RECOVERY_FAILED error={e}");
+                    }
+                }
+                break;
+            }
+        }
+        if stats.active_mutators()==0 {
+            if let Err(e)=cgroup_lease::drain_recovery() {
+                cgroup_lease::block("worker_recovery_failed");
+                eprintln!("CGFREEZER_LEASE_RECOVERY_FAILED error={e}");
+            }
+            if let Err(e)=cgroup_lease::service_watches() {
+                cgroup_lease::block("watch_failed");
+                eprintln!("CGFREEZER_SCOPE_WATCH_FAILED error={e}");
+            }
+        }
+        let mut ready = vec![DaemonPollFd {
             fd: listen_fd,
             events: 1,
             revents: 0,
-        };
-        if unsafe { poll(&mut ready, 1, 100) } <= 0 {
+        }];
+        if stats.active_mutators()==0 && !cgroup_lease::blocked() { ready.extend(cgroup_lease::watch_pollfds()); }
+        if unsafe { poll(ready.as_mut_ptr(), ready.len(), 100) } <= 0 {
+            continue;
+        }
+        if ready[0].revents & 1 == 0 {
             continue;
         }
         let cfd = unsafe {
@@ -4583,6 +4712,9 @@ fn cmd_daemon(socket_path: &str) -> i32 {
         let line = String::from_utf8_lossy(&raw[..used]).into_owned();
         // Children may have exited while accept/read was blocked.
         reap_children_nonblock(&mut stats);
+        if stats.active_mutators()==0 {
+            if cgroup_lease::drain_recovery().is_err() || cgroup_lease::service_watches().is_err() { cgroup_lease::block("request_boundary_recovery_or_watch_failed"); }
+        }
         stats.requests += 1;
         let cmd_name = daemon_ascii_fields(&line, 1)
             .into_iter()
@@ -4593,6 +4725,10 @@ fn cmd_daemon(socket_path: &str) -> i32 {
             stats.last_command = c_truncate_bytes(&cmd_name, 63);
         }
         let class = daemon_cmd_class(&cmd_name);
+        if cmd_name.starts_with("FREEZE") && (cgroup_lease::blocked() || cgroup_lease::recovery_pending()) {
+            let _=stream.write_all(b"CGFREEZER_COMMAND_UNCERTAIN noRetry=true reason=lease_recovery_failed\n");
+            continue;
+        }
         daemon_stat_note_start(&mut stats, class);
         let cmd_start = Instant::now();
         if !cmd_name.is_empty() {
@@ -4673,6 +4809,17 @@ fn cmd_daemon(socket_path: &str) -> i32 {
         } else if child > 0 {
             stats.worker += 1;
             daemon_child_add(&mut stats, child, class, cmd_start, &cmd_name);
+            if cmd_name=="THAW_PID" && args.get(3).map(String::as_str)==Some("0") {
+                if let Some(record)=stats.children.last_mut().filter(|r|r.pid==child) {
+                    record.release_paths=args.get(2).cloned().into_iter().collect();
+                }
+            }
+            if cmd_name=="THAW_BATCH" {
+                if let Some(record)=stats.children.last_mut().filter(|r|r.pid==child) {
+                    record.release_paths=args.get(4).into_iter().flat_map(|rows|rows.split(','))
+                        .filter_map(|row|row.split(':').nth(3).map(str::to_owned)).collect();
+                }
+            }
             // Faithful port of the C daemon's unconditional close(cfd) at the
             // end of the accept loop body: after forking, the PARENT must
             // drop its own copy of the connection fd immediately, not wait
@@ -4704,7 +4851,7 @@ fn cmd_daemon(socket_path: &str) -> i32 {
     }
     let _ = fs::remove_file(socket_path);
     daemon_stop_children_bounded(&mut stats);
-    let clean = stats.active_children() == 0;
+    let clean = stats.active_children() == 0 && cgroup_lease::recover(None,false).is_ok();
     println!("CGFREEZER_DAEMON_DONE ok={} socket={} requests={} directRequests={} workerRequests={} activeChildren={} cleanupVerified={}", clean, shell_sanitize(socket_path), stats.requests, stats.direct, stats.worker, stats.active_children(), clean);
     if clean {
         0
@@ -4885,6 +5032,20 @@ pub(crate) fn run() {
 #[cfg(test)]
 mod daemon_control_tests {
     use super::*;
+    #[test]
+    fn deleted_events_stop_wait_but_live_events_keep_deadline() {
+        let dir=std::env::temp_dir().join(format!("sb-freeze-wait-{}",std::process::id()));
+        fs::create_dir(&dir).unwrap();
+        let control=dir.join("cgroup.freeze");
+        let (ok,_,ms)=wait_frozen(&control,'1',1000);
+        assert!(!ok && ms<250,"deleted events waited {ms}ms");
+        fs::write(dir.join("cgroup.events"),"populated 1\nfrozen 0\n").unwrap();
+        let (ok,_,ms)=wait_frozen(&control,'1',60);
+        assert!(!ok && ms>=60,"live group returned early: {ms}ms");
+        fs::write(dir.join("cgroup.events"),"populated 1\nfrozen 1\n").unwrap();
+        assert!(wait_frozen(&control,'1',1000).0);
+        fs::remove_file(dir.join("cgroup.events")).unwrap();fs::remove_dir(dir).unwrap();
+    }
     #[test]
     fn bounded_proc_reader_collects_short_reads_and_rejects_truncation() {
         let path = std::env::temp_dir().join(format!("sb-cg-read-{}", std::process::id()));

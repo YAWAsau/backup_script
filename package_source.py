@@ -67,6 +67,9 @@ def collect() -> tuple[dict[str, bytes], dict[str, str]]:
         INVENTORY, "package_source.py", "package_source.ps1", "BUILDING.md", "LICENSE",
         "build.ps1", "read_versions.ps1", "sync_version.ps1", "sync_artifacts.ps1",
         "VERSION", "versions.properties", "start.sh", "tools/tools.sh", "tools/dex_check.sh",
+        "webview/MainActivity.java", "webview/AndroidManifest.xml", "webview/build.py",
+        "webview/res/values/styles.xml", "webview/res/values-night/styles.xml",
+        "webview/embedded/speedbackup-webview.apk", "webview/embedded/metadata.json",
         "dex/build_dex.ps1", "dex/gradlew", "dex/gradlew.bat", "dex/LICENSE",
         "dex/THIRDPARTY_NOTICE.md", "dex/gradle/wrapper/gradle-wrapper.jar",
         "dex/gradle/wrapper/gradle-wrapper.properties", "dex/release-version.properties",
@@ -89,7 +92,7 @@ def collect() -> tuple[dict[str, bytes], dict[str, str]]:
             parts = PurePosixPath(name).parts
             require(not FORBIDDEN_PARTS.intersection(parts), f"Non-source directory: {name}")
             require("build" not in parts, f"Build output directory: {name}")
-            require(not name.endswith((".log", ".pyc", ".dex", ".apk", ".zip", ".bak"))
+            require((name == "webview/embedded/speedbackup-webview.apk" or not name.endswith((".log", ".pyc", ".dex", ".apk", ".zip", ".bak")))
                     and parts[-1] != "local.properties", f"Non-source file: {name}")
         require(not (name.startswith("tools/") and PurePosixPath(name).name in RUNTIME_BINARIES),
                 f"Runtime binary belongs in a separate package: {name}")
@@ -102,7 +105,7 @@ def collect() -> tuple[dict[str, bytes], dict[str, str]]:
                     f"Source must be UTF-8 without BOM and use LF: {name}")
             files[name].decode("utf-8")
     # A new module must be added to the inventory; never silently omit it.
-    for directory in ("dex/app/src", "dex/hiddenapi/src", "rust/src"):
+    for directory in ("dex/app/src", "dex/hiddenapi/src", "rust/src", "webview/app/src", "webview/res"):
         for path in (ROOT / directory).rglob("*"):
             if path.is_file():
                 name = path.relative_to(ROOT).as_posix()
@@ -120,7 +123,7 @@ def collect() -> tuple[dict[str, bytes], dict[str, str]]:
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         key, value = line.strip().split("=", 1)
-        require(key not in versions and re.fullmatch(r"v[1-9][0-9]{2}", value),
+        require(key not in versions and re.fullmatch(r"v[1-9][0-9]{2,3}", value),
                 f"Invalid component version: {line}")
         versions[key] = value
     require(set(versions) == {"build", "script", "dex", *APPLETS}, "Incomplete version configuration")

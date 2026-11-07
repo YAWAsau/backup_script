@@ -18,7 +18,7 @@ fn component(name: &str) -> bool {
 }
 
 fn app(name: &str) -> bool {
-    component(name) && !name.starts_with('.') && !matches!(name, "tools" | "wifi" | "Media" | "log" | "communications")
+    component(name) && !name.chars().any(|c| "*?[]".contains(c)) && !name.starts_with('.') && !matches!(name, "tools" | "wifi" | "Media" | "log" | "communications")
 }
 
 pub fn package(name: &str) -> bool {
@@ -96,6 +96,7 @@ pub fn installed(text: &str) -> io::Result<HashSet<String>> {
     Ok(set)
 }
 
+#[cfg(test)]
 pub fn run(
     roots_file: &Path,
     mode: &str,
@@ -104,6 +105,14 @@ pub fn run(
     installed_file: &Path,
     prefix: &str,
     metadata_package: impl Fn(&str) -> Option<String>,
+) -> io::Result<String> {
+    run_with_scope(roots_file, mode, subdir, bundle, installed_file, prefix, metadata_package, false)
+}
+
+pub fn run_with_scope(
+    roots_file: &Path, mode: &str, subdir: &str, bundle: &Path,
+    installed_file: &Path, prefix: &str,
+    metadata_package: impl Fn(&str) -> Option<String>, all_apps: bool,
 ) -> io::Result<String> {
     let names = roots(&fs::read_to_string(roots_file)?, mode, subdir)?;
     let installed = installed(&fs::read_to_string(installed_file)?)?;
@@ -134,11 +143,12 @@ pub fn run(
         match pkg {
             Some(pkg) => {
                 checked += 1;
-                if installed.contains(&pkg) {
+                if installed.contains(&pkg) && !all_apps {
                     decisions.push_str(&format!("{name}\t{pkg}\tinstalled\n"));
                 } else {
                     orphan += 1;
-                    candidates.push_str(&format!("{name}\t{pkg}\tpackage_not_installed\n"));
+                    let reason = if all_apps { "manual_selection_required" } else { "package_not_installed" };
+                    candidates.push_str(&format!("{name}\t{pkg}\t{reason}\n"));
                     decisions.push_str(&format!("{name}\t{pkg}\torphan\n"));
                 }
             }
@@ -260,4 +270,39 @@ mod tests {
         assert!(run(&input, "webdav", "Backup", &bundle, &snapshot, &prefix, parse).is_err());
         fs::remove_dir_all(temp).unwrap();
     }
+}
+
+/// Input rows are the freshly validated candidate snapshot, never user paths.
+pub fn select_rows(rows: &str, selection: &str) -> io::Result<String> {
+    let lines: Vec<_> = rows.lines().collect();
+    for line in &lines {
+        let fields: Vec<_> = line.split('\t').collect();
+        if fields.len() != 2 || !app(fields[0]) || !package(fields[1]) {
+            return Err(invalid("invalid candidate row"));
+        }
+    }
+    let mut selected = BTreeSet::new();
+    if selection.len() > 65536 { return Err(invalid("selection too long")); }
+    for token in selection.split(|c: char| c == ',' || c.is_ascii_whitespace()).filter(|s| !s.is_empty()) {
+        if !token.bytes().all(|b| b.is_ascii_digit()) { return Err(invalid("numbers only")); }
+        let n: usize = token.parse().map_err(|_| invalid("invalid number"))?;
+        if n == 0 || n > lines.len() { return Err(invalid("number outside displayed list")); }
+        selected.insert(n - 1);
+    }
+    if selected.is_empty() { return Err(invalid("empty selection")); }
+    Ok(selected.into_iter().map(|n| format!("{}\n", lines[n])).collect())
+}
+
+/// Canonical empty metadata produced by deleting the last App: exactly one
+/// ordinary, zero-byte manifest. Do not reinterpret partial/unknown trees.
+pub fn empty_bundle(root: &Path) -> io::Result<bool> {
+    if !fs::symlink_metadata(root)?.is_dir() { return Ok(false); }
+    let mut count = 0;
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        if entry.file_name() != "manifest.tsv" || !entry.file_type()?.is_file()
+            || entry.metadata()?.len() != 0 { return Ok(false); }
+        count += 1;
+    }
+    Ok(count == 1)
 }
