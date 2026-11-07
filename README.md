@@ -10,11 +10,6 @@
 </p>
 
 ---
-
-> 本文件對應 v1101／原生介面 1.65（versionCode 66）。介面已遷移至 Kotlin／Compose，APK 直接連接本機 Rust API，不再使用 WebView／JavaScript 或瀏覽器操作入口。操作與接回見 [原生主選單](WEB_MAIN_MENU.md)。[更新日誌：自 78d9a32／v863 起](CHANGELOG.md)
-
----
-
 ## 概述
 
 Backup_script 是一款專為 Android 設計的應用數據備份／恢復 Shell 腳本，支援應用資料、Split APK、SSAID、運行時權限、AppOps、特殊存取、電池策略、安裝來源診斷、OBB 數據包、Wi-Fi 設定與自定義資料夾備份。適合換機、刷機、重裝系統後快速還原應用狀態。
