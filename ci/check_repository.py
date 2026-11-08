@@ -62,7 +62,7 @@ def verify_runtime(directory):
         actual = sha256(path.read_bytes())
         require(actual == expected, f'{name}: runtime SHA mismatch; expected {expected}, got {actual}')
     import runpy
-    guard = runpy.run_path(str(ROOT / 'smb/tools/samba_android/verify-rng-elf.py'))
+    guard = runpy.run_path(str(ROOT / 'ci/verify_smb_rng.py'))
     guard['verify'](directory / 'smbclient')
     print(f'Runtime SHA: {len(entries)} files match')
 
@@ -190,7 +190,7 @@ def check_versions():
 def check(shells=False):
     subprocess.run([sys.executable, str(ROOT / 'ci/generate_opencc_phrases.py'), '--check'], check=True)
     subprocess.run([sys.executable, str(ROOT / 'ci/generate_script_roundtrip.py'), '--check'], check=True)
-    subprocess.run([sys.executable, str(ROOT / "ci/check_whitespace.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "ci/check_whitespace.py"), "--repository"], check=True)
     names = git('ls-files', '-z').decode('utf-8').rstrip('\0').split('\0')
     for name in ['start.sh', 'tools/tools.sh', 'tools/dex_check.sh', 'tools/soc.json',
                  'rust/Cargo.toml', 'rust/Cargo.lock', 'rust/src/main.rs', 'rust/build.ps1',

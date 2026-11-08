@@ -31,6 +31,7 @@
     "ci/check_copy_routes.py",
     "ci/check_repository.py",
     "ci/check_whitespace.py",
+    "ci/verify_smb_rng.py",
     "ci/copy_routes.json",
     "ci/export_licenses.gradle",
     "ci/generate_licenses.py",
