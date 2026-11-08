@@ -65,8 +65,8 @@ internal class NativeSettingsForm(context:Context,private val catalog:NativeCata
             val range=ranges[key]
             val child=when{
                 key=="remote_address_mode"->c.group("$id:switch","toggle",listOf(c.node(id,"toggle",label){kind,_,_->if(kind=="click")set(if(value=="auto")"manual" else "auto")}.put("checked",value=="auto")))
-                key in paths->c.button("$id:browse",if(key=="Custom_path")"瀏覽／多選資料夾" else "瀏覽選擇"){browse(f)}.put("standard",true)
-                key in lists->c.button("$id:rows",if(value.isEmpty())"空清單" else "編輯清單"){editList(f)}.put("standard",true)
+                key in paths->c.button("$id:browse",if(key=="Custom_path")"瀏覽／多選資料夾" else "瀏覽選擇"){browse(f)}.put("standard",true).put("navigation",true)
+                key in lists->c.button("$id:rows",if(value.isEmpty())"空清單" else "編輯清單"){editList(f)}.put("standard",true).put("navigation",true)
                 options!=null->c.select(id,label,value,options,set).put("standard",true)
                 range!=null->{
                     val number=value.toIntOrNull();val representable=number!=null&&number in range.first..range.second&&number.toString()==value
@@ -78,7 +78,7 @@ internal class NativeSettingsForm(context:Context,private val catalog:NativeCata
                 }
                 else->c.input(id,label,value,set).put("inGroup",true).put("standard",true).put("multi",key=="mount_point"||value.contains('\n')).put("password",key.endsWith("_pass"))
             }
-            if(key=="remote_type") rows.add(c.group("$id:discovery","setting",listOf(c.button("$id:discover","自動發現電腦／NAS",action=discover).put("standard",true)),"區域網路服務").put("detail","搜尋 WebDAV／SMB 服務並選擇地址；也可繼續手動填寫下方欄位。"))
+            if(key=="remote_type") rows.add(c.group("$id:discovery","setting",listOf(c.button("$id:discover","自動發現電腦／NAS",action=discover).put("standard",true).put("navigation",true)),"區域網路服務").put("detail","搜尋 WebDAV／SMB 服務並選擇地址；也可繼續手動填寫下方欄位。"))
             if(key=="webdav_url"&&!compact) {
                 val preset=c.select("$id:preset","WebDAV／NAS 範本",davPreset,davPresets){davPreset=it;davMessage="";change()}.put("standard",true)
                 val apply=c.button("$id:apply","套用所選範本"){applyDavPreset(fields,f);change()}.put("standard",true)

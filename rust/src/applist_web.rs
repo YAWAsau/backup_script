@@ -1714,7 +1714,7 @@ fn native_preference(key:&str,save:Option<&str>)->io::Result<String>{
     }else if key=="monet"{("monet","on",|v|matches!(v,"on"|"off"))}
     else if key=="glass-blur"{("glass-blur","on",|v|matches!(v,"on"|"off"))}
     else if key=="glass-adaptive"{("glass-adaptive","off",|v|matches!(v,"on"|"off"))}
-    else if matches!(key,"glass-light"|"glass-transparency"|"glass-refraction"){
+    else if matches!(key,"glass-blur-strength"|"glass-light"|"glass-transparency"|"glass-refraction"){
         (key,"100",|v|v.parse::<u8>().is_ok_and(|n|n<=100&&n.to_string()==v))
     }else{("appearance","system\tfull",valid_appearance)};
     web_preference(key,default,valid,save)
@@ -1745,7 +1745,7 @@ fn appearance_request(stream: &mut TcpStream, req: &Request) -> bool {
         let result=(||->io::Result<String>{
             if req.method!="GET" || !req.body.is_empty(){return Err(err("invalid preferences request"));}
             let mut fields=Vec::new();
-            for key in ["appearance","scale","style","monet","glass-blur","glass-light","glass-transparency","glass-refraction","glass-adaptive","language"] {
+            for key in ["appearance","scale","style","monet","glass-blur","glass-blur-strength","glass-light","glass-transparency","glass-refraction","glass-adaptive","language"] {
                 fields.push(format!("{}:{}",json(key),json(&native_preference(key,None)?)));
             }
             Ok(format!("{{{}}}",fields.join(",")))
@@ -1766,7 +1766,7 @@ fn appearance_request(stream: &mut TcpStream, req: &Request) -> bool {
         } else {let _=respond(stream,"400 Bad Request","text/plain","無效診斷事件");}
         return true;
     }
-    if !matches!(req.path.as_str(),"/api/appearance"|"/api/scale"|"/api/style"|"/api/monet"|"/api/glass-blur"|"/api/glass-light"|"/api/glass-transparency"|"/api/glass-refraction"|"/api/glass-adaptive") {return false;}
+    if !matches!(req.path.as_str(),"/api/appearance"|"/api/scale"|"/api/style"|"/api/monet"|"/api/glass-blur-strength"|"/api/glass-blur"|"/api/glass-light"|"/api/glass-transparency"|"/api/glass-refraction"|"/api/glass-adaptive") {return false;}
     let result=match req.method.as_str(){
         "GET" if req.body.is_empty()=>native_preference(req.path.trim_start_matches("/api/"),None),
         "POST" if req.headers.get("content-type").is_some_and(|v|v=="text/plain;charset=UTF-8")=>native_preference(req.path.trim_start_matches("/api/"),Some(&req.body)),

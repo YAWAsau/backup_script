@@ -155,7 +155,7 @@ shell_language="zh-TW"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202611081306"
+backup_version="202611081608"
 # 固定用 GitHub release tag 作為線上更新比較基準；不要用每日 rebuild 日期，避免本地開發版被誤判舊版。
 speedbackup_release_tag="202607232022"
 # Show readiness immediately, before cache/config checks and the UI relay exist.
@@ -8848,13 +8848,13 @@ _speedbackup_tool_sha_table() {
 		fi
 	done <<'SB_TOOL_SHA_TABLE'
 busybox aea4610b3f8956d80edce07f084724c460bb609fb3366b6c368e9dbba41ef96f
-classes.dex 6023d05671b3937e7a617defbb437faee2a993560e2ac3a867fcc1d2cafcc412
+classes.dex b6bc3a561d76a0e5d3334c2c8d9bd085ec5c5287e6d9a6494cd5cbb6e9735507
 cmd 08da8ac23b6e99788fd3ce6c19c7b5a083b2ad48be35963a48d01d6ee7f3bb6d
-dex_check.sh d2e635c3c6518dc8ca41336a7f58f971f9e72c5dfb7ee97a18f24037fe69eaa8
+dex_check.sh 055439a648f5d6ad338475eddbae9bc3f144150214390505d77f0f019368719a
 find ff5f4c6bab697b70544b266be701a08fddf684262a988cd34e15118a8e59041a
 keycheck 50645ee0e0d2a7d64fb4a1286446df7a4445f3d11aefd49eeeb88515b314c363
 smbclient 215cd097e7ade86b9b28ee136034cddc918f0c04034331bd823fdd8b8d77579f
-speednative 4b47c71c2831267d772bf53a9f440cb7bce20306066f2970df802674a5554d24
+speednative 91589be4da0ae681fd3508bdf0ade9db77a8907abd2da0819e34252c5462af9a
 tar c12e74777f0fea9048ef3f5c546a15cfe75ae790c79770133b5753c16f2a0bd4
 zstd 06839acabb2ed657089bb7e52878cc771e29d71c5234cd4ac17c02d7bfff3735
 SB_TOOL_SHA_TABLE

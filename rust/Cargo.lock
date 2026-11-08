@@ -175,7 +175,7 @@ dependencies = [
 
 [[package]]
 name = "speedbackup-native-rs"
-version = "1117.0.0"
+version = "1123.0.0"
 dependencies = [
  "if-addrs",
  "mdns-sd",

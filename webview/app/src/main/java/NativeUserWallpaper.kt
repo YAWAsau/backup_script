@@ -8,11 +8,22 @@ import android.util.AtomicFile
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
@@ -175,20 +186,52 @@ internal object NativeUserWallpaper {
     return {try{picker.launch("image/*")}catch(_:android.content.ActivityNotFoundException){android.widget.Toast.makeText(context,NativeLanguage.text(context,"找不到圖片選擇器"),android.widget.Toast.LENGTH_SHORT).show()}}
 }
 
-@Composable internal fun NativeWallpaperSettings(text:Color,container:Color,style:TextStyle,enabled:Boolean,onImport:()->Unit,onSystem:()->Unit){
+/** Reuses the background's cached bitmap; no second decode or blur job. */
+@Composable internal fun NativeWallpaperPreview(background:Color,text:Color,style:TextStyle){
     val context=LocalContext.current
+    val label=NativeLanguage.text(context,"壁紙預覽")
+    val image=NativeUserWallpaper.rendered.takeIf{NativeUserWallpaper.enabled}
+    val window=LocalWindowInfo.current.containerSize
+    val ratio=if(window.width>0&&window.height>0)window.width.toFloat()/window.height else 9f/19.5f
+    val shape=RoundedCornerShape(24.dp)
+    Column(Modifier.fillMaxWidth().padding(bottom=16.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        Box(Modifier.width(180.dp).aspectRatio(ratio).clip(shape).background(background).border(1.dp,text.copy(alpha=.3f),shape).semantics{contentDescription=label}) {
+            if(image!=null){
+                Image(image.asImageBitmap(),null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop,alpha=NativeUserWallpaper.transparency/100f)
+                Box(Modifier.fillMaxSize().background((if(text.red>.5f)Color.Black else Color.White).copy(alpha=NativeUserWallpaper.dim/100f*NativeUserWallpaper.transparency/100f)))
+            }
+            Canvas(Modifier.fillMaxSize().padding(14.dp,32.dp)) {
+                val gap=size.width*.06f
+                val cell=(size.width-gap*3)/4
+                for(row in 0..6)for(col in 0..3)drawRoundRect(text.copy(alpha=.18f),androidx.compose.ui.geometry.Offset(col*(cell+gap),row*(size.height-cell)/6),androidx.compose.ui.geometry.Size(cell,cell),androidx.compose.ui.geometry.CornerRadius(cell*.27f))
+            }
+        }
+        BasicText(label,style=style.copy(color=text.copy(alpha=.65f)))
+    }
+}
+
+@Composable internal fun NativeWallpaperSettings(text:Color,container:Color,accent:Color,style:TextStyle,enabled:Boolean,onImport:()->Unit,onSystem:()->Unit){
+    val context=LocalContext.current
+    var choosing by remember { mutableStateOf(false) }
+    val available=enabled&&!NativeUserWallpaper.busy
+    val options=listOf("import" to "選擇壁紙","system" to "使用系統壁紙").map{(value,label)->org.json.JSONObject().put("value",value).put("label",NativeLanguage.text(context,label))}
+    LaunchedEffect(available){if(!available)choosing=false}
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        NativeDialogButton(NativeLanguage.text(context,"使用系統壁紙"),"miuix",text,container,style,enabled&&!NativeUserWallpaper.busy,Modifier.fillMaxWidth(),visualEnabled=!NativeUserWallpaper.busy,onClick=onSystem)
-        NativeDialogButton(NativeLanguage.text(context,"匯入背景圖片"),"miuix",text,container,style,enabled&&!NativeUserWallpaper.busy,Modifier.fillMaxWidth(),visualEnabled=!NativeUserWallpaper.busy,onClick=onImport)
-        if(NativeUserWallpaper.bitmap!=null)Row(Modifier.fillMaxWidth().heightIn(min=56.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
-            BasicText(NativeLanguage.text(context,"使用自訂背景"),Modifier.weight(1f),style=style)
-            NativeMiuixSwitch(NativeUserWallpaper.enabled,text,text.copy(alpha=.25f),enabled&&!NativeUserWallpaper.busy,label=NativeLanguage.text(context,"使用自訂背景"),visualEnabled=!NativeUserWallpaper.busy){NativeUserWallpaper.setEnabled(context,it)}
+        if(NativeUserWallpaper.bitmap!=null)NativeSwitchPreference(NativeLanguage.text(context,"使用自訂背景"),"",NativeUserWallpaper.enabled,text,accent,style,available){NativeUserWallpaper.setEnabled(context,it)}
+        Box(Modifier.fillMaxWidth()) {
+            NativeDialogButton(NativeLanguage.text(context,"選擇壁紙"),"miuix",text,container,style,available,Modifier.fillMaxWidth(),centered=false,visualEnabled=!NativeUserWallpaper.busy,dropdown=true){choosing=true}
+            NativeSelectionPopup(choosing,"miuix",options,"",text,container,accent,{choosing=false}){value->
+                choosing=false
+                if(available){if(value=="import")onImport() else if(value=="system")onSystem()}
+            }
         }
         if(NativeUserWallpaper.bitmap!=null)NativeDialogButton(NativeLanguage.text(context,"恢復原本背景"),"miuix",text,container,style,enabled&&!NativeUserWallpaper.busy,Modifier.fillMaxWidth(),visualEnabled=!NativeUserWallpaper.busy){NativeUserWallpaper.clear(context)}
         if(NativeUserWallpaper.bitmap!=null){
             for((key,label,value) in listOf(Triple("transparency",NativeLanguage.text(context,"壁紙透明度"),NativeUserWallpaper.transparency),Triple("blur",NativeLanguage.text(context,"壁紙模糊度"),NativeUserWallpaper.blur),Triple("dim",if(text.red>.5f)NativeLanguage.text(context,"壁紙壓暗") else NativeLanguage.text(context,"壁紙提亮"),NativeUserWallpaper.dim))){
-                BasicText("$label $value%",style=style)
-                NativeMiuixSlider(label,value.toFloat(),enabled&&!NativeUserWallpaper.busy,!NativeUserWallpaper.busy,text,{NativeUserWallpaper.adjust(context,key,it.toInt())},{},{NativeUserWallpaper.commit(context)})
+                Column {
+                    NativeSliderLabel(label,"$value%",style.copy(color=text.copy(alpha=if(NativeUserWallpaper.enabled)1f else .4f)))
+                    NativeMiuixSlider(label,value.toFloat(),enabled&&NativeUserWallpaper.enabled&&!NativeUserWallpaper.busy,NativeUserWallpaper.enabled&&!NativeUserWallpaper.busy,accent,{NativeUserWallpaper.adjust(context,key,it.toInt())},{},{NativeUserWallpaper.commit(context)})
+                }
             }
         }
         if(NativeUserWallpaper.status.isNotEmpty())BasicText(NativeLanguage.text(context,NativeUserWallpaper.status),style=style)

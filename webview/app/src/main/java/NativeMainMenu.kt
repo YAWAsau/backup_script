@@ -57,7 +57,7 @@ internal fun validateNativeMenu(menu:JSONObject?) {
         require(r.getString("kind") in if(k=="choices")setOf("button","heading") else setOf("note","select","checkbox","range","button"))
         if(k=="choices"||r.optString("kind")!="note")require(r.getString("id").matches(Regex("control-[0-9]{1,12}")))
         if(r.optString("kind")=="range") {
-            require(r.getString("key") in setOf("glass-light","glass-transparency","glass-refraction"))
+            require(r.getString("key") in setOf("glass-blur-strength","glass-light","glass-transparency","glass-refraction"))
             require(r.getString("value").toInt() in 0..100)
         }
         if(r.optString("kind")=="select") {
@@ -113,6 +113,7 @@ internal fun validateNativeMenu(menu:JSONObject?) {
                 // Reconcile even a rejected/stale action; never leave local-only state.
                 glassControls.light=latestData.optInt("glassLight",100).coerceIn(0,100).toFloat()
                 glassControls.transparency=latestData.optInt("glassTransparency",100).coerceIn(0,100).toFloat()
+                glassControls.blurStrength=latestData.optInt("glassBlurStrength",100).coerceIn(0,100).toFloat()
                 glassControls.refraction=latestData.optInt("glassRefraction",100).coerceIn(0,100).toFloat()
                 glassControls.pending=false
             }
@@ -156,11 +157,16 @@ internal fun validateNativeMenu(menu:JSONObject?) {
         }
     }
     fun style(size:Int=17,bold:Boolean=false,muted:Boolean=false)=TextStyle(color=text.copy(alpha=if(muted).65f else 1f),fontSize=(size*scale).sp,fontWeight=if(bold)FontWeight.Medium else FontWeight.Normal)
-    @Composable fun glass(label:String,enabled:Boolean=true,primary:Boolean=false,modifier:Modifier=Modifier,centered:Boolean=false,minHeight:Int=52,onClick:()->Unit) {
+    @Composable fun glass(label:String,enabled:Boolean=true,primary:Boolean=false,modifier:Modifier=Modifier,centered:Boolean=false,minHeight:Int=52,navigation:Boolean=false,backwards:Boolean=false,onClick:()->Unit) {
         LiquidButton(adaptationKey=label,isLightTheme=text.red<.5f,onClick=onClick,backdrop=backdrop,enabled=enabled&&!pager.isScrollInProgress,isInteractive=enabled,
             modifier=modifier.fillMaxWidth().heightIn(min=(minHeight*scale).coerceAtLeast(minHeight.toFloat()).dp),shape=RoundedCornerShape(uiStyle.buttonRadius.dp),
             surfaceColor=GlassMaterial.surface(text.red<.5f,if(primary)tint else null)) {
-            BasicText(label,Modifier.fillMaxWidth(),style=style().copy(textAlign=if(centered)TextAlign.Center else TextAlign.Start,fontWeight=uiStyle.buttonWeight,color=(com.kyant.backdrop.catalog.components.LocalGlassContentColor.current.takeUnless{it==Color.Unspecified}?:text).copy(alpha=if(enabled)1f else .4f)))
+            val ink=(com.kyant.backdrop.catalog.components.LocalGlassContentColor.current.takeUnless{it==Color.Unspecified}?:text).copy(alpha=if(enabled)1f else .4f)
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                if(navigation&&backwards)NativePreferenceArrow(false,ink,true)
+                BasicText(label,Modifier.weight(1f),style=style().copy(textAlign=if(centered)TextAlign.Center else TextAlign.Start,fontWeight=uiStyle.buttonWeight,color=ink))
+                if(navigation&&!backwards)NativePreferenceArrow(false,ink)
+            }
         }
     }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top).union(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)))) {
@@ -206,41 +212,35 @@ internal fun validateNativeMenu(menu:JSONObject?) {
                 } else if(page==1) {
                     for(r in menu.getJSONArray("choices").objects())item(r.getString("id")) {
                         if(r.getString("kind")=="heading")BasicText(r.getString("label"),style=style(20,true))
-                        else glass(r.getString("label"),!r.optBoolean("disabled"),r.optBoolean("primary")||r.optBoolean("selected")) { send("click",r.getString("id")) }
+                        else glass(r.getString("label"),!r.optBoolean("disabled"),r.optBoolean("primary")||r.optBoolean("selected"),navigation=r.optBoolean("navigation")||r.optBoolean("backNavigation"),backwards=r.optBoolean("backNavigation")) { send("click",r.getString("id")) }
                     }
                 } else {
                     item("appearance-card") {
                       NativeComponentCard("miuix",Color(data.optLong("cardColor",0xff242424L).toInt()),text,backdrop=backdrop) {
-                       Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+                       Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(0.dp)) {
                         menu.getJSONArray("appearance").objects().forEachIndexed { i,r -> key(r.optString("id","note-$i")) {
                         when(r.getString("kind")) {
                             "note" -> if(r.getString("label").isNotBlank())BasicText(r.getString("label"),style=style(14,false,true))
-                            "select" -> Row(Modifier.fillMaxWidth().padding(vertical=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                                BasicText(r.getString("label"),Modifier.weight(1f),style=style(17))
+                            "select" -> Box(Modifier.fillMaxWidth()) {
                                 val option=r.getJSONArray("options").objects().find{it.getString("value")==r.getString("value")}
-                                Box(Modifier.weight(1f)) {
-                                    NativeDialogButton((option?.getString("label")?:"")+" ▾","miuix",text,Color(data.optLong("fieldColor",0xff2d2d2dL).toInt()),style(17),!r.optBoolean("disabled")&&!moving,Modifier.fillMaxWidth(),visualEnabled=!r.optBoolean("disabled")){choosing=r.getString("id")}
-                                    NativeSelectionPopup(choosing==r.getString("id"),data.optString("uiStyle"),r.getJSONArray("options").objects(),r.getString("value"),text,Color(data.optLong("cardColor",0xff242424L).toInt()),tint,{choosing=null}) { value ->
-                                        if(send("value",r.getString("id"),value))choosing=null
-                                    }
+                                NativePreferenceRow(r.getString("label"),option?.getString("label")?:"","",true,text,style(17),!r.optBoolean("disabled")&&!moving,!r.optBoolean("disabled")){choosing=r.getString("id")}
+                                NativeSelectionPopup(choosing==r.getString("id"),data.optString("uiStyle"),r.getJSONArray("options").objects(),r.getString("value"),text,Color(data.optLong("cardColor",0xff242424L).toInt()),tint,{choosing=null}) { value ->
+                                    if(send("value",r.getString("id"),value))choosing=null
                                 }
                             }
-                            "button" -> NativeDialogButton(r.getString("label"),"miuix",text,Color(data.optLong("fieldColor",0xff2d2d2dL).toInt()),style(17),!r.optBoolean("disabled")&&!moving,Modifier.fillMaxWidth(),visualEnabled=!r.optBoolean("disabled")){send("click",r.getString("id"))}
+                            "button" -> NativeDialogButton(r.getString("label"),"miuix",text,Color(data.optLong("fieldColor",0xff2d2d2dL).toInt()),style(17),!r.optBoolean("disabled")&&!moving,Modifier.fillMaxWidth(),visualEnabled=!r.optBoolean("disabled"),navigation=r.optBoolean("navigation")){send("click",r.getString("id"))}
                             "range" -> {
                                 val key=r.getString("key")
-                                fun current()=when(key){"glass-light"->glassControls.light;"glass-refraction"->glassControls.refraction;else->glassControls.transparency}
+                                fun current()=when(key){"glass-blur-strength"->glassControls.blurStrength;"glass-light"->glassControls.light;"glass-refraction"->glassControls.refraction;else->glassControls.transparency}
                                 val value=current()
                                 Column {
-                                    BasicText(r.getString("label")+"  "+value.roundToInt()+"%",style=style(17))
-                                    NativeGlassSlider(data.optString("uiStyle"),r.getString("label"),value,!r.optBoolean("disabled")&&!moving,!r.optBoolean("disabled"),tint,{v->glassControls.editing=true;when(key){"glass-light"->glassControls.light=v;"glass-refraction"->glassControls.refraction=v;else->glassControls.transparency=v}},{adjustingGlass=it;glassControls.editing=it}){
+                                    NativeSliderLabel(r.getString("label"),value.roundToInt().toString()+"%",style(17).copy(color=text.copy(alpha=if(r.optBoolean("disabled")) .4f else 1f)))
+                                    NativeGlassSlider(data.optString("uiStyle"),r.getString("label"),value,!r.optBoolean("disabled")&&!moving,!r.optBoolean("disabled"),tint,{v->glassControls.editing=true;when(key){"glass-blur-strength"->glassControls.blurStrength=v;"glass-light"->glassControls.light=v;"glass-refraction"->glassControls.refraction=v;else->glassControls.transparency=v}},{adjustingGlass=it;glassControls.editing=it}){
                                         commitGlass(r.getString("id"),current().roundToInt())
                                     }
                                 }
                             }
-                            "checkbox" -> Row(Modifier.fillMaxWidth().heightIn(min=56.dp),verticalAlignment=Alignment.CenterVertically) {
-                                BasicText(r.getString("label"),Modifier.weight(1f),style=style(17))
-                                NativeMiuixSwitch(r.optBoolean("checked"),tint,text.copy(alpha=.25f),!r.optBoolean("disabled")&&!moving,label=r.getString("label"),visualEnabled=!r.optBoolean("disabled")){value->if(value!=r.optBoolean("checked"))send("toggle",r.getString("id"))}
-                            }
+                            "checkbox" -> NativeSwitchPreference(r.getString("label"),"",r.optBoolean("checked"),text,tint,style(17),!r.optBoolean("disabled")&&!moving){value->if(value!=r.optBoolean("checked"))send("toggle",r.getString("id"))}
                         }
                         } }
                        }

@@ -6,7 +6,7 @@ plugins {
 android {
  namespace = "io.github.yawasau.speedbackup.webview"
  compileSdkVersion("android-37.0")
- defaultConfig { applicationId = "io.github.yawasau.speedbackup.webview"; minSdk = 28; targetSdk = 36; versionCode = 76; versionName = "1.75" }
+ defaultConfig { applicationId = "io.github.yawasau.speedbackup.webview"; minSdk = 28; targetSdk = 36; versionCode = 81; versionName = "1.80" }
  sourceSets["main"].apply { manifest.srcFile("../AndroidManifest.xml"); java.srcDir(layout.buildDirectory.dir("generated/host").get().asFile); res.srcDir("../res") }
  buildFeatures { compose = true }
  buildTypes { release { isMinifyEnabled = true; isShrinkResources = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt")) } }

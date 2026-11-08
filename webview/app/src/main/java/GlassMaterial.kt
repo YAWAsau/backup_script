@@ -14,7 +14,8 @@ import androidx.compose.runtime.*
 
 /** Shared optical surface for page buttons, action buttons and navigation. */
 object GlassMaterial {
-    class Controls(light:Int=100,transparency:Int=100,refraction:Int=100,adaptive:Boolean=false) {
+    class Controls(light:Int=100,transparency:Int=100,refraction:Int=100,adaptive:Boolean=false,blurStrength:Int=100) {
+        var blurStrength by mutableFloatStateOf(blurStrength.coerceIn(0,100).toFloat())
         var refraction by mutableFloatStateOf(refraction.toFloat())
         var adaptive by mutableStateOf(adaptive)
         var editing by mutableStateOf(false)

@@ -1,5 +1,6 @@
 """Check every shipped source file in an isolated Git index, without staging user work."""
 from pathlib import Path
+import argparse
 import json
 import os
 import subprocess
@@ -9,13 +10,23 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
-    names = json.loads((ROOT / 'source-package.json').read_text(encoding='utf-8'))['files']
-    names = sorted(set(names + ['source-package.json']))
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--repository', action='store_true', help='Check tracked repository files instead of the full source distribution')
+    args = parser.parse_args()
+    if args.repository:
+        top = Path(subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], cwd=ROOT).decode().strip()).resolve()
+        if top != ROOT.resolve():
+            raise SystemExit('Repository check must run from its own Git checkout')
+        names = subprocess.check_output(['git', 'ls-files', '-z'], cwd=ROOT).decode('utf-8').split('\0')
+        names = sorted(n for n in names if n)
+        if not names:
+            raise SystemExit('No tracked repository files to check')
+    else:
+        names = json.loads((ROOT / 'source-package.json').read_text(encoding='utf-8'))['files']
+        names = sorted(set(names + ['source-package.json']))
     missing = [name for name in names if not (ROOT / name).is_file()]
     if missing:
-        raise SystemExit('Incomplete source checkout: missing ' + str(len(missing)) +
-                         ' files from source-package.json. Import the FULL_SOURCE_CLEAN package, '
-                         'not the runtime/incremental package.\n' + '\n'.join(missing))
+        raise SystemExit('Missing required files: ' + str(len(missing)) + '\n' + '\n'.join(missing))
     env = {k: v for k, v in os.environ.items() if k.upper() not in {
         'GIT_INDEX_FILE', 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR',
         'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES'}}

@@ -52,12 +52,12 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
     }
     private fun cancel(){if(submissionBlocked){session.exit();return};if(!session.finished)session.finish(session.api.post("cancel",""))}
     private fun footerReturn()=menu.getJSONArray("info").length()==0&&!menu.optBoolean("input")&&!menu.optBoolean("multi")&&!menu.optBoolean("confirm")&&!menu.optBoolean("powerCountdown")&&choices.any{it.getString("id")=="0"&&it.getString("label").startsWith("返回")}
-    private fun returnButton()=controls.button("menu:return",if(group.isNotEmpty())"返回功能分類" else choices.find{it.getString("id")=="0"}?.getString("label")?:"取消"){back()}
+    private fun returnButton()=controls.button("menu:return",if(group.isNotEmpty())"返回功能分類" else choices.find{it.getString("id")=="0"}?.getString("label")?:"取消"){back()}.put("backNavigation",true)
     private fun optionNodes():List<JSONObject>{
         if(menu.optBoolean("preparing"))return listOf(controls.node("preparing","heading","正在同步最新清單，保留既有勾選與註釋。"))
         val options=choices.filterNot{it.optBoolean("setting")}
         val groups=options.map{it.optString("group")}.filter{it.isNotEmpty()}.distinct().sortedBy{when(it){"備份","備份相關功能"->0;"恢復","恢復相關功能"->1;else->2}}
-        if(groups.isNotEmpty()&&group.isEmpty())return options.filter{it.optString("group").isEmpty()&&it.getString("id")!="0"}.map{item->controls.button("choice:${item.getString("id")}",item.getString("label"),session.finished){choose(item.getString("id"))}}+groups.map{g->controls.button("group:$g",g){group=g;session.emit()}}
+        if(groups.isNotEmpty()&&group.isEmpty())return options.filter{it.optString("group").isEmpty()&&it.getString("id")!="0"}.map{item->controls.button("choice:${item.getString("id")}",item.getString("label"),session.finished){choose(item.getString("id"))}}+groups.map{g->controls.button("group:$g",g){group=g;session.emit()}.put("navigation",true)}
         if(menu.optBoolean("input"))return listOf(controls.input("menu:input",menu.getString("title"),text){text=it},controls.button("menu:submit","確認",session.finished){require(text.length<=2048&&!text.any{it<' '});submit("input",text)}.put("primary",true))
         val nodes=mutableListOf<JSONObject>()
         if(group.isNotEmpty())nodes+=controls.node("group:heading","heading",group)
@@ -71,31 +71,31 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
                     if(menu.optBoolean("confirm")){picked.clear();picked.add(id)}else if(!picked.remove(id))picked.add(id)
                     session.emit()
                 }else choose(id)
-            }.put("selected",id in picked)
+            }.put("selected",id in picked).put("navigation",!selectable&&id!="0")
         }
         if(selectable)nodes+=controls.button("menu:submit","確認所選項目",session.finished){if(picked.isEmpty()){session.status="請先點選項目，再確認。";session.emit()}else choose(picked.joinToString(" "))}.put("primary",true)
         return nodes
     }
     private fun appearanceNodes():List<JSONObject>{
-        val nodes=choices.filter{it.optBoolean("setting")}.map{item->controls.button("choice:${item.getString("id")}",item.getString("label"),session.finished){choose(item.getString("id"))}}.toMutableList()
+        val nodes=choices.filter{it.optBoolean("setting")}.map{item->controls.button("choice:${item.getString("id")}",item.getString("label"),session.finished){choose(item.getString("id"))}.put("navigation",true)}.toMutableList()
         fun setting(key:String,label:String,options:List<Pair<String,String>>){nodes+=controls.select("appearance:$key",label,session.appearance.values[key]?:"",options){value->
             session.api.post(key,if(key=="appearance")value+"\tfull" else value);session.appearance.values[key]=value;if(key=="language"&&menu.getJSONArray("info").length()>0)session.finish("正在重新載入語言設定…")else session.emit()
         }}
-        nodes+=controls.button("wallpaper:settings","壁紙"){wallpaper=true;session.emit()}
+        nodes+=controls.button("wallpaper:settings","壁紙"){wallpaper=true;session.emit()}.put("navigation",true)
         setting("language","介面語言",listOf("zh-Hant" to "繁體中文","zh-Hans" to "简体中文"))
         setting("appearance","外觀",listOf("system" to "跟隨系統","light" to "淺色","dark" to "深色","space" to "星空","night" to "夜空"))
         setting("scale","顯示大小",listOf(80,90,100,110,120,130).map{it.toString() to "$it%"})
         for((key,label) in listOf("glass-blur" to "高斯模糊","monet" to "莫奈動態配色","glass-adaptive" to "自適應玻璃亮度")) {
             if(key!="monet"||session.appearance.values["appearance"] !in setOf("space","night"))setting(key,label,listOf("on" to "開啟","off" to "關閉"))
         }
-        for((key,label) in listOf("glass-light" to "透光強度","glass-transparency" to "透明度","glass-refraction" to "折射強度"))nodes+=controls.node("appearance:$key","range",label){kind,value,_->
-            if(kind=="value"){require(value.toInt() in 0..100);session.api.post(key,if(key=="appearance")value+"\tfull" else value);session.appearance.values[key]=value;session.emit()}
-        }.put("key",key).put("value",session.appearance.values[key]).put("min",0).put("max",100).put("step",1)
+        for((key,label) in listOf("glass-blur-strength" to "模糊程度","glass-light" to "透光強度","glass-transparency" to "透明度","glass-refraction" to "折射強度"))nodes+=controls.node("appearance:$key","range",label){kind,value,_->
+            if(kind=="value"&&(key!="glass-blur-strength"||session.appearance.values["glass-blur"]!="off")){require(value.toInt() in 0..100);session.api.post(key,if(key=="appearance")value+"\tfull" else value);session.appearance.values[key]=value;session.emit()}
+        }.put("disabled",key=="glass-blur-strength"&&session.appearance.values["glass-blur"]=="off").put("key",key).put("value",session.appearance.values[key]).put("min",0).put("max",100).put("step",1)
         nodes+=controls.button("appearance:reset","恢復玻璃預設"){
-            for((key,value) in listOf("glass-blur" to "on","glass-light" to "100","glass-transparency" to "100","glass-refraction" to "100","glass-adaptive" to "off")){session.api.post(key,if(key=="appearance")value+"\tfull" else value);session.appearance.values[key]=value}
+            for((key,value) in listOf("glass-blur" to "on","glass-blur-strength" to "100","glass-light" to "100","glass-transparency" to "100","glass-refraction" to "100","glass-adaptive" to "off")){session.api.post(key,if(key=="appearance")value+"\tfull" else value);session.appearance.values[key]=value}
             session.emit()
         }
-        nodes+=controls.button("about","關於"){legal="about";session.emit()}
+        nodes+=controls.button("about","關於"){legal="about";session.emit()}.put("navigation",true)
         return nodes
     }
     private fun info():JSONArray {
@@ -125,8 +125,22 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
             model.put("tabs",true).put("selected",panel).put("buttons",arr(listOf("nav-home" to "首頁","nav-actions" to "功能","nav-style" to "設定","cancel" to "離開").map{obj("id" to it.first,"label" to it.second,"disabled" to session.finished)}))
         }else{
             val hint=if(menu.optBoolean("powerCountdown")&&!session.finished)"剩餘 ${(remaining+999)/1000} 秒；離開畫面會取消關機請求。" else session.status
-            model.put("screen",controls.screen("menu:$group",menu.getString("title"),nodes,listOf(returnButton()),hint,menu.optString("description")))
+            model.put("screen",controls.screen("menu:$group",menu.getString("title"),if(!menu.optBoolean("input")&&!menu.optBoolean("multi")&&!menu.optBoolean("confirm")&&!menu.optBoolean("powerCountdown"))actionRows(nodes,"menu:$group") else nodes,listOf(returnButton()),hint,menu.optString("description")))
         }
+    }
+    /** Group ordinary menu actions without changing callbacks or selection screens. */
+    private fun actionRows(nodes:List<JSONObject>,key:String):List<JSONObject>{
+        val result=mutableListOf<JSONObject>()
+        val rows=mutableListOf<JSONObject>()
+        var section=0
+        fun flush(){if(rows.isNotEmpty()){result+=controls.group("$key:section:${section++}","settings-section",rows.toList());rows.clear()}}
+        for(node in nodes){
+            if(node.optString("kind")=="button"&&!node.optBoolean("primary")&&!node.optBoolean("selected")){
+                node.put("navigation",true)
+                rows+=controls.group("$key:row:${node.getString("id")}","setting",listOf(node),node.getString("label")).put("detail","")
+            }else{flush();result+=node}
+        }
+        flush();return result
     }
     private fun renderLegal(model:JSONObject){
         val nodes=mutableListOf<JSONObject>()
@@ -136,10 +150,10 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
             nodes+=controls.node("thanks:skkk","contributor","skkk-10p").put("detail","提供早期 native static 支持").put("translateDetail",true).put("avatar","skkk")
             nodes+=controls.node("thanks:rainy","contributor","雨季少年").put("detail","提供早期 Samba 構建與伺服器支持，遠端備份思路發起者").put("translateDetail",true).put("avatar","rainy")
         }else if(legal=="about"){
-            nodes+=controls.button("thanks","鳴謝"){legal="thanks";session.emit()}
-            nodes+=controls.button("licenses","開源許可"){licenses=licenses?:JSONObject(session.api.get("licenses"));require(licenses!!.getJSONArray("entries").length()<=1000);legal="licenses";session.emit()}
-            nodes+=controls.button("source","檢視原始碼"){session.openLink("https://github.com/YAWAsau/backup_script")}
-            nodes+=controls.button("community","QQ 群組 976613477"){session.openLink(session.catalog.communityUrl)}
+            nodes+=controls.button("thanks","鳴謝"){legal="thanks";session.emit()}.put("navigation",true)
+            nodes+=controls.button("licenses","開源許可"){licenses=licenses?:JSONObject(session.api.get("licenses"));require(licenses!!.getJSONArray("entries").length()<=1000);legal="licenses";session.emit()}.put("navigation",true)
+            nodes+=controls.button("source","檢視原始碼"){session.openLink("https://github.com/YAWAsau/backup_script")}.put("navigation",true)
+            nodes+=controls.button("community","QQ 群組 976613477"){session.openLink(session.catalog.communityUrl)}.put("navigation",true)
         }else{
             nodes+=controls.input("license:search","搜尋開源許可",search){search=it.take(200);session.emit()}
             for((i,item) in (licenses?.optJSONArray("entries")?:JSONArray()).modelObjects().withIndex()){
@@ -147,7 +161,7 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
                 nodes+=controls.node("license:$i","license",item.getString("name")).put("url",item.getString("url")).put("detail",listOf(item.optString("author"),item.optString("version"),item.optString("license"),item.optString("description"),item.optString("id")).filter{it.isNotBlank()}.joinToString(" · "))
             }
         }
-        model.put("screen",controls.screen("menu:$legal",when(legal){"about"->"關於";"thanks"->"鳴謝";else->"開源許可"},nodes,listOf(controls.button("legal:return","返回"){back()}),session.status))
+        model.put("screen",controls.screen("menu:$legal",when(legal){"about"->"關於";"thanks"->"鳴謝";else->"開源許可"},if(legal=="about")actionRows(nodes,"about") else nodes,listOf(controls.button("legal:return","返回"){back()}),session.status))
     }
     override fun action(value:String){
         if(value.startsWith("license:")){

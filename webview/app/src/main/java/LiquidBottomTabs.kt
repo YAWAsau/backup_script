@@ -157,7 +157,7 @@ fun LiquidBottomTabs(
                     highlight = { GlassMaterial.Rim },
                     shadow = null,
                     effects = {
-                        with(adaptive){material(glassControls.adaptive,blurEnabled)}
+                        with(adaptive){material(glassControls.adaptive,blurEnabled,glassControls.blurStrength)}
                         lens(GlassMaterial.LensDp.dp.toPx(), GlassMaterial.LensDp.dp.toPx()*glassControls.refraction/100f)
                     },
                     layerBlock = {
@@ -196,7 +196,7 @@ fun LiquidBottomTabs(
                         effects = {
                             val progress = dampedDragAnimation.pressProgress
                             vibrancy()
-                            if(blurEnabled)blur(GlassMaterial.BlurDp.dp.toPx())
+                            if(blurEnabled)blur((GlassMaterial.BlurDp*3f*glassControls.blurStrength/100f).dp.toPx())
                             lens(
                                 24f.dp.toPx() * progress,
                                 24f.dp.toPx() * progress * glassControls.refraction/100f

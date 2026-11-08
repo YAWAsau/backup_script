@@ -9,6 +9,11 @@
  <a href="https://t.me/yawasau_script"><img src="https://img.shields.io/badge/Follow-Telegram-blue.svg?logo=telegram&style=flat-square" /></a>
 </p>
 
+---
+
+> 本文件對應 v1123／原生介面 1.80（versionCode 81）。介面已遷移至 Kotlin／Compose，APK 直接連接本機 Rust API，不再使用 WebView／JavaScript 或瀏覽器操作入口。操作與接回見 [原生主選單](WEB_MAIN_MENU.md)。[本次更新：v1102 → v1117](docs/updates-since-793d285.md) · [完整更新日誌](CHANGELOG.md)
+
+---
 
 ## 介面與腳本語言
 
@@ -657,6 +662,18 @@ stderr 為 0KB 只代表該輸出檔沒有記錄，不代表所有檢查通過�
 
 `stderr.log`、`root_daemon_stderr.log`、`webdav_daemon_stderr.log` 為 0KB 通常是正常現象，代表沒有錯誤輸出。主流程請看 `main.log` 或 `log/log_yyyy-mm-dd_hh-mm.txt`。
 </details>
+
+---
+
+## 目前核驗範圍
+
+- 備份預估大小與實際打包大小分開核對，跳過、未知與失敗項目分開處理；沒有有效預掃計畫的項目不能只靠數值相同判定通過。
+- 恢復清單檢查可發現缺檔、類型、大小與連結等差異，不包含逐檔內容雜湊及完整 SELinux／ACL 驗證。
+- AppState／SSAID 核對通過後，仍需實際開啟 App 確認資料與登入；系統、廠商及伺服器限制不一定能由腳本還原。
+- WebDAV 的串流耗時可能包含打包、壓縮、網路、讀取與守護收尾等待，小檔顯示的低速不能直接當成網路測速結果。
+- 程序觀察器與穩定等待不是原子性的「禁止所有新程序啟動」保證。自訂程序名稱、ROM 政策及核心能力仍有限制。
+- 備份封裝未因這些安全檢查而加密；HTTP 或 HTTPS 由遠端設定決定。重要資料請另存獨立備份。
+- 效能數據及未採用方案見 [更新日誌](CHANGELOG.md)，單機微基準不代表所有 ROM 或完整備份／恢復的加速比例。
 
 ---
 

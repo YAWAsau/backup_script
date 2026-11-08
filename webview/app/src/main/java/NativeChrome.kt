@@ -82,9 +82,10 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
                 }
             }
             val moving=uiMoving||navigationMotionActive||pageTransition.isRunning
-            val glassControls=remember(data?.optString("epoch")) { GlassMaterial.Controls(data?.optInt("glassLight",100)?:100,data?.optInt("glassTransparency",100)?:100,data?.optInt("glassRefraction",100)?:100,data?.optBoolean("glassAdaptive")==true) }
+            val glassControls=remember(data?.optString("epoch")) { GlassMaterial.Controls(data?.optInt("glassLight",100)?:100,data?.optInt("glassTransparency",100)?:100,data?.optInt("glassRefraction",100)?:100,data?.optBoolean("glassAdaptive")==true,data?.optInt("glassBlurStrength",100)?:100) }
             LaunchedEffect(data?.optInt("glassLight",100),glassControls.editing,glassControls.pending){if(!glassControls.editing&&!glassControls.pending)glassControls.light=(data?.optInt("glassLight",100)?:100).coerceIn(0,100).toFloat()}
             LaunchedEffect(data?.optInt("glassTransparency",100),glassControls.editing,glassControls.pending){if(!glassControls.editing&&!glassControls.pending)glassControls.transparency=(data?.optInt("glassTransparency",100)?:100).coerceIn(0,100).toFloat()}
+            LaunchedEffect(glassControls,data?.optInt("glassBlurStrength",100),glassControls.editing,glassControls.pending){if(!glassControls.editing&&!glassControls.pending)glassControls.blurStrength=(data?.optInt("glassBlurStrength",100)?:100).coerceIn(0,100).toFloat()}
             LaunchedEffect(data?.optInt("glassRefraction",100),glassControls.editing,glassControls.pending){if(!glassControls.editing&&!glassControls.pending)glassControls.refraction=(data?.optInt("glassRefraction",100)?:100).coerceIn(0,100).toFloat()}
             SideEffect{glassControls.adaptive=data?.optBoolean("glassAdaptive")==true}
             val background=Color(data?.optLong("background",0xff151c30L)?.toInt()?:0xff151c30.toInt())
@@ -142,7 +143,7 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
                     MiuixTheme(colors=base.copy(primary=accent,onSurface=foreground,onBackground=foreground,
                         surface=background,surfaceVariant=Color(data.optLong("cardColor",0xff242424L).toInt()),
                         surfaceContainer=Color(data.optLong("cardColor",0xff242424L).toInt()),secondaryContainer=Color(data.optLong("fieldColor",0xff434343L).toInt()))) {
-                    CompositionLocalProvider(com.kyant.backdrop.catalog.components.LocalGlassContrastEnabled provides (customWallpaper!=null),LocalNativeBackdrop provides backdrop,com.kyant.backdrop.catalog.components.LocalGlassBackgroundKey provides ("${customWallpaper?.hashCode()}:${NativeUserWallpaper.committedOpacity}:${data.optString("theme")}:${data.optLong("background")}:${data.optDouble("scale")}"),com.kyant.backdrop.catalog.components.LocalGlassInitialLuminance provides initialLuminance,com.kyant.backdrop.catalog.components.LocalGlassDynamicBackground provides dynamicGlassBackground,GlassMaterial.LocalActive provides (resumed&&!moving),GlassMaterial.LocalReducedMotion provides data.optBoolean("reducedMotion"),GlassMaterial.LocalControls provides glassControls,GlassMaterial.LocalBlurEnabled provides data.optBoolean("glassBlur",true)) {
+                    CompositionLocalProvider(com.kyant.backdrop.catalog.components.LocalGlassContrastEnabled provides (customWallpaper!=null),LocalNativeBackdrop provides backdrop,LocalNativeUiScale provides data.optDouble("scale",1.0).toFloat().coerceIn(.7f,1.5f),com.kyant.backdrop.catalog.components.LocalGlassBackgroundKey provides ("${customWallpaper?.hashCode()}:${NativeUserWallpaper.committedOpacity}:${data.optString("theme")}:${data.optLong("background")}:${data.optDouble("scale")}"),com.kyant.backdrop.catalog.components.LocalGlassInitialLuminance provides initialLuminance,com.kyant.backdrop.catalog.components.LocalGlassDynamicBackground provides dynamicGlassBackground,GlassMaterial.LocalActive provides (resumed&&!moving),GlassMaterial.LocalReducedMotion provides data.optBoolean("reducedMotion"),GlassMaterial.LocalControls provides glassControls,GlassMaterial.LocalBlurEnabled provides data.optBoolean("glassBlur",true)) {
                     pageTransition.AnimatedContent(modifier=Modifier.fillMaxSize().then(if(android.os.Build.VERSION.SDK_INT>=30)Modifier.imePadding() else Modifier),contentKey={it},transitionSpec={
                         val duration=if(initialState.isEmpty()||targetState.isEmpty()||data.optBoolean("reducedMotion"))0 else 400
                         val motion=tween<androidx.compose.ui.unit.IntOffset>(duration,easing=FastOutSlowInEasing)
@@ -170,7 +171,9 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
                                 }}
                                 documentState.SaveableStateProvider(saveKey){NativeDocument(screen,page,prepared.logs,backdrop,resumed,dispatch){uiMoving=it}}
                             }
-                            page.optJSONObject("picker")?.let { picker -> NativePathPicker(picker,Color(page.optLong("foreground",0xffeeeeeeL).toInt()),background,accent,page.optString("uiStyle"),page.optBoolean("reducedMotion"),resumed){id->dispatch.invoke(id,page.getString("epoch"))} }
+                            page.optJSONObject("picker")?.let { picker ->
+                                val density=androidx.compose.ui.platform.LocalDensity.current
+                                CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density,density.fontScale*page.optDouble("scale",1.0).toFloat().coerceIn(.7f,1.5f))){ NativePathPicker(picker,Color(page.optLong("foreground",0xffeeeeeeL).toInt()),background,accent,page.optString("uiStyle"),page.optBoolean("reducedMotion"),resumed){id->dispatch.invoke(id,page.getString("epoch"))} } }
                         }
                     }
                     }

@@ -54,7 +54,7 @@ internal class NativeEditorPage(private val session:NativeSession,context:Contex
                 scan.close();discovery=null;form.connectionSetup=true
                 session.status=if(endpoint.type=="SMB")"已填入伺服器地址，請在 SMB 地址補上共用資料夾名稱，再儲存設定。" else "已填入 WebDAV 地址，請確認帳號與路徑後儲存設定。"
                 changed()
-            }.put("standard",true)),"${endpoint.name} · ${endpoint.type}").put("detail",endpoint.url).put("translateDetail",false).put("first",index==0).put("last",index==scan.endpoints.lastIndex)
+            }.put("navigation",true)),"${endpoint.name} · ${endpoint.type}").put("detail",endpoint.url).put("translateDetail",false).put("first",index==0).put("last",index==scan.endpoints.lastIndex)
         }
         return c.screen("editor:discovery","自動發現電腦／NAS",
             listOf(c.node("discovery:status",if(scan.running)"loading" else "text",scan.message))+
@@ -298,10 +298,14 @@ internal class NativeEditorPage(private val session:NativeSession,context:Contex
             val saved=mutableListOf<String>()
             try{
                 if(flow.isNotEmpty())require(selection.apps.any{!it.optBoolean("removed")&&it.getBoolean("selected")}){"請至少選擇一個項目"}
+                if(form.authSetup){session.status="正在儲存帳密…";session.emit()}
                 val trailer=if(form.authSetup)"" else timelineSubmission()
                 for((key,fields) in settings)if(fields.any{it.getString("value")!=it.getString("original")}){saveSettings(key);saved+=key}
                 val submit=!form.authSetup&&(selection.changed().isNotEmpty()||flow.isNotEmpty())
-                session.finish(session.api.post(if(submit)"save" else "finish",if(submit)selection.submission()+trailer else ""))
+                val retryStatus=if(saved.isNotEmpty())"帳密已儲存，正在重新驗證…" else "帳密未修改，正在重新驗證…"
+                if(form.authSetup){session.status=retryStatus;session.emit()}
+                val response=session.api.post(if(submit)"save" else "finish",if(submit)selection.submission()+trailer else "")
+                session.finish(if(form.authSetup)retryStatus else response)
             }catch(e:Exception){if(e is java.io.IOException&&e !is NativeApi.ApiFailure)submissionUnknown=true;session.status=(if(saved.isNotEmpty())"已儲存：${saved.joinToString("、")}。" else "")+"未完成：${e.message}。若連線中斷，請確認日誌與原檔狀態，勿假設未寫入。";session.emit()}
         }
         if(flow.isEmpty()&&!form.authSetup)session.confirm(if(mode=="remote-delete")"提交所選遠端備份？接下來仍需兩次確認才會刪除。" else "儲存並返回？各檔案分別儲存；中途失敗時已儲存的檔案會保留。",run)else run()
@@ -327,8 +331,8 @@ internal class NativeEditorPage(private val session:NativeSession,context:Contex
         val title=if(form.authSetup)"認證失敗，請重新輸入帳密" else if(panel!="apps"&&form.connectionSetup)(if(settings.getValue(panel).any{it.optString("key")=="remote_type"&&it.optString("value")=="smb"})"SMB" else "WebDAV")+" 連線設定" else if(panel!="apps")if(panel=="restore")"恢復設定" else "備份設定" else if(flow=="backup")"選擇備份應用" else if(flow.isNotEmpty())"選擇恢復項目" else if(mode=="remote-delete")"編輯遠端備份" else "應用清單"
         val label=if(form.authSetup)"儲存並重試" else if(manager.optBoolean("discoverySetup"))"連線並繼續" else if(flow=="backup")"下一步 · 開始備份" else if(flow.isNotEmpty())"下一步 · 開始恢復" else if(mode=="remote-delete")"刪除所選備份" else "儲存並返回"
         val count=selection.changed().size+settingsChanged()
-        val hint=(if(count>0)"$count 項已修改" else "尚未修改")+if(flow in setOf("restore","remote"))"\n恢復前請記得開啟目的 Google 帳號的時間軸，否則可能看不到歷史紀錄。" else ""
-        val subtitle=if(form.authSetup)"伺服器拒絕目前帳密；地址與其他設定保持不變。" else if(panel!="apps"&&form.connectionSetup)"確認地址與登入帳密後儲存。" else if(panel!="apps")"調整本次入口的設定；儲存後會重新載入。" else if(flow.isNotEmpty())"清單已同步；保留既有選取與註釋。選擇完成後按下一步執行。" else if(single)"勾選要處理的項目；儲存或取消後返回。" else "選擇要處理的應用；儲存或取消後返回。"
+        val hint=if(form.authSetup){if(count>0)"帳密尚未儲存" else "目前儲存的帳密未通過認證，請檢查使用者名稱與密碼。"}else (if(count>0)"$count 項已修改" else "尚未修改")+if(flow in setOf("restore","remote"))"\n恢復前請記得開啟目的 Google 帳號的時間軸，否則可能看不到歷史紀錄。" else ""
+        val subtitle=if(form.authSetup)"伺服器拒絕目前儲存的帳密。請修改後按「儲存並重試」，或返回。" else if(panel!="apps"&&form.connectionSetup)"確認地址與登入帳密後儲存。" else if(panel!="apps")"調整本次入口的設定；儲存後會重新載入。" else if(flow.isNotEmpty())"清單已同步；保留既有選取與註釋。選擇完成後按下一步執行。" else if(single)"勾選要處理的項目；儲存或取消後返回。" else "選擇要處理的應用；儲存或取消後返回。"
         val note=c.node("editor:note:$panel","text",if(panel!="apps")"修改設定後儲存；返回將保留已儲存的內容。" else if(single)"儲存選擇後返回；取消會保留原清單。" else "僅 APK／完整只能擇一；都不勾則略過。").put("muted",true)
         val screen=c.screen("editor:$panel",title,(if(tabs.isNotEmpty())listOf(c.group("editor:tabs","row",tabs))else emptyList())+listOf(note)+nodes,listOf(c.button("editor:cancel",if(form.authSetup)"返回" else "取消",session.finished){cancel()},c.button("editor:save",label,session.finished||submissionUnknown){save()}),session.status.ifEmpty{hint},subtitle)
         if(panel=="apps")screen.put("appPage",selection.page)

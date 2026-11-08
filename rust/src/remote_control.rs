@@ -87,6 +87,12 @@ fn editor(conf: &Path, root: &Path, user: &str, kind: &str) -> io::Result<bool> 
         .args(["--open", user])
         .arg(root)
         .args([mode, "settings"])
+        // This child edits connection settings, not the parent's selection.
+        // Inherited flow would reject /api/finish and keep retry stuck.
+        .env_remove("SPEEDBACKUP_SELECTION_FLOW")
+        .env_remove("SPEEDBACKUP_SELECTION_REPORT")
+        .env_remove("SPEEDBACKUP_AUTH_SETUP")
+        .env_remove("SPEEDBACKUP_DISCOVERY_SETUP")
         .env(kind, "1")
         .stdout(Stdio::null())
         .status()?;

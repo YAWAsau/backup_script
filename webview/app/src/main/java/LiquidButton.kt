@@ -81,7 +81,7 @@ fun LiquidButton(
             // drawBackdrop already owns its clipped offscreen layer; avoid a second FBO.
             Box(Modifier.matchParentSize()
                 .drawBackdrop(backdrop=backdrop,shape={shape},highlight={GlassMaterial.Rim},shadow=null,
-                    effects={with(adaptive){material(glassControls.adaptive,blurEnabled)};lens(GlassMaterial.LensDp.dp.toPx(),GlassMaterial.LensDp.dp.toPx()*glassControls.refraction/100f)},
+                    effects={with(adaptive){material(glassControls.adaptive,blurEnabled,glassControls.blurStrength)};lens(GlassMaterial.LensDp.dp.toPx(),GlassMaterial.LensDp.dp.toPx()*glassControls.refraction/100f)},
                     onDrawBackdrop={draw->draw();if((glassControls.adaptive||contrast)&&samplingActive){with(adaptive){capture(glassControls.sampleTick,draw)}}},
                     onDrawSurface={
                         drawRect((if(surfaceColor.isSpecified)surfaceColor else GlassMaterial.surface(isLightTheme)).copy(alpha=glassControls.opacity))

@@ -1,7 +1,15 @@
 package io.github.yawasau.speedbackup.webview
 
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.ArrowUpDown
+import top.yukonga.miuix.kmp.icon.basic.ArrowRight
+import top.yukonga.miuix.kmp.icon.basic.Close
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.Canvas
 import top.yukonga.miuix.kmp.squircle.squircleBorder
+import top.yukonga.miuix.kmp.squircle.addSquircleRect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.text.BasicText
@@ -27,24 +35,40 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.catalog.components.GlassMaterial
 import androidx.compose.foundation.shape.RoundedCornerShape
 
+internal val LocalNativeUiScale=staticCompositionLocalOf { 1f }
 internal val LocalNativeBackdrop=staticCompositionLocalOf<Backdrop?>{null}
 internal val LocalNativeSurfaceBacked=staticCompositionLocalOf{false}
 internal data class NativeSurface(val modifier:Modifier,val color:Color,val frosted:Boolean)
 @Composable internal fun nativeSurface(color:Color,shape:androidx.compose.ui.graphics.Shape?=null,cornerRadius:androidx.compose.ui.unit.Dp=24.dp,showOutline:Boolean=true,isolated:Boolean=false,backdrop:Backdrop?=LocalNativeBackdrop.current):NativeSurface {
+    val blurStrength=GlassMaterial.LocalControls.current.blurStrength
     val frosted=backdrop!=null&&GlassMaterial.LocalBlurEnabled.current&&android.os.Build.VERSION.SDK_INT>=31
     if(!frosted)return NativeSurface(Modifier,color,false)
     // Child controls share the parent's blur; popups own a separate window surface.
     val edge=(if(color.luminance()>.4f)Color.Black else Color.White).copy(alpha=if(isolated).26f else .20f)
-    val actualShape=shape?:RoundedCornerShape(cornerRadius)
+    val squircle=top.yukonga.miuix.kmp.squircle.isSquircleEnabled()
+    val componentShape=remember(cornerRadius,squircle){object:androidx.compose.ui.graphics.Shape{
+        private var cachedSize=androidx.compose.ui.geometry.Size.Unspecified
+        private var cachedDensity=0f
+        private var cachedOutline:androidx.compose.ui.graphics.Outline?=null
+        override fun createOutline(size:androidx.compose.ui.geometry.Size,layoutDirection:androidx.compose.ui.unit.LayoutDirection,density:androidx.compose.ui.unit.Density):androidx.compose.ui.graphics.Outline {
+            if(size==cachedSize&&density.density==cachedDensity)cachedOutline?.let{return it}
+            val path=androidx.compose.ui.graphics.Path().apply{addSquircleRect(size.width,size.height,with(density){cornerRadius.toPx()},squircleEnabled=squircle)}
+            return androidx.compose.ui.graphics.Outline.Generic(path).also{cachedSize=size;cachedDensity=density.density;cachedOutline=it}
+        }
+    }}
+    val actualShape=shape?:componentShape
     val outline=if(!showOutline)Modifier else if(shape!=null)Modifier.border(1.dp,edge,shape) else Modifier.squircleBorder(1.dp,edge,cornerRadius)
     if(!isolated&&LocalNativeSurfaceBacked.current)return NativeSurface(outline,color.copy(alpha=color.alpha*.85f),true)
     return NativeSurface(Modifier.drawBackdrop(backdrop=backdrop!!,shape={actualShape},highlight=null,shadow=null,
-        effects={blur(12.dp.toPx())},onDrawSurface={drawRect(color.copy(alpha=color.alpha*(if(isolated).78f else .68f)))}).then(outline),Color.Transparent,true)
+        effects={blur((36f*blurStrength/100f).dp.toPx())},onDrawSurface={drawRect(color.copy(alpha=color.alpha*(if(isolated).78f else .68f)))}).then(outline),Color.Transparent,true)
 }
 
 /** Call inside the trigger's Box: Miuix measures that native anchor, never WebView coordinates. */
 @Composable internal fun NativeSelectionPopup(show:Boolean,style:String,options:List<JSONObject>,value:String,foreground:Color,background:Color,accent:Color,onDismiss:()->Unit,onSelect:(String)->Unit) {
     val surface=nativeSurface(background,isolated=true)
+    val density=androidx.compose.ui.platform.LocalDensity.current
+    val scale=LocalNativeUiScale.current
+    CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density,density.fontScale*scale)) {
     top.yukonga.miuix.kmp.theme.MiuixTheme(colors=top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.copy(
         surfaceContainer=surface.color,onBackground=foreground,primary=accent)) {
       top.yukonga.miuix.kmp.window.WindowListPopup(show=show,onDismissRequest=onDismiss,
@@ -64,14 +88,74 @@ internal data class NativeSurface(val modifier:Modifier,val color:Color,val fros
     }
 }
 
+}
+
 /** Standard Miuix actions share the global surface setting and their parent blur. */
-@Composable internal fun NativeDialogButton(label:String,style:String,foreground:Color,background:Color,textStyle:TextStyle,enabled:Boolean=true,modifier:Modifier=Modifier,centered:Boolean=true,singleLine:Boolean=false,visualEnabled:Boolean=enabled,onClick:()->Unit) {
+@Composable internal fun NativeDialogButton(label:String,style:String,foreground:Color,background:Color,textStyle:TextStyle,enabled:Boolean=true,modifier:Modifier=Modifier,centered:Boolean=true,singleLine:Boolean=false,visualEnabled:Boolean=enabled,dropdown:Boolean=false,navigation:Boolean=false,returnArrow:Boolean=false,onClick:()->Unit) {
+    if(dropdown||navigation){
+        val ink=foreground.copy(alpha=if(visualEnabled)1f else .4f)
+        if(label.isBlank()){
+            Box(modifier.heightIn(min=48.dp).clickable(enabled=enabled,role=Role.Button,onClick=onClick),contentAlignment=Alignment.Center){NativePreferenceArrow(dropdown,ink.copy(alpha=ink.alpha*.65f),returnArrow)}
+            return
+        }
+        val backwards=returnArrow||label.startsWith("返回")
+        Row(modifier.heightIn(min=48.dp).clickable(enabled=enabled,role=Role.Button,onClick=onClick).padding(vertical=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+            if(backwards)NativePreferenceArrow(false,ink,backwards=true)
+            BasicText(label,Modifier.weight(1f),maxLines=if(singleLine)1 else Int.MAX_VALUE,softWrap=!singleLine,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,style=textStyle.copy(color=ink,textAlign=if(dropdown&&centered)TextAlign.End else TextAlign.Start))
+            if(!backwards)NativePreferenceArrow(dropdown,ink.copy(alpha=ink.alpha*.65f))
+        }
+        return
+    }
     val surface=nativeSurface(background,cornerRadius=16.dp,showOutline=false)
     val ink=foreground.copy(alpha=if(visualEnabled)1f else .4f)
     top.yukonga.miuix.kmp.basic.Button(onClick=onClick,enabled=enabled,indication=if(enabled)androidx.compose.foundation.LocalIndication.current else null,
-        modifier=modifier.then(surface.modifier).heightIn(min=48.dp),minHeight=48.dp,minWidth=48.dp,insideMargin=PaddingValues(12.dp,8.dp),
+        modifier=modifier.then(surface.modifier).heightIn(min=40.dp),minHeight=40.dp,minWidth=48.dp,insideMargin=PaddingValues(10.dp,4.dp),
         colors=top.yukonga.miuix.kmp.basic.ButtonColors(surface.color,if(visualEnabled)surface.color else surface.color.copy(alpha=surface.color.alpha*.4f),foreground,ink)) {
-        BasicText(label,Modifier.fillMaxWidth(),maxLines=if(singleLine)1 else Int.MAX_VALUE,softWrap=!singleLine,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,style=textStyle.copy(color=ink,textAlign=if(centered)TextAlign.Center else TextAlign.Start))
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
+            if(label.startsWith("返回"))NativePreferenceArrow(false,ink,backwards=true)
+            if(label=="×")Box(Modifier.weight(1f),contentAlignment=Alignment.Center){top.yukonga.miuix.kmp.basic.Icon(MiuixIcons.Basic.Close,null,Modifier.size(16.dp),tint=ink)}
+            else BasicText(label,Modifier.weight(1f),maxLines=if(singleLine)1 else Int.MAX_VALUE,softWrap=!singleLine,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,style=textStyle.copy(color=ink,textAlign=if(centered)TextAlign.Center else TextAlign.Start))
+        }
+    }
+}
+
+@Composable internal fun NativeBackButton(label:String,color:Color,modifier:Modifier=Modifier,onClick:()->Unit){
+    Box(modifier.size(48.dp).clickable(role=Role.Button,onClick=onClick).semantics{contentDescription=label},contentAlignment=Alignment.Center){
+        top.yukonga.miuix.kmp.basic.Icon(MiuixIcons.Basic.ArrowRight,null,Modifier.size(10.dp,16.dp).graphicsLayer{rotationZ=180f},tint=color)
+    }
+}
+
+/** Shared preference layout. One click target includes title, summary, value and arrow. */
+@Composable internal fun NativePreferenceRow(title:String,value:String,summary:String,dropdown:Boolean,foreground:Color,textStyle:TextStyle,enabled:Boolean=true,visualEnabled:Boolean=enabled,onClick:()->Unit){
+    val ink=foreground.copy(alpha=if(visualEnabled)1f else .4f)
+    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).clickable(enabled=enabled,role=Role.Button,onClick=onClick).padding(vertical=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)){
+            BasicText(title,style=textStyle.copy(color=ink))
+            if(summary.isNotBlank())BasicText(summary,style=textStyle.copy(color=ink.copy(alpha=ink.alpha*.65f),fontSize=textStyle.fontSize*.82f))
+        }
+        if(value.isNotEmpty())BasicText(value,Modifier.widthIn(max=160.dp),style=textStyle.copy(color=ink.copy(alpha=ink.alpha*.7f),textAlign=TextAlign.End))
+        NativePreferenceArrow(dropdown,ink.copy(alpha=ink.alpha*.65f))
+    }
+}
+
+@Composable internal fun NativePreferenceArrow(dropdown:Boolean,tint:Color,backwards:Boolean=false){
+    top.yukonga.miuix.kmp.basic.Icon(if(dropdown)MiuixIcons.Basic.ArrowUpDown else MiuixIcons.Basic.ArrowRight,null,Modifier.size(10.dp,16.dp).graphicsLayer{rotationZ=if(backwards)180f else 0f},tint=tint)
+}
+
+@Composable internal fun NativeSwitchPreference(title:String,summary:String,checked:Boolean,text:Color,accent:Color,style:TextStyle,enabled:Boolean=true,onChange:(Boolean)->Unit){
+    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).toggleable(checked,enabled=enabled,role=Role.Switch,onValueChange=onChange).padding(vertical=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)){
+            BasicText(title,style=style.copy(color=text.copy(alpha=if(enabled)1f else .4f)))
+            if(summary.isNotBlank())BasicText(summary,style=style.copy(color=text.copy(alpha=.65f),fontSize=style.fontSize*.82f))
+        }
+        Box(Modifier.clearAndSetSemantics{}){NativeMiuixSwitch(checked,accent,text.copy(alpha=.25f),enabled,onChange=null)}
+    }
+}
+
+@Composable internal fun NativeSliderLabel(title:String,value:String,style:TextStyle){
+    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
+        BasicText(title,Modifier.weight(1f),style=style)
+        BasicText(value,style=style.copy(textAlign=TextAlign.End,fontFeatureSettings="tnum"))
     }
 }
 
@@ -110,10 +194,10 @@ internal data class NativeSurface(val modifier:Modifier,val color:Color,val fros
         if(!enabled)disabled()
         setProgress { if(!enabled)false else {update(it.coerceIn(min.toFloat(),max.toFloat()));commit();true} }
     },contentAlignment=androidx.compose.ui.Alignment.Center) {
-        top.yukonga.miuix.kmp.basic.Slider(value=value,valueRange=min.toFloat()..max.toFloat(),enabled=enabled,height=28.dp,
+        top.yukonga.miuix.kmp.basic.Slider(value=value,valueRange=min.toFloat()..max.toFloat(),enabled=enabled,height=20.dp,
             onValueChange={if(enabled)update(it)},onValueChangeFinished={drag(false);if(enabled)commit()},
-            colors=top.yukonga.miuix.kmp.basic.SliderColors(tint,tint.copy(alpha=if(visualEnabled)1f else .4f),tint.copy(alpha=.18f),tint.copy(alpha=if(visualEnabled).18f else .08f),Color.White,Color.White.copy(alpha=if(visualEnabled)1f else .4f),tint,Color.White),
-            modifier=Modifier.fillMaxWidth().height(28.dp).pointerInput(enabled){if(enabled)awaitEachGesture {
+            colors=top.yukonga.miuix.kmp.basic.SliderColors(tint,if(visualEnabled)tint else Color.Gray.copy(alpha=.4f),tint.copy(alpha=.18f),if(visualEnabled)tint.copy(alpha=.18f) else Color.Gray.copy(alpha=.15f),Color.White,Color.White.copy(alpha=if(visualEnabled)1f else .4f),tint,Color.White),
+            modifier=Modifier.fillMaxWidth().height(20.dp).pointerInput(enabled){if(enabled)awaitEachGesture {
                 awaitFirstDown(requireUnconsumed=false,pass=PointerEventPass.Initial)
                 drag(true)
                 try { do {val event=awaitPointerEvent(PointerEventPass.Final)} while(event.changes.any{it.pressed}) }

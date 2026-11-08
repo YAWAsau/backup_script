@@ -16,6 +16,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -43,13 +45,16 @@ fun NativePathPicker(state: JSONObject, foreground: Color, background: Color, ac
     val loading=state.optBoolean("loading")
     val files=state.optBoolean("files")
     val directory=PickerDirectory(state.optString("path"),state.optString("parent"),entries,!state.isNull("next"))
+    var footerHeightPx by remember{mutableIntStateOf(0)}
+    val footerPadding=maxOf(100.dp,with(LocalDensity.current){footerHeightPx.toDp()}+8.dp)
+    val loadingHeight=maxOf(36f,24f*LocalDensity.current.fontScale).dp
     val card=androidx.compose.ui.graphics.lerp(background,foreground,.07f)
     // Consume only otherwise-unhandled taps. Consuming every MOVE here cancels
     // LazyColumn's touch-slop detection before it can begin scrolling.
     Box(Modifier.fillMaxSize().background(background).clickable(interactionSource=null,indication=null){}) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
             Row(Modifier.fillMaxWidth().padding(16.dp),verticalAlignment=Alignment.CenterVertically) {
-                NativeDialogButton("‹",uiStyle,foreground,card,TextStyle(fontSize=28.sp),modifier=Modifier.width(48.dp).semantics{contentDescription=label("取消路徑選擇")}){action("cancel")}
+                NativeBackButton(label("取消路徑選擇"),foreground){action("cancel")}
                 Column(Modifier.weight(1f).padding(start=8.dp)) {
                     BasicText(state.optString("title"),style=TextStyle(color=foreground,fontSize=20.sp,fontWeight=FontWeight.Medium))
                     BasicText(state.optString("path"),style=TextStyle(color=foreground.copy(alpha=.65f),fontSize=14.sp),maxLines=2,overflow=TextOverflow.Ellipsis)
@@ -61,11 +66,11 @@ fun NativePathPicker(state: JSONObject, foreground: Color, background: Color, ac
                 }
             }
             // Keep the viewport fixed while the next listing loads.
-            Box(Modifier.fillMaxWidth().height(36.dp).padding(horizontal=16.dp),contentAlignment=Alignment.CenterStart){
+            Box(Modifier.fillMaxWidth().height(loadingHeight).padding(horizontal=16.dp),contentAlignment=Alignment.CenterStart){
                 if(loading)NativeLoadingStatus(label("讀取資料夾…"),uiStyle,foreground.copy(alpha=.65f),accent,TextStyle(fontSize=14.sp),resumed&&!reducedMotion)
             }
             if(state.optString("error").isNotEmpty()) BasicText(label("無法讀取：")+state.optString("error"),Modifier.padding(16.dp),style=TextStyle(color=foreground,fontSize=14.sp))
-            NativeDialogButton(label(if(manageSelected) "返回資料夾" else "管理已選路徑")+" (${selected.size})",uiStyle,accent,card,TextStyle(fontSize=16.sp),modifier=Modifier.padding(16.dp)){manageSelected=!manageSelected;removals.clear()}
+            NativeDialogButton(label(if(manageSelected) "返回資料夾" else "管理已選路徑")+" (${selected.size})",uiStyle,accent,card,TextStyle(fontSize=16.sp),modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=8.dp),centered=false,navigation=true){manageSelected=!manageSelected;removals.clear()}
             AnimatedContent(targetState=manageSelected,modifier=Modifier.weight(1f).fillMaxWidth().clipToBounds(),label="picker-selected",transitionSpec={
                 val direction=if(targetState)1 else -1
                 val duration=if(reducedMotion)0 else 180
@@ -73,7 +78,7 @@ fun NativePathPicker(state: JSONObject, foreground: Color, background: Color, ac
                     (slideOutHorizontally(tween(duration)){-direction*it/8}+fadeOut(tween(duration)))).using(null)
             }) { showManaged ->
             if(showManaged) {
-                LazyColumn(state=rememberResumeList(state.optString("resumeSession"),"picker:selected:"+state.optString("title")),modifier=Modifier.fillMaxSize(),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                LazyColumn(state=rememberResumeList(state.optString("resumeSession"),"picker:selected:"+state.optString("title")),modifier=Modifier.fillMaxSize(),contentPadding=PaddingValues(start=16.dp,end=16.dp,top=8.dp,bottom=8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     items(selected.toList(),key={it}) { path ->
                         fun toggle(){if(path in removals)removals.remove(path)else removals.add(path)}
                         PickerRow(path.substringAfterLast('/').ifEmpty{path},path,!files,path in removals,manageSelected,foreground,card,accent,uiStyle,label("選取"),label("開啟資料夾"),{toggle()},{toggle()},showArrow=false)
@@ -84,7 +89,7 @@ fun NativePathPicker(state: JSONObject, foreground: Color, background: Color, ac
                         }
                         NativeDialogButton(label("移除勾選路徑")+" (${removals.size})",uiStyle,accent,card,TextStyle(fontSize=16.sp),manageSelected&&removals.isNotEmpty(),Modifier.fillMaxWidth(),onClick=removeSelected)
                     }
-                    item { Spacer(Modifier.height(100.dp)) }
+                    item { Spacer(Modifier.height(footerPadding)) }
                 }
             } else AnimatedContent(
                 targetState=directory,
@@ -104,12 +109,12 @@ fun NativePathPicker(state: JSONObject, foreground: Color, background: Color, ac
             ) { listing ->
                 // Outgoing rows retain their own listing, but cannot dispatch stale actions.
                 val active=!manageSelected&&!loading&&listing.path==directory.path
-                LazyColumn(state=rememberResumeList(state.optString("resumeSession"),"picker:path:"+listing.path,!loading),modifier=Modifier.fillMaxSize(),contentPadding=PaddingValues(start=16.dp,end=16.dp,top=16.dp,bottom=100.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                LazyColumn(state=rememberResumeList(state.optString("resumeSession"),"picker:path:"+listing.path,!loading),modifier=Modifier.fillMaxSize(),contentPadding=PaddingValues(start=16.dp,end=16.dp,top=8.dp,bottom=footerPadding),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     if(!files&&listing.path.isNotEmpty()) item {
                         PickerRow(label("選擇目前資料夾"),listing.path,true,selected.contains(listing.path),active,foreground,card,accent,uiStyle,label("選取"),label("開啟資料夾"),{action("select",listing.path)},{action("select",listing.path)},showArrow=false)
                     }
                     if(listing.parent.isNotEmpty()&&listing.parent!=listing.path) item {
-                        PickerRow(label("上一層"),listing.parent,true,null,active,foreground,card,accent,uiStyle,label("選取"),label("開啟資料夾"),{action("open",listing.parent)},{})
+                        PickerRow(label("上一層"),listing.parent,true,null,active,foreground,card,accent,uiStyle,label("選取"),label("開啟資料夾"),{action("open",listing.parent)},{},returnArrow=true)
                     }
                     items(listing.entries,key={it.getString("path")}) { entry ->
                         val path=entry.getString("path");val isDirectory=entry.optBoolean("directory")
@@ -122,7 +127,7 @@ fun NativePathPicker(state: JSONObject, foreground: Color, background: Color, ac
             }
             }
         }
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged{footerHeightPx=it.height}.windowInsetsPadding(WindowInsets.navigationBars).padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
             BasicText(label("已選")+" ${selected.size} "+label("個；確認後填入，儲存設定才生效"),style=TextStyle(color=foreground,fontSize=14.sp))
             NativeDialogButton(label("確認選擇"),uiStyle,foreground,accent.copy(alpha=.28f),TextStyle(fontSize=17.sp,fontWeight=FontWeight.Medium),!loading,Modifier.align(Alignment.End).width(160.dp)){action("confirm")}
 
@@ -131,19 +136,19 @@ fun NativePathPicker(state: JSONObject, foreground: Color, background: Color, ac
 }
 
 @Composable
-private fun PickerRow(name:String,path:String,directory:Boolean,checked:Boolean?,enabled:Boolean,foreground:Color,card:Color,accent:Color,uiStyle:String,selectLabel:String,openLabel:String,open:()->Unit,toggle:()->Unit,showArrow:Boolean=directory) {
-    NativeComponentCard(uiStyle,card,foreground) { Row(Modifier.fillMaxWidth().heightIn(min=72.dp),verticalAlignment=Alignment.CenterVertically) {
+private fun PickerRow(name:String,path:String,directory:Boolean,checked:Boolean?,enabled:Boolean,foreground:Color,card:Color,accent:Color,uiStyle:String,selectLabel:String,openLabel:String,open:()->Unit,toggle:()->Unit,showArrow:Boolean=directory,returnArrow:Boolean=false) {
+    NativeComponentCard(uiStyle,card,foreground) { Row(Modifier.fillMaxWidth().heightIn(min=56.dp),verticalAlignment=Alignment.CenterVertically) {
         top.yukonga.miuix.kmp.basic.BasicComponent(modifier=Modifier.weight(1f),title=name,summary=path.ifEmpty{null},
             titleColor=top.yukonga.miuix.kmp.basic.BasicComponentColors(foreground,foreground.copy(alpha=.4f)),
             summaryColor=top.yukonga.miuix.kmp.basic.BasicComponentColors(foreground.copy(alpha=.65f),foreground.copy(alpha=.3f)),
             enabled=enabled,role=Role.Button,onClick=if(checked!=null)toggle else open)
-        if(checked!=null)Box(Modifier.toggleable(value=checked,enabled=enabled,role=Role.Checkbox,onValueChange={toggle()}).semantics{contentDescription="$selectLabel $name"}.padding(20.dp)) {
+        if(checked!=null)Box(Modifier.toggleable(value=checked,enabled=enabled,role=Role.Checkbox,onValueChange={toggle()}).semantics{contentDescription="$selectLabel $name"}.sizeIn(minWidth=48.dp,minHeight=48.dp).padding(12.dp),contentAlignment=Alignment.Center) {
             top.yukonga.miuix.kmp.basic.Checkbox(
             state=if(checked)androidx.compose.ui.state.ToggleableState.On else androidx.compose.ui.state.ToggleableState.Off,
             onClick=null,enabled=enabled,modifier=Modifier.drawBehind { if(!checked)drawCircle(foreground.copy(alpha=if(enabled) .6f else .3f),radius=(size.minDimension/2-1.dp.toPx()).coerceAtLeast(0f),style=Stroke(2.dp.toPx())) }.clearAndSetSemantics{},
             colors=top.yukonga.miuix.kmp.basic.CheckboxColors(Color.White,foreground.copy(alpha=.5f),Color.White.copy(alpha=.4f),foreground.copy(alpha=.2f),accent,Color.Transparent,accent.copy(alpha=.4f),Color.Transparent))
         }
-        if(showArrow)NativeDialogButton("›",uiStyle,foreground,Color.Transparent,TextStyle(fontSize=24.sp),enabled,Modifier.width(48.dp).semantics{contentDescription="$openLabel $name"},onClick=open)
+        if(showArrow)NativeDialogButton("",uiStyle,foreground,Color.Transparent,TextStyle(fontSize=24.sp),enabled,Modifier.width(48.dp).semantics{contentDescription="$openLabel $name"},navigation=true,returnArrow=returnArrow,onClick=open)
     }
 }
 

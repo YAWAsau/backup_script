@@ -40,12 +40,12 @@ internal class AdaptiveGlass(val layer:GraphicsLayer,val luminance:Animatable<Fl
         val effective=luminance.value*(1f-a)+surfaceLight*a
         return if(effective>.5f)Color.Black else Color.White
     }
-    fun BackdropEffectScope.material(enabled:Boolean,blurEnabled:Boolean){
-        if(!enabled){vibrancy();if(blurEnabled)blur(GlassMaterial.BlurDp.dp.toPx());return}
+    fun BackdropEffectScope.material(enabled:Boolean,blurEnabled:Boolean,blurStrength:Float){
+        if(!enabled){vibrancy();if(blurEnabled)blur((GlassMaterial.BlurDp*3f*blurStrength/100f).dp.toPx());return}
         val v=luminance.value*2f-1f
         val l=kotlin.math.sign(v)*v*v
         colorControls(brightness=if(l>0f).1f+.4f*l else .1f+.3f*l,contrast=if(l>0f)1f-l else 1f,saturation=1.5f)
-        if(blurEnabled)blur((if(l>0f)8f+8f*l else 8f+6f*l).dp.toPx())
+        if(blurEnabled)blur(((if(l>0f)8f+8f*l else 8f+6f*l)*3f*blurStrength/100f).dp.toPx())
     }
 }
 internal val LocalGlassContrastEnabled=staticCompositionLocalOf { false }

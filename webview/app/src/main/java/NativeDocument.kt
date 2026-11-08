@@ -67,7 +67,7 @@ internal fun validateNativeDocument(screen:JSONObject?) {
                 require(n.optString("preserved").length<=262144&&n.optString("zeroLabel").length<=256)
             }
             if(kind in setOf("input","select"))require(n.getString("value").length<=262144)
-            if(kind=="app"||kind=="license"||(kind=="group"&&n.optString("layout")=="setting"))require(n.getString("detail").length<=262144)
+            if(kind=="app"||kind=="license"||(kind=="group"&&n.optString("layout")=="setting"))require(n.getString("detail").trim().length<=262144)
             if(kind in setOf("group","app"))require(n.getJSONArray("children").length()<=2200)
             if(kind=="select") {
                 val options=n.getJSONArray("options");require(options.length()<=1000)
@@ -260,15 +260,18 @@ internal fun resumeKey(session:String,route:String):String = java.security.Messa
             item("header") { Column(Modifier.padding(bottom=20.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
                 if(licensePage) {
                     val back=screen.getJSONArray("footer").nodes().firstOrNull()
-                    if(back!=null)BasicText("‹",Modifier.clickable(role=Role.Button){send("click",back.getString("id"))}.padding(8.dp).semantics{contentDescription=back.getString("label")},style=style.text(32))
+                    if(back!=null)NativeBackButton(back.getString("label"),style.text){send("click",back.getString("id"))}
                 }
                 if(!licensePage)BasicText(screen.getString("eyebrow"),style=style.text(17))
                 BasicText(screen.getString("title"),Modifier.semantics{heading()},style=style.text(32).copy(fontWeight=nativeUiStyle().titleWeight))
                 BasicText(screen.getString("subtitle"),style=style.text(17))
             } }
+            if(screen.has("wallpaperSystem"))item("wallpaper-preview"){
+                NativeWallpaperPreview(Color(data.optLong("background",0xff151c30L).toInt()),style.text,style.text(14))
+            }
             if(screen.has("wallpaperSystem"))item("wallpaper-settings"){
                 NativeComponentCard("miuix",style.card,style.text,backdrop=style.backdrop) {
-                    Box(Modifier.padding(16.dp)) {NativeWallpaperSettings(style.text,style.field,style.text(17),!list.isScrollInProgress,importWallpaper){send("click",screen.getString("wallpaperSystem"))}}
+                    Box(Modifier.padding(16.dp)) {NativeWallpaperSettings(style.text,style.field,style.accent,style.text(17),!list.isScrollInProgress,importWallpaper){send("click",screen.getString("wallpaperSystem"))}}
                 }
             }
             for(n in nodes) {
@@ -315,7 +318,7 @@ internal fun resumeKey(session:String,route:String):String = java.security.Messa
             val items=displayedDialog.getJSONArray("nodes").nodes()
             val dialogStyle=style.copy(inDialog=true)
             Column(Modifier.fillMaxWidth().heightIn(max=(LocalConfiguration.current.screenHeightDp*.85f).dp)
-                .clip(RoundedCornerShape(nativeUiStyle().dialogRadius.dp)).padding(20.dp)) {
+                .padding(20.dp)) {
                 LazyColumn(state=rememberResumeList(data.optString("resumeSession"),data.optString("sectionRoute")+":dialog:"+items.take(3).joinToString("|"){it.optString("kind")+":"+it.optString("label")+":"+it.optString("text")}),modifier=Modifier.fillMaxWidth().weight(1f,fill=false),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     for(n in items.filterNot{it.optBoolean("dialogAction")})item(n.getString("id")){NativeNode(n,dialogStyle,dialogSend)}
                 }
@@ -331,12 +334,18 @@ internal fun resumeKey(session:String,route:String):String = java.security.Messa
     val id=n.getString("id")
     val enabled=!n.optBoolean("disabled")
     when(n.getString("kind")) {
-        "button","link" -> NativeDialogButton(n.getString("label")+(if(n.optBoolean("dropdown"))"  ▾" else ""),s.uiStyle,s.text,
+        "button","link" -> NativeDialogButton(n.getString("label"),s.uiStyle,s.text,
             if(n.optBoolean("primary")||n.optBoolean("selected"))s.accent.copy(alpha=.28f) else s.field,s.text(17),enabled,
-            Modifier.fillMaxWidth().heightIn(min=if(s.compact)48.dp else 52.dp).semantics{if(n.optString("description").isNotEmpty())contentDescription=n.getString("description");selected=n.optBoolean("selected")},
-            centered=s.inDialog||n.optBoolean("standard")||s.compact||n.optBoolean("centerLabel"),singleLine=n.optBoolean("fitSingleLine")){send("click",id,"")}
+            Modifier.fillMaxWidth().heightIn(min=40.dp).semantics{if(n.optString("description").isNotEmpty())contentDescription=n.getString("description");selected=n.optBoolean("selected")},
+            centered=s.inDialog||n.optBoolean("standard")||s.compact||n.optBoolean("centerLabel"),singleLine=n.optBoolean("fitSingleLine"),dropdown=n.optBoolean("dropdown"),navigation=n.optBoolean("navigation")){send("click",id,"")}
         "heading" -> BasicText(n.getString("label"),Modifier.semantics{heading()},style=s.text(if(n.optString("level")=="H3")14 else 20,n.optString("level")!="H3").copy(color=if(n.optString("level")=="H3")s.accent else s.text))
-        "text" -> BasicText(n.getString("label"),style=s.text(if(n.optBoolean("muted"))14 else 16).copy(color=if(n.optBoolean("muted"))s.muted else s.text,textAlign=if(n.optBoolean("centerLabel"))androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start),modifier=if(n.optBoolean("centerLabel"))Modifier.fillMaxWidth() else Modifier)
+        "text" -> {
+            val wallpaperNote=n.optBoolean("muted")&&!s.grouped
+            BasicText(n.getString("label"),style=s.text(if(n.optBoolean("muted"))14 else 16).copy(
+                color=if(wallpaperNote)s.text else if(n.optBoolean("muted"))s.muted else s.text,
+                shadow=if(wallpaperNote)androidx.compose.ui.graphics.Shadow(if(s.text.red>.5f)Color.Black.copy(alpha=.8f) else Color.White.copy(alpha=.85f),androidx.compose.ui.geometry.Offset(0f,1f),3f) else null,
+                textAlign=if(n.optBoolean("centerLabel"))androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start),modifier=if(n.optBoolean("centerLabel"))Modifier.fillMaxWidth() else Modifier)
+        }
         "toggle" -> Row(Modifier.fillMaxWidth().heightIn(min=48.dp).toggleable(n.optBoolean("checked"),enabled=enabled,role=if(n.optBoolean("radio"))Role.RadioButton else Role.Checkbox,onValueChange={send("click",id,"")}),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
             if(n.optBoolean("radio"))NativeChoiceMark(n.optBoolean("checked"),s.uiStyle,s.accent,enabled) else NativeCheck(n,s)
             BasicText(n.getString("label"),Modifier.weight(1f),style=s.text(17))
@@ -349,7 +358,7 @@ internal fun resumeKey(session:String,route:String):String = java.security.Messa
             var touched by remember(id){mutableStateOf(false)}
             LaunchedEffect(n.optLong("revision"),n.getString("value")) {if(!dragging&&n.optLong("revision")>=pending)value=n.getString("value").toFloat()}
             Column(Modifier.fillMaxWidth()) {
-                BasicText(if(!touched&&n.optString("preserved").isNotEmpty())n.getString("preserved") else if(value.toInt()==0&&n.optString("zeroLabel").isNotEmpty())n.getString("zeroLabel") else value.toInt().toString(),style=s.text(17))
+                NativeSliderLabel(n.getString("label"),if(!touched&&n.optString("preserved").isNotEmpty())n.getString("preserved") else if(value.toInt()==0&&n.optString("zeroLabel").isNotEmpty())n.getString("zeroLabel") else value.toInt().toString(),style=s.text(17))
                 NativeSettingSlider(s.uiStyle,n.getString("label"),value,min,max,enabled,s.accent,{value=kotlin.math.round(it);touched=true},{dragging=it}){pending=send("value",id,value.toInt().toString())}
             }
         }
@@ -362,14 +371,15 @@ internal fun resumeKey(session:String,route:String):String = java.security.Messa
             Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
                 if(!n.optBoolean("inGroup")&&n.getString("label").isNotBlank())BasicText(n.getString("label"),style=s.text(14))
                 val change:(TextFieldValue)->Unit={v->if(v.text.length<=n.optInt("maxLength",262144).coerceIn(0,262144)||v.text.length<value.text.length){val changed=v.text!=value.text;value=v;if(changed)pending=send("value",id,v.text)}}
-                val fieldSurface=nativeSurface(s.field)
+                // Miuix owns the field background and focus border; no mismatched outer glass contour.
                 top.yukonga.miuix.kmp.basic.TextField(
                     value=value,onValueChange=change,enabled=enabled,readOnly=n.optBoolean("readOnly"),singleLine=!n.optBoolean("multi"),minLines=1,
                     label=n.optString("placeholder"),useLabelAsPlaceholder=true,textStyle=s.text(17),
-                    colors=top.yukonga.miuix.kmp.basic.TextFieldColors(fieldSurface.color,s.muted,s.accent),cursorBrush=SolidColor(s.accent),
+                    insideMargin=androidx.compose.ui.unit.DpSize(16.dp,10.dp),
+                    colors=top.yukonga.miuix.kmp.basic.TextFieldColors(s.field,s.muted,s.accent),cursorBrush=SolidColor(s.accent),
                     keyboardOptions=KeyboardOptions(autoCorrectEnabled=false,keyboardType=if(n.optBoolean("password"))KeyboardType.Password else KeyboardType.Text),
                     visualTransformation=if(n.optBoolean("password"))PasswordVisualTransformation() else VisualTransformation.None,
-                    modifier=Modifier.fillMaxWidth().then(fieldSurface.modifier).semantics{contentDescription=n.getString("label")})
+                    modifier=Modifier.fillMaxWidth().semantics{contentDescription=n.getString("label")})
 
             }
         }
@@ -378,25 +388,25 @@ internal fun resumeKey(session:String,route:String):String = java.security.Messa
             val options=n.getJSONArray("options").nodes()
             val selected=options.find{it.getString("value")==n.getString("value")}
             Box(Modifier.fillMaxWidth()) {
-                NativeDialogButton((selected?.getString("label")?:"")+" ▾",s.uiStyle,s.text,s.field,s.text(17),enabled,Modifier.fillMaxWidth(),centered=false){open=true}
+                NativeDialogButton((selected?.getString("label")?:""),s.uiStyle,s.text,s.field,s.text(17),enabled,Modifier.fillMaxWidth(),centered=false,dropdown=true){open=true}
                 NativeSelectionPopup(open,s.uiStyle,options,n.getString("value"),s.text,s.card,s.accent,{open=false}) { value ->send("value",id,value);open=false}
             }
         }
         "contributor" -> NativeComponentCard(s.uiStyle,s.card,s.text) {
-            Row(Modifier.fillMaxWidth().padding(18.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
+            Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
                 Image(androidx.compose.ui.res.painterResource(when(n.optString("avatar")){"xayah"->R.drawable.xayah;"skkk"->R.drawable.skkk;"rainy"->R.drawable.rainy;else->R.drawable.h1acker}),n.getString("label")+" 頭像",Modifier.size(56.dp).clip(androidx.compose.foundation.shape.CircleShape),contentScale=androidx.compose.ui.layout.ContentScale.Crop)
                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                     BasicText(n.getString("label"),style=s.text(17,true))
-                    BasicText(n.getString("detail"),style=s.text(14).copy(color=s.muted))
+                    BasicText(n.getString("detail").trim(),style=s.text(14).copy(color=s.muted))
                 }
             }
         }
-        "license" -> NativeComponentCard(s.uiStyle,s.card,s.text) { Row(Modifier.fillMaxWidth().clickable(role=Role.Button){send("license",id,"")}.padding(18.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+        "license" -> NativeComponentCard(s.uiStyle,s.card,s.text) { Row(Modifier.fillMaxWidth().clickable(role=Role.Button){send("license",id,"")}.padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                 BasicText(n.getString("label"),style=s.text(17,true))
-                BasicText(n.getString("detail"),style=s.text(14).copy(color=s.muted))
+                BasicText(n.getString("detail").trim(),style=s.text(14).copy(color=s.muted))
             }
-            BasicText("›",Modifier.clearAndSetSemantics{},style=s.text(26).copy(color=s.muted))
+            NativePreferenceArrow(false,s.muted)
         }
         }
         "group" -> NativeGroup(n,s,send)
@@ -517,7 +527,7 @@ internal object NativeIconCache {
 }
 
 @Composable private fun NativeAppRow(n:JSONObject,s:NativeDocumentStyle,send:(String,String,String)->Long) {
-    NativeComponentCard(s.uiStyle,s.card,s.text) { Row(Modifier.fillMaxWidth().heightIn(min=88.dp).padding(horizontal=14.dp,vertical=16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+    NativeComponentCard(s.uiStyle,s.card,s.text) { Row(Modifier.fillMaxWidth().heightIn(min=72.dp).padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
         val icon=n.optString("icon")
         val removed=n.optBoolean("removed")
         val cached=NativeIconCache.get(icon)
@@ -531,14 +541,14 @@ internal object NativeIconCache {
         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
             BasicText(n.getString("label"),style=s.text(17,true),maxLines=2,overflow=TextOverflow.Ellipsis)
             if(n.optString("badge").isNotEmpty())BasicText(n.getString("badge"),style=s.text(11,true).copy(color=if(removed)s.muted else if(n.getString("badge").contains("Xposed"))Color(0xff277af7) else s.accent))
-            if(n.getString("detail").isNotEmpty())BasicText(n.getString("detail"),style=s.text(14).copy(color=s.muted),maxLines=1,overflow=TextOverflow.Ellipsis)
+            if(n.getString("detail").trim().isNotEmpty())BasicText(n.getString("detail").trim(),style=s.text(14).copy(color=s.muted),maxLines=1,overflow=TextOverflow.Ellipsis)
             for(c in n.getJSONArray("children").nodes().filter{it.optString("kind")!="toggle"||it.optBoolean("inlineControl")})key(c.getString("id")) {
                 NativeNode(c,s.copy(compact=true),send)
             }
         }
         Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
             for(c in n.getJSONArray("children").nodes().filter{it.optString("kind")=="toggle"&&!it.optBoolean("inlineControl")})key(c.getString("id")) {
-                Column(Modifier.widthIn(min=42.dp).heightIn(min=52.dp).toggleable(c.optBoolean("checked"),enabled=!c.optBoolean("disabled"),role=Role.Checkbox,onValueChange={send("click",c.getString("id"),"")}).semantics{contentDescription=c.getString("label")},horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(5.dp,Alignment.CenterVertically)) {
+                Column(Modifier.widthIn(min=48.dp).heightIn(min=52.dp).toggleable(c.optBoolean("checked"),enabled=!c.optBoolean("disabled"),role=Role.Checkbox,onValueChange={send("click",c.getString("id"),"")}).semantics{contentDescription=c.getString("label")},horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(5.dp,Alignment.CenterVertically)) {
                     NativeCheck(c,s)
                     BasicText(c.optString("caption").ifEmpty{c.getString("label").substringBefore('：')},Modifier.clearAndSetSemantics{},style=s.text(11).copy(color=if(c.optBoolean("checked"))s.accent else s.muted))
                 }
@@ -555,21 +565,48 @@ internal object NativeIconCache {
             for(c in children)key(c.getString("id")){Box(if(c.optString("kind")=="input")Modifier.weight(1f) else Modifier.width(48.dp)){NativeNode(c,s.copy(compact=true),send)}}
         }
         "settings-section" -> {
-            val content:@Composable ColumnScope.()->Unit={for(c in children)key(c.getString("id")){NativeNode(c,s.copy(grouped=true),send)}}
+            val content:@Composable ColumnScope.()->Unit={children.forEach { c->key(c.getString("id")){NativeNode(c,s.copy(grouped=true),send)}}}
             NativeComponentCard(s.uiStyle,s.card,s.text,content=content)
         }
         "setting" -> {
+            val single=children.singleOrNull()
+            if(single!=null&&(single.optString("kind")=="select"||single.optBoolean("navigation"))){
+                val dropdown=single.optString("kind")=="select"
+                var open by remember(single.getString("id")){mutableStateOf(false)}
+                val options=single.optJSONArray("options")?.nodes().orEmpty()
+                val value=if(dropdown)options.find{it.getString("value")==single.optString("value")}?.getString("label")?:single.optString("value") else ""
+                Box(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=0.dp)){
+                    NativePreferenceRow(n.getString("label"),value,n.getString("detail").trim(),dropdown,s.text,s.text(17),!single.optBoolean("disabled")){
+                        if(dropdown)open=true else send("click",single.getString("id"),"")
+                    }
+                    if(dropdown)NativeSelectionPopup(open,s.uiStyle,options,single.getString("value"),s.text,s.card,s.accent,{open=false}){value->send("value",single.getString("id"),value);open=false}
+                }
+                return
+            }
+            if(single?.optString("layout")=="toggle"){
+                val toggle=single.getJSONArray("children").nodes().singleOrNull()
+                if(toggle!=null&&toggle.optString("kind")=="toggle"&&!toggle.optBoolean("indeterminate")){
+                    Box(Modifier.padding(horizontal=16.dp,vertical=0.dp)){
+                        NativeSwitchPreference(n.getString("label"),n.getString("detail").trim(),toggle.optBoolean("checked"),s.text,s.accent,s.text(17),!toggle.optBoolean("disabled")){value->if(value!=toggle.optBoolean("checked"))send("click",toggle.getString("id"),"")}
+                    }
+                    return
+                }
+            }
             val wide=children.filter{it.optString("kind") in setOf("input","range")}
             val right=children.filter{it.optString("kind") !in setOf("input","range")}
+            val stacked=right.size>1
             val toggleOnly=right.size==1&&right[0].optString("layout")=="toggle"
             val rowSurface=nativeSurface(s.card,rowShape(n,s,18))
-            Column(Modifier.fillMaxWidth().then(if(s.grouped)Modifier else rowSurface.modifier.background(rowSurface.color,rowShape(n,s,18))).padding(start=16.dp,end=16.dp,top=if(n.optBoolean("first"))16.dp else 8.dp,bottom=if(n.optBoolean("last"))16.dp else 8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.fillMaxWidth().then(if(s.grouped)Modifier else rowSurface.modifier.background(rowSurface.color,rowShape(n,s,18))).padding(start=16.dp,end=16.dp,top=6.dp,bottom=6.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
-                    Column(Modifier.weight(if(toggleOnly)1f else .65f),verticalArrangement=Arrangement.spacedBy(5.dp)) {
-                        BasicText(n.getString("label"),style=s.text(17))
-                        BasicText(n.getString("detail"),style=s.text(14).copy(color=s.muted))
+                    Column(Modifier.weight(if(toggleOnly)1f else .65f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
+                        if(single?.optString("kind")!="range")BasicText(n.getString("label"),style=s.text(17))
+                        if(n.getString("detail").trim().isNotBlank())BasicText(n.getString("detail").trim(),style=s.text(14).copy(color=s.muted))
                     }
-                    if(right.isNotEmpty())Column(if(toggleOnly)Modifier.wrapContentWidth(Alignment.End) else Modifier.weight(.35f),horizontalAlignment=Alignment.End,verticalArrangement=Arrangement.spacedBy(6.dp)){for(c in right)key(c.getString("id")){NativeNode(c,s.copy(compact=true),send)}}
+                    if(right.isNotEmpty()&&!stacked)Column(if(toggleOnly)Modifier.wrapContentWidth(Alignment.End) else Modifier.weight(.35f),horizontalAlignment=Alignment.End,verticalArrangement=Arrangement.spacedBy(6.dp)){for(c in right)key(c.getString("id")){NativeNode(c,s.copy(compact=true),send)}}
+                }
+                if(stacked)Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(6.dp)){
+                    for(c in right)key(c.getString("id")){NativeNode(c,s.copy(compact=true),send)}
                 }
                 for(c in wide)key(c.getString("id")){NativeNode(c,s,send)}
             }
@@ -589,8 +626,16 @@ internal object NativeIconCache {
                 }
             }
         }
-        "row","toolbar" -> Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-            for(c in children)key(c.getString("id")){Box(Modifier.weight(if(n.optString("layout")=="toolbar"&&(c.optString("kind")=="select"||c.optBoolean("dropdown")))2.6f else 1f)){NativeNode(c,s.copy(compact=true),send)}}
+        "toolbar" -> Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+            val selectors=children.filter{it.optString("kind")=="select"||it.optBoolean("dropdown")}
+            val actions=children.filterNot{it.optString("kind")=="select"||it.optBoolean("dropdown")}
+            for(c in selectors)key(c.getString("id")){NativeNode(c,s.copy(compact=true),send)}
+            if(actions.isNotEmpty())Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                for(c in actions)key(c.getString("id")){Box(Modifier.weight(1f)){NativeNode(c,s.copy(compact=true),send)}}
+            }
+        }
+        "row" -> Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+            for(c in children)key(c.getString("id")){Box(Modifier.weight(1f)){NativeNode(c,s.copy(compact=true),send)}}
         }
         "controls" -> NativeComponentCard(s.uiStyle,s.card,s.text,backdrop=s.backdrop) { Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {for(c in children)key(c.getString("id")){NativeNode(c,s.copy(compact=true),send)}} }
         else -> Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(10.dp)){for(c in children)key(c.getString("id")){NativeNode(c,s,send)}}

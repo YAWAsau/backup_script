@@ -10,13 +10,13 @@ import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme
 
 internal class NativeAppearance(private val context:Context) {
-    private val defaults=linkedMapOf("appearance" to "system","scale" to "100","monet" to "on","glass-blur" to "on","glass-light" to "100","glass-transparency" to "100","glass-refraction" to "100","glass-adaptive" to "off","language" to "zh-Hant")
+    private val defaults=linkedMapOf("appearance" to "system","scale" to "100","monet" to "on","glass-blur" to "on","glass-blur-strength" to "100","glass-light" to "100","glass-transparency" to "100","glass-refraction" to "100","glass-adaptive" to "off","language" to "zh-Hant")
     val values=LinkedHashMap(defaults)
     private var palette=JSONObject()
     fun load(api:NativeApi){
         val preferences=try{JSONObject(api.get("preferences"))}catch(e:NativeApi.ApiFailure){if(e.status==400||e.status==404)null else throw e}
         for((key,default) in defaults)values[key]=(preferences?.optString(key,null)?:api.get(key)).trim().substringBefore('\t').ifEmpty{default}
-        for(key in listOf("glass-light","glass-transparency","glass-refraction"))values[key]=(values[key]?.toIntOrNull()?:100).coerceIn(0,100).toString()
+        for(key in listOf("glass-blur-strength","glass-light","glass-transparency","glass-refraction"))values[key]=(values[key]?.toIntOrNull()?:100).coerceIn(0,100).toString()
         palette=try{JSONObject(api.get("theme"))}catch(_:Exception){JSONObject()}
     }
     fun dark():Boolean=when(values["appearance"]){"dark","space","night"->true;"light"->false;else->(context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES}
@@ -39,7 +39,7 @@ internal class NativeAppearance(private val context:Context) {
         }
         return model.put("theme",values["appearance"]).put("nativeSky",space).put("nativeNightSky",night).put("uiStyle","miuix")
             .put("scale",((values["scale"]?.toIntOrNull()?:100)/100.0).coerceIn(.7,1.5)).put("uiLanguage",values["language"])
-            .put("glassBlur",values["glass-blur"]!="off").put("glassLight",values["glass-light"]?.toIntOrNull()?:100)
+            .put("glassBlurStrength",values["glass-blur-strength"]?.toIntOrNull()?:100).put("glassBlur",values["glass-blur"]!="off").put("glassLight",values["glass-light"]?.toIntOrNull()?:100)
             .put("glassTransparency",values["glass-transparency"]?.toIntOrNull()?:100)
             .put("glassRefraction",values["glass-refraction"]?.toIntOrNull()?:100).put("glassAdaptive",values["glass-adaptive"]=="on")
             .put("reducedMotion",android.provider.Settings.Global.getFloat(context.contentResolver,android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,1f)==0f)
