@@ -17,8 +17,8 @@ import java.util.concurrent.atomic.*;
 /** Root-side one-session native APK transport. No browser tasks, polling or arbitrary commands. */
 public final class AppListReturn {
     private static final String PACKAGE="io.github.yawasau.speedbackup.webview";
-    private static final long APK_VERSION=67;
-    private static final String APK_SHA="b8defa8e32a677297ac6445618efd7ba6517e8d2673e64ba9163e27be4aecef7";
+    private static final long APK_VERSION=76;
+    private static final String APK_SHA="f5ea55fac9b45bfd28341edb01b648496c763a903caef4aa0918eeddcc71847d";
     private static final String PROTOCOL="speedbackup.webview.v1";
     private static final String CERT="73d49c551002cb071ac89ac6bad572ec999dc0b9f2fbb381130f84fbd0ea251e";
     private static int number(Object value,String name,int fallback){try{return ((Number)field(value,name)).intValue();}catch(Exception e){return fallback;}}
@@ -580,6 +580,7 @@ public final class AppListReturn {
             intent.addFlags(freshTask ? Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK : Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_CLEAR_TOP);
             if(freshTask)System.err.println("WEBVIEW_LAUNCH fresh_task=package_updated");Bundle extras=new Bundle();extras.putBinder("session",session);extras.putBoolean("debug","1".equals(System.getenv("SPEEDBACKUP_WEBVIEW_DEBUG")));extras.putBoolean("cancelOnPause","1".equals(System.getenv("SPEEDBACKUP_WEB_CANCEL_ON_PAUSE")));String consoleUrl=System.getenv("SPEEDBACKUP_CONSOLE_URL");
             if(consoleUrl!=null){extras.putString("consoleUrl",consoleUrl);extras.putString("guardSocket",originName);}
+            extras.putString("uiLanguage",System.getenv("SPEEDBACKUP_UI_LANGUAGE"));
             intent.putExtras(extras);
             boolean permissionSetup=consoleUrl!=null&&Build.VERSION.SDK_INT>=33;
             if(permissionSetup){System.out.println("WAIT_HOST_SETUP");System.out.flush();}

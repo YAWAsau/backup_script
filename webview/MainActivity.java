@@ -29,12 +29,17 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private final java.util.concurrent.atomic.AtomicBoolean modelWorking=new java.util.concurrent.atomic.AtomicBoolean();
     private JSONObject lastModel;
     private int safeLeft,safeTop,safeRight,safeBottom;
+    private void updateLanguage(String language){
+        if(language==null)return;
+        NativeLanguage.set(language);
+        if(!NativeLanguage.get().equals(getPreferences(0).getString("uiLanguage",null)))getPreferences(0).edit().putString("uiLanguage",NativeLanguage.get()).apply();
+    }
     private void showTransition(Runnable next){if(!closing){nativeChrome.beginNavigation();next.run();}}
     private void loadDocument(String address){
         final long generation=++documentGeneration;
         if(controller!=null)controller.close();
         pendingModel.set(null);lastModel=null;
-        if(!nativeChrome.hasContent()){transition.setText("正在開啟…");transition.setVisibility(View.VISIBLE);}
+        if(!nativeChrome.hasContent()){transition.setText(NativeLanguage.text(this,"正在開啟…"));transition.setVisibility(View.VISIBLE);}
         final NativeSession next=new NativeSession(this,address,new NativeSession.Listener(){
             public void model(JSONObject value){main.post(()->{if(!closing&&generation==documentGeneration){lastModel=value;prepareModel(value,generation);}});}
             public void link(String url){main.post(()->{if(!closing&&generation==documentGeneration)try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)));}catch(RuntimeException e){showError("無法開啟連結");}});}
@@ -43,8 +48,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         });
         controller=next;next.start();next.lifecycle(activityResumed);
     }
-    private void showError(String message){transition.setText(message+"\n請保留日誌供檢查；返回可關閉畫面。");transition.setVisibility(View.VISIBLE);android.util.Log.w("SpeedBackupNative","native presentation failed");}
+    private void showError(String message){transition.setText(NativeLanguage.text(this,message+"\n請保留日誌供檢查；返回可關閉畫面。"));transition.setVisibility(View.VISIBLE);android.util.Log.w("SpeedBackupNative","native presentation failed");}
     private void prepareModel(JSONObject source,long generation){
+        updateLanguage(source.optString("uiLanguage",NativeLanguage.get()));
         if(frame.getWidth()==0){return;}
         final android.util.DisplayMetrics metrics=new android.util.DisplayMetrics();metrics.setTo(getResources().getDisplayMetrics());
         final int width=frame.getWidth()-safeLeft-safeRight;
@@ -73,6 +79,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private Intent permissionLaunch;
     private boolean permissionAnswered;
     private void bindAfterPermission(Intent intent)throws Exception {
+        updateLanguage(intent.getStringExtra("uiLanguage"));
         if(permissionLaunch!=null){permissionLaunch=intent;return;}
         if(session==null&&WorkGuardService.valid(intent.getStringExtra("consoleUrl"))&&Build.VERSION.SDK_INT>=33&&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED&&
@@ -88,7 +95,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         if(!activityResumed||!permissionAnswered||permissionLaunch==null)return;
         Intent launch=permissionLaunch;permissionLaunch=null;permissionAnswered=false;
         if(checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)
-            android.widget.Toast.makeText(this,"通知未開啟；可在系統應用設定啟用工作接回通知",android.widget.Toast.LENGTH_LONG).show();
+            android.widget.Toast.makeText(this,NativeLanguage.text(this,"通知未開啟；可在系統應用設定啟用工作接回通知"),android.widget.Toast.LENGTH_LONG).show();
         try{bind(launch);}catch(Exception e){close();}
     }
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){
@@ -124,10 +131,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         }
         try{if(session!=null&&linked)session.unlinkToDeath(death,0);}catch(Exception ignored){}
         cancelOnPause=intent.getBooleanExtra("cancelOnPause",false);
+        updateLanguage(intent.getStringExtra("uiLanguage"));
         String consoleUrl=intent.getStringExtra("consoleUrl");
         if(WorkGuardService.valid(consoleUrl)){
             HostLifeline.connect(intent.getStringExtra("guardSocket"));
-            try{startForegroundService(new Intent(this,WorkGuardService.class).putExtra(WorkGuardService.KEY,consoleUrl).putExtra("guardSocket",intent.getStringExtra("guardSocket")));}
+            try{startForegroundService(new Intent(this,WorkGuardService.class).putExtra("uiLanguage",NativeLanguage.get()).putExtra(WorkGuardService.KEY,consoleUrl).putExtra("guardSocket",intent.getStringExtra("guardSocket")));}
             catch(RuntimeException unavailable){android.util.Log.w("SpeedBackupGuard","Foreground protection unavailable: "+unavailable.getClass().getSimpleName());}
 
         }
@@ -207,13 +215,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         // its task here would trigger swipe-to-clean policies again.
         if(session!=null)return;
         resumePending=true;resumeStarted=false;main.removeCallbacks(resumeTimeout);
-        if(transition!=null)transition.setText("正在接回目前工作…");
+        if(transition!=null)transition.setText(NativeLanguage.text(this,"正在接回目前工作…"));
         if(hasWindowFocus())launchResume();
     }
     private final Runnable resumeTimeout=()->{
         if(resumePending&&session==null&&!isFinishing()){
             resumePending=false;
-            android.widget.Toast.makeText(this,"目前工作無法接回，請重新執行 start.sh",android.widget.Toast.LENGTH_LONG).show();close();
+            android.widget.Toast.makeText(this,NativeLanguage.text(this,"目前工作無法接回，請重新執行 start.sh"),android.widget.Toast.LENGTH_LONG).show();close();
         }
     };
     private boolean resumeStarted;
@@ -246,12 +254,13 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
+        updateLanguage(getIntent().getStringExtra("uiLanguage")!=null?getIntent().getStringExtra("uiLanguage"):getPreferences(0).getString("uiLanguage","zh-Hant"));
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
         frame=new android.widget.FrameLayout(this);
         nativeChrome=new NativeChrome(this,(id,epoch)->{if(controller!=null)controller.dispatch(id,epoch);});
         frame.addView(nativeChrome.getView(),new android.widget.FrameLayout.LayoutParams(-1,-1));
-        transition=new android.widget.TextView(this);transition.setText("正在開啟…");transition.setGravity(Gravity.CENTER);transition.setTextSize(18);transition.setPadding(24,24,24,24);transition.setClickable(true);
+        transition=new android.widget.TextView(this);transition.setText(NativeLanguage.text(this,"正在開啟…"));transition.setGravity(Gravity.CENTER);transition.setTextSize(18);transition.setPadding(24,24,24,24);transition.setClickable(true);
         boolean dark=(getResources().getConfiguration().uiMode&android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;
         transition.setTextColor(dark?Color.WHITE:Color.BLACK);transition.setBackgroundColor(dark?Color.BLACK:Color.rgb(247,247,247));
         frame.addView(transition,new android.widget.FrameLayout.LayoutParams(-1,-1));setContentView(frame);applyBars(dark?Color.BLACK:Color.WHITE);

@@ -11,6 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     names = json.loads((ROOT / 'source-package.json').read_text(encoding='utf-8'))['files']
     names = sorted(set(names + ['source-package.json']))
+    missing = [name for name in names if not (ROOT / name).is_file()]
+    if missing:
+        raise SystemExit('Incomplete source checkout: missing ' + str(len(missing)) +
+                         ' files from source-package.json. Import the FULL_SOURCE_CLEAN package, '
+                         'not the runtime/incremental package.\n' + '\n'.join(missing))
     env = {k: v for k, v in os.environ.items() if k.upper() not in {
         'GIT_INDEX_FILE', 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR',
         'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES'}}
@@ -23,9 +28,9 @@ def main():
         git = ['git', '--git-dir=' + str(git_dir), '--work-tree=' + str(ROOT),
                '-c', 'core.bare=false', '-c', 'core.autocrlf=false', '-c', 'core.longpaths=true']
         subprocess.run(git + ['add', '-f', '--pathspec-from-file=' + str(paths),
-                              '--pathspec-file-nul'], check=True, capture_output=True, env=env)
+                              '--pathspec-file-nul'], check=True, cwd=ROOT, env=env)
         subprocess.run(git + ['-c', 'core.whitespace=-space-before-tab',
-                              'diff', '--cached', '--check'], check=True, env=env)
+                              'diff', '--cached', '--check'], check=True, cwd=ROOT, env=env)
     print(f'Git whitespace check passed: {len(names)} source files; user index untouched')
 
 

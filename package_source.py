@@ -88,7 +88,14 @@ def collect() -> tuple[dict[str, bytes], dict[str, str]]:
                 f"Retired JSON tool is not a source input: {name}")
         require(name != "SOURCE_SHA256SUMS.txt", "Checksum file is generated, not an input")
         # Pinned upstream snapshots retain their exact file sets, including licences.
-        if not name.startswith(("tar/upstream/", "zstd/upstream/")):
+        pinned_vendor_metadata = False
+        if name.startswith("rust/vendor/socket-pktinfo/.idea/"):
+            checksum = json.loads(source_path("rust/vendor/socket-pktinfo/.cargo-checksum.json").read_text())
+            relative = name.removeprefix("rust/vendor/socket-pktinfo/")
+            require(checksum["files"].get(relative) == digest(source_path(name).read_bytes()),
+                    f"Vendored upstream metadata changed: {name}")
+            pinned_vendor_metadata = True
+        if not pinned_vendor_metadata and not name.startswith(("tar/upstream/", "zstd/upstream/")):
             parts = PurePosixPath(name).parts
             require(not FORBIDDEN_PARTS.intersection(parts), f"Non-source directory: {name}")
             require("build" not in parts, f"Build output directory: {name}")

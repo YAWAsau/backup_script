@@ -8178,7 +8178,54 @@ public class CCHelper {
      * ordered longest-first, and limited to SpeedBackup UI/config wording.
      */
     private static final String[][] S2T_PHRASES = new String[][]{
-            // Longest/specific first.
+            {"幹淨", "乾淨"},
+            {"幹擾", "干擾"},
+            {"上遊", "上游"},
+            {"下遊", "下游"},
+            {"遞回", "遞迴"},
+            {"生命周期", "生命週期"},
+            {"注解", "註解"},
+            {"一並", "一併"},
+            {"並發數", "併發數"},
+            {"並發執行", "併發執行"},
+            {"並發請求", "併發請求"},
+            {"並發連線", "併發連線"},
+            {"並發上限", "併發上限"},
+            {"並發下載", "併發下載"},
+            {"並發處理", "併發處理"},
+            {"並發寫入", "併發寫入"},
+            {"並發讀取", "併發讀取"},
+            {"並發安裝", "併發安裝"},
+            {"並發任務", "併發任務"},
+            {"匯整", "彙整"},
+            {"匯總", "彙總"},
+            {"四舍五入", "四捨五入"},
+            {"恢復", "恢復"},
+            {"回復", "回復"},
+            {"修復", "修復"},
+            {"康復", "康復"},
+            {"反復", "反復"},
+            {"答復", "答復"},
+            {"報復", "報復"},
+            {"往復", "往復"},
+            {"光復", "光復"},
+            {"復制", "複製"},
+            {"代碼復用", "程式碼複用"},
+            {"可復用", "可複用"},
+            {"復用快取", "複用快取"},
+            {"自籤", "自簽"},
+            {"籤名", "簽名"},
+            {"籤章", "簽章"},
+            {"衝刷", "沖刷"},
+            {"主循環", "主迴圈"},
+            {"循環內", "迴圈內"},
+            {"循環前", "迴圈前"},
+            {"循環結束", "迴圈結束"},
+            {"備份循環", "備份迴圈"},
+            {"資料循環", "資料迴圈"},
+            {"數據循環", "資料迴圈"},
+
+            // Longest match is selected by the trie.
             {"重復", "重複"},
             {"合並", "合併"},
             {"認證用戶名", "認證使用者名稱"},
@@ -8190,6 +8237,8 @@ public class CCHelper {
             {"數據庫", "資料庫"},
             {"配置詳細", "設定詳細"},
             {"配置遺失", "設定遺失"},
+            {"配置丟失", "設定遺失"},
+            {"設定丟失", "設定遺失"},
             {"默認", "預設"},
             {"數據", "資料"},
             {"文件", "檔案"},
@@ -8218,6 +8267,53 @@ public class CCHelper {
     };
 
     private static final String[][] TW_POLISH_PHRASES = new String[][]{
+            {"幹淨", "乾淨"},
+            {"幹擾", "干擾"},
+            {"上遊", "上游"},
+            {"下遊", "下游"},
+            {"遞回", "遞迴"},
+            {"生命周期", "生命週期"},
+            {"注解", "註解"},
+            {"一並", "一併"},
+            {"並發數", "併發數"},
+            {"並發執行", "併發執行"},
+            {"並發請求", "併發請求"},
+            {"並發連線", "併發連線"},
+            {"並發上限", "併發上限"},
+            {"並發下載", "併發下載"},
+            {"並發處理", "併發處理"},
+            {"並發寫入", "併發寫入"},
+            {"並發讀取", "併發讀取"},
+            {"並發安裝", "併發安裝"},
+            {"並發任務", "併發任務"},
+            {"匯整", "彙整"},
+            {"匯總", "彙總"},
+            {"四舍五入", "四捨五入"},
+            {"恢復", "恢復"},
+            {"回復", "回復"},
+            {"修復", "修復"},
+            {"康復", "康復"},
+            {"反復", "反復"},
+            {"答復", "答復"},
+            {"報復", "報復"},
+            {"往復", "往復"},
+            {"光復", "光復"},
+            {"復制", "複製"},
+            {"代碼復用", "程式碼複用"},
+            {"可復用", "可複用"},
+            {"復用快取", "複用快取"},
+            {"自籤", "自簽"},
+            {"籤名", "簽名"},
+            {"籤章", "簽章"},
+            {"衝刷", "沖刷"},
+            {"主循環", "主迴圈"},
+            {"循環內", "迴圈內"},
+            {"循環前", "迴圈前"},
+            {"循環結束", "迴圈結束"},
+            {"備份循環", "備份迴圈"},
+            {"資料循環", "資料迴圈"},
+            {"數據循環", "資料迴圈"},
+
             // Applied to already-Traditional text too; this is product wording polish,
             // not generic character conversion. Keep it conservative.
             {"重復", "重複"},
@@ -8229,6 +8325,8 @@ public class CCHelper {
             {"壓縮算法", "壓縮演算法"},
             {"配置詳細", "設定詳細"},
             {"配置遺失", "設定遺失"},
+            {"配置丟失", "設定遺失"},
+            {"設定丟失", "設定遺失"},
             {"自定義", "自訂"},
             {"默認", "預設"},
             {"數據", "資料"},
@@ -8257,7 +8355,7 @@ public class CCHelper {
     };
 
     private static final String[][] T2S_PHRASES = new String[][]{
-            // Longest/specific first.
+            // Longest match is selected by the trie.
             {"重複", "重复"},
             {"重復", "重复"},
             {"合併", "合并"},
@@ -8351,10 +8449,18 @@ public class CCHelper {
     /**
      * Simplified Chinese to Traditional Chinese (Taiwan standard)
      */
+    private static boolean asciiOnly(String text) {
+        for (int i = 0; i < text.length(); i++) if (text.charAt(i) >= 128) return false;
+        return true;
+    }
+
     String s2t(String text) {
         if (text == null || text.isEmpty()) return text == null ? "" : text;
+        if (asciiOnly(text)) return text;
         StringBuilder out = new StringBuilder();
         for (int i = 0; i < text.length(); ) {
+            int phraseEnd = OpenCcPhrases.append(text, i, out, true);
+            if (phraseEnd > i) { i = phraseEnd; continue; }
             int cp = text.codePointAt(i);
             String converted = st.get(cp);
             if (converted == null) out.appendCodePoint(cp);
@@ -8364,10 +8470,12 @@ public class CCHelper {
         return twPolish(applyPhraseMap(out.toString(), S2T_PHRASES));
     }
 
-    /**
-     * Product wording polish for already-Traditional Chinese text.
-     */
+    // Repair legacy files already damaged by the old cascading phrase replacement.
+    private static final java.util.regex.Pattern REPEATED_ALGORITHM = java.util.regex.Pattern.compile("演{2,}算法");
+
+    /** Product wording polish for already-Traditional Chinese text. */
     String twPolish(String text) {
+        if (text != null) text = REPEATED_ALGORITHM.matcher(text).replaceAll("演算法");
         return applyPhraseMap(text, TW_POLISH_PHRASES);
     }
 
@@ -8375,9 +8483,13 @@ public class CCHelper {
      * Traditional Chinese to Simplified Chinese
      */
     String t2s(String text) {
+        if (text != null) text = REPEATED_ALGORITHM.matcher(text).replaceAll("演算法");
         if (text == null || text.isEmpty()) return text == null ? "" : text;
+        if (asciiOnly(text)) return text;
         StringBuilder out = new StringBuilder();
         for (int i = 0; i < text.length(); ) {
+            int phraseEnd = OpenCcPhrases.append(text, i, out, false);
+            if (phraseEnd > i) { i = phraseEnd; continue; }
             int cp = text.codePointAt(i);
             String converted = ts.get(cp);
             if (converted == null) out.appendCodePoint(cp);
@@ -8387,21 +8499,44 @@ public class CCHelper {
         return applyPhraseMap(out.toString(), T2S_PHRASES);
     }
 
+    private static final class PhraseNode {
+        final HashMap<Character, PhraseNode> next = new HashMap<>();
+        String value;
+    }
+    private static final java.util.IdentityHashMap<String[][], PhraseNode> PHRASE_TRIES = new java.util.IdentityHashMap<>();
+    private static synchronized PhraseNode phraseTrie(String[][] phrases) {
+        PhraseNode cached = PHRASE_TRIES.get(phrases);
+        if (cached != null) return cached;
+        PhraseNode root = new PhraseNode();
+        // Targets are identity matches; explicit source mappings take precedence.
+        for (String[] pair : phrases) insertPhrase(root, pair[1], pair[1]);
+        for (String[] pair : phrases) insertPhrase(root, pair[0], pair[1]);
+        PHRASE_TRIES.put(phrases, root);
+        return root;
+    }
+    private static void insertPhrase(PhraseNode root, String key, String value) {
+        if (key == null || key.isEmpty() || value == null) return;
+        PhraseNode n = root;
+        for (int i = 0; i < key.length(); i++) n = n.next.computeIfAbsent(key.charAt(i), ignored -> new PhraseNode());
+        n.value = value;
+    }
     private static String applyPhraseMap(String text, String[][] phrases) {
-        if (text == null || text.isEmpty() || phrases == null || phrases.length == 0) return text == null ? "" : text;
-        String[][] sorted = java.util.Arrays.copyOf(phrases, phrases.length);
-        java.util.Arrays.sort(sorted, new java.util.Comparator<String[]>() {
-            @Override public int compare(String[] a, String[] b) {
-                int al = a == null || a.length == 0 || a[0] == null ? 0 : a[0].length();
-                int bl = b == null || b.length == 0 || b[0] == null ? 0 : b[0].length();
-                return Integer.compare(bl, al);
+        if (text == null || text.isEmpty()) return text == null ? "" : text;
+        if (asciiOnly(text)) return text;
+        PhraseNode root = phraseTrie(phrases);
+        StringBuilder out = new StringBuilder(text.length());
+        for (int i = 0; i < text.length();) {
+            PhraseNode n = root;
+            String replacement = null;
+            int end = i;
+            for (int j = i; j < text.length(); j++) {
+                n = n.next.get(text.charAt(j));
+                if (n == null) break;
+                if (n.value != null) { replacement = n.value; end = j + 1; }
             }
-        });
-        String out = text;
-        for (String[] pair : sorted) {
-            if (pair == null || pair.length < 2 || pair[0] == null || pair[1] == null || pair[0].isEmpty()) continue;
-            out = out.replace(pair[0], pair[1]);
+            if (replacement != null) { out.append(replacement); i = end; }
+            else out.append(text.charAt(i++));
         }
-        return out;
+        return out.toString();
     }
 }

@@ -5,8 +5,8 @@ pub struct Field {
     pub key: String,
     pub value: String,
     help: String,
-    start: usize,
-    end: usize,
+    pub(super) start: usize,
+    pub(super) end: usize,
 }
 fn internal_setting(key: &str) -> bool {
     matches!(key, "diagnostic_mode" | "webdav_stream_heartbeat_sec"
@@ -18,7 +18,9 @@ fn internal_setting(key: &str) -> bool {
         | "stream_background_boost_burst_interval_sec" | "stream_background_boost_burst_sec"
         | "stream_background_boost_idle_ms" | "stream_background_boost_verbose")
 }
-pub fn parse(text: &str) -> io::Result<Vec<Field>> {
+pub fn parse(text: &str) -> io::Result<Vec<Field>> { parse_mode(text, false) }
+pub fn parse_runtime(text: &str) -> io::Result<Vec<Field>> { parse_mode(text, true) }
+fn parse_mode(text: &str, runtime: bool) -> io::Result<Vec<Field>> {
     if text.len() > 262144 || text.contains('\0') || text.starts_with('\u{feff}') {
         return Err(err("設定檔格式或大小不支援"));
     }
@@ -48,7 +50,7 @@ pub fn parse(text: &str) -> io::Result<Vec<Field>> {
         if key.is_empty()
             || !key.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
             || key.as_bytes()[0].is_ascii_digit()
-            || !seen.insert(key.to_string())
+            || (!seen.insert(key.to_string()) && !runtime)
         {
             return Err(err("設定名稱無效或重複，未開放表單編輯"));
         }
@@ -62,9 +64,8 @@ pub fn parse(text: &str) -> io::Result<Vec<Field>> {
             let mut closed = false;
             while at < b.len() {
                 if at == line_end && quote == b'"' && line.ends_with("\\\"") {
-                    return Err(err(
-                        "此多行引號與舊設定解碼規則衝突，請調整第一行或使用文字入口",
-                    ));
+                    if runtime { raw = b[start+1..line_end-1].to_vec(); end=line_end; closed=true; break; }
+                    return Err(err("此多行引號與舊設定解碼規則衝突，請調整第一行或使用文字入口"));
                 }
                 // The shell strips CR from the first physical line only.
                 if at + 1 == line_end && b[at] == b'\r' {
@@ -206,7 +207,31 @@ pub fn language(text:&str, lang:&str)->io::Result<String>{
     Ok(out)
 }
 
+pub fn tracked_address(text:&str,protocol:&str,identity:&str,expected:&str,next:&str)->io::Result<String>{
+    if !matches!(protocol,"smb"|"webdav"){return Err(err("追蹤協定無效"));}
+    let fields=parse(text)?;
+    let value=|key:&str|fields.iter().find(|f|f.key==key).map(|f|f.value.as_str());
+    let url_key=format!("{protocol}_url");let id_key=format!("remote_{protocol}_identity");
+    if value("remote_address_mode")!=Some("auto")||value("remote_type")!=Some(protocol)||value(&id_key)!=Some(identity)||value(&url_key)!=Some(expected){return Err(err("追蹤設定已變更，未更新地址"));}
+    if next==expected{return Ok(text.to_owned());}
+    let field=fields.iter().find(|f|f.key==url_key).unwrap();
+    let mut output=text.to_owned();output.replace_range(field.start..field.end,&quote(next));
+    let after=parse(&output)?;
+    if after.len()!=fields.len()||after.iter().zip(&fields).any(|(a,b)|a.key!=b.key||a.value!=if a.key==url_key {next} else {&b.value}){return Err(err("地址更新驗證失敗"));}
+    Ok(output)
+}
+
 #[cfg(test)] mod review_tests {
+ #[test] fn tracked_url_only_changes_matching_field(){
+  let text="remote_type=smb\nremote_address_mode=auto\nremote_smb_identity=id\nsmb_url=old\nsmb_remote_pass='secret $ x'\n# comment\n";
+  assert_eq!(super::tracked_address(text,"smb","id","old","old").unwrap(),text);
+  let output=super::tracked_address(text,"smb","id","old","new").unwrap();
+  assert_eq!(output,text.replace("smb_url=old","smb_url=\"new\""));
+  assert!(super::tracked_address(text,"smb","other","old","new").is_err());
+  assert!(super::tracked_address(text,"smb","id","changed","new").is_err());
+  assert!(super::tracked_address(&text.replace("=auto","=manual"),"smb","id","old","new").is_err());
+ }
+
  use super::*;
  #[test] fn internal_fields_are_hidden_and_not_editable() {
   let text="# keep\nwebdav_stream_verbose=1\nShell_LANG=0\nCustom_path='/sdcard/a\n# /sdcard/disabled'\n";

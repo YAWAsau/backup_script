@@ -1,3 +1,9 @@
+#[path = "../remote_control.rs"]
+mod remote_control;
+#[path = "../runtime_conf.rs"]
+mod runtime_conf;
+#[path = "../debug_archive.rs"]
+mod debug_archive;
 #[path = "../terminal_host.rs"]
 mod terminal_host;
 fn media_list_has(path: &str, needle: &[u8]) -> std::io::Result<bool> {
@@ -10256,11 +10262,16 @@ pub(crate) fn run() {
             println!("speedscan.owned_bounded_run.v1 speedscan.facts_result.v1 speedscan.profile_finalize_stage.v1 speedscan.stream_entry_finish.v1 speedscan.smb_publisher.v1 speedscan.json_ops.v1 speedscan.profile_transform.v1 speedscan.profile_backup_map.v1 speedscan.bundle_audit_fields.v1 speedscan.app_permissions.android_policy.v2 speedscan.process_lease.v1 speedscan.process_lease_stop.v1 speedscan.backup_run_model.v1 speedscan.backup_plan_coverage.v1 speedscan.tar_source_manifest.v1 speedscan.restore_source_verify.v1 speedscan.debug_consolidate.v1 speedscan.payload_stats.v1 speedscan.restore_tree_audit_bytes.v1 speedscan.result_contract.v1 speedscan.remote_app_select.v1 speedscan.remote_orphan_plan.v1 speedscan.restore_tree_manifest_bytes.v1 speedscan.appdetails_seed_index_strict_meta.v1 speedscan.appdetails_seed_index.v1 speedscan.backup_prescan_exact_input_batch.v1 speedscan.tar_input_hardlink_type_safe.v1 speedscan.dir_size_tar_input_map.v1 speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.posix_recursive_scan.v1 speedscan.dir_size_map_workers.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan.v1 speedscan.local_fastskip_presize_plan_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_audit_seed_expansion.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.rust_convergence_source.v1 speedscan.full_convergence_stage3.v1");
             0
         }
+        Some("conf") => runtime_conf::command(&args[2..]),
+        Some("remote-control") => remote_control::command(&args[2..]),
+        Some("debug-archive") => debug_archive::command(&args[2..]),
+        Some("remote-resolve") => applist_web::lan_discovery::resolve_command(&args[2..]),
         Some("applist-web") => applist_web::run(&args[2..]),
         Some("restore-catalog") => restore_catalog::run(&args[2..]),
         Some("selection-web") => applist_web::selection(&args[2..]),
         Some("console-start") => { let mut v=vec!["start".to_string()];v.extend_from_slice(&args[2..]);applist_web::console(&v) },
         Some("console-service") => { let mut v=vec!["service".to_string()];v.extend_from_slice(&args[2..]);applist_web::console(&v) },
+        Some("language-reload") => applist_web::language_reload(&args[2..]),
         Some("menu-web") => applist_web::menu(&args[2..]),
         Some("web-focus-origin") => applist_web::focus_origin(&args[2..]),
         Some("web-origin-prepare") => applist_web::prepare_origin(&args[2..]),

@@ -35,6 +35,8 @@ final class NativeApi implements AutoCloseable {
         }
     }
 
+    NativeApi fork() { return new NativeApi(origin + "/#" + token); }
+
     String get(String route) throws IOException { return request(route, null); }
     String post(String route, String body) throws IOException {
         if (body == null) throw new IllegalArgumentException("Missing request body");
@@ -82,6 +84,29 @@ final class NativeApi implements AutoCloseable {
             synchronized (this) { active.remove(connection); }
             connection.disconnect();
         }
+    }
+
+    // Event-driven Rust discovery stream. No LAN sockets, DNS or credentials here.
+    void discovery(String id, java.util.function.Consumer<String> event) throws IOException {
+        if(!id.matches("[0-9a-f]{32}"))throw new IOException("Invalid discovery id");
+        HttpURLConnection c=(HttpURLConnection)URI.create(origin+"/api/discovery").toURL().openConnection(java.net.Proxy.NO_PROXY);
+        synchronized(this){if(closed){c.disconnect();throw new IOException("Session closed");}active.add(c);}
+        try {
+            c.setInstanceFollowRedirects(false);c.setUseCaches(false);c.setConnectTimeout(5000);c.setReadTimeout(18000);
+            c.setRequestProperty("X-SpeedBackup-Token",token);c.setRequestProperty("Content-Type","text/plain;charset=UTF-8");
+            c.setRequestMethod("POST");c.setDoOutput(true);
+            byte[] body=id.getBytes(StandardCharsets.UTF_8);c.setFixedLengthStreamingMode(body.length);
+            try(java.io.OutputStream out=c.getOutputStream()){out.write(body);}
+            int status=c.getResponseCode();if(status!=200)throw new ApiFailure(status,"Discovery unavailable");
+            try(java.io.Reader reader=new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){
+                StringBuilder line=new StringBuilder();int total=0;int value;
+                while((value=reader.read())!=-1){
+                    if(++total>16*1024*1024||line.length()>262144)throw new IOException("Discovery response too large");
+                    if(value=='\n'){if(line.length()>0)event.accept(line.toString());line.setLength(0);}else line.append((char)value);
+                }
+                if(line.length()!=0)throw new IOException("Incomplete discovery event");
+            }
+        } finally {synchronized(this){active.remove(c);}c.disconnect();}
     }
 
     // Separate bounded binary transport; text APIs keep their smaller limit.

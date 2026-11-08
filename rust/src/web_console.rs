@@ -36,6 +36,27 @@ fn private(p:&Path)->io::Result<()> {
     if !m.is_dir()||m.uid()!=0||m.mode()&0o777!=0o700||p.canonicalize()?!=p{return Err(err("console private directory"));}Ok(())
 }
 pub(super) fn managed()->bool{std::env::var("SPEEDBACKUP_CONSOLE_DIR").ok().is_some_and(|p|p.starts_with(&format!("{BASE}/"))&&private(Path::new(&p)).is_ok())}
+fn language_lock(dir:&Path)->io::Result<File> {
+    private(dir)?;
+    let file=OpenOptions::new().read(true).write(true).create(true).mode(0o600).custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE).open(dir.join("language-lock"))?;
+    if unsafe{flock(file.as_raw_fd(),2)}!=0{return Err(io::Error::last_os_error());}
+    Ok(file)
+}
+pub(super) fn queue_language(dir:&Path,value:&str)->io::Result<()> {
+    let _lock=language_lock(dir)?;
+    if !matches!(value,"zh-Hant"|"zh-Hans"){return Err(err("invalid language"));}
+    super::super::publish_file::publish_bytes_guarded(value.as_bytes(),&dir.join("pending-language"),Some(0o600),false,&mut ||private(dir)).map(|_|())
+}
+pub(super) fn pending_language()->io::Result<Option<(PathBuf,String,File)>> {
+    if !managed(){return Ok(None);}
+    let dir=PathBuf::from(std::env::var("SPEEDBACKUP_CONSOLE_DIR").unwrap());
+    let lock=language_lock(&dir)?;let path=dir.join("pending-language");
+    let m=match fs::symlink_metadata(&path){Ok(m)=>m,Err(e) if e.kind()==io::ErrorKind::NotFound=>return Ok(None),Err(e)=>return Err(e)};
+    if !m.is_file()||m.uid()!=0||m.len()>7{return Err(err("invalid language marker"));}
+    let (value,_)=read(&path)?;
+    if !matches!(value.as_str(),"zh-Hant"|"zh-Hans"){return Err(err("invalid pending language"));}
+    Ok(Some((path,value,lock)))
+}
 fn rpc_at(dir:&Path,line:&str,limit:usize)->io::Result<String>{
     private(dir)?;let mut s=UnixStream::connect(dir.join("control"))?;
     s.set_read_timeout(Some(Duration::from_secs(10)))?;s.set_write_timeout(Some(Duration::from_secs(2)))?;
@@ -67,7 +88,7 @@ impl Ui {
 }
 struct Output { bytes:VecDeque<u8>,end:u64,rc:Option<i32>,progress:String,revision:u64,stop_status:String,history_failed:bool }
 enum ServerEvent { Connection(TcpStream), Changed }
-struct Shared {guard:Mutex<(bool,bool)>,guard_wake:Condvar,history_view:Mutex<Option<u64>>,history:Option<File>,output:Mutex<Output>,wake:Condvar,ui_signal:mpsc::SyncSender<()>,server_signal:mpsc::SyncSender<ServerEvent>,ui:Mutex<Ui>,worker:Mutex<Option<String>>,stopping:std::sync::atomic::AtomicBool}
+struct Shared {dir:PathBuf,guard:Mutex<(bool,bool)>,guard_wake:Condvar,history_view:Mutex<Option<u64>>,history:Option<File>,output:Mutex<Output>,wake:Condvar,ui_signal:mpsc::SyncSender<()>,server_signal:mpsc::SyncSender<ServerEvent>,ui:Mutex<Ui>,worker:Mutex<Option<String>>,stopping:std::sync::atomic::AtomicBool}
 fn append(s:&Shared,bytes:&[u8]){let mut o=s.output.lock().unwrap();if !o.history_failed {if let Some(file)=&s.history{if file.write_all_at(bytes,o.end).is_err(){o.history_failed=true;}}}o.end+=bytes.len() as u64;o.bytes.extend(bytes);let n=o.bytes.len().saturating_sub(CAP);o.bytes.drain(..n);s.wake.notify_all();}
 impl Shared {
     fn sync_guard(&self){
@@ -277,7 +298,7 @@ fn http(mut stream:TcpStream,state:Arc<Shared>,host:String,token:String){
         let _=state.ui_signal.try_send(());let _=state.server_signal.try_send(ServerEvent::Changed);
         let _=respond(&mut stream,"200 OK","text/plain","OK");return;
     }
-    if appearance_request(&mut stream,&req)||language_request(&mut stream,&req,None){return;}
+    if appearance_request(&mut stream,&req)||language_request(&mut stream,&req,None,Some(&state.dir)).is_some(){return;}
     if req.method=="GET"&&req.path=="/api/theme"{let _=respond(&mut stream,"200 OK","application/json",&read_theme().unwrap_or_else(|_|"{}".into()));return;}
     if req.method=="POST"&&req.path=="/api/output" {
         let mut fields=req.body.split('\t');
@@ -334,7 +355,7 @@ fn http(mut stream:TcpStream,state:Arc<Shared>,host:String,token:String){
 fn cleanup_session_files(dir:&Path)->io::Result<()> {
     private(dir)?;
     let mut failure=None;
-    for name in ["ready","control","session","page","progress","guard-active"] {
+    for name in ["ready","control","session","page","progress","guard-active","pending-language"] {
         if let Err(e)=fs::remove_file(dir.join(name)){if e.kind()!=io::ErrorKind::NotFound{failure=Some(e);}}
     }
     match failure{Some(e)=>Err(e),None=>Ok(())}
@@ -343,6 +364,7 @@ fn service(dir:&Path,entry:&Path,args:&[String])->io::Result<i32>{
     private(dir)?;
     let lock=OpenOptions::new().read(true).write(true).create(true).mode(0o600).custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE).open(dir.join("lock"))?;
     if unsafe{flock(lock.as_raw_fd(),2|4)}!=0{return Err(err("job already active"));}
+    match fs::remove_file(dir.join("pending-language")){Ok(())=>{},Err(e)if e.kind()==io::ErrorKind::NotFound=>{},Err(e)=>return Err(e)}
     let diagnostic=dir.join("webui-errors.log");
     match fs::remove_file(&diagnostic){Ok(())=>{},Err(e)if e.kind()==io::ErrorKind::NotFound=>{},Err(e)=>return Err(e)}
     OpenOptions::new().write(true).create_new(true).mode(0o600).custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE).open(&diagnostic)?;
@@ -368,14 +390,14 @@ fn service(dir:&Path,entry:&Path,args:&[String])->io::Result<i32>{
     let history=OpenOptions::new().read(true).write(true).create_new(true).mode(0o600).custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE).open(archive)?;
     let (ui_signal,ui_events)=mpsc::sync_channel(1);
     let (server_signal,server_events)=mpsc::sync_channel(16);
-    let state=Arc::new(Shared{guard:Mutex::new((true,true)),guard_wake:Condvar::new(),history_view:Mutex::new(None),history:Some(history),output:Mutex::new(Output{bytes:VecDeque::new(),end:0,rc:None,progress:String::new(),revision:0,stop_status:String::new(),history_failed:false}),wake:Condvar::new(),ui_signal,server_signal,ui:Mutex::new(Ui{page:None,revision:0,reopen:0,attached:true,stop:false,held:false,seen_page:false,last_output:0,handoff:None,notification_reopen:None,ready_reopen:None}),worker:Mutex::new(None),stopping:std::sync::atomic::AtomicBool::new(false)});
+    let state=Arc::new(Shared{dir:dir.to_path_buf(),guard:Mutex::new((true,true)),guard_wake:Condvar::new(),history_view:Mutex::new(None),history:Some(history),output:Mutex::new(Output{bytes:VecDeque::new(),end:0,rc:None,progress:String::new(),revision:0,stop_status:String::new(),history_failed:false}),wake:Condvar::new(),ui_signal,server_signal,ui:Mutex::new(Ui{page:None,revision:0,reopen:0,attached:true,stop:false,held:false,seen_page:false,last_output:0,handoff:None,notification_reopen:None,ready_reopen:None}),worker:Mutex::new(None),stopping:std::sync::atomic::AtomicBool::new(false)});
     let (itx,irx)=mpsc::sync_channel(2);let st=state.clone();std::thread::spawn(move||control(listener,st,itx));
     let st=state.clone();let (ui_done_tx,ui_done)=mpsc::sync_channel(1);let ui_thread=std::thread::spawn(move||{ui_worker(st,url,irx,ui_events,origin_ready);let _=ui_done_tx.send(());});
     let progress=dir.join("progress");let _=fs::remove_file(&progress);let path=std::ffi::CString::new(progress.as_os_str().as_encoded_bytes()).map_err(|_|err("fifo path"))?;
     if unsafe{mkfifo(path.as_ptr().cast(),0o600)}!=0{return Err(io::Error::last_os_error());}
     let fifo=OpenOptions::new().read(true).write(true).open(&progress)?;let st=state.clone();std::thread::spawn(move||drain_progress(fifo,st));
     let (reader,writer)=UnixStream::pair()?;let out=unsafe{File::from_raw_fd(writer.into_raw_fd())};
-    let mut cmd=Command::new("/system/bin/sh");cmd.arg(entry).args(args).env("SPEEDBACKUP_CONSOLE_DIR",dir).env("SPEEDBACKUP_WEB_PROGRESS_FIFO",&progress).env("SPEEDBACKUP_CONSOLE_OWNER",&owner).stdin(Stdio::null()).stdout(out.try_clone()?).stderr(out);
+    let mut cmd=Command::new("/system/bin/sh");cmd.arg(entry).args(args).env("SPEEDBACKUP_NATIVE_EXE",std::env::current_exe()?).env("SPEEDBACKUP_DEBUG_SESSION",&random_hex()?[..32]).env("SPEEDBACKUP_CONSOLE_DIR",dir).env("SPEEDBACKUP_WEB_PROGRESS_FIFO",&progress).env("SPEEDBACKUP_CONSOLE_OWNER",&owner).stdin(Stdio::null()).stdout(out.try_clone()?).stderr(out);
     unsafe{cmd.pre_exec(||{
         unsafe extern "C"{fn signal(sig:i32,handler:usize)->usize;}
         if signal(2,0)==usize::MAX{return Err(io::Error::last_os_error());}
@@ -580,7 +602,7 @@ mod notification_tests {
         s.output.lock().unwrap().rc=Some(0);s.sync_guard();
         assert!(post(&s,"guard-wait","0").contains("\"active\":false"));
     }
-    fn state()->Arc<Shared>{let (ui_signal,_)=mpsc::sync_channel(1);let (server_signal,_)=mpsc::sync_channel(16);Arc::new(Shared{guard:Mutex::new((true,true)),guard_wake:Condvar::new(),history_view:Mutex::new(None),history:None,output:Mutex::new(Output{bytes:VecDeque::new(),end:0,rc:None,progress:String::new(),revision:0,stop_status:String::new(),history_failed:false}),wake:Condvar::new(),ui_signal,server_signal,ui:Mutex::new(Ui{page:None,revision:0,reopen:0,attached:true,stop:false,held:false,seen_page:true,last_output:0,handoff:None,notification_reopen:None,ready_reopen:None}),worker:Mutex::new(None),stopping:std::sync::atomic::AtomicBool::new(false)})}
+    fn state()->Arc<Shared>{let (ui_signal,_)=mpsc::sync_channel(1);let (server_signal,_)=mpsc::sync_channel(16);Arc::new(Shared{dir:PathBuf::new(),guard:Mutex::new((true,true)),guard_wake:Condvar::new(),history_view:Mutex::new(None),history:None,output:Mutex::new(Output{bytes:VecDeque::new(),end:0,rc:None,progress:String::new(),revision:0,stop_status:String::new(),history_failed:false}),wake:Condvar::new(),ui_signal,server_signal,ui:Mutex::new(Ui{page:None,revision:0,reopen:0,attached:true,stop:false,held:false,seen_page:true,last_output:0,handoff:None,notification_reopen:None,ready_reopen:None}),worker:Mutex::new(None),stopping:std::sync::atomic::AtomicBool::new(false)})}
     fn rpc(s:&Arc<Shared>,line:&str)->String{
         let (mut a,mut b)=UnixStream::pair().unwrap();a.write_all(format!("{line}\n").as_bytes()).unwrap();a.shutdown(std::net::Shutdown::Write).unwrap();
         let(tx,_rx)=mpsc::sync_channel(2);control_request(&mut b,s.clone(),tx,0);drop(b);let mut result=String::new();a.read_to_string(&mut result).unwrap();result
@@ -660,7 +682,7 @@ mod session_cleanup_tests {
  use std::os::unix::fs::{DirBuilderExt,symlink};
  #[test]fn removes_session_artifacts_preserves_lock_and_unrelated_files(){
   let base=PathBuf::from(format!("/data/local/tmp/sb-console-cleanup-{}",random_hex().unwrap()));fs::DirBuilder::new().mode(0o700).create(&base).unwrap();
-  for n in ["lock","service.log","ready","control","session","page","progress","unrelated"]{fs::write(base.join(n),b"keep").unwrap();}
+  for n in ["lock","service.log","ready","control","session","page","progress","pending-language","unrelated"]{fs::write(base.join(n),b"keep").unwrap();}
   let before=fs::metadata(base.join("lock")).unwrap().ino();cleanup_session_files(&base).unwrap();
   for n in ["ready","control","session","page","progress","guard-active"]{assert!(!base.join(n).exists());}
   assert_eq!(fs::metadata(base.join("lock")).unwrap().ino(),before);for n in ["lock","service.log","unrelated"]{assert_eq!(fs::read(base.join(n)).unwrap(),b"keep");}

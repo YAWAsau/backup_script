@@ -155,11 +155,11 @@ shell_language="zh-TW"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202610231505"
+backup_version="202611081306"
 # 固定用 GitHub release tag 作為線上更新比較基準；不要用每日 rebuild 日期，避免本地開發版被誤判舊版。
 speedbackup_release_tag="202607232022"
 # Show readiness immediately, before cache/config checks and the UI relay exist.
-speedbackup_script_version="v1101"
+speedbackup_script_version="v1117"
 # Generated from versions.properties. tools_version.log records actual tool
 # versions; operation logs do not repeat release-version markers.
 # Compatibility input alias, independent of the release version.
@@ -735,6 +735,7 @@ _speedbackup_apply_internal_policy() {
 }
 _speedbackup_apply_internal_policy
 
+# ===== 診斷日誌與封存 =====
 _speed_debug_prune_archives() {
 	local _keep="${SPEED_DEBUG_KEEP_TARS:-10}" _base="${SPEED_DEBUG_BASE:-}" _f
 	case "$_keep" in ''|*[!0-9]*) _keep=10 ;; esac
@@ -905,6 +906,7 @@ _speed_debug_kv() {
 
 # UI formatting stays in Shell; Rust owns nonblocking terminal writes. Keep
 # protocol/data output outside this UI path. This helper only emits bytes.
+# ===== 終端／原生介面輸出 =====
 _speedbackup_ui_printf_fast() {
 	# Only the existing UI formats below are eligible. Unknown formats, widths,
 	# numeric syntax and argument counts retain the platform printf semantics.
@@ -1873,6 +1875,7 @@ _speedbackup_display_restore_after_debug_pack() {
 	return $_rc
 }
 
+# Publish one archive per supervisor lifetime. Failed append keeps the old tar and run logs.
 _speed_debug_pack_common() {
 	local _mode="$1" _ec="${2:-0}" _delete="${3:-0}" _pack_start_ms="" _pack_elapsed_ms="unknown" _archive_size="unknown"
 	# 打包以 run 目錄存在為準，不再只看 SPEED_DEBUG_ENABLE；
@@ -1899,6 +1902,13 @@ _speed_debug_pack_common() {
 		echo "${_mode}_exit_code=$_ec"
 	} >> "$SPEED_DEBUG_INFO_LOG" 2>/dev/null
 	SPEED_DEBUG_ARCHIVE="$SPEED_DEBUG_BASE/speed_debug_$SPEED_DEBUG_TS.tar"
+    local _session_archive=0
+    case ${SPEEDBACKUP_DEBUG_SESSION:-} in
+    ''|*[!0-9a-f]*) ;;
+    *) if [[ ${#SPEEDBACKUP_DEBUG_SESSION} = 32 ]]; then
+            SPEED_DEBUG_ARCHIVE="$SPEED_DEBUG_BASE/speed_debug_session_$SPEEDBACKUP_DEBUG_SESSION.tar"; _session_archive=1
+       fi ;;
+    esac
 	_speed_debug_sync_legacy_log "$_mode" "$_ec"
     # The supervisor has its own lifetime and cannot inherit this child's run directory.
     # Snapshot only bounded diagnostics, never its session URL/token or raw UI input.
@@ -1922,18 +1932,17 @@ _speed_debug_pack_common() {
 	[[ -z $_tar_bin ]] && _tar_bin="tar"
 	_pack_start_ms="$(_speed_now_ms 2>/dev/null)"
 	_speed_debug_pack_log "[speed_debug] ${_mode}打包: run=$SPEED_DEBUG_RUN_DIR out=$SPEED_DEBUG_ARCHIVE tar=$_tar_bin"
-	rm -f "$SPEED_DEBUG_ARCHIVE" "$_pack_err" 2>/dev/null
-	(
-		cd "$SPEED_DEBUG_BASE" || exit 70
-		# debug 打包必須繞過 tar() OOM wrapper；wrapper 會寫 main.log，導致 tar 讀取 main.log 時 file changed as we read it。
-		command "$_tar_bin" -cf "$(basename "$SPEED_DEBUG_ARCHIVE")" "$(basename "$SPEED_DEBUG_RUN_DIR")"
-	) 2>"$_pack_err"
-	local _tar_rc=$?
+    rm -f "$_pack_err" 2>/dev/null
+    local _tar_rc
+    local _archive_mode=replace
+    [[ $_session_archive = 1 ]] && _archive_mode=append
+    "${SPEEDBACKUP_NATIVE_EXE:-/data/.speedbackup/tools/speednative}" speedscan debug-archive "$_tar_bin" "$SPEED_DEBUG_ARCHIVE" "$SPEED_DEBUG_RUN_DIR" "$_archive_mode" 2>"$_pack_err"
+    _tar_rc=$?
+
 	if [[ $_tar_rc = 0 && -s "$SPEED_DEBUG_ARCHIVE" ]]; then
 		case $_pack_start_ms in ''|*[!0-9]*) _pack_elapsed_ms="unknown" ;; *) _pack_elapsed_ms="$(( $(_speed_now_ms 2>/dev/null) - _pack_start_ms ))" ;; esac
 		_archive_size="$(wc -c < "$SPEED_DEBUG_ARCHIVE" 2>/dev/null)"; case $_archive_size in ''|*[!0-9]*) _archive_size="unknown" ;; esac
-		# final/snapshot tar 完成後用 native eventwait 確認輸出大小穩定；失敗只記錄，不改成功語義。
-		_eventwait_file_size_stable_ms "$SPEED_DEBUG_ARCHIVE" "${SPEEDBACKUP_DEBUG_PACK_STABLE_MS:-250}" "${SPEEDBACKUP_DEBUG_PACK_STABLE_TIMEOUT_MS:-3000}" "speed_debug_${_mode}_archive_stable" >/dev/null 2>&1 || true
+		# Native publisher waits for tar and fsync before atomic rename.
 		_speed_debug_pack_log "[speed_debug] ${_mode}打包完成: rc=0 elapsedMs=$_pack_elapsed_ms bytes=$_archive_size"
 		rm -f "$_pack_err" 2>/dev/null
 		if [[ $_delete = 1 ]]; then
@@ -2354,46 +2363,10 @@ _conf_emit() {
 	_value=${_value//\$/\\\$}; _value=${_value//\`/\\\`}
 	_conf_print_raw "\"$_value\""
 }
-_conf_decode_literal() {
-	local _text="$1" _quote _char _next _tail
-	_CONF_LITERAL=""
-	case $_text in \"*|\'*) _quote=${_text:0:1}; _text=${_text:1} ;; *) _CONF_LITERAL=$_text; return 0 ;; esac
-	while [[ -n $_text ]]; do
-		_char=${_text:0:1}; _text=${_text:1}
-		if [[ $_char = "$_quote" ]]; then
-			_tail=${_text#"${_text%%[![:space:]]*}"}
-			case $_tail in ''|\#*) return 0 ;; *) return 1 ;; esac
-		fi
-		if [[ $_quote = '"' && $_char = '\' && -n $_text ]]; then
-			_next=${_text:0:1}
-			case $_next in '\'|'"'|'$'|'`') _char=$_next; _text=${_text:1} ;; esac
-		fi
-		_CONF_LITERAL="$_CONF_LITERAL$_char"
-	done
-	return 2
-}
 _conf_load_literal() {
-	local _line _key _text _rc _known
-	while IFS= read -r _line || [[ -n $_line ]]; do
-		_line=${_line%$'\r'}; _line=${_line#"${_line%%[![:space:]]*}"}
-		case $_line in ''|\#*) continue ;; *=*) ;; *) return 1 ;; esac
-		_key=${_line%%=*}; _text=${_line#*=}; _known=1
-		_key=${_key%"${_key##*[![:space:]]}"}
-		case $_key in Background_apps_ignore|Backup_Mode|Backup_obb_data|Backup_suffix|Backup_user_data|Compression_method|Custom_path|Output_path|Shell_LANG|Zstd_level|Zstd_size_hint|Zstd_small_max_bytes|Zstd_small_threads|Zstd_threads|background_execution|backup_calllogs|backup_media|backup_messages|blacklist|blacklist_mode|cdn|list_location|log_max_size_mb|low_battery_mode|media_recovery|mount_point|notification_enable|pc_auto_shutdown|recovery_mode|remote_keep_local|remote_stream|remote_type|remote_upload_per_app|restore_allow_low_target_sdk|restore_calllogs|restore_messages|rgb_a|rgb_b|rgb_c|setDisplayPowerMode|smb_remote_pass|smb_remote_user|smb_url|system|update|user|webdav_remote_pass|webdav_remote_user|webdav_url|whitelist) ;; *) _known=0 ;; esac
-		while :; do
-			_conf_decode_literal "$_text" && _rc=0 || _rc=$?
-			if [[ $_rc = 2 && $_text = \"* && $_text = *\\\" && $_text != *$'\n'* ]]; then
-				_CONF_LITERAL=${_text:1}; _CONF_LITERAL=${_CONF_LITERAL%\"}; _rc=0
-			fi
-			[[ $_rc = 2 ]] || break
-			IFS= read -r _line || return 1
-			_text="$_text
-$_line"
-		done
-		[[ $_rc = 0 ]] || return 1
-		[[ $_known = 1 ]] || continue
-		eval "$_key=\$_CONF_LITERAL"
-	done < "$1"
+    local _assignments
+    _assignments="$("${SPEEDBACKUP_NATIVE_EXE:-/data/.speedbackup/tools/speednative}" speedscan conf load "$1" "${2:-}")" || return 1
+    eval "$_assignments"
 }
 
 update_backup_settings_conf() {
@@ -2569,6 +2542,11 @@ com.android.chrome}"
 #smb 支援 SMB2/SMB3 (本腳本拒絕 SMB1/CIFS, 會自動協商到伺服器支援的最高版本)
 '
 	_conf_write remote_type "${_CONF_SRC_remote_type:-${remote_type:-}}"
+	_conf_print_raw '#地址模式：manual 保留手動輸入，auto 追蹤已選設備；首次使用會顯示連線設定。
+'
+	_conf_write remote_address_mode "${remote_address_mode:-manual}"
+	_conf_write remote_smb_identity "${remote_smb_identity:-}"
+	_conf_write remote_webdav_identity "${remote_webdav_identity:-}"
 	_conf_print_raw '#遠程地址 (兩種協議分開設定, 切換 remote_type 免重輸)
 #SMB例:    smb://192.168.1.100/backup/
 '
@@ -2708,124 +2686,20 @@ _update_conf() {
 	esac
 }
 _conf_commit_file() {
-	local _src="$1" _dst="$2" _mode
-	[[ -s $_src && -f $_dst && ! -L $_dst ]] || { _CONF_WRITE_FAILED=1; return 1; }
-	_mode="$(stat -c %a "$_dst" 2>/dev/null)"
-	case $_mode in ''|*[!0-7]*) _mode=600 ;; esac
-	chmod "$_mode" "$_src" && mv -f "$_src" "$_dst" && return 0
-	_CONF_WRITE_FAILED=1
-	_conf_patch_log "CONF_WRITE_FAIL path=$_dst original=preserved action=stop"
-	return 1
+    "${SPEEDBACKUP_NATIVE_EXE:-/data/.speedbackup/tools/speednative}" speedscan conf commit "$1" "$2" && return 0
+    _CONF_WRITE_FAILED=1
+    _conf_patch_log "CONF_WRITE_FAIL original=preserved action=stop"
+    return 1
 }
 
 _conf_patch_log() {
 	[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] || return 0
 	printf '%s\n' "$*" >> "$SPEED_DEBUG_RUN_DIR/conf_patch.log" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
-_conf_has_key() {
-	# One scan per unchanged configuration during the migration pass. Keep
-	# the existing grep path for other callers and unusual pattern arguments.
-	case "$1" in ''|[0-9]*|*[!a-zA-Z0-9_]*) ;;
-	*)
-		if [[ ${_CONF_PATCH_CACHE_ACTIVE:-0} = 1 ]]; then
-			if [[ ${_CONF_PATCH_CACHE_READY:-0} != 1 ]]; then
-				if _CONF_PATCH_KEYS="$(awk '/^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*=/ { k=$0; sub(/^[[:space:]]*/, "", k); sub(/=.*/, "", k); printf "%s ", k }' "$conf_path" 2>/dev/null)"; then
-					_CONF_PATCH_CACHE_READY=1
-				fi
-			fi
-			if [[ ${_CONF_PATCH_CACHE_READY:-0} = 1 ]]; then
-				case " $_CONF_PATCH_KEYS" in *" $1 "*) return 0 ;; *) return 1 ;; esac
-			fi
-		fi ;;
-	esac
-	grep -Eq "^[[:space:]]*$1=" "$conf_path" 2>/dev/null
-}
-_conf_insert_after_key() {
-	local _anchor="$1" _key="$2" _line="$3" _tmp
-	[[ -n $_key && -n $_line ]] || return 0
-	_conf_has_key "$_key" && return 0
-	_tmp="${conf_path}.tmp.$$"
-	awk -v a="$_anchor" -v l="$_line" '
-		BEGIN { done=0 }
-		{ print }
-		!done && $0 ~ "^[[:space:]]*" a "=" { print l; done=1 }
-		END { if (!done) { print ""; print l } }
-	' "$conf_path" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && {
-		_conf_commit_file "$_tmp" "$conf_path"
-		_CONF_PATCH_CACHE_READY=0
-		_conf_patch_log "INSERT key=$_key after=$_anchor line=$_line"
-	}
-	rm -f "$_tmp" 2>/dev/null
-}
-_conf_remove_exact_conf_lines() {
-	local _tmp
-	_tmp="${conf_path}.tmp.$$"
-	awk '
-		/^[[:space:]]*hybrid_urls="\$\{hybrid_urls:-\}"[[:space:]]*$/ {changed=1; next}
-		/^[[:space:]]*hybrid_get_mode="\$\{hybrid_get_mode:-assist\}"[[:space:]]*$/ {changed=1; next}
-		/^[[:space:]]*hybrid_get_lead_chunks="\$\{hybrid_get_lead_chunks:-32\}"[[:space:]]*$/ {changed=1; next}
-		/^[[:space:]]*hybrid_get_assist_stride="\$\{hybrid_get_assist_stride:-5\}"[[:space:]]*$/ {changed=1; next}
-		{ print }
-		END { if (changed) exit 0; exit 1 }
-	' "$conf_path" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && {
-		_conf_commit_file "$_tmp" "$conf_path"
-		_CONF_PATCH_CACHE_READY=0
-		_conf_patch_log "REMOVE abandoned_hxfer_conf_fallback_lines"
-	}
-	rm -f "$_tmp" 2>/dev/null
-}
-_conf_remove_key() {
-	local _key="$1" _tmp
-	[[ -n $_key ]] || return 0
-	_conf_has_key "$_key" || return 0
-	_tmp="${conf_path}.tmp.$$"
-	awk -v k="$_key" '
-		$0 ~ "^[[:space:]]*" k "=" { changed=1; next }
-		{ print }
-		END { if (changed) exit 0; exit 1 }
-	' "$conf_path" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && {
-		_conf_commit_file "$_tmp" "$conf_path"
-		_CONF_PATCH_CACHE_READY=0
-		_conf_patch_log "REMOVE obsolete_key=$_key"
-	}
-	rm -f "$_tmp" 2>/dev/null
-}
 _conf_sanitize_legacy_comment_noise() {
-	# 多次繁中轉換會把「算法」詞庫展開成「演演...算法」；只修註解，不碰使用者設定值。
-	local _file="${1:-$conf_path}" _tmp
-	[[ -n $_file && -f $_file ]] || return 0
-	grep -q '演演.*算法' "$_file" 2>/dev/null || return 0
-	_tmp="${_file}.tmp.sanitize.$$"
-	awk '
-		/^#/ {
-			while (gsub(/演演算法/, "演算法")) {}
-		}
-		{ print }
-	' "$_file" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && {
-		_conf_commit_file "$_tmp" "$_file"
-		_conf_patch_log "SANITIZE legacy_conf_comment=repeated_algorithm"
-	}
-	rm -f "$_tmp" 2>/dev/null
-}
-_conf_remove_internal_remote_function() {
-	# 先前版本 曾誤把內部 _remote_is_enabled() 函數寫進 backup_settings.conf；這裡只精準移除該污染區塊，不重排使用者 conf。
-	grep -q '^_remote_is_enabled()[[:space:]]*{' "$conf_path" 2>/dev/null || return 0
-	local _tmp="${conf_path}.tmp.$$"
-	awk '
-		/^_remote_is_enabled\(\)[[:space:]]*\{/ {skip=1; changed=1; next}
-		skip && /^}/ {skip=0; next}
-		!skip {print}
-		END { if (changed) exit 0; exit 1 }
-	' "$conf_path" > "$_tmp" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} && {
-		if [[ -s "$_tmp" ]]; then
-			_conf_commit_file "$_tmp" "$conf_path"
-			_CONF_PATCH_CACHE_READY=0
-			_conf_patch_log "REMOVE internal_function=_remote_is_enabled"
-		else
-			_conf_patch_log "SKIP remove: stripped result empty, conf left untouched"
-		fi
-	}
-	rm -f "$_tmp" 2>/dev/null
+    local _file="${1:-$conf_path}"
+    [[ -n $_file && -f $_file ]] || return 0
+    "${SPEEDBACKUP_NATIVE_EXE:-/data/.speedbackup/tools/speednative}" speedscan conf sanitize "$_file" || { _CONF_WRITE_FAILED=1; return 1; }
 }
 _conf_template_sync_current() {
 	# 每次啟動都把 conf 更新成目前模板：保留使用者設定值，刷新註解/排序，移除已廢棄公開配置。
@@ -2859,76 +2733,10 @@ _conf_template_sync_current() {
 	return 0
 }
 
-_conf_remove_obsolete_public_keys() {
-	local _debug_key
-	for _debug_key in webdav_stream_heartbeat_sec webdav_stream_progress_step_mb webdav_stream_idle_warn_sec webdav_stream_stall_abort_sec webdav_stream_verbose; do
-		_conf_remove_key "$_debug_key"
-	done
-	# 舊 conf 先精準移除已廢棄公開配置；隨後模板同步會更新註解/排序。
-	case $conf_path in
-	*backup_settings.conf)
-		_conf_remove_key diagnostic_mode
-		_conf_remove_key stream_background_boost
-		_conf_remove_key stream_background_boost_mode
-		_conf_remove_key stream_background_boost_target
-		_conf_remove_key stream_background_boost_interval_sec
-		_conf_remove_key stream_background_boost_burst_interval_sec
-		_conf_remove_key stream_background_boost_burst_sec
-		_conf_remove_key stream_background_boost_idle_ms
-		_conf_remove_key stream_background_boost_verbose
-		;;
-	esac
-	return 0
+_patch_conf_missing_fields() {
+    "${SPEEDBACKUP_NATIVE_EXE:-/data/.speedbackup/tools/speednative}" speedscan conf migrate "$conf_path" || { _CONF_WRITE_FAILED=1; return 1; }
 }
 
-_patch_conf_missing_fields() {
-	local _CONF_PATCH_CACHE_ACTIVE=1 _CONF_PATCH_CACHE_READY=0 _CONF_PATCH_KEYS=""
-	# 先補/清舊 conf，再交給模板同步重寫註解與配置項；使用者值由 source 進來的變數保留。
-	case $conf_path in
-	*backup_settings.conf)
-		# 清除已移交獨立模組/已放棄支線造成的舊污染；不重寫或重排其他使用者設定。
-		local _obsolete_module_key="sm""bd_share_path"
-		_conf_remove_key "$_obsolete_module_key"
-		_conf_remove_internal_remote_function
-		_conf_remove_obsolete_public_keys
-		_conf_remove_exact_conf_lines
-		_conf_sanitize_legacy_comment_noise "$conf_path"
-		# 只補缺失項，補固定值，不再把 ${var:-default} fallback 寫入使用者 conf。
-		_conf_insert_after_key background_execution notification_enable 'notification_enable=1'
-		_conf_insert_after_key notification_enable pc_auto_shutdown 'pc_auto_shutdown=0'
-		_conf_insert_after_key Compression_method Zstd_level 'Zstd_level=6'
-		_conf_insert_after_key Zstd_level Zstd_threads 'Zstd_threads=0'
-		_conf_insert_after_key Zstd_threads Zstd_small_max_bytes 'Zstd_small_max_bytes=1048576'
-		_conf_insert_after_key Zstd_small_max_bytes Zstd_small_threads 'Zstd_small_threads=1'
-		_conf_insert_after_key Zstd_small_threads Zstd_size_hint 'Zstd_size_hint=1'
-		_conf_insert_after_key Compression_method rgb_a 'rgb_a=220'
-		_conf_insert_after_key rgb_a rgb_b 'rgb_b=51'
-		_conf_insert_after_key rgb_b rgb_c 'rgb_c=213'
-		_conf_insert_after_key rgb_c remote_type 'remote_type='
-		_conf_insert_after_key remote_type smb_url 'smb_url='
-		_conf_insert_after_key smb_url smb_remote_user 'smb_remote_user='
-		_conf_insert_after_key smb_remote_user smb_remote_pass 'smb_remote_pass=""'
-		_conf_insert_after_key smb_remote_pass webdav_url 'webdav_url='
-		_conf_insert_after_key webdav_url webdav_remote_user 'webdav_remote_user='
-		_conf_insert_after_key webdav_remote_user webdav_remote_pass 'webdav_remote_pass=""'
-		_conf_insert_after_key webdav_remote_pass remote_stream 'remote_stream=0'
-		_conf_insert_after_key remote_stream remote_keep_local 'remote_keep_local=0'
-		_conf_insert_after_key remote_keep_local remote_upload_per_app 'remote_upload_per_app=0'
-		_conf_insert_after_key remote_upload_per_app log_max_size_mb 'log_max_size_mb=1'
-		;;
-	*restore_settings.conf)
-		_conf_remove_obsolete_public_keys
-		_conf_remove_exact_conf_lines
-		_conf_sanitize_legacy_comment_noise "$conf_path"
-		_conf_insert_after_key background_execution notification_enable 'notification_enable=1'
-		_conf_insert_after_key notification_enable pc_auto_shutdown 'pc_auto_shutdown=0'
-		_conf_insert_after_key notification_enable log_max_size_mb 'log_max_size_mb=1'
-		_conf_insert_after_key Compression_method rgb_a 'rgb_a=220'
-		_conf_insert_after_key rgb_a rgb_b 'rgb_b=51'
-		_conf_insert_after_key rgb_b rgb_c 'rgb_c=213'
-		;;
-	esac
-}
 if [[ ! -f $conf_path ]]; then
 	_update_conf
 	_speedbackup_ui_echo "因腳本找不到\n$conf_path\n故重新生成默認列表\n請重新配置後重新執行腳本" && exit 0
@@ -5303,8 +5111,8 @@ _speedscan_cmd() {
     "$_bin" "$@"; _native_rc=$?
     case "$1:${2:-}:$_native_rc" in selection-web:--has-icon-map:1|selection-web:--has-media-all:1) return "$_native_rc" ;; esac
     case $1 in
-        applist-merge|applist-web|selection-web|menu-web)
-            case $_native_rc in 0|10|20|130) ;; *) _speed_debug_log "NATIVE_COMMAND_FAILED command=$1 rc=$_native_rc" ;; esac ;;
+    applist-merge|applist-web|selection-web|menu-web)
+        case $_native_rc in 0|10|11|20|130) ;; *) _speed_debug_log "NATIVE_COMMAND_FAILED command=$1 rc=$_native_rc" ;; esac ;;
     esac
     return "$_native_rc"
 }
@@ -9040,13 +8848,13 @@ _speedbackup_tool_sha_table() {
 		fi
 	done <<'SB_TOOL_SHA_TABLE'
 busybox aea4610b3f8956d80edce07f084724c460bb609fb3366b6c368e9dbba41ef96f
-classes.dex 015582c69acefc86c351ef3729a9696de1498d53ddfb9047753542f5757eca14
+classes.dex 6023d05671b3937e7a617defbb437faee2a993560e2ac3a867fcc1d2cafcc412
 cmd 08da8ac23b6e99788fd3ce6c19c7b5a083b2ad48be35963a48d01d6ee7f3bb6d
-dex_check.sh 33b2baaf2a19987990d1bfb89e643e8e0af0d5f96ecc4e9e6ec8894213cb435e
+dex_check.sh d2e635c3c6518dc8ca41336a7f58f971f9e72c5dfb7ee97a18f24037fe69eaa8
 find ff5f4c6bab697b70544b266be701a08fddf684262a988cd34e15118a8e59041a
 keycheck 50645ee0e0d2a7d64fb4a1286446df7a4445f3d11aefd49eeeb88515b314c363
 smbclient 215cd097e7ade86b9b28ee136034cddc918f0c04034331bd823fdd8b8d77579f
-speednative 79739ec3d07dc62feef21eb72043d0020bae6990caa3be94917fedbd3fde180f
+speednative 4b47c71c2831267d772bf53a9f440cb7bce20306066f2970df802674a5554d24
 tar c12e74777f0fea9048ef3f5c546a15cfe75ae790c79770133b5753c16f2a0bd4
 zstd 06839acabb2ed657089bb7e52878cc771e29d71c5234cd4ac17c02d7bfff3735
 SB_TOOL_SHA_TABLE
@@ -10784,6 +10592,7 @@ scan_webdav_custom() {
 # 423/424: app_details shell/Rust JSON 統一入口。
 # app_details JSON rules are owned by speedscan; Dex owns Android framework access,
 # 但外層主流程應盡量走這些集中函式，避免 SSAID/payload/app_state/統計規則散落各處。
+# ===== 應用中繼資料與恢復計畫 =====
 _appdetails_json_inplace() {
 	local _file="$1"
 	shift
@@ -11561,14 +11370,10 @@ show_dex_version() {
 # 主通知固定 TAG/ID，避免不同階段堆出多張 SpeedBackup 進度通知。
 notification_enable="${notification_enable:-1}"
 SPEEDBACKUP_NOTIFY_THROTTLE_MS="${SPEEDBACKUP_NOTIFY_THROTTLE_MS:-500}"
-SPEEDBACKUP_NOTIFY_MAIN_TAG="${SPEEDBACKUP_NOTIFY_MAIN_TAG:-speedbackup_main}"
-SPEEDBACKUP_NOTIFY_MAIN_ID="${SPEEDBACKUP_NOTIFY_MAIN_ID:-2020}"
-SPEEDBACKUP_NOTIFY_ERROR_TAG="${SPEEDBACKUP_NOTIFY_ERROR_TAG:-speedbackup_error}"
-SPEEDBACKUP_NOTIFY_ERROR_ID="${SPEEDBACKUP_NOTIFY_ERROR_ID:-2021}"
 _notification_notify_batch_send() {
 		local _event="$1" _channel="$2" _tag="$3" _max="$4" _progress="$5" _indeterminate="$6" _ongoing="$7" _auto_cancel="$8" _only_alert_once="$9"
 		shift 9
-		local _text="$*" _tmp _pkg _android_tag _android_id
+		local _text="$*" _tmp _pkg
 		[[ -z $_tag ]] && _tag="speedbackup"
 		[[ -z $_event ]] && _event="INFO"
 		[[ -z $_channel ]] && _channel="result"
@@ -11578,30 +11383,12 @@ _notification_notify_batch_send() {
 		[[ -z $_ongoing ]] && _ongoing=0
 		[[ -z $_auto_cancel ]] && _auto_cancel=1
 		[[ -z $_only_alert_once ]] && _only_alert_once=1
-		# 通知文字硬保底，避免空 title/text 或 ROM service auto-template key 被原樣顯示。
-		case $_text in
-			''|*service_notification_apply_auto_template_title*|*service_notification_apply_auto_template_message*)
-				_text="SpeedBackup 執行中"
-				_speed_debug_log "NOTIFY_TEXT_SANITIZE tag=$_tag event=$_event mode=no-template"
-				;;
-		esac
-        local _notification_error=0
-        case $_event in *[Ee][Rr][Rr][Oo][Rr]*|*[Ww][Aa][Rr][Nn]*|*[Ff][Aa][Ii][Ll]*) _notification_error=1 ;; esac
-        case $_channel in [Ee][Rr][Rr][Oo][Rr]) _notification_error=1 ;; esac
-        if [[ $_notification_error = 1 ]]; then
-			_android_tag="$SPEEDBACKUP_NOTIFY_ERROR_TAG"
-			_android_id="$SPEEDBACKUP_NOTIFY_ERROR_ID"
-		else
-			_android_tag="$SPEEDBACKUP_NOTIFY_MAIN_TAG"
-			_android_id="$SPEEDBACKUP_NOTIFY_MAIN_ID"
-		fi
 		_pkg="${SPEEDBACKUP_NOTIFY_PACKAGE:-}"
 		_tmp="${TMPDIR:-/data/local/tmp}/.speedbackup_notify_batch_$$"
 		{
 			_sb_println "EVENT|$_event"
 			case $_event in OPERATION_*_FINISH) _sb_println "OPERATION_ID|${SPEEDBACKUP_RUN_TMPDIR:-$TMPDIR}:${_SPEEDBACKUP_OPERATION_OWNER:-}" ;; esac
-			_sb_println "TAG|$_android_tag"
-			_sb_println "ID|$_android_id"
+			_sb_println "LANGUAGE|${SPEEDBACKUP_UI_LANGUAGE:-${SCRIPT_LANG:-TW}}"
 			_sb_println "CHANNEL|$_channel"
 			_sb_println "TITLE|SpeedBackup"
 			_sb_println "TEXT|$_text"
@@ -11614,9 +11401,9 @@ _notification_notify_batch_send() {
 			_sb_println "NO_ACTIONS|1"
 			_sb_println "SINGLE_MAIN|1"
 			_sb_println "THROTTLE_MS|$SPEEDBACKUP_NOTIFY_THROTTLE_MS"
-			if [[ $_max -gt 0 || $_indeterminate = 1 ]]; then
+			if [[ $_event = PROGRESS || $_max -gt 0 || $_indeterminate = 1 ]]; then
 				_sb_println "PROGRESS|$_max|$_progress|$_indeterminate"
-				[[ $_max -gt 0 ]] && _sb_println "ITEMS|$_progress|$_max"
+				[[ $_indeterminate != 1 ]] && _sb_println "ITEMS|$_progress|$_max"
 			fi
 			_sb_println "ONGOING|$_ongoing"
 			_sb_println "AUTO_CANCEL|$_auto_cancel"
@@ -11629,7 +11416,7 @@ _notification_notify_batch_send() {
 		_rc=$?
 		if [[ $_rc = 125 ]]; then
 			# 通知是非核心功能；unified root daemon 不可用時跳過通知，避免每次通知退回 app_process。
-			_speed_debug_log "ROOT_NOTIFY_REQUIRED_SKIP_NO_SPAWN tag=$_android_tag id=$_android_id event=$_event"
+			_speed_debug_log "ROOT_NOTIFY_REQUIRED_SKIP_NO_SPAWN event=$_event"
 			_rc=0
 		fi
 		rm -f "$_tmp" "$_nout" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
@@ -11646,13 +11433,6 @@ if [[ $notification_enable = 1 ]]; then
 	notification_progress() {
 		local _tag="$1" _max="$2" _progress="$3" _ongoing=1 _auto_cancel=0
 		shift 3
-		[[ -z $_max || $_max -le 0 ]] && _max=100
-		[[ -z $_progress || $_progress -lt 0 ]] && _progress=0
-		[[ $_progress -gt $_max ]] && _progress="$_max"
-		if [[ $_max -gt 0 && $_progress -ge $_max ]]; then
-			_ongoing=0
-			_auto_cancel=1
-		fi
 		_notification_notify_batch_send PROGRESS progress "$_tag" "$_max" "$_progress" 0 "$_ongoing" "$_auto_cancel" 1 "$@"
 	}
 	# 不確定總進度時使用跑馬條
@@ -11846,6 +11626,23 @@ nskg=1
 # 從 GitHub Release API 取得腳本最新版本號
 # 透過 CDN (ghfast / cloudflare worker) 加速避免被牆
 # Only numeric manifest IDs cross from HTTP. Commands remain in the local dispatch table.
+_speedbackup_language_reload() {
+    local _lang_rc _lang_self
+    IFS= read -r _lang_self < /proc/self/stat || return 1
+    [[ ${_lang_self%% *} = $$ ]] || return 0
+    [[ ${SPEEDBACKUP_STOP_REQUESTED:-0} != 1 ]] || return 0
+    _speedscan_cmd language-reload "$conf_path" "$shell_language"
+    _lang_rc=$?
+    [[ $_lang_rc = 10 ]] || return "$_lang_rc"
+    _speed_debug_normal_finish_pack 0
+    _speedbackup_lock_cleanup
+    [[ -z ${SPEEDBACKUP_LOCK_TOKEN:-} && ${_SPEEDBACKUP_NORMAL_FINISH_EXIT_FAST:-0} = 1 && ! -d ${SPEEDBACKUP_RUN_TMPDIR:-/nonexistent} ]] || return 1
+    [[ -f $SPEEDBACKUP_ENTRY_DIR/start.sh && ! -L $SPEEDBACKUP_ENTRY_DIR/start.sh ]] || return 1
+    SPEEDBACKUP_LANGUAGE_RETURN=1; export SPEEDBACKUP_LANGUAGE_RETURN
+    _speedbackup_web_reset_runtime
+    exec /system/bin/sh "$SPEEDBACKUP_ENTRY_DIR/start.sh"
+}
+
 _speedbackup_web_reset_runtime() {
     unset SPEEDBACKUP_RUN_TMPDIR SPEEDBACKUP_RUN_TMPDIR_OWN SPEED_DEBUG_PACKED SPEED_DEBUG_RUN_DIR SPEED_DEBUG_SNAPSHOT_DONE
 	unset _SPEEDBACKUP_NORMAL_FINISH_EXIT_FAST _POWER_JOB _POWER_ELIGIBLE _POWER_OFFERED
@@ -11904,7 +11701,7 @@ _speedbackup_web_info() {
 	_value="${_value//$'\r'/ }"
 	_value="${_value//$'\t'/ }"
 	case $_value in *[![:space:]]*) ;; *) _value="未知" ;; esac
-	_sb_println "INFO${SB_TAB}$1${SB_TAB}$_value"
+	if [[ -n ${3:-} ]]; then _sb_println "INFOID${SB_TAB}$3${SB_TAB}$1${SB_TAB}$_value"; else _sb_println "INFO${SB_TAB}$1${SB_TAB}$_value"; fi
 }
 
 _speedbackup_web_select() {
@@ -11951,6 +11748,7 @@ SB_WEB_CHOICES
             _sb_println "$commands_data" | awk '/^(backup;|backup_update_apk;|Restore;|Restore3;|ssaid_mode|remote_stream_restore|remote_download_restore)/ {printf "UI\t%d\t1\n",NR}'
             _sb_println "$commands_data" | awk '$0~/^Edit_(backup|restore)_settings$/ {printf "SETTING\t%d\t1\n",NR}'
             [[ ${_SPEEDBACKUP_WEB_VISITED:-0} != 1 ]] || _sb_println "VIEW${SB_TAB}page${SB_TAB}actions"
+            [[ ${SPEEDBACKUP_LANGUAGE_RETURN:-0} != 1 ]] || _sb_println "VIEW${SB_TAB}page${SB_TAB}settings"
             [[ -z ${_SPEEDBACKUP_WEB_LAST_CHOICE:-} ]] || _sb_println "VIEW${SB_TAB}resume${SB_TAB}$_SPEEDBACKUP_WEB_LAST_CHOICE"
             _sb_println "$commands_data" | awk '
                 /^(Edit_backup_apps|Edit_backup_settings)$/ {next}
@@ -11958,27 +11756,28 @@ SB_WEB_CHOICES
                 /^(dumpname|Restore|ssaid_mode|recover_wifi|remote_stream_restore|remote_download_restore|Edit_remote_restore_list|Edit_media_restore_list|Edit_restore_apps|Edit_restore_settings)/ {g="恢復"}
                 /^(remote_test_menu|remote_list_backups|delete_remote_uninstalled_apps|Edit_remote_backups)/ {g="網路連線"}
                 {if(g=="")g="工具"; printf "GROUP\t%d\t%s\n",NR,g;g=""}'
-			_speedbackup_web_info "腳本路徑" "$MODDIR"
-			_speedbackup_web_info "腳本版本" "$backup_version-$speedbackup_script_version"
-			_speedbackup_web_info "管理器" "$Manager_version"
-			_speedbackup_web_info "品牌" "${_brand:-未知}"
-			_speedbackup_web_info "型號" "$Device_name($_device)"
-			_speedbackup_web_info "閃存" "$UFS_MODEL($ROM_TYPE)${UFS_MANUFACTURED:+$UFS_MANUFACTURED}"
-			_speedbackup_web_info "處理器" "${DEVICE_NAME:-未知}"
-			_speedbackup_web_info "記憶體" "${RAMINFO:-未知}"
-			_speedbackup_web_info "Android" "$release SDK:$sdk"
-			_speedbackup_web_info "busybox路徑" "${_busybox_path:-未知}"
-			_speedbackup_web_info "busybox版本" "${_busybox_ver:-未知}"
-			_speedbackup_web_info "核心" "$_SPEEDBACKUP_KERNEL"
-			_speedbackup_web_info "SELinux" "$_SPEEDBACKUP_SELINUX"
-			_speedbackup_web_info "目前使用者" "${USER_ID:-${user:-0}}"
-			_speedbackup_web_info "執行時間" "$_SPEEDBACKUP_STARTED"
-			_speedbackup_web_info "開機時間" "$_SPEEDBACKUP_UPTIME"
-			[[ -z $_SPEEDBACKUP_SLEEP ]] || _speedbackup_web_info "深度睡眠" "$_SPEEDBACKUP_SLEEP"
+			_speedbackup_web_info "腳本路徑" "$MODDIR" "script-path"
+			_speedbackup_web_info "腳本版本" "$backup_version-$speedbackup_script_version" "script-version"
+			_speedbackup_web_info "管理器" "$Manager_version" "manager"
+			_speedbackup_web_info "品牌" "${_brand:-未知}" "brand"
+			_speedbackup_web_info "型號" "$Device_name($_device)" "model"
+			_speedbackup_web_info "閃存" "$UFS_MODEL($ROM_TYPE)${UFS_MANUFACTURED:+$UFS_MANUFACTURED}" "storage"
+			_speedbackup_web_info "處理器" "${DEVICE_NAME:-未知}" "processor"
+			_speedbackup_web_info "記憶體" "${RAMINFO:-未知}" "memory"
+			_speedbackup_web_info "Android" "$release SDK:$sdk" "android"
+			_speedbackup_web_info "busybox路徑" "${_busybox_path:-未知}" "busybox-path"
+			_speedbackup_web_info "busybox版本" "${_busybox_ver:-未知}" "busybox-version"
+			_speedbackup_web_info "核心" "$_SPEEDBACKUP_KERNEL" "kernel"
+			_speedbackup_web_info "SELinux" "$_SPEEDBACKUP_SELINUX" "selinux"
+			_speedbackup_web_info "目前使用者" "${USER_ID:-${user:-0}}" "user"
+			_speedbackup_web_info "執行時間" "$_SPEEDBACKUP_STARTED" "runtime"
+			_speedbackup_web_info "開機時間" "$_SPEEDBACKUP_UPTIME" "uptime"
+			[[ -z $_SPEEDBACKUP_SLEEP ]] || _speedbackup_web_info "深度睡眠" "$_SPEEDBACKUP_SLEEP" "sleep"
 		fi
 	} > "$_dir/input"
 	_speedscan_cmd menu-web "$_dir/input" "$_dir/result" --open 2>>"${SPEED_DEBUG_ERR_LOG:-/dev/null}"
 	_rc=$?
+    unset SPEEDBACKUP_LANGUAGE_RETURN
 	if [[ $_info = 1 ]]; then
 		local _web_lang
 		_web_lang="$( _conf_load_literal "$conf_path" && printf '%s' "$Shell_LANG" )"
@@ -11999,7 +11798,7 @@ SB_WEB_CHOICES
 	fi
 	rm -f "$_dir/input" "$_dir/result"
 	rmdir "$_dir" 2>/dev/null
-    [[ $_rc = 0 || $_rc = 130 ]] || _speed_debug_log "WEB_MENU_FAILED rc=$_rc stage=controller-or-transport title=$_title"
+    [[ $_rc = 0 || $_rc = 11 || $_rc = 130 ]] || _speed_debug_log "WEB_MENU_FAILED rc=$_rc stage=controller-or-transport title=$_title"
 	return "$_rc"
 }
 
@@ -12401,6 +12200,7 @@ kill_Serve() {
     	# Release only our owned lock; the existing helper suppresses logs after final pack.
     	if [[ "${_SPEEDBACKUP_NORMAL_FINISH_EXIT_FAST:-0}" = 1 && "${SPEED_DEBUG_PACKED:-0}" = 1 ]]; then
     		_speedbackup_lock_cleanup
+            [[ $_ec != 0 ]] || _speedbackup_language_reload
     		return "$_ec"
     	fi
     	_ec="$(_speedbackup_exit_code_normalize "$_ec" 2>/dev/null)"
@@ -12437,6 +12237,7 @@ kill_Serve() {
     	_speedbackup_background_finish_publish
         _power_complete_offer "$_ec"
         _speedbackup_lock_cleanup
+        [[ $_ec != 0 ]] || _speedbackup_language_reload
     	return "$_ec"
     }
     trap '_speedbackup_exit_trap' EXIT
@@ -12448,6 +12249,246 @@ kill_Serve
 # ======================================================
 # TCP port 探測：Android/toybox nc 常沒有 -z，不能只依賴 nc -z。
 # 成功 return 0；失敗 return 1。用途：remote_precheck / SMB 區網掃描 fallback。
+# ===== 遠端連線：設定、身分追蹤、設備發現、認證預檢 =====
+_remote_refresh_conf() {
+    [[ -f $conf_path ]] || return 1
+    _conf_load_literal "$conf_path" 'remote_type|remote_address_mode|remote_smb_identity|remote_webdav_identity|smb_url|smb_remote_user|smb_remote_pass|webdav_url|webdav_remote_user|webdav_remote_pass' || return 1
+    _remote_apply_connection
+}
+_remote_apply_connection() {
+    if [[ ${_SMB_AUTHFILE:-} = "${TMPDIR:-/data/local/tmp}/.smb_authfile_$$" ]]; then rm -f "$_SMB_AUTHFILE" || return 1; fi
+    _SMB_AUTHFILE=""
+    _CONF_SRC_remote_type="$remote_type"; _CONF_SRC_smb_url="$smb_url"; _CONF_SRC_webdav_url="$webdav_url"
+    _CONF_SRC_smb_remote_user="$smb_remote_user"; _CONF_SRC_smb_remote_pass="$smb_remote_pass"
+    _CONF_SRC_webdav_remote_user="$webdav_remote_user"; _CONF_SRC_webdav_remote_pass="$webdav_remote_pass"
+    case $remote_type in
+    smb) remote_url="$smb_url"; remote_user="$smb_remote_user"; remote_pass="$smb_remote_pass"
+        if [[ -n $remote_user ]]; then
+            _SMB_AUTHFILE="${TMPDIR:-/data/local/tmp}/.smb_authfile_$$"
+            (umask 077; printf 'username = %s\npassword = %s\n' "$remote_user" "$remote_pass" > "$_SMB_AUTHFILE") || return 1
+            chmod 600 "$_SMB_AUTHFILE" || return 1
+        else
+            _SMB_AUTHFILE=""
+        fi ;;
+    webdav) remote_url="$webdav_url"; remote_user="$webdav_remote_user"; remote_pass="$webdav_remote_pass" ;;
+    '') remote_url=""; remote_user=""; remote_pass="" ;;
+    *) return 1 ;;
+    esac
+    _REMOTE_AUTO_RESOLVED=""
+}
+# Interactive retry is only for a confirmed authentication rejection, before payload I/O.
+_remote_auth_reenter() {
+    local _rc _identity="$_REMOTE_AUTO_RESOLVED"
+    _speedscan_cmd remote-control auth "$conf_path" "$MODDIR" "${USER_ID:-${user:-0}}" "${background_execution:-0}"
+    _rc=$?
+    [[ $_rc = 10 ]] || { echoRgb "已返回，未重試遠端操作" 3; return 1; }
+    _conf_load_literal "$conf_path" 'smb_remote_user|smb_remote_pass|webdav_remote_user|webdav_remote_pass' || return 1
+    _remote_apply_connection || return 1
+    _REMOTE_AUTO_RESOLVED="$_identity"
+}
+
+_remote_auto_resolve() {
+	_remote_auto_resolve_impl && return 0
+	echoRgb "自動地址未確認，已停止本次操作" "0"
+	exit 1
+}
+_remote_auto_resolve_impl() {
+    [[ ${remote_address_mode:-manual} = auto && -n $remote_type ]] || return 0
+    local _identity _resolved
+    case $remote_type in smb) _identity="$remote_smb_identity" ;; webdav) _identity="$remote_webdav_identity" ;; *) return 1 ;; esac
+    [[ -n $_identity && ${_REMOTE_AUTO_RESOLVED:-} = "$remote_type|$_identity|$remote_url" ]] && return 0
+    _resolved="$(_speedscan_cmd remote-control address "$conf_path" "$MODDIR" "${USER_ID:-${user:-0}}")" || return 1
+    _remote_refresh_conf || return 1
+    case $remote_type in smb) _identity="$remote_smb_identity" ;; webdav) _identity="$remote_webdav_identity" ;; *) _identity="" ;; esac
+    _REMOTE_AUTO_RESOLVED="$remote_type|$_identity|$remote_url"
+}
+
+remote_parse_endpoint() {
+    _remote_auto_resolve || return 1
+    REMOTE_HOST=""; REMOTE_PORT=""
+    [[ -n $remote_type ]] || return 0
+    local _endpoint
+    _endpoint="$(_speedscan_cmd remote-control endpoint "$remote_type" "$remote_url")" || return 1
+    REMOTE_HOST="${_endpoint%%	*}"; REMOTE_PORT="${_endpoint#*	}"
+}
+_smb_scan_hosts() {
+	local my_ip
+	my_ip="$(ip route get 1 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | awk '{for(i=1;i<NF;i++) if($i=="src") {print $(i+1); exit}}')"
+	[[ -z $my_ip ]] && my_ip="$(ifconfig 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | grep -m1 'inet addr:192' | awk '{print $2}' | cut -d: -f2)"
+	[[ -n $my_ip ]] && SMB_SCAN_SUBNET="${my_ip%.*}" || SMB_SCAN_SUBNET="auto"
+	local _scan_label
+	[[ $SMB_SCAN_SUBNET = auto ]] && _scan_label="自動偵測網段" || _scan_label="$SMB_SCAN_SUBNET.0/24"
+	echoRgb "本機 IP: ${my_ip:-自動偵測}" "2"
+	echoRgb "掃描 $_scan_label 上的 SMB 主機 (445 port)..." "3"
+	local results="$TMPDIR/.smb_scan_results"; : > "$results"
+
+	# 優先用 dex 併發 socket 預掃，避免 shell/nc 對 254 個 IP 反覆 fork。
+	# SMB 傳輸仍交給 smbclient；這裡只找 445 open 的候選主機。
+	local _dex_scan_out="$TMPDIR/.smb_scan_dex_out_$$" _dex_scan_err="$TMPDIR/.smb_scan_dex_err_$$" _dex_scan_rc=1
+	if [[ -f "$tools_path/classes.dex" ]] && command -v "$DEX_APP_PROCESS_BIN" >/dev/null 2>&1; then
+		dex_smbscan_raw scanSmb "$SMB_SCAN_SUBNET" 800 192 0 445,139 >"$_dex_scan_out" 2>"$_dex_scan_err"
+		_dex_scan_rc=$?
+		[[ -n ${SPEED_DEBUG_RUN_DIR:-} ]] && {
+			{
+				echo "===== SMB_SCAN_DEX rc=$_dex_scan_rc subnet=$SMB_SCAN_SUBNET ====="
+				cat "$_dex_scan_out" 2>/dev/null
+				cat "$_dex_scan_err" 2>/dev/null
+			} >> "${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/remote_smb_scan_raw.log" 2>/dev/null
+		}
+		if [[ $_dex_scan_rc = 0 && -s $_dex_scan_out ]]; then
+			awk -F '\t' '$3=="open" && ($2==445 || $2==139) {print $1}' "$_dex_scan_out" | sort -t. -k4 -n -u > "$results"
+			rm -f "$_dex_scan_out" "$_dex_scan_err" 2>/dev/null
+			if [[ -s $results ]]; then
+				_speedbackup_ui_printf '\r 掃描 254/254 %s\n' "$(progress_bar 100)" >&2
+				return 0
+			fi
+		fi
+	fi
+	rm -f "$_dex_scan_out" "$_dex_scan_err" 2>/dev/null
+
+	# dex 不可用或未找到主機時，回退 shell TCP 掃描。
+	# Android/toybox nc 常沒有 -z，因此不能硬依賴 nc -z。
+	if ! command -v nc >/dev/null 2>&1 && ! command -v bash >/dev/null 2>&1; then
+		echoRgb "未找到 nc/bash，無法 fallback 掃描" "0"; return 1
+	fi
+	if [[ $SMB_SCAN_SUBNET = auto ]]; then
+		echoRgb "無法取得本機 IP" "0"; return 1
+	fi
+	local i pids=""
+	for i in $(seq 1 254); do
+		( _tcp_port_open "$SMB_SCAN_SUBNET.$i" 445 1 "" && echo "$SMB_SCAN_SUBNET.$i" >> "$results" ) &
+		pids="$pids $!"
+		if [[ $((i % 20)) -eq 0 ]]; then
+			_event_wait_pid_list "$pids" smb_scan_batch 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; pids=""
+			_speedbackup_ui_printf '\r 掃描 %d/254 %s' "$i" "$(progress_bar $((i * 100 / 254)))" >&2
+		fi
+	done
+	_event_wait_pid_list "$pids" smb_scan_final 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+	_speedbackup_ui_printf '\r 掃描 254/254 %s\n' "$(progress_bar 100)" >&2
+	[[ ! -s $results ]] && return 1
+	sort -t. -k4 -n "$results" -o "$results"
+	return 0
+}
+
+# 自動偵測區網 SMB 並設定 remote_url (取第一台有可用共享的主機)
+# 不論 remote_stream/remote_user/remote_pass 是否填寫都會探測
+# Keep listing stdout, stderr and the actual smbclient status before parsing.
+_smb_scan_collect() {
+    local _target="$1" _auth _conf _out _err _raw _status
+    _SMB_SCAN_SHARES=""; _SMB_SCAN_NOTE=""; _SMB_SCAN_RC=1
+    _auth="$(_smb_auth_args_current)" || { _SMB_SCAN_NOTE="SMB 帳密檔無法建立"; return 1; }
+    _conf="$(_smb_client_conf)" || return 1
+    _out="$(mktemp "$TMPDIR/.smb_list_XXXXXX")" || return 1
+    _err="$_out.err"; _SMB_SCAN_SHARES="$_out.shares"
+    smbclient -g -L "//$_target" $_auth -t 5 -s "$_conf" -m SMB3 >"$_out" 2>"$_err"
+    _SMB_SCAN_RC=$?
+    _raw="$(_speed_debug_log_path remote_smb_scan_raw.log)"
+    {
+        printf '\n===== SMB_LIST host=%s auth=%s rc=%s =====\n' "$_target" "${remote_user:+configured}" "$_SMB_SCAN_RC"
+        printf '%s\n' '[stdout]'; cat "$_out"
+        printf '%s\n' '[stderr]'; cat "$_err"
+    } >> "$_raw"
+    awk -F'|' '$1=="Disk" {n=$2;sub(/\r$/, "", n); if(n!="") print n}' "$_out" > "$_SMB_SCAN_SHARES"
+    _status="$(grep -h -oE 'NT_STATUS_[A-Z0-9_]+' "$_out" "$_err" | head -n 1)"
+    case $_status in
+        NT_STATUS_LOGON_FAILURE|NT_STATUS_ACCESS_DENIED|NT_STATUS_ACCOUNT_DISABLED|NT_STATUS_ACCOUNT_LOCKED_OUT|NT_STATUS_WRONG_PASSWORD)
+            _SMB_SCAN_NOTE="共享列舉被拒絕；請確認 SMB 專用帳密與伺服器列舉權限（$_status）" ;;
+        NT_STATUS_IO_TIMEOUT|NT_STATUS_CONNECTION_REFUSED|NT_STATUS_HOST_UNREACHABLE|NT_STATUS_NETWORK_UNREACHABLE)
+            _SMB_SCAN_NOTE="SMB 列舉連線失敗（$_status）；請確認服務與網路" ;;
+        ?*) _SMB_SCAN_NOTE="SMB 列舉回報 $_status（rc=$_SMB_SCAN_RC）" ;;
+        *)
+            if [[ $_SMB_SCAN_RC = 124 || $_SMB_SCAN_RC = 137 || $_SMB_SCAN_RC = 143 ]]; then
+                _SMB_SCAN_NOTE="SMB 共享列舉逾時"
+            elif [[ $_SMB_SCAN_RC != 0 ]]; then
+                _SMB_SCAN_NOTE="SMB 共享列舉失敗（rc=$_SMB_SCAN_RC），完整回覆已保留於除錯包"
+            elif [[ ! -s $_SMB_SCAN_SHARES ]]; then
+                _SMB_SCAN_NOTE="伺服器未列出磁碟共享；不代表已知分享不能連線"
+            fi ;;
+    esac
+    rm -f "$_out" "$_err"
+    return 0
+}
+
+# Only tree-connect a user-configured/listed share. Never guess names or upload probes.
+_smb_scan_direct() {
+    local _target="$1" _share="$2" _auth _conf _out _raw _rc _status
+    _SMB_SCAN_DIRECT_NOTE=""
+    case $_share in ''|*/*|*\\*) return 1 ;; esac
+    _auth="$(_smb_auth_args_current)" || return 1
+    _conf="$(_smb_client_conf)" || return 1
+    _out="$(mktemp "$TMPDIR/.smb_direct_XXXXXX")" || return 1
+    smbclient "//$_target/$_share" $_auth -s "$_conf" -t 5 -m SMB3 -c quit >"$_out" 2>&1
+    _rc=$?
+    _raw="$(_speed_debug_log_path remote_smb_scan_raw.log)"
+    { printf '\n===== SMB_DIRECT host=%s share=%s rc=%s =====\n' "$_target" "$_share" "$_rc"; cat "$_out"; } >> "$_raw"
+    _status="$(grep -oE 'NT_STATUS_[A-Z0-9_]+' "$_out" | head -n 1)"
+    case $_status in
+        NT_STATUS_BAD_NETWORK_NAME|NT_STATUS_OBJECT_NAME_NOT_FOUND) _SMB_SCAN_DIRECT_NOTE="已連到主機，但指定的共享名稱不存在（$_status）" ;;
+        NT_STATUS_ACCESS_DENIED|NT_STATUS_LOGON_FAILURE|NT_STATUS_WRONG_PASSWORD) _SMB_SCAN_DIRECT_NOTE="指定共享拒絕存取；請確認帳密及共享權限（$_status）" ;;
+        *) [[ $_rc = 0 ]] || _SMB_SCAN_DIRECT_NOTE="指定共享連線失敗（rc=$_rc ${_status:-無狀態碼}）" ;;
+    esac
+    rm -f "$_out"
+    return "$_rc"
+}
+
+_smb_scan_configured_share() {
+    local _url="${smb_url:-}" _rest
+    [[ $_url = smb://* ]] || return 1
+    _rest=${_url#smb://}
+    [[ ${_rest%%/*} = "$1" && $_rest = */* ]] || return 1
+    _rest=${_rest#*/}; _rest=${_rest%%/*}
+    [[ -n $_rest ]] || return 1
+    print -r -- "$_rest"
+}
+
+smb_autodetect_url() {
+    _smb_scan_hosts || return 1
+    local target share _known
+    while IFS= read -r target; do
+        echoRgb "偵測到 SMB 埠: $target" "1"
+        _smb_scan_collect "$target" || { echoRgb "無法列舉 $target 的共享" "0"; continue; }
+        [[ -z $_SMB_SCAN_NOTE ]] || echoRgb "$_SMB_SCAN_NOTE" "2"
+        _known="$(_smb_scan_configured_share "$target")" || _known=""
+        if [[ -n $_known ]] && ! grep -Fxq "$_known" "$_SMB_SCAN_SHARES"; then printf '%s\n' "$_known" >> "$_SMB_SCAN_SHARES"; fi
+        while IFS= read -r share; do
+            # Hidden shares remain visible in scan-only mode; auto-select only explicitly configured ones.
+            case $share in *\$) [[ $share = "$_known" ]] || continue ;; esac
+            if _smb_scan_direct "$target" "$share"; then
+                if [[ -n $_known && $share = "$_known" ]]; then remote_url="${smb_url%/}"
+                else remote_url="smb://$target/$share"; fi
+                rm -f "$_SMB_SCAN_SHARES" "$TMPDIR/.smb_scan_results"
+                return 0
+            fi
+            echoRgb "$_SMB_SCAN_DIRECT_NOTE" "2"
+        done < "$_SMB_SCAN_SHARES"
+        rm -f "$_SMB_SCAN_SHARES"
+    done < "$TMPDIR/.smb_scan_results"
+    rm -f "$TMPDIR/.smb_scan_results"
+    return 1
+}
+
+scan_smb() {
+    if ! _smb_scan_hosts; then
+        echoRgb "未偵測到可連線的 SMB 標準埠；非標準埠請使用完整位址測試" "0"
+        rm -f "$TMPDIR/.smb_scan_results"; return 1
+    fi
+    echoRgb "------- 掃描完成 -------" "3"
+    if [[ -n ${remote_user:-} ]]; then echoRgb "共享列舉使用已設定的 SMB 專用帳密" "2"
+    else echoRgb "共享列舉使用匿名登入；受保護的共享可能不會列出" "2"; fi
+    local target share _known
+    while IFS= read -r target; do
+        echoRgb "偵測到 SMB 埠: $target" "1"
+        _smb_scan_collect "$target" || { echoRgb "無法列舉 $target 的共享" "0"; continue; }
+        while IFS= read -r share; do echoRgb "  共享: $share" "2"; done < "$_SMB_SCAN_SHARES"
+        [[ -z $_SMB_SCAN_NOTE ]] || echoRgb "$_SMB_SCAN_NOTE" "2"
+        _known="$(_smb_scan_configured_share "$target")" || _known=""
+        if [[ -n $_known ]] && ! grep -Fxq "$_known" "$_SMB_SCAN_SHARES"; then
+            if _smb_scan_direct "$target" "$_known"; then echoRgb "已設定共享可直接連線: smb://$target/$_known（未出現在列舉清單）" "1"
+            else echoRgb "$_SMB_SCAN_DIRECT_NOTE" "0"; fi
+        fi
+        rm -f "$_SMB_SCAN_SHARES"
+    done < "$TMPDIR/.smb_scan_results"
+}
 _tcp_port_open() {
 	local host="$1" port="$2" timeout_s="${3:-2}" dbg="$4"
 	local _nc_help _nc_has_z
@@ -12516,30 +12557,18 @@ _smb_target_probe_timeout_profile() {
 	esac
 }
 _smb_target_probe_classify_error() {
-	local _out="$1"
-	_SMB_TARGET_PROBE_ERROR_ZH="SMB 目標連線失敗"
-	_SMB_TARGET_PROBE_HINT_ZH="請檢查 SMB 位址、帳號密碼、共享名稱與伺服器狀態"
-	print -r -- "$_out" | grep -qiE 'NT_STATUS_LOGON_FAILURE|LOGON_FAILURE|session setup failed|Authentication failed|password' && {
-		_SMB_TARGET_PROBE_ERROR_ZH="已連上 445 port，但 SMB 認證失敗"
-		_SMB_TARGET_PROBE_HINT_ZH="請在設定頁檢查 SMB 用戶名與密碼；若要匿名，請清空帳密並確認伺服器允許 Guest/匿名存取"
-		return 0
-	}
-	print -r -- "$_out" | grep -qiE 'NT_STATUS_BAD_NETWORK_NAME|tree connect failed|BAD_NETWORK_NAME|OBJECT_NAME_NOT_FOUND|OBJECT_PATH_NOT_FOUND|ERRbadpath|cd .*failed|does not exist' && {
-		_SMB_TARGET_PROBE_ERROR_ZH="SMB 認證可嘗試，但共享名稱或路徑不存在"
-		_SMB_TARGET_PROBE_HINT_ZH="請在設定頁檢查 SMB 地址的共享名稱與後續路徑，例如 smb://IP/共享名稱/路徑"
-		return 0
-	}
-	print -r -- "$_out" | grep -qiE 'NT_STATUS_ACCESS_DENIED|ACCESS_DENIED|denied' && {
-		_SMB_TARGET_PROBE_ERROR_ZH="SMB 共享拒絕目前帳號存取"
-		_SMB_TARGET_PROBE_HINT_ZH="請檢查共享權限與 Windows/NAS 檔案系統權限；能登入不代表能讀寫該 share"
-		return 0
-	}
-	print -r -- "$_out" | grep -qiE 'Connection refused|Unable to connect|No route to host|timed out|timeout|protocol negotiation failed' && {
-		_SMB_TARGET_PROBE_ERROR_ZH="SMB 伺服器不可連線或協議協商失敗"
-		_SMB_TARGET_PROBE_HINT_ZH="請確認伺服器已開啟 SMB2/SMB3、445 port 未被防火牆阻擋，且手機與伺服器在可互通網段"
-		return 0
-	}
-	return 0
+    local _classified
+    _SMB_AUTH_REJECTED=0
+    _SMB_TARGET_PROBE_ERROR_ZH="SMB 目標連線失敗"
+    _SMB_TARGET_PROBE_HINT_ZH="請檢查 SMB 位址、帳號密碼、共享名稱與伺服器狀態"
+    _classified="$(printf '%s' "$1" | _speedscan_cmd remote-control smb-error)" || return 1
+    {
+        IFS= read -r _SMB_AUTH_REJECTED
+        IFS= read -r _SMB_TARGET_PROBE_ERROR_ZH
+        IFS= read -r _SMB_TARGET_PROBE_HINT_ZH
+    } <<EOF
+$_classified
+EOF
 }
 
 _smb_target_precheck_path_missing_only() {
@@ -12673,12 +12702,25 @@ remote_precheck() {
 		"===== precheck $(date '+%Y-%m-%d %H:%M:%S') =====" \
 		"host=$host port=$port mode=$mode type=${remote_type:-unknown}"
 	if [[ ${remote_type:-} = smb ]]; then
-		_smb_target_precheck "$host" "$port" "$mode" "$dbg"
-		return $?
+        while :; do
+            _SMB_AUTH_REJECTED=0
+            _smb_target_precheck "$host" "$port" "$mode" "$dbg" && return 0
+            [[ $_SMB_AUTH_REJECTED = 1 ]] || return 1
+            _remote_auth_reenter || return 1
+        done
 	fi
-	if _tcp_port_open "$host" "$port" 3 "$dbg"; then
-		return 0
-	fi
+    if _tcp_port_open "$host" "$port" 3 "$dbg"; then
+        if [[ ${remote_type:-} = webdav ]]; then
+            while :; do
+                _webdav_status_sidecar_reset
+                _webdav_dex listrel "$remote_user" "$remote_pass" "${remote_url%/}" "." 0 >/dev/null 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
+                _webdav_status_sidecar_load || true
+                [[ ${_WEBDAV_HTTP_CODE:-0} = 401 ]] || break
+                _remote_auth_reenter || return 1
+            done
+        fi
+        return 0
+    fi
 	# 詳細失敗原因已寫入 speed_debug 包內 remote_precheck.log；此函數本身不刷終端，交由呼叫端顯示摘要。
 	return 1
 }
@@ -13138,184 +13180,7 @@ remote_collect_targets() {
 }
 # 掃描核心: 找出區網內所有開放 445 的主機, 寫入 $TMPDIR/.smb_scan_results (一行一 IP, 已排序)
 # 成功(有結果) return 0; 無結果或無法掃描 return 1. 供 scan_smb / smb_autodetect_url 複用
-_smb_scan_hosts() {
-	local my_ip
-	my_ip="$(ip route get 1 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | awk '{for(i=1;i<NF;i++) if($i=="src") {print $(i+1); exit}}')"
-	[[ -z $my_ip ]] && my_ip="$(ifconfig 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} | grep -m1 'inet addr:192' | awk '{print $2}' | cut -d: -f2)"
-	[[ -n $my_ip ]] && SMB_SCAN_SUBNET="${my_ip%.*}" || SMB_SCAN_SUBNET="auto"
-	local _scan_label
-	[[ $SMB_SCAN_SUBNET = auto ]] && _scan_label="自動偵測網段" || _scan_label="$SMB_SCAN_SUBNET.0/24"
-	echoRgb "本機 IP: ${my_ip:-自動偵測}" "2"
-	echoRgb "掃描 $_scan_label 上的 SMB 主機 (445 port)..." "3"
-	local results="$TMPDIR/.smb_scan_results"; : > "$results"
-
-	# 優先用 dex 併發 socket 預掃，避免 shell/nc 對 254 個 IP 反覆 fork。
-	# SMB 傳輸仍交給 smbclient；這裡只找 445 open 的候選主機。
-	local _dex_scan_out="$TMPDIR/.smb_scan_dex_out_$$" _dex_scan_err="$TMPDIR/.smb_scan_dex_err_$$" _dex_scan_rc=1
-	if [[ -f "$tools_path/classes.dex" ]] && command -v "$DEX_APP_PROCESS_BIN" >/dev/null 2>&1; then
-		dex_smbscan_raw scanSmb "$SMB_SCAN_SUBNET" 800 192 0 445,139 >"$_dex_scan_out" 2>"$_dex_scan_err"
-		_dex_scan_rc=$?
-		[[ -n ${SPEED_DEBUG_RUN_DIR:-} ]] && {
-			{
-				echo "===== SMB_SCAN_DEX rc=$_dex_scan_rc subnet=$SMB_SCAN_SUBNET ====="
-				cat "$_dex_scan_out" 2>/dev/null
-				cat "$_dex_scan_err" 2>/dev/null
-			} >> "${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/remote_smb_scan_raw.log" 2>/dev/null
-		}
-		if [[ $_dex_scan_rc = 0 && -s $_dex_scan_out ]]; then
-			awk -F '\t' '$3=="open" && ($2==445 || $2==139) {print $1}' "$_dex_scan_out" | sort -t. -k4 -n -u > "$results"
-			rm -f "$_dex_scan_out" "$_dex_scan_err" 2>/dev/null
-			if [[ -s $results ]]; then
-				_speedbackup_ui_printf '\r 掃描 254/254 %s\n' "$(progress_bar 100)" >&2
-				return 0
-			fi
-		fi
-	fi
-	rm -f "$_dex_scan_out" "$_dex_scan_err" 2>/dev/null
-
-	# dex 不可用或未找到主機時，回退 shell TCP 掃描。
-	# Android/toybox nc 常沒有 -z，因此不能硬依賴 nc -z。
-	if ! command -v nc >/dev/null 2>&1 && ! command -v bash >/dev/null 2>&1; then
-		echoRgb "未找到 nc/bash，無法 fallback 掃描" "0"; return 1
-	fi
-	if [[ $SMB_SCAN_SUBNET = auto ]]; then
-		echoRgb "無法取得本機 IP" "0"; return 1
-	fi
-	local i pids=""
-	for i in $(seq 1 254); do
-		( _tcp_port_open "$SMB_SCAN_SUBNET.$i" 445 1 "" && echo "$SMB_SCAN_SUBNET.$i" >> "$results" ) &
-		pids="$pids $!"
-		if [[ $((i % 20)) -eq 0 ]]; then
-			_event_wait_pid_list "$pids" smb_scan_batch 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}; pids=""
-			_speedbackup_ui_printf '\r 掃描 %d/254 %s' "$i" "$(progress_bar $((i * 100 / 254)))" >&2
-		fi
-	done
-	_event_wait_pid_list "$pids" smb_scan_final 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	_speedbackup_ui_printf '\r 掃描 254/254 %s\n' "$(progress_bar 100)" >&2
-	[[ ! -s $results ]] && return 1
-	sort -t. -k4 -n "$results" -o "$results"
-	return 0
-}
-
-# 自動偵測區網 SMB 並設定 remote_url (取第一台有可用共享的主機)
-# 不論 remote_stream/remote_user/remote_pass 是否填寫都會探測
-# Keep listing stdout, stderr and the actual smbclient status before parsing.
-_smb_scan_collect() {
-    local _target="$1" _auth _conf _out _err _raw _status
-    _SMB_SCAN_SHARES=""; _SMB_SCAN_NOTE=""; _SMB_SCAN_RC=1
-    _auth="$(_smb_auth_args_current)" || { _SMB_SCAN_NOTE="SMB 帳密檔無法建立"; return 1; }
-    _conf="$(_smb_client_conf)" || return 1
-    _out="$(mktemp "$TMPDIR/.smb_list_XXXXXX")" || return 1
-    _err="$_out.err"; _SMB_SCAN_SHARES="$_out.shares"
-    smbclient -g -L "//$_target" $_auth -t 5 -s "$_conf" -m SMB3 >"$_out" 2>"$_err"
-    _SMB_SCAN_RC=$?
-    _raw="$(_speed_debug_log_path remote_smb_scan_raw.log)"
-    {
-        printf '\n===== SMB_LIST host=%s auth=%s rc=%s =====\n' "$_target" "${remote_user:+configured}" "$_SMB_SCAN_RC"
-        printf '%s\n' '[stdout]'; cat "$_out"
-        printf '%s\n' '[stderr]'; cat "$_err"
-    } >> "$_raw"
-    awk -F'|' '$1=="Disk" {n=$2;sub(/\r$/, "", n); if(n!="") print n}' "$_out" > "$_SMB_SCAN_SHARES"
-    _status="$(grep -h -oE 'NT_STATUS_[A-Z0-9_]+' "$_out" "$_err" | head -n 1)"
-    case $_status in
-        NT_STATUS_LOGON_FAILURE|NT_STATUS_ACCESS_DENIED|NT_STATUS_ACCOUNT_DISABLED|NT_STATUS_ACCOUNT_LOCKED_OUT|NT_STATUS_WRONG_PASSWORD)
-            _SMB_SCAN_NOTE="共享列舉被拒絕；請確認 SMB 專用帳密與伺服器列舉權限（$_status）" ;;
-        NT_STATUS_IO_TIMEOUT|NT_STATUS_CONNECTION_REFUSED|NT_STATUS_HOST_UNREACHABLE|NT_STATUS_NETWORK_UNREACHABLE)
-            _SMB_SCAN_NOTE="SMB 列舉連線失敗（$_status）；請確認服務與網路" ;;
-        ?*) _SMB_SCAN_NOTE="SMB 列舉回報 $_status（rc=$_SMB_SCAN_RC）" ;;
-        *)
-            if [[ $_SMB_SCAN_RC = 124 || $_SMB_SCAN_RC = 137 || $_SMB_SCAN_RC = 143 ]]; then
-                _SMB_SCAN_NOTE="SMB 共享列舉逾時"
-            elif [[ $_SMB_SCAN_RC != 0 ]]; then
-                _SMB_SCAN_NOTE="SMB 共享列舉失敗（rc=$_SMB_SCAN_RC），完整回覆已保留於除錯包"
-            elif [[ ! -s $_SMB_SCAN_SHARES ]]; then
-                _SMB_SCAN_NOTE="伺服器未列出磁碟共享；不代表已知分享不能連線"
-            fi ;;
-    esac
-    rm -f "$_out" "$_err"
-    return 0
-}
-
-# Only tree-connect a user-configured/listed share. Never guess names or upload probes.
-_smb_scan_direct() {
-    local _target="$1" _share="$2" _auth _conf _out _raw _rc _status
-    _SMB_SCAN_DIRECT_NOTE=""
-    case $_share in ''|*/*|*\\*) return 1 ;; esac
-    _auth="$(_smb_auth_args_current)" || return 1
-    _conf="$(_smb_client_conf)" || return 1
-    _out="$(mktemp "$TMPDIR/.smb_direct_XXXXXX")" || return 1
-    smbclient "//$_target/$_share" $_auth -s "$_conf" -t 5 -m SMB3 -c quit >"$_out" 2>&1
-    _rc=$?
-    _raw="$(_speed_debug_log_path remote_smb_scan_raw.log)"
-    { printf '\n===== SMB_DIRECT host=%s share=%s rc=%s =====\n' "$_target" "$_share" "$_rc"; cat "$_out"; } >> "$_raw"
-    _status="$(grep -oE 'NT_STATUS_[A-Z0-9_]+' "$_out" | head -n 1)"
-    case $_status in
-        NT_STATUS_BAD_NETWORK_NAME|NT_STATUS_OBJECT_NAME_NOT_FOUND) _SMB_SCAN_DIRECT_NOTE="已連到主機，但指定的共享名稱不存在（$_status）" ;;
-        NT_STATUS_ACCESS_DENIED|NT_STATUS_LOGON_FAILURE|NT_STATUS_WRONG_PASSWORD) _SMB_SCAN_DIRECT_NOTE="指定共享拒絕存取；請確認帳密及共享權限（$_status）" ;;
-        *) [[ $_rc = 0 ]] || _SMB_SCAN_DIRECT_NOTE="指定共享連線失敗（rc=$_rc ${_status:-無狀態碼}）" ;;
-    esac
-    rm -f "$_out"
-    return "$_rc"
-}
-
-_smb_scan_configured_share() {
-    local _url="${smb_url:-}" _rest
-    [[ $_url = smb://* ]] || return 1
-    _rest=${_url#smb://}
-    [[ ${_rest%%/*} = "$1" && $_rest = */* ]] || return 1
-    _rest=${_rest#*/}; _rest=${_rest%%/*}
-    [[ -n $_rest ]] || return 1
-    print -r -- "$_rest"
-}
-
-smb_autodetect_url() {
-    _smb_scan_hosts || return 1
-    local target share _known
-    while IFS= read -r target; do
-        echoRgb "偵測到 SMB 埠: $target" "1"
-        _smb_scan_collect "$target" || { echoRgb "無法列舉 $target 的共享" "0"; continue; }
-        [[ -z $_SMB_SCAN_NOTE ]] || echoRgb "$_SMB_SCAN_NOTE" "2"
-        _known="$(_smb_scan_configured_share "$target")" || _known=""
-        if [[ -n $_known ]] && ! grep -Fxq "$_known" "$_SMB_SCAN_SHARES"; then printf '%s\n' "$_known" >> "$_SMB_SCAN_SHARES"; fi
-        while IFS= read -r share; do
-            # Hidden shares remain visible in scan-only mode; auto-select only explicitly configured ones.
-            case $share in *\$) [[ $share = "$_known" ]] || continue ;; esac
-            if _smb_scan_direct "$target" "$share"; then
-                if [[ -n $_known && $share = "$_known" ]]; then remote_url="${smb_url%/}"
-                else remote_url="smb://$target/$share"; fi
-                rm -f "$_SMB_SCAN_SHARES" "$TMPDIR/.smb_scan_results"
-                return 0
-            fi
-            echoRgb "$_SMB_SCAN_DIRECT_NOTE" "2"
-        done < "$_SMB_SCAN_SHARES"
-        rm -f "$_SMB_SCAN_SHARES"
-    done < "$TMPDIR/.smb_scan_results"
-    rm -f "$TMPDIR/.smb_scan_results"
-    return 1
-}
-
-scan_smb() {
-    if ! _smb_scan_hosts; then
-        echoRgb "未偵測到可連線的 SMB 標準埠；非標準埠請使用完整位址測試" "0"
-        rm -f "$TMPDIR/.smb_scan_results"; return 1
-    fi
-    echoRgb "------- 掃描完成 -------" "3"
-    if [[ -n ${remote_user:-} ]]; then echoRgb "共享列舉使用已設定的 SMB 專用帳密" "2"
-    else echoRgb "共享列舉使用匿名登入；受保護的共享可能不會列出" "2"; fi
-    local target share _known
-    while IFS= read -r target; do
-        echoRgb "偵測到 SMB 埠: $target" "1"
-        _smb_scan_collect "$target" || { echoRgb "無法列舉 $target 的共享" "0"; continue; }
-        while IFS= read -r share; do echoRgb "  共享: $share" "2"; done < "$_SMB_SCAN_SHARES"
-        [[ -z $_SMB_SCAN_NOTE ]] || echoRgb "$_SMB_SCAN_NOTE" "2"
-        _known="$(_smb_scan_configured_share "$target")" || _known=""
-        if [[ -n $_known ]] && ! grep -Fxq "$_known" "$_SMB_SCAN_SHARES"; then
-            if _smb_scan_direct "$target" "$_known"; then echoRgb "已設定共享可直接連線: smb://$target/$_known（未出現在列舉清單）" "1"
-            else echoRgb "$_SMB_SCAN_DIRECT_NOTE" "0"; fi
-        fi
-        rm -f "$_SMB_SCAN_SHARES"
-    done < "$TMPDIR/.smb_scan_results"
-}
+# ===== 遠端上傳與傳輸規劃 =====
 # SMB 上傳實作 (使用 smbclient)
 # 流程: 解析 URL → 預檢 → 收集檔案 → 按目錄分組 → 每組一次 smbclient 批次傳輸
 # 跟 upload_remote 的差別: SMB 用獨立的 smbclient 二進制, 不走外部 HTTP 工具
@@ -13423,6 +13288,7 @@ _smb_upload_build_groups "$1" "$2" "$3" "$4"' "$0" "$1" "$2" "$3" "$4" "${SPEED_
 }
 
 upload_smb() {
+	_remote_auto_resolve || return 1
 	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
 	_speed_time_refresh; UPLOAD_START_TS="${SPEEDBACKUP_NOW_SEC:-0}"
 	[[ $REMOTE_QUIET != 1 ]] && echoRgb "使用: $filepath/smbclient" "2"
@@ -13735,6 +13601,7 @@ upload_remote() {
 	return "$_result"
 }
 upload_remote_impl() {
+	_remote_auto_resolve || return 1
 	local proto="$1"
 	[[ $proto = smb ]] && { upload_smb; return $?; }
 	[[ -z $remote_url ]] && { echoRgb "remote_url未設置" "0"; return 1; }
@@ -14000,20 +13867,9 @@ upload_remote_impl() {
 
 # 從 remote_url 解析出 host 和 port (依 remote_type)
 # 結果寫到全域變數 REMOTE_HOST 和 REMOTE_PORT
-remote_parse_endpoint() {
-	REMOTE_HOST=""; REMOTE_PORT=""
-	case $remote_type in
-	smb)
-		local u="${remote_url#smb://}"; u="${u%%/*}"
-		REMOTE_HOST="${u%%:*}"; REMOTE_PORT="${u#*:}"; [[ $REMOTE_PORT = $u ]] && REMOTE_PORT=445
-		;;
-	webdav)
-		local u="${remote_url#*://}"; u="${u%%/*}"
-		REMOTE_HOST="${u%%:*}"; REMOTE_PORT="${u#*:}"
-		if [[ $REMOTE_PORT = $u ]]; then [[ $remote_url = https://* ]] && REMOTE_PORT=443 || REMOTE_PORT=80; fi
-		;;
-	esac
-}
+# Only a matching device may change its saved address; credentials remain unchanged.
+# Refresh once at a new main-menu operation, never inside an active transfer.
+# ===== 遠端清單快照與串流狀態 =====
 # WebDAV 遠端清單分類優先交給 Dex WebDavUtil。
 # 輸出格式: kind<TAB>rel<TAB>size<TAB>mtime<TAB>name；tools 只消費 FILE 類 rel，不再在深度清單熱路徑解析 href/XML。
 _webdav_classify_listrel() {
@@ -16873,6 +16729,7 @@ dir_has_files() {
 # 規範化 remote_keep_local 值, 驗證 remote_type, TCP 預檢
 # 失敗時清空 remote_type 停用上傳但保留本地備份
 remote_setup() {
+	_remote_auto_resolve || return 1
 	# 若之前連線失敗清空了 remote_type, 用原始值恢復以重新檢測 (支援中途開 WiFi 後重試)
 	[[ -z $remote_type && -n $_remote_type_orig ]] && remote_type="$_remote_type_orig"
 	# 純本機模式：只做 runtime 關閉，不反寫 conf；使用者原 remote_stream/remote_upload_per_app 保留。
@@ -16925,7 +16782,7 @@ remote_setup() {
 	# 帳密為空提醒 (非致命, 可能是匿名認證)
 	[[ -z $remote_user ]] && echoRgb "remote_user 未設定 (將以匿名嘗試連線)" "0"
 	# 事前連線測試: 從各協議解出 host:port 做快速 TCP 探測
-	remote_parse_endpoint
+	remote_parse_endpoint || return 1
 	# 串流模式需要 SMB_SHARE/SMB_REM_PATH (平時在 upload 函數才解析, 串流不走那裡, 故這裡先解析)
 	[[ $remote_stream = 1 && $remote_type = smb ]] && remote_parse_smb_url
 	# 端口跟協議不一致警告 (常見錯誤: https 配 80 或 http 配 443)
@@ -17245,6 +17102,15 @@ upload_current_backup() {
 # 三層測試: TCP 預檢 → 認證 → 路徑訪問
 # 每層失敗都有具體錯誤訊息 (帳密錯/路徑不存在/分享不存在等)
 remote_test() {
+    local _rc
+    while :; do
+        _remote_test_once; _rc=$?
+        [[ $_rc = 77 ]] || return "$_rc"
+        _remote_auth_reenter || return 1
+    done
+}
+_remote_test_once() {
+	_remote_auto_resolve || return 1
 	echoRgb "============== 遠端連線測試 ==============" "3"
 	show_conf remote
 	if [[ -z $remote_type ]]; then
@@ -17301,7 +17167,7 @@ remote_test() {
 	# SMB 掃描保留在「掃描 SMB」功能與 remote_type=smb 且 remote_url 空白的自動偵測流程。
 	# 避免 WebDAV 測試也被 445/139 掃描拖慢。
 	# 第一關: TCP 預檢
-	remote_parse_endpoint
+	remote_parse_endpoint || return 1
 	echoRgb "—————— TCP 連線測試 ——————" "3"
 	echoRgb "目標: $REMOTE_HOST:$REMOTE_PORT" "2"
 	if remote_precheck "$REMOTE_HOST" "$REMOTE_PORT" manual; then
@@ -17327,9 +17193,9 @@ remote_test() {
 		out="$(smbclient -g "$share" $_smb_auth_args -t 10 -s $(_smb_client_conf)${REMOTE_PORT:+ -p $REMOTE_PORT} -m SMB3 \
 			-c "cd ${rem_path:-/}; ls; exit" 2>&1)"
 		out="$(smb_filter_noise "$out")"
-		if echo "$out" | grep -qE 'NT_STATUS_LOGON_FAILURE'; then
+		if echo "$out" | grep -qE 'NT_STATUS_LOGON_FAILURE|NT_STATUS_WRONG_PASSWORD'; then
 			echoRgb "認證失敗 (帳號或密碼錯誤)" "0"
-			return 1
+			return 77
 		elif echo "$out" | grep -qE 'NT_STATUS_ACCESS_DENIED'; then
 			echoRgb "存取被拒 (帳號權限不足)" "0"
 			return 1
@@ -17372,7 +17238,7 @@ remote_test() {
 		rm -f "$TMPDIR/.webdav_test_err"
 		case $code in
 		2*|207) echoRgb "WebDAV 認證通過 (HTTP $code)" "1" ;;
-		401) echoRgb "認證失敗 (HTTP 401, 帳號或密碼錯誤)" "0"; return 1 ;;
+		401) echoRgb "認證失敗 (HTTP 401, 帳號或密碼錯誤)" "0"; return 77 ;;
 		403) echoRgb "權限不足 (HTTP 403)" "0"; return 1 ;;
 		404) echoRgb "路徑不存在 (HTTP 404)" "0"; return 1 ;;
 		405) echoRgb "方法不允許 (HTTP 405, 此 URL 可能不是 WebDAV 端點)" "0"; return 1 ;;
@@ -17494,6 +17360,7 @@ remote_speed_test() {
 	webdav) remote_url="$webdav_url"; remote_user="$webdav_remote_user"; remote_pass="$webdav_remote_pass" ;;
 	*) echoRgb "請先在設定頁的「備份方式」選擇 SMB 或 WebDAV" "0"; exit 1 ;;
 	esac
+	_remote_auto_resolve || exit 1
 	case $remote_type:$remote_url in smb:smb://?*/*|webdav:http://?*|webdav:https://?*) ;; *) echoRgb "遠端地址未設定或協議不符；請在設定頁確認所選備份方式及對應的 SMB／WebDAV 地址" "0"; exit 1 ;; esac
 	_speedscan_have_capability speedscan.stream_bench.v1 || { echoRgb "測速需要配套的 v865 或更新版 speednative" "0"; exit 1; }
 	_bench_bytes=5368709120
@@ -17505,7 +17372,7 @@ remote_speed_test() {
 	case $_bench_uuid in ''|*[!a-fA-F0-9-]*) exit 1 ;; esac
 	[[ ${#_bench_uuid} = 36 ]] || exit 1
 	_bench_remote=".speedbackup_speedtest_$_bench_uuid"
-	remote_parse_endpoint
+	remote_parse_endpoint || return 1
 	case $remote_type in
 	smb)
 		_SMB_AUTHFILE=""
@@ -17801,6 +17668,7 @@ _media_appdetails_seed_remote_if_stream() {
 # 列出遠端可用的備份目錄並產生 appList_network.txt
 # 流程: 連遠端 → 列 Backup_*_* 目錄 → 讓使用者選 → 檢查必要檔案 → 掃 app 清單 → 輸出
 remote_list_backups() {
+	_remote_auto_resolve || return 1
 	show_conf remote
 	[[ -z $remote_type ]] && { _remote_type_missing_msg; return 1; }
 	case $remote_type in
@@ -17816,7 +17684,7 @@ remote_list_backups() {
 	local target_dir="$(get_backup_dirname)"
 	echoRgb "目標遠端目錄: $target_dir" "3"
 	# 連線預檢
-	remote_parse_endpoint
+	remote_parse_endpoint || return 1
 	if ! remote_precheck "$REMOTE_HOST" "$REMOTE_PORT"; then
 		echoRgb "遠端連線失敗: $REMOTE_HOST:$REMOTE_PORT" "0"
 			_remote_precheck_print_smb_issue
@@ -18276,6 +18144,7 @@ remote_download_restore() {
 }
 
 remote_download_backup() {
+	_remote_auto_resolve || return 1
 	show_conf remote
 	[[ -z $remote_type ]] && { _remote_type_missing_msg; return 1; }
 	case $remote_type in
@@ -18295,7 +18164,7 @@ remote_download_backup() {
 	local chosen="$(get_backup_dirname)"
 	echoRgb "目標遠端目錄: $chosen" "3"
 	# 連線預檢
-	remote_parse_endpoint
+	remote_parse_endpoint || return 1
 	if ! remote_precheck "$REMOTE_HOST" "$REMOTE_PORT"; then
 		echoRgb "遠端連線失敗: $REMOTE_HOST:$REMOTE_PORT" "0"
 			_remote_precheck_print_smb_issue
@@ -20750,7 +20619,7 @@ _appstate_ndjson_snapshot_reduce_onepass() {
 	return 0
 }
 
-# and-earlier compatibility parser.  Kept as a runtime fallback only; normal 
+# and-earlier compatibility parser.  Kept as a runtime fallback only; normal
 # prescan must not take this path.
 _appstate_snapshot_to_maps_legacy() {
 	local _ndjson="$1" _base _states _errors
@@ -22529,14 +22398,13 @@ _speedbackup_startup_language_sync() {
 	_lang="$(awk -F= '/^shell_language=/ {gsub(/"/, "", $2); print $2; exit}' "$_main_sh" 2>/dev/null)"
 	case $_lang in zh-TW|zh-CN) ;; *) return 0 ;; esac
 	[[ $_lang = "$Script_target_language" ]] && return 0
-
 	_tmp_dir="${TMPDIR:-/data/local/tmp}/.speedbackup_lang_sync.$$"
 	_done="$_tmp_dir/done.list"
 	rm -rf "$_tmp_dir" 2>/dev/null
 	mkdir -p "$_tmp_dir" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || return 1
 	_tmp_sh="$_tmp_dir/tools.sh"
 	echoRgb "腳本語言為$_lang，整體轉換為$Script_target_language；只更新主 tools.sh，再同步到既有備份目錄" "3"
-	if ts < "$_main_sh" > "$_tmp_sh"; then
+	if _dex_raw com.xayah.dex.CCUtil "$(case $Script_target_language in *CN*|*cn*) echo t2s ;; *) echo s2t-script ;; esac)" < "$_main_sh" > "$_tmp_sh"; then
 		sed -i "s/shell_language=\"$_lang\"/shell_language=\"$Script_target_language\"/g" "$_tmp_sh" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 		if /system/bin/sh -n "$_tmp_sh" >/dev/null 2>>"${SPEED_DEBUG_ERR_LOG:-/dev/null}"; then
 			_generated_file_publish "$_tmp_sh" "$_main_sh" 0755 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || { rm -f "$_tmp_sh" "$_done"; rmdir "$_tmp_dir" 2>/dev/null; return 1; }
@@ -22553,7 +22421,6 @@ _speedbackup_startup_language_sync() {
 		rm -rf "$_tmp_dir" 2>/dev/null
 		return 1
 	fi
-
 	# 非腳本資源/設定檔可同步轉換；這些不是執行中的 tools.sh，不會造成半更新腳本狀態。
 	for _conf in "$_root/backup_settings.conf" "$_root/restore_settings.conf" "${conf_path:-}"; do
 		_speedbackup_translate_file_once "$_conf" "$_done" && _changed=1
@@ -22564,12 +22431,19 @@ _speedbackup_startup_language_sync() {
 			_speedbackup_translate_file_once "$_conf" "$_done" && _changed=1
 		done
 	done
-
 	if [[ $_changed = 1 ]]; then
 		_speedbackup_sync_embedded_backup_tools "$_root"
 		rm -rf "$_tmp_dir" 2>/dev/null
-		echoRgb "語系同步完成，請重新執行腳本以使用 $Script_target_language" "1"
-		exit 2
+		local _sync_self
+        IFS= read -r _sync_self < /proc/self/stat || exit 1
+        [[ ${_sync_self%% *} = $$ ]] || exit 1
+        echoRgb "語系同步完成，正在重新載入 $Script_target_language" "1"
+        _speed_debug_normal_finish_pack 0
+        _speedbackup_lock_cleanup
+        [[ -z ${SPEEDBACKUP_LOCK_TOKEN:-} && ${_SPEEDBACKUP_NORMAL_FINISH_EXIT_FAST:-0} = 1 && ! -d ${SPEEDBACKUP_RUN_TMPDIR:-/nonexistent} ]] || exit 1
+        [[ -f $SPEEDBACKUP_ENTRY_DIR/start.sh && ! -L $SPEEDBACKUP_ENTRY_DIR/start.sh ]] || exit 1
+        _speedbackup_web_reset_runtime
+        exec /system/bin/sh "$SPEEDBACKUP_ENTRY_DIR/start.sh"
 	fi
 	rm -rf "$_tmp_dir" 2>/dev/null
 	return 0
@@ -23780,7 +23654,7 @@ backup_path_remote_finalize() {
 	if [[ ${remote_stream:-0} = 1 ]]; then
 		_remote_stream_fatal_reset "backup_path_remote_finalize"
 	fi
-	remote_setup
+	remote_setup || { [[ ${remote_address_mode:-manual} != auto ]] || exit 1; }
 	# 一致性保護: remote_stream=1 但 remote_type 無效/空 → 直接終止。
 	# 真串流沒有安全本地回退目標，不反寫 conf。
 	if [[ $remote_stream = 1 && -z $remote_type ]]; then
@@ -23826,6 +23700,7 @@ backup_finalize_remote_setup_if_deferred() {
 # 只做 URL/host/port/TCP 這類低成本檢查，不啟動 WebDAV daemon / chunked PUT probe，
 # 避免恢復舊版「遠端前置干擾 dirsize 預掃」問題；但若遠端根本沒開，立即終止，不進入本地備份流程。
 remote_stream_early_hard_precheck() {
+	_remote_auto_resolve || return 1
 	[[ ${remote_stream:-0} = 1 ]] || return 0
 	[[ -n ${remote_type:-} ]] || return 0
 	case $remote_type in
@@ -23841,7 +23716,7 @@ remote_stream_early_hard_precheck() {
 		_speed_debug_normal_finish_pack 1
 		exit 1
 	}
-	remote_parse_endpoint
+	remote_parse_endpoint || return 1
 	[[ $remote_type = smb ]] && remote_parse_smb_url
 	if ! remote_precheck "$REMOTE_HOST" "$REMOTE_PORT" backup_precheck; then
 		echoRgb "真串流上傳不可用：遠端不可連線 ($REMOTE_HOST:$REMOTE_PORT)，已終止" "0"
@@ -24198,10 +24073,11 @@ _restore_package_compare_build() {
 			expUserDe=(expUserDe ~ /^[0-9]+$/ && expUserDe+0 > 0) ? "true" : "false"
 			expData=(expData ~ /^[0-9]+$/ && expData+0 > 0) ? "true" : "false"
 			expObb=(expObb ~ /^[0-9]+$/ && expObb+0 > 0) ? "true" : "false"
+			# Match both scripts using UTF-8 octal bytes; whole-script translation must not change these patterns.
 			role="normal"
-			if (pkg=="com.android.launcher3" || label ~ /Launcher|桌面/) role="default_home_or_launcher"
-			else if (pkg=="com.google.android.inputmethod.latin" || label ~ /Gboard|鍵盤|输入法|輸入法/) role="default_ime_candidate"
-			else if (pkg=="com.google.android.dialer" || label ~ /電話|拨号|Dialer/) role="default_dialer_candidate"
+			if (pkg=="com.android.launcher3" || label ~ /Launcher|\346\241\214\351\235\242/) role="default_home_or_launcher"
+			else if (pkg=="com.google.android.inputmethod.latin" || label ~ /Gboard|\351\215\265\347\233\244|\351\224\256\347\233\230|\350\276\223\345\205\245\346\263\225|\350\274\270\345\205\245\346\263\225/) role="default_ime_candidate"
+			else if (pkg=="com.google.android.dialer" || label ~ /\351\233\273\350\251\261|\347\224\265\350\257\235|\346\213\250\345\217\267|\346\222\245\350\231\237|Dialer/) role="default_dialer_candidate"
 			if (li != "true") cmp="local_missing"
 			else if (rver ~ /^[0-9]+$/ && lv ~ /^[0-9]+$/ && rver+0 > lv+0) cmp="remote_newer"
 			else if (rver ~ /^[0-9]+$/ && lv ~ /^[0-9]+$/ && lv+0 > rver+0) cmp="local_newer"
@@ -27124,6 +27000,7 @@ _remote_selected_refresh_list() {
     echoRgb "已更新 appList_network.txt；再次進入功能 8 可重新取得完整清單" 1
 }
 
+# ===== 遠端備份編輯與清理 =====
 _remote_orphan_cleanup_stream() {
 	# r50: 遠端真串流備份完成後，清理已卸載 App 的遠端孤兒備份。
 	# 備份主流程不再呼叫；只允許由「刪除遠端已卸載應用」明確入口手動觸發。
@@ -27149,6 +27026,10 @@ _remote_orphan_cleanup_stream() {
 		_speed_debug_log "REMOTE_ORPHAN_CLEANUP_SKIP reason=remote_stream_fatal $(_remote_stream_fatal_summary)"
 		return 0
 	fi
+    if [[ $_remote_orphan_manual = 1 ]]; then
+        remote_parse_endpoint || return 1
+        remote_precheck "$REMOTE_HOST" "$REMOTE_PORT" list || return 1
+    fi
 	if ! prepare_installed_pkgs_map refresh; then
 		_speed_debug_log "REMOTE_ORPHAN_CLEANUP_SKIP reason=installed_map_unavailable"
 		echoRgb "本機已安裝清單取得失敗，未完成掃描，已取消刪除" "0"
@@ -37966,6 +37847,7 @@ Stats_Dispatch() {
 }
 # 遠端備份統計總覽: 應用數量、檔案數、總大小、含SSAID應用數、json有效率 (遠端版)
 Remote_Backup_Stats() {
+	_remote_auto_resolve || return 1
 	show_conf remote
 	[[ -z $remote_type ]] && { _remote_type_missing_msg; return 1; }
 	case $remote_type in
@@ -37975,7 +37857,7 @@ Remote_Backup_Stats() {
 	_speed_time_refresh; starttime1="${SPEEDBACKUP_NOW_SEC:-0}"
 	local target_dir="$(get_backup_dirname)"
 	echoRgb "目標遠端目錄: $target_dir" "3"
-	remote_parse_endpoint
+	remote_parse_endpoint || return 1
 	if ! remote_precheck "$REMOTE_HOST" "$REMOTE_PORT"; then
 		echoRgb "遠端連線失敗: $REMOTE_HOST:$REMOTE_PORT" "0"
 		_remote_precheck_print_smb_issue
@@ -38103,6 +37985,7 @@ Remote_Backup_Stats() {
 # 從遠端串流恢復: 讀 appList_network.txt, 逐 app 串流拉回解壓 (不佔本機)
 # 復用 Restore 的全部邏輯 (uid/selinux/權限/ssaid), 只是資料來源改為遠端串流
 remote_stream_restore() {
+	_remote_auto_resolve || return 1
     local media_recovery="${media_recovery:-false}"
 	_speedbackup_operation_begin restore
 	_POWER_REMOTE_USED=1
@@ -38133,7 +38016,7 @@ remote_stream_restore() {
 	_RESTORE_STREAM_LIST_FILE="$_stream_list_file"
 	_speed_debug_log "APP_LIST_NETWORK_STREAM_COPY_OK path=$list tmp=$_stream_list_file bytes=$(wc -c < "$_stream_list_file" 2>/dev/null)"
 	# 連線預檢 + 解析 SMB 路徑 (串流 _stream_download 需要 SMB_SHARE/SMB_REM_PATH)
-	remote_parse_endpoint
+	remote_parse_endpoint || return 1
 	[[ $remote_type = smb ]] && remote_parse_smb_url
 	if ! remote_precheck "$REMOTE_HOST" "$REMOTE_PORT"; then
 		echoRgb "遠端連線失敗: $REMOTE_HOST:$REMOTE_PORT" "0"
@@ -38434,6 +38317,7 @@ _restore_stream_prepare_media_impl() {
 }
 
 remote_stream_restore_media() {
+	_remote_auto_resolve || return 1
 	_speedbackup_operation_begin restore
 	_POWER_REMOTE_USED=1
 	show_conf remote
@@ -38459,7 +38343,7 @@ remote_stream_restore_media() {
 		return 1
 	fi
 	rm -f "$_media_sel" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
-	remote_parse_endpoint
+	remote_parse_endpoint || return 1
 	[[ $remote_type = smb ]] && remote_parse_smb_url
 	if ! remote_precheck "$REMOTE_HOST" "$REMOTE_PORT"; then
 		echoRgb "遠端連線失敗: $REMOTE_HOST:$REMOTE_PORT" "0"
@@ -38531,6 +38415,7 @@ _restore_uninstalled_list_set() {
 			done < "$txt"
 }
 
+# ===== 應用恢復主流程 =====
 Restore() {
     local media_recovery="${media_recovery:-}"
     [[ ${_SELECTION_CONFIRMED_KIND:-} != restore ]] || media_recovery=false
@@ -39870,6 +39755,7 @@ _getlist_rust_impl() {
 }
 
 # 本機原生介面管理既有清單與兩份設定；生成、文字編輯入口維持原樣。
+# ===== 原生清單選取與設定入口 =====
 _selection_list_web() {
     local _list="$1" _kind="$2" _rc
     [[ ${_SELECTION_CONFIRMED:-0} != 1 ]] || return 0
@@ -40732,6 +40618,7 @@ SPEEDBACKUP_COMMANDS_RESTORE
         _SPEEDBACKUP_WEB_VISITED=1; export _SPEEDBACKUP_WEB_VISITED
         case $_main_menu_rc in
         0) choice=$_SPEEDBACKUP_WEB_CHOICE ;;
+        11) SPEEDBACKUP_LANGUAGE_RETURN=1; export SPEEDBACKUP_LANGUAGE_RETURN; _speedbackup_language_reload || exit 1; continue ;;
         130) choice=0 ;;
         *) echoRgb "原生介面選單無法啟動，已停止；請查看診斷包" 0; exit "$_main_menu_rc" ;;
         esac
@@ -40750,6 +40637,7 @@ SPEEDBACKUP_COMMANDS_RESTORE
 			_SPEEDBACKUP_WEB_LAST_CHOICE=$choice; export _SPEEDBACKUP_WEB_LAST_CHOICE
 			_selected_step="$(printf '%s\n' "$steps_data" | sed -n "${choice}p")"
 			_selected_command="$(printf '%s\n' "$commands_data" | sed -n "${choice}p")"
+			_remote_refresh_conf || { echoRgb "無法讀取遠端設定，已停止本次操作" 0; continue; }
 			_root_daemon_prewarm_before_feature
 			if [[ $_SPEEDBACKUP_WEBMENU_ENABLED = 1 ]]; then
 				case $_selected_command in
@@ -40795,6 +40683,7 @@ SPEEDBACKUP_COMMANDS_RESTORE
 					echoRgb "本輪安全收尾尚未完成，未自動重開原生介面；請查看終端日誌" 0
 					exit 1
 				fi
+                _speedbackup_language_reload || exit 1
                 # Honor the original command's explicit exit after final cleanup and
                 # the one-shot power offer. WebUI must not turn batch completion into a menu loop.
                 case $_selected_command in *"; exit"*) exit "$_web_operation_rc" ;; esac

@@ -1,4 +1,6 @@
 //! One-session loopback list editor. No shell execution from HTTP input.
+#[path = "lan_discovery.rs"]
+pub(crate) mod lan_discovery;
 #[path = "selection_flow.rs"]
 mod selection_flow;
 #[path = "selection_plan.rs"]
@@ -20,7 +22,7 @@ use std::{
 };
 #[path = "web_language_map.rs"]
 mod terminal_language_map;
-fn terminal_text(text: &str) -> String {
+pub(super) fn terminal_text(text: &str) -> String {
     let lang = std::env::var("SCRIPT_LANG").unwrap_or_default();
     let simplified = match lang.as_str() {
         "CN" | "cn" => true,
@@ -920,6 +922,7 @@ impl ReturnTask {
         let mut command = Command::new("/system/bin/app_process");
         command
             .env("CLASSPATH", &dex)
+            .env("SPEEDBACKUP_UI_LANGUAGE",web_language(None).unwrap_or_else(|_|"zh-Hant".into()))
             .env("SPEEDBACKUP_WEBVIEW_FRESH_TASK", if installed_once { "1" } else { "0" })
             .args(["/system/bin", "com.xayah.dex.AppListReturn"]);
         if let Some(url) = url {
@@ -1200,7 +1203,7 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
     let host = listener.local_addr()?.to_string();
     let origin = format!("http://{host}");
     let url = format!("{origin}/#{token}");
-    let mut _console_page=web_console::Page::register(&url,true)?;
+    let mut _console_page=web_console::Page::register(&url,!std::env::var("SPEEDBACKUP_AUTH_SETUP").is_ok_and(|v|v=="1"))?;
     let mut return_task = if args.len() >= 2 && _console_page.is_none() {
         ReturnTask::capture(if args.get(1).is_some_and(|s| s == "--open") {
             Some(&url)
@@ -1225,6 +1228,8 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
             }
         );
     }
+    let discovery = lan_discovery::Discovery::default();
+    let auth_setup=std::env::var("SPEEDBACKUP_AUTH_SETUP").is_ok_and(|v|v=="1");
     let mut configs_saved = false;
     // Root worker owns this display-only draft. It never authorizes a save or
     // operation, and disappears with this editor session. A reconnect claims a
@@ -1259,7 +1264,7 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
                     ""
                 }
             );
-            return Ok(if selection.is_some()||!flow.is_empty(){130}else if configs_saved { 10 } else { 0 });
+            return Ok(if selection.is_some()||!flow.is_empty()||auth_setup{130}else if configs_saved||auth_setup { 10 } else { 0 });
         }
         if unsafe { getppid() } != owner
             || (_console_page.is_none() && (last.elapsed() > Duration::from_secs(900)
@@ -1274,7 +1279,7 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
                     "清單編輯已結束，未儲存。"
                 }
             );
-            return Ok(if selection.is_some()||!flow.is_empty(){130}else if configs_saved { 10 } else { 0 });
+            return Ok(if selection.is_some()||!flow.is_empty()||auth_setup{130}else if configs_saved||auth_setup { 10 } else { 0 });
         }
         use std::sync::atomic::Ordering;
         match listener.accept() {
@@ -1322,9 +1327,18 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
     if req.method=="GET" && req.path=="/api/session" && req.body.is_empty() {
         let _=respond(&mut stream,"200 OK","application/json",r#"{"protocol":1,"kind":"editor","native":true}"#);continue;
     }
+        if req.method=="POST" && req.path=="/api/discovery" {
+            match stream.try_clone().and_then(|peer|discovery.start(peer,&req.body)) {
+                Ok(())=>{}, Err(error)=>{let _=respond(&mut stream,"409 Conflict","text/plain",&error.to_string());}
+            }
+            continue;
+        }
+        if req.method=="POST" && req.path=="/api/discovery-stop" {
+            discovery.stop(&req.body);let _=respond(&mut stream,"200 OK","text/plain","ok");continue;
+        }
         let config_before=configs.values().find_map(|s|s.as_ref().ok()).map(|s|s.original.clone());
         if appearance_request(&mut stream, &req) { continue; }
-        if language_request(&mut stream, &req, configs.values_mut().find_map(|s|s.as_mut().ok())) {
+        if language_request(&mut stream, &req, configs.values_mut().find_map(|s|s.as_mut().ok()), None).is_some() {
             configs_saved |= config_before!=configs.values().find_map(|s|s.as_ref().ok()).map(|s|s.original.clone());
             continue;
         }
@@ -1416,14 +1430,16 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
             ("GET", "/api/manager") => {
                 let available = |k: &str| configs.get(k).is_some_and(|v| v.is_ok());
                 let body = format!(
-                    "{{\"apps\":{},\"backup\":{},\"restore\":{},\"panel\":{},\"managed\":{},\"flow\":{},\"mode\":{}}}",
+                    "{{\"apps\":{},\"backup\":{},\"restore\":{},\"panel\":{},\"managed\":{},\"flow\":{},\"mode\":{},\"discoverySetup\":{},\"authSetup\":{}}}",
                     session.is_ok(),
                     available("backup"),
                     available("restore"),
                     json(args.get(5).map(String::as_str).unwrap_or("manager")),
                     _console_page.is_some(),
                     json(&flow),
-                    json(selection.unwrap_or_else(||args.get(4).map(String::as_str).unwrap_or("apps")))
+                    json(selection.unwrap_or_else(||args.get(4).map(String::as_str).unwrap_or("apps"))),
+                    std::env::var("SPEEDBACKUP_DISCOVERY_SETUP").is_ok_and(|v|v=="1"),
+                    std::env::var("SPEEDBACKUP_AUTH_SETUP").is_ok_and(|v|v=="1")
                 );
                 let _ = respond(&mut stream, "200 OK", "application/json", &body);
             }
@@ -1460,6 +1476,14 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
                         .and_then(|v| v.as_mut().ok())
                         .ok_or_else(|| err("此設定無法編輯"))?;
                     let output = super::web_settings::edit(&state.original, &req.body)?;
+                    if std::env::var("SPEEDBACKUP_AUTH_SETUP").is_ok_and(|v|v=="1") {
+                        let old=super::web_settings::parse(&state.original)?;
+                        let protocol=old.iter().find(|f|f.key=="remote_type").map(|f|f.value.as_str()).unwrap_or("");
+                        if !matches!(protocol,"smb"|"webdav"){return Err(err("invalid credential protocol"));}
+                        let new=super::web_settings::parse(&output)?;
+                        let allowed=[format!("{protocol}_remote_user"),format!("{protocol}_remote_pass")];
+                        if old.len()!=new.len()||old.iter().zip(&new).any(|(a,b)|a.key!=b.key||(!allowed.contains(&a.key)&&a.value!=b.value)){return Err(err("帳密重填不能修改地址或其他設定"));}
+                    }
                     state.save_text(&output)?;
                     configs_saved |= output != state.original;
                     // A successful publish is never rolled back if refreshing fails.
@@ -1490,8 +1514,8 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
             ("POST", "/api/finish") if flow.is_empty() && req.body.is_empty() => {
                 let _ = respond(&mut stream, "200 OK", "text/plain", "管理已完成");
                 if selection.is_none(){if let Some(page)=_console_page.as_mut(){page.return_to_menu();}}
-                if !finish_return(&mut return_task) && (selection.is_some()||!flow.is_empty()){return Ok(130);}
-                return Ok(if configs_saved { 10 } else { 0 });
+                if !finish_return(&mut return_task) && (selection.is_some()||!flow.is_empty()||auth_setup){return Ok(130);}
+                return Ok(if configs_saved||auth_setup { 10 } else { 0 });
             }
             ("GET", "/api/list") => {
                 let _ = respond(
@@ -1506,8 +1530,8 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
                 let _ = respond(&mut stream, "200 OK", "text/plain", "已取消，原檔未修改");
                 let _ = writeln!(io::stdout(), "{}", terminal_text("清單編輯取消，原檔未修改。"));
                 if let Some(page)=_console_page.as_mut(){page.return_to_menu();}
-                if !finish_return(&mut return_task) && (selection.is_some()||!flow.is_empty()){return Ok(130);}
-                return Ok(if selection.is_some()||!flow.is_empty(){130}else if configs_saved { 10 } else { 0 });
+                if !finish_return(&mut return_task) && (selection.is_some()||!flow.is_empty()||auth_setup){return Ok(130);}
+                return Ok(if selection.is_some()||!flow.is_empty()||auth_setup{130}else if configs_saved||auth_setup { 10 } else { 0 });
             }
             ("POST", "/api/save")
                 if req
@@ -1525,8 +1549,8 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
                         let _ = respond(&mut stream, "200 OK", "text/plain", "已儲存，可返回終端");
                         let _ = writeln!(io::stdout(), "{}", terminal_text("應用列表已儲存。"));
                 if flow.is_empty()&&selection.is_none(){if let Some(page)=_console_page.as_mut(){page.return_to_menu();}}
-                        if !finish_return(&mut return_task) && (selection.is_some()||!flow.is_empty()){return Ok(130);}
-                        return Ok(if !flow.is_empty(){20}else if configs_saved { 10 } else { 0 });
+                        if !finish_return(&mut return_task) && (selection.is_some()||!flow.is_empty()||auth_setup){return Ok(130);}
+                        return Ok(if !flow.is_empty(){20}else if configs_saved||auth_setup { 10 } else { 0 });
                     }
                     Err(e) => {
                         ui_error("save-selection", &e.to_string());
@@ -1615,8 +1639,8 @@ fn web_preference(key: &str, default: &str, valid: fn(&str)->bool, save: Option<
     Ok(value)
 }
 
-fn language_request(stream: &mut TcpStream, req: &Request, config: Option<&mut Session>) -> bool {
-    if req.path!="/api/language" {return false;}
+fn language_request(stream: &mut TcpStream, req: &Request, config: Option<&mut Session>, queue: Option<&Path>) -> Option<bool> {
+    if req.path!="/api/language" {return None;}
     let result=match req.method.as_str(){
         "GET" if req.body.is_empty()=>web_language(None),
         "POST" if req.headers.get("content-type").is_some_and(|v|v=="text/plain;charset=UTF-8")=> (||->io::Result<String>{
@@ -1630,12 +1654,31 @@ fn language_request(stream: &mut TcpStream, req: &Request, config: Option<&mut S
                 if actual!=output{return Err(err("語言已寫入，但設定隨後變更，請重新開啟"));}
                 state.original=actual;state.metadata=metadata;
             }
+            if let Some(dir)=queue {web_console::queue_language(dir,&req.body)?;}
             web_language(Some(&req.body))
         })(),
         _=>Err(err("invalid language request")),
     };
+    let success=result.is_ok();
     match result {Ok(text)=>{let _=respond(stream,"200 OK","text/plain",&text);},Err(e)=>{ui_error("preferences", &e.to_string());let _=respond(stream,"400 Bad Request","text/plain",&e.to_string());}}
-    true
+    Some(success)
+}
+
+// Called by the shell only at idle/completion boundaries. Never executes a job.
+pub fn language_reload(args:&[String])->i32 {
+    let result=(||->io::Result<bool>{
+        if args.len()!=2 || !matches!(args[1].as_str(),"zh-TW"|"zh-CN"){return Err(err("language-reload arguments"));}
+        let mut state=Session::new(Path::new(&args[0]),false)?;
+        if let Some((path,value,_lock))=web_console::pending_language()? {
+            let output=super::web_settings::language(&state.original,&value)?;
+            state.save_text(&output)?;state.original=output;
+            fs::remove_file(path)?;
+        }
+        let fields=super::web_settings::parse(&state.original)?;
+        let target=fields.iter().find(|f|f.key=="Shell_LANG").map(|f|f.value.as_str());
+        Ok(matches!((target,args[1].as_str()),(Some("0"),"zh-CN")|(Some("1"),"zh-TW")))
+    })();
+    match result {Ok(true)=>10,Ok(false)=>0,Err(e)=>{eprintln!("language reload: {e}");1}}
 }
 
 // Used only by shell fallback after a web transport error. No HTTP dispatch.

@@ -20,6 +20,8 @@ REQUIRED_TOOLS = {
     'keycheck', 'smbclient', 'speednative', 'tar', 'zstd',
 }
 TEXT_SUFFIXES = {'.sh', '.rs', '.java', '.kt', '.kts', '.ps1', '.toml', '.yml', '.yaml'}
+# Imported source/test fixtures retain upstream encodings and shell dialects.
+UPSTREAM_PREFIXES = ('rust/vendor/', 'tar/upstream/', 'zstd/upstream/', 'smb/baseline-overlay/')
 
 
 def require(condition, message):
@@ -186,6 +188,8 @@ def check_versions():
 
 
 def check(shells=False):
+    subprocess.run([sys.executable, str(ROOT / 'ci/generate_opencc_phrases.py'), '--check'], check=True)
+    subprocess.run([sys.executable, str(ROOT / 'ci/generate_script_roundtrip.py'), '--check'], check=True)
     subprocess.run([sys.executable, str(ROOT / "ci/check_whitespace.py")], check=True)
     names = git('ls-files', '-z').decode('utf-8').rstrip('\0').split('\0')
     for name in ['start.sh', 'tools/tools.sh', 'tools/dex_check.sh', 'tools/soc.json',
@@ -194,6 +198,8 @@ def check(shells=False):
                  'dex/gradle/wrapper/gradle-wrapper.jar', 'dex/gradle/wrapper/gradle-wrapper.properties']:
         require((ROOT / name).is_file(), f'Missing required file: {name}')
     for name in names:
+        if name.startswith(UPSTREAM_PREFIXES):
+            continue
         path = ROOT / name
         if path.suffix not in TEXT_SUFFIXES and name != 'dex/gradlew':
             continue
@@ -226,7 +232,7 @@ def check(shells=False):
         for shell in ('bash', 'mksh'):
             require(shutil.which(shell), f'{shell} is not installed')
             for name in names:
-                if name.endswith('.sh') or name == 'dex/gradlew':
+                if not name.startswith(UPSTREAM_PREFIXES) and (name.endswith('.sh') or name == 'dex/gradlew'):
                     subprocess.run([shell, '-n', str(ROOT / name)], cwd=ROOT, check=True)
         print('Shell syntax: Bash and mksh passed (scripts not executed)')
     subprocess.run([sys.executable, str(ROOT / 'ci/generate_licenses.py'), '--check'], check=True)

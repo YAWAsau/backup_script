@@ -139,6 +139,17 @@ if (Test-Path -LiteralPath $releaseSync -PathType Leaf) {
     throw 'Missing VERSION synchronization metadata; use the FULL_SOURCE build entry.'
 }
 
+# Generate both tables before staging; the staged child already carries them.
+$generatorRoot = Split-Path -Parent $PSScriptRoot
+if (Test-Path -LiteralPath $releaseSync -PathType Leaf) {
+    foreach ($generatorName in @('generate_opencc_phrases.py', 'generate_script_roundtrip.py')) {
+        $generator = Join-Path $generatorRoot ('ci/' + $generatorName)
+        if (-not (Test-Path -LiteralPath $generator -PathType Leaf)) { throw "Missing translation generator: $generatorName" }
+        & python $generator
+        if ($LASTEXITCODE -ne 0) { throw "Translation table generation failed: $generatorName" }
+    }
+}
+
 # AGP and Windows AIDL require ASCII paths. Stage deep ASCII projects too.
 if ($env:OS -eq "Windows_NT" -and ($PSScriptRoot -match '[^\x00-\x7F]' -or $PSScriptRoot.Length -gt 100)) {
     $stageDir = New-SpeedBackupDexStage $AsciiBuildRoot

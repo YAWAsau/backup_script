@@ -1,0 +1,41 @@
+[package]
+name = "mdns-sd"
+version = "0.21.7"
+authors = ["Han Xu <keepsimple@gmail.com>"]
+edition = "2018"
+rust-version = "1.71.0"
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/keepsimple1/mdns-sd"
+documentation = "https://docs.rs/mdns-sd"
+keywords = ["mdns", "service-discovery", "zeroconf", "dns-sd"]
+categories = ["network-programming"]
+# The fuzz targets are a separate crate and need a nightly toolchain.
+exclude = ["fuzz"]
+description = "mDNS Service Discovery library with no async runtime dependency"
+
+[features]
+async = ["flume/async"]
+logging = ["log"]
+serde = ["dep:serde"]
+default = ["async", "logging"]
+
+# Not part of the public API: exposes crate internals to the fuzz targets under
+# `fuzz/`. No stability guarantees; it may change or be removed in any release.
+unstable-fuzz-api = []
+
+[dependencies]
+fastrand = "2.4"
+flume = { version = "0.12", default-features = false } # channel between threads
+if-addrs = { version = "0.15", features = ["link-local"] } # get local IP addresses
+log = { version = "0.4", optional = true }             # logging
+mio = { version = "1.2", features = ["os-poll", "net"] }  # select/poll sockets
+socket2 = { version = "0.6", features = ["all"] }      # socket APIs
+socket-pktinfo = "0.4.0"
+# support for serde's deserialize/serialize traits
+serde = { version = "1.0.228", features = ["derive"], optional = true }
+
+[dev-dependencies]
+env_logger = { version = "= 0.11.6", default-features = false, features = ["humantime"] }
+humantime = "2.3"
+serde_json = "1.0.150"
+test-log = "0.2.21"

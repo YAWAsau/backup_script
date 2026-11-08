@@ -51,7 +51,7 @@ internal fun validateNativeDocument(screen:JSONObject?) {
         require(depth<=8&&a.length()<=2200)
         for(n in a.nodes()) {
             require(++count<=6000)
-            require(n.getString("kind") in setOf("range","button","toggle","input","select","text","heading","link","log","progress","app","group","license","loading"))
+            require(n.getString("kind") in setOf("range","button","toggle","input","select","text","heading","link","log","progress","app","group","license","loading","contributor"))
             require(n.getString("id").matches(nativeControlId)&&ids.add(n.getString("id")))
             for(k in listOf("label","value","detail","description","caption","placeholder"))require(n.optString(k).length<=262144)
             require(n.optString("icon").length<=131072)
@@ -364,7 +364,7 @@ internal fun resumeKey(session:String,route:String):String = java.security.Messa
                 val change:(TextFieldValue)->Unit={v->if(v.text.length<=n.optInt("maxLength",262144).coerceIn(0,262144)||v.text.length<value.text.length){val changed=v.text!=value.text;value=v;if(changed)pending=send("value",id,v.text)}}
                 val fieldSurface=nativeSurface(s.field)
                 top.yukonga.miuix.kmp.basic.TextField(
-                    value=value,onValueChange=change,enabled=enabled,readOnly=n.optBoolean("readOnly"),singleLine=!n.optBoolean("multi"),minLines=if(n.optBoolean("multi"))3 else 1,
+                    value=value,onValueChange=change,enabled=enabled,readOnly=n.optBoolean("readOnly"),singleLine=!n.optBoolean("multi"),minLines=1,
                     label=n.optString("placeholder"),useLabelAsPlaceholder=true,textStyle=s.text(17),
                     colors=top.yukonga.miuix.kmp.basic.TextFieldColors(fieldSurface.color,s.muted,s.accent),cursorBrush=SolidColor(s.accent),
                     keyboardOptions=KeyboardOptions(autoCorrectEnabled=false,keyboardType=if(n.optBoolean("password"))KeyboardType.Password else KeyboardType.Text),
@@ -380,6 +380,15 @@ internal fun resumeKey(session:String,route:String):String = java.security.Messa
             Box(Modifier.fillMaxWidth()) {
                 NativeDialogButton((selected?.getString("label")?:"")+" ▾",s.uiStyle,s.text,s.field,s.text(17),enabled,Modifier.fillMaxWidth(),centered=false){open=true}
                 NativeSelectionPopup(open,s.uiStyle,options,n.getString("value"),s.text,s.card,s.accent,{open=false}) { value ->send("value",id,value);open=false}
+            }
+        }
+        "contributor" -> NativeComponentCard(s.uiStyle,s.card,s.text) {
+            Row(Modifier.fillMaxWidth().padding(18.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
+                Image(androidx.compose.ui.res.painterResource(when(n.optString("avatar")){"xayah"->R.drawable.xayah;"skkk"->R.drawable.skkk;"rainy"->R.drawable.rainy;else->R.drawable.h1acker}),n.getString("label")+" 頭像",Modifier.size(56.dp).clip(androidx.compose.foundation.shape.CircleShape),contentScale=androidx.compose.ui.layout.ContentScale.Crop)
+                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                    BasicText(n.getString("label"),style=s.text(17,true))
+                    BasicText(n.getString("detail"),style=s.text(14).copy(color=s.muted))
+                }
             }
         }
         "license" -> NativeComponentCard(s.uiStyle,s.card,s.text) { Row(Modifier.fillMaxWidth().clickable(role=Role.Button){send("license",id,"")}.padding(18.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {

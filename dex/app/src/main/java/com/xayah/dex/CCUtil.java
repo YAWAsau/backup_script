@@ -2,6 +2,9 @@ package com.xayah.dex;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.BufferedWriter;
+import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 
 public class CCUtil {
     private static void human(String msg) { if ("1".equals(System.getenv("DEX_HUMAN_LOG"))) System.err.println("HUMAN " + msg); }
@@ -11,6 +14,7 @@ public class CCUtil {
         System.out.println("  help");
         System.out.println();
         System.out.println("  s2t TEXT");
+        System.out.println("  s2t-script (stdin; exact script-line restoration)");
         System.out.println();
         System.out.println("  t2s TEXT");
         System.out.println();
@@ -21,14 +25,15 @@ public class CCUtil {
 
     private static void onCommand(String cmd, String[] args) {
         switch (cmd) {
+            case "s2t-script":
             case "s2t":
-                s2t(args);
+                convert(cmd, args);
                 break;
             case "t2s":
-                t2s(args);
+                convert(cmd, args);
                 break;
             case "twpolish":
-                twPolish(args);
+                convert(cmd, args);
                 break;
             case "selftest":
                 selftest();
@@ -54,109 +59,37 @@ public class CCUtil {
         System.exit(0);
     }
 
-    /**
-     * Simplified Chinese to Traditional Chinese (Taiwan standard + SpeedBackup glossary)
-     */
-    private static void s2t(String[] args) {
-        if (args.length > 1) {
-            try {
-                String text = args[1];
-                CCHelper ccHelper = new CCHelper();
-                System.out.println(ccHelper.s2t(text));
-                System.exit(0);
-            } catch (Exception e) {
-                human("繁簡轉換失敗: " + e.getMessage());
-                e.printStackTrace(System.err);
-                System.exit(1);
-            }
-        } else {
-            CCHelper ccHelper = new CCHelper();
-            try {
-                if (true) /* stdin mode reads until EOF, including delayed pipe writers */ {
-                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            System.out.println(ccHelper.s2t(line));
-                        }
-                        System.exit(0);
-                    } catch (Exception e) {
-                        human("繁簡轉換失敗: " + e.getMessage());
-                e.printStackTrace(System.err);
-                        System.exit(1);
-                    }
+    // One helper and buffered UTF-8 streams for the entire input, never a process per line.
+    private static void convert(String mode, String[] args) {
+        try {
+            CCHelper helper = new CCHelper();
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(System.out, StandardCharsets.UTF_8), 65536);
+            if (args.length > 1) {
+                writer.write(convertLine(helper, mode, args[1]));
+                writer.write('\n');
+            } else {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8), 65536);
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    writer.write(convertLine(helper, mode, line));
+                    writer.write('\n');
                 }
-            } catch (Exception ignored) {
             }
+            writer.flush();
+            if (System.out.checkError()) throw new java.io.IOException("translation output failed");
+        } catch (Exception e) {
+            human("繁簡轉換失敗: " + e.getMessage());
+            e.printStackTrace(System.err);
+            System.exit(1);
         }
     }
 
-    /**
-     * Traditional Chinese to Simplified Chinese (SpeedBackup glossary)
-     */
-    private static void t2s(String[] args) {
-        if (args.length > 1) {
-            try {
-                String text = args[1];
-                CCHelper ccHelper = new CCHelper();
-                System.out.println(ccHelper.t2s(text));
-                System.exit(0);
-            } catch (Exception e) {
-                human("繁簡轉換失敗: " + e.getMessage());
-                e.printStackTrace(System.err);
-                System.exit(1);
-            }
-        } else {
-            CCHelper ccHelper = new CCHelper();
-            try {
-                if (true) /* stdin mode reads until EOF, including delayed pipe writers */ {
-                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            System.out.println(ccHelper.t2s(line));
-                        }
-                        System.exit(0);
-                    } catch (Exception e) {
-                        human("繁簡轉換失敗: " + e.getMessage());
-                e.printStackTrace(System.err);
-                        System.exit(1);
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-        }
-    }
-    /**
-     * Traditional Chinese wording polish only; does not perform Simplified/Traditional conversion.
-     */
-    private static void twPolish(String[] args) {
-        if (args.length > 1) {
-            try {
-                CCHelper ccHelper = new CCHelper();
-                System.out.println(ccHelper.twPolish(args[1]));
-                System.exit(0);
-            } catch (Exception e) {
-                human("繁體詞彙修正失敗: " + e.getMessage());
-                e.printStackTrace(System.err);
-                System.exit(1);
-            }
-        } else {
-            CCHelper ccHelper = new CCHelper();
-            try {
-                if (true) /* stdin mode reads until EOF, including delayed pipe writers */ {
-                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            System.out.println(ccHelper.twPolish(line));
-                        }
-                        System.exit(0);
-                    } catch (Exception e) {
-                        human("繁體詞彙修正失敗: " + e.getMessage());
-                        e.printStackTrace(System.err);
-                        System.exit(1);
-                    }
-                }
-            } catch (Exception ignored) {
-            }
+    private static String convertLine(CCHelper helper, String mode, String text) {
+        switch (mode) {
+            case "s2t-script": return ScriptRoundTrip.restore(helper.s2t(text));
+            case "s2t": return helper.s2t(text);
+            case "t2s": return helper.t2s(text);
+            default: return helper.twPolish(text);
         }
     }
 

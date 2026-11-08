@@ -2,7 +2,7 @@
 //! execution stays in the caller's original Shell dispatch table.
 use super::*;
 
-struct Menu { preparing: bool, title: String, description: String, choices: BTreeMap<String,String>, info: Vec<(String,String)>, multi: bool, input: bool, config: Option<PathBuf>, settings: BTreeSet<String>, foreground: BTreeSet<String>, groups: BTreeMap<String,String>, page: String, resume: String, confirm: bool, power: bool, skip_after: bool }
+struct Menu { preparing: bool, title: String, description: String, choices: BTreeMap<String,String>, info: Vec<(String,String,String)>, multi: bool, input: bool, config: Option<PathBuf>, settings: BTreeSet<String>, foreground: BTreeSet<String>, groups: BTreeMap<String,String>, page: String, resume: String, confirm: bool, power: bool, skip_after: bool }
 impl Menu {
     fn parse(text: &str) -> io::Result<Self> {
         if text.len() > 128 * 1024 { return Err(err("menu limit")); }
@@ -10,6 +10,11 @@ impl Menu {
         let title=lines.next().filter(|s| !s.is_empty() && s.len()<1024).ok_or_else(||err("menu title"))?.to_string();
         let mut menu=Self {preparing:false,title,description:String::new(),choices:BTreeMap::new(),info:Vec::new(),multi:false,input:false,config:None,settings:BTreeSet::new(),foreground:BTreeSet::new(),groups:BTreeMap::new(),page:"actions".into(),resume:String::new(),confirm:false,power:false,skip_after:false};
         for line in lines {
+            if let Some(row)=line.strip_prefix("INFOID\t") {
+                let parts:Vec<_>=row.splitn(3,'\t').collect();
+                if parts.len()!=3 || parts.iter().any(|v|v.is_empty()) || !parts[0].bytes().all(|b|b.is_ascii_lowercase()||b==b'-'){return Err(err("info identity"));}
+                menu.info.push((parts[0].into(),parts[1].into(),parts[2].into()));continue;
+            }
             let fields:Vec<_>=line.splitn(3,'\t').collect();
             if fields.len()!=3 || fields[1].is_empty() || fields[2].is_empty() { return Err(err("menu row")); }
             match fields[0] {
@@ -17,7 +22,7 @@ impl Menu {
                     if menu.choices.insert(fields[1].into(),fields[2].into()).is_some() {return Err(err("duplicate menu id"));}
                 }
                 "GROUP" if fields[2].len()<=80 => { if menu.groups.insert(fields[1].into(),fields[2].into()).is_some(){return Err(err("duplicate group"));} }
-                "VIEW" if fields[1]=="page" && matches!(fields[2],"home"|"actions") => menu.page=fields[2].into(),
+                "VIEW" if fields[1]=="page" && matches!(fields[2],"home"|"actions"|"settings") => menu.page=fields[2].into(),
                 "VIEW" if fields[1]=="resume" && fields[2].bytes().all(|b|b.is_ascii_digit()) => menu.resume=fields[2].into(),
                 "MODE" if fields[1]=="power-countdown" && fields[2]=="30" && !menu.power => menu.power=true,
                 "MODE" if fields[1]=="skip-after" && fields[2]=="30" => menu.skip_after=true,
@@ -32,7 +37,7 @@ impl Menu {
                     if !p.is_absolute()||p.file_name().and_then(|v|v.to_str())!=Some(name){return Err(err("menu config path"));}menu.config=Some(p);
                 }
                 "DESCRIPTION" if fields[1]=="detail" && fields[2].len()<=4096 && menu.description.is_empty() => menu.description=fields[2].into(),
-                "INFO" => menu.info.push((fields[1].into(),fields[2].into())),
+                "INFO" => menu.info.push((String::new(),fields[1].into(),fields[2].into())),
                 _=>return Err(err("menu record")),
             }
         }
@@ -56,7 +61,7 @@ impl Menu {
     }
     fn json(&self)->String {
         let choices=self.choices.iter().map(|(id,label)|format!("{{\"id\":{},\"label\":{},\"group\":{},\"setting\":{}}}",json(id),json(label),json(self.groups.get(id).map(String::as_str).unwrap_or("")),self.settings.contains(id))).collect::<Vec<_>>().join(",");
-        let info=self.info.iter().map(|(key,value)|format!("{{\"key\":{},\"value\":{}}}",json(key),json(value))).collect::<Vec<_>>().join(",");
+        let info=self.info.iter().map(|(id,key,value)|format!("{{\"id\":{},\"key\":{},\"value\":{}}}",json(id),json(key),json(value))).collect::<Vec<_>>().join(",");
         format!("{{\"title\":{},\"choices\":[{}],\"info\":[{}],\"multi\":{},\"input\":{},\"confirm\":{},\"page\":{},\"resume\":{},\"powerCountdown\":{}}}",json(&self.title),choices,info,self.multi,self.input,self.confirm,json(&self.page),json(&self.resume),self.power).trim_end_matches('}').to_string()+&format!(",\"description\":{}}}",json(&self.description))
     }
 }
@@ -92,7 +97,7 @@ fn serve_menu(args:&[String])->io::Result<i32> {
     let token=random_hex()?;
     let listener=TcpListener::bind("127.0.0.1:0")?;listener.set_nonblocking(true)?;
     let host=listener.local_addr()?.to_string();let origin=format!("http://{host}");let url=format!("{origin}/#{token}");
-    let mut _console_page=web_console::Page::register(&url,!menu.power && !menu.skip_after && !menu.preparing)?;
+    let mut _console_page=web_console::Page::register(&url,!menu.power && !menu.skip_after && !menu.preparing && !(menu.page=="settings" && std::env::var("SPEEDBACKUP_LANGUAGE_RETURN").as_deref()==Ok("1")))?;
     let mut task=if _console_page.is_some(){None}else{match args[2].as_str(){"--open"=>ReturnTask::capture(Some(&url)),"--return"=>ReturnTask::capture(None),_=>None}};
     if args[2]=="--open" && task.is_none() && _console_page.is_none() {return Err(err("無法安全啟動原生選單；請檢查啟動日誌後重試"));}
     if _console_page.is_none(){terminal_println!("正在開啟原生選單");}io::stdout().flush()?;
@@ -149,7 +154,14 @@ fn serve_menu(args:&[String])->io::Result<i32> {
         let _=respond(&mut stream,"200 OK","application/json",r#"{"protocol":1,"kind":"menu","native":true}"#);continue;
     }
         if appearance_request(&mut stream, &req) { continue; }
-        if language_request(&mut stream, &req, config.as_mut()) { continue; }
+        if let Some(ok)=language_request(&mut stream, &req, config.as_mut(), None) {
+            if ok && req.method=="POST" && !menu.info.is_empty() && menu.config.is_some() {
+                if let Some(page)=_console_page.as_mut(){page.return_to_menu();}
+                if let Some(t)=task.take(){if !t.finish(true,true){return Ok(130);}}
+                return Ok(11);
+            }
+            continue;
+        }
         match (req.method.as_str(),req.path.as_str()) {
             ("GET","/api/licenses")=>{let _=respond(&mut stream,"200 OK","application/json",include_str!("open_source_licenses.json"));}
             ("POST","/api/countdown") if menu.power && req.body.is_empty()=>{

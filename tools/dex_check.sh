@@ -8,8 +8,8 @@ TOOLS_PATH="${TOOLS_PATH:-}"
 TEST_LOG_DIR="${TEST_LOG_DIR:-${PWD:-.}}"
 TEST_LOG_FILE="${TEST_LOG_FILE:-$TEST_LOG_DIR/dex_check.log}"
 TEST_SUMMARY_FILE="${TEST_SUMMARY_FILE:-$TEST_LOG_DIR/dex_full_test.summary}"
-DEX_CHECK_VERSION="v1101"
-DEX_CHECK_BUILD="v1101"
+DEX_CHECK_VERSION="v1117"
+DEX_CHECK_BUILD="v1117"
 BACKUP_WIFI_ENABLE="${BACKUP_WIFI_ENABLE:-1}"
 SB_SELFTEST_LEVEL="${SB_SELFTEST_LEVEL:-quick}"
 CHANGELOG_URL="${CHANGELOG_URL:-https://api.github.com/repos/XayahSuSuSu/Android-DataBackup/releases/latest}"
@@ -732,7 +732,7 @@ if [ -f "$_tools_self" ] \
 	fi
 	# Capability names are validated from Dex JSON by caps-diagnostic below;
 	# their Rust migration must not require duplicate literals in tools.sh.
-	if grep -F 'appinventory_getlist "$_filter" refresh > "$_stage/inventory" || return 1' "$_tools_self" >/dev/null 2>&1 \
+	if grep -F 'appinventory_getlist "$_filter" refresh > "$_stage/inventory" || {' "$_tools_self" >/dev/null 2>&1 \
 		&& grep -F '_speedscan_cmd applist-merge "$_stage/old" "$_stage/inventory"' "$_tools_self" >/dev/null 2>&1 \
 		&& grep -F '_getlist_display_classified > "$_stage/ui" || return 1' "$_tools_self" >/dev/null 2>&1 \
 		&& grep -F '[[ $_seen = "$Apk_Quantity" ]] || return 1' "$_tools_self" >/dev/null 2>&1; then
@@ -749,7 +749,7 @@ if [ -f "$_tools_self" ] \
 		&& grep -q "SPEEDBACKUP_LAST_LOCAL_ARCHIVE_INPUT_BYTES" "$_tools_self" 2>/dev/null \
 		&& grep -q "tools.payload_prescan_exact_tar_input.v1" "$_tools_self" 2>/dev/null \
 		&& grep -q "_backup_prescan_exact_payload_plan" "$_tools_self" 2>/dev/null \
-		&& grep -q "_backup_prescan_exact_remote_rows" "$_tools_self" 2>/dev/null \
+		&& grep -Fq '_speedscan_cmd backup-prescan-plan "$_mode" "$TMPDIR" "$_details" "$_stats"' "$_tools_self" 2>/dev/null \
 		&& grep -q "backup-prescan-plan" "$_tools_self" 2>/dev/null \
 		&& grep -q "perEntryForks=0" "$_tools_self" 2>/dev/null \
 		&& grep -q "BACKUP_PRESCAN_EXACT_INPUT_READY" "$_tools_self" 2>/dev/null \
@@ -816,7 +816,7 @@ if [ -f "$_tools_self" ] \
 	&& grep -F '_sb_println "[${SPEEDBACKUP_NOW_HMS:-unknown}] $*"' "$_tools_self" >/dev/null 2>&1 \
 	&& grep -F '_sb_println "${_ts}${SB_TAB}${_phase}' "$_tools_self" >/dev/null 2>&1 \
 	&& grep -F "_sb_file_has_exact_line()" "$_tools_self" >/dev/null 2>&1 \
-	&& ! grep -F "grep -Fqx" "$_tools_self" >/dev/null 2>&1 \
+	&& ! sed -n '/^_sb_file_has_exact_line() {/,/^}/p' "$_tools_self" | grep -F "grep -Fqx" >/dev/null 2>&1 \
 	&& grep -F "RESTORE_STREAM_PERF_STAGES" "$_tools_self" >/dev/null 2>&1; then
 	ok "speed_debug print builtin/resolved 熱路徑 + cleanup" "timelineMode=builtin-print"
 else

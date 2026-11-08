@@ -2905,6 +2905,60 @@
       ]
     },
     {
+      "id": "cargo:fastrand",
+      "name": "fastrand",
+      "author": "Stjepan Glavina <stjepang@gmail.com>",
+      "version": "2.5.0",
+      "license": "Apache-2.0 OR MIT",
+      "url": "https://github.com/smol-rs/fastrand",
+      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:fastrand",
+          "name": "fastrand",
+          "author": "Stjepan Glavina <stjepang@gmail.com>",
+          "version": "2.5.0",
+          "license": "Apache-2.0 OR MIT",
+          "url": "https://github.com/smol-rs/fastrand",
+          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "cargo:flume",
+      "name": "flume",
+      "author": "Joshua Barretto <joshua.s.barretto@gmail.com>",
+      "version": "0.12.0",
+      "license": "Apache-2.0/MIT",
+      "url": "https://github.com/zesterer/flume",
+      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:flume",
+          "name": "flume",
+          "author": "Joshua Barretto <joshua.s.barretto@gmail.com>",
+          "version": "0.12.0",
+          "license": "Apache-2.0/MIT",
+          "url": "https://github.com/zesterer/flume",
+          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
       "id": "reference:find",
       "name": "GNU findutils",
       "author": "Free Software Foundation",
@@ -3173,6 +3227,33 @@
           "components": [
             "Dex",
             "建置工具"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "cargo:if-addrs",
+      "name": "if-addrs",
+      "author": "MaidSafe Developers <dev@maidsafe.net>, Messense Lv <messense@icloud.com>",
+      "version": "0.15.0",
+      "license": "MIT OR BSD-3-Clause",
+      "url": "https://github.com/messense/if-addrs",
+      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:if-addrs",
+          "name": "if-addrs",
+          "author": "MaidSafe Developers <dev@maidsafe.net>, Messense Lv <messense@icloud.com>",
+          "version": "0.15.0",
+          "license": "MIT OR BSD-3-Clause",
+          "url": "https://github.com/messense/if-addrs",
+          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "components": [
+            "Rust／Cargo"
           ]
         }
       ],
@@ -3515,6 +3596,33 @@
       ]
     },
     {
+      "id": "cargo:libc",
+      "name": "libc",
+      "author": "libc contributors",
+      "version": "0.2.191",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/rust-lang/libc",
+      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:libc",
+          "name": "libc",
+          "author": "libc contributors",
+          "version": "0.2.191",
+          "license": "MIT OR Apache-2.0",
+          "url": "https://github.com/rust-lang/libc",
+          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
       "id": "org.jetbrains.androidx.lifecycle:lifecycle-runtime-android:2.11.0",
       "name": "Lifecycle Runtime",
       "author": "Compose Multiplatform Team",
@@ -3650,6 +3758,60 @@
       ]
     },
     {
+      "id": "cargo:lock_api",
+      "name": "lock_api",
+      "author": "Amanieu d'Antras <amanieu@gmail.com>",
+      "version": "0.4.14",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/Amanieu/parking_lot",
+      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:lock_api",
+          "name": "lock_api",
+          "author": "Amanieu d'Antras <amanieu@gmail.com>",
+          "version": "0.4.14",
+          "license": "MIT OR Apache-2.0",
+          "url": "https://github.com/Amanieu/parking_lot",
+          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "cargo:log",
+      "name": "log",
+      "author": "The Rust Project Developers",
+      "version": "0.4.35",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/rust-lang/log",
+      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:log",
+          "name": "log",
+          "author": "The Rust Project Developers",
+          "version": "0.4.35",
+          "license": "MIT OR Apache-2.0",
+          "url": "https://github.com/rust-lang/log",
+          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
       "id": "reference:mcu",
       "name": "Material Color Utilities",
       "author": "Google",
@@ -3753,6 +3915,33 @@
       ]
     },
     {
+      "id": "cargo:mdns-sd",
+      "name": "mdns-sd",
+      "author": "Han Xu <keepsimple@gmail.com>",
+      "version": "0.21.7",
+      "license": "Apache-2.0 OR MIT",
+      "url": "https://github.com/keepsimple1/mdns-sd",
+      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:mdns-sd",
+          "name": "mdns-sd",
+          "author": "Han Xu <keepsimple@gmail.com>",
+          "version": "0.21.7",
+          "license": "Apache-2.0 OR MIT",
+          "url": "https://github.com/keepsimple1/mdns-sd",
+          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
       "id": "cargo:memchr",
       "name": "memchr",
       "author": "Andrew Gallant <jamslam@gmail.com>, bluss",
@@ -3772,6 +3961,33 @@
           "license": "Unlicense OR MIT",
           "url": "https://github.com/BurntSushi/memchr",
           "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "cargo:mio",
+      "name": "mio",
+      "author": "Carl Lerche <me@carllerche.com>, Thomas de Zeeuw <thomasdezeeuw@gmail.com>, Tokio Contributors <team@tokio.rs>",
+      "version": "1.2.4",
+      "license": "MIT",
+      "url": "https://github.com/tokio-rs/mio",
+      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:mio",
+          "name": "mio",
+          "author": "Carl Lerche <me@carllerche.com>, Thomas de Zeeuw <thomasdezeeuw@gmail.com>, Tokio Contributors <team@tokio.rs>",
+          "version": "1.2.4",
+          "license": "MIT",
+          "url": "https://github.com/tokio-rs/mio",
+          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
           "components": [
             "Rust／Cargo"
           ]
@@ -3996,6 +4212,35 @@
           "description": "SMB 靜態建置的密碼學依賴。",
           "components": [
             "SMB 間接依賴"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "reference:opencc-phrases",
+      "name": "OpenCC phrase dictionaries",
+      "author": "BYVoid and OpenCC contributors",
+      "version": "1.4.2 (025f371)",
+      "license": "Apache-2.0",
+      "url": "https://github.com/BYVoid/OpenCC",
+      "description": "Dex 繁簡轉換的詞組語境資料；轉為本專案內嵌緊湊索引，未引入原生引擎。",
+      "components": [
+        "Dex",
+        "詞庫資料"
+      ],
+      "members": [
+        {
+          "id": "reference:opencc-phrases",
+          "name": "OpenCC phrase dictionaries",
+          "author": "BYVoid and OpenCC contributors",
+          "version": "1.4.2 (025f371)",
+          "license": "Apache-2.0",
+          "url": "https://github.com/BYVoid/OpenCC",
+          "description": "Dex 繁簡轉換的詞組語境資料；轉為本專案內嵌緊湊索引，未引入原生引擎。",
+          "components": [
+            "Dex",
+            "詞庫資料"
           ]
         }
       ],
@@ -4244,6 +4489,33 @@
       ]
     },
     {
+      "id": "cargo:scopeguard",
+      "name": "scopeguard",
+      "author": "bluss",
+      "version": "1.2.0",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/bluss/scopeguard",
+      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:scopeguard",
+          "name": "scopeguard",
+          "author": "bluss",
+          "version": "1.2.0",
+          "license": "MIT OR Apache-2.0",
+          "url": "https://github.com/bluss/scopeguard",
+          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
       "id": "cargo:serde",
       "name": "serde",
       "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
@@ -4397,6 +4669,87 @@
       ]
     },
     {
+      "id": "cargo:socket-pktinfo",
+      "name": "socket-pktinfo",
+      "author": "pixsperdavid <david@pixsper.com>",
+      "version": "0.4.1",
+      "license": "MIT",
+      "url": "https://github.com/pixsper/socket-pktinfo",
+      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:socket-pktinfo",
+          "name": "socket-pktinfo",
+          "author": "pixsperdavid <david@pixsper.com>",
+          "version": "0.4.1",
+          "license": "MIT",
+          "url": "https://github.com/pixsper/socket-pktinfo",
+          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "cargo:socket2",
+      "name": "socket2",
+      "author": "Alex Crichton <alex@alexcrichton.com>, Thomas de Zeeuw <thomasdezeeuw@gmail.com>",
+      "version": "0.6.5",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/rust-lang/socket2",
+      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:socket2",
+          "name": "socket2",
+          "author": "Alex Crichton <alex@alexcrichton.com>, Thomas de Zeeuw <thomasdezeeuw@gmail.com>",
+          "version": "0.6.5",
+          "license": "MIT OR Apache-2.0",
+          "url": "https://github.com/rust-lang/socket2",
+          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "cargo:spin",
+      "name": "spin",
+      "author": "Mathijs van de Nes <git@mathijs.vd-nes.nl>, John Ericson <git@JohnEricson.me>, Joshua Barretto <joshua.s.barretto@gmail.com>",
+      "version": "0.9.9",
+      "license": "MIT",
+      "url": "https://github.com/mvdnes/spin-rs.git",
+      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:spin",
+          "name": "spin",
+          "author": "Mathijs van de Nes <git@mathijs.vd-nes.nl>, John Ericson <git@JohnEricson.me>, Joshua Barretto <joshua.s.barretto@gmail.com>",
+          "version": "0.9.9",
+          "license": "MIT",
+          "url": "https://github.com/mvdnes/spin-rs.git",
+          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
       "id": "cargo:syn",
       "name": "syn",
       "author": "David Tolnay <dtolnay@gmail.com>",
@@ -4472,6 +4825,87 @@
           "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
           "url": "https://github.com/dtolnay/unicode-ident",
           "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "cargo:wasi",
+      "name": "wasi",
+      "author": "The Cranelift Project Developers",
+      "version": "0.11.1+wasi-snapshot-preview1",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "url": "https://github.com/bytecodealliance/wasi",
+      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:wasi",
+          "name": "wasi",
+          "author": "The Cranelift Project Developers",
+          "version": "0.11.1+wasi-snapshot-preview1",
+          "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+          "url": "https://github.com/bytecodealliance/wasi",
+          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "cargo:windows-link",
+      "name": "windows-link",
+      "author": "windows-link contributors",
+      "version": "0.2.1",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/microsoft/windows-rs",
+      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:windows-link",
+          "name": "windows-link",
+          "author": "windows-link contributors",
+          "version": "0.2.1",
+          "license": "MIT OR Apache-2.0",
+          "url": "https://github.com/microsoft/windows-rs",
+          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "components": [
+            "Rust／Cargo"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "cargo:windows-sys",
+      "name": "windows-sys",
+      "author": "windows-sys contributors",
+      "version": "0.61.2",
+      "license": "MIT OR Apache-2.0",
+      "url": "https://github.com/microsoft/windows-rs",
+      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "components": [
+        "Rust／Cargo"
+      ],
+      "members": [
+        {
+          "id": "cargo:windows-sys",
+          "name": "windows-sys",
+          "author": "windows-sys contributors",
+          "version": "0.61.2",
+          "license": "MIT OR Apache-2.0",
+          "url": "https://github.com/microsoft/windows-rs",
+          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
           "components": [
             "Rust／Cargo"
           ]

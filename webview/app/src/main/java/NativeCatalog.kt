@@ -10,13 +10,17 @@ internal class NativeCatalog(context:Context) {
         fun get(context:Context):NativeCatalog=cached?:synchronized(this){cached?:NativeCatalog(context.applicationContext).also{cached=it}}
     }
     private val language=context.assets.open("language.json").bufferedReader().use{JSONObject(it.readText())}
+    fun text(value:String,locale:String):String {
+        val table=language.getJSONObject(if(locale=="zh-Hans")"simplified" else "traditional")
+        return buildString(value.length){for(ch in value)append(table.optString(ch.toString(),ch.toString()))}
+    }
     fun localize(model:JSONObject,locale:String){
         val table=language.getJSONObject(if(locale=="zh-Hans")"simplified" else "traditional")
         fun convert(value:String)=buildString(value.length){for(ch in value)append(table.optString(ch.toString(),ch.toString()))}
         fun visit(value:Any?){when(value){
             is org.json.JSONArray->for(i in 0 until value.length())visit(value.opt(i))
             is JSONObject->{
-                val literal=value.optString("kind") in setOf("app","log","license")
+                val literal=value.optString("kind") in setOf("app","log","license","contributor")
                 for(key in value.keys().asSequence().toList()){
                     if(key=="picker")continue // File names and paths are exact user data.
                     val child=value.opt(key)

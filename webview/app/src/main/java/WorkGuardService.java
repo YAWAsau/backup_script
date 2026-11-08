@@ -34,7 +34,8 @@ public final class WorkGuardService extends Service {
             try(java.io.InputStream in=c.getInputStream()){byte[] b=new byte[2049];int count=0,n;while(count<b.length&&(n=in.read(b,count,b.length-count))!=-1)count+=n;if(count>2048)throw new java.io.IOException("length");return new String(b,0,count,java.nio.charset.StandardCharsets.UTF_8);}
         }finally{c.disconnect();}
     }
-    @Override public void onCreate(){super.onCreate();getSystemService(NotificationManager.class).createNotificationChannel(new NotificationChannel(CHANNEL,"工作保護與接回",NotificationManager.IMPORTANCE_LOW));}
+    @Override public void onCreate(){super.onCreate();}
+    private void updateChannel(){getSystemService(NotificationManager.class).createNotificationChannel(new NotificationChannel(CHANNEL,NativeLanguage.text(this,"工作保護與接回"),NotificationManager.IMPORTANCE_LOW));}
     private Icon notificationIcon;
     private static Bitmap drawSpeedBackupSmallIconBitmap() {
         final int size = 96;
@@ -73,13 +74,16 @@ public final class WorkGuardService extends Service {
         if(notificationIcon==null)notificationIcon=Icon.createWithBitmap(drawSpeedBackupSmallIconBitmap());
         Intent open=new Intent(this,MainActivity.class).setAction("io.github.yawasau.speedbackup.RESUME").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent tap=PendingIntent.getActivity(this,ID,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
-        return new Notification.Builder(this,CHANNEL).setSmallIcon(notificationIcon).setColor(0xff3975f6).setContentTitle("SpeedBackup 工作進行中")
-            .setContentText(detached?"畫面已關閉；點此接回目前工作":"點此開啟目前工作；關閉畫面不會停止作業")
+        return new Notification.Builder(this,CHANNEL).setSmallIcon(notificationIcon).setColor(0xff3975f6).setContentTitle(NativeLanguage.text(this,"SpeedBackup 工作進行中"))
+            .setContentText(NativeLanguage.text(this,detached?"畫面已關閉；點此接回目前工作":"點此開啟目前工作；關閉畫面不會停止作業"))
             .setContentIntent(tap).setOngoing(true).setOnlyAlertOnce(true).setCategory(Notification.CATEGORY_SERVICE).build();
     }
     @Override public int onStartCommand(Intent intent,int flags,int startId){
         String next=intent==null?getSharedPreferences(PREFS,0).getString(KEY,""):intent.getStringExtra(KEY);
         if(!valid(next)){stopSelf();return START_NOT_STICKY;}
+        String language=intent==null?null:intent.getStringExtra("uiLanguage");
+        if(language==null)language=getSharedPreferences(PREFS,0).getString("uiLanguage","zh-Hant");
+        NativeLanguage.set(language);getSharedPreferences(PREFS,0).edit().putString("uiLanguage",NativeLanguage.get()).commit();updateChannel();
         String socket=intent==null?getSharedPreferences(PREFS,0).getString("guardSocket",null):intent.getStringExtra("guardSocket");
         HostLifeline.connect(socket);getSharedPreferences(PREFS,0).edit().putString("guardSocket",socket).apply();
         // Save capability only in this private process's preferences, never in a notification or log.

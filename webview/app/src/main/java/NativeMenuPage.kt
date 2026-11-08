@@ -36,7 +36,7 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
         require(choices.size<=1000&&choices.map{it.getString("id")}.distinct().size==choices.size)
         choices=choices.sortedWith(compareBy<JSONObject>{it.getString("id")=="0"}.thenBy{it.getString("id").toIntOrNull()?:Int.MAX_VALUE})
         val resume=choices.find{it.getString("id")==menu.optString("resume")}
-        panel=if(resume?.optBoolean("setting")==true)2 else if(menu.optString("page")=="home")0 else 1
+        panel=if(menu.optString("page")=="settings"||resume?.optBoolean("setting")==true)2 else if(menu.optString("page")=="home")0 else 1
         group=if(panel==2)"" else resume?.optString("group")?:""
         val saved=session.readState()
         panel=saved.optInt("panel",panel).coerceIn(0,2)
@@ -79,7 +79,7 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
     private fun appearanceNodes():List<JSONObject>{
         val nodes=choices.filter{it.optBoolean("setting")}.map{item->controls.button("choice:${item.getString("id")}",item.getString("label"),session.finished){choose(item.getString("id"))}}.toMutableList()
         fun setting(key:String,label:String,options:List<Pair<String,String>>){nodes+=controls.select("appearance:$key",label,session.appearance.values[key]?:"",options){value->
-            session.api.post(key,if(key=="appearance")value+"\tfull" else value);session.appearance.values[key]=value;session.emit()
+            session.api.post(key,if(key=="appearance")value+"\tfull" else value);session.appearance.values[key]=value;if(key=="language"&&menu.getJSONArray("info").length()>0)session.finish("正在重新載入語言設定…")else session.emit()
         }}
         nodes+=controls.button("wallpaper:settings","壁紙"){wallpaper=true;session.emit()}
         setting("language","介面語言",listOf("zh-Hant" to "繁體中文","zh-Hans" to "简体中文"))
@@ -103,7 +103,7 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
         val versions=setOf("腳本版本","管理器","busybox版本","busybox路徑","腳本路徑","作者","支援")
         val rows=menu.getJSONArray("info").modelObjects()
         return arr(listOf("裝置資訊","執行環境","版本與路徑").mapIndexedNotNull{index,title->
-            val selected=rows.filter{r->val key=r.getString("key");when(index){0->key in hardware;2->key in versions;else->key !in hardware&&key !in versions}}
+            val selected=rows.filter{r->val key=session.catalog.text(r.getString("key"),"zh-Hant");val id=r.optString("id");val h=if(id.isEmpty())key in hardware else id in setOf("brand","model","processor","memory","storage","android");val v=if(id.isEmpty())key in versions else id in setOf("script-version","manager","busybox-version","busybox-path","script-path","author","support");when(index){0->h;2->v;else->!h&&!v}}
             if(selected.isEmpty())null else obj("title" to title,"rows" to arr(selected.map{r->
                 val key=r.getString("key");val value=r.getString("value")
                 obj("label" to key,"value" to value)
@@ -130,7 +130,13 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
     }
     private fun renderLegal(model:JSONObject){
         val nodes=mutableListOf<JSONObject>()
-        if(legal=="about"){
+        if(legal=="thanks"){
+            nodes+=controls.node("thanks:h1acker","contributor","h1jacker").put("detail","提供自動發現 WebDAV 方案，以及早期各種構建支持").put("translateDetail",true).put("avatar","h1acker")
+            nodes+=controls.node("thanks:xayah","contributor","XayahSuSuSu").put("detail","數據備份 App 作者，提供 SELinux context 與腳本早期 Dex 支持").put("translateDetail",true).put("avatar","xayah")
+            nodes+=controls.node("thanks:skkk","contributor","skkk-10p").put("detail","提供早期 native static 支持").put("translateDetail",true).put("avatar","skkk")
+            nodes+=controls.node("thanks:rainy","contributor","雨季少年").put("detail","提供早期 Samba 構建與伺服器支持，遠端備份思路發起者").put("translateDetail",true).put("avatar","rainy")
+        }else if(legal=="about"){
+            nodes+=controls.button("thanks","鳴謝"){legal="thanks";session.emit()}
             nodes+=controls.button("licenses","開源許可"){licenses=licenses?:JSONObject(session.api.get("licenses"));require(licenses!!.getJSONArray("entries").length()<=1000);legal="licenses";session.emit()}
             nodes+=controls.button("source","檢視原始碼"){session.openLink("https://github.com/YAWAsau/backup_script")}
             nodes+=controls.button("community","QQ 群組 976613477"){session.openLink(session.catalog.communityUrl)}
@@ -141,7 +147,7 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
                 nodes+=controls.node("license:$i","license",item.getString("name")).put("url",item.getString("url")).put("detail",listOf(item.optString("author"),item.optString("version"),item.optString("license"),item.optString("description"),item.optString("id")).filter{it.isNotBlank()}.joinToString(" · "))
             }
         }
-        model.put("screen",controls.screen("menu:$legal",if(legal=="about")"關於" else "開源許可",nodes,listOf(controls.button("legal:return","返回"){back()}),session.status))
+        model.put("screen",controls.screen("menu:$legal",when(legal){"about"->"關於";"thanks"->"鳴謝";else->"開源許可"},nodes,listOf(controls.button("legal:return","返回"){back()}),session.status))
     }
     override fun action(value:String){
         if(value.startsWith("license:")){
@@ -159,7 +165,7 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
         val hasHome=menu.getJSONArray("info").length()>0&&!menu.optBoolean("input")&&!menu.optBoolean("multi")&&!menu.optBoolean("confirm")
         when{
             wallpaper->{wallpaper=false;panel=2;session.emit()}
-            legal=="licenses"->{legal="about";session.emit()}
+            legal=="licenses"||legal=="thanks"->{legal="about";session.emit()}
             legal.isNotEmpty()->{legal="";panel=2;session.emit()}
             hasHome&&panel==2->{panel=1;session.emit()}
             (!hasHome||panel==1)&&group.isNotEmpty()->{group="";session.emit()}

@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/BYVoid/OpenCC",
+  "tag": "ver.1.4.2",
+  "commit": "025f371dc76b598d77384fbdab90c937471844d8",
+  "license": "Apache-2.0",
+  "files": {
+    "STPhrases.txt": "dd3d992dcda1f308a37d57a1042dc5038a93d3fa6e799e20db260587a72d7646",
+    "TSPhrases.txt": "ff931f1994b15417de044ce82a9560401c52359e4aa1c4c383cd9fbb90b60de3",
+    "LICENSE": "d4d265b6ef2cfd0fb645acee9d9092103d5fadbdae887eb87c58a5d9b0780e19"
+  }
+}

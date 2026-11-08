@@ -172,25 +172,25 @@ internal object NativeUserWallpaper {
 @Composable internal fun rememberWallpaperImport():()->Unit {
     val context=LocalContext.current
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()){uri->if(uri!=null)NativeUserWallpaper.import(context,uri)}
-    return {try{picker.launch("image/*")}catch(_:android.content.ActivityNotFoundException){android.widget.Toast.makeText(context,"找不到圖片選擇器",android.widget.Toast.LENGTH_SHORT).show()}}
+    return {try{picker.launch("image/*")}catch(_:android.content.ActivityNotFoundException){android.widget.Toast.makeText(context,NativeLanguage.text(context,"找不到圖片選擇器"),android.widget.Toast.LENGTH_SHORT).show()}}
 }
 
 @Composable internal fun NativeWallpaperSettings(text:Color,container:Color,style:TextStyle,enabled:Boolean,onImport:()->Unit,onSystem:()->Unit){
     val context=LocalContext.current
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        NativeDialogButton("使用系統壁紙","miuix",text,container,style,enabled&&!NativeUserWallpaper.busy,Modifier.fillMaxWidth(),visualEnabled=!NativeUserWallpaper.busy,onClick=onSystem)
-        NativeDialogButton("匯入背景圖片","miuix",text,container,style,enabled&&!NativeUserWallpaper.busy,Modifier.fillMaxWidth(),visualEnabled=!NativeUserWallpaper.busy,onClick=onImport)
+        NativeDialogButton(NativeLanguage.text(context,"使用系統壁紙"),"miuix",text,container,style,enabled&&!NativeUserWallpaper.busy,Modifier.fillMaxWidth(),visualEnabled=!NativeUserWallpaper.busy,onClick=onSystem)
+        NativeDialogButton(NativeLanguage.text(context,"匯入背景圖片"),"miuix",text,container,style,enabled&&!NativeUserWallpaper.busy,Modifier.fillMaxWidth(),visualEnabled=!NativeUserWallpaper.busy,onClick=onImport)
         if(NativeUserWallpaper.bitmap!=null)Row(Modifier.fillMaxWidth().heightIn(min=56.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
-            BasicText("使用自訂背景",Modifier.weight(1f),style=style)
-            NativeMiuixSwitch(NativeUserWallpaper.enabled,text,text.copy(alpha=.25f),enabled&&!NativeUserWallpaper.busy,label="使用自訂背景",visualEnabled=!NativeUserWallpaper.busy){NativeUserWallpaper.setEnabled(context,it)}
+            BasicText(NativeLanguage.text(context,"使用自訂背景"),Modifier.weight(1f),style=style)
+            NativeMiuixSwitch(NativeUserWallpaper.enabled,text,text.copy(alpha=.25f),enabled&&!NativeUserWallpaper.busy,label=NativeLanguage.text(context,"使用自訂背景"),visualEnabled=!NativeUserWallpaper.busy){NativeUserWallpaper.setEnabled(context,it)}
         }
-        if(NativeUserWallpaper.bitmap!=null)NativeDialogButton("恢復原本背景","miuix",text,container,style,enabled&&!NativeUserWallpaper.busy,Modifier.fillMaxWidth(),visualEnabled=!NativeUserWallpaper.busy){NativeUserWallpaper.clear(context)}
+        if(NativeUserWallpaper.bitmap!=null)NativeDialogButton(NativeLanguage.text(context,"恢復原本背景"),"miuix",text,container,style,enabled&&!NativeUserWallpaper.busy,Modifier.fillMaxWidth(),visualEnabled=!NativeUserWallpaper.busy){NativeUserWallpaper.clear(context)}
         if(NativeUserWallpaper.bitmap!=null){
-            for((key,label,value) in listOf(Triple("transparency","壁紙透明度",NativeUserWallpaper.transparency),Triple("blur","壁紙模糊度",NativeUserWallpaper.blur),Triple("dim",if(text.red>.5f)"壁紙壓暗" else "壁紙提亮",NativeUserWallpaper.dim))){
+            for((key,label,value) in listOf(Triple("transparency",NativeLanguage.text(context,"壁紙透明度"),NativeUserWallpaper.transparency),Triple("blur",NativeLanguage.text(context,"壁紙模糊度"),NativeUserWallpaper.blur),Triple("dim",if(text.red>.5f)NativeLanguage.text(context,"壁紙壓暗") else NativeLanguage.text(context,"壁紙提亮"),NativeUserWallpaper.dim))){
                 BasicText("$label $value%",style=style)
                 NativeMiuixSlider(label,value.toFloat(),enabled&&!NativeUserWallpaper.busy,!NativeUserWallpaper.busy,text,{NativeUserWallpaper.adjust(context,key,it.toInt())},{},{NativeUserWallpaper.commit(context)})
             }
         }
-        if(NativeUserWallpaper.status.isNotEmpty())BasicText(NativeUserWallpaper.status,style=style)
+        if(NativeUserWallpaper.status.isNotEmpty())BasicText(NativeLanguage.text(context,NativeUserWallpaper.status),style=style)
     }
 }

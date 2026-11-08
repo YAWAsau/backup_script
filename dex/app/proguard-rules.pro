@@ -67,3 +67,5 @@
 # Keep the small completion coordinator inspectable for isolated no-network conformance probes.
 -keep class com.xayah.dex.PowerCompletion { *; }
 -keep interface com.xayah.dex.PowerCompletion$Calls { *; }
+
+-keep class com.xayah.dex.MulticastGuard { public static void main(java.lang.String[]); }

@@ -371,6 +371,7 @@ public class NotificationUtil extends BaseUtil {
             final String value = delimiter >= 0 ? line.substring(delimiter + 1) : "";
             current.touched = true;
             if ("EVENT".equals(key)) current.event = value;
+            else if ("LANGUAGE".equals(key)) current.language = value;
             else if ("OPERATION_ID".equals(key)) current.operationId = value;
             else if ("TAG".equals(key)) current.tag = value;
             else if ("ID".equals(key)) current.id = parseInt(value, current.id);
@@ -553,8 +554,8 @@ public class NotificationUtil extends BaseUtil {
             }
             builder = new Notification.Builder(ctx, channelId);
         }
-        builder.setContentTitle(ev.title)
-                .setContentText(ev.text)
+        builder.setContentTitle(ev.display(ev.title))
+                .setContentText(ev.display(ev.text))
                 .setOngoing(ev.ongoing)
                 .setAutoCancel(ev.autoCancel)
                 .setOnlyAlertOnce(ev.onlyAlertOnce)
@@ -562,7 +563,7 @@ public class NotificationUtil extends BaseUtil {
                 .setWhen(ev.when);
         applySpeedBackupNotificationIcon(builder);
         if (ev.subText != null && ev.subText.length() > 0) {
-            builder.setSubText(ev.subText);
+            builder.setSubText(ev.display(ev.subText));
         }
         if (ev.largeIcon != null) {
             builder.setLargeIcon(ev.largeIcon);
@@ -579,12 +580,12 @@ public class NotificationUtil extends BaseUtil {
         }
         if (ev.inboxLines.size() > 0) {
             Notification.InboxStyle style = new Notification.InboxStyle();
-            if (ev.bigText != null && ev.bigText.length() > 0) style.setBigContentTitle(ev.title);
-            for (String line : ev.inboxLines) style.addLine(line);
-            if (ev.metricLine != null && ev.metricLine.length() > 0) style.setSummaryText(ev.metricLine);
+            if (ev.bigText != null && ev.bigText.length() > 0) style.setBigContentTitle(ev.display(ev.title));
+            for (String line : ev.inboxLines) style.addLine(ev.display(line));
+            if (ev.metricLine != null && ev.metricLine.length() > 0) style.setSummaryText(ev.display(ev.metricLine));
             builder.setStyle(style);
         } else if (ev.bigText != null && ev.bigText.length() > 0) {
-            builder.setStyle(new Notification.BigTextStyle().bigText(ev.bigText));
+            builder.setStyle(new Notification.BigTextStyle().bigText(ev.display(ev.bigText)));
         }
         setCompatPriority(builder, ev.importance());
         final Notification n = builder.build();
@@ -617,8 +618,8 @@ public class NotificationUtil extends BaseUtil {
         android.app.PendingIntent click = android.app.PendingIntent.getActivity(userContext, 2024, intent,
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder builder = new Notification.Builder(userContext, channel)
-                .setContentTitle("SpeedBackup 工作仍在進行")
-                .setContentText("介面已停止；點此接回目前工作")
+                .setContentTitle(notificationText("SpeedBackup 工作仍在進行"))
+                .setContentText(notificationText("介面已停止；點此接回目前工作"))
                 .setContentIntent(click).setTimeoutAfter(30000).setOngoing(true).setOnlyAlertOnce(true).setShowWhen(false);
         applySpeedBackupNotificationIcon(builder);
         manager.notify(tag, 2024, builder.build());
@@ -708,6 +709,21 @@ public class NotificationUtil extends BaseUtil {
         return CHANNEL_PROGRESS_ID;
     }
 
+    private static String notificationText(String value) {
+        String language=System.getenv("SPEEDBACKUP_UI_LANGUAGE");
+        boolean simplified=language!=null ? "zh-Hans".equals(language) : "CN".equalsIgnoreCase(System.getenv("SCRIPT_LANG"));
+        if(!simplified)return value;
+        switch(value){
+            case "SpeedBackup 結束提示": return "SpeedBackup 结束提示";
+            case "SpeedBackup 進度": return "SpeedBackup 进度";
+            case "SpeedBackup 結果": return "SpeedBackup 结果";
+            case "SpeedBackup 錯誤": return "SpeedBackup 错误";
+            case "SpeedBackup 工作仍在進行": return "SpeedBackup 工作仍在进行";
+            case "介面已停止；點此接回目前工作": return "界面已停止；点此接回当前工作";
+            default:return value;
+        }
+    }
+
     private static NotificationChannel makeChannel(String id, int importance) {
         String name;
         if (CHANNEL_COMPLETION_ID.equals(id)) name = "SpeedBackup 結束提示";
@@ -716,7 +732,7 @@ public class NotificationUtil extends BaseUtil {
         else if (CHANNEL_ERROR_ID.equals(id)) name = "SpeedBackup 錯誤";
         else if (CHANNEL_DEBUG_ID.equals(id)) name = "SpeedBackup Debug";
         else name = "SpeedBackup";
-        NotificationChannel channel = new NotificationChannel(id, name, importance);
+        NotificationChannel channel = new NotificationChannel(id, notificationText(name), importance);
         if (CHANNEL_COMPLETION_ID.equals(id)) {
             channel.setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI,
                     new android.media.AudioAttributes.Builder()
@@ -1007,7 +1023,10 @@ public class NotificationUtil extends BaseUtil {
         return String.format(Locale.ROOT, "%.0f B/s", bytesPerSec);
     }
 
+    private static final class NotificationLanguage { static final CCHelper CONVERTER = new CCHelper(); }
+
     private static class NotifyEvent {
+        String language = "";
         String operationId = "";
         String event = "INFO";
         String tag = "speedbackup";
@@ -1042,6 +1061,13 @@ public class NotificationUtil extends BaseUtil {
         Bitmap largeIcon = null;
         final ArrayList<String> inboxLines = new ArrayList<>();
 
+        String display(String value) {
+            if (value == null) return null;
+            if ("zh-Hans".equals(language) || "CN".equalsIgnoreCase(language)) return NotificationLanguage.CONVERTER.t2s(value);
+            if ("zh-Hant".equals(language) || "TW".equalsIgnoreCase(language)) return value;
+            return notificationText(value);
+        }
+
         boolean hasContent() {
             return touched;
         }
@@ -1049,7 +1075,12 @@ public class NotificationUtil extends BaseUtil {
         void normalize() {
             if (event == null || event.length() == 0) event = "INFO";
             if (title == null || title.length() == 0) title = "SpeedBackup";
-            if (text == null) text = "";
+            if (text == null || text.isEmpty() || text.contains("service_notification_apply_auto_template_title") || text.contains("service_notification_apply_auto_template_message")) { text = "SpeedBackup 執行中"; bigText = text; }
+            if (hasProgress && !indeterminate && "PROGRESS".equals(event)) {
+                if (progressMax <= 0) progressMax = 100;
+                progress = Math.max(0, Math.min(progress, progressMax));
+                if ("items".equals(metricKind)) { metricDone=progress; metricTotal=progressMax; }
+            }
             if (bigText == null || bigText.length() == 0) bigText = text;
             if (isOperationFinish()) {
                 tag = "speedbackup_main";

@@ -9,6 +9,8 @@ internal class NativeSettingsForm(context:Context,private val catalog:NativeCata
     private val lists=setOf("blacklist","whitelist","system")
     private val ranges=mapOf("Zstd_level" to Triple(1,22,6),"Zstd_threads" to Triple(0,256,0),"Zstd_small_threads" to Triple(0,256,1))
     var users=emptyList<String>()
+    var connectionSetup=false
+    var authSetup=false
     private var davPreset="custom"
     private var davMessage=""
     private val davPresets=listOf("custom" to "一般 WebDAV", "nextcloud" to "Nextcloud", "owncloud" to "ownCloud", "synology" to "Synology NAS", "wd" to "WD My Cloud", "koofr" to "Koofr", "seafile" to "Seafile", "hidrive" to "HiDrive")
@@ -34,10 +36,13 @@ internal class NativeSettingsForm(context:Context,private val catalog:NativeCata
         field.put("value",value)
         davMessage="已套用範本，請儲存後測試連線。Synology／WD 的連接埠與共用資料夾請以 NAS 設定為準。"
     }
-    fun rows(mode:String,fields:List<JSONObject>,c:NativeControls,change:()->Unit,browse:(JSONObject)->Unit,editList:(JSONObject)->Unit):List<JSONObject> {
+    fun rows(mode:String,fields:List<JSONObject>,c:NativeControls,change:()->Unit,browse:(JSONObject)->Unit,editList:(JSONObject)->Unit,discover:()->Unit):List<JSONObject> {
         val groups=linkedMapOf<String,MutableList<JSONObject>>()
-        for(f in fields){
-            val key=f.getString("key");val value=f.getString("value");val label=catalog.label(key)
+        val protocol=fields.firstOrNull{it.optString("key")=="remote_type"}?.optString("value").orEmpty()
+        val compact=connectionSetup&&protocol in setOf("smb","webdav")
+        val visible=if(compact)fields.filter{it.optString("key") in (if(authSetup)setOf("${protocol}_remote_user","${protocol}_remote_pass")else setOf("${protocol}_url","${protocol}_remote_user","${protocol}_remote_pass"))}else fields
+        for(f in visible){
+            val key=f.getString("key");if(key in setOf("remote_smb_identity","remote_webdav_identity"))continue;val value=f.getString("value");val label=catalog.label(key)
             val category=when{
                 Regex("^(smb_|webdav_|remote_)").containsMatchIn(key)->"遠端連線與傳輸"
                 Regex("^(Zstd_|Compression_method|Backup_suffix)").containsMatchIn(key)->"壓縮與封裝"
@@ -48,11 +53,18 @@ internal class NativeSettingsForm(context:Context,private val catalog:NativeCata
             }
             val rows=groups.getOrPut(category){mutableListOf()}
             val id="settings:$mode:$key"
-            val set:(String)->Unit={f.put("value",it);change()}
+            val set:(String)->Unit={next->
+                if(key in setOf("smb_url","webdav_url")) {
+                    fun origin(text:String)=runCatching{java.net.URI(text).let{u->"${u.scheme}://${u.rawAuthority}"}}.getOrNull()
+                    if(origin(value)!=origin(next))fields.firstOrNull{it.optString("key")=="remote_${key.substringBefore('_')}_identity"}?.put("value","")
+                }
+                f.put("value",next);change()
+            }
             val options=if(key=="user"&&users.isNotEmpty())listOf("" to "留空（啟動時選擇）")+users.map{it to "使用者 $it"}
-                else choices.optJSONArray(key)?.let{a->(0 until a.length()).map{a.getJSONArray(it).let{v->v.getString(0) to v.getString(1)}}}
+                else choices.optJSONArray(key)?.let{a->(0 until a.length()).map{a.getJSONArray(it).let{v->v.getString(0) to v.getString(1)}}}?.filter{!connectionSetup||key!="remote_type"||it.first.isNotEmpty()}
             val range=ranges[key]
             val child=when{
+                key=="remote_address_mode"->c.group("$id:switch","toggle",listOf(c.node(id,"toggle",label){kind,_,_->if(kind=="click")set(if(value=="auto")"manual" else "auto")}.put("checked",value=="auto")))
                 key in paths->c.button("$id:browse",if(key=="Custom_path")"瀏覽／多選資料夾" else "瀏覽選擇"){browse(f)}.put("standard",true)
                 key in lists->c.button("$id:rows",if(value.isEmpty())"空清單" else "編輯清單"){editList(f)}.put("standard",true)
                 options!=null->c.select(id,label,value,options,set).put("standard",true)
@@ -66,12 +78,13 @@ internal class NativeSettingsForm(context:Context,private val catalog:NativeCata
                 }
                 else->c.input(id,label,value,set).put("inGroup",true).put("standard",true).put("multi",key=="mount_point"||value.contains('\n')).put("password",key.endsWith("_pass"))
             }
-            if(key=="webdav_url") {
+            if(key=="remote_type") rows.add(c.group("$id:discovery","setting",listOf(c.button("$id:discover","自動發現電腦／NAS",action=discover).put("standard",true)),"區域網路服務").put("detail","搜尋 WebDAV／SMB 服務並選擇地址；也可繼續手動填寫下方欄位。"))
+            if(key=="webdav_url"&&!compact) {
                 val preset=c.select("$id:preset","WebDAV／NAS 範本",davPreset,davPresets){davPreset=it;davMessage="";change()}.put("standard",true)
                 val apply=c.button("$id:apply","套用所選範本"){applyDavPreset(fields,f);change()}.put("standard",true)
                 rows.add(c.group("$id:preset-row","setting",listOf(preset,apply),"WebDAV／NAS 範本").put("detail",davMessage.ifEmpty{"先填入伺服器位址與帳號，再套用範本；不會修改密碼。Nextcloud／ownCloud／Koofr 建議使用專用應用程式密碼。"}))
             }
-            rows.add(c.group("$id:row","setting",listOf(child),label).put("detail",catalog.help(key,f.optString("help"),mode)+(if(key=="webdav_url")"\n401：帳密或應用程式密碼；403：資料夾權限；404：WebDAV 路徑；405：確認已啟用 WebDAV；413：上傳大小限制；507：空間或配額不足。HTTPS 憑證須有效，NAS 的管理頁網址通常不是 WebDAV 網址。" else "")+(if(key in paths&&value.isNotEmpty())"\n$value" else "")).put("translateDetail",key !in paths).put("first",true).put("last",true))
+            rows.add(c.group("$id:row","setting",listOf(child),label).put("detail",(if(compact)if(key.endsWith("_url"))if(protocol=="smb")"填入伺服器地址與共用資料夾路徑。" else "確認伺服器地址與 WebDAV 路徑。" else "" else catalog.help(key,f.optString("help"),mode))+(if(key=="webdav_url"&&!compact)"\n401：帳密或應用程式密碼；403：資料夾權限；404：WebDAV 路徑；405：確認已啟用 WebDAV；413：上傳大小限制；507：空間或配額不足。HTTPS 憑證須有效，NAS 的管理頁網址通常不是 WebDAV 網址。" else "")+(if(key in paths&&value.isNotEmpty())"\n$value" else "")).put("translateDetail",key !in paths).put("first",true).put("last",true))
         }
         return groups.flatMap{(category,rows)->
             rows.forEachIndexed{i,row->row.put("first",i==0).put("last",i==rows.lastIndex)}

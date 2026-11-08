@@ -17,10 +17,11 @@ tools/zstd binary
 # Pinned upstream SHA manifests cover exact bytes.
 tar/upstream/** -text
 zstd/upstream/** -text
+third_party/opencc-phrases/** -text -whitespace
 
 # Imported sources/fixtures must retain their pinned upstream bytes.
 # JSON tests deliberately contain trailing whitespace and malformed input.
-rust/vendor/** -whitespace
+rust/vendor/** -text -whitespace
 tar/upstream/** -whitespace
 zstd/upstream/** -whitespace
 # These pinned Java sources end with an upstream blank line; still check line tails.

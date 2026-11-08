@@ -8,6 +8,14 @@ $null = New-Item -ItemType Directory -Path $outputDir -Force
 Push-Location -LiteralPath $rootDir
 try {
     $config = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'toolchain.json') | ConvertFrom-Json
+    & python (Join-Path $PSScriptRoot 'generate_opencc_phrases.py')
+    if ($LASTEXITCODE -ne 0) { throw 'Phrase generation failed.' }
+    & python (Join-Path $PSScriptRoot 'generate_script_roundtrip.py')
+    if ($LASTEXITCODE -ne 0) { throw 'Roundtrip generation failed.' }
+    & git ls-files --error-unmatch -- dex/app/src/main/java/com/xayah/dex/OpenCcPhraseData.java dex/app/src/main/java/com/xayah/dex/ScriptRoundTrip.java
+    if ($LASTEXITCODE -ne 0) { throw 'Translation tables must be tracked before running release CI.' }
+    & git diff --exit-code HEAD -- dex/app/src/main/java/com/xayah/dex/OpenCcPhraseData.java dex/app/src/main/java/com/xayah/dex/ScriptRoundTrip.java
+    if ($LASTEXITCODE -ne 0) { throw 'Commit the translation tables produced by the local Dex build before running release CI.' }
     & python (Join-Path $PSScriptRoot 'check_repository.py') check
     if ($LASTEXITCODE -ne 0) { throw 'Repository checks failed.' }
 
