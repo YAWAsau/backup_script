@@ -124,6 +124,21 @@ public class CCUtil {
         failed += check("T2S document", "文档", ccHelper.t2s("文檔"));
         failed += check("S2T regional terms", "軟體 網路 滑鼠 影片 記憶體", ccHelper.s2t("软件 网络 鼠标 视频 内存"));
         failed += check("T2S regional terms", "软件 网络 鼠标 视频 内存", ccHelper.t2s("軟體 網路 滑鼠 影片 記憶體"));
+        // TW_TERMS: Taiwan wording the tw2sp profiles still leave behind.
+        failed += check("T2S 串流", "流式上传", ccHelper.t2s("串流上傳"));
+        failed += check("T2S 遠端清單", "远程列表", ccHelper.t2s("遠端清單"));
+        failed += check("T2S 紀錄", "记录", ccHelper.t2s("紀錄"));
+        failed += check("T2S 逾時", "超时", ccHelper.t2s("逾時"));
+        failed += check("T2S 預掃", "预扫描", ccHelper.t2s("預掃"));
+        failed += check("T2S 正規化", "规范化", ccHelper.t2s("正規化"));
+        failed += check("T2S 伺服端", "服务端", ccHelper.t2s("伺服端"));
+        failed += check("T2S 封存", "归档", ccHelper.t2s("封存"));
+        failed += check("T2S 套件", "软件包", ccHelper.t2s("套件"));
+        failed += check("T2S 封包", "数据包", ccHelper.t2s("封包"));
+        failed += check("T2S 原檔", "原文件", ccHelper.t2s("原檔"));
+        failed += check("T2S 備份檔案", "备份文件", ccHelper.t2s("備份檔案"));
+        failed += check("T2S 文檔", "文档", ccHelper.t2s("文檔"));
+        failed += check("T2S 非串流檔案處理方式", "非流式文件处理方式", ccHelper.t2s("非串流檔案處理方式"));
         if (failed == 0) {
             System.out.println("CCUTIL_SELFTEST_OK cchelper.table_refresh.v1 zh_tw_polish.v1 repeat_merge_fix.v1");
             System.exit(0);
