@@ -17,8 +17,8 @@ import java.util.concurrent.atomic.*;
 /** Root-side one-session native APK transport. No browser tasks, polling or arbitrary commands. */
 public final class AppListReturn {
     private static final String PACKAGE="io.github.yawasau.speedbackup.webview";
-    private static final long APK_VERSION=81;
-    private static final String APK_SHA="d5a4e43287a2d7350e08001a51e4ca001f606d4a61998c5725a3ba0b78254668";
+    private static final long APK_VERSION=138;
+    private static final String APK_SHA="84b01978e6226e8d402662f981ff6d31eb7b15c2ca4e03b85aeb1b1a639c65bd";
     private static final String PROTOCOL="speedbackup.webview.v1";
     private static final String CERT="73d49c551002cb071ac89ac6bad572ec999dc0b9f2fbb381130f84fbd0ea251e";
     private static int number(Object value,String name,int fallback){try{return ((Number)field(value,name)).intValue();}catch(Exception e){return fallback;}}
@@ -138,6 +138,39 @@ public final class AppListReturn {
     // Called only after signature, version and APK identity validation. Normal
     // manifest permissions are install-time grants; POST_NOTIFICATIONS is the
     // host's only runtime permission. No backup target application's grants change.
+    private static void prepareShortcutAccess(PackageInfo info) {
+        // OEM shortcut gates are not Android runtime permissions. Resolve the
+        // ROM's named operation; never apply another vendor's numeric AppOp.
+        try {
+            Integer op=null;
+            for(String owner:new String[]{"android.app.AppOpsManager","android.app.AppOpsManagerInjector"}) {
+                try {
+                    java.lang.reflect.Field field=Class.forName(owner).getDeclaredField("OP_INSTALL_SHORTCUT");
+                    field.setAccessible(true);
+                    if(field.getType()==int.class && java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
+                        op=field.getInt(null);break;
+                    }
+                } catch(ReflectiveOperationException ignored) {}
+            }
+            if(op==null) {
+                System.err.println("SHORTCUT_ACCESS status=unsupported_named_operation manual_oem_permission_may_be_required");
+                return;
+            }
+            Object service=HiddenApiServices.interfaceService("appops","com.android.internal.app.IAppOpsService$Stub");
+            int uid=info.applicationInfo.uid;
+            Object before=call(service,"checkOperation",op,uid,PACKAGE);
+            if(!(before instanceof Integer))throw new IllegalStateException("unexpected AppOp result");
+            if(((Integer)before)!=android.app.AppOpsManager.MODE_ALLOWED)
+                call(service,"setMode",op,uid,PACKAGE,android.app.AppOpsManager.MODE_ALLOWED);
+            Object after=call(service,"checkOperation",op,uid,PACKAGE);
+            System.err.println("SHORTCUT_ACCESS op="+op+" uid="+uid+" before="+before+" after="+after+
+                " verified="+Integer.valueOf(android.app.AppOpsManager.MODE_ALLOWED).equals(after));
+        } catch(Exception e) {
+            // Failure to configure an optional launcher permission must not stop
+            // backup/restore or imply that a shortcut was successfully pinned.
+            System.err.println("SHORTCUT_ACCESS status=unavailable reason="+e.getClass().getSimpleName());
+        }
+    }
     private static void prepareHostAccess(int user) throws IOException {
         if(user<0)throw new IOException("host user");
         // Identity was verified above. Native owns the bounded permission policy.
@@ -146,13 +179,16 @@ public final class AppListReturn {
         String reply=new BufferedReader(new InputStreamReader(System.in,java.nio.charset.StandardCharsets.UTF_8)).readLine();
         if(!"HOST_ACCESS_DONE".equals(reply))throw new IOException("host access handshake");
     }
-    private static boolean verify(PackageInfo info) throws Exception {
+    private static boolean trustedLauncherPackage(PackageInfo info) throws Exception {
         if(info==null)return false;
         if(info.signingInfo==null||info.signingInfo.getApkContentsSigners().length!=1)throw new SecurityException("signer");
         byte[] digest=java.security.MessageDigest.getInstance("SHA-256").digest(info.signingInfo.getApkContentsSigners()[0].toByteArray());
         StringBuilder hex=new StringBuilder();for(byte b:digest)hex.append(String.format(java.util.Locale.ROOT,"%02x",b&255));
         if(!CERT.equals(hex.toString()))throw new SecurityException("installed native APK certificate mismatch");
-        if(!(info.getLongVersionCode()>=APK_VERSION&&info.applicationInfo!=null&&info.applicationInfo.enabled))return false;
+        return info.applicationInfo!=null&&info.applicationInfo.enabled;
+    }
+    private static boolean verify(PackageInfo info) throws Exception {
+        if(!trustedLauncherPackage(info)||info.getLongVersionCode()<APK_VERSION)return false;
         // Never downgrade a newer compatible host; repair same-version prototype/stale APKs.
         if(info.getLongVersionCode()>APK_VERSION)return true;
         java.security.MessageDigest apkDigest=java.security.MessageDigest.getInstance("SHA-256");
@@ -190,8 +226,14 @@ public final class AppListReturn {
             return boundedLine(socket.getInputStream());
         }
     }
+    private static boolean ownLauncher(Task task) throws Exception {
+        return PACKAGE.equals(task.top.getPackageName())&&(PACKAGE+".LauncherActivity").equals(task.top.getClassName())&&trustedLauncherPackage(installed(task.user));
+    }
     private static void checkAncestor(String owner,Task original) throws Exception {checkAncestor(owner,original,false);}
     private static void checkAncestor(String owner,Task original,boolean required) throws Exception {
+        // Our signed launcher invokes su without a PTY; managers may detach its ancestry.
+        // Keep all existing ancestry/PTY checks for every other foreground application.
+        if(ownLauncher(original))return;
         String pid=owner;
         for(int i=0;i<32&&!pid.equals("1");i++){
             int uid;
@@ -329,7 +371,7 @@ public final class AppListReturn {
         if(identity==null||!name.matches("sb-web-origin-[0-9]+-[0-9]+-[0-9]+")||name.length()>96)throw new IllegalArgumentException("origin owner");
         List<?> list=tasks(atm);if(list.isEmpty()||!unlocked())throw new IllegalStateException("origin absent");
         Task original=new Task(list.get(0));
-        if((Build.VERSION.SDK_INT>=30&&original.token==null)||PACKAGE.equals(original.top.getPackageName())||original.windowing!=1||
+        if((Build.VERSION.SDK_INT>=30&&original.token==null)||(PACKAGE.equals(original.top.getPackageName())&&!ownLauncher(original))||original.windowing!=1||
             !args[3].equals(String.valueOf(original.id))||!args[4].equals(String.valueOf(original.user))||!args[5].equals(String.valueOf(original.display))||
             !args[6].equals(original.base.flattenToString())||!args[7].equals(original.top.flattenToString()))throw new IllegalStateException("origin changed before capture");
         checkAncestor(owner,original);
@@ -383,7 +425,7 @@ public final class AppListReturn {
                             if(f.length==8&&f[2].equals(ownerIdentity(f[1]))&&unlocked()&&!current.isEmpty()){
                                 Task candidate=new Task(current.get(0));
                                 if(candidate.user==original.user&&candidate.display==original.display&&candidate.windowing==1&&
-                                    !PACKAGE.equals(candidate.top.getPackageName())&&(Build.VERSION.SDK_INT<30||candidate.token!=null)&&
+                                    (!PACKAGE.equals(candidate.top.getPackageName())||ownLauncher(candidate))&&(Build.VERSION.SDK_INT<30||candidate.token!=null)&&
                                     f[3].equals(String.valueOf(candidate.id))&&f[4].equals(String.valueOf(candidate.user))&&f[5].equals(String.valueOf(candidate.display))&&
                                     f[6].equals(componentKey(candidate.base))&&f[7].equals(componentKey(candidate.top))){
                                     checkAncestor(f[1],candidate,true);if(!f[2].equals(ownerIdentity(f[1])))throw new SecurityException("invoker ended");original=candidate;answer="OK";
@@ -416,7 +458,7 @@ public final class AppListReturn {
     }
     private static void ensureOrigin(String name,String owner,String identity,Task expected) throws Exception {
         try {if(!originCommand(name,identity,"PROBE").equals("OK"))throw new SecurityException("origin owner mismatch");return;}
-        catch(IOException absent){if(PACKAGE.equals(expected.top.getPackageName()))throw new IllegalStateException("original terminal unavailable");}
+        catch(IOException absent){if(PACKAGE.equals(expected.top.getPackageName())&&!ownLauncher(expected))throw new IllegalStateException("original terminal unavailable");}
         java.lang.Process process=new ProcessBuilder("/system/bin/app_process","/system/bin","com.xayah.dex.AppListReturn","--origin",name,owner,
             String.valueOf(expected.id),String.valueOf(expected.user),String.valueOf(expected.display),expected.base.flattenToString(),expected.top.flattenToString())
             .redirectInput(new File("/dev/null")).redirectError(new File("/dev/null")).start();
@@ -509,7 +551,7 @@ public final class AppListReturn {
                 if(!args[2].equals(ownerIdentity(args[1]))||!unlocked())throw new SecurityException("invoker changed or locked");
                 List<?> current=tasks(atm);if(current.isEmpty())throw new SecurityException("reopen foreground absent");
                 Task candidate=new Task(current.get(0));
-                if(candidate.windowing!=1||PACKAGE.equals(candidate.top.getPackageName())||(Build.VERSION.SDK_INT>=30&&candidate.token==null))throw new SecurityException("reopen foreground unsupported");
+                if(candidate.windowing!=1||(PACKAGE.equals(candidate.top.getPackageName())&&!ownLauncher(candidate))||(Build.VERSION.SDK_INT>=30&&candidate.token==null))throw new SecurityException("reopen foreground unsupported: component="+candidate.top.flattenToShortString()+" mode="+candidate.windowing+" token="+(candidate.token!=null));
                 checkAncestor(args[1],candidate,true);
                 String owner=System.getenv("SPEEDBACKUP_WEB_OWNER_PID"),identity=ownerIdentity(owner),name=System.getenv("SPEEDBACKUP_WEB_ORIGIN_SOCKET");
                 String action="REBIND "+args[1]+" "+args[2]+" "+candidate.id+" "+candidate.user+" "+candidate.display+" "+componentKey(candidate.base)+" "+componentKey(candidate.top);
@@ -558,6 +600,10 @@ public final class AppListReturn {
             PackageInfo info=installed(origin.user);
             if(!verify(info)){System.out.println("INSTALL\t"+origin.user);System.out.flush();System.exit(10);return;}
             prepareHostAccess(origin.user);
+            Thread shortcutAccess=new Thread(()->prepareShortcutAccess(info),"shortcut-access");
+            shortcutAccess.setDaemon(true);shortcutAccess.start();
+            shortcutAccess.join(500);
+            if(shortcutAccess.isAlive())System.err.println("SHORTCUT_ACCESS status=pending_background");
             final int uid=info.applicationInfo.uid;
             CountDownLatch ready=new CountDownLatch(1),event=new CountDownLatch(1),closed=new CountDownLatch(1),held=new CountDownLatch(1);
             AtomicReference<IBinder> endpoint=new AtomicReference<>();AtomicInteger command=new AtomicInteger();
@@ -581,6 +627,9 @@ public final class AppListReturn {
             if(freshTask)System.err.println("WEBVIEW_LAUNCH fresh_task=package_updated");Bundle extras=new Bundle();extras.putBinder("session",session);extras.putBoolean("debug","1".equals(System.getenv("SPEEDBACKUP_WEBVIEW_DEBUG")));extras.putBoolean("cancelOnPause","1".equals(System.getenv("SPEEDBACKUP_WEB_CANCEL_ON_PAUSE")));String consoleUrl=System.getenv("SPEEDBACKUP_CONSOLE_URL");
             if(consoleUrl!=null){extras.putString("consoleUrl",consoleUrl);extras.putString("guardSocket",originName);}
             extras.putString("uiLanguage",System.getenv("SPEEDBACKUP_UI_LANGUAGE"));
+            extras.putString("shortcutEntry",System.getenv("SPEEDBACKUP_SHORTCUT_ENTRY"));
+            extras.putString("shortcutMode",System.getenv("SPEEDBACKUP_SHORTCUT_MODE"));
+            extras.putString("shortcutBackend",System.getenv("SPEEDBACKUP_SHORTCUT_BACKEND"));
             intent.putExtras(extras);
             boolean permissionSetup=consoleUrl!=null&&Build.VERSION.SDK_INT>=33;
             if(permissionSetup){System.out.println("WAIT_HOST_SETUP");System.out.flush();}
@@ -596,22 +645,14 @@ public final class AppListReturn {
                 int currentUid=-1;try{PackageInfo latest=installed(origin.user);if(latest!=null)currentUid=latest.applicationInfo.uid;}catch(Exception ignored){}
                 throw new IllegalStateException("native APK Binder READY timeout: startResult="+result+" user="+origin.user+" hostUid="+uid+" currentUid="+currentUid);
             }
-            boolean uiFocused=false;String focusState="unobserved";
-            for(int attempt=0;attempt<20;attempt++){
-                List<?> current=tasks(atm);
-                if(unlocked()&&!current.isEmpty()){
-                    Task front=new Task(current.get(0));
-                    focusState="task="+front.id+" package="+front.top.getPackageName()+" user="+front.user+" display="+front.display+" windowing="+front.windowing;
-                    if(PACKAGE.equals(front.top.getPackageName())&&front.user==origin.user&&front.display==origin.display&&supportedHostWindow(front)){uiFocused=true;break;}
-                }
-                Thread.sleep(50);
-            }
-            if(!uiFocused)throw new IllegalStateException("native APK focus unconfirmed: "+focusState+" closed="+(closed.getCount()==0));
+            // READY is authenticated by the host UID and a live endpoint Binder.
+            // Losing foreground while opening is not a process/session failure.
+            if(closed.getCount()==0||endpoint.get()==null||!endpoint.get().isBinderAlive())
+                throw new IllegalStateException("native APK closed during bind");
             iconSocket(originName,endpoint);
             System.out.println("READY");System.out.flush();
             final ExecutorService iconWorker=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"webview-icons");t.setDaemon(true);return t;});
             final AtomicBoolean iconsDown=new AtomicBoolean(),iconsBusy=new AtomicBoolean();
-            final int viewUser=origin.user,viewDisplay=origin.display;
             Thread input=new Thread(()->{try{
                 BufferedInputStream commands=new BufferedInputStream(System.in);
                 StringBuilder line;int c;
@@ -624,13 +665,17 @@ public final class AppListReturn {
                         try{
                             String target=nav[2];Uri targetUri=Uri.parse(target);
                             if(!"http".equals(targetUri.getScheme())||!"127.0.0.1".equals(targetUri.getHost())||targetUri.getPort()<1||targetUri.getUserInfo()!=null||!"/".equals(targetUri.getPath())||targetUri.getQuery()!=null||targetUri.getFragment()==null||!targetUri.getFragment().matches("[0-9a-f]{64}"))throw new SecurityException("navigation URL");
-                            List<?> frontList=tasks(atm);if(!scoped||!unlocked()||frontList.isEmpty()||!identity.equals(ownerIdentity(owner))){detached=true;throw new SecurityException("navigation detached");}
-                            Task front=new Task(frontList.get(0));
-                            if(!PACKAGE.equals(front.top.getPackageName())||front.user!=viewUser||front.display!=viewDisplay||!supportedHostWindow(front)||!"OK".equals(originCommand(originName,identity,"PROBE"))){detached=true;throw new SecurityException("navigation foreground");}
+                            // An existing authenticated Binder can update its page in the background.
+                            // This does not launch/focus an Activity or change the current app.
+                            if(!scoped||!identity.equals(ownerIdentity(owner))||!"OK".equals(originCommand(originName,identity,"PROBE"))||closed.getCount()==0||endpoint.get()==null||!endpoint.get().isBinderAlive()){
+                                detached=true;throw new SecurityException("navigation session closed");
+                            }
                             navigationAccepted.set(0);navigationId.set(nav[1]);navigation.set(done);Parcel data=Parcel.obtain();
                             try{data.writeInterfaceToken(PROTOCOL);data.writeString(nav[1]);data.writeString(target);if(!endpoint.get().transact(5,data,null,IBinder.FLAG_ONEWAY))throw new IOException("navigation unsupported");}finally{data.recycle();}
-                            ok=done.await(2,TimeUnit.SECONDS)&&navigationAccepted.get()==1;detached=navigationAccepted.get()==2||closed.getCount()==0;
-                        }catch(Exception e){System.err.println("WEBVIEW_NAVIGATION_FALLBACK "+e.getClass().getSimpleName());}
+                            boolean answered=done.await(10,TimeUnit.SECONDS);int accepted=navigationAccepted.get();
+                            ok=answered&&accepted==1;detached=accepted==2||closed.getCount()==0;
+                            if(!ok)System.err.println("WEBVIEW_NAVIGATION_RESULT answered="+answered+" accepted="+accepted+" windowClosed="+(closed.getCount()==0));
+                        }catch(Exception e){System.err.println("WEBVIEW_NAVIGATION_FALLBACK "+e.getClass().getSimpleName()+": "+e.getMessage());}
                         finally{navigation.compareAndSet(done,null);navigationId.compareAndSet(nav[1],null);}
                         System.out.println((detached?"NAV_CLOSED":ok?"NAV_OK":"NAV_FALLBACK")+"\t"+nav[1]);System.out.flush();continue;
                     }

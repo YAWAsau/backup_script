@@ -6,22 +6,30 @@ plugins {
 android {
  namespace = "io.github.yawasau.speedbackup.webview"
  compileSdkVersion("android-37.0")
- defaultConfig { applicationId = "io.github.yawasau.speedbackup.webview"; minSdk = 28; targetSdk = 36; versionCode = 81; versionName = "1.80" }
+ defaultConfig { applicationId = "io.github.yawasau.speedbackup.webview"; minSdk = 28; targetSdk = 36; versionCode = 138; versionName = "1.138" }
  sourceSets["main"].apply { manifest.srcFile("../AndroidManifest.xml"); java.srcDir(layout.buildDirectory.dir("generated/host").get().asFile); res.srcDir("../res") }
  buildFeatures { compose = true }
  buildTypes { release { isMinifyEnabled = true; isShrinkResources = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt")) } }
- compileOptions { sourceCompatibility = JavaVersion.VERSION_11; targetCompatibility = JavaVersion.VERSION_11 }
+ compileOptions { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }
 }
-kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11) } }
+kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21) } }
 val prepareHost by tasks.registering(Copy::class) { from("../MainActivity.java"); into(layout.buildDirectory.dir("generated/host")) }
 tasks.named("preBuild") { dependsOn(prepareHost) }
 dependencies {
- implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4")
+ implementation("androidx.compose.material3:material3:1.5.0-rc01")
+ implementation("androidx.compose.material:material-icons-extended:1.7.8")
+ implementation("com.materialkolor:material-kolor-material3:6.0.0-c5100e46-SNAPSHOT")
+ implementation("com.github.topjohnwu.libsu:core:6.0.0-4910d8dc-SNAPSHOT")
+ implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4-9d4b9c8-SNAPSHOT")
+ implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4-9d4b9c8-SNAPSHOT")
+ implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-9d4b9c8-SNAPSHOT")
+ implementation("top.yukonga.miuix.kmp:miuix-nav-android:0.9.4-9d4b9c8-SNAPSHOT")
+ implementation("com.materialkolor:material-color-utilities:6.0.0-c5100e46-SNAPSHOT")
  implementation("io.github.kyant0:shapes-android:1.2.1")
  implementation("androidx.compose.foundation:foundation:1.12.1")
  implementation("androidx.compose.animation:animation:1.12.1")
  implementation("androidx.activity:activity-compose:1.13.0")
- implementation("io.github.kyant0:backdrop-android:2.0.1")
+ implementation("io.github.kyant0:backdrop-android:2.0.1-eb4a0ea2-SNAPSHOT")
 }
 
 // Audited stable dependency alignment; constraints do not add unused libraries.
@@ -98,8 +106,8 @@ dependencies { constraints {
  implementation("androidx.window:window:1.5.1")
  implementation("androidx.window:window-core:1.5.1")
  implementation("androidx.window:window-core-android:1.5.1")
- implementation("com.materialkolor:material-color-utilities:6.0.0")
- implementation("com.materialkolor:material-color-utilities-android:6.0.0")
+ implementation("com.materialkolor:material-color-utilities") { version { strictly("6.0.0-c5100e46-SNAPSHOT") } }
+ implementation("com.materialkolor:material-color-utilities-android") { version { strictly("6.0.0-c5100e46-SNAPSHOT") } }
  implementation("dev.drewhamilton.poko:poko-annotations:0.23.2")
  implementation("dev.drewhamilton.poko:poko-annotations-jvm:0.23.2")
  implementation("org.jetbrains.androidx.lifecycle:lifecycle-common:2.11.0")

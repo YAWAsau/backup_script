@@ -37,6 +37,23 @@ final class NativeApi implements AutoCloseable {
 
     NativeApi fork() { return new NativeApi(origin + "/#" + token); }
 
+    void exportDiagnostics(java.io.OutputStream out, String source) throws IOException {
+        HttpURLConnection c=(HttpURLConnection)URI.create(origin+"/api/diagnostic-export").toURL().openConnection(java.net.Proxy.NO_PROXY);
+        synchronized(this){if(closed)throw new IOException("Session closed");active.add(c);}
+        try {
+            c.setInstanceFollowRedirects(false);c.setUseCaches(false);c.setConnectTimeout(5000);c.setReadTimeout(30000);
+            c.setRequestProperty("X-SpeedBackup-Token",token);
+            if(!source.isEmpty())c.setRequestProperty("X-SpeedBackup-Diagnostic-Archive",source);
+            if(c.getResponseCode()!=200)throw new IOException("無法讀取完整除錯包，請重新進入日誌頁");
+            long expected=c.getContentLengthLong();
+            if(expected<=0||expected>1024L*1024*1024)throw new IOException("Invalid archive size");
+            long total=0;byte[] buffer=new byte[65536];
+            try(InputStream in=c.getInputStream()){int n;while((n=in.read(buffer))!=-1){total+=n;if(total>expected)throw new IOException("Archive length changed");out.write(buffer,0,n);}}
+            if(total!=expected)throw new IOException("除錯包傳輸不完整");
+            out.flush();
+        } finally {synchronized(this){active.remove(c);}c.disconnect();}
+    }
+
     String get(String route) throws IOException { return request(route, null); }
     String post(String route, String body) throws IOException {
         if (body == null) throw new IllegalArgumentException("Missing request body");
@@ -44,6 +61,7 @@ final class NativeApi implements AutoCloseable {
     }
 
     private String request(String route, String body) throws IOException {
+        final long started = android.os.SystemClock.elapsedRealtime();
         if (route == null || !route.matches("[a-z][a-z0-9-]{0,63}"))
             throw new IllegalArgumentException("Invalid API route");
         byte[] input = body == null ? null : body.getBytes(StandardCharsets.UTF_8);
@@ -83,11 +101,32 @@ final class NativeApi implements AutoCloseable {
         } finally {
             synchronized (this) { active.remove(connection); }
             connection.disconnect();
+            if(android.util.Log.isLoggable("SpeedBackupTiming",android.util.Log.DEBUG))
+                android.util.Log.d("SpeedBackupTiming", "api="+route+" elapsedMs="+(android.os.SystemClock.elapsedRealtime()-started));
         }
     }
 
+    void remoteHealth(java.util.function.Consumer<String> event) throws IOException {
+        HttpURLConnection c=(HttpURLConnection)URI.create(origin+"/api/remote-health").toURL().openConnection(java.net.Proxy.NO_PROXY);
+        synchronized(this){if(closed)throw new IOException("Session closed");active.add(c);}
+        try {
+            c.setInstanceFollowRedirects(false);c.setUseCaches(false);c.setConnectTimeout(5000);c.setReadTimeout(0);
+            c.setRequestProperty("X-SpeedBackup-Token",token);
+            if(c.getResponseCode()!=200)throw new IOException("Health stream unavailable");
+            try(java.io.Reader reader=new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){
+                StringBuilder line=new StringBuilder();int value;
+                while((value=reader.read())!=-1){
+                    // Wi-Fi metadata alone allows 4 KiB; include all daemon rows and display fields.
+                    if(line.length()>16*1024)throw new IOException("Health event too large");
+                    if(value=='\n'){if(line.length()>0)event.accept(line.toString());line.setLength(0);}else line.append((char)value);
+                }
+            }
+            throw new IOException("Health stream closed");
+        }finally{synchronized(this){active.remove(c);}c.disconnect();}
+    }
+
     // Event-driven Rust discovery stream. No LAN sockets, DNS or credentials here.
-    void discovery(String id, java.util.function.Consumer<String> event) throws IOException {
+    void discovery(String id, boolean fresh, java.util.function.Consumer<String> event) throws IOException {
         if(!id.matches("[0-9a-f]{32}"))throw new IOException("Invalid discovery id");
         HttpURLConnection c=(HttpURLConnection)URI.create(origin+"/api/discovery").toURL().openConnection(java.net.Proxy.NO_PROXY);
         synchronized(this){if(closed){c.disconnect();throw new IOException("Session closed");}active.add(c);}
@@ -95,7 +134,7 @@ final class NativeApi implements AutoCloseable {
             c.setInstanceFollowRedirects(false);c.setUseCaches(false);c.setConnectTimeout(5000);c.setReadTimeout(18000);
             c.setRequestProperty("X-SpeedBackup-Token",token);c.setRequestProperty("Content-Type","text/plain;charset=UTF-8");
             c.setRequestMethod("POST");c.setDoOutput(true);
-            byte[] body=id.getBytes(StandardCharsets.UTF_8);c.setFixedLengthStreamingMode(body.length);
+            byte[] body=("{\"id\":\""+id+"\",\"fresh\":"+fresh+"}").getBytes(StandardCharsets.UTF_8);c.setFixedLengthStreamingMode(body.length);
             try(java.io.OutputStream out=c.getOutputStream()){out.write(body);}
             int status=c.getResponseCode();if(status!=200)throw new ApiFailure(status,"Discovery unavailable");
             try(java.io.Reader reader=new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){

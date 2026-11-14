@@ -56,7 +56,6 @@ fun LiquidButton(
     val blurEnabled=GlassMaterial.LocalBlurEnabled.current
     val adaptive=rememberAdaptiveGlass(isLightTheme,"button:"+adaptationKey)
     val samplingActive=GlassMaterial.LocalActive.current
-    val contrast=LocalGlassContrastEnabled.current
     val animationScope=rememberCoroutineScope()
     // Keep gesture and drawing state on the same instance across theme changes.
     val latestLightTheme by rememberUpdatedState(isLightTheme)
@@ -82,7 +81,7 @@ fun LiquidButton(
             Box(Modifier.matchParentSize()
                 .drawBackdrop(backdrop=backdrop,shape={shape},highlight={GlassMaterial.Rim},shadow=null,
                     effects={with(adaptive){material(glassControls.adaptive,blurEnabled,glassControls.blurStrength)};lens(GlassMaterial.LensDp.dp.toPx(),GlassMaterial.LensDp.dp.toPx()*glassControls.refraction/100f)},
-                    onDrawBackdrop={draw->draw();if((glassControls.adaptive||contrast)&&samplingActive){with(adaptive){capture(glassControls.sampleTick,draw)}}},
+                    onDrawBackdrop={draw->draw();if(glassControls.adaptive&&samplingActive){with(adaptive){capture(glassControls.sampleTick,draw)}}},
                     onDrawSurface={
                         drawRect((if(surfaceColor.isSpecified)surfaceColor else GlassMaterial.surface(isLightTheme)).copy(alpha=glassControls.opacity))
                         if(tint.isSpecified)drawRect(tint,blendMode=BlendMode.Hue)
@@ -91,7 +90,7 @@ fun LiquidButton(
                 .height(48.dp).fillMaxWidth().padding(horizontal=horizontalPadding),
                 horizontalArrangement=Arrangement.spacedBy(8.dp,Alignment.CenterHorizontally),
                 verticalAlignment=Alignment.CenterVertically){
-                    androidx.compose.runtime.CompositionLocalProvider(LocalGlassContentColor provides (if(glassControls.adaptive)adaptive.contentColor else if(contrast)adaptive.fixedContentColor((if(surfaceColor.isSpecified)surfaceColor else GlassMaterial.surface(isLightTheme)),glassControls.opacity) else Color.Unspecified)){content()}
+                    content()
                 }
             }
             // The capsule optical layer shares all material functions with the

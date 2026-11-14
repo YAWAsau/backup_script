@@ -9,6 +9,148 @@ use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::Path;
 use std::time::Instant;
 
+// Use su's own version identity, not installed packages or stale manager directories.
+// Official su interfaces and Neo Backup's existing mount-master/nsenter recipes:
+// https://github.com/tiann/KernelSU/blob/main/userspace/ksud/src/su.rs
+// https://github.com/topjohnwu/Magisk/blob/master/docs/tools.md
+// https://github.com/NeoApplications/Neo-Backup/blob/main/src/main/java/com/machiav3lli/backup/manager/handler/ShellHandler.kt
+fn root_manager(version:&str)->(&'static str,&'static str) {
+    let id=version.trim().to_ascii_lowercase();
+    let ksu=id.contains("kernelsu")||id.contains("sukisu")||id.contains("bakasu");
+    let apatch=id.contains("apatch")||id.contains("kernelpatch");
+    let magisk=id.contains("magisk")||id.contains("kitsune");
+    if ksu as u8+apatch as u8+magisk as u8!=1 {return ("unknown","未辨識");}
+    if ksu {
+        ("kernelsu",if id.contains("bakasu"){"BakaSU"}else if id.contains("resukisu"){"ReSukiSU"}else if id.contains("sukisu"){"SukiSU"}
+        else if id.contains("kernelsu-next")||id.contains("kernelsu next"){"KernelSU-Next"}
+        else {"KernelSU 相容實作（分支未辨識）"})
+    } else if apatch {("apatch",if id.contains("apatch"){"APatch"}else{"KernelPatch 相容實作（管理器未辨識）"})}
+    else {("magisk",if id.contains("kitsune"){"Kitsune Mask"}else{"Magisk 相容實作（分支未辨識）"})}
+}
+fn mount_help_for_version(version:&str)->String {
+    let (kind,manager)=root_manager(version);
+    let settings=match kind {
+        "kernelsu"=>"KernelSU／Next／SukiSU／ReSukiSU／BakaSU：先在超級使用者頁允許 Root，再選擇 實際啟動腳本的 App（桌面捷徑為 SpeedBackup；手動執行則為 MT／終端）→ Root 設定檔 → 掛載命名空間 → 全域；若正在使用預設設定，先切換為自訂並儲存。",
+        "magisk"=>"Magisk／Kitsune：設定 → 超級使用者 → 掛載命名空間模式 → 全域命名空間。此設定影響其他 Root 工作階段；也可只用下方指令啟動本次工作。",
+        "apatch"=>"APatch／KernelPatch：先在超級使用者頁授權實際啟動腳本的 App。若 su 不支援 --mount-master，可在終端執行 su -c 'nsenter --mount=/proc/1/ns/mnt sh' 進入全域環境。",
+        _=>"無法可靠辨識目前的 su；請先在 Root 管理器授權實際啟動腳本的 App。若 su 不支援 --mount-master，可使用 su -c 'nsenter --mount=/proc/1/ns/mnt sh'。",
+    };
+    format!("目前 su：{manager}。{settings} 操作：關閉舊終端／工作階段，重新開啟終端並執行 su --mount-master，再執行 /system/bin/sh '/實際路徑/start.sh'（替換為本次備份或恢復入口）。桌面捷徑可關閉啟動畫面後重新點選；已自動要求全域掛載。重試仍未通過檢查時不要繼續操作。")
+}
+fn su_version()->String {
+    std::process::Command::new("/system/bin/timeout").args(["2","su","-v"])
+        .stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output()
+        .ok().filter(|o|o.status.success()).map(|o|String::from_utf8_lossy(&o.stdout).chars().filter(|c| !c.is_control()).take(256).collect()).unwrap_or_default()
+}
+fn mount_help()->String { let version=su_version(); let info=manager_details(&version); format!("{} {}",info,mount_help_for_version(&version)) }
+pub fn root_manager_command(args:&[String])->i32 {
+    if !args.is_empty() {return 64;}
+    let version=su_version();let (kind,_)=root_manager(&version);
+    let display=manager_details(&version);
+    // Separate stable identity from user-facing version, no shell parsing heuristics.
+    match writeln!(io::stdout().lock(),"{kind}\n{display}"){Ok(())=>0,Err(_)=>74}
+}
+
+// Read-only upstream ABI, pinned source references in README. Run in a short-lived
+// subprocess: kernels can block the driver acquisition syscall with SIGSYS.
+// Never infer a kernel branch from its numeric version, feature support or APK inventory.
+fn bounded_output(program:&str,args:&[&str])->Option<String> {
+    let out=std::process::Command::new("/system/bin/timeout").arg("2").arg(program).args(args)
+        .stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output().ok()?;
+    if !out.status.success() || out.stdout.len()>65536 {return None;}
+    String::from_utf8(out.stdout).ok()
+}
+fn manager_package(output:&str,appid:u32)->Option<String> {
+    let mut packages=std::collections::BTreeSet::new();
+    for line in output.lines() {
+        let mut parts=line.split_whitespace();
+        let package=parts.next()?.strip_prefix("package:")?;
+        let uid=parts.next()?.strip_prefix("uid:")?.parse::<u32>().ok()?;
+        if uid!=appid || parts.next().is_some() || package.is_empty() || !package.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'.'||b==b'_') {return None;}
+        packages.insert(package.to_owned());
+    }
+    if packages.len()==1 {packages.into_iter().next()}else{None}
+}
+fn package_name(package:&str)->&str {
+    match package {
+        "com.sukisu.ultra"=>"SukiSU Ultra",
+        "com.rifsxd.ksunext"=>"KernelSU Next",
+        // BakaSU retains ReSukiSU's applicationId: the package alone cannot split them.
+        "com.resukisu.resukisu"=>"BakaSU／ReSukiSU",
+        "me.weishu.kernelsu"=>"KernelSU",
+        _=>"自訂管理器",
+    }
+}
+fn manager_details(version:&str)->String {
+    let (kind,name)=root_manager(version);
+    let base=format!("{name}\nsu: {}",if version.is_empty(){"未取得"}else{version});
+    if kind!="kernelsu" {return base;}
+    let Some(exe)=std::env::current_exe().ok() else{return base;};
+    let Some(raw)=bounded_output(&exe.to_string_lossy(),&["speedscan","root-manager-kernel-info"]) else{return base;};
+    let mut lines=raw.lines();
+    let Some(appid)=lines.next().and_then(|s|s.parse::<u32>().ok()).filter(|n| (10000..100000).contains(n)) else{return base;};
+    let uid=appid.to_string();
+    let package=bounded_output("/system/bin/cmd",&["package","list","packages","-U","--user","0","--uid",&uid])
+        .and_then(|s|manager_package(&s,appid));
+    let label=package.as_deref().map(package_name).unwrap_or(name);
+    format!("{label}\nsu: {}",if version.is_empty(){"未取得"}else{version})
+}
+pub fn root_manager_kernel_command(args:&[String])->i32 {
+    if !args.is_empty(){return 64;}
+    #[cfg(all(target_os="android",target_arch="aarch64"))]
+    {
+        extern "C" {fn ioctl(fd:c_int,request:std::os::raw::c_ulong,argp:*mut c_void)->c_int;}
+        // KSU_INSTALL_MAGIC*, same acquisition protocol used by upstream ksucalls.rs.
+        // Invalid Linux reboot magic means this cannot reboot a non-KSU kernel.
+        let mut fd:c_int=-1;
+        unsafe {speedbackup_native_rs::syscall(142,0xDEADBEEFu32 as std::os::raw::c_ulong,0xCAFEBABEu32 as std::os::raw::c_ulong,0usize,&mut fd);}
+        if fd<0 {return 69;}
+        let driver=unsafe{File::from_raw_fd(fd)};
+        let mut info=[0u32;4];
+        let mut appid=u32::MAX;
+        unsafe {
+            if ioctl(driver.as_raw_fd(),0x80104b02u64,info.as_mut_ptr().cast())<0 && ioctl(driver.as_raw_fd(),0x80004b02u64,info.as_mut_ptr().cast())<0 {return 69;}
+            if info[0]==0 || ioctl(driver.as_raw_fd(),0x80004b0au64,(&mut appid as *mut u32).cast())<0 {return 69;}
+        }
+        let mut full=[0u8;255];let mut tag=[0u8;32];
+        let full_ok=unsafe{ioctl(driver.as_raw_fd(),0x80004b64u64,full.as_mut_ptr().cast())}>=0;
+        let tag_ok=unsafe{ioctl(driver.as_raw_fd(),0x80004b63u64,tag.as_mut_ptr().cast())}>=0;
+        let value=if full_ok{clean_kernel_string(&full)}else if tag_ok{clean_kernel_string(&tag)}else{String::new()};
+        return match writeln!(io::stdout().lock(),"{appid}\n{value}"){Ok(())=>0,Err(_)=>74};
+    }
+    #[cfg(not(all(target_os="android",target_arch="aarch64")))]
+    {69}
+}
+fn clean_kernel_string(data:&[u8])->String {
+    let Some(end)=data.iter().position(|b|*b==0) else{return String::new();};
+    let Ok(value)=std::str::from_utf8(&data[..end]) else{return String::new();};
+    if value.chars().any(char::is_control){String::new()}else{value.to_owned()}
+}
+
+// Root credentials alone do not escape Android's app-data mount isolation.
+// Check directory identity against init's view before any backup/restore work.
+pub fn app_data_namespace() -> io::Result<()> {
+    let check = || -> io::Result<()> {
+        for path in ["/data/data", "/data/user", "/data/user_de"] {
+            let local = fs::metadata(path).map_err(|e| io::Error::other(format!("無法讀取 {path}：{e}")))?;
+            let global = fs::metadata(format!("/proc/1/root{path}")).map_err(|e| io::Error::other(format!("無法讀取全域 {path}：{e}")))?;
+            if !local.is_dir() || !global.is_dir() || local.dev()!=global.dev() || local.ino()!=global.ino() {
+                return Err(io::Error::other(format!("應用資料掛載環境不一致：{path}")));
+            }
+        }
+        Ok(())
+    };
+    check().map_err(|e| io::Error::other(format!("警告：應用資料掛載環境被隔離或無法驗證。已禁止備份、恢復與後續操作，避免漏備份或寫入錯誤目錄；請使用全域掛載環境（su --mount-master）重新啟動。原因：{e} {}",mount_help())))
+}
+
+pub fn app_data_namespace_command(args: &[String]) -> i32 {
+    if !args.is_empty() { return 64; }
+    match app_data_namespace() {
+        Ok(()) => { println!("STORAGE_NAMESPACE_OK appData=global"); 0 },
+        Err(e) => { eprintln!("STORAGE_NAMESPACE_FAILED {e}"); 65 }
+    }
+}
+
 struct StopProcess {
     pid: u32,
     token: String,
@@ -56,7 +198,7 @@ impl Drop for StopProcess {
 }
 fn process_parent_state(pid: u32) -> io::Result<(u32, char)> {
     let stat = fs::read_to_string(format!("/proc/{pid}/stat"))?;
-    let tail = stat.rsplit_once(") ").ok_or(io::ErrorKind::InvalidData)?.1;
+    let tail = speedbackup_native_rs::proc_stat::split(&stat).ok_or(io::ErrorKind::InvalidData)?.1;
     let mut fields = tail.split_whitespace();
     let state = fields
         .next()
@@ -124,6 +266,25 @@ fn legacy_lease(path:&Path)->io::Result<(u32,u64,u64)> {
     let pid=raw.trim().parse::<u32>().ok().filter(|p|*p>1&&*p<=i32::MAX as u32).ok_or(io::ErrorKind::InvalidData)?;
     Ok((pid,m.dev(),m.ino()))
 }
+fn bounded_script_source(path: &Path, limit: u64) -> io::Result<String> {
+    let file=OpenOptions::new().read(true)
+        .custom_flags(speedbackup_native_rs::O_NONBLOCK | speedbackup_native_rs::O_NOFOLLOW_NATIVE).open(path)?;
+    if !file.metadata()?.is_file(){return Err(io::ErrorKind::PermissionDenied.into());}
+    let mut source=String::new();file.take(limit+1).read_to_string(&mut source)?;
+    if source.len() as u64>limit{return Err(io::ErrorKind::InvalidData.into());}
+    Ok(source)
+}
+fn legacy_entry_source_verified(script: &Path) -> io::Result<bool> {
+    let source=bounded_script_source(script,131072)?;
+    if source.contains("tools.sh")&&(source.contains("SpeedBackup")||source.contains("kill_Serve")){return Ok(true);}
+    // Historical wrappers have no product marker: require their exact relative
+    // source invocation plus the adjacent implementation's product/lease markers.
+    // This only permits a confirmation snapshot, never automatic stop or cleanup.
+    if !source.lines().any(|line|line.trim()==r#". "${0%/*}/tools/tools.sh" | tee "$logfile""#){return Ok(false);}
+    let tools=script.parent().ok_or(io::ErrorKind::InvalidInput)?.join("tools/tools.sh");
+    let body=bounded_script_source(&tools,1048576)?;
+    Ok(body.contains("# SpeedBackup tools.sh")&&body.contains("kill_Serve()")&&body.contains("/data/.backup_lock"))
+}
 fn legacy_script_identity(pid:u32)->io::Result<String>{
     let token=identity(pid)?;
     if fs::metadata(format!("/proc/{pid}"))?.uid()!=0{return Err(io::ErrorKind::PermissionDenied.into());}
@@ -135,10 +296,7 @@ fn legacy_script_identity(pid:u32)->io::Result<String>{
     let script=std::str::from_utf8(args.get(1).ok_or(io::ErrorKind::InvalidData)?).map_err(|_|io::ErrorKind::InvalidData)?;
     if !matches!(Path::new(script).file_name().and_then(|s|s.to_str()),Some("start.sh"|"recover.sh")){return Err(io::ErrorKind::PermissionDenied.into());}
     let script=if Path::new(script).is_absolute(){Path::new(script).to_owned()}else{fs::read_link(format!("/proc/{pid}/cwd"))?.join(script)};
-    let source_file=OpenOptions::new().read(true).custom_flags(speedbackup_native_rs::O_NONBLOCK).open(script)?;
-    if !source_file.metadata()?.is_file(){return Err(io::ErrorKind::PermissionDenied.into());}
-    let mut source=String::new();source_file.take(131073).read_to_string(&mut source)?;
-    if source.len()>131072||!source.contains("tools.sh")||!(source.contains("SpeedBackup")||source.contains("kill_Serve")){return Err(io::ErrorKind::PermissionDenied.into());}
+    if !legacy_entry_source_verified(&script)?{return Err(io::ErrorKind::PermissionDenied.into());}
     if identity(pid)?!=token{return Err(io::ErrorKind::PermissionDenied.into());}Ok(token)
 }
 pub fn lock_legacy_snapshot(args:&[String])->i32{
@@ -317,7 +475,7 @@ pub fn lock_cancel(args:&[String],grace:std::time::Duration)->i32 {
         let pid:u32=expected.split(':').next().unwrap_or("").parse().map_err(|_|io::ErrorKind::InvalidData)?;
         if pid<=1||identity(pid)?!=*expected{return Err(io::ErrorKind::PermissionDenied.into());}
         fn group(pid:u32)->io::Result<u32>{
-            fs::read_to_string(format!("/proc/{pid}/stat"))?.rsplit_once(") ").and_then(|(_,s)|s.split_whitespace().nth(2)).ok_or(io::ErrorKind::InvalidData)?.parse().map_err(|_|io::ErrorKind::InvalidData.into())
+            speedbackup_native_rs::proc_stat::field(&fs::read_to_string(format!("/proc/{pid}/stat"))?,2).ok_or(io::ErrorKind::InvalidData)?.parse().map_err(|_|io::ErrorKind::InvalidData.into())
         }
         // console-service creates this private group via setsid before exec.
         if group(pid)?!=pid||group(std::process::id())?==pid{return Err(io::ErrorKind::PermissionDenied.into());}
@@ -376,7 +534,7 @@ extern "C" {
 
 fn identity(pid: u32) -> io::Result<String> {
     let stat = fs::read_to_string(format!("/proc/{pid}/stat"))?;
-    let tail = stat.rsplit_once(") ").ok_or(io::ErrorKind::InvalidData)?.1;
+    let tail = speedbackup_native_rs::proc_stat::split(&stat).ok_or(io::ErrorKind::InvalidData)?.1;
     let start = tail
         .split_whitespace()
         .nth(19)
@@ -620,4 +778,65 @@ mod cancellation_tests {
   let t=std::thread::spawn(move||lock_cancel(&args,Duration::from_secs(2)));let start=Instant::now();while !path.join("cleaning").exists(){assert!(start.elapsed()<Duration::from_secs(2));std::thread::sleep(Duration::from_millis(5));}
   {let _g=guard(&lock).expect("cleanup must be able to acquire lease");remove_owned(&lock).unwrap();}fs::write(path.join("released"),b"ok").unwrap();assert_eq!(t.join().unwrap(),0);assert_eq!(f.child.wait().unwrap().code(),Some(130));assert!(path.join("cleanup").exists());
  }
+}
+
+#[cfg(test)]
+mod mount_guidance_tests {
+    use super::*;
+    #[test] fn authoritative_package_mapping() {
+        assert_eq!(manager_package("package:com.sukisu.ultra uid:10234\n",10234).as_deref(),Some("com.sukisu.ultra"));
+        for text in ["package:com.sukisu.ultra uid:10235", "package:com.sukisu.ultra uid:10234\npackage:other.app uid:10234", "garbage", ""] {assert!(manager_package(text,10234).is_none());}
+        assert_eq!(package_name("com.resukisu.resukisu"),"BakaSU／ReSukiSU");
+        assert_eq!(package_name("com.rifsxd.ksunext"),"KernelSU Next");
+        assert_eq!(package_name("com.fake.sukisu"),"自訂管理器");
+        assert_eq!(clean_kernel_string(b"v4.3-abc@main\0"),"v4.3-abc@main");
+        for bytes in [b"unterminated".as_slice(),b"line\nbreak\0",b"\xff\0"] {assert!(clean_kernel_string(bytes).is_empty());}
+    }
+    #[test] fn su_identity_guidance() {
+        for (v,kind,name) in [
+            ("1.0:KernelSU","kernelsu","分支未辨識"),
+            ("1.0:KernelSU-Next","kernelsu","KernelSU-Next"),
+            ("SukiSU-Ultra:KernelSU","kernelsu","SukiSU"),
+            ("ReSukiSU:KernelSU","kernelsu","ReSukiSU"),
+            ("BakaSU:KernelSU","kernelsu","BakaSU"),
+            ("28.0:MAGISKSU","magisk","Magisk"),
+            ("Kitsune Mask:MAGISKSU","magisk","Kitsune"),
+            ("APatch 11000","apatch","APatch"),
+            ("KernelPatch 0.12","apatch","KernelPatch"),
+            ("unknown","unknown","未辨識"),("","unknown","未辨識"),
+            ("KernelSU MAGISKSU","unknown","未辨識")
+        ] {
+            assert_eq!(root_manager(v).0,kind);
+            assert!(root_manager(v).1.contains(name));
+            let text=mount_help_for_version(v);
+            assert!(text.contains("/system/bin/sh"));
+            assert!(text.contains("su --mount-master"));
+        }
+    }
+}
+
+#[cfg(test)]
+mod legacy_entry_tests {
+    use super::*;
+    #[test]
+    fn historical_wrapper_requires_adjacent_product_and_lease_markers() {
+        let dir=std::env::temp_dir().join(format!("sb-legacy-source-{}",std::process::id()));
+        fs::create_dir_all(dir.join("tools")).unwrap();
+        let script=dir.join("start.sh");
+        fs::write(&script,r#"#!/system/bin/sh
+. "${0%/*}/tools/tools.sh" | tee "$logfile"
+"#).unwrap();
+        let tools=dir.join("tools/tools.sh");
+        fs::write(&tools,"echo unrelated").unwrap();
+        assert!(!legacy_entry_source_verified(&script).unwrap());
+        fs::write(&tools,"# SpeedBackup tools.sh\nkill_Serve() { local LOCK_DIR=\"/data/.backup_lock\"; }\n").unwrap();
+        assert!(legacy_entry_source_verified(&script).unwrap());
+        fs::write(&script,"echo tools.sh").unwrap();
+        assert!(!legacy_entry_source_verified(&script).unwrap());
+        fs::remove_file(&tools).unwrap();
+        std::os::unix::fs::symlink(&script,&tools).unwrap();
+        assert!(bounded_script_source(&tools,1048576).is_err());
+        fs::remove_file(&tools).unwrap();fs::remove_file(&script).unwrap();
+        fs::remove_dir(dir.join("tools")).unwrap();fs::remove_dir(dir).unwrap();
+    }
 }

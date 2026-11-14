@@ -5,7 +5,7 @@ fn bad()->io::Error {io::Error::other("unverified terminal ancestry")}
 fn termux(bytes:&[u8])->bool {bytes.windows(10).any(|v|v==b"com.termux")}
 fn identity(root:&std::path::Path)->io::Result<(u32,u64,u32)> {
  let stat=fs::read_to_string(root.join("stat"))?;
- let tail=stat.rsplit_once(") ").ok_or_else(bad)?.1.split_whitespace().collect::<Vec<_>>();
+ let tail=speedbackup_native_rs::proc_stat::split(&stat).ok_or_else(bad)?.1.split_whitespace().collect::<Vec<_>>();
  let parent=tail.get(1).ok_or_else(bad)?.parse().map_err(|_|bad())?;
  let start=tail.get(19).ok_or_else(bad)?.parse().map_err(|_|bad())?;
  let status=fs::read_to_string(root.join("status"))?;

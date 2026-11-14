@@ -42,6 +42,45 @@ internal class NativeSession(private val context:Context,address:String,private 
     private var loadFailed=false
     private var sequence=0L
     var status=""
+    private var exportRequest=""
+    private var exportSource=""
+    fun exportDiagnostics(source:String=""){if(exportRequest.isEmpty()){exportSource=source;exportRequest=UUID.randomUUID().toString();emit()}}
+    var sharingDiagnostics=false;private set
+    fun shareDiagnostics(source:String="") {
+        if(sharingDiagnostics)return
+        sharingDiagnostics=true;status="正在準備傳送日誌…";emit()
+        // Keep pending attachments outside evictable cache; receivers may read asynchronously.
+        val directory=java.io.File(context.filesDir,"diagnostic-share")
+        var output:java.io.File?=null
+        try {
+            check(directory.isDirectory||directory.mkdirs()){"無法建立日誌暫存目錄"}
+            val cutoff=System.currentTimeMillis()-24L*60*60*1000
+            directory.listFiles()?.filter{it.isFile&&it.name.startsWith("SpeedBackup_debug_")&&it.lastModified()<cutoff}?.forEach{it.delete()}
+            val file=java.io.File(directory,"SpeedBackup_debug_${UUID.randomUUID()}.tar");output=file
+            file.outputStream().use{api.exportDiagnostics(it,source)}
+            val uri=androidx.core.content.FileProvider.getUriForFile(context,context.packageName+".diagnostics",file)
+            context.contentResolver.openFileDescriptor(uri,"r").use{descriptor->
+                check(descriptor!=null&&descriptor.statSize==file.length()&&descriptor.statSize>0){"日誌附件無法讀取，請重新匯出"}
+            }
+            val intent=android.content.Intent(android.content.Intent.ACTION_SEND).apply{
+                setDataAndType(uri,"application/x-tar");putExtra(android.content.Intent.EXTRA_STREAM,uri)
+                clipData=android.content.ClipData.newRawUri("SpeedBackup diagnostics",uri)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                if(closing.get()){file.delete();return@post}
+                try {
+                    val chooser=android.content.Intent.createChooser(intent,NativeLanguage.text(context,"傳送整包日誌")).apply{
+                        clipData=intent.clipData
+                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(chooser)
+                    execute{sharingDiagnostics=false;status="已開啟分享選單，請選擇接收應用。";emit()}
+                }catch(e:Exception){file.delete();execute{sharingDiagnostics=false;status="無法開啟分享選單，請改用匯出整包日誌。";emit()}}
+            }
+        }catch(e:Exception){output?.delete();sharingDiagnostics=false;throw e}
+    }
+    private var finishedAt=0L
     var finished=false;private set
     private var dialog:JSONObject?=null
     private var dialogAction:(()->Unit)?=null
@@ -66,6 +105,24 @@ internal class NativeSession(private val context:Context,address:String,private 
         }
         error("目前工作使用的介面協定不受支援；工作仍保留，未重新執行")
     }
+    private val shortcutWorker=Executors.newSingleThreadExecutor { r->Thread(r,"shortcut-sync").apply{isDaemon=true} }
+    private val shortcutSyncing=AtomicBoolean()
+    fun syncShortcuts(){
+        if(closing.get()||!shortcutSyncing.compareAndSet(false,true))return
+        try{shortcutWorker.execute{try{syncShortcutsNow()}finally{shortcutSyncing.set(false);execute{if(page!=null&&!loadFailed)emit()}}}}catch(_:java.util.concurrent.RejectedExecutionException){shortcutSyncing.set(false)}
+    }
+    private fun syncShortcutsNow(){
+        // Authenticated root session is the only source of new paths. Never execute here.
+        try{
+            val entries=JSONArray(api.get("shortcut-entries"))
+            for(i in 0 until entries.length()){
+                val entry=entries.getJSONObject(i)
+                if(entry.optString("mode")!="2")continue
+                if(EntryShortcuts.remember(context,entry.getString("path"),"2",true)!=null)
+                    api.post("shortcut-entries",entry.getString("id"))
+            }
+        }catch(_:Exception){ /* Older backends or unavailable queue: retry next foreground. */ }
+    }
     fun start(){execute{
         val kind=sessionKind()
         catalog=NativeCatalog.get(context);appearance.load(api)
@@ -87,8 +144,33 @@ internal class NativeSession(private val context:Context,address:String,private 
         if(page!=null&&!loadFailed)try{emit()}catch(_:Exception){listener.terminal(status)}else listener.terminal(status)
     }
     fun dispatch(id:String,eventEpoch:String){if(eventEpoch!=epoch||closed.get())return;execute{
+        if(id.startsWith("diagnostic-export:")){
+            if(exportRequest.isEmpty())return@execute
+            exportRequest=""
+            val raw=id.substringAfter(':')
+            if(raw.isEmpty()){status="已取消匯出";emit();return@execute}
+            val uri=android.net.Uri.parse(raw);require(uri.scheme=="content")
+            status="正在匯出整包日誌…";emit()
+            try {
+                context.contentResolver.openOutputStream(uri,"wt").use{out->requireNotNull(out){"無法開啟保存位置"};api.exportDiagnostics(out,exportSource)}
+                status="整包日誌已匯出至你選擇的位置。"
+            }catch(e:Exception){
+                try{android.provider.DocumentsContract.deleteDocument(context.contentResolver,uri)}catch(_:Exception){}
+                throw e
+            }
+            emit();return@execute
+        }
         if(loadFailed){if(id=="back")exit();return@execute}
-        if(finished){if(id=="back")exit();return@execute}
+        if(finished){
+            if(id=="back") {
+                // A successful managed submission is awaiting the root controller's
+                // replacement document. Repeated Back must not close its Activity.
+                val awaiting=page?.awaitHostNavigationAfterFinish==true &&
+                    android.os.SystemClock.elapsedRealtime()-finishedAt<5000L
+                if(!awaiting)exit()
+            }
+            return@execute
+        }
         if(id=="back"){if(dialog!=null){dialog=null;dialogAction=null;emit()}else page?.back();return@execute}
         if(id.startsWith("license:")){page?.action(id);return@execute}
         if(id.startsWith("picker:")){page?.action(id);return@execute}
@@ -100,9 +182,12 @@ internal class NativeSession(private val context:Context,address:String,private 
         }else page?.action(id)
     }}
     fun confirm(text:String,action:()->Unit){dialogAction=action;dialog=obj("id" to controls.id("confirm"),"nodes" to arr(listOf(
-        controls.node("confirm:text","text",text),controls.button("confirm:cancel","取消"){},controls.button("confirm:accept","確定"){}
+        controls.node("confirm:text","text",text),controls.group("confirm:actions","row",listOf(
+            controls.button("confirm:cancel","取消"){}.put("centerLabel",true),
+            controls.button("confirm:accept","確定"){}.put("centerLabel",true).put("materialPrimary",true)
+        )).put("dialogAction",true)
     )));emit()}
-    fun finish(message:String){finished=true;status=message;statePrefs.edit().remove(stateKey).apply();emit()}
+    fun finish(message:String){finishedAt=android.os.SystemClock.elapsedRealtime();finished=true;status=message;statePrefs.edit().remove(stateKey).apply();emit()}
     fun exit(){listener.exit()}
     fun openLink(url:String){val u=java.net.URI(url);require(u.scheme=="https"&&!u.host.isNullOrEmpty()&&u.userInfo==null);listener.link(url)}
     fun emit(){
@@ -110,20 +195,33 @@ internal class NativeSession(private val context:Context,address:String,private 
         controls.begin()
         val model=appearance.apply(obj("epoch" to epoch,"seq" to ++sequence,"resumeSession" to api.identity,"body" to JSONArray(),"buttons" to JSONArray(),"tabs" to false,"selected" to -1,"bottom" to 20,"hint" to status))
         page?.render(model)?:return
+        model.put("diagnosticExportRequest",exportRequest)
         dialog?.let{d->
             // NativeDocument owns confirmation focus and its closing gesture.
             if(model.optJSONObject("screen")==null){model.remove("menu");model.put("screen",controls.screen("confirmation","確認操作",emptyList(),emptyList()))}
             model.getJSONObject("screen").put("dialog",d)
         }
+        // All controller-owned windows, including discovery login, own Back before
+        // their page. Do not advertise a page pop while any such dialog is present.
+        if(model.optJSONObject("screen")?.optJSONObject("dialog")!=null)
+            model.put("backRoute","").put("returnToMenu",false)
         // Detach nested mutable page state before publishing across threads.
         val snapshot=JSONObject(model.toString())
         catalog.localize(snapshot,appearance.values["language"]?:"zh-Hant")
         listener.model(snapshot)
     }
     fun refresh(){execute{emit()}}
-    fun lifecycle(visible:Boolean){diagnostic(if(visible)"native-visible" else "native-hidden");execute{if(!loadFailed)page?.lifecycle(visible)}}
+    private var foreground=false
+    fun lifecycle(visible:Boolean){diagnostic(if(visible)"native-visible" else "native-hidden");execute{
+        // loadDocument immediately supplies the Activity lifecycle. Sync once per
+        // foreground entry, not both during startup and its queued visible event.
+        if(visible&&!foreground)syncShortcuts()
+        foreground=visible
+        if(!loadFailed){page?.lifecycle(visible);if(visible&&page!=null)emit()}
+    }}
     override fun close(){if(closing.compareAndSet(false,true)){
         diagnostics.shutdownNow()
+        shortcutWorker.shutdownNow()
         // Do not block Android's main thread. Root's draft lease prevents an old
         // window from overwriting a newly connected window during this flush.
         val deadline=Thread{try{Thread.sleep(2000)}catch(_:InterruptedException){return@Thread};closed.set(true);page?.close();api.close();executor.shutdownNow()}.apply{isDaemon=true;name="native-session-close";start()}
@@ -132,6 +230,7 @@ internal class NativeSession(private val context:Context,address:String,private 
 }
 
 internal interface NativePage {
+    val awaitHostNavigationAfterFinish:Boolean get()=false
     fun load()
     fun render(model:JSONObject)
     fun action(value:String)

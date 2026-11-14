@@ -2294,14 +2294,7 @@ fn read_proc_start_time(pid: i32) -> Option<u64> {
         return None;
     }
     let buf = read_file_c(&format!("/proc/{}/stat", pid), 4096)?;
-    let rp = buf.rfind(')')?;
-    let rest = &buf[rp + 1..];
-    for (field, tok) in (3..).zip(rest.split_whitespace()) {
-        if field == 22 {
-            return tok.parse::<u64>().ok().filter(|v| *v > 0);
-        }
-    }
-    None
+    speedbackup_native_rs::proc_stat::starttime(&buf)?.parse::<u64>().ok().filter(|v| *v > 0)
 }
 
 /// Faithful port of snapshot_package_target(): validates pid belongs to the
@@ -3162,12 +3155,7 @@ fn proc_state_char_rs(pid: i32) -> char {
         Some(v) => v,
         None => return '-',
     };
-    let rp = match buf.rfind(')') {
-        Some(v) => v,
-        None => return '-',
-    };
-    let rest = &buf[rp + 1..];
-    c_trim_start_ascii_space(rest).chars().next().unwrap_or('-')
+    speedbackup_native_rs::proc_stat::field(&buf,0).and_then(|s|s.chars().next()).unwrap_or('-')
 }
 
 fn read_proc_wchan_c(pid: i32) -> String {
@@ -4641,6 +4629,8 @@ fn cmd_daemon(socket_path: &str) -> i32 {
     println!("CGFREEZER_DAEMON_START ok=true pid={} socket={} protocol={} parentControl=true backendPreferred={} backendReason={} backendProbeMs={}",
         std::process::id(), shell_sanitize(socket_path), PROTOCOL, backend_preferred, shell_sanitize(&backend_reason), backend_probe_ms);
 
+    // Publish readiness through IN_ATTRIB after listen and backend initialization.
+    let _ = fs::set_permissions(socket_path, fs::Permissions::from_mode(0o600));
     let mut lease_owner_check = Instant::now();
     while G_RUNNING.load(Ordering::Relaxed) {
         reap_children_nonblock(&mut stats);

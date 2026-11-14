@@ -544,11 +544,6 @@ public final class AppStateLocalization {
         }
     }
 
-    public static void addModeDisplay(JsonObject object, String modeField) {
-        if (object == null || modeField == null || !object.has(modeField) || object.get(modeField).isJsonNull()) return;
-        object.addProperty(modeField + "Cn", modeCn(object.get(modeField).getAsString()));
-    }
-
     public static String localizeRequest(String body) {
         if (body == null || body.trim().isEmpty()) return "";
         StringBuilder out = new StringBuilder();

@@ -21,6 +21,11 @@ pub fn assignments(text: &str, only: &str) -> io::Result<String> {
     }
     Ok(out)
 }
+/// Replace a complete configuration namespace, including absent and formerly exported keys.
+pub fn snapshot(text: &str) -> io::Result<String> {
+    let values = assignments(text, "")?;
+    Ok(format!("unset {}\n{}", KNOWN.replace('|', " "), values))
+}
 pub(super) fn read(path: &Path) -> io::Result<String> {
     use std::io::Read;
     let f = OpenOptions::new()
@@ -70,6 +75,10 @@ fn publish(target: &Path, before: &str, output: &str) -> io::Result<()> {
 pub fn command(args: &[String]) -> i32 {
     let result = (|| -> io::Result<()> {
         match args.first().map(String::as_str) {
+            Some("snapshot") if args.len() == 2 => {
+                print!("{}", snapshot(&read(Path::new(&args[1]))?)?);
+                Ok(())
+            }
             Some("load") if matches!(args.len(), 2 | 3) => {
                 print!(
                     "{}",
@@ -110,6 +119,15 @@ mod tests {
             assignments("Zstd_level=9\nuser=0\n", "user").unwrap(),
             "user='0'\n"
         );
+    }
+    #[test]
+    fn complete_snapshot_clears_absent_and_exported_keys() {
+        let value = snapshot("rgb_a=0\nwebdav_remote_pass=\"a'b\"\n").unwrap();
+        assert!(value.starts_with("unset "));
+        assert!(value.lines().next().unwrap().split_whitespace().any(|k| k == "smb_remote_pass"));
+        assert!(value.contains("rgb_a='0'"));
+        assert!(value.contains("webdav_remote_pass='a'\\''b'"));
+        assert!(snapshot("rgb_a=\"unterminated").is_err());
     }
     #[test]
     fn apostrophe() {

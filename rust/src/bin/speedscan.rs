@@ -1,3 +1,17 @@
+#[path = "../daemon_health.rs"]
+pub(crate) mod daemon_health;
+#[path = "../remote_probe.rs"]
+mod remote_probe;
+#[path = "../tcp_scan.rs"]
+mod tcp_scan;
+#[path = "../remote_health.rs"]
+mod remote_health;
+#[path = "../diagnostic_session.rs"]
+mod diagnostic_session;
+#[path = "../entry_shortcuts.rs"]
+mod entry_shortcuts;
+#[path = "../crash_diagnostics.rs"]
+mod crash_diagnostics;
 #[path = "../remote_control.rs"]
 mod remote_control;
 #[path = "../runtime_conf.rs"]
@@ -89,7 +103,7 @@ fn proc_fd_no_termux(args: &[String]) -> i32 {
         let root=std::path::PathBuf::from(format!("/proc/{pid}"));
         let identity = || -> std::io::Result<(u32,String)> {
             let stat=std::fs::read_to_string(root.join("stat"))?;
-            let tail=stat.rsplit_once(") ").ok_or_else(bad)?.1;
+            let tail=speedbackup_native_rs::proc_stat::split(&stat).ok_or_else(bad)?.1;
             let start=tail.split_whitespace().nth(19).ok_or_else(bad)?;
             Ok((std::fs::metadata(&root)?.uid(),start.to_string()))
         };
@@ -10226,6 +10240,7 @@ pub(crate) fn run() {
         Some("flash-info") => device_flash::run(&args[2..]),
         Some("ram-devinfo-read") => device_ram::reader(&args[2..]),
         Some("publish-file") => publish_file::run(&args[2..]),
+        Some("sync-entry-wrappers") => publish_file::sync_entry_wrappers(&args[2..]),
         Some("generated-list-owner") => publish_file::align_owner(&args[2..]),
         Some("stream-bench") => stream_bench::run(&args[2..]),
         Some("app-permissions") => android_policy::command(&args[2..], "permissions"),
@@ -10249,6 +10264,9 @@ pub(crate) fn run() {
         Some("facts-result") => command_lifecycle::facts_result(&args[2..]),
         Some("cleanup-legacy-namespaces") => command_lifecycle::prune_legacy(&args[2..]),
         Some("lock-acquire") => restore_safety::lock(&args[2..], false),
+        Some("storage-namespace-check") => restore_safety::app_data_namespace_command(&args[2..]),
+        Some("root-manager-kernel-info") => restore_safety::root_manager_kernel_command(&args[2..]),
+        Some("root-manager-info") => restore_safety::root_manager_command(&args[2..]),
         Some("lock-release") => restore_safety::lock(&args[2..], true),
         Some("lock-legacy-snapshot") => restore_safety::lock_legacy_snapshot(&args[2..]),
         Some("lock-stop") => restore_safety::lock_stop(&args[2..]),
@@ -10263,10 +10281,21 @@ pub(crate) fn run() {
             0
         }
         Some("conf") => runtime_conf::command(&args[2..]),
+        Some("remote-health") => remote_health::command(&args[2..]),
+        Some("remote-probe") => remote_probe::command(&args[2..]),
+        Some("smb-scan") => tcp_scan::command(&args[2..]),
         Some("remote-control") => remote_control::command(&args[2..]),
+        Some("register-restore-shortcut") => entry_shortcuts::run(&args[2..]),
+        Some("crash-diagnostics") => crash_diagnostics::run(&args[2..]),
         Some("debug-archive") => debug_archive::command(&args[2..]),
+        Some("diagnostic-snapshot") => diagnostic_session::snapshot_command(&args[2..]),
+        Some("diagnostic-init") => diagnostic_session::init_command(&args[2..]),
+        Some("diagnostic-prune") => debug_archive::prune_command(&args[2..]),
         Some("remote-resolve") => applist_web::lan_discovery::resolve_command(&args[2..]),
+        Some("discovery-broker") => applist_web::lan_discovery::discovery_broker::command(&args[2..]),
+        Some("remote-discovery") => applist_web::lan_discovery::discovery_command(&args[2..]),
         Some("applist-web") => applist_web::run(&args[2..]),
+        Some("shortcut-path") => entry_shortcuts::path_command(&args[2..]),
         Some("restore-catalog") => restore_catalog::run(&args[2..]),
         Some("selection-web") => applist_web::selection(&args[2..]),
         Some("console-start") => { let mut v=vec!["start".to_string()];v.extend_from_slice(&args[2..]);applist_web::console(&v) },

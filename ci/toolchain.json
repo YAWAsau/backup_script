@@ -5,5 +5,5 @@
   "android_api": 28,
   "compile_sdk": "37.0",
   "build_tools": "37.0.0",
-  "java_major": "17"
+  "java_major": "21"
 }

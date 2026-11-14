@@ -1,3 +1,5 @@
+#[path = "../web_language_map.rs"]
+mod output_language;
 // netwatch.rs - faithful Rust port of c/netwatch.c
 // Real rtnetlink (AF_NETLINK/NETLINK_ROUTE) event watcher: blocks in recv(),
 // no timers, no polling, no wake locks - matching the C reference's explicit
@@ -419,9 +421,9 @@ fn run_watcher() -> i32 {
 }
 
 fn print_help(program_name: &str) {
-    println!("用法: {} [--help|--version]", program_name);
-    println!("監看 Linux/Android 介面與 IPv4 位址的 rtnetlink 事件。");
-    println!("閒置時阻塞在 recv()，不使用定時器、輪詢或 WakeLock。");
+    println!("{} {} [--help|--version]", output_language::text("用法:"), program_name);
+    println!("{}", output_language::text("監看 Linux/Android 介面與 IPv4 位址的 rtnetlink 事件。"));
+    println!("{}", output_language::text("閒置時阻塞在 recv()，不使用定時器、輪詢或 WakeLock。"));
 }
 
 pub(crate) fn run() {
@@ -443,7 +445,7 @@ pub(crate) fn run() {
             print_help(argv0);
             std::process::exit(0);
         }
-        eprintln!("netwatch: 未知參數: {}", args[1]);
+        eprintln!("{} {}", output_language::text("netwatch: 未知參數:"), args[1]);
         print_help(argv0);
         std::process::exit(2);
     }

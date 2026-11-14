@@ -1,6 +1,6 @@
 {
   "upstream": "https://github.com/material-foundation/material-color-utilities",
-  "commit": "bd811e4ca2ab94c4ce3cadc89c19b1820b9704b3",
+  "commit": "194144d75ed7d34f06264a625e086db81a7ab9aa",
   "license": "Apache-2.0",
   "files": {
     "dex/app/src/main/java/dynamiccolor/ColorSpec.java": "20886f859fa503dd76f61805c4a218e96999e6d11c8e0de9a667f884d272af9f",
@@ -39,5 +39,7 @@
     "dex/app/src/main/java/contrast/Contrast.java": "29ca3c9ce07f4f8316f9056344b9d24a3b3b11f797c81f84dffea9127724e459",
     "dex/app/src/main/java/dislike/DislikeAnalyzer.java": "ff84b5c6ac18e8785e2a2efe5d2e20c9cfe056669c869d39b61a40af790f80ed",
     "dex/app/src/main/java/temperature/TemperatureCache.java": "6955e10c509bd55b07e1969824838d0a4f97512c961c5051b285087e6025ef66"
-  }
+  },
+  "previous_commit": "bd811e4ca2ab94c4ce3cadc89c19b1820b9704b3",
+  "review": "Java and Kotlin source trees are byte-identical after line-ending normalization (91 files)."
 }

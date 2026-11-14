@@ -6,8 +6,10 @@
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 <application android:icon="@drawable/ic_app" android:label="SpeedBackup" android:allowBackup="false" android:usesCleartextTraffic="true" android:theme="@style/AppTheme" android:supportsRtl="true">
 <activity android:name=".MainActivity" android:permission="android.permission.DUMP" android:exported="true" android:excludeFromRecents="false" android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|uiMode|fontScale|density|layoutDirection|screenLayout|locale|keyboard|navigation|colorMode" android:enableOnBackInvokedCallback="true"/>
+<activity android:name=".LauncherActivity" android:enableOnBackInvokedCallback="true" android:exported="true" android:launchMode="singleTask" android:taskAffinity="io.github.yawasau.speedbackup.webview.launcher" android:excludeFromRecents="true"/>
 <service android:name=".WorkGuardService" android:exported="false" android:process=":guardian" android:stopWithTask="false" android:foregroundServiceType="specialUse">
 <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Monitor a user-started root backup or restore task and provide notification reconnection while its UI is closed."/>
 </service>
 <activity android:name=".ResumeActivity" android:permission="android.permission.DUMP" android:exported="true" android:process=":guardian" android:noHistory="true" android:excludeFromRecents="true"/>
+<provider android:name="androidx.core.content.FileProvider" android:authorities="io.github.yawasau.speedbackup.webview.diagnostics" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/diagnostic_paths"/></provider>
 </application></manifest>

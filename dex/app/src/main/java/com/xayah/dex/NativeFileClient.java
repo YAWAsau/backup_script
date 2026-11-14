@@ -14,7 +14,7 @@ import java.util.concurrent.*;
 /** Per-run root file broker; never retries a transmitted mutation. */
 final class NativeFileClient {
     // Component release versions advance independently; gate the actual contract.
-    private static final String FILE_CONTRACT="speedbackup.file-operations.v1";
+    private static final String FILE_CONTRACT="speedbackup.file-operations.v2";
     private static Process process;
     private static File socket;
     private static int pid;
@@ -82,7 +82,7 @@ final class NativeFileClient {
         while((b=in.read())!='\n'){need(b>=0&&line.size()<180,"missing file RPC receipt");line.write(b);}
         String[] h=line.toString("US-ASCII").split(" ",-1);
         need(h.length==5&&h[0].equals("SBFILE1")&&h[1].equals(request),"invalid file RPC receipt");
-        Reply r=new Reply();r.state=h[2];r.rc=Integer.parseInt(h[3]);int n=Integer.parseInt(h[4]);need(n>=0&&n<=1048576,"oversize file RPC response");
+        Reply r=new Reply();r.state=h[2];r.rc=Integer.parseInt(h[3]);int n=Integer.parseInt(h[4]);need(n>=0&&n<=2097152,"oversize file RPC response");
         r.body=new byte[n];new DataInputStream(in).readFully(r.body);return r;
     }
     private static Reply exchange(List<String> fields,int timeout,boolean mutation)throws Exception {
@@ -112,15 +112,16 @@ final class NativeFileClient {
         need(!uncertain,"previous file RPC outcome uncertain; restore session stopped");
         long ensureStart=SystemClock.elapsedRealtime();
         ensure();long ensureMs=SystemClock.elapsedRealtime()-ensureStart;
+        int timeout=args.length>0&&args[0].equals("external-policy-repair-selinux")?1204000:602000;
         String request=id();ArrayList<String> fields=new ArrayList<>(Arrays.asList("SBFILE1",request,"RUN","600000"));fields.addAll(Arrays.asList(args));
         long begin=SystemClock.elapsedRealtime();
         try {
             Reply r;
-            try {r=exchange(fields,602000,true);}
+            try {r=exchange(fields,timeout,true);}
             catch(TransportFailure e) {
                 if(e.written)throw e;
                 ready=false;ensure();
-                r=exchange(fields,602000,true);
+                r=exchange(fields,timeout,true);
             }
             // Preserve engine diagnostics, but success is decided by the broker's waitpid result.
             System.err.write(r.body);System.err.flush();

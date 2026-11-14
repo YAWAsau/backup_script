@@ -77,6 +77,11 @@ final class AppInventoryUtil {
         if (!home.packageName.isEmpty()) targets.add(home.packageName);
         if (!ime.packageName.isEmpty()) targets.add(ime.packageName);
         List<Item> items = snapshot(userId, true, targets);
+        Set<String> installed = new HashSet<>();
+        for (Item item : items) installed.add(item.packageName);
+        // Settings can retain removed input methods or cross-profile defaults.
+        if (!installed.contains(home.packageName)) home = new HomeInfo();
+        if (!installed.contains(ime.packageName)) ime = new ImeInfo();
         StringBuilder out = new StringBuilder(items.size() * 96);
         out.append("#META\tinventoryBegin\t1\t").append(userId).append('\n');
         for (Item item : items) {
@@ -123,7 +128,7 @@ final class AppInventoryUtil {
         int selectedCount = 0;
         for (Item item : items) {
             if (item == null || item.packageName == null || item.packageName.isEmpty()) continue;
-            boolean include = !item.system || item.xposed || targets.contains(item.packageName);
+            boolean include = !item.system || item.xposed || (item.xposedUnknown && item.packageName.contains(".")) || targets.contains(item.packageName);
             if (!include) continue;
             selectedCount++;
             out.append(removeSpaces(item.label)).append(' ')
@@ -1061,8 +1066,9 @@ final class AppInventoryUtil {
                 if (strict && (item == null || item.packageName == null || item.packageName.isEmpty())) {
                     throw new IllegalStateException("Incomplete package inventory item");
                 }
-                if (strict && !item.xposed && (item.xposedApkErrors != 0 || item.xposedApkScanned == 0)) {
-                    throw new IllegalStateException("Incomplete Xposed scan: " + item.packageName);
+                if (strict && item != null && item.xposedUnknown) {
+                    System.err.println("APP_INVENTORY_XPOSED_UNKNOWN package=" + item.packageName
+                            + " scanned=" + item.xposedApkScanned + " errors=" + item.xposedApkErrors);
                 }
                 if (item != null && item.packageName != null && !item.packageName.isEmpty()) {
                     items.add(item);
@@ -1114,6 +1120,7 @@ final class AppInventoryUtil {
             item.installed = true;
             item.updatedSystem = (ai.flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0;
             item.xposed = xposedFacts.module;
+            item.xposedUnknown = !item.xposed && (xposedFacts.apkErrors != 0 || xposedFacts.apkScanned == 0);
             item.xposedModuleFormat = xposedFacts.moduleFormat;
             item.xposedLegacyMetadata = xposedFacts.legacyMetadata;
             item.xposedLegacyEntry = xposedFacts.legacyEntry;
@@ -1135,6 +1142,7 @@ final class AppInventoryUtil {
             if (!item.system) flags.add("user");
             if (item.system) flags.add("system");
             if (item.xposed) flags.add("xposed");
+            if (item.xposedUnknown) flags.add("xposed-unknown");
             item.flag = String.join("|", flags);
             if (item.xposed) item.category = "xposed";
             else if (item.system) item.category = "system";
@@ -1315,6 +1323,7 @@ final class AppInventoryUtil {
         boolean system;
         boolean updatedSystem;
         boolean xposed;
+        boolean xposedUnknown;
         String xposedModuleFormat = "none";
         boolean xposedLegacyMetadata;
         boolean xposedLegacyEntry;
@@ -1349,6 +1358,7 @@ final class AppInventoryUtil {
             o.addProperty("system", system);
             o.addProperty("updatedSystem", updatedSystem);
             o.addProperty("xposed", xposed);
+            o.addProperty("xposedScanStatus", xposed ? "module" : xposedUnknown ? "unknown" : "not-module");
             o.addProperty("xposedModuleFormat", xposedModuleFormat == null ? "none" : xposedModuleFormat);
             o.addProperty("xposedLegacyMetadata", xposedLegacyMetadata);
             o.addProperty("xposedLegacyEntry", xposedLegacyEntry);

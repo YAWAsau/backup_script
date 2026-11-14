@@ -15,7 +15,7 @@ import org.xml.sax.helpers.DefaultHandler;
 /** Bounded, anonymous, read-only LAN discovery. No credentials, redirects or TLS bypass. */
 public final class WebDavDiscoveryUtil {
     static final String CAPABILITY = "webdav.lan_discovery.v1";
-    static final String DEFAULT_PORTS = "80,443,8080,8081,8000,8443,8765,5005,5006,5244";
+    static final String DEFAULT_PORTS = "80,443,8080,8081,8000,8443,8765,6065,5005,5006,5244";
     static final String DEFAULT_PATHS = "/,/dav/,/webdav/";
     static final int MAX_TARGETS = 8192, MAX_OPEN = 512, MAX_BODY = 32768;
     static final ScheduledThreadPoolExecutor TIMER = new ScheduledThreadPoolExecutor(1, threads("dav-deadlines"));
@@ -101,14 +101,16 @@ public final class WebDavDiscoveryUtil {
                 return r.stream().anyMatch(Result::confirmed)?0:1;
             }
         }
-        if (!a[0].equals("scanWebDav")) throw new IllegalArgumentException("unknown command");
+        if (!a[0].equals("scanWebDav") && !a[0].equals("scanWebDavStream")) throw new IllegalArgumentException("unknown command");
         List<Integer> ports = ports(a.length>2?a[2]:DEFAULT_PORTS);
         List<String> paths = paths(a.length>3?a[3]:DEFAULT_PATHS);
         int budget=integer(a,4,30000,2000,120000), workers=integer(a,5,96,1,128);
         int mdns=integer(a,6,1,0,1);
         List<String> hosts = hosts(a.length>1?a[1]:"auto");
         if ((long)hosts.size()*ports.size()>MAX_TARGETS) throw new IllegalArgumentException("too many host/port pairs (maximum 8192)");
-        return scan(hosts,ports,paths,budget,workers,mdns!=0);
+        int result=scan(hosts,ports,paths,budget,workers,mdns!=0,a[0].equals("scanWebDavStream"));
+        if(a[0].equals("scanWebDavStream"))System.out.println("SPEEDBACKUP_DISCOVERY_DONE\t"+result);
+        return result;
     }
     static int integer(String[] a,int n,int fallback,int min,int max) {
         int v=n<a.length?Integer.parseInt(a[n]):fallback;
@@ -187,67 +189,64 @@ public final class WebDavDiscoveryUtil {
     static ThreadFactory threads(String name) {
         return r -> {Thread t=new Thread(r,name);t.setDaemon(true);return t;};
     }
-    static int scan(List<String> hosts,List<Integer> ports,List<String> paths,int budget,int workers,boolean mdns) throws Exception {
+    static final class Completion {
+        final int kind;
+        final List<Endpoint> endpoints;
+        Completion(int k,List<Endpoint> e){kind=k;endpoints=e;}
+    }
+    static int scan(List<String> hosts,List<Integer> ports,List<String> paths,int budget,int workers,boolean mdns,boolean stream) throws Exception {
         long start=System.nanoTime();
         ExecutorService tcp=Executors.newFixedThreadPool(workers,threads("dav-tcp"));
         ExecutorService http=Executors.newFixedThreadPool(12,threads("dav-http"));
         ExecutorService hints=Executors.newSingleThreadExecutor(threads("dav-hints"));
-        CompletionService<Endpoint> connects=new ExecutorCompletionService<>(tcp);
-        CompletionService<List<Result>> probes=new ExecutorCompletionService<>(http);
+        BlockingQueue<Completion> completions=new LinkedBlockingQueue<>();
         Map<String,Result> results=new ConcurrentSkipListMap<>();
+        Consumer<Result> publish=r->{synchronized(results){
+            Result old=results.get(r.url);
+            merge(results,r);
+            if(stream && results.get(r.url)!=old){System.out.println(r);System.out.flush();}
+        }};
         Set<String> queued=new HashSet<>();
         int planned=hosts.size()*ports.size(), checked=0, pending=0, verified=0;
-        boolean partial=false;
+        boolean partial=false, advertised=mdns;
         try(Scope scope=new Scope(budget)) {
-            // Discovery and TCP scanning share the budget and run concurrently.
-            Future<List<Endpoint>> advertised = mdns
-                ? hints.submit(()->WebDavMdns.discover(new HashSet<>(hosts), Math.min(1500,budget/4)))
-                : null;
-            for(String ip:hosts) for(int port:ports) connects.submit(()->{
-                Socket s=new Socket();
-                try {
-                    scope.add(s); s.connect(new InetSocketAddress(ip,port),scope.left(650));
-                    return new Endpoint(ip,port,(port==443||port==8443||port==5006)?"https":"http",null,"tcp");
-                } catch(IOException e) {return null;}
-                finally {scope.sockets.remove(s);try{s.close();}catch(IOException ignored){}}
+            if(mdns) hints.submit(()->{
+                List<Endpoint> found=Collections.emptyList();
+                try{found=WebDavMdns.discover(new HashSet<>(hosts),Math.min(1500,budget/4));}
+                catch(Exception ignored){}
+                finally{completions.add(new Completion(1,found));}
             });
-            while(checked<planned||verified<pending||advertised!=null) {
-                if(System.nanoTime()>=scope.end) {partial=true;break;}
-                if(advertised!=null && advertised.isDone()) {
-                    try {
-                        for(Endpoint e:advertised.get()) {
-                            if(pending>=MAX_OPEN) {partial=true;break;}
-                            if(queued.add(e.key()+e.path)) {
-                                probes.submit(()->verify(e,paths,scope,r->merge(results,r)));pending++;
-                            }
-                        }
-                    } catch(ExecutionException ignored) {
-                        // Failed hints never prevent the independent TCP scan.
-                    }
-                    advertised=null;
+            for(String ip:hosts) for(int port:ports) tcp.submit(()->{
+                Socket socket=new Socket(); Endpoint found=null;
+                try {
+                    scope.add(socket);socket.connect(new InetSocketAddress(ip,port),scope.left(650));
+                    found=new Endpoint(ip,port,(port==443||port==8443||port==5006)?"https":"http",null,"tcp");
+                }catch(IOException ignored){}
+                finally{
+                    scope.sockets.remove(socket);try{socket.close();}catch(IOException ignored){}
+                    completions.add(new Completion(0,found==null?Collections.emptyList():Collections.singletonList(found)));
                 }
-                Future<Endpoint> f=connects.poll(20,TimeUnit.MILLISECONDS);
-                // Drain ready connections in batches; check hints and deadline between batches.
-                for(int batch=0; f!=null && batch<128; batch++) {
-                    checked++;
-                    Endpoint e=f.get();
-                    if(e!=null && queued.add(e.key()+e.path)) {
-                        if(pending>=MAX_OPEN) partial=true;
-                        else {probes.submit(()->verify(e,paths,scope,r->merge(results,r)));pending++;}
-                    }
-                    // Do not dequeue a completion that this batch cannot consume.
-                    f=batch<127?connects.poll():null;
+            });
+            while(checked<planned||verified<pending||advertised){
+                long remaining=scope.end-System.nanoTime();
+                if(remaining<=0){partial=true;break;}
+                Completion done=completions.poll(remaining,TimeUnit.NANOSECONDS);
+                if(done==null){partial=true;break;}
+                if(done.kind==0)checked++;
+                else if(done.kind==1)advertised=false;
+                else {verified++;continue;}
+                for(Endpoint endpoint:done.endpoints){
+                    if(!queued.add(endpoint.key()+endpoint.path))continue;
+                    if(pending>=MAX_OPEN){partial=true;continue;}
+                    pending++;
+                    http.submit(()->{try{verify(endpoint,paths,scope,publish);}
+                        finally{completions.add(new Completion(2,Collections.emptyList()));}});
                 }
-                Future<List<Result>> p;
-                while((p=probes.poll())!=null) {verified++;for(Result r:p.get()) merge(results,r);}
             }
-            // Drain work already completed at the deadline before cancelling sockets.
-            Future<List<Result>> p;
-            while((p=probes.poll())!=null) {verified++;for(Result r:p.get()) merge(results,r);}
-            if(scope.stopped.get() || System.nanoTime()>=scope.end) partial=true;
-        } finally {tcp.shutdownNow();http.shutdownNow();hints.shutdownNow();tcp.awaitTermination(300,TimeUnit.MILLISECONDS);http.awaitTermination(300,TimeUnit.MILLISECONDS);hints.awaitTermination(300,TimeUnit.MILLISECONDS);}
+            if(scope.stopped.get()||System.nanoTime()>=scope.end)partial=true;
+        }finally{tcp.shutdownNow();http.shutdownNow();hints.shutdownNow();tcp.awaitTermination(300,TimeUnit.MILLISECONDS);http.awaitTermination(300,TimeUnit.MILLISECONDS);hints.awaitTermination(300,TimeUnit.MILLISECONDS);}
         int confirmed=0;
-        for(Result r:results.values()) {System.out.println(r);if(r.confirmed()) confirmed++;}
+        for(Result r:results.values()){if(!stream)System.out.println(r);if(r.confirmed())confirmed++;}
         System.err.println("WEBDAV_SCAN_SUMMARY planned="+planned+" tcpCompleted="+checked+" httpPlanned="+pending+" httpCompleted="+verified
             +" confirmed="+confirmed+" candidates="+(results.size()-confirmed)+" partial="+(partial?1:0)+" elapsedMs="+elapsed(start));
         return partial?3:confirmed>0?0:1;

@@ -203,59 +203,32 @@ pub fn address(args: &[String]) -> i32 {
         }
     }
 }
+pub fn smb_reason(text: &str) -> &'static str {
+    let t=text.to_ascii_lowercase();
+    let has=|words:&[&str]| words.iter().any(|w|t.contains(w));
+    if has(&["nt_status_account_locked_out","nt_status_account_disabled","nt_status_account_expired","nt_status_password_expired"]) {"account_unavailable"}
+    else if has(&["nt_status_logon_failure","nt_status_wrong_password","nt_status_no_such_user"]) {"auth_failed"}
+    else if has(&["nt_status_access_denied","access_denied","denied"]) {"access_denied"}
+    else if has(&["nt_status_bad_network_name","bad_network_name","object_name_not_found","object_path_not_found","errbadpath","does not exist"]) {"share_missing"}
+    else if has(&["timed out","timeout","nt_status_io_timeout"]) {"timeout"}
+    else if has(&["signing","signature","protocol negotiation failed","nt_status_not_supported"]) {"protocol_error"}
+    else {"connection_failed"}
+}
 pub fn smb_class(text: &str) -> (&'static str, &'static str, &'static str) {
-    let t = text.to_ascii_lowercase();
-    let has = |words: &[&str]| words.iter().any(|w| t.contains(w));
-    if has(&["nt_status_logon_failure", "nt_status_wrong_password"]) {
-        (
-            "1",
-            "已連上 445 port，但 SMB 認證失敗",
-            "請在設定頁檢查 SMB 用戶名與密碼；若要匿名，請清空帳密並確認伺服器允許 Guest/匿名存取",
-        )
-    } else if has(&[
-        "nt_status_bad_network_name",
-        "tree connect failed",
-        "bad_network_name",
-        "object_name_not_found",
-        "object_path_not_found",
-        "errbadpath",
-        "does not exist",
-    ]) || t.lines().any(|line| {
-        line.split_once("cd ")
-            .is_some_and(|(_, after)| after.contains("failed"))
-    }) {
-        (
-            "0",
-            "SMB 認證可嘗試，但共享名稱或路徑不存在",
-            "請在設定頁檢查 SMB 地址的共享名稱與後續路徑，例如 smb://IP/共享名稱/路徑",
-        )
-    } else if has(&["nt_status_access_denied", "access_denied", "denied"]) {
-        (
-            "0",
-            "SMB 共享拒絕目前帳號存取",
-            "請檢查共享權限與 Windows/NAS 檔案系統權限；能登入不代表能讀寫該 share",
-        )
-    } else if has(&[
-        "connection refused",
-        "unable to connect",
-        "no route to host",
-        "timed out",
-        "timeout",
-        "protocol negotiation failed",
-    ]) {
-        (
-            "0",
-            "SMB 伺服器不可連線或協議協商失敗",
-            "請確認伺服器已開啟 SMB2/SMB3、445 port 未被防火牆阻擋，且手機與伺服器在可互通網段",
-        )
-    } else {
-        (
-            "0",
-            "SMB 目標連線失敗",
-            "請檢查 SMB 位址、帳號密碼、共享名稱與伺服器狀態",
-        )
+    smb_reason_class(smb_reason(text))
+}
+pub fn smb_reason_class(reason:&str)->(&'static str,&'static str,&'static str){
+    match reason {
+        "account_missing"|"password_missing"|"auth_failed" => ("1","SMB 帳號或密碼錯誤","請確認 SMB 帳號與密碼；Windows Hello PIN 不能用於 SMB 登入"),
+        "account_unavailable" => ("1","SMB 帳戶已鎖定、停用或密碼已過期","請在伺服器確認帳戶狀態"),
+        "access_denied" => ("0","SMB 伺服器拒絕存取","請檢查分享及檔案系統權限"),
+        "share_missing" => ("0","SMB 分享名稱或路徑不存在","請確認 smb://IP/分享名稱/路徑"),
+        "timeout" => ("0","SMB 連線逾時","請檢查網路、伺服器與防火牆"),
+        "protocol_error" => ("0","SMB 協定或簽章驗證失敗","請檢查伺服器協定與簽章設定"),
+        _ => ("0","SMB 無法連線至伺服器","請確認位址、網路、伺服器與防火牆；詳細原因請查看日誌"),
     }
 }
+
 fn guard_owner() -> io::Result<()> {
     unsafe extern "C" {
         fn getppid() -> i32;
@@ -297,9 +270,12 @@ pub fn command(args: &[String]) -> i32 {
                 return 1;
             }
             let (a, b, c) = smb_class(&text);
-            println!("{a}\n{b}\n{c}");
+            println!("{a}\n{b}\n{c}\n{}", smb_reason(&text));
             0
         }
+        Some("webdav-reason") if args.len()==4 => {
+            println!("{}",super::remote_probe::webdav_reason(args[1].parse().unwrap_or(0),if args[2]=="1"{"set"}else{""},if args[3]=="1"{"set"}else{""}));0
+        },
         Some("auth") => auth(&args[1..]),
         Some("address") => address(&args[1..]),
         _ => 2,
@@ -326,6 +302,14 @@ mod tests {
         ] {
             assert!(endpoint("webdav", u).is_err());
         }
+    }
+    #[test]
+    fn specific_reason_precedes_generic_failure() {
+        assert_eq!(smb_reason("tree connect failed: NT_STATUS_ACCESS_DENIED"),"access_denied");
+        assert_eq!(smb_reason("NT_STATUS_BAD_NETWORK_NAME"),"share_missing");
+        assert_eq!(smb_reason("session setup failed: NT_STATUS_LOGON_FAILURE"),"auth_failed");
+        assert_eq!(smb_reason("NT_STATUS_ACCOUNT_LOCKED_OUT"),"account_unavailable");
+        assert_eq!(smb_reason("NT_STATUS_IO_TIMEOUT"),"timeout");
     }
     #[test]
     fn auth_vs_permissions() {

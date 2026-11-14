@@ -6,19 +6,7 @@ use std::{fs, io};
 fn bad(s: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, s)
 }
-fn number(s: &str) -> io::Result<u128> {
-    if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(bad("invalid integer"));
-    }
-    s.parse().map_err(|_| bad("integer overflow"))
-}
-fn opt(s: &str) -> io::Result<Option<u128>> {
-    if s == "-" {
-        Ok(None)
-    } else {
-        number(s).map(Some)
-    }
-}
+use super::payload_stats::{uint as number,optional as opt};
 fn show(n: Option<u128>) -> String {
     n.map(|v| v.to_string()).unwrap_or_else(|| "-".into())
 }

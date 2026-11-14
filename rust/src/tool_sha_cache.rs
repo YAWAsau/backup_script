@@ -70,9 +70,7 @@ fn execute(a: &[String]) -> io::Result<&'static str> {
         return Err(bad());
     }
     let stat = fs::read_to_string(format!("/proc/{owner}/stat"))?;
-    let start = stat
-        .rsplit_once(") ")
-        .and_then(|(_, s)| s.split_whitespace().nth(19))
+    let start = speedbackup_native_rs::proc_stat::starttime(&stat)
         .ok_or_else(bad)?;
     let run = format!(
         "{}:{}:{}",

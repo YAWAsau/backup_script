@@ -165,9 +165,8 @@ pub(crate) fn run(argv: Vec<OsString>) {
     if args[4] == "1" {
         create.push("--bypass-low-target-sdk-block".into());
     }
-    if args[5] == "1" {
-        create.push("-l".into());
-    }
+    // Keep the legacy positional argument for caller compatibility; forward-lock -l
+    // is not a supported install-create option on Android 10 session installs.
     let apks: Vec<String> = args[6..].iter().map(|value| value.to_string()).collect();
     let split = apks.len() > 1;
     let direct = split && direct_package_command();

@@ -72,8 +72,16 @@ final class GoogleAccountCache {
             Files.move(temp.toPath(),cache.toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
         } finally { Files.deleteIfExists(temp.toPath()); }
     }
-    static synchronized List<GoogleAccountNames.Account> read(File source,File root,int user,boolean fresh) throws Exception {
+    static List<GoogleAccountNames.Account> read(File source,File root,int user,boolean fresh) throws Exception {
         privateDirectory(root);
+        // Atomic cache publication + before/after source stamps allow a read-only hit.
+        // Greeting lookup need not wait for snapshot locking, cleanup or SQLite work.
+        if(!fresh) {
+            String key=signature(source);
+            List<GoogleAccountNames.Account> hit=cached(new File(root,"u"+user+".json"),key,user);
+            if(hit!=null&&key.equals(signature(source)))return hit;
+        }
+        synchronized(GoogleAccountCache.class) {
         // Serialize across app_process instances as well as threads. Once locked,
         // abandoned snapshot directories cannot belong to another live reader.
         File lock=new File(root,".snapshot.lock");
@@ -98,6 +106,7 @@ final class GoogleAccountCache {
                 return readLocked(source,root,user,fresh);
             }
         }
+    }
     }
     private static List<GoogleAccountNames.Account> readLocked(File source,File root,int user,boolean fresh) throws Exception {
         String key=signature(source);File cache=new File(root,"u"+user+".json");

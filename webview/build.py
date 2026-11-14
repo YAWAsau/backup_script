@@ -2,6 +2,7 @@ from pathlib import Path
 import subprocess,os,json,hashlib,zipfile,re,sys,shutil
 S=Path(__file__).resolve().parent
 sdk=Path(os.environ.get('ANDROID_HOME',str(Path.home()/'AppData/Local/Android/Sdk')))
+os.environ['ANDROID_HOME']=str(sdk)
 jdk=Path(os.environ.get('JAVA_HOME','C:/Program Files/Android/Android Studio/jbr'))
 bt=sdk/'build-tools/37.0.0';jar=sdk/'platforms/android-36/android.jar'
 out=S/'out';out.mkdir(exist_ok=True)

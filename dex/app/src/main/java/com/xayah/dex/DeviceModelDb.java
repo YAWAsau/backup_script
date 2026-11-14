@@ -90,9 +90,6 @@ final class DeviceModelDb {
     static int entryCount() { return BY_KEY.size(); }
     static int sourceLineCount() { return SOURCE_LINE_COUNT; }
     static boolean entryCountSelfCheckOk() { return entryCount() == ENTRY_COUNT; }
-    static String entryCountSelfCheck() {
-        return "expected=" + ENTRY_COUNT + " actual=" + entryCount() + " ok=" + entryCountSelfCheckOk();
-    }
 
     private static void fill0(Map<String, Entry> m) {
         put(m, "MI-ONE PLUS", "小米 1 聯通版", "小米 1 聯通版", "device_list_full_import"); // Device_List:L1

@@ -178,8 +178,8 @@ final class ExternalRestorePolicy {
         if (nativePreflight) {
             NativeFileClient.run("external-policy-fused",backing.getPath(),Integer.toString(app.uid),kind);
         } else {
-            if (vold!=null) NativeFileClient.run("external-policy-repair",backing.getPath(),Integer.toString(app.uid),kind);
-            NativeFileClient.run("selinux-restore",backing.getPath(),"12");
+            if (vold!=null) NativeFileClient.run("external-policy-repair-selinux",backing.getPath(),Integer.toString(app.uid),kind);
+            else NativeFileClient.run("selinux-restore",backing.getPath(),"12");
         }
         System.err.println("EXTERNAL_REPAIR_TIMING nativePreflight="+nativePreflight
                 +" dexCheckMs="+(checked-begin)+" nativeMs="+(android.os.SystemClock.elapsedRealtime()-checked));

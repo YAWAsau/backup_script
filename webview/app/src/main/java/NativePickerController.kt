@@ -37,9 +37,10 @@ internal class NativePickerController(private val session:NativeSession,private 
             val found=result.getJSONArray("entries").modelObjects();require(found.size<=1000)
             path=result.getString("path");parent=result.getString("parent");next=if(result.isNull("next"))null else result.getLong("next")
             entries=if(append)entries+found else found;require(entries.size<=10000)
-        }catch(e:Exception){error=e.message?.take(8192)?:"無法讀取資料夾"}
+        }catch(e:Exception){error=e.message?.take(8192)?:session.catalog.text("無法讀取資料夾",session.appearance.values["language"]?:"zh-Hant")}
         finally{loading=false;session.emit()}
     }
+    fun returnsToEditor()=!loading&&(parent.isEmpty()||parent==path)
     fun back(){
         if(loading)return
         if(parent.isNotEmpty()&&parent!=path)load(parent)else done()
@@ -54,7 +55,7 @@ internal class NativePickerController(private val session:NativeSession,private 
             "select"->{
                 val target=event.optString("path")
                 val valid=if(files)entries.any{!it.getBoolean("directory")&&it.getString("path")==target}else target==path||entries.any{it.getBoolean("directory")&&it.getString("path")==target}
-                if(!loading&&valid){if(!selected.remove(target)){if(!multi)selected.clear();if(selected.size<256)selected.add(target)else error="一次最多選擇 256 個路徑。"};revision++;session.emit()}
+                if(!loading&&valid){if(!selected.remove(target)){if(!multi)selected.clear();if(selected.size<256)selected.add(target)else error=session.catalog.text("一次最多選擇 256 個路徑。",session.appearance.values["language"]?:"zh-Hant")};revision++;session.emit()}
             }
             "confirm"->{
                 if(loading)return

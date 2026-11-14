@@ -1,0 +1,194 @@
+{
+  "toolchain": "1.99.1 (unchanged)",
+  "packages": [
+    {
+      "name": "fastrand",
+      "version": "2.5.0",
+      "source": "git+https://github.com/smol-rs/fastrand?rev=7a1cc2c69ebde6cb3442809213db3fe19a2cb0ba#7a1cc2c69ebde6cb3442809213db3fe19a2cb0ba",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/fastrand"
+    },
+    {
+      "name": "flume",
+      "version": "0.12.0",
+      "source": "git+https://github.com/zesterer/flume?rev=6bb48467b47ebbc85794c6b6072614d086bdf930#6bb48467b47ebbc85794c6b6072614d086bdf930",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/zesterer/flume"
+    },
+    {
+      "name": "if-addrs",
+      "version": "0.15.0",
+      "source": "git+https://github.com/messense/if-addrs?rev=2221caa52575fa8774609885a050febcce17ad93#2221caa52575fa8774609885a050febcce17ad93",
+      "license": "MIT OR BSD-3-Clause",
+      "repository": "https://github.com/messense/if-addrs"
+    },
+    {
+      "name": "itoa",
+      "version": "1.0.19",
+      "source": "git+https://github.com/dtolnay/itoa?rev=9339ca99a43c550b5ee36e2afe524d1c90413461#9339ca99a43c550b5ee36e2afe524d1c90413461",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/dtolnay/itoa"
+    },
+    {
+      "name": "libc",
+      "version": "0.2.191",
+      "source": "git+https://github.com/rust-lang/libc?rev=ccc2ff4aaab962f7fde7b8edda7379c045b1ca12#ccc2ff4aaab962f7fde7b8edda7379c045b1ca12",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/libc"
+    },
+    {
+      "name": "lock_api",
+      "version": "0.4.14",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/Amanieu/parking_lot"
+    },
+    {
+      "name": "log",
+      "version": "0.4.35",
+      "source": "git+https://github.com/rust-lang/log?rev=75fcb86da1cce3b9476c58c911482ec43ec235f4#75fcb86da1cce3b9476c58c911482ec43ec235f4",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/log"
+    },
+    {
+      "name": "mdns-sd",
+      "version": "0.21.7",
+      "source": "git+https://github.com/keepsimple1/mdns-sd?rev=8eb02e58c27b423095fac14796896841a28efd16#8eb02e58c27b423095fac14796896841a28efd16",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/keepsimple1/mdns-sd"
+    },
+    {
+      "name": "memchr",
+      "version": "2.8.3",
+      "source": "git+https://github.com/BurntSushi/memchr?rev=bd6068c30e9074a90c285e47912fa0b047d07597#bd6068c30e9074a90c285e47912fa0b047d07597",
+      "license": "Unlicense OR MIT",
+      "repository": "https://github.com/BurntSushi/memchr"
+    },
+    {
+      "name": "mio",
+      "version": "1.2.4",
+      "source": "git+https://github.com/tokio-rs/mio?rev=5e2b24a46287dfe06ad025b6ff5b997497bdb606#5e2b24a46287dfe06ad025b6ff5b997497bdb606",
+      "license": "MIT",
+      "repository": "https://github.com/tokio-rs/mio"
+    },
+    {
+      "name": "proc-macro2",
+      "version": "1.0.107",
+      "source": "git+https://github.com/dtolnay/proc-macro2?rev=8058872fd1eacdd6b13d3cd78c5637f0dd0c0120#8058872fd1eacdd6b13d3cd78c5637f0dd0c0120",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/dtolnay/proc-macro2"
+    },
+    {
+      "name": "quote",
+      "version": "1.0.47",
+      "source": "git+https://github.com/dtolnay/quote?rev=27be8db3c8eb07e7ccd83c2e695d5297c2466253#27be8db3c8eb07e7ccd83c2e695d5297c2466253",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/dtolnay/quote"
+    },
+    {
+      "name": "scopeguard",
+      "version": "1.2.0",
+      "source": "git+https://github.com/bluss/scopeguard?rev=bb988222848d39b0b9037b29da3a3a1eb05ebf4b#bb988222848d39b0b9037b29da3a3a1eb05ebf4b",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/bluss/scopeguard"
+    },
+    {
+      "name": "serde",
+      "version": "1.0.229",
+      "source": "git+https://github.com/serde-rs/serde?rev=aa7913ad0211fef960df68e7812a6211145a888c#aa7913ad0211fef960df68e7812a6211145a888c",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/serde-rs/serde"
+    },
+    {
+      "name": "serde_core",
+      "version": "1.0.229",
+      "source": "git+https://github.com/serde-rs/serde?rev=aa7913ad0211fef960df68e7812a6211145a888c#aa7913ad0211fef960df68e7812a6211145a888c",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/serde-rs/serde"
+    },
+    {
+      "name": "serde_derive",
+      "version": "1.0.229",
+      "source": "git+https://github.com/serde-rs/serde?rev=aa7913ad0211fef960df68e7812a6211145a888c#aa7913ad0211fef960df68e7812a6211145a888c",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/serde-rs/serde"
+    },
+    {
+      "name": "serde_json",
+      "version": "1.0.154",
+      "source": "git+https://github.com/serde-rs/json?rev=8c535a260ce561eaab4111aafc29038eb9f77ff3#8c535a260ce561eaab4111aafc29038eb9f77ff3",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/serde-rs/json"
+    },
+    {
+      "name": "socket-pktinfo",
+      "version": "0.4.2",
+      "source": "git+https://github.com/pixsper/socket-pktinfo?rev=c6e67877f079411bb1de395b2843a12ddc6f555b#c6e67877f079411bb1de395b2843a12ddc6f555b",
+      "license": "MIT",
+      "repository": "https://github.com/pixsper/socket-pktinfo"
+    },
+    {
+      "name": "socket2",
+      "version": "0.6.5",
+      "source": "git+https://github.com/rust-lang/socket2?rev=8b8b96fdaa1301698fd2b6f4de188635df4a8bd1#8b8b96fdaa1301698fd2b6f4de188635df4a8bd1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/socket2"
+    },
+    {
+      "name": "spin",
+      "version": "0.12.3",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "MIT",
+      "repository": "https://codeberg.org/zesterer/spin"
+    },
+    {
+      "name": "syn",
+      "version": "3.0.10",
+      "source": "git+https://github.com/dtolnay/syn?rev=97ec37dda8a893a460066da694fd1eb7cb30538a#97ec37dda8a893a460066da694fd1eb7cb30538a",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/dtolnay/syn"
+    },
+    {
+      "name": "unicode-ident",
+      "version": "1.0.27",
+      "source": "git+https://github.com/dtolnay/unicode-ident?rev=28018f288934fa6be60a6e791e071b7a7195643e#28018f288934fa6be60a6e791e071b7a7195643e",
+      "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
+      "repository": "https://github.com/dtolnay/unicode-ident"
+    },
+    {
+      "name": "wasi",
+      "version": "0.11.1+wasi-snapshot-preview1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "repository": "https://github.com/bytecodealliance/wasi"
+    },
+    {
+      "name": "windows-link",
+      "version": "0.2.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/microsoft/windows-rs"
+    },
+    {
+      "name": "windows-sys",
+      "version": "0.61.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/microsoft/windows-rs"
+    },
+    {
+      "name": "zmij",
+      "version": "1.0.23",
+      "source": "git+https://github.com/dtolnay/zmij?rev=35355256734db2c69a19aba4cae98c7fd8e14adf#35355256734db2c69a19aba4cae98c7fd8e14adf",
+      "license": "MIT",
+      "repository": "https://github.com/dtolnay/zmij"
+    }
+  ],
+  "compatibility_notes": {
+    "libc": "Latest libc-0.2 branch; main is an incompatible 1.0 alpha API not requested by downstream crates.",
+    "spin": "Resolved 0.12.3 is newer than upstream default branch 0.11.0; do not downgrade.",
+    "lock_api": "Downstream spin requires 0.4; upstream 0.5 cannot substitute for this API.",
+    "windows-sys": "Windows-only target dependency uses 0.61 API; upstream default 0.100 is incompatible and not linked into Android.",
+    "wasi": "WASI-only dependency is not linked into Android."
+  }
+}

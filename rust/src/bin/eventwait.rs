@@ -279,7 +279,7 @@ fn wait_pid_or_file(pid: i32, fatal_file: &str, timeout_ms: i64, tag: &str) -> i
 
 fn fifo_process_stat(line: &str) -> Option<(u64, char)> {
     // comm is allowed to contain spaces and ')'; fields follow the final ') '.
-    let (_, tail) = line.rsplit_once(") ")?;
+    let (_, tail) = speedbackup_native_rs::proc_stat::split(&line)?;
     let mut fields = tail.split_whitespace();
     let state = fields.next()?.chars().next()?;
     let start = fields.nth(18)?.parse::<u64>().ok()?;

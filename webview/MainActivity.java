@@ -15,19 +15,24 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     private IBinder endpoint;
     private IBinder.DeathRecipient death;
     private volatile boolean closing;
-    private boolean linked,sessionReady,cancelOnPause,activityResumed;
+    private boolean linked,sessionReady,cancelOnPause,activityResumed,presentationFailed;
     private String origin,navigationId,navigationTarget;
+    private String shortcutId;
     private android.widget.FrameLayout frame;
     private android.widget.TextView transition;
     private NativeChrome nativeChrome;
     private NativeSession controller;
     private long documentGeneration;
     private long modelTicket;
+    private long appliedModelTicket;
+    private long lastSlowModelDiagnostic;
+    private String modelLayoutKey="";
     private final NativeLogCache logCache=new NativeLogCache();
     private final java.util.concurrent.ExecutorService modelWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
     private final java.util.concurrent.atomic.AtomicReference<Runnable> pendingModel=new java.util.concurrent.atomic.AtomicReference<>();
     private final java.util.concurrent.atomic.AtomicBoolean modelWorking=new java.util.concurrent.atomic.AtomicBoolean();
     private JSONObject lastModel;
+    private final Runnable pinWhenStable=()->{if(!closing&&activityResumed&&hasWindowFocus()&&navigationId==null&&controller!=null&&!controller.getFinished()&&lastModel!=null&&(lastModel.optBoolean("tabs")||lastModel.optBoolean("shortcutReady"))){if(!EntryShortcuts.pinPending(this)&&lastModel.optBoolean("tabs"))EntryShortcuts.pin(this,shortcutId,true);}};
     private int safeLeft,safeTop,safeRight,safeBottom;
     private void updateLanguage(String language){
         if(language==null)return;
@@ -36,6 +41,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void showTransition(Runnable next){if(!closing){nativeChrome.beginNavigation();next.run();}}
     private void loadDocument(String address){
+        presentationFailed=false;
         final long generation=++documentGeneration;
         if(controller!=null)controller.close();
         pendingModel.set(null);lastModel=null;
@@ -43,25 +49,31 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         final NativeSession next=new NativeSession(this,address,new NativeSession.Listener(){
             public void model(JSONObject value){main.post(()->{if(!closing&&generation==documentGeneration){lastModel=value;prepareModel(value,generation);}});}
             public void link(String url){main.post(()->{if(!closing&&generation==documentGeneration)try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)));}catch(RuntimeException e){showError("無法開啟連結");}});}
-            public void terminal(String message){main.post(()->{if(!closing&&generation==documentGeneration){showError(message);if(navigationId!=null){notifyNavigation(navigationId,2);navigationId=null;navigationTarget=null;}}});}
-            public void exit(){main.post(()->{if(generation==documentGeneration)close();});}
+            public void terminal(String message){main.post(()->{if(!closing&&generation==documentGeneration){showError(message);if(navigationId!=null){notifyNavigation(navigationId,3);navigationId=null;navigationTarget=null;}}});}
+            public void exit(){main.post(()->{if(generation==documentGeneration)close("document-exit");});}
         });
         controller=next;next.start();next.lifecycle(activityResumed);
     }
-    private void showError(String message){transition.setText(NativeLanguage.text(this,message+"\n請保留日誌供檢查；返回可關閉畫面。"));transition.setVisibility(View.VISIBLE);android.util.Log.w("SpeedBackupNative","native presentation failed");}
+    private void showError(String message){presentationFailed=true;transition.setText(NativeLanguage.text(this,message+"\n請保留日誌供檢查；返回可關閉畫面。"));transition.setVisibility(View.VISIBLE);android.util.Log.w("SpeedBackupNative","native presentation failed");}
     private void prepareModel(JSONObject source,long generation){
         updateLanguage(source.optString("uiLanguage",NativeLanguage.get()));
-        if(frame.getWidth()==0){return;}
         final android.util.DisplayMetrics metrics=new android.util.DisplayMetrics();metrics.setTo(getResources().getDisplayMetrics());
-        final int width=frame.getWidth()-safeLeft-safeRight;
+        // A cold background Activity may not receive layout until resumed. Prepare and
+        // validate against display width now; the actual layout will reprepare later.
+        final int width=Math.max(1,(frame.getWidth()>0?frame.getWidth():metrics.widthPixels)-safeLeft-safeRight);
         final long ticket=++modelTicket;
+        final long requestedAt=android.os.SystemClock.uptimeMillis();
+        final String layoutKey=generation+":"+width+":"+metrics.density+":"+metrics.scaledDensity+":"+safeTop+":"+safeBottom+":"+safeLeft+":"+safeRight+":"+source.optDouble("scale",1)+":"+source.optString("sectionRoute")+":"+source.optString("epoch");
+        modelLayoutKey=layoutKey;
         final int top=safeTop,bottom=safeBottom,left=safeLeft,right=safeRight;
         pendingModel.set(()->{
             try{
-                JSONObject value=new JSONObject(source.toString());value.put("safeTop",top/metrics.density).put("safeBottom",bottom/metrics.density).put("safeLeft",left/metrics.density).put("safeRight",right/metrics.density).put("bottom",20+bottom/metrics.density);
+                JSONObject value=NativeModelSnapshot.layoutCopy(source);value.put("safeTop",top/metrics.density).put("safeBottom",bottom/metrics.density).put("safeLeft",left/metrics.density).put("safeRight",right/metrics.density).put("bottom",20+bottom/metrics.density);
+                final long prepareAt=android.os.SystemClock.uptimeMillis();
                 NativeChrome.Prepared prepared=NativeChrome.prepare(value,width,metrics.density,14f*(float)value.optDouble("scale",1)*metrics.scaledDensity,logCache);
-                main.post(()->{if(!closing&&generation==documentGeneration&&ticket==modelTicket){nativeChrome.applyPrepared(prepared);applyBars((int)prepared.getData().optLong("background",0xff000000L));transition.setVisibility(View.GONE);if(navigationId!=null){notifyNavigation(navigationId,1);navigationId=null;navigationTarget=null;}}});
-            }catch(Exception e){main.post(()->{if(!closing&&generation==documentGeneration)showError("介面資料驗證失敗："+e.getClass().getSimpleName());});}
+                final long preparedAt=android.os.SystemClock.uptimeMillis();
+                main.post(()->{if(!closing&&generation==documentGeneration&&ticket>appliedModelTicket&&layoutKey.equals(modelLayoutKey)){appliedModelTicket=ticket;nativeChrome.applyPrepared(prepared);long now=android.os.SystemClock.uptimeMillis();if(now-requestedAt>250&&now-lastSlowModelDiagnostic>10000&&controller!=null){lastSlowModelDiagnostic=now;controller.diagnostic("native-model-slow:queue:"+(prepareAt-requestedAt)+":prepare:"+(preparedAt-prepareAt)+":apply:"+(now-preparedAt));}if((source.optBoolean("tabs")&&source.has("menu"))||source.optBoolean("shortcutReady")){main.removeCallbacks(pinWhenStable);main.postDelayed(pinWhenStable,1500);}applyBars(prepared.getData().optBoolean("fontAdaptive") ? (((int)prepared.getData().optLong("foreground",0xffffffffL)&0xffffff)==0?Color.WHITE:Color.BLACK) : (int)prepared.getData().optLong("background",0xff000000L));presentationFailed=false;transition.setVisibility(View.GONE);if(navigationId!=null){notifyNavigation(navigationId,1);navigationId=null;navigationTarget=null;}}});
+            }catch(Exception e){main.post(()->{if(!closing&&generation==documentGeneration){showError("介面資料驗證失敗："+e.getClass().getSimpleName());if(navigationId!=null){notifyNavigation(navigationId,3);navigationId=null;navigationTarget=null;}}});}
         });
         drainModels();
     }
@@ -122,7 +134,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
         if(nativeChrome!=null)nativeChrome.resetNavigationHistory();
         if(navigationId!=null){notifyNavigation(navigationId,2);navigationId=null;navigationTarget=null;}
-        IBinder.DeathRecipient nextDeath=()->main.post(()->{if(session==next)close();});
+        IBinder.DeathRecipient nextDeath=()->main.post(()->{if(session==next)close("session-binder-died");});
         next.linkToDeath(nextDeath,0);
         // Tell the old controller it was replaced before releasing its death link.
         if(session!=null){
@@ -139,6 +151,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             catch(RuntimeException unavailable){android.util.Log.w("SpeedBackupGuard","Foreground protection unavailable: "+unavailable.getClass().getSimpleName());}
 
         }
+        shortcutId=EntryShortcuts.remember(this,intent);
         session=next;death=nextDeath;linked=true;sessionReady=false;navigationTarget=null;navigationId=null;origin="http://127.0.0.1:"+uri.getPort();
         endpoint=new Binder(){
             @Override protected boolean onTransact(int code,Parcel data,Parcel reply,int flags)throws RemoteException {
@@ -160,8 +173,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     if(!"http".equals(targetUri.getScheme())||!"127.0.0.1".equals(targetUri.getHost())||targetUri.getPort()<1||targetUri.getUserInfo()!=null||!"/".equals(targetUri.getPath())||targetUri.getQuery()!=null||targetUri.getFragment()==null||!targetUri.getFragment().matches("[0-9a-f]{64}"))return false;
                     main.post(()->{
                         if(session!=next)return;
-                        if(closing||isFinishing()||isDestroyed()||!activityResumed){notifyNavigation(id,2);return;}
-                        if(navigationId!=null){notifyNavigation(id,2);return;}
+                        if(closing||isFinishing()||isDestroyed()){notifyNavigation(id,2);return;}
+                        if(navigationId!=null){notifyNavigation(id,3);return;}
                         navigationId=id;navigationTarget=target;origin="http://127.0.0.1:"+targetUri.getPort();
                         showTransition(()->loadDocument(target));
                     });return true;
@@ -170,12 +183,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 main.post(()->{
                     // A late close from the preceding controller must not close this page.
                     if(session!=next)return;
-                    if(code==1){close();return;}
+                    if(code==1){close("root-close");return;}
                     showTransition(()->{if(code==3){moveTaskToBack(true);}notifySession(5);});
                 });return true;
             }
         };
-        showTransition(()->{loadDocument(url);if(hasWindowFocus())notifySession(1);});
+        showTransition(()->{loadDocument(url);notifySession(1);});
     }
     private byte[] applicationIcon(android.content.pm.ApplicationInfo app){
         android.graphics.Bitmap bitmap=null;
@@ -243,7 +256,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         catch(RemoteException e){close();}finally{p.recycle();}
     }
     @Override public void onWindowFocusChanged(boolean focused){
-        super.onWindowFocusChanged(focused);if(focused)launchResume();if(focused&&session!=null&&endpoint!=null&&!closing)notifySession(1);
+        super.onWindowFocusChanged(focused);if(focused){launchResume();main.removeCallbacks(pinWhenStable);main.postDelayed(pinWhenStable,1500);}if(focused&&session!=null&&endpoint!=null&&!closing)notifySession(1);
     }
     private void notifySession(int code) {
         if(session==null||(code==1&&sessionReady))return;
@@ -258,7 +271,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
         frame=new android.widget.FrameLayout(this);
-        nativeChrome=new NativeChrome(this,(id,epoch)->{if(controller!=null)controller.dispatch(id,epoch);});
+        nativeChrome=new NativeChrome(this,(id,epoch)->{if("native:refresh".equals(id)){if(controller!=null)controller.refresh();return;}if("native:create-shortcut".equals(id)){if(!EntryShortcuts.pinPending(this,false))EntryShortcuts.pin(this,shortcutId,false);return;}if(controller!=null)controller.dispatch(id,epoch);});
         frame.addView(nativeChrome.getView(),new android.widget.FrameLayout.LayoutParams(-1,-1));
         transition=new android.widget.TextView(this);transition.setText(NativeLanguage.text(this,"正在開啟…"));transition.setGravity(Gravity.CENTER);transition.setTextSize(18);transition.setPadding(24,24,24,24);transition.setClickable(true);
         boolean dark=(getResources().getConfiguration().uiMode&android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;
@@ -273,14 +286,16 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             v.setPadding(0,0,0,Build.VERSION.SDK_INT>=30?0:keyboard);if(lastModel!=null)prepareModel(lastModel,documentGeneration);return insets;
         });
         frame.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if((r-l!=or-ol||b-t!=ob-ot)&&lastModel!=null)prepareModel(lastModel,documentGeneration);});
-        if(Build.VERSION.SDK_INT>=33)getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,this::back);
+        getOnBackPressedDispatcher().addCallback(this,new androidx.activity.OnBackPressedCallback(true){
+            @Override public void handleOnBackPressed(){back();}
+        });
         try{if(needsRootResume(getIntent()))prepareResume();else bindAfterPermission(getIntent());}catch(Exception e){showError("無法接回工作："+e.getClass().getSimpleName());}
     }
     @Override public void onConfigurationChanged(android.content.res.Configuration configuration){super.onConfigurationChanged(configuration);frame.requestApplyInsets();if(controller!=null)controller.refresh();}
-    @Override public void onBackPressed(){back();}
-    private void back(){if(closing)return;if(transition.getVisibility()==View.VISIBLE||controller==null){close();return;}controller.dispatch("back",controller.getEpoch());}
-    @Override protected void onResume(){super.onResume();activityResumed=true;main.post(this::finishPermissionSetup);if(controller!=null)controller.lifecycle(true);}
-    @Override protected void onPause(){activityResumed=false;if(controller!=null)controller.lifecycle(false);super.onPause();if(cancelOnPause&&!closing)close();}
-    private void close(){if(closing)return;closing=true;finishAndRemoveTask();}
+    private void back(){if(closing)return;if(controller==null||presentationFailed){close("back-unavailable");return;}controller.dispatch("back",controller.getEpoch());}
+    @Override protected void onResume(){super.onResume();activityResumed=true;main.post(this::finishPermissionSetup);main.postDelayed(pinWhenStable,1800);if(controller!=null)controller.lifecycle(true);}
+    @Override protected void onPause(){activityResumed=false;if(controller!=null)controller.lifecycle(false);super.onPause();if(cancelOnPause&&!closing)close("pause-policy");}
+    private void close(){close("client-close");}
+    private void close(String reason){if(closing)return;android.util.Log.w("SpeedBackupNative","Process: io.github.yawasau.speedbackup.webview close="+reason+" navigation="+(navigationId!=null)+" resumed="+activityResumed);closing=true;finishAndRemoveTask();}
     @Override protected void onDestroy(){closing=true;++documentGeneration;if(controller!=null)controller.close();pendingModel.set(null);modelWorker.shutdownNow();main.removeCallbacksAndMessages(null);notifySession(2);if(session!=null&&linked)try{session.unlinkToDeath(death,0);}catch(Exception ignored){}super.onDestroy();}
 }

@@ -41,13 +41,13 @@ pub fn file_transfer_command(args: &[String]) -> i32 {
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
-fn uint(s: &str) -> io::Result<u128> {
+pub(super) fn uint(s: &str) -> io::Result<u128> {
     if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
         return Err(invalid("invalid unsigned decimal"));
     }
     s.parse().map_err(|_| invalid("decimal overflow"))
 }
-fn optional(s: &str) -> io::Result<Option<u128>> {
+pub(super) fn optional(s: &str) -> io::Result<Option<u128>> {
     if s == "-" {
         Ok(None)
     } else {

@@ -55,11 +55,18 @@ def source_path(name: str) -> Path:
     return path
 
 
-def collect() -> tuple[dict[str, bytes], dict[str, str]]:
+def collect(with_upstream: bool = False) -> tuple[dict[str, bytes], dict[str, str]]:
     require(not (ROOT / "tools/jq").exists(), "Retired runtime tool must be removed: tools/jq")
     inventory = json.loads((ROOT / INVENTORY).read_text(encoding="utf-8"))
     require(inventory.get("schema") == 1, "Unsupported source-package.json schema")
-    names = inventory["files"]
+    names = list(inventory["files"])
+    external = json.loads((ROOT / inventory["external_sources"]).read_text(encoding="utf-8"))["files"]
+    require(not set(names).intersection(external), "External source also listed in repository inventory")
+    if with_upstream:
+        for name, expected in external.items():
+            require((ROOT / name).is_file(), "Restore upstream sources first: python restore_upstream.py <archive.zip>")
+            require(digest(source_path(name).read_bytes()) == expected, f"External source hash mismatch: {name}")
+        names.extend(external)
     require(isinstance(names, list) and all(isinstance(n, str) for n in names),
             "Source inventory must contain a list of paths")
     require(len(names) == len({n.casefold() for n in names}), "Duplicate source path")
@@ -80,8 +87,8 @@ def collect() -> tuple[dict[str, bytes], dict[str, str]]:
         "zstd/build.ps1", "zstd/build_native.py", "zstd/android_build_note.py",
         "zstd/upstream_source_sha256.json", "zstd/upstream/LICENSE", "zstd/upstream/COPYING",
     } | {f"rust/src/bin/{name}.rs" for name in APPLETS}
-    require(required <= set(names), "Required paths removed from inventory: "
-            + ", ".join(sorted(required - set(names))))
+    require(required <= (set(names) | set(external)), "Required paths removed from inventory: "
+            + ", ".join(sorted(required - (set(names) | set(external)))))
     files = {}
     for name in sorted(names):
         require(PurePosixPath(name).name.lower() not in {"jq", "jq.exe"},
@@ -119,12 +126,29 @@ def collect() -> tuple[dict[str, bytes], dict[str, str]]:
                 require(name in files, f"Unlisted source: {name}; add it to {INVENTORY}")
     for component, manifest in (("tar", "SOURCE_MANIFEST.json"),
                                 ("zstd", "upstream_source_sha256.json")):
+        if not with_upstream:
+            require(f"{component}/{manifest}" in external, f"Missing external {component} manifest")
+            continue
         expected = json.loads(files[f"{component}/{manifest}"])["files"]
         prefix = f"{component}/upstream/"
         actual = {name[len(prefix):] for name in files if name.startswith(prefix)}
-        require(actual == set(expected), f"Incomplete {component} upstream snapshot")
-        for name, sha in expected.items():
-            require(digest(files[prefix + name]) == sha, f"Upstream source changed: {prefix}{name}")
+        declared = {name[len(prefix):]: sha for name, sha in external.items() if name.startswith(prefix)}
+        require(declared == expected, f"External manifest differs from pinned {component} snapshot")
+        if with_upstream:
+            require(actual == set(expected), f"Incomplete {component} upstream snapshot")
+            for name, sha in expected.items():
+                require(digest(files[prefix + name]) == sha, f"Upstream source changed: {prefix}{name}")
+        else:
+            require(not actual, f"Unexpected bundled {component} source")
+    # Cargo verifies these files during offline builds, including pinned upstream
+    # metadata. Never publish a source archive with an incomplete vendor tree.
+    for name, body in files.items():
+        if name.startswith("rust/vendor/") and name.endswith("/.cargo-checksum.json"):
+            prefix = name.rsplit("/", 1)[0] + "/"
+            for relative, expected in json.loads(body)["files"].items():
+                target = prefix + relative
+                require(target in files, f"Incomplete Cargo vendor snapshot: {target}")
+                require(digest(files[target]) == expected, f"Cargo vendor source changed: {target}")
     versions = {}
     for line in files["versions.properties"].decode("utf-8").splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
@@ -162,10 +186,11 @@ def collect() -> tuple[dict[str, bytes], dict[str, str]]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, help="New ZIP path; an existing ZIP is never overwritten")
+    parser.add_argument("--with-upstream", action="store_true", help="Include restored, hash-verified upstream snapshots")
     args = parser.parse_args()
-    files, versions = collect()
+    files, versions = collect(args.with_upstream)
     output = (args.output or ROOT / "deliverables" /
-              f'SpeedBackup_{versions["build"]}_FULL_SOURCE_CLEAN.zip').resolve()
+              f'SpeedBackup_{versions["build"]}_{"FULL_SOURCE_CLEAN" if args.with_upstream else "PROJECT_SOURCE"}.zip').resolve()
     require(not output.exists(), f"Output already exists: {output}; use a new --output path")
     hashes = {name: digest(body) for name, body in files.items()}
     files["SOURCE_SHA256SUMS.txt"] = "".join(

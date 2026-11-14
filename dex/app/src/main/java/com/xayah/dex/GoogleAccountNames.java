@@ -98,15 +98,4 @@ final class GoogleAccountNames {
         for(Account a:read(user,true)){out.append(TimelineArchiveV3.selector(a.gaia)).append('\t').append(label(a)).append('\n');out.append(a.selector).append('\t').append(label(a)).append('\n');}
         return out.toString();
     }
-    static String greeting(int user) {
-        try {
-            List<Account> accounts=read(user);StringBuilder names=new StringBuilder();int count=0;
-            for(Account a:accounts)if(!a.label.isEmpty()) {
-                if(count++>=2){names.append(" 等");break;}
-                if(names.length()>0)names.append("、");names.append(a.label);
-            }
-            if(names.length()==0)return "";
-            return accounts.size()==1?"歡迎回來，"+names+"！\n":"歡迎回來！已登入 Google 帳號："+names+"\n";
-        } catch(Exception ignored) { return ""; }
-    }
 }

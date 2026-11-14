@@ -12,6 +12,8 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.util.fastCoerceIn
 import com.kyant.backdrop.RuntimeShader
 import com.kyant.backdrop.asComposeShader
@@ -37,6 +39,7 @@ class InteractiveHighlight(
     private val positionAnimation =
         Animatable(Offset.Zero, Offset.VectorConverter, Offset.VisibilityThreshold)
 
+    private var gestureCoordinates: LayoutCoordinates? = null
     private var startPosition = Offset.Zero
     val pressProgress: Float get() = pressProgressAnimation.value
     val offset: Offset get() = positionAnimation.value - startPosition
@@ -99,9 +102,13 @@ half4 main(float2 coord) {
         }
 
     val gestureModifier: Modifier =
-        Modifier.pointerInput(animationScope) {
+        Modifier.then(if(consumeHorizontalDrag)Modifier.onGloballyPositioned { gestureCoordinates = it } else Modifier).pointerInput(animationScope) {
             inspectDragGestures(
                 consumeHorizontalDrag = consumeHorizontalDrag,
+                gesturePosition = { local ->
+                    val coordinates=gestureCoordinates
+                    if(coordinates?.isAttached==true)coordinates.localToRoot(local) else local
+                },
                 onDragStart = { down ->
                     startPosition = down.position
                     animationScope.launch {

@@ -33,6 +33,8 @@ def secure_url(value):
 def import_metadata(paths):
     records = {}
     overrides = {
+        # JitPack core POM omits attribution; verified against libsu tag 6.0.0 LICENSE.
+        'com.github.topjohnwu.libsu': ('https://github.com/topjohnwu/libsu', 'Apache-2.0', 'John Wu'),
         'com.google.guava': ('https://github.com/google/guava', 'Apache-2.0', 'Google'),
         'com.google.code.gson': ('https://github.com/google/gson', 'Apache-2.0', 'Google'),
         'com.google.errorprone': ('https://github.com/google/error-prone', 'Apache-2.0', 'Google'),

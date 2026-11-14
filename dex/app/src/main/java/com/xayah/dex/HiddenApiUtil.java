@@ -200,9 +200,6 @@ public class HiddenApiUtil {
 
     private static void onCommand(String cmd, String[] args) {
         switch (cmd) {
-            case "googleAccountGreeting":
-                DaemonOutput.current().print(GoogleAccountNames.greeting(parseIntArg(args,1,0)));
-                break;
             case "getPackageLabel":
                 getPackageLabel(args);
                 break;
@@ -496,31 +493,24 @@ public class HiddenApiUtil {
         try (LocalSocket c = client) {
             InputStream in = c.getInputStream();
             OutputStream out = c.getOutputStream();
-            String command = DaemonBootstrap.readUtf8Line(in);
-            String protocolRaw = DaemonBootstrap.readUtf8Line(in);
-            String bodyLengthRaw = DaemonBootstrap.readUtf8Line(in);
-            int protocol = parsePositiveInt(protocolRaw, -1);
-            long bodyLength = parseLong(bodyLengthRaw, -2L);
+            DaemonBootstrap.RequestHeader header=DaemonBootstrap.readRequestHeader(in);
+            String command=header.command;
             byte[] bodyBytes;
             int rc;
             String name;
             String body;
-            if (protocol != DAEMON_PROTOCOL_VERSION || bodyLength < -1L) {
+            if (!header.valid(DAEMON_PROTOCOL_VERSION)) {
                 rc = 2;
                 name = "BAD_REQUEST";
                 body = "HIDDENAPI_DAEMON_BAD_REQUEST\n";
             } else {
-                bodyBytes = bodyLength == -1L ? DaemonBootstrap.readAll(in) : DaemonBootstrap.readExactly(in, bodyLength);
+                bodyBytes = header.readBody(in);
                 DaemonRunResult result = runDaemonCommand(command, bodyBytes);
                 rc = result.rc;
                 name = rc == 0 ? "OK" : "FAIL";
                 body = result.stdout;
             }
-            byte[] response = body.getBytes(StandardCharsets.UTF_8);
-            out.write(("RESULT " + rc + " " + name + "\n").getBytes(StandardCharsets.UTF_8));
-            out.write((String.valueOf(response.length) + "\n").getBytes(StandardCharsets.UTF_8));
-            out.write(response);
-            out.flush();
+            DaemonBootstrap.writeResult(out,rc,name,body);
         } catch (Throwable t) {
             System.err.println("[hiddenapi-daemon] " + t.getClass().getName() + ": " + sanitizeMachineValue(t.getMessage()));
         }
@@ -547,9 +537,6 @@ public class HiddenApiUtil {
         String[] cmdArgs = argsList.toArray(new String[0]);
         if ("ping".equals(command)) {
             return new DaemonRunResult(0, "PONG\n");
-        }
-        if ("googleAccountGreeting".equals(command)) {
-            return new DaemonRunResult(0,GoogleAccountNames.greeting(parseIntArg(cmdArgs,1,0)));
         }
         if ("forceStopPackageBatch".equals(command)) {
             return forceStopPackageBatchDaemonCommand(cmdArgs);

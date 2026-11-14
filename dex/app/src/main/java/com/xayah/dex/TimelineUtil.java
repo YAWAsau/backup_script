@@ -473,7 +473,7 @@ public final class TimelineUtil {
                 GoogleAccountNames.Account target=GoogleAccountNames.select(user,System.getenv("SPEEDBACKUP_TIMELINE_ACCOUNT_SHA256"));
                 live=new TimelineDatabase.Live(user,false,target.selector,work);
                 TimelineDatabase.validateSnapshot(input);
-                System.out.println("此時間軸來自「"+GoogleAccountNames.sourceLabel(user,input,manifest)+"」，將匯入至「"+GoogleAccountNames.label(target)+"」的時間軸。");
+                System.out.println(NotificationUtil.notificationText("此時間軸來自「")+GoogleAccountNames.sourceLabel(user,input,manifest)+NotificationUtil.notificationText("」，將匯入至「")+GoogleAccountNames.label(target)+NotificationUtil.notificationText("」的時間軸。"));
                 if(mode.equals("merge")) {
                     for(File part:mergeSources)TimelineDatabase.prepareAccountImport(live,part,device,target,true);
                 } else TimelineDatabase.prepareAccountImport(live,input,device,target,mode.equals("cross"));
@@ -511,7 +511,7 @@ public final class TimelineUtil {
             }
             TimelineDatabase.finishBackup(live,aggregate,device,true);
             TimelineDatabase.validate(live,aggregate,device,true,importGaia);input=aggregate;
-            System.out.println("合併來源："+sourceIds.length+"；略過完全重複紀錄："+duplicates+"。保留目的帳號既有紀錄。");
+            System.out.println(NotificationUtil.notificationText("合併來源：")+sourceIds.length+NotificationUtil.notificationText("；略過完全重複紀錄：")+duplicates+NotificationUtil.notificationText("。保留目的帳號既有紀錄。"));
             System.err.println("TIMELINE_MERGE_READY sources="+sourceIds.length+" duplicatesSkipped="+duplicates+" existingHistoryPreserved=true");
         }
         if(operation.equals("check-archive")) {

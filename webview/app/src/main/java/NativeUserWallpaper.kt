@@ -34,6 +34,10 @@ import java.io.File
 
 /** Private, bounded, orientation-aware copy: no persistent permission to the original is needed. */
 internal object NativeUserWallpaper {
+    // NativeChrome calls this before creating a composition or publishing work.
+    // Lazy first-touch from a model worker can otherwise create these states
+    // after the composition's read snapshot has already been taken.
+    fun initialize() = Unit
     var bitmap by mutableStateOf<Bitmap?>(null)
         private set
     var rendered by mutableStateOf<Bitmap?>(null)
@@ -46,6 +50,21 @@ internal object NativeUserWallpaper {
         private set
     var dim by mutableIntStateOf(55)
         private set
+    private var luminanceBitmap:Bitmap?=null
+    private var luminanceMean=.5f
+    /** One shared wallpaper sample; ordinary model refreshes reuse it. */
+    @Synchronized fun backgroundLuminance(background:Int):Float {
+        val source=rendered.takeIf{enabled}
+        val base=(((background shr 16)and 255)*.2126f+((background shr 8)and 255)*.7152f+(background and 255)*.0722f)/255f
+        if(source==null)return base
+        if(luminanceBitmap!==source){
+            var sum=0.0
+            for(y in 0..4)for(x in 0..4){val pixel=source.getPixel((source.width-1)*x/4,(source.height-1)*y/4);sum+=.2126*((pixel shr 16)and 255)+.7152*((pixel shr 8)and 255)+.0722*(pixel and 255)}
+            luminanceMean=(sum/(25*255)).toFloat();luminanceBitmap=source
+        }
+        val opacity=committedOpacity/100f
+        return luminanceMean*opacity+base*(1f-opacity)
+    }
     private fun prefs(context:Context)=context.applicationContext.getSharedPreferences("wallpaper",Context.MODE_PRIVATE)
     fun adjust(context:Context,key:String,value:Int){
         val v=value.coerceIn(0,100)
@@ -210,30 +229,34 @@ internal object NativeUserWallpaper {
     }
 }
 
-@Composable internal fun NativeWallpaperSettings(text:Color,container:Color,accent:Color,style:TextStyle,enabled:Boolean,onImport:()->Unit,onSystem:()->Unit){
+@Composable internal fun NativeWallpaperSettings(text:Color,container:Color,accent:Color,style:TextStyle,enabled:Boolean,onImport:()->Unit,wallpaperText:Color=text,onSystem:()->Unit){
     val context=LocalContext.current
     var choosing by remember { mutableStateOf(false) }
     val available=enabled&&!NativeUserWallpaper.busy
-    val options=listOf("import" to "選擇壁紙","system" to "使用系統壁紙").map{(value,label)->org.json.JSONObject().put("value",value).put("label",NativeLanguage.text(context,label))}
+    val options=(listOf("import" to "選擇壁紙","system" to "使用系統壁紙")+if(NativeUserWallpaper.bitmap!=null)listOf("reset" to "恢復原本背景") else emptyList()).map{(value,label)->org.json.JSONObject().put("value",value).put("label",NativeLanguage.text(context,label))}
     LaunchedEffect(available){if(!available)choosing=false}
+    CompositionLocalProvider(LocalNativeSettingIcon provides "wallpaper") {
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        if(NativeUserWallpaper.bitmap!=null)NativeSwitchPreference(NativeLanguage.text(context,"使用自訂背景"),"",NativeUserWallpaper.enabled,text,accent,style,available){NativeUserWallpaper.setEnabled(context,it)}
+        if(NativeUserWallpaper.bitmap!=null)NativeSwitchPreference(NativeLanguage.text(context,"使用自訂背景"),NativeLanguage.text(context,"關閉後顯示預設背景，保留已選圖片與調整值。"),NativeUserWallpaper.enabled,text,accent,style,available){NativeUserWallpaper.setEnabled(context,it)}
         Box(Modifier.fillMaxWidth()) {
-            NativeDialogButton(NativeLanguage.text(context,"選擇壁紙"),"miuix",text,container,style,available,Modifier.fillMaxWidth(),centered=false,visualEnabled=!NativeUserWallpaper.busy,dropdown=true){choosing=true}
-            NativeSelectionPopup(choosing,"miuix",options,"",text,container,accent,{choosing=false}){value->
+            val popup:@Composable ()->Unit={NativeSelectionPopup(choosing,"miuix",options,"",text,container,accent,{choosing=false}){value->
                 choosing=false
-                if(available){if(value=="import")onImport() else if(value=="system")onSystem()}
-            }
+                if(available){if(value=="import")onImport() else if(value=="system")onSystem() else if(value=="reset")NativeUserWallpaper.clear(context)}
+            }}
+            NativePreferenceRow(NativeLanguage.text(context,"壁紙操作"),NativeLanguage.text(context,"選擇"),"",true,text,style,available,popupContent=popup){choosing=true}
+            if(!LocalNativeMaterial.current)popup()
         }
-        if(NativeUserWallpaper.bitmap!=null)NativeDialogButton(NativeLanguage.text(context,"恢復原本背景"),"miuix",text,container,style,enabled&&!NativeUserWallpaper.busy,Modifier.fillMaxWidth(),visualEnabled=!NativeUserWallpaper.busy){NativeUserWallpaper.clear(context)}
         if(NativeUserWallpaper.bitmap!=null){
-            for((key,label,value) in listOf(Triple("transparency",NativeLanguage.text(context,"壁紙透明度"),NativeUserWallpaper.transparency),Triple("blur",NativeLanguage.text(context,"壁紙模糊度"),NativeUserWallpaper.blur),Triple("dim",if(text.red>.5f)NativeLanguage.text(context,"壁紙壓暗") else NativeLanguage.text(context,"壁紙提亮"),NativeUserWallpaper.dim))){
-                Column {
-                    NativeSliderLabel(label,"$value%",style.copy(color=text.copy(alpha=if(NativeUserWallpaper.enabled)1f else .4f)))
+            for((key,label,value) in listOf(Triple("transparency",NativeLanguage.text(context,"壁紙透明度"),NativeUserWallpaper.transparency),Triple("blur",NativeLanguage.text(context,"壁紙模糊度"),NativeUserWallpaper.blur),Triple("dim",if(wallpaperText.red>.5f)NativeLanguage.text(context,"壁紙壓暗") else NativeLanguage.text(context,"壁紙提亮"),NativeUserWallpaper.dim))){
+                CompositionLocalProvider(LocalNativeSettingIcon provides when(key){"transparency"->"glass-transparency";"blur"->"glass-blur";else->"glass-light"}) {
+                Column(Modifier.padding(horizontal=if(LocalNativeMaterial.current)16.dp else 0.dp)) {
+                    val summary=when(key){"transparency"->"調整壁紙與預設背景的混合比例。";"blur"->"柔化壁紙細節，讓前方文字更容易閱讀。";else->if(wallpaperText.red>.5f)"降低壁紙亮度，提升淺色文字的對比。" else "提高壁紙亮度，提升深色文字的對比。"}
+                    NativeSliderLabel(label,"$value%",style.copy(color=text.copy(alpha=if(NativeUserWallpaper.enabled)1f else .4f)),NativeLanguage.text(context,summary))
                     NativeMiuixSlider(label,value.toFloat(),enabled&&NativeUserWallpaper.enabled&&!NativeUserWallpaper.busy,NativeUserWallpaper.enabled&&!NativeUserWallpaper.busy,accent,{NativeUserWallpaper.adjust(context,key,it.toInt())},{},{NativeUserWallpaper.commit(context)})
-                }
+                } }
             }
         }
-        if(NativeUserWallpaper.status.isNotEmpty())BasicText(NativeLanguage.text(context,NativeUserWallpaper.status),style=style)
+        if(NativeUserWallpaper.status.isNotEmpty())BasicText(NativeLanguage.text(context,NativeUserWallpaper.status),Modifier.padding(if(LocalNativeMaterial.current)16.dp else 0.dp),style=style)
+    }
     }
 }

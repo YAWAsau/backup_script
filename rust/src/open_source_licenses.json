@@ -32,37 +32,6 @@
       "coordinates": []
     },
     {
-      "id": "org.lsposed.hiddenapibypass:hiddenapibypass:6.2",
-      "name": "Android Hidden Api Bypass",
-      "author": "LSPosed",
-      "version": "6.2",
-      "license": "The Apache Software License, Version 2.0",
-      "url": "https://github.com/LSPosed/AndroidHiddenApiBypass",
-      "description": "Bypass restrictions on non-SDK interfaces",
-      "components": [
-        "Dex"
-      ],
-      "coordinate": "org.lsposed.hiddenapibypass:hiddenapibypass:6.2",
-      "members": [
-        {
-          "id": "org.lsposed.hiddenapibypass:hiddenapibypass:6.2",
-          "name": "Android Hidden Api Bypass",
-          "author": "LSPosed",
-          "version": "6.2",
-          "license": "The Apache Software License, Version 2.0",
-          "url": "https://github.com/LSPosed/AndroidHiddenApiBypass",
-          "description": "Bypass restrictions on non-SDK interfaces",
-          "components": [
-            "Dex"
-          ],
-          "coordinate": "org.lsposed.hiddenapibypass:hiddenapibypass:6.2"
-        }
-      ],
-      "coordinates": [
-        "org.lsposed.hiddenapibypass:hiddenapibypass:6.2"
-      ]
-    },
-    {
       "id": "reference:android",
       "name": "Android Open Source Project / Bionic",
       "author": "Android Open Source Project",
@@ -100,7 +69,7 @@
       "version": "fa0a0f74a1fc",
       "license": "GPL-3.0-only",
       "url": "https://github.com/XayahSuSuSu/Android-DataBackup",
-      "description": "ExternalRestorePolicy 的外部資料恢復策略來源。",
+      "description": "ExternalRestorePolicy 的外部資料恢復策略來源。已核對最新 1ba03fabd13f：引用的 RestoreExternalDataHelper.kt 無變更。",
       "components": [
         "Dex",
         "原始碼引用"
@@ -113,7 +82,7 @@
           "version": "fa0a0f74a1fc",
           "license": "GPL-3.0-only",
           "url": "https://github.com/XayahSuSuSu/Android-DataBackup",
-          "description": "ExternalRestorePolicy 的外部資料恢復策略來源。",
+          "description": "ExternalRestorePolicy 的外部資料恢復策略來源。已核對最新 1ba03fabd13f：引用的 RestoreExternalDataHelper.kt 無變更。",
           "components": [
             "Dex",
             "原始碼引用"
@@ -126,7 +95,7 @@
       "id": "reference:liquidglass",
       "name": "AndroidLiquidGlass",
       "author": "Kyant0",
-      "version": "65ab177e90e5",
+      "version": "2.0.1-eb4a0ea2-SNAPSHOT",
       "license": "Apache-2.0",
       "url": "https://github.com/Kyant0/AndroidLiquidGlass",
       "description": "液態玻璃控制項與視窗座標取樣來源；已作本專案修改。",
@@ -139,7 +108,7 @@
           "id": "reference:liquidglass",
           "name": "AndroidLiquidGlass",
           "author": "Kyant0",
-          "version": "65ab177e90e5",
+          "version": "2.0.1-eb4a0ea2-SNAPSHOT",
           "license": "Apache-2.0",
           "url": "https://github.com/Kyant0/AndroidLiquidGlass",
           "description": "液態玻璃控制項與視窗座標取樣來源；已作本專案修改。",
@@ -825,48 +794,273 @@
       ]
     },
     {
-      "id": "androidx.compose.material3:material3-window-size-class-android:1.5.0-alpha22",
+      "id": "androidx.compose.material3:material3-window-size-class-android:1.5.0-rc01",
       "name": "AndroidX Compose Material 3 Window Size Class",
       "author": "The Android Open Source Project",
-      "version": "1.5.0-alpha22",
+      "version": "1.5.0-rc01",
       "license": "The Apache Software License, Version 2.0",
-      "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3#1.5.0-alpha22",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3#1.5.0-rc01",
       "description": "Provides window size classes for building responsive UIs",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "androidx.compose.material3:material3-window-size-class-android:1.5.0-alpha22",
+      "coordinate": "androidx.compose.material3:material3-window-size-class-android:1.5.0-rc01",
       "members": [
         {
-          "id": "androidx.compose.material3:material3-window-size-class-android:1.5.0-alpha22",
+          "id": "androidx.compose.material3:material3-window-size-class-android:1.5.0-rc01",
           "name": "AndroidX Compose Material 3 Window Size Class",
           "author": "The Android Open Source Project",
-          "version": "1.5.0-alpha22",
+          "version": "1.5.0-rc01",
           "license": "The Apache Software License, Version 2.0",
-          "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3#1.5.0-alpha22",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3#1.5.0-rc01",
           "description": "Provides window size classes for building responsive UIs",
           "components": [
             "APK／WebUI"
           ],
-          "coordinate": "androidx.compose.material3:material3-window-size-class-android:1.5.0-alpha22"
+          "coordinate": "androidx.compose.material3:material3-window-size-class-android:1.5.0-rc01"
         },
         {
-          "id": "androidx.compose.material3:material3-window-size-class:1.5.0-alpha22",
+          "id": "androidx.compose.material3:material3-window-size-class:1.5.0-rc01",
           "name": "AndroidX Compose Material 3 Window Size Class",
           "author": "The Android Open Source Project",
-          "version": "1.5.0-alpha22",
+          "version": "1.5.0-rc01",
           "license": "The Apache Software License, Version 2.0",
-          "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3#1.5.0-alpha22",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3#1.5.0-rc01",
           "description": "Provides window size classes for building responsive UIs",
           "components": [
             "APK／WebUI"
           ],
-          "coordinate": "androidx.compose.material3:material3-window-size-class:1.5.0-alpha22"
+          "coordinate": "androidx.compose.material3:material3-window-size-class:1.5.0-rc01"
         }
       ],
       "coordinates": [
-        "androidx.compose.material3:material3-window-size-class-android:1.5.0-alpha22",
-        "androidx.compose.material3:material3-window-size-class:1.5.0-alpha22"
+        "androidx.compose.material3:material3-window-size-class-android:1.5.0-rc01",
+        "androidx.compose.material3:material3-window-size-class:1.5.0-rc01"
+      ]
+    },
+    {
+      "id": "androidx.compose.material:material-icons-core-android:1.7.8",
+      "name": "AndroidX Compose Material Icons Core",
+      "author": "The Android Open Source Project",
+      "version": "1.7.8",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-material#1.7.8",
+      "description": "Compose Material Design core icons. This module contains the most commonly used set of Material icons.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.material:material-icons-core-android:1.7.8",
+      "members": [
+        {
+          "id": "androidx.compose.material:material-icons-core-android:1.7.8",
+          "name": "AndroidX Compose Material Icons Core",
+          "author": "The Android Open Source Project",
+          "version": "1.7.8",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-material#1.7.8",
+          "description": "Compose Material Design core icons. This module contains the most commonly used set of Material icons.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.material:material-icons-core-android:1.7.8"
+        },
+        {
+          "id": "androidx.compose.material:material-icons-core:1.7.8",
+          "name": "AndroidX Compose Material Icons Core",
+          "author": "The Android Open Source Project",
+          "version": "1.7.8",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-material#1.7.8",
+          "description": "Compose Material Design core icons. This module contains the most commonly used set of Material icons.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.material:material-icons-core:1.7.8"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.material:material-icons-core-android:1.7.8",
+        "androidx.compose.material:material-icons-core:1.7.8"
+      ]
+    },
+    {
+      "id": "androidx.compose.material:material-icons-extended-android:1.7.8",
+      "name": "AndroidX Compose Material Icons Extended",
+      "author": "The Android Open Source Project",
+      "version": "1.7.8",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-material#1.7.8",
+      "description": "Compose Material Design extended icons. This module contains all Material icons. It is a very large dependency and should not be included directly.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.material:material-icons-extended-android:1.7.8",
+      "members": [
+        {
+          "id": "androidx.compose.material:material-icons-extended-android:1.7.8",
+          "name": "AndroidX Compose Material Icons Extended",
+          "author": "The Android Open Source Project",
+          "version": "1.7.8",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-material#1.7.8",
+          "description": "Compose Material Design extended icons. This module contains all Material icons. It is a very large dependency and should not be included directly.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.material:material-icons-extended-android:1.7.8"
+        },
+        {
+          "id": "androidx.compose.material:material-icons-extended:1.7.8",
+          "name": "AndroidX Compose Material Icons Extended",
+          "author": "The Android Open Source Project",
+          "version": "1.7.8",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-material#1.7.8",
+          "description": "Compose Material Design extended icons. This module contains all Material icons. It is a very large dependency and should not be included directly.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.material:material-icons-extended:1.7.8"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.material:material-icons-extended-android:1.7.8",
+        "androidx.compose.material:material-icons-extended:1.7.8"
+      ]
+    },
+    {
+      "id": "androidx.compose.material:material-ripple-android:1.12.0",
+      "name": "AndroidX Compose Material Ripple",
+      "author": "The Android Open Source Project",
+      "version": "1.12.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-material#1.12.0",
+      "description": "Material ripple used to build interactive components",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.material:material-ripple-android:1.12.0",
+      "members": [
+        {
+          "id": "androidx.compose.material:material-ripple-android:1.12.0",
+          "name": "AndroidX Compose Material Ripple",
+          "author": "The Android Open Source Project",
+          "version": "1.12.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-material#1.12.0",
+          "description": "Material ripple used to build interactive components",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.material:material-ripple-android:1.12.0"
+        },
+        {
+          "id": "androidx.compose.material:material-ripple:1.12.0",
+          "name": "AndroidX Compose Material Ripple",
+          "author": "The Android Open Source Project",
+          "version": "1.12.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-material#1.12.0",
+          "description": "Material ripple used to build interactive components",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.material:material-ripple:1.12.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.material:material-ripple-android:1.12.0",
+        "androidx.compose.material:material-ripple:1.12.0"
+      ]
+    },
+    {
+      "id": "androidx.compose.material3:material3-android:1.5.0-rc01",
+      "name": "AndroidX Compose Material3 Components",
+      "author": "The Android Open Source Project",
+      "version": "1.5.0-rc01",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3#1.5.0-rc01",
+      "description": "Compose Material You Design Components library",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.material3:material3-android:1.5.0-rc01",
+      "members": [
+        {
+          "id": "androidx.compose.material3:material3-android:1.5.0-rc01",
+          "name": "AndroidX Compose Material3 Components",
+          "author": "The Android Open Source Project",
+          "version": "1.5.0-rc01",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3#1.5.0-rc01",
+          "description": "Compose Material You Design Components library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.material3:material3-android:1.5.0-rc01"
+        },
+        {
+          "id": "androidx.compose.material3:material3:1.5.0-rc01",
+          "name": "AndroidX Compose Material3 Components",
+          "author": "The Android Open Source Project",
+          "version": "1.5.0-rc01",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3#1.5.0-rc01",
+          "description": "Compose Material You Design Components library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.material3:material3:1.5.0-rc01"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.material3:material3-android:1.5.0-rc01",
+        "androidx.compose.material3:material3:1.5.0-rc01"
+      ]
+    },
+    {
+      "id": "androidx.compose.material3:material3-ripple-android:1.5.0-rc01",
+      "name": "AndroidX Compose Material3 Ripple",
+      "author": "The Android Open Source Project",
+      "version": "1.5.0-rc01",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3#1.5.0-rc01",
+      "description": "Building block APIs to build ripples that follow a Material 3 specification.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.compose.material3:material3-ripple-android:1.5.0-rc01",
+      "members": [
+        {
+          "id": "androidx.compose.material3:material3-ripple-android:1.5.0-rc01",
+          "name": "AndroidX Compose Material3 Ripple",
+          "author": "The Android Open Source Project",
+          "version": "1.5.0-rc01",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3#1.5.0-rc01",
+          "description": "Building block APIs to build ripples that follow a Material 3 specification.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.material3:material3-ripple-android:1.5.0-rc01"
+        },
+        {
+          "id": "androidx.compose.material3:material3-ripple:1.5.0-rc01",
+          "name": "AndroidX Compose Material3 Ripple",
+          "author": "The Android Open Source Project",
+          "version": "1.5.0-rc01",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3#1.5.0-rc01",
+          "description": "Building block APIs to build ripples that follow a Material 3 specification.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.compose.material3:material3-ripple:1.5.0-rc01"
+        }
+      ],
+      "coordinates": [
+        "androidx.compose.material3:material3-ripple-android:1.5.0-rc01",
+        "androidx.compose.material3:material3-ripple:1.5.0-rc01"
       ]
     },
     {
@@ -1416,6 +1610,96 @@
       ]
     },
     {
+      "id": "androidx.graphics:graphics-shapes-android:1.0.1",
+      "name": "AndroidX Graphics Shapes",
+      "author": "The Android Open Source Project",
+      "version": "1.0.1",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/graphics#1.0.1",
+      "description": "create and render rounded polygonal shapes",
+      "components": [
+        "APK／WebUI（編譯時）"
+      ],
+      "coordinate": "androidx.graphics:graphics-shapes-android:1.0.1",
+      "members": [
+        {
+          "id": "androidx.graphics:graphics-shapes-android:1.0.1",
+          "name": "AndroidX Graphics Shapes",
+          "author": "The Android Open Source Project",
+          "version": "1.0.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/graphics#1.0.1",
+          "description": "create and render rounded polygonal shapes",
+          "components": [
+            "APK／WebUI（編譯時）"
+          ],
+          "coordinate": "androidx.graphics:graphics-shapes-android:1.0.1"
+        },
+        {
+          "id": "androidx.graphics:graphics-shapes:1.0.1",
+          "name": "AndroidX Graphics Shapes",
+          "author": "The Android Open Source Project",
+          "version": "1.0.1",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/graphics#1.0.1",
+          "description": "create and render rounded polygonal shapes",
+          "components": [
+            "APK／WebUI（編譯時）"
+          ],
+          "coordinate": "androidx.graphics:graphics-shapes:1.0.1"
+        }
+      ],
+      "coordinates": [
+        "androidx.graphics:graphics-shapes-android:1.0.1",
+        "androidx.graphics:graphics-shapes:1.0.1"
+      ]
+    },
+    {
+      "id": "androidx.graphics:graphics-shapes-android:1.1.0",
+      "name": "AndroidX Graphics Shapes",
+      "author": "The Android Open Source Project",
+      "version": "1.1.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/graphics#1.1.0",
+      "description": "create and render rounded polygonal shapes",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.graphics:graphics-shapes-android:1.1.0",
+      "members": [
+        {
+          "id": "androidx.graphics:graphics-shapes-android:1.1.0",
+          "name": "AndroidX Graphics Shapes",
+          "author": "The Android Open Source Project",
+          "version": "1.1.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/graphics#1.1.0",
+          "description": "create and render rounded polygonal shapes",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.graphics:graphics-shapes-android:1.1.0"
+        },
+        {
+          "id": "androidx.graphics:graphics-shapes:1.1.0",
+          "name": "AndroidX Graphics Shapes",
+          "author": "The Android Open Source Project",
+          "version": "1.1.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/graphics#1.1.0",
+          "description": "create and render rounded polygonal shapes",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.graphics:graphics-shapes:1.1.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.graphics:graphics-shapes-android:1.1.0",
+        "androidx.graphics:graphics-shapes:1.1.0"
+      ]
+    },
+    {
       "id": "androidx.lifecycle:lifecycle-runtime-ktx-android:2.11.0",
       "name": "AndroidX Lifecycle Kotlin Extensions",
       "author": "The Android Open Source Project",
@@ -1658,6 +1942,51 @@
       ]
     },
     {
+      "id": "androidx.lifecycle:lifecycle-viewmodel-compose-android:2.11.0",
+      "name": "AndroidX Lifecycle ViewModel Compose",
+      "author": "The Android Open Source Project",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+      "description": "Compose integration with Lifecycle ViewModel",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.lifecycle:lifecycle-viewmodel-compose-android:2.11.0",
+      "members": [
+        {
+          "id": "androidx.lifecycle:lifecycle-viewmodel-compose-android:2.11.0",
+          "name": "AndroidX Lifecycle ViewModel Compose",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Compose integration with Lifecycle ViewModel",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-viewmodel-compose-android:2.11.0"
+        },
+        {
+          "id": "androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0",
+          "name": "AndroidX Lifecycle ViewModel Compose",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Compose integration with Lifecycle ViewModel",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.lifecycle:lifecycle-viewmodel-compose-android:2.11.0",
+        "androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0"
+      ]
+    },
+    {
       "id": "androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0",
       "name": "AndroidX Lifecycle ViewModel Kotlin Extensions",
       "author": "The Android Open Source Project",
@@ -1776,6 +2105,37 @@
       "coordinates": [
         "androidx.lifecycle:lifecycle-common-jvm:2.11.0",
         "androidx.lifecycle:lifecycle-common:2.11.0"
+      ]
+    },
+    {
+      "id": "androidx.lifecycle:lifecycle-common-java8:2.11.0",
+      "name": "AndroidX Lifecycle-Common for Java 8",
+      "author": "The Android Open Source Project",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+      "description": "Android Lifecycle-Common for Java 8 Language",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "androidx.lifecycle:lifecycle-common-java8:2.11.0",
+      "members": [
+        {
+          "id": "androidx.lifecycle:lifecycle-common-java8:2.11.0",
+          "name": "AndroidX Lifecycle-Common for Java 8",
+          "author": "The Android Open Source Project",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle#2.11.0",
+          "description": "Android Lifecycle-Common for Java 8 Language",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "androidx.lifecycle:lifecycle-common-java8:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "androidx.lifecycle:lifecycle-common-java8:2.11.0"
       ]
     },
     {
@@ -2204,41 +2564,41 @@
       ]
     },
     {
-      "id": "io.github.kyant0:backdrop-android:2.0.1",
+      "id": "io.github.kyant0:backdrop-android:2.0.1-eb4a0ea2-SNAPSHOT",
       "name": "Backdrop",
       "author": "Kyant",
-      "version": "2.0.1",
+      "version": "2.0.1-eb4a0ea2-SNAPSHOT",
       "license": "The Apache License, Version 2.0",
       "url": "https://github.com/Kyant0/AndroidLiquidGlass",
       "description": "Compose Multiplatform Liquid Glass effects",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "io.github.kyant0:backdrop-android:2.0.1",
+      "coordinate": "io.github.kyant0:backdrop-android:2.0.1-eb4a0ea2-SNAPSHOT",
       "members": [
         {
-          "id": "io.github.kyant0:backdrop-android:2.0.1",
+          "id": "io.github.kyant0:backdrop-android:2.0.1-eb4a0ea2-SNAPSHOT",
           "name": "Backdrop",
           "author": "Kyant",
-          "version": "2.0.1",
+          "version": "2.0.1-eb4a0ea2-SNAPSHOT",
           "license": "The Apache License, Version 2.0",
           "url": "https://github.com/Kyant0/AndroidLiquidGlass",
           "description": "Compose Multiplatform Liquid Glass effects",
           "components": [
             "APK／WebUI"
           ],
-          "coordinate": "io.github.kyant0:backdrop-android:2.0.1"
+          "coordinate": "io.github.kyant0:backdrop-android:2.0.1-eb4a0ea2-SNAPSHOT"
         }
       ],
       "coordinates": [
-        "io.github.kyant0:backdrop-android:2.0.1"
+        "io.github.kyant0:backdrop-android:2.0.1-eb4a0ea2-SNAPSHOT"
       ]
     },
     {
       "id": "reference:busybox",
       "name": "BusyBox",
       "author": "BusyBox contributors",
-      "version": "1.38.0 Android",
+      "version": "1.38.0-dev / 67a351f7c067",
       "license": "GPL-2.0-only",
       "url": "https://busybox.net/",
       "description": "腳本隨附的命令列工具集。",
@@ -2250,7 +2610,7 @@
           "id": "reference:busybox",
           "name": "BusyBox",
           "author": "BusyBox contributors",
-          "version": "1.38.0 Android",
+          "version": "1.38.0-dev / 67a351f7c067",
           "license": "GPL-2.0-only",
           "url": "https://busybox.net/",
           "description": "腳本隨附的命令列工具集。",
@@ -2287,6 +2647,51 @@
         }
       ],
       "coordinates": []
+    },
+    {
+      "id": "com.github.ajalt.colormath:colormath-jvm:3.7.0",
+      "name": "Colormath",
+      "author": "AJ Alt",
+      "version": "3.7.0",
+      "license": "The MIT License",
+      "url": "https://github.com/ajalt/colormath/",
+      "description": "Multiplatform color space conversions for Kotlin",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "com.github.ajalt.colormath:colormath-jvm:3.7.0",
+      "members": [
+        {
+          "id": "com.github.ajalt.colormath:colormath-jvm:3.7.0",
+          "name": "Colormath",
+          "author": "AJ Alt",
+          "version": "3.7.0",
+          "license": "The MIT License",
+          "url": "https://github.com/ajalt/colormath/",
+          "description": "Multiplatform color space conversions for Kotlin",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "com.github.ajalt.colormath:colormath-jvm:3.7.0"
+        },
+        {
+          "id": "com.github.ajalt.colormath:colormath:3.7.0",
+          "name": "Colormath",
+          "author": "AJ Alt",
+          "version": "3.7.0",
+          "license": "The MIT License",
+          "url": "https://github.com/ajalt/colormath/",
+          "description": "Multiplatform color space conversions for Kotlin",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "com.github.ajalt.colormath:colormath:3.7.0"
+        }
+      ],
+      "coordinates": [
+        "com.github.ajalt.colormath:colormath-jvm:3.7.0",
+        "com.github.ajalt.colormath:colormath:3.7.0"
+      ]
     },
     {
       "id": "org.jetbrains.compose.animation:animation-android:1.12.2",
@@ -2604,6 +3009,96 @@
       ]
     },
     {
+      "id": "org.jetbrains.compose.material:material-ripple-android:1.12.0-beta01",
+      "name": "Compose Material Ripple",
+      "author": "Compose Multiplatform Team",
+      "version": "1.12.0-beta01",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Material ripple used to build interactive components",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.compose.material:material-ripple-android:1.12.0-beta01",
+      "members": [
+        {
+          "id": "org.jetbrains.compose.material:material-ripple-android:1.12.0-beta01",
+          "name": "Compose Material Ripple",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.0-beta01",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Material ripple used to build interactive components",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.material:material-ripple-android:1.12.0-beta01"
+        },
+        {
+          "id": "org.jetbrains.compose.material:material-ripple:1.12.0-beta01",
+          "name": "Compose Material Ripple",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.0-beta01",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Material ripple used to build interactive components",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.material:material-ripple:1.12.0-beta01"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.compose.material:material-ripple-android:1.12.0-beta01",
+        "org.jetbrains.compose.material:material-ripple:1.12.0-beta01"
+      ]
+    },
+    {
+      "id": "org.jetbrains.compose.material3:material3-android:1.12.0-alpha03",
+      "name": "Compose Material3 Components",
+      "author": "Compose Multiplatform Team",
+      "version": "1.12.0-alpha03",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Compose Material You Design Components library",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.compose.material3:material3-android:1.12.0-alpha03",
+      "members": [
+        {
+          "id": "org.jetbrains.compose.material3:material3-android:1.12.0-alpha03",
+          "name": "Compose Material3 Components",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.0-alpha03",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose Material You Design Components library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.material3:material3-android:1.12.0-alpha03"
+        },
+        {
+          "id": "org.jetbrains.compose.material3:material3:1.12.0-alpha03",
+          "name": "Compose Material3 Components",
+          "author": "Compose Multiplatform Team",
+          "version": "1.12.0-alpha03",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose Material You Design Components library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.compose.material3:material3:1.12.0-alpha03"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.compose.material3:material3-android:1.12.0-alpha03",
+        "org.jetbrains.compose.material3:material3:1.12.0-alpha03"
+      ]
+    },
+    {
       "id": "org.jetbrains.compose.runtime:runtime-android:1.12.2",
       "name": "Compose Runtime",
       "author": "Compose Multiplatform Team",
@@ -2908,10 +3403,10 @@
       "id": "cargo:fastrand",
       "name": "fastrand",
       "author": "Stjepan Glavina <stjepang@gmail.com>",
-      "version": "2.5.0",
+      "version": "2.5.0 / 7a1cc2c69ebd",
       "license": "Apache-2.0 OR MIT",
       "url": "https://github.com/smol-rs/fastrand",
-      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -2920,10 +3415,10 @@
           "id": "cargo:fastrand",
           "name": "fastrand",
           "author": "Stjepan Glavina <stjepang@gmail.com>",
-          "version": "2.5.0",
+          "version": "2.5.0 / 7a1cc2c69ebd",
           "license": "Apache-2.0 OR MIT",
           "url": "https://github.com/smol-rs/fastrand",
-          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -2935,10 +3430,10 @@
       "id": "cargo:flume",
       "name": "flume",
       "author": "Joshua Barretto <joshua.s.barretto@gmail.com>",
-      "version": "0.12.0",
-      "license": "Apache-2.0/MIT",
+      "version": "0.12.0 / 6bb48467b47e",
+      "license": "MIT OR Apache-2.0",
       "url": "https://github.com/zesterer/flume",
-      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -2947,10 +3442,10 @@
           "id": "cargo:flume",
           "name": "flume",
           "author": "Joshua Barretto <joshua.s.barretto@gmail.com>",
-          "version": "0.12.0",
-          "license": "Apache-2.0/MIT",
+          "version": "0.12.0 / 6bb48467b47e",
+          "license": "MIT OR Apache-2.0",
           "url": "https://github.com/zesterer/flume",
-          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -2962,7 +3457,7 @@
       "id": "reference:find",
       "name": "GNU findutils",
       "author": "Free Software Foundation",
-      "version": "4.11.0",
+      "version": "4.11.0-g71d158fdd51b",
       "license": "GPL-3.0-or-later",
       "url": "https://www.gnu.org/software/findutils/",
       "description": "隨附完整上游來源壓縮檔與 Android ARM64／API28／16KiB 靜態建置配方。",
@@ -2974,7 +3469,7 @@
           "id": "reference:find",
           "name": "GNU findutils",
           "author": "Free Software Foundation",
-          "version": "4.11.0",
+          "version": "4.11.0-g71d158fdd51b",
           "license": "GPL-3.0-or-later",
           "url": "https://www.gnu.org/software/findutils/",
           "description": "隨附完整上游來源壓縮檔與 Android ARM64／API28／16KiB 靜態建置配方。",
@@ -2986,10 +3481,37 @@
       "coordinates": []
     },
     {
+      "id": "reference:libtasn1",
+      "name": "GNU Libtasn1",
+      "author": "Free Software Foundation / contributors",
+      "version": "4.21.0-12-g8dddaa9",
+      "license": "LGPL-2.1-or-later (library); GPL-3.0-or-later (tools)",
+      "url": "https://gitlab.com/gnutls/libtasn1",
+      "description": "新版 GnuTLS 的獨立 ASN.1 靜態依賴；完整來源授權隨包提供。",
+      "components": [
+        "SMB 間接依賴"
+      ],
+      "members": [
+        {
+          "id": "reference:libtasn1",
+          "name": "GNU Libtasn1",
+          "author": "Free Software Foundation / contributors",
+          "version": "4.21.0-12-g8dddaa9",
+          "license": "LGPL-2.1-or-later (library); GPL-3.0-or-later (tools)",
+          "url": "https://gitlab.com/gnutls/libtasn1",
+          "description": "新版 GnuTLS 的獨立 ASN.1 靜態依賴；完整來源授權隨包提供。",
+          "components": [
+            "SMB 間接依賴"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
       "id": "reference:gmp",
       "name": "GNU Multiple Precision Arithmetic Library",
       "author": "GMP developers",
-      "version": "6.3.0",
+      "version": "6.3.0 / 722f5c638d3a",
       "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
       "url": "https://gmplib.org/",
       "description": "SMB 靜態建置的高精度算術依賴。",
@@ -3001,7 +3523,7 @@
           "id": "reference:gmp",
           "name": "GNU Multiple Precision Arithmetic Library",
           "author": "GMP developers",
-          "version": "6.3.0",
+          "version": "6.3.0 / 722f5c638d3a",
           "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
           "url": "https://gmplib.org/",
           "description": "SMB 靜態建置的高精度算術依賴。",
@@ -3016,7 +3538,7 @@
       "id": "reference:tar",
       "name": "GNU tar",
       "author": "Free Software Foundation",
-      "version": "1.35.90",
+      "version": "1.35.90 / 1f0762eb25b5",
       "license": "GPL-3.0-or-later",
       "url": "https://www.gnu.org/software/tar/",
       "description": "串流封存與恢復。",
@@ -3028,7 +3550,7 @@
           "id": "reference:tar",
           "name": "GNU tar",
           "author": "Free Software Foundation",
-          "version": "1.35.90",
+          "version": "1.35.90 / 1f0762eb25b5",
           "license": "GPL-3.0-or-later",
           "url": "https://www.gnu.org/software/tar/",
           "description": "串流封存與恢復。",
@@ -3043,7 +3565,7 @@
       "id": "reference:gnutls",
       "name": "GnuTLS",
       "author": "GnuTLS contributors",
-      "version": "3.8.13",
+      "version": "3.8.13 / d48f528b7a86",
       "license": "LGPL-2.1-or-later / 個別來源授權",
       "url": "https://www.gnutls.org/",
       "description": "SMB 靜態建置的 TLS 依賴。",
@@ -3055,7 +3577,7 @@
           "id": "reference:gnutls",
           "name": "GnuTLS",
           "author": "GnuTLS contributors",
-          "version": "3.8.13",
+          "version": "3.8.13 / d48f528b7a86",
           "license": "LGPL-2.1-or-later / 個別來源授權",
           "url": "https://www.gnutls.org/",
           "description": "SMB 靜態建置的 TLS 依賴。",
@@ -3067,34 +3589,34 @@
       "coordinates": []
     },
     {
-      "id": "com.google.code.gson:gson:2.15.0",
-      "name": "Gson",
+      "id": "com.google.code.gson:gson:2.15.1-a961b0fe-SNAPSHOT",
+      "name": "gson",
       "author": "Google",
-      "version": "2.15.0",
+      "version": "2.15.1-a961b0fe-SNAPSHOT",
       "license": "Apache-2.0",
       "url": "https://github.com/google/gson",
-      "description": "",
+      "description": "Source snapshot a961b0fe088f8558d00cc1b56e506a3656907a91",
       "components": [
         "Dex"
       ],
-      "coordinate": "com.google.code.gson:gson:2.15.0",
+      "coordinate": "com.google.code.gson:gson:2.15.1-a961b0fe-SNAPSHOT",
       "members": [
         {
-          "id": "com.google.code.gson:gson:2.15.0",
-          "name": "Gson",
+          "id": "com.google.code.gson:gson:2.15.1-a961b0fe-SNAPSHOT",
+          "name": "gson",
           "author": "Google",
-          "version": "2.15.0",
+          "version": "2.15.1-a961b0fe-SNAPSHOT",
           "license": "Apache-2.0",
           "url": "https://github.com/google/gson",
-          "description": "",
+          "description": "Source snapshot a961b0fe088f8558d00cc1b56e506a3656907a91",
           "components": [
             "Dex"
           ],
-          "coordinate": "com.google.code.gson:gson:2.15.0"
+          "coordinate": "com.google.code.gson:gson:2.15.1-a961b0fe-SNAPSHOT"
         }
       ],
       "coordinates": [
-        "com.google.code.gson:gson:2.15.0"
+        "com.google.code.gson:gson:2.15.1-a961b0fe-SNAPSHOT"
       ]
     },
     {
@@ -3156,6 +3678,37 @@
         }
       ],
       "coordinates": []
+    },
+    {
+      "id": "org.lsposed.hiddenapibypass:hiddenapibypass:6.2-4efc64fc-SNAPSHOT",
+      "name": "hiddenapibypass",
+      "author": "LSPosed",
+      "version": "6.2-4efc64fc-SNAPSHOT",
+      "license": "Apache-2.0",
+      "url": "https://github.com/LSPosed/AndroidHiddenApiBypass",
+      "description": "Source snapshot 4efc64fcada7df15e7b5ba068e774343b760270d",
+      "components": [
+        "Dex"
+      ],
+      "coordinate": "org.lsposed.hiddenapibypass:hiddenapibypass:6.2-4efc64fc-SNAPSHOT",
+      "members": [
+        {
+          "id": "org.lsposed.hiddenapibypass:hiddenapibypass:6.2-4efc64fc-SNAPSHOT",
+          "name": "hiddenapibypass",
+          "author": "LSPosed",
+          "version": "6.2-4efc64fc-SNAPSHOT",
+          "license": "Apache-2.0",
+          "url": "https://github.com/LSPosed/AndroidHiddenApiBypass",
+          "description": "Source snapshot 4efc64fcada7df15e7b5ba068e774343b760270d",
+          "components": [
+            "Dex"
+          ],
+          "coordinate": "org.lsposed.hiddenapibypass:hiddenapibypass:6.2-4efc64fc-SNAPSHOT"
+        }
+      ],
+      "coordinates": [
+        "org.lsposed.hiddenapibypass:hiddenapibypass:6.2-4efc64fc-SNAPSHOT"
+      ]
     },
     {
       "id": "dev.rikka.tools.refine:annotation:4.4.0",
@@ -3236,10 +3789,10 @@
       "id": "cargo:if-addrs",
       "name": "if-addrs",
       "author": "MaidSafe Developers <dev@maidsafe.net>, Messense Lv <messense@icloud.com>",
-      "version": "0.15.0",
+      "version": "0.15.0 / 2221caa52575",
       "license": "MIT OR BSD-3-Clause",
       "url": "https://github.com/messense/if-addrs",
-      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -3248,10 +3801,10 @@
           "id": "cargo:if-addrs",
           "name": "if-addrs",
           "author": "MaidSafe Developers <dev@maidsafe.net>, Messense Lv <messense@icloud.com>",
-          "version": "0.15.0",
+          "version": "0.15.0 / 2221caa52575",
           "license": "MIT OR BSD-3-Clause",
           "url": "https://github.com/messense/if-addrs",
-          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -3263,10 +3816,10 @@
       "id": "cargo:itoa",
       "name": "itoa",
       "author": "David Tolnay <dtolnay@gmail.com>",
-      "version": "1.0.18",
+      "version": "1.0.19 / 9339ca99a43c",
       "license": "MIT OR Apache-2.0",
       "url": "https://github.com/dtolnay/itoa",
-      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -3275,10 +3828,10 @@
           "id": "cargo:itoa",
           "name": "itoa",
           "author": "David Tolnay <dtolnay@gmail.com>",
-          "version": "1.0.18",
+          "version": "1.0.19 / 9339ca99a43c",
           "license": "MIT OR Apache-2.0",
           "url": "https://github.com/dtolnay/itoa",
-          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -3354,7 +3907,7 @@
       "id": "reference:ksu",
       "name": "KernelSU",
       "author": "tiann / KernelSU contributors",
-      "version": "75e179d378d7",
+      "version": "dbb73665d103",
       "license": "GPL-3.0",
       "url": "https://github.com/tiann/KernelSU",
       "description": "主題流程及參數參照，未納入 KernelSU 管理器或核心模組。",
@@ -3367,7 +3920,7 @@
           "id": "reference:ksu",
           "name": "KernelSU",
           "author": "tiann / KernelSU contributors",
-          "version": "75e179d378d7",
+          "version": "dbb73665d103",
           "license": "GPL-3.0",
           "url": "https://github.com/tiann/KernelSU",
           "description": "主題流程及參數參照，未納入 KernelSU 管理器或核心模組。",
@@ -3410,6 +3963,82 @@
       ],
       "coordinates": [
         "org.jetbrains.kotlin:kotlin-stdlib:2.4.21"
+      ]
+    },
+    {
+      "id": "org.jetbrains.kotlin:kotlin-stdlib-common:2.4.21",
+      "name": "Kotlin Stdlib Common",
+      "author": "Kotlin Team",
+      "version": "2.4.21",
+      "license": "Apache-2.0",
+      "url": "https://kotlinlang.org/",
+      "description": "Kotlin Common Standard Library (legacy, use kotlin-stdlib instead)",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-common:2.4.21",
+      "members": [
+        {
+          "id": "org.jetbrains.kotlin:kotlin-stdlib-common:2.4.21",
+          "name": "Kotlin Stdlib Common",
+          "author": "Kotlin Team",
+          "version": "2.4.21",
+          "license": "Apache-2.0",
+          "url": "https://kotlinlang.org/",
+          "description": "Kotlin Common Standard Library (legacy, use kotlin-stdlib instead)",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-common:2.4.21"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.kotlin:kotlin-stdlib-common:2.4.21"
+      ]
+    },
+    {
+      "id": "org.jetbrains.kotlinx:kotlinx-collections-immutable-jvm:0.5.2",
+      "name": "kotlinx-collections-immutable",
+      "author": "JetBrains Team",
+      "version": "0.5.2",
+      "license": "Apache-2.0",
+      "url": "https://github.com/Kotlin/kotlinx.collections.immutable",
+      "description": "Kotlin Immutable Collections multiplatform library",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-collections-immutable-jvm:0.5.2",
+      "members": [
+        {
+          "id": "org.jetbrains.kotlinx:kotlinx-collections-immutable-jvm:0.5.2",
+          "name": "kotlinx-collections-immutable",
+          "author": "JetBrains Team",
+          "version": "0.5.2",
+          "license": "Apache-2.0",
+          "url": "https://github.com/Kotlin/kotlinx.collections.immutable",
+          "description": "Kotlin Immutable Collections multiplatform library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.kotlinx:kotlinx-collections-immutable-jvm:0.5.2"
+        },
+        {
+          "id": "org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.2",
+          "name": "kotlinx-collections-immutable",
+          "author": "JetBrains Team",
+          "version": "0.5.2",
+          "license": "Apache-2.0",
+          "url": "https://github.com/Kotlin/kotlinx.collections.immutable",
+          "description": "Kotlin Immutable Collections multiplatform library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.2"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.kotlinx:kotlinx-collections-immutable-jvm:0.5.2",
+        "org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.2"
       ]
     },
     {
@@ -3523,12 +4152,13 @@
       "id": "org.jetbrains.kotlinx:kotlinx-serialization-bom:1.12.0",
       "name": "kotlinx-serialization-bom",
       "author": "JetBrains Team",
-      "version": "1.12.0",
+      "version": "1.12.0 / 1.13.0",
       "license": "Apache-2.0",
       "url": "https://github.com/Kotlin/kotlinx.serialization",
       "description": "Kotlin multiplatform serialization runtime library",
       "components": [
-        "APK／WebUI"
+        "APK／WebUI",
+        "APK／WebUI（編譯時）"
       ],
       "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-bom:1.12.0",
       "members": [
@@ -3541,25 +4171,40 @@
           "url": "https://github.com/Kotlin/kotlinx.serialization",
           "description": "Kotlin multiplatform serialization runtime library",
           "components": [
-            "APK／WebUI"
+            "APK／WebUI（編譯時）"
           ],
           "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-bom:1.12.0"
+        },
+        {
+          "id": "org.jetbrains.kotlinx:kotlinx-serialization-bom:1.13.0",
+          "name": "kotlinx-serialization-bom",
+          "author": "JetBrains Team",
+          "version": "1.13.0",
+          "license": "Apache-2.0",
+          "url": "https://github.com/Kotlin/kotlinx.serialization",
+          "description": "Kotlin multiplatform serialization runtime library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-bom:1.13.0"
         }
       ],
       "coordinates": [
-        "org.jetbrains.kotlinx:kotlinx-serialization-bom:1.12.0"
+        "org.jetbrains.kotlinx:kotlinx-serialization-bom:1.12.0",
+        "org.jetbrains.kotlinx:kotlinx-serialization-bom:1.13.0"
       ]
     },
     {
       "id": "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.12.0",
       "name": "kotlinx-serialization-core",
       "author": "JetBrains Team",
-      "version": "1.12.0",
+      "version": "1.12.0 / 1.13.0",
       "license": "Apache-2.0",
       "url": "https://github.com/Kotlin/kotlinx.serialization",
       "description": "Kotlin multiplatform serialization runtime library",
       "components": [
-        "APK／WebUI"
+        "APK／WebUI",
+        "APK／WebUI（編譯時）"
       ],
       "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.12.0",
       "members": [
@@ -3572,9 +4217,22 @@
           "url": "https://github.com/Kotlin/kotlinx.serialization",
           "description": "Kotlin multiplatform serialization runtime library",
           "components": [
-            "APK／WebUI"
+            "APK／WebUI（編譯時）"
           ],
           "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.12.0"
+        },
+        {
+          "id": "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.13.0",
+          "name": "kotlinx-serialization-core",
+          "author": "JetBrains Team",
+          "version": "1.13.0",
+          "license": "Apache-2.0",
+          "url": "https://github.com/Kotlin/kotlinx.serialization",
+          "description": "Kotlin multiplatform serialization runtime library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.13.0"
         },
         {
           "id": "org.jetbrains.kotlinx:kotlinx-serialization-core:1.12.0",
@@ -3585,24 +4243,84 @@
           "url": "https://github.com/Kotlin/kotlinx.serialization",
           "description": "Kotlin multiplatform serialization runtime library",
           "components": [
-            "APK／WebUI"
+            "APK／WebUI（編譯時）"
           ],
           "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core:1.12.0"
+        },
+        {
+          "id": "org.jetbrains.kotlinx:kotlinx-serialization-core:1.13.0",
+          "name": "kotlinx-serialization-core",
+          "author": "JetBrains Team",
+          "version": "1.13.0",
+          "license": "Apache-2.0",
+          "url": "https://github.com/Kotlin/kotlinx.serialization",
+          "description": "Kotlin multiplatform serialization runtime library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core:1.13.0"
         }
       ],
       "coordinates": [
         "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.12.0",
-        "org.jetbrains.kotlinx:kotlinx-serialization-core:1.12.0"
+        "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.13.0",
+        "org.jetbrains.kotlinx:kotlinx-serialization-core:1.12.0",
+        "org.jetbrains.kotlinx:kotlinx-serialization-core:1.13.0"
+      ]
+    },
+    {
+      "id": "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.13.0",
+      "name": "kotlinx-serialization-json",
+      "author": "JetBrains Team",
+      "version": "1.13.0",
+      "license": "Apache-2.0",
+      "url": "https://github.com/Kotlin/kotlinx.serialization",
+      "description": "Kotlin multiplatform serialization runtime library",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.13.0",
+      "members": [
+        {
+          "id": "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.13.0",
+          "name": "kotlinx-serialization-json",
+          "author": "JetBrains Team",
+          "version": "1.13.0",
+          "license": "Apache-2.0",
+          "url": "https://github.com/Kotlin/kotlinx.serialization",
+          "description": "Kotlin multiplatform serialization runtime library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.13.0"
+        },
+        {
+          "id": "org.jetbrains.kotlinx:kotlinx-serialization-json:1.13.0",
+          "name": "kotlinx-serialization-json",
+          "author": "JetBrains Team",
+          "version": "1.13.0",
+          "license": "Apache-2.0",
+          "url": "https://github.com/Kotlin/kotlinx.serialization",
+          "description": "Kotlin multiplatform serialization runtime library",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json:1.13.0"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.13.0",
+        "org.jetbrains.kotlinx:kotlinx-serialization-json:1.13.0"
       ]
     },
     {
       "id": "cargo:libc",
       "name": "libc",
       "author": "libc contributors",
-      "version": "0.2.191",
+      "version": "0.2.191 / ccc2ff4aaab9",
       "license": "MIT OR Apache-2.0",
       "url": "https://github.com/rust-lang/libc",
-      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -3611,16 +4329,74 @@
           "id": "cargo:libc",
           "name": "libc",
           "author": "libc contributors",
-          "version": "0.2.191",
+          "version": "0.2.191 / ccc2ff4aaab9",
           "license": "MIT OR Apache-2.0",
           "url": "https://github.com/rust-lang/libc",
-          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
         }
       ],
       "coordinates": []
+    },
+    {
+      "id": "reference:libselinux",
+      "name": "libselinux (Android fork)",
+      "author": "NSA / SELinux contributors / John Wu",
+      "version": "be1b39a657fe",
+      "license": "Public domain (libselinux); individual source notices apply",
+      "url": "https://github.com/topjohnwu/selinux",
+      "description": "BusyBox Android 配方使用的 libselinux；完整授權見隨附來源。",
+      "components": [
+        "BusyBox 間接依賴"
+      ],
+      "members": [
+        {
+          "id": "reference:libselinux",
+          "name": "libselinux (Android fork)",
+          "author": "NSA / SELinux contributors / John Wu",
+          "version": "be1b39a657fe",
+          "license": "Public domain (libselinux); individual source notices apply",
+          "url": "https://github.com/topjohnwu/selinux",
+          "description": "BusyBox Android 配方使用的 libselinux；完整授權見隨附來源。",
+          "components": [
+            "BusyBox 間接依賴"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "com.github.topjohnwu.libsu:core:6.0.0-4910d8dc-SNAPSHOT",
+      "name": "libsu core",
+      "author": "John Wu",
+      "version": "6.0.0-4910d8dc-SNAPSHOT",
+      "license": "Apache-2.0",
+      "url": "https://github.com/topjohnwu/libsu",
+      "description": "Built from upstream commit 4910d8dcc1ea3273246614b356fba56e1ce002a5; only core module included.",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "com.github.topjohnwu.libsu:core:6.0.0-4910d8dc-SNAPSHOT",
+      "members": [
+        {
+          "id": "com.github.topjohnwu.libsu:core:6.0.0-4910d8dc-SNAPSHOT",
+          "name": "libsu core",
+          "author": "John Wu",
+          "version": "6.0.0-4910d8dc-SNAPSHOT",
+          "license": "Apache-2.0",
+          "url": "https://github.com/topjohnwu/libsu",
+          "description": "Built from upstream commit 4910d8dcc1ea3273246614b356fba56e1ce002a5; only core module included.",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "com.github.topjohnwu.libsu:core:6.0.0-4910d8dc-SNAPSHOT"
+        }
+      ],
+      "coordinates": [
+        "com.github.topjohnwu.libsu:core:6.0.0-4910d8dc-SNAPSHOT"
+      ]
     },
     {
       "id": "org.jetbrains.androidx.lifecycle:lifecycle-runtime-android:2.11.0",
@@ -3713,6 +4489,141 @@
       ]
     },
     {
+      "id": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-android:2.11.0",
+      "name": "Lifecycle ViewModel",
+      "author": "Compose Multiplatform Team",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Android Lifecycle ViewModel",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-android:2.11.0",
+      "members": [
+        {
+          "id": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-android:2.11.0",
+          "name": "Lifecycle ViewModel",
+          "author": "Compose Multiplatform Team",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Android Lifecycle ViewModel",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-android:2.11.0"
+        },
+        {
+          "id": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.11.0",
+          "name": "Lifecycle ViewModel",
+          "author": "Compose Multiplatform Team",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Android Lifecycle ViewModel",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-android:2.11.0",
+        "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.11.0"
+      ]
+    },
+    {
+      "id": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose-android:2.11.0",
+      "name": "Lifecycle ViewModel Compose",
+      "author": "Compose Multiplatform Team",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Compose integration with Lifecycle ViewModel",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose-android:2.11.0",
+      "members": [
+        {
+          "id": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose-android:2.11.0",
+          "name": "Lifecycle ViewModel Compose",
+          "author": "Compose Multiplatform Team",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose integration with Lifecycle ViewModel",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose-android:2.11.0"
+        },
+        {
+          "id": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0",
+          "name": "Lifecycle ViewModel Compose",
+          "author": "Compose Multiplatform Team",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Compose integration with Lifecycle ViewModel",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose-android:2.11.0",
+        "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0"
+      ]
+    },
+    {
+      "id": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-savedstate-android:2.11.0",
+      "name": "Lifecycle ViewModel with SavedState",
+      "author": "Compose Multiplatform Team",
+      "version": "2.11.0",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/JetBrains/compose-multiplatform",
+      "description": "Android Lifecycle ViewModel",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-savedstate-android:2.11.0",
+      "members": [
+        {
+          "id": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-savedstate-android:2.11.0",
+          "name": "Lifecycle ViewModel with SavedState",
+          "author": "Compose Multiplatform Team",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Android Lifecycle ViewModel",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-savedstate-android:2.11.0"
+        },
+        {
+          "id": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-savedstate:2.11.0",
+          "name": "Lifecycle ViewModel with SavedState",
+          "author": "Compose Multiplatform Team",
+          "version": "2.11.0",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/JetBrains/compose-multiplatform",
+          "description": "Android Lifecycle ViewModel",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-savedstate:2.11.0"
+        }
+      ],
+      "coordinates": [
+        "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-savedstate-android:2.11.0",
+        "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-savedstate:2.11.0"
+      ]
+    },
+    {
       "id": "org.jetbrains.androidx.lifecycle:lifecycle-common-jvm:2.11.0",
       "name": "Lifecycle-Common",
       "author": "Compose Multiplatform Team",
@@ -3764,7 +4675,7 @@
       "version": "0.4.14",
       "license": "MIT OR Apache-2.0",
       "url": "https://github.com/Amanieu/parking_lot",
-      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -3776,7 +4687,7 @@
           "version": "0.4.14",
           "license": "MIT OR Apache-2.0",
           "url": "https://github.com/Amanieu/parking_lot",
-          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -3788,10 +4699,10 @@
       "id": "cargo:log",
       "name": "log",
       "author": "The Rust Project Developers",
-      "version": "0.4.35",
+      "version": "0.4.35 / 75fcb86da1cc",
       "license": "MIT OR Apache-2.0",
       "url": "https://github.com/rust-lang/log",
-      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -3800,10 +4711,10 @@
           "id": "cargo:log",
           "name": "log",
           "author": "The Rust Project Developers",
-          "version": "0.4.35",
+          "version": "0.4.35 / 75fcb86da1cc",
           "license": "MIT OR Apache-2.0",
           "url": "https://github.com/rust-lang/log",
-          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -3815,7 +4726,7 @@
       "id": "reference:mcu",
       "name": "Material Color Utilities",
       "author": "Google",
-      "version": "bd811e4ca2ab",
+      "version": "194144d75ed7 (Java/Kotlin unchanged)",
       "license": "Apache-2.0",
       "url": "https://github.com/material-foundation/material-color-utilities",
       "description": "隨附 Java 色彩演算法；明確使用 2025 規格。",
@@ -3828,7 +4739,7 @@
           "id": "reference:mcu",
           "name": "Material Color Utilities",
           "author": "Google",
-          "version": "bd811e4ca2ab",
+          "version": "194144d75ed7 (Java/Kotlin unchanged)",
           "license": "Apache-2.0",
           "url": "https://github.com/material-foundation/material-color-utilities",
           "description": "隨附 Java 色彩演算法；明確使用 2025 規格。",
@@ -3844,10 +4755,10 @@
       "id": "reference:materialkolor",
       "name": "MaterialKolor",
       "author": "Jordon de Hoog",
-      "version": "6.0.0",
+      "version": "6.0.0-c5100e46-SNAPSHOT",
       "license": "MIT",
       "url": "https://github.com/jordond/MaterialKolor",
-      "description": "Miuix 傳遞使用的色彩引擎；版本亦列於解析依賴。",
+      "description": "獨立 Material 模式與 Miuix 依賴使用的色彩引擎，源碼提交已鎖定。",
       "components": [
         "APK／WebUI",
         "設計參照"
@@ -3857,10 +4768,10 @@
           "id": "reference:materialkolor",
           "name": "MaterialKolor",
           "author": "Jordon de Hoog",
-          "version": "6.0.0",
+          "version": "6.0.0-c5100e46-SNAPSHOT",
           "license": "MIT",
           "url": "https://github.com/jordond/MaterialKolor",
-          "description": "Miuix 傳遞使用的色彩引擎；版本亦列於解析依賴。",
+          "description": "獨立 Material 模式與 Miuix 依賴使用的色彩引擎，源碼提交已鎖定。",
           "components": [
             "APK／WebUI",
             "設計參照"
@@ -3870,58 +4781,114 @@
       "coordinates": []
     },
     {
-      "id": "com.materialkolor:material-color-utilities-android:6.0.0",
+      "id": "com.materialkolor:material-color-utilities-android:6.0.0-c5100e46-SNAPSHOT",
       "name": "MaterialKolor",
       "author": "Jordon de Hoog",
-      "version": "6.0.0",
+      "version": "6.0.0-c5100e46-SNAPSHOT",
       "license": "The MIT License / Apache License, Version 2.0 (upstream Material Color Utilities)",
       "url": "https://github.com/jordond/materialkolor",
       "description": "Material You dynamic color for Compose Multiplatform",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "com.materialkolor:material-color-utilities-android:6.0.0",
+      "coordinate": "com.materialkolor:material-color-utilities-android:6.0.0-c5100e46-SNAPSHOT",
       "members": [
         {
-          "id": "com.materialkolor:material-color-utilities-android:6.0.0",
+          "id": "com.materialkolor:material-color-utilities-android:6.0.0-c5100e46-SNAPSHOT",
           "name": "MaterialKolor",
           "author": "Jordon de Hoog",
-          "version": "6.0.0",
+          "version": "6.0.0-c5100e46-SNAPSHOT",
           "license": "The MIT License / Apache License, Version 2.0 (upstream Material Color Utilities)",
           "url": "https://github.com/jordond/materialkolor",
           "description": "Material You dynamic color for Compose Multiplatform",
           "components": [
             "APK／WebUI"
           ],
-          "coordinate": "com.materialkolor:material-color-utilities-android:6.0.0"
+          "coordinate": "com.materialkolor:material-color-utilities-android:6.0.0-c5100e46-SNAPSHOT"
         },
         {
-          "id": "com.materialkolor:material-color-utilities:6.0.0",
+          "id": "com.materialkolor:material-color-utilities:6.0.0-c5100e46-SNAPSHOT",
           "name": "MaterialKolor",
           "author": "Jordon de Hoog",
-          "version": "6.0.0",
+          "version": "6.0.0-c5100e46-SNAPSHOT",
           "license": "The MIT License / Apache License, Version 2.0 (upstream Material Color Utilities)",
           "url": "https://github.com/jordond/materialkolor",
           "description": "Material You dynamic color for Compose Multiplatform",
           "components": [
             "APK／WebUI"
           ],
-          "coordinate": "com.materialkolor:material-color-utilities:6.0.0"
+          "coordinate": "com.materialkolor:material-color-utilities:6.0.0-c5100e46-SNAPSHOT"
+        },
+        {
+          "id": "com.materialkolor:material-kolor-core-android:6.0.0-c5100e46-SNAPSHOT",
+          "name": "MaterialKolor",
+          "author": "Jordon de Hoog",
+          "version": "6.0.0-c5100e46-SNAPSHOT",
+          "license": "The MIT License / Apache License, Version 2.0 (upstream Material Color Utilities)",
+          "url": "https://github.com/jordond/materialkolor",
+          "description": "Material You dynamic color for Compose Multiplatform",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "com.materialkolor:material-kolor-core-android:6.0.0-c5100e46-SNAPSHOT"
+        },
+        {
+          "id": "com.materialkolor:material-kolor-core:6.0.0-c5100e46-SNAPSHOT",
+          "name": "MaterialKolor",
+          "author": "Jordon de Hoog",
+          "version": "6.0.0-c5100e46-SNAPSHOT",
+          "license": "The MIT License / Apache License, Version 2.0 (upstream Material Color Utilities)",
+          "url": "https://github.com/jordond/materialkolor",
+          "description": "Material You dynamic color for Compose Multiplatform",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "com.materialkolor:material-kolor-core:6.0.0-c5100e46-SNAPSHOT"
+        },
+        {
+          "id": "com.materialkolor:material-kolor-material3-android:6.0.0-c5100e46-SNAPSHOT",
+          "name": "MaterialKolor",
+          "author": "Jordon de Hoog",
+          "version": "6.0.0-c5100e46-SNAPSHOT",
+          "license": "The MIT License / Apache License, Version 2.0 (upstream Material Color Utilities)",
+          "url": "https://github.com/jordond/materialkolor",
+          "description": "Material You dynamic color for Compose Multiplatform",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "com.materialkolor:material-kolor-material3-android:6.0.0-c5100e46-SNAPSHOT"
+        },
+        {
+          "id": "com.materialkolor:material-kolor-material3:6.0.0-c5100e46-SNAPSHOT",
+          "name": "MaterialKolor",
+          "author": "Jordon de Hoog",
+          "version": "6.0.0-c5100e46-SNAPSHOT",
+          "license": "The MIT License / Apache License, Version 2.0 (upstream Material Color Utilities)",
+          "url": "https://github.com/jordond/materialkolor",
+          "description": "Material You dynamic color for Compose Multiplatform",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "com.materialkolor:material-kolor-material3:6.0.0-c5100e46-SNAPSHOT"
         }
       ],
       "coordinates": [
-        "com.materialkolor:material-color-utilities-android:6.0.0",
-        "com.materialkolor:material-color-utilities:6.0.0"
+        "com.materialkolor:material-color-utilities-android:6.0.0-c5100e46-SNAPSHOT",
+        "com.materialkolor:material-color-utilities:6.0.0-c5100e46-SNAPSHOT",
+        "com.materialkolor:material-kolor-core-android:6.0.0-c5100e46-SNAPSHOT",
+        "com.materialkolor:material-kolor-core:6.0.0-c5100e46-SNAPSHOT",
+        "com.materialkolor:material-kolor-material3-android:6.0.0-c5100e46-SNAPSHOT",
+        "com.materialkolor:material-kolor-material3:6.0.0-c5100e46-SNAPSHOT"
       ]
     },
     {
       "id": "cargo:mdns-sd",
       "name": "mdns-sd",
       "author": "Han Xu <keepsimple@gmail.com>",
-      "version": "0.21.7",
+      "version": "0.21.7 / 8eb02e58c27b",
       "license": "Apache-2.0 OR MIT",
       "url": "https://github.com/keepsimple1/mdns-sd",
-      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -3930,10 +4897,10 @@
           "id": "cargo:mdns-sd",
           "name": "mdns-sd",
           "author": "Han Xu <keepsimple@gmail.com>",
-          "version": "0.21.7",
+          "version": "0.21.7 / 8eb02e58c27b",
           "license": "Apache-2.0 OR MIT",
           "url": "https://github.com/keepsimple1/mdns-sd",
-          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -3945,10 +4912,10 @@
       "id": "cargo:memchr",
       "name": "memchr",
       "author": "Andrew Gallant <jamslam@gmail.com>, bluss",
-      "version": "2.8.3",
+      "version": "2.8.3 / bd6068c30e90",
       "license": "Unlicense OR MIT",
       "url": "https://github.com/BurntSushi/memchr",
-      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -3957,10 +4924,10 @@
           "id": "cargo:memchr",
           "name": "memchr",
           "author": "Andrew Gallant <jamslam@gmail.com>, bluss",
-          "version": "2.8.3",
+          "version": "2.8.3 / bd6068c30e90",
           "license": "Unlicense OR MIT",
           "url": "https://github.com/BurntSushi/memchr",
-          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -3972,10 +4939,10 @@
       "id": "cargo:mio",
       "name": "mio",
       "author": "Carl Lerche <me@carllerche.com>, Thomas de Zeeuw <thomasdezeeuw@gmail.com>, Tokio Contributors <team@tokio.rs>",
-      "version": "1.2.4",
+      "version": "1.2.4 / 5e2b24a46287",
       "license": "MIT",
       "url": "https://github.com/tokio-rs/mio",
-      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -3984,10 +4951,10 @@
           "id": "cargo:mio",
           "name": "mio",
           "author": "Carl Lerche <me@carllerche.com>, Thomas de Zeeuw <thomasdezeeuw@gmail.com>, Tokio Contributors <team@tokio.rs>",
-          "version": "1.2.4",
+          "version": "1.2.4 / 5e2b24a46287",
           "license": "MIT",
           "url": "https://github.com/tokio-rs/mio",
-          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -3999,7 +4966,7 @@
       "id": "reference:miuix",
       "name": "Miuix",
       "author": "compose-miuix-ui",
-      "version": "0.9.4 / 39c40f998442",
+      "version": "0.9.4-9d4b9c8-SNAPSHOT",
       "license": "Apache-2.0",
       "url": "https://github.com/compose-miuix-ui/miuix",
       "description": "原生介面使用的 Miuix 執行期程式庫；版本亦列於解析依賴。",
@@ -4012,7 +4979,7 @@
           "id": "reference:miuix",
           "name": "Miuix",
           "author": "compose-miuix-ui",
-          "version": "0.9.4 / 39c40f998442",
+          "version": "0.9.4-9d4b9c8-SNAPSHOT",
           "license": "Apache-2.0",
           "url": "https://github.com/compose-miuix-ui/miuix",
           "description": "原生介面使用的 Miuix 執行期程式庫；版本亦列於解析依賴。",
@@ -4025,176 +4992,283 @@
       "coordinates": []
     },
     {
-      "id": "top.yukonga.miuix.kmp:miuix-core-android:0.9.4",
+      "id": "top.yukonga.miuix.kmp:miuix-core-android:0.9.4-9d4b9c8-SNAPSHOT",
       "name": "miuix-core",
       "author": "compose-miuix-ui",
-      "version": "0.9.4",
+      "version": "0.9.4-9d4b9c8-SNAPSHOT",
       "license": "The Apache Software License, Version 2.0",
       "url": "https://github.com/compose-miuix-ui/miuix",
       "description": "Core utilities for Miuix",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "top.yukonga.miuix.kmp:miuix-core-android:0.9.4",
+      "coordinate": "top.yukonga.miuix.kmp:miuix-core-android:0.9.4-9d4b9c8-SNAPSHOT",
       "members": [
         {
-          "id": "top.yukonga.miuix.kmp:miuix-core-android:0.9.4",
+          "id": "top.yukonga.miuix.kmp:miuix-core-android:0.9.4-9d4b9c8-SNAPSHOT",
           "name": "miuix-core",
           "author": "compose-miuix-ui",
-          "version": "0.9.4",
+          "version": "0.9.4-9d4b9c8-SNAPSHOT",
           "license": "The Apache Software License, Version 2.0",
           "url": "https://github.com/compose-miuix-ui/miuix",
           "description": "Core utilities for Miuix",
           "components": [
             "APK／WebUI"
           ],
-          "coordinate": "top.yukonga.miuix.kmp:miuix-core-android:0.9.4"
+          "coordinate": "top.yukonga.miuix.kmp:miuix-core-android:0.9.4-9d4b9c8-SNAPSHOT"
         },
         {
-          "id": "top.yukonga.miuix.kmp:miuix-core:0.9.4",
+          "id": "top.yukonga.miuix.kmp:miuix-core:0.9.4-9d4b9c8-SNAPSHOT",
           "name": "miuix-core",
           "author": "compose-miuix-ui",
-          "version": "0.9.4",
+          "version": "0.9.4-9d4b9c8-SNAPSHOT",
           "license": "The Apache Software License, Version 2.0",
           "url": "https://github.com/compose-miuix-ui/miuix",
           "description": "Core utilities for Miuix",
           "components": [
             "APK／WebUI"
           ],
-          "coordinate": "top.yukonga.miuix.kmp:miuix-core:0.9.4"
+          "coordinate": "top.yukonga.miuix.kmp:miuix-core:0.9.4-9d4b9c8-SNAPSHOT"
         }
       ],
       "coordinates": [
-        "top.yukonga.miuix.kmp:miuix-core-android:0.9.4",
-        "top.yukonga.miuix.kmp:miuix-core:0.9.4"
+        "top.yukonga.miuix.kmp:miuix-core-android:0.9.4-9d4b9c8-SNAPSHOT",
+        "top.yukonga.miuix.kmp:miuix-core:0.9.4-9d4b9c8-SNAPSHOT"
       ]
     },
     {
-      "id": "top.yukonga.miuix.kmp:miuix-shader-android:0.9.4",
-      "name": "miuix-shader",
+      "id": "top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-9d4b9c8-SNAPSHOT",
+      "name": "miuix-icons",
       "author": "compose-miuix-ui",
-      "version": "0.9.4",
+      "version": "0.9.4-9d4b9c8-SNAPSHOT",
       "license": "The Apache Software License, Version 2.0",
       "url": "https://github.com/compose-miuix-ui/miuix",
-      "description": "Runtime shader abstraction for Miuix",
+      "description": "Extended icon library for Miuix",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "top.yukonga.miuix.kmp:miuix-shader-android:0.9.4",
+      "coordinate": "top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-9d4b9c8-SNAPSHOT",
       "members": [
         {
-          "id": "top.yukonga.miuix.kmp:miuix-shader-android:0.9.4",
-          "name": "miuix-shader",
+          "id": "top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-9d4b9c8-SNAPSHOT",
+          "name": "miuix-icons",
           "author": "compose-miuix-ui",
-          "version": "0.9.4",
+          "version": "0.9.4-9d4b9c8-SNAPSHOT",
           "license": "The Apache Software License, Version 2.0",
           "url": "https://github.com/compose-miuix-ui/miuix",
-          "description": "Runtime shader abstraction for Miuix",
+          "description": "Extended icon library for Miuix",
           "components": [
             "APK／WebUI"
           ],
-          "coordinate": "top.yukonga.miuix.kmp:miuix-shader-android:0.9.4"
-        },
-        {
-          "id": "top.yukonga.miuix.kmp:miuix-shader:0.9.4",
-          "name": "miuix-shader",
-          "author": "compose-miuix-ui",
-          "version": "0.9.4",
-          "license": "The Apache Software License, Version 2.0",
-          "url": "https://github.com/compose-miuix-ui/miuix",
-          "description": "Runtime shader abstraction for Miuix",
-          "components": [
-            "APK／WebUI"
-          ],
-          "coordinate": "top.yukonga.miuix.kmp:miuix-shader:0.9.4"
+          "coordinate": "top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-9d4b9c8-SNAPSHOT"
         }
       ],
       "coordinates": [
-        "top.yukonga.miuix.kmp:miuix-shader-android:0.9.4",
-        "top.yukonga.miuix.kmp:miuix-shader:0.9.4"
+        "top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-9d4b9c8-SNAPSHOT"
       ]
     },
     {
-      "id": "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4",
+      "id": "top.yukonga.miuix.kmp:miuix-material-android:0.9.4-9d4b9c8-SNAPSHOT",
+      "name": "miuix-material",
+      "author": "compose-miuix-ui",
+      "version": "0.9.4-9d4b9c8-SNAPSHOT",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/compose-miuix-ui/miuix",
+      "description": "Material and render primitives for Miuix",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "top.yukonga.miuix.kmp:miuix-material-android:0.9.4-9d4b9c8-SNAPSHOT",
+      "members": [
+        {
+          "id": "top.yukonga.miuix.kmp:miuix-material-android:0.9.4-9d4b9c8-SNAPSHOT",
+          "name": "miuix-material",
+          "author": "compose-miuix-ui",
+          "version": "0.9.4-9d4b9c8-SNAPSHOT",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/compose-miuix-ui/miuix",
+          "description": "Material and render primitives for Miuix",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "top.yukonga.miuix.kmp:miuix-material-android:0.9.4-9d4b9c8-SNAPSHOT"
+        },
+        {
+          "id": "top.yukonga.miuix.kmp:miuix-material:0.9.4-9d4b9c8-SNAPSHOT",
+          "name": "miuix-material",
+          "author": "compose-miuix-ui",
+          "version": "0.9.4-9d4b9c8-SNAPSHOT",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/compose-miuix-ui/miuix",
+          "description": "Material and render primitives for Miuix",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "top.yukonga.miuix.kmp:miuix-material:0.9.4-9d4b9c8-SNAPSHOT"
+        }
+      ],
+      "coordinates": [
+        "top.yukonga.miuix.kmp:miuix-material-android:0.9.4-9d4b9c8-SNAPSHOT",
+        "top.yukonga.miuix.kmp:miuix-material:0.9.4-9d4b9c8-SNAPSHOT"
+      ]
+    },
+    {
+      "id": "top.yukonga.miuix.kmp:miuix-nav-android:0.9.4-9d4b9c8-SNAPSHOT",
+      "name": "miuix-nav",
+      "author": "compose-miuix-ui",
+      "version": "0.9.4-9d4b9c8-SNAPSHOT",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/compose-miuix-ui/miuix",
+      "description": "Self-contained navigation runtime for Miuix",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "top.yukonga.miuix.kmp:miuix-nav-android:0.9.4-9d4b9c8-SNAPSHOT",
+      "members": [
+        {
+          "id": "top.yukonga.miuix.kmp:miuix-nav-android:0.9.4-9d4b9c8-SNAPSHOT",
+          "name": "miuix-nav",
+          "author": "compose-miuix-ui",
+          "version": "0.9.4-9d4b9c8-SNAPSHOT",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/compose-miuix-ui/miuix",
+          "description": "Self-contained navigation runtime for Miuix",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "top.yukonga.miuix.kmp:miuix-nav-android:0.9.4-9d4b9c8-SNAPSHOT"
+        }
+      ],
+      "coordinates": [
+        "top.yukonga.miuix.kmp:miuix-nav-android:0.9.4-9d4b9c8-SNAPSHOT"
+      ]
+    },
+    {
+      "id": "top.yukonga.miuix.kmp:miuix-preference-android:0.9.4-9d4b9c8-SNAPSHOT",
+      "name": "miuix-preference",
+      "author": "compose-miuix-ui",
+      "version": "0.9.4-9d4b9c8-SNAPSHOT",
+      "license": "The Apache Software License, Version 2.0",
+      "url": "https://github.com/compose-miuix-ui/miuix",
+      "description": "Preference components for Miuix",
+      "components": [
+        "APK／WebUI"
+      ],
+      "coordinate": "top.yukonga.miuix.kmp:miuix-preference-android:0.9.4-9d4b9c8-SNAPSHOT",
+      "members": [
+        {
+          "id": "top.yukonga.miuix.kmp:miuix-preference-android:0.9.4-9d4b9c8-SNAPSHOT",
+          "name": "miuix-preference",
+          "author": "compose-miuix-ui",
+          "version": "0.9.4-9d4b9c8-SNAPSHOT",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/compose-miuix-ui/miuix",
+          "description": "Preference components for Miuix",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "top.yukonga.miuix.kmp:miuix-preference-android:0.9.4-9d4b9c8-SNAPSHOT"
+        }
+      ],
+      "coordinates": [
+        "top.yukonga.miuix.kmp:miuix-preference-android:0.9.4-9d4b9c8-SNAPSHOT"
+      ]
+    },
+    {
+      "id": "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4-9d4b9c8-SNAPSHOT",
       "name": "miuix-squircle",
       "author": "compose-miuix-ui",
-      "version": "0.9.4",
+      "version": "0.9.4-9d4b9c8-SNAPSHOT",
       "license": "The Apache Software License, Version 2.0",
       "url": "https://github.com/compose-miuix-ui/miuix",
       "description": "Squircle corner library for Miuix",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4",
+      "coordinate": "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4-9d4b9c8-SNAPSHOT",
       "members": [
         {
-          "id": "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4",
+          "id": "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4-9d4b9c8-SNAPSHOT",
           "name": "miuix-squircle",
           "author": "compose-miuix-ui",
-          "version": "0.9.4",
+          "version": "0.9.4-9d4b9c8-SNAPSHOT",
           "license": "The Apache Software License, Version 2.0",
           "url": "https://github.com/compose-miuix-ui/miuix",
           "description": "Squircle corner library for Miuix",
           "components": [
             "APK／WebUI"
           ],
-          "coordinate": "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4"
+          "coordinate": "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4-9d4b9c8-SNAPSHOT"
         },
         {
-          "id": "top.yukonga.miuix.kmp:miuix-squircle:0.9.4",
+          "id": "top.yukonga.miuix.kmp:miuix-squircle:0.9.4-9d4b9c8-SNAPSHOT",
           "name": "miuix-squircle",
           "author": "compose-miuix-ui",
-          "version": "0.9.4",
+          "version": "0.9.4-9d4b9c8-SNAPSHOT",
           "license": "The Apache Software License, Version 2.0",
           "url": "https://github.com/compose-miuix-ui/miuix",
           "description": "Squircle corner library for Miuix",
           "components": [
             "APK／WebUI"
           ],
-          "coordinate": "top.yukonga.miuix.kmp:miuix-squircle:0.9.4"
+          "coordinate": "top.yukonga.miuix.kmp:miuix-squircle:0.9.4-9d4b9c8-SNAPSHOT"
         }
       ],
       "coordinates": [
-        "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4",
-        "top.yukonga.miuix.kmp:miuix-squircle:0.9.4"
+        "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4-9d4b9c8-SNAPSHOT",
+        "top.yukonga.miuix.kmp:miuix-squircle:0.9.4-9d4b9c8-SNAPSHOT"
       ]
     },
     {
-      "id": "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4",
+      "id": "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4-9d4b9c8-SNAPSHOT",
       "name": "miuix-ui",
       "author": "compose-miuix-ui",
-      "version": "0.9.4",
+      "version": "0.9.4-9d4b9c8-SNAPSHOT",
       "license": "The Apache Software License, Version 2.0",
       "url": "https://github.com/compose-miuix-ui/miuix",
       "description": "A UI library for Compose Multiplatform",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4",
+      "coordinate": "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4-9d4b9c8-SNAPSHOT",
       "members": [
         {
-          "id": "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4",
+          "id": "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4-9d4b9c8-SNAPSHOT",
           "name": "miuix-ui",
           "author": "compose-miuix-ui",
-          "version": "0.9.4",
+          "version": "0.9.4-9d4b9c8-SNAPSHOT",
           "license": "The Apache Software License, Version 2.0",
           "url": "https://github.com/compose-miuix-ui/miuix",
           "description": "A UI library for Compose Multiplatform",
           "components": [
             "APK／WebUI"
           ],
-          "coordinate": "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4"
+          "coordinate": "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4-9d4b9c8-SNAPSHOT"
+        },
+        {
+          "id": "top.yukonga.miuix.kmp:miuix-ui:0.9.4-9d4b9c8-SNAPSHOT",
+          "name": "miuix-ui",
+          "author": "compose-miuix-ui",
+          "version": "0.9.4-9d4b9c8-SNAPSHOT",
+          "license": "The Apache Software License, Version 2.0",
+          "url": "https://github.com/compose-miuix-ui/miuix",
+          "description": "A UI library for Compose Multiplatform",
+          "components": [
+            "APK／WebUI"
+          ],
+          "coordinate": "top.yukonga.miuix.kmp:miuix-ui:0.9.4-9d4b9c8-SNAPSHOT"
         }
       ],
       "coordinates": [
-        "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4"
+        "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4-9d4b9c8-SNAPSHOT",
+        "top.yukonga.miuix.kmp:miuix-ui:0.9.4-9d4b9c8-SNAPSHOT"
       ]
     },
     {
       "id": "reference:nettle",
       "name": "Nettle",
       "author": "Nettle developers",
-      "version": "4.0",
+      "version": "4.0 / 6625f46e9b25",
       "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
       "url": "https://www.lysator.liu.se/~nisse/nettle/",
       "description": "SMB 靜態建置的密碼學依賴。",
@@ -4206,7 +5280,7 @@
           "id": "reference:nettle",
           "name": "Nettle",
           "author": "Nettle developers",
-          "version": "4.0",
+          "version": "4.0 / 6625f46e9b25",
           "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
           "url": "https://www.lysator.liu.se/~nisse/nettle/",
           "description": "SMB 靜態建置的密碼學依賴。",
@@ -4221,7 +5295,7 @@
       "id": "reference:opencc-phrases",
       "name": "OpenCC phrase dictionaries",
       "author": "BYVoid and OpenCC contributors",
-      "version": "1.4.2 (025f371)",
+      "version": "fae2a0a911c3",
       "license": "Apache-2.0",
       "url": "https://github.com/BYVoid/OpenCC",
       "description": "Dex 繁簡轉換的詞組語境資料；轉為本專案內嵌緊湊索引，未引入原生引擎。",
@@ -4234,7 +5308,7 @@
           "id": "reference:opencc-phrases",
           "name": "OpenCC phrase dictionaries",
           "author": "BYVoid and OpenCC contributors",
-          "version": "1.4.2 (025f371)",
+          "version": "fae2a0a911c3",
           "license": "Apache-2.0",
           "url": "https://github.com/BYVoid/OpenCC",
           "description": "Dex 繁簡轉換的詞組語境資料；轉為本專案內嵌緊湊索引，未引入原生引擎。",
@@ -4268,6 +5342,33 @@
           "description": "Samba 建置階段解析器產生工具。",
           "components": [
             "SMB（建置時）"
+          ]
+        }
+      ],
+      "coordinates": []
+    },
+    {
+      "id": "reference:pcre",
+      "name": "PCRE2 (AOSP)",
+      "author": "Philip Hazel / PCRE contributors",
+      "version": "9f8efd77b4b9",
+      "license": "BSD-3-Clause / individual source notices",
+      "url": "https://android.googlesource.com/platform/external/pcre",
+      "description": "BusyBox Android 配方使用的 PCRE2；完整授權見隨附來源。",
+      "components": [
+        "BusyBox 間接依賴"
+      ],
+      "members": [
+        {
+          "id": "reference:pcre",
+          "name": "PCRE2 (AOSP)",
+          "author": "Philip Hazel / PCRE contributors",
+          "version": "9f8efd77b4b9",
+          "license": "BSD-3-Clause / individual source notices",
+          "url": "https://android.googlesource.com/platform/external/pcre",
+          "description": "BusyBox Android 配方使用的 PCRE2；完整授權見隨附來源。",
+          "components": [
+            "BusyBox 間接依賴"
           ]
         }
       ],
@@ -4322,10 +5423,10 @@
       "id": "cargo:proc-macro2",
       "name": "proc-macro2",
       "author": "David Tolnay <dtolnay@gmail.com>, Alex Crichton <alex@alexcrichton.com>",
-      "version": "1.0.107",
+      "version": "1.0.107 / 8058872fd1ea",
       "license": "MIT OR Apache-2.0",
       "url": "https://github.com/dtolnay/proc-macro2",
-      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -4334,10 +5435,10 @@
           "id": "cargo:proc-macro2",
           "name": "proc-macro2",
           "author": "David Tolnay <dtolnay@gmail.com>, Alex Crichton <alex@alexcrichton.com>",
-          "version": "1.0.107",
+          "version": "1.0.107 / 8058872fd1ea",
           "license": "MIT OR Apache-2.0",
           "url": "https://github.com/dtolnay/proc-macro2",
-          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -4349,10 +5450,10 @@
       "id": "cargo:quote",
       "name": "quote",
       "author": "David Tolnay <dtolnay@gmail.com>",
-      "version": "1.0.47",
+      "version": "1.0.47 / 27be8db3c8eb",
       "license": "MIT OR Apache-2.0",
       "url": "https://github.com/dtolnay/quote",
-      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -4361,10 +5462,10 @@
           "id": "cargo:quote",
           "name": "quote",
           "author": "David Tolnay <dtolnay@gmail.com>",
-          "version": "1.0.47",
+          "version": "1.0.47 / 27be8db3c8eb",
           "license": "MIT OR Apache-2.0",
           "url": "https://github.com/dtolnay/quote",
-          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -4379,7 +5480,7 @@
       "version": "1.99.1",
       "license": "MIT OR Apache-2.0",
       "url": "https://github.com/rust-lang/rust",
-      "description": "Rust 使用標準函式庫與 Android 系統介面；Cargo.lock 無外部 crate。",
+      "description": "使用既有官方 Rust 1.99.1；Cargo 外部依賴另列，未切換自編工具鏈。",
       "components": [
         "Rust"
       ],
@@ -4391,7 +5492,7 @@
           "version": "1.99.1",
           "license": "MIT OR Apache-2.0",
           "url": "https://github.com/rust-lang/rust",
-          "description": "Rust 使用標準函式庫與 Android 系統介面；Cargo.lock 無外部 crate。",
+          "description": "使用既有官方 Rust 1.99.1；Cargo 外部依賴另列，未切換自編工具鏈。",
           "components": [
             "Rust"
           ]
@@ -4403,7 +5504,7 @@
       "id": "reference:samba",
       "name": "Samba / smbclient",
       "author": "Samba Team",
-      "version": "4.25.1",
+      "version": "4.26.0-gd315a7f4354c",
       "license": "GPL-3.0-or-later / 個別來源授權",
       "url": "https://www.samba.org/",
       "description": "SMB 遠端傳輸；隨附版本含 Android 相容補丁。",
@@ -4415,7 +5516,7 @@
           "id": "reference:samba",
           "name": "Samba / smbclient",
           "author": "Samba Team",
-          "version": "4.25.1",
+          "version": "4.26.0-gd315a7f4354c",
           "license": "GPL-3.0-or-later / 個別來源授權",
           "url": "https://www.samba.org/",
           "description": "SMB 遠端傳輸；隨附版本含 Android 相容補丁。",
@@ -4492,10 +5593,10 @@
       "id": "cargo:scopeguard",
       "name": "scopeguard",
       "author": "bluss",
-      "version": "1.2.0",
+      "version": "1.2.0 / bb988222848d",
       "license": "MIT OR Apache-2.0",
       "url": "https://github.com/bluss/scopeguard",
-      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -4504,10 +5605,10 @@
           "id": "cargo:scopeguard",
           "name": "scopeguard",
           "author": "bluss",
-          "version": "1.2.0",
+          "version": "1.2.0 / bb988222848d",
           "license": "MIT OR Apache-2.0",
           "url": "https://github.com/bluss/scopeguard",
-          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -4519,10 +5620,10 @@
       "id": "cargo:serde",
       "name": "serde",
       "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
-      "version": "1.0.229",
+      "version": "1.0.229 / aa7913ad0211",
       "license": "MIT OR Apache-2.0",
       "url": "https://github.com/serde-rs/serde",
-      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -4531,10 +5632,10 @@
           "id": "cargo:serde",
           "name": "serde",
           "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
-          "version": "1.0.229",
+          "version": "1.0.229 / aa7913ad0211",
           "license": "MIT OR Apache-2.0",
           "url": "https://github.com/serde-rs/serde",
-          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -4546,10 +5647,10 @@
       "id": "cargo:serde_core",
       "name": "serde_core",
       "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
-      "version": "1.0.229",
+      "version": "1.0.229 / aa7913ad0211",
       "license": "MIT OR Apache-2.0",
       "url": "https://github.com/serde-rs/serde",
-      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -4558,10 +5659,10 @@
           "id": "cargo:serde_core",
           "name": "serde_core",
           "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
-          "version": "1.0.229",
+          "version": "1.0.229 / aa7913ad0211",
           "license": "MIT OR Apache-2.0",
           "url": "https://github.com/serde-rs/serde",
-          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -4573,10 +5674,10 @@
       "id": "cargo:serde_derive",
       "name": "serde_derive",
       "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
-      "version": "1.0.229",
+      "version": "1.0.229 / aa7913ad0211",
       "license": "MIT OR Apache-2.0",
       "url": "https://github.com/serde-rs/serde",
-      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -4585,10 +5686,10 @@
           "id": "cargo:serde_derive",
           "name": "serde_derive",
           "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
-          "version": "1.0.229",
+          "version": "1.0.229 / aa7913ad0211",
           "license": "MIT OR Apache-2.0",
           "url": "https://github.com/serde-rs/serde",
-          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -4599,11 +5700,11 @@
     {
       "id": "cargo:serde_json",
       "name": "serde_json",
-      "author": "Upstream contributors",
-      "version": "1.0.154",
+      "author": "serde_json contributors",
+      "version": "1.0.154 / 8c535a260ce5",
       "license": "MIT OR Apache-2.0",
       "url": "https://github.com/serde-rs/json",
-      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -4611,11 +5712,11 @@
         {
           "id": "cargo:serde_json",
           "name": "serde_json",
-          "author": "Upstream contributors",
-          "version": "1.0.154",
+          "author": "serde_json contributors",
+          "version": "1.0.154 / 8c535a260ce5",
           "license": "MIT OR Apache-2.0",
           "url": "https://github.com/serde-rs/json",
-          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -4672,10 +5773,10 @@
       "id": "cargo:socket-pktinfo",
       "name": "socket-pktinfo",
       "author": "pixsperdavid <david@pixsper.com>",
-      "version": "0.4.1",
+      "version": "0.4.2 / c6e67877f079",
       "license": "MIT",
       "url": "https://github.com/pixsper/socket-pktinfo",
-      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -4684,10 +5785,10 @@
           "id": "cargo:socket-pktinfo",
           "name": "socket-pktinfo",
           "author": "pixsperdavid <david@pixsper.com>",
-          "version": "0.4.1",
+          "version": "0.4.2 / c6e67877f079",
           "license": "MIT",
           "url": "https://github.com/pixsper/socket-pktinfo",
-          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -4699,10 +5800,10 @@
       "id": "cargo:socket2",
       "name": "socket2",
       "author": "Alex Crichton <alex@alexcrichton.com>, Thomas de Zeeuw <thomasdezeeuw@gmail.com>",
-      "version": "0.6.5",
+      "version": "0.6.5 / 8b8b96fdaa13",
       "license": "MIT OR Apache-2.0",
       "url": "https://github.com/rust-lang/socket2",
-      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -4711,10 +5812,10 @@
           "id": "cargo:socket2",
           "name": "socket2",
           "author": "Alex Crichton <alex@alexcrichton.com>, Thomas de Zeeuw <thomasdezeeuw@gmail.com>",
-          "version": "0.6.5",
+          "version": "0.6.5 / 8b8b96fdaa13",
           "license": "MIT OR Apache-2.0",
           "url": "https://github.com/rust-lang/socket2",
-          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -4726,10 +5827,10 @@
       "id": "cargo:spin",
       "name": "spin",
       "author": "Mathijs van de Nes <git@mathijs.vd-nes.nl>, John Ericson <git@JohnEricson.me>, Joshua Barretto <joshua.s.barretto@gmail.com>",
-      "version": "0.9.9",
+      "version": "0.12.3",
       "license": "MIT",
-      "url": "https://github.com/mvdnes/spin-rs.git",
-      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "url": "https://codeberg.org/zesterer/spin",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -4738,10 +5839,10 @@
           "id": "cargo:spin",
           "name": "spin",
           "author": "Mathijs van de Nes <git@mathijs.vd-nes.nl>, John Ericson <git@JohnEricson.me>, Joshua Barretto <joshua.s.barretto@gmail.com>",
-          "version": "0.9.9",
+          "version": "0.12.3",
           "license": "MIT",
-          "url": "https://github.com/mvdnes/spin-rs.git",
-          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "url": "https://codeberg.org/zesterer/spin",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -4753,10 +5854,10 @@
       "id": "cargo:syn",
       "name": "syn",
       "author": "David Tolnay <dtolnay@gmail.com>",
-      "version": "3.0.9",
+      "version": "3.0.10 / 97ec37dda8a8",
       "license": "MIT OR Apache-2.0",
       "url": "https://github.com/dtolnay/syn",
-      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -4765,10 +5866,10 @@
           "id": "cargo:syn",
           "name": "syn",
           "author": "David Tolnay <dtolnay@gmail.com>",
-          "version": "3.0.9",
+          "version": "3.0.10 / 97ec37dda8a8",
           "license": "MIT OR Apache-2.0",
           "url": "https://github.com/dtolnay/syn",
-          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -4809,10 +5910,10 @@
       "id": "cargo:unicode-ident",
       "name": "unicode-ident",
       "author": "David Tolnay <dtolnay@gmail.com>",
-      "version": "1.0.27",
+      "version": "1.0.27 / 28018f288934",
       "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
       "url": "https://github.com/dtolnay/unicode-ident",
-      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -4821,10 +5922,10 @@
           "id": "cargo:unicode-ident",
           "name": "unicode-ident",
           "author": "David Tolnay <dtolnay@gmail.com>",
-          "version": "1.0.27",
+          "version": "1.0.27 / 28018f288934",
           "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
           "url": "https://github.com/dtolnay/unicode-ident",
-          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -4839,7 +5940,7 @@
       "version": "0.11.1+wasi-snapshot-preview1",
       "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
       "url": "https://github.com/bytecodealliance/wasi",
-      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -4851,7 +5952,7 @@
           "version": "0.11.1+wasi-snapshot-preview1",
           "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
           "url": "https://github.com/bytecodealliance/wasi",
-          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -4866,7 +5967,7 @@
       "version": "0.2.1",
       "license": "MIT OR Apache-2.0",
       "url": "https://github.com/microsoft/windows-rs",
-      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -4878,7 +5979,7 @@
           "version": "0.2.1",
           "license": "MIT OR Apache-2.0",
           "url": "https://github.com/microsoft/windows-rs",
-          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -4893,7 +5994,7 @@
       "version": "0.61.2",
       "license": "MIT OR Apache-2.0",
       "url": "https://github.com/microsoft/windows-rs",
-      "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -4905,7 +6006,7 @@
           "version": "0.61.2",
           "license": "MIT OR Apache-2.0",
           "url": "https://github.com/microsoft/windows-rs",
-          "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -4917,10 +6018,10 @@
       "id": "cargo:zmij",
       "name": "zmij",
       "author": "David Tolnay <dtolnay@gmail.com>",
-      "version": "1.0.23",
+      "version": "1.0.23 / 35355256734d",
       "license": "MIT",
       "url": "https://github.com/dtolnay/zmij",
-      "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+      "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
       "components": [
         "Rust／Cargo"
       ],
@@ -4929,10 +6030,10 @@
           "id": "cargo:zmij",
           "name": "zmij",
           "author": "David Tolnay <dtolnay@gmail.com>",
-          "version": "1.0.23",
+          "version": "1.0.23 / 35355256734d",
           "license": "MIT",
           "url": "https://github.com/dtolnay/zmij",
-          "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+          "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
           "components": [
             "Rust／Cargo"
           ]
@@ -4944,7 +6045,7 @@
       "id": "reference:zstd",
       "name": "Zstandard",
       "author": "Meta Platforms, Inc. and affiliates",
-      "version": "1.6.0 / 01b7154f1172",
+      "version": "1.6.0 / 274401141766",
       "license": "BSD-3-Clause OR GPL-2.0",
       "url": "https://github.com/facebook/zstd",
       "description": "串流壓縮與解壓縮。",
@@ -4956,7 +6057,7 @@
           "id": "reference:zstd",
           "name": "Zstandard",
           "author": "Meta Platforms, Inc. and affiliates",
-          "version": "1.6.0 / 01b7154f1172",
+          "version": "1.6.0 / 274401141766",
           "license": "BSD-3-Clause OR GPL-2.0",
           "url": "https://github.com/facebook/zstd",
           "description": "串流壓縮與解壓縮。",

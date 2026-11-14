@@ -48,9 +48,7 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.catalog.utils.DampedDragAnimation
 import com.kyant.backdrop.catalog.utils.InteractiveHighlight
 import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
 import io.github.yawasau.speedbackup.webview.safeLens as lens
-import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.shapes.Capsule
 import kotlinx.coroutines.flow.collectLatest
@@ -76,7 +74,6 @@ fun LiquidBottomTabs(
     val blurEnabled=GlassMaterial.LocalBlurEnabled.current
     val adaptive=rememberAdaptiveGlass(isLightTheme,"navigation")
     val samplingActive=GlassMaterial.LocalActive.current
-    val contrast=LocalGlassContrastEnabled.current
     val containerColor = GlassMaterial.surface(isLightTheme).copy(alpha=glassControls.opacity)
 
     val tabsBackdrop = rememberLayerBackdrop()
@@ -166,7 +163,7 @@ fun LiquidBottomTabs(
                         scaleX = scale
                         scaleY = scale
                     },
-                    onDrawBackdrop={draw->draw();if((glassControls.adaptive||contrast)&&samplingActive){with(adaptive){capture(glassControls.sampleTick,draw)}}},
+                    onDrawBackdrop={draw->draw();if(glassControls.adaptive&&samplingActive){with(adaptive){capture(glassControls.sampleTick,draw)}}},
                     onDrawSurface = { drawRect(containerColor) }
                 )
                 .then(interactiveHighlight.modifier)
@@ -174,7 +171,7 @@ fun LiquidBottomTabs(
                 .fillMaxWidth()
                 .padding(4f.dp),
             verticalAlignment = Alignment.CenterVertically,
-            content = {CompositionLocalProvider(LocalGlassContentColor provides (if(glassControls.adaptive)adaptive.contentColor else if(contrast)adaptive.fixedContentColor(GlassMaterial.surface(isLightTheme),glassControls.opacity) else Color.Unspecified)){content()}}
+            content = {content()}
         )
 
         CompositionLocalProvider(
@@ -195,8 +192,8 @@ fun LiquidBottomTabs(
                         shape = { Capsule() },
                         effects = {
                             val progress = dampedDragAnimation.pressProgress
-                            vibrancy()
-                            if(blurEnabled)blur((GlassMaterial.BlurDp*3f*glassControls.blurStrength/100f).dp.toPx())
+                            // The selection lens must sample the same material as the bar.
+                            with(adaptive){material(glassControls.adaptive,blurEnabled,glassControls.blurStrength)}
                             lens(
                                 24f.dp.toPx() * progress,
                                 24f.dp.toPx() * progress * glassControls.refraction/100f
@@ -214,7 +211,7 @@ fun LiquidBottomTabs(
                     .padding(horizontal = 4f.dp)
                     .graphicsLayer(colorFilter = ColorFilter.tint(accentColor)),
                 verticalAlignment = Alignment.CenterVertically,
-                content = {CompositionLocalProvider(LocalGlassContentColor provides (if(glassControls.adaptive)adaptive.contentColor else if(contrast)adaptive.fixedContentColor(GlassMaterial.surface(isLightTheme),glassControls.opacity) else Color.Unspecified)){content()}}
+                content = {content()}
             )
         }
 

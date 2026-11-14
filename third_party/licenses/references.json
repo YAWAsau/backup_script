@@ -3,7 +3,7 @@
     "id": "reference:liquidglass",
     "name": "AndroidLiquidGlass",
     "author": "Kyant0",
-    "version": "65ab177e90e5",
+    "version": "2.0.1-eb4a0ea2-SNAPSHOT",
     "license": "Apache-2.0",
     "url": "https://github.com/Kyant0/AndroidLiquidGlass",
     "description": "液態玻璃控制項與視窗座標取樣來源；已作本專案修改。",
@@ -32,7 +32,7 @@
     "version": "fa0a0f74a1fc",
     "license": "GPL-3.0-only",
     "url": "https://github.com/XayahSuSuSu/Android-DataBackup",
-    "description": "ExternalRestorePolicy 的外部資料恢復策略來源。",
+    "description": "ExternalRestorePolicy 的外部資料恢復策略來源。已核對最新 1ba03fabd13f：引用的 RestoreExternalDataHelper.kt 無變更。",
     "components": [
       "Dex",
       "原始碼引用"
@@ -68,7 +68,7 @@
     "id": "reference:mcu",
     "name": "Material Color Utilities",
     "author": "Google",
-    "version": "bd811e4ca2ab",
+    "version": "194144d75ed7 (Java/Kotlin unchanged)",
     "license": "Apache-2.0",
     "url": "https://github.com/material-foundation/material-color-utilities",
     "description": "隨附 Java 色彩演算法；明確使用 2025 規格。",
@@ -81,7 +81,7 @@
     "id": "reference:ksu",
     "name": "KernelSU",
     "author": "tiann / KernelSU contributors",
-    "version": "75e179d378d7",
+    "version": "dbb73665d103",
     "license": "GPL-3.0",
     "url": "https://github.com/tiann/KernelSU",
     "description": "主題流程及參數參照，未納入 KernelSU 管理器或核心模組。",
@@ -94,7 +94,7 @@
     "id": "reference:miuix",
     "name": "Miuix",
     "author": "compose-miuix-ui",
-    "version": "0.9.4 / 39c40f998442",
+    "version": "0.9.4-9d4b9c8-SNAPSHOT",
     "license": "Apache-2.0",
     "url": "https://github.com/compose-miuix-ui/miuix",
     "description": "原生介面使用的 Miuix 執行期程式庫；版本亦列於解析依賴。",
@@ -107,10 +107,10 @@
     "id": "reference:materialkolor",
     "name": "MaterialKolor",
     "author": "Jordon de Hoog",
-    "version": "6.0.0",
+    "version": "6.0.0-c5100e46-SNAPSHOT",
     "license": "MIT",
     "url": "https://github.com/jordond/MaterialKolor",
-    "description": "Miuix 傳遞使用的色彩引擎；版本亦列於解析依賴。",
+    "description": "獨立 Material 模式與 Miuix 依賴使用的色彩引擎，源碼提交已鎖定。",
     "components": [
       "APK／WebUI",
       "設計參照"
@@ -123,7 +123,7 @@
     "version": "1.99.1",
     "license": "MIT OR Apache-2.0",
     "url": "https://github.com/rust-lang/rust",
-    "description": "Rust 使用標準函式庫與 Android 系統介面；Cargo.lock 無外部 crate。",
+    "description": "使用既有官方 Rust 1.99.1；Cargo 外部依賴另列，未切換自編工具鏈。",
     "components": [
       "Rust"
     ]
@@ -146,7 +146,7 @@
     "id": "reference:busybox",
     "name": "BusyBox",
     "author": "BusyBox contributors",
-    "version": "1.38.0 Android",
+    "version": "1.38.0-dev / 67a351f7c067",
     "license": "GPL-2.0-only",
     "url": "https://busybox.net/",
     "description": "腳本隨附的命令列工具集。",
@@ -158,7 +158,7 @@
     "id": "reference:tar",
     "name": "GNU tar",
     "author": "Free Software Foundation",
-    "version": "1.35.90",
+    "version": "1.35.90 / 1f0762eb25b5",
     "license": "GPL-3.0-or-later",
     "url": "https://www.gnu.org/software/tar/",
     "description": "串流封存與恢復。",
@@ -170,7 +170,7 @@
     "id": "reference:zstd",
     "name": "Zstandard",
     "author": "Meta Platforms, Inc. and affiliates",
-    "version": "1.6.0 / 01b7154f1172",
+    "version": "1.6.0 / 274401141766",
     "license": "BSD-3-Clause OR GPL-2.0",
     "url": "https://github.com/facebook/zstd",
     "description": "串流壓縮與解壓縮。",
@@ -182,7 +182,7 @@
     "id": "reference:samba",
     "name": "Samba / smbclient",
     "author": "Samba Team",
-    "version": "4.25.1",
+    "version": "4.26.0-gd315a7f4354c",
     "license": "GPL-3.0-or-later / 個別來源授權",
     "url": "https://www.samba.org/",
     "description": "SMB 遠端傳輸；隨附版本含 Android 相容補丁。",
@@ -194,7 +194,7 @@
     "id": "reference:gmp",
     "name": "GNU Multiple Precision Arithmetic Library",
     "author": "GMP developers",
-    "version": "6.3.0",
+    "version": "6.3.0 / 722f5c638d3a",
     "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
     "url": "https://gmplib.org/",
     "description": "SMB 靜態建置的高精度算術依賴。",
@@ -206,7 +206,7 @@
     "id": "reference:nettle",
     "name": "Nettle",
     "author": "Nettle developers",
-    "version": "4.0",
+    "version": "4.0 / 6625f46e9b25",
     "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
     "url": "https://www.lysator.liu.se/~nisse/nettle/",
     "description": "SMB 靜態建置的密碼學依賴。",
@@ -218,7 +218,7 @@
     "id": "reference:gnutls",
     "name": "GnuTLS",
     "author": "GnuTLS contributors",
-    "version": "3.8.13",
+    "version": "3.8.13 / d48f528b7a86",
     "license": "LGPL-2.1-or-later / 個別來源授權",
     "url": "https://www.gnutls.org/",
     "description": "SMB 靜態建置的 TLS 依賴。",
@@ -242,7 +242,7 @@
     "id": "reference:find",
     "name": "GNU findutils",
     "author": "Free Software Foundation",
-    "version": "4.11.0",
+    "version": "4.11.0-g71d158fdd51b",
     "license": "GPL-3.0-or-later",
     "url": "https://www.gnu.org/software/findutils/",
     "description": "隨附完整上游來源壓縮檔與 Android ARM64／API28／16KiB 靜態建置配方。",
@@ -276,145 +276,62 @@
     ]
   },
   {
-    "id": "cargo:itoa",
-    "name": "itoa",
-    "author": "David Tolnay <dtolnay@gmail.com>",
-    "version": "1.0.18",
-    "license": "MIT OR Apache-2.0",
-    "url": "https://github.com/dtolnay/itoa",
-    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+    "id": "reference:opencc-phrases",
+    "name": "OpenCC phrase dictionaries",
+    "author": "BYVoid and OpenCC contributors",
+    "version": "fae2a0a911c3",
+    "license": "Apache-2.0",
+    "url": "https://github.com/BYVoid/OpenCC",
+    "description": "Dex 繁簡轉換的詞組語境資料；轉為本專案內嵌緊湊索引，未引入原生引擎。",
     "components": [
-      "Rust／Cargo"
+      "Dex",
+      "詞庫資料"
     ]
   },
   {
-    "id": "cargo:memchr",
-    "name": "memchr",
-    "author": "Andrew Gallant <jamslam@gmail.com>, bluss",
-    "version": "2.8.3",
-    "license": "Unlicense OR MIT",
-    "url": "https://github.com/BurntSushi/memchr",
-    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+    "id": "reference:libtasn1",
+    "name": "GNU Libtasn1",
+    "author": "Free Software Foundation / contributors",
+    "version": "4.21.0-12-g8dddaa9",
+    "license": "LGPL-2.1-or-later (library); GPL-3.0-or-later (tools)",
+    "url": "https://gitlab.com/gnutls/libtasn1",
+    "description": "新版 GnuTLS 的獨立 ASN.1 靜態依賴；完整來源授權隨包提供。",
     "components": [
-      "Rust／Cargo"
+      "SMB 間接依賴"
     ]
   },
   {
-    "id": "cargo:proc-macro2",
-    "name": "proc-macro2",
-    "author": "David Tolnay <dtolnay@gmail.com>, Alex Crichton <alex@alexcrichton.com>",
-    "version": "1.0.107",
-    "license": "MIT OR Apache-2.0",
-    "url": "https://github.com/dtolnay/proc-macro2",
-    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+    "id": "reference:libselinux",
+    "name": "libselinux (Android fork)",
+    "author": "NSA / SELinux contributors / John Wu",
+    "version": "be1b39a657fe",
+    "license": "Public domain (libselinux); individual source notices apply",
+    "url": "https://github.com/topjohnwu/selinux",
+    "description": "BusyBox Android 配方使用的 libselinux；完整授權見隨附來源。",
     "components": [
-      "Rust／Cargo"
+      "BusyBox 間接依賴"
     ]
   },
   {
-    "id": "cargo:quote",
-    "name": "quote",
-    "author": "David Tolnay <dtolnay@gmail.com>",
-    "version": "1.0.47",
-    "license": "MIT OR Apache-2.0",
-    "url": "https://github.com/dtolnay/quote",
-    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
+    "id": "reference:pcre",
+    "name": "PCRE2 (AOSP)",
+    "author": "Philip Hazel / PCRE contributors",
+    "version": "9f8efd77b4b9",
+    "license": "BSD-3-Clause / individual source notices",
+    "url": "https://android.googlesource.com/platform/external/pcre",
+    "description": "BusyBox Android 配方使用的 PCRE2；完整授權見隨附來源。",
     "components": [
-      "Rust／Cargo"
-    ]
-  },
-  {
-    "id": "cargo:serde",
-    "name": "serde",
-    "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
-    "version": "1.0.229",
-    "license": "MIT OR Apache-2.0",
-    "url": "https://github.com/serde-rs/serde",
-    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
-    "components": [
-      "Rust／Cargo"
-    ]
-  },
-  {
-    "id": "cargo:serde_core",
-    "name": "serde_core",
-    "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
-    "version": "1.0.229",
-    "license": "MIT OR Apache-2.0",
-    "url": "https://github.com/serde-rs/serde",
-    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
-    "components": [
-      "Rust／Cargo"
-    ]
-  },
-  {
-    "id": "cargo:serde_derive",
-    "name": "serde_derive",
-    "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
-    "version": "1.0.229",
-    "license": "MIT OR Apache-2.0",
-    "url": "https://github.com/serde-rs/serde",
-    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
-    "components": [
-      "Rust／Cargo"
-    ]
-  },
-  {
-    "id": "cargo:serde_json",
-    "name": "serde_json",
-    "author": "Upstream contributors",
-    "version": "1.0.154",
-    "license": "MIT OR Apache-2.0",
-    "url": "https://github.com/serde-rs/json",
-    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
-    "components": [
-      "Rust／Cargo"
-    ]
-  },
-  {
-    "id": "cargo:syn",
-    "name": "syn",
-    "author": "David Tolnay <dtolnay@gmail.com>",
-    "version": "3.0.9",
-    "license": "MIT OR Apache-2.0",
-    "url": "https://github.com/dtolnay/syn",
-    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
-    "components": [
-      "Rust／Cargo"
-    ]
-  },
-  {
-    "id": "cargo:unicode-ident",
-    "name": "unicode-ident",
-    "author": "David Tolnay <dtolnay@gmail.com>",
-    "version": "1.0.27",
-    "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
-    "url": "https://github.com/dtolnay/unicode-ident",
-    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
-    "components": [
-      "Rust／Cargo"
-    ]
-  },
-  {
-    "id": "cargo:zmij",
-    "name": "zmij",
-    "author": "David Tolnay <dtolnay@gmail.com>",
-    "version": "1.0.23",
-    "license": "MIT",
-    "url": "https://github.com/dtolnay/zmij",
-    "description": "Rust JSON 解析依賴；鎖定依賴源碼隨包附上，選用的衍生巨集套件僅作離線建置來源保留。",
-    "components": [
-      "Rust／Cargo"
+      "BusyBox 間接依賴"
     ]
   },
   {
     "id": "cargo:fastrand",
     "name": "fastrand",
     "author": "Stjepan Glavina <stjepang@gmail.com>",
-    "version": "2.5.0",
+    "version": "2.5.0 / 7a1cc2c69ebd",
     "license": "Apache-2.0 OR MIT",
     "url": "https://github.com/smol-rs/fastrand",
-    "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
       "Rust／Cargo"
     ]
@@ -423,10 +340,10 @@
     "id": "cargo:flume",
     "name": "flume",
     "author": "Joshua Barretto <joshua.s.barretto@gmail.com>",
-    "version": "0.12.0",
-    "license": "Apache-2.0/MIT",
+    "version": "0.12.0 / 6bb48467b47e",
+    "license": "MIT OR Apache-2.0",
     "url": "https://github.com/zesterer/flume",
-    "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
       "Rust／Cargo"
     ]
@@ -435,10 +352,22 @@
     "id": "cargo:if-addrs",
     "name": "if-addrs",
     "author": "MaidSafe Developers <dev@maidsafe.net>, Messense Lv <messense@icloud.com>",
-    "version": "0.15.0",
+    "version": "0.15.0 / 2221caa52575",
     "license": "MIT OR BSD-3-Clause",
     "url": "https://github.com/messense/if-addrs",
-    "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:itoa",
+    "name": "itoa",
+    "author": "David Tolnay <dtolnay@gmail.com>",
+    "version": "1.0.19 / 9339ca99a43c",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/dtolnay/itoa",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
       "Rust／Cargo"
     ]
@@ -447,10 +376,10 @@
     "id": "cargo:libc",
     "name": "libc",
     "author": "libc contributors",
-    "version": "0.2.191",
+    "version": "0.2.191 / ccc2ff4aaab9",
     "license": "MIT OR Apache-2.0",
     "url": "https://github.com/rust-lang/libc",
-    "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
       "Rust／Cargo"
     ]
@@ -462,7 +391,7 @@
     "version": "0.4.14",
     "license": "MIT OR Apache-2.0",
     "url": "https://github.com/Amanieu/parking_lot",
-    "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
       "Rust／Cargo"
     ]
@@ -471,10 +400,10 @@
     "id": "cargo:log",
     "name": "log",
     "author": "The Rust Project Developers",
-    "version": "0.4.35",
+    "version": "0.4.35 / 75fcb86da1cc",
     "license": "MIT OR Apache-2.0",
     "url": "https://github.com/rust-lang/log",
-    "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
       "Rust／Cargo"
     ]
@@ -483,10 +412,22 @@
     "id": "cargo:mdns-sd",
     "name": "mdns-sd",
     "author": "Han Xu <keepsimple@gmail.com>",
-    "version": "0.21.7",
+    "version": "0.21.7 / 8eb02e58c27b",
     "license": "Apache-2.0 OR MIT",
     "url": "https://github.com/keepsimple1/mdns-sd",
-    "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:memchr",
+    "name": "memchr",
+    "author": "Andrew Gallant <jamslam@gmail.com>, bluss",
+    "version": "2.8.3 / bd6068c30e90",
+    "license": "Unlicense OR MIT",
+    "url": "https://github.com/BurntSushi/memchr",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
       "Rust／Cargo"
     ]
@@ -495,10 +436,34 @@
     "id": "cargo:mio",
     "name": "mio",
     "author": "Carl Lerche <me@carllerche.com>, Thomas de Zeeuw <thomasdezeeuw@gmail.com>, Tokio Contributors <team@tokio.rs>",
-    "version": "1.2.4",
+    "version": "1.2.4 / 5e2b24a46287",
     "license": "MIT",
     "url": "https://github.com/tokio-rs/mio",
-    "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:proc-macro2",
+    "name": "proc-macro2",
+    "author": "David Tolnay <dtolnay@gmail.com>, Alex Crichton <alex@alexcrichton.com>",
+    "version": "1.0.107 / 8058872fd1ea",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/dtolnay/proc-macro2",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:quote",
+    "name": "quote",
+    "author": "David Tolnay <dtolnay@gmail.com>",
+    "version": "1.0.47 / 27be8db3c8eb",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/dtolnay/quote",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
       "Rust／Cargo"
     ]
@@ -507,10 +472,58 @@
     "id": "cargo:scopeguard",
     "name": "scopeguard",
     "author": "bluss",
-    "version": "1.2.0",
+    "version": "1.2.0 / bb988222848d",
     "license": "MIT OR Apache-2.0",
     "url": "https://github.com/bluss/scopeguard",
-    "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:serde",
+    "name": "serde",
+    "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
+    "version": "1.0.229 / aa7913ad0211",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/serde-rs/serde",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:serde_core",
+    "name": "serde_core",
+    "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
+    "version": "1.0.229 / aa7913ad0211",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/serde-rs/serde",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:serde_derive",
+    "name": "serde_derive",
+    "author": "Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>",
+    "version": "1.0.229 / aa7913ad0211",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/serde-rs/serde",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:serde_json",
+    "name": "serde_json",
+    "author": "serde_json contributors",
+    "version": "1.0.154 / 8c535a260ce5",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/serde-rs/json",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
       "Rust／Cargo"
     ]
@@ -519,10 +532,10 @@
     "id": "cargo:socket-pktinfo",
     "name": "socket-pktinfo",
     "author": "pixsperdavid <david@pixsper.com>",
-    "version": "0.4.1",
+    "version": "0.4.2 / c6e67877f079",
     "license": "MIT",
     "url": "https://github.com/pixsper/socket-pktinfo",
-    "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
       "Rust／Cargo"
     ]
@@ -531,10 +544,10 @@
     "id": "cargo:socket2",
     "name": "socket2",
     "author": "Alex Crichton <alex@alexcrichton.com>, Thomas de Zeeuw <thomasdezeeuw@gmail.com>",
-    "version": "0.6.5",
+    "version": "0.6.5 / 8b8b96fdaa13",
     "license": "MIT OR Apache-2.0",
     "url": "https://github.com/rust-lang/socket2",
-    "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
       "Rust／Cargo"
     ]
@@ -543,10 +556,34 @@
     "id": "cargo:spin",
     "name": "spin",
     "author": "Mathijs van de Nes <git@mathijs.vd-nes.nl>, John Ericson <git@JohnEricson.me>, Joshua Barretto <joshua.s.barretto@gmail.com>",
-    "version": "0.9.9",
+    "version": "0.12.3",
     "license": "MIT",
-    "url": "https://github.com/mvdnes/spin-rs.git",
-    "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+    "url": "https://codeberg.org/zesterer/spin",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:syn",
+    "name": "syn",
+    "author": "David Tolnay <dtolnay@gmail.com>",
+    "version": "3.0.10 / 97ec37dda8a8",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/dtolnay/syn",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
+    "components": [
+      "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "cargo:unicode-ident",
+    "name": "unicode-ident",
+    "author": "David Tolnay <dtolnay@gmail.com>",
+    "version": "1.0.27 / 28018f288934",
+    "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
+    "url": "https://github.com/dtolnay/unicode-ident",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
       "Rust／Cargo"
     ]
@@ -558,7 +595,7 @@
     "version": "0.11.1+wasi-snapshot-preview1",
     "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
     "url": "https://github.com/bytecodealliance/wasi",
-    "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
       "Rust／Cargo"
     ]
@@ -570,7 +607,7 @@
     "version": "0.2.1",
     "license": "MIT OR Apache-2.0",
     "url": "https://github.com/microsoft/windows-rs",
-    "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
       "Rust／Cargo"
     ]
@@ -582,22 +619,21 @@
     "version": "0.61.2",
     "license": "MIT OR Apache-2.0",
     "url": "https://github.com/microsoft/windows-rs",
-    "description": "Rust 區域網路服務發現依賴；鎖版源碼與授權隨包提供，跨平台建置依賴亦保留。",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
       "Rust／Cargo"
     ]
   },
   {
-    "id": "reference:opencc-phrases",
-    "name": "OpenCC phrase dictionaries",
-    "author": "BYVoid and OpenCC contributors",
-    "version": "1.4.2 (025f371)",
-    "license": "Apache-2.0",
-    "url": "https://github.com/BYVoid/OpenCC",
-    "description": "Dex 繁簡轉換的詞組語境資料；轉為本專案內嵌緊湊索引，未引入原生引擎。",
+    "id": "cargo:zmij",
+    "name": "zmij",
+    "author": "David Tolnay <dtolnay@gmail.com>",
+    "version": "1.0.23 / 35355256734d",
+    "license": "MIT",
+    "url": "https://github.com/dtolnay/zmij",
+    "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
-      "Dex",
-      "詞庫資料"
+      "Rust／Cargo"
     ]
   }
 ]

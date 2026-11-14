@@ -111,6 +111,22 @@ pub(super) fn save_confirmed(session:&Session,body:&str)->io::Result<()> {
     if result.is_err(){let _=fs::remove_file(&target);}result
 }
 
+fn default_roles(inventory: &str) -> BTreeMap<String, Vec<&'static str>> {
+    let mut installed = BTreeSet::new();
+    let mut roles = BTreeMap::<String, Vec<&'static str>>::new();
+    for line in inventory.lines() {
+        let f = line.split('\t').collect::<Vec<_>>();
+        if f.len() == 3 && f[0] == "#META" && f[1] == "installed" { installed.insert(f[2]); }
+        if f.len() == 5 && f[0] == "#META" && package(f[2]) {
+            let label = match f[1] { "defaultHome" => "預設桌面", "defaultIme" => "預設輸入法", _ => continue };
+            let labels = roles.entry(f[2].into()).or_default();
+            if !labels.contains(&label) { labels.push(label); }
+        }
+    }
+    roles.retain(|pkg, _| installed.contains(pkg.as_str()));
+    roles
+}
+
 pub(super) fn list_data(session:Option<&Session>,kind:Option<&str>)->io::Result<String> {
     let current=session.map(|s|s.rows.as_slice()).unwrap_or(&[]);
     // Metadata is display-only: retain the synthetic selection IDs used by save/draft.
@@ -129,7 +145,9 @@ pub(super) fn list_data(session:Option<&Session>,kind:Option<&str>)->io::Result<
     let prior:BTreeSet<_>=previous.iter().map(&key).collect();
     let live:BTreeSet<_>=current.iter().map(&key).collect();
     let mut xposed=BTreeSet::new();
+    let mut roles=BTreeMap::new();
     if let Ok((inventory,_))=read(&root.join("inventory")) {
+        roles=default_roles(&inventory);
         for line in inventory.lines(){let f:Vec<_>=line.split_whitespace().collect();if f.len()==3&&package(f[1])&&f[2].split('|').any(|v|v=="xposed"){xposed.insert(f[1].to_owned());}}
     }
     let by_label:BTreeMap<_,_>=current.iter().map(|r|(r.label.as_str(),r.pkg.as_str())).collect();
@@ -146,7 +164,7 @@ pub(super) fn list_data(session:Option<&Session>,kind:Option<&str>)->io::Result<
     }
     let mut output=Vec::new();
     for r in current {
-        let mut badge=Vec::new();if xposed.contains(&r.pkg)||modules.contains(&r.pkg){badge.push("Xposed");}if !prior.contains(&key(r)){badge.push(if kind.is_some(){"新增項目"}else{"新增應用"});}
+        let mut badge=roles.get(&display_package(r)).cloned().unwrap_or_default();if xposed.contains(&r.pkg)||modules.contains(&r.pkg){badge.push("Xposed");}if !prior.contains(&key(r)){badge.push(if kind.is_some(){"新增項目"}else{"新增應用"});}
         output.push(format!("{{\"pkg\":{},\"label\":{},\"selected\":{},\"apk\":{},\"badge\":{},\"removed\":false,\"displayPackage\":{}}}",json(&r.pkg),json(&r.label),r.enabled,r.data_only,json(&badge.join(" · ")),json(&display_package(r))));
     }
     for r in previous.iter().filter(|r|!live.contains(&key(r))) {
@@ -157,6 +175,11 @@ pub(super) fn list_data(session:Option<&Session>,kind:Option<&str>)->io::Result<
 
 #[cfg(test)] mod tests {
     use super::*;
+    #[test] fn default_badges_require_installed_package() {
+        let data="#META\tinstalled\tcom.test.home\n#META\tdefaultHome\tcom.test.home\tHome\tpm\n#META\tdefaultIme\tcom.test.home\tHome\tsettings\n";
+        assert_eq!(default_roles(data).get("com.test.home").unwrap(), &vec!["預設桌面", "預設輸入法"]);
+        assert!(default_roles(&data.replace("installed\tcom.test.home", "installed\tcom.other.app")).is_empty());
+    }
     #[test] fn remote_sync_preserves_exact_choices_and_notes(){
         let old="# personal note\n#App A # keep disabled\nApp B # keep selected\n#Gone\n";
         let fresh="# server header\nApp A\nApp B\nNew\n";

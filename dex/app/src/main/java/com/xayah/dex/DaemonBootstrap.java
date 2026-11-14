@@ -104,6 +104,11 @@ final class DaemonBootstrap {
                               String readyLine,
                               boolean concurrentClients,
                               ClientHandler handler) {
+        runUnixDaemon(componentName,socketPath,idleTimeoutMs,ownerPid,readyLine,concurrentClients,handler,null);
+    }
+    static void runUnixDaemon(String componentName, String socketPath, long idleTimeoutMs,
+                              int ownerPid, String readyLine, boolean concurrentClients,
+                              ClientHandler handler, Runnable onReady) {
         if (handler == null) throw new IllegalArgumentException("handler is null");
         // Android Canary can stall before READY inside best-effort daemon hardening
         // (notably Runtime.exec/renice on the root app_process startup path).  Socket bind
@@ -151,7 +156,7 @@ final class DaemonBootstrap {
                     try { Thread.sleep(2000L); } catch (InterruptedException ignored) {}
                     boolean ownerGone = ownerPid > 1
                             && (ownerStart == null || !ownerStart.equals(readProcStarttime(ownerPid)));
-                    boolean idle = activeRequests.get() == 0
+                    boolean idle = ownerPid <= 1 && activeRequests.get() == 0
                             && System.currentTimeMillis() - lastActivity.get() > timeoutMs;
                     if (ownerGone || idle) {
                         closeDaemon(finalClosed, finalServer, finalBind, finalSocketFile, ownerGone);
@@ -164,6 +169,10 @@ final class DaemonBootstrap {
 
             System.out.println(readyLine);
             System.out.flush();
+            if(onReady!=null){
+                Thread readyTask=new Thread(()->{try{onReady.run();}catch(Throwable t){System.err.println("DAEMON_READY_TASK_FAILED "+t.getClass().getSimpleName());}},componentName+"-prewarm");
+                readyTask.setDaemon(true);readyTask.start();
+            }
 
             Thread hardening = new Thread(() -> {
                 try { DaemonHardening.protectSelf(componentName); } catch (Throwable ignored) {}
@@ -249,6 +258,28 @@ final class DaemonBootstrap {
         try { server.close(); } catch (Throwable ignored) {}
         try { bindSocket.close(); } catch (Throwable ignored) {}
         try { socketFile.delete(); } catch (Throwable ignored) {}
+    }
+
+    static final class RequestHeader {
+        final String command;
+        final int protocol;
+        final long bodyLength;
+        RequestHeader(String command,int protocol,long bodyLength){this.command=command;this.protocol=protocol;this.bodyLength=bodyLength;}
+        boolean valid(int expected){return protocol==expected && bodyLength>=-1L;}
+        byte[] readBody(InputStream in)throws IOException{return bodyLength==-1L?readAll(in):readExactly(in,bodyLength);}
+    }
+    static RequestHeader readRequestHeader(InputStream in)throws IOException {
+        String command=readUtf8Line(in),version=readUtf8Line(in),length=readUtf8Line(in);
+        int protocol=-1;long bodyLength=-2L;
+        try{int parsed=Integer.parseInt(version.trim());if(parsed>0)protocol=parsed;}catch(NumberFormatException ignored){}
+        try{bodyLength=Long.parseLong(length.trim());}catch(NumberFormatException ignored){}
+        return new RequestHeader(command,protocol,bodyLength);
+    }
+    static void writeResult(java.io.OutputStream out,int rc,String name,String body)throws IOException {
+        byte[] payload=(body==null?"":body).getBytes(StandardCharsets.UTF_8);
+        out.write(("RESULT "+rc+" "+name+"\n").getBytes(StandardCharsets.UTF_8));
+        out.write((payload.length+"\n").getBytes(StandardCharsets.UTF_8));
+        out.write(payload);out.flush();
     }
 
     static Long readProcStarttime(int pid) {

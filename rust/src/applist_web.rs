@@ -20,18 +20,49 @@ use std::{
     process::{Command, Stdio},
     time::{Duration, Instant},
 };
+// Wake on either a new connection or a parsed request, rather than adding a
+// 10 ms accept-poll delay to every sequential startup API call. The socket pair
+// is owned by the session; request workers keep only their notification end.
+struct RequestWake {
+    reader: std::os::unix::net::UnixDatagram,
+    writer: std::sync::Arc<std::os::unix::net::UnixDatagram>,
+}
+impl RequestWake {
+    fn new() -> io::Result<Self> {
+        let (reader,writer)=std::os::unix::net::UnixDatagram::pair()?;
+        reader.set_nonblocking(true)?;writer.set_nonblocking(true)?;
+        Ok(Self{reader,writer:std::sync::Arc::new(writer)})
+    }
+    fn wait(&self,listener:&TcpListener)->io::Result<()> {
+        let mut fds=[speedbackup_native_rs::PollFd{fd:listener.as_raw_fd(),events:1,revents:0},
+            speedbackup_native_rs::PollFd{fd:self.reader.as_raw_fd(),events:1,revents:0}];
+        let result=unsafe{speedbackup_native_rs::poll(fds.as_mut_ptr(),2,100)};
+        if result<0 {let e=io::Error::last_os_error();if e.kind()!=io::ErrorKind::Interrupted{return Err(e);}}
+        let mut byte=[0u8;64];while self.reader.recv(&mut byte).is_ok(){}
+        Ok(())
+    }
+}
 #[path = "web_language_map.rs"]
 mod terminal_language_map;
 pub(super) fn terminal_text(text: &str) -> String {
-    let lang = std::env::var("SCRIPT_LANG").unwrap_or_default();
+    let lang = std::env::var("SPEEDBACKUP_UI_LANGUAGE").ok().filter(|v| matches!(v.as_str(),"zh-Hans"|"zh-Hant")).unwrap_or_else(||std::env::var("SCRIPT_LANG").unwrap_or_default());
+    if matches!(lang.as_str(),"zh-Hans"|"zh-Hant"|"CN"|"cn"|"TW"|"tw"){return terminal_language_map::text(text);}
     let simplified = match lang.as_str() {
-        "CN" | "cn" => true,
-        "TW" | "tw" => false,
+        "CN" | "cn" | "zh-Hans" => true,
+        "TW" | "tw" | "zh-Hant" => false,
         _ => matches!(web_language(None).as_deref(), Ok("zh-Hans")),
     };
     if simplified { text.chars().map(terminal_language_map::simplify).collect() } else { text.to_owned() }
 }
-macro_rules! terminal_println { ($($arg:tt)*) => { println!("{}", terminal_text(&format!($($arg)*))) }; }
+// Human-facing notices must not abort a successfully detached worker when its
+// terminal/pipe disappears. Machine-readable command output keeps its contract.
+fn terminal_notice(text:&str) { terminal_notice_to(&mut io::stdout().lock(),text); }
+fn terminal_notice_to(output:&mut impl Write,text:&str) {
+    if let Err(error)=writeln!(output,"{}",terminal_text(text)) {
+        ui_error("terminal-output",&format!("kind={:?} errno={:?} notice-only=true",error.kind(),error.raw_os_error()));
+    }
+}
+macro_rules! terminal_println { ($($arg:tt)*) => { terminal_notice(&format!($($arg)*)) }; }
 macro_rules! terminal_eprintln { ($($arg:tt)*) => { eprintln!("{}", terminal_text(&format!($($arg)*))) }; }
 const LIMIT: usize = 4 * 1024 * 1024;
 // Read-only, token-authenticated picker. Never execute a path as a command.
@@ -50,7 +81,7 @@ fn picker_directory(base: &Path, value: &str) -> io::Result<PathBuf> {
     if !p.is_dir() { return Err(err("不是可瀏覽的資料夾")); }
     Ok(p)
 }
-fn picker_listing(base: &Path, value: &str, offset: usize) -> io::Result<String> {
+pub(super) fn picker_listing(base: &Path, value: &str, offset: usize) -> io::Result<String> {
     if offset > 100_000 { return Err(err("目錄項目過多，請輸入更精確的路徑")); }
     let dir = picker_directory(base, value)?;
     let mut entries = fs::read_dir(&dir)?.skip(offset);
@@ -373,11 +404,12 @@ struct Request {
     body: String,
 }
 fn request(stream: &mut TcpStream) -> io::Result<Request> {
-    let result=request_inner(stream);
-    if let Err(e)=&result {ui_transport_error("http-read", &format!("kind={:?} errno={:?}",e.kind(),e.raw_os_error()));}
+    let mut progress=("headers",0usize,0usize);
+    let result=request_inner(stream,&mut progress);
+    if let Err(e)=&result {ui_transport_error("http-read", &format!("kind={:?} errno={:?} phase={} received={} expected={} peer_port={}",e.kind(),e.raw_os_error(),progress.0,progress.1,progress.2,stream.peer_addr().map(|a|a.port()).unwrap_or(0)));}
     result
 }
-fn request_inner(stream: &mut TcpStream) -> io::Result<Request> {
+fn request_inner(stream: &mut TcpStream, progress:&mut (&'static str,usize,usize)) -> io::Result<Request> {
     stream.set_read_timeout(Some(Duration::from_secs(2)))?;
     stream.set_write_timeout(Some(Duration::from_secs(2)))?;
     let deadline = Instant::now() + Duration::from_secs(3);
@@ -389,6 +421,7 @@ fn request_inner(stream: &mut TcpStream) -> io::Result<Request> {
         }
         stream.read_exact(&mut one)?;
         raw.push(one[0]);
+        progress.1=raw.len();
     }
     let header = std::str::from_utf8(&raw).map_err(|_| err("header encoding"))?;
     let mut lines = header.split("\r\n");
@@ -426,6 +459,7 @@ fn request_inner(stream: &mut TcpStream) -> io::Result<Request> {
     if n > LIMIT {
         return Err(err("body limit"));
     }
+    *progress=("body",0,n);
     let mut body = vec![0u8; n];
     let mut got = 0;
     while got < n {
@@ -437,6 +471,7 @@ fn request_inner(stream: &mut TcpStream) -> io::Result<Request> {
             return Err(err("short body"));
         }
         got += count;
+        progress.1=got;
     }
     Ok(Request {
         method: parts[0].into(),
@@ -450,7 +485,7 @@ fn ui_record(kind: &str, stage: &str, reason: &str) {
     let reason: String = reason.chars().take(1024).map(|c| if c.is_control() {' '} else {c}).collect();
     let line = format!("{kind} stage={stage} pid={} reason={reason}",std::process::id());
     // Normal lifecycle events belong only in the private diagnostic sink.
-    if kind!="WEBUI_EVENT" { eprintln!("{line}"); }
+    if kind!="WEBUI_EVENT" { let _=writeln!(io::stderr().lock(),"{line}"); }
     let result=(|| -> io::Result<()> {
         let path=std::env::var("SPEEDBACKUP_UI_ERROR_LOG").map_err(|_|err("sink_unset"))?;
         if path.is_empty(){return Err(err("sink_unset"));}
@@ -462,7 +497,7 @@ fn ui_record(kind: &str, stage: &str, reason: &str) {
     })();
     if let Err(e)=result {
         static WARNED:std::sync::atomic::AtomicBool=std::sync::atomic::AtomicBool::new(false);
-        if !WARNED.swap(true,std::sync::atomic::Ordering::Relaxed){eprintln!("WEBUI_LOG_UNAVAILABLE reason={e}");}
+        if !WARNED.swap(true,std::sync::atomic::Ordering::Relaxed){let _=writeln!(io::stderr().lock(),"WEBUI_LOG_UNAVAILABLE reason={e}");}
     }
 }
 fn ui_error(stage:&str,reason:&str){ui_record("WEBUI_ERROR",stage,reason);}
@@ -832,7 +867,7 @@ fn bounded_output(command: &mut Command, seconds: u64) -> io::Result<(std::proce
 fn bounded_output_input(command: &mut Command, seconds: u64, input: Option<&'static [u8]>) -> io::Result<(std::process::ExitStatus, String)> {
     let deadline = Instant::now() + Duration::from_secs(seconds);
     let rebind=command.get_args().any(|a|a=="--rebind-origin");
-    let mut child = command.stdin(if input.is_some(){Stdio::piped()}else{Stdio::null()}).stdout(Stdio::piped()).stderr(if rebind{Stdio::inherit()}else{Stdio::null()}).spawn()?;
+    let mut child = super::command_lifecycle::OwnedChild::spawn(command.stdin(if input.is_some(){Stdio::piped()}else{Stdio::null()}).stdout(Stdio::piped()).stderr(if rebind{Stdio::inherit()}else{Stdio::null()}))?;
     let input_result=input.map(|bytes| {
         let mut stdin=child.stdin.take().expect("piped stdin");
         let(tx,rx)=std::sync::mpsc::channel();
@@ -852,13 +887,13 @@ fn bounded_output_input(command: &mut Command, seconds: u64, input: Option<&'sta
         if bytes.len() > 4096 { return Err(err("helper output limit")); }
         let text = String::from_utf8(bytes).map_err(|_| err("helper encoding"))?;
         if let Some(rx)=input_result {rx.recv_timeout(deadline.saturating_duration_since(Instant::now())).map_err(|_|err("helper input timeout"))??;}
-        loop {
-            if let Some(status) = child.try_wait()? { return Ok((status, text)); }
-            if Instant::now() >= deadline { return Err(err("helper timeout")); }
-            std::thread::sleep(Duration::from_millis(10));
+        let status=super::command_lifecycle::wait_checked(&mut child,deadline.saturating_duration_since(Instant::now()),||Ok(()))?;
+        if let Some(signal)=std::os::unix::process::ExitStatusExt::signal(&status) {
+            eprintln!("NATIVE_HELPER_CRASH pid={} signal={signal}",child.id());
+            super::crash_diagnostics::capture_process(Some(child.id()));
         }
+        Ok((status,text))
     })();
-    if result.is_err() { let _ = child.kill(); let _ = child.wait(); }
     result
 }
 // Only the verified Dex handshake supplies user/SDK; no HTTP policy commands.
@@ -1013,9 +1048,9 @@ impl ReturnTask {
     fn navigate(&mut self,url:&str)->Navigation {
         let Ok(id)=random_hex()else{return Navigation::Retry;};
         if self.child.stdin.as_mut().is_none_or(|s|s.write_all(format!("NAV\t{id}\t{url}\n").as_bytes()).is_err()){return Navigation::Closed;}
-        let deadline=Instant::now()+Duration::from_millis(2300);
+        let deadline=Instant::now()+Duration::from_millis(10300);
         loop{
-            if self.child.try_wait().ok().flatten().is_some(){return Navigation::Closed;}
+            if self.controller_exited(){return Navigation::Closed;}
             match self.lines.recv_timeout(deadline.saturating_duration_since(Instant::now())){
                 Ok(line)if line.trim()=="WINDOW_CLOSED"=>return Navigation::Closed,
                 Ok(line)if line.trim()==format!("NAV_OK\t{id}")=>return Navigation::Ready,
@@ -1023,7 +1058,7 @@ impl ReturnTask {
                 Ok(line)if line.trim()==format!("NAV_FALLBACK\t{id}")=>return Navigation::Retry,
                 Ok(_)=>{if Instant::now()>=deadline{return Navigation::Retry;}},
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected)=>return Navigation::Closed,
-                Err(_)=>return if self.child.try_wait().ok().flatten().is_some(){Navigation::Closed}else{Navigation::Retry},
+                Err(_)=>return if self.controller_exited(){Navigation::Closed}else{Navigation::Retry},
             }
         }
     }
@@ -1053,12 +1088,20 @@ impl ReturnTask {
     }
 
     fn externally_closed(&mut self) -> bool {
-        if controller_closed(&self.lines){return true;}
-        // The APK is death-linked to this controller. If it dies without a final
-        // callback, there is no usable window: never leave an invisible HTTP server.
+        let reported=controller_closed(&self.lines);
+        let exited=self.controller_exited();
+        reported||exited
+    }
+    fn controller_exited(&mut self)->bool {
+        use std::os::unix::process::ExitStatusExt;
         match self.child.try_wait() {
-            Ok(None) => false,
-            _ => { terminal_eprintln!("WEBVIEW_CONTROLLER_EXITED"); true }
+            Ok(None)=>false,
+            Ok(Some(status))=>{
+                terminal_eprintln!("WEBVIEW_CONTROLLER_EXITED pid={} exit={:?} signal={:?}",self.child.id(),status.code(),status.signal());
+                if status.signal().is_some(){super::crash_diagnostics::capture_process(Some(self.child.id()));}
+                true
+            },
+            Err(error)=>{terminal_eprintln!("WEBVIEW_CONTROLLER_STATUS_FAILED {error}");true}
         }
     }
 
@@ -1162,7 +1205,12 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
     }
     let _lock = editor_lock()?;
     let flow=selection_flow::flow();
-    let session = if let Some(kind)=selection {Session::new_kind(path,Some(kind))} else {Session::new(path,true)};
+    // A dedicated settings entry has no app selector. Do not read/parse the app
+    // inventory, serialize every row or index its icons just to edit a conf.
+    // Combined managers and active backup/restore selection flows keep snapshots.
+    let settings_only=flow.is_empty()&&selection.is_none()&&args.get(5).is_some_and(|p|p=="settings");
+    let session = if settings_only {Err(err("此入口僅編輯設定"))}
+        else if let Some(kind)=selection {Session::new_kind(path,Some(kind))} else {Session::new(path,true)};
     // Validate the same held snapshot used by the editor, before binding HTTP
     // or installing/launching the APK. Settings and archive selectors are independent.
     if flow.is_empty() && selection.is_none() && args.get(5).is_none_or(|panel| panel != "settings") {
@@ -1176,7 +1224,7 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
     if args.len() < 4 && session.is_err() {
         return Err(session.err().unwrap());
     }
-    let list_data=selection_flow::list_data(session.as_ref().ok(),selection)?;
+    let list_data=if settings_only {"[]".to_string()} else {selection_flow::list_data(session.as_ref().ok(),selection)?};
     ui_event("selection-open",concat!("build=",env!("CARGO_PKG_VERSION")));
     let mut configs: BTreeMap<&str, Result<Session, io::Error>> = BTreeMap::new();
     if let Some(root) = args.get(3) {
@@ -1228,6 +1276,11 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
             }
         );
     }
+    // Same monitor subscription as the main menu; the editor never probes LAN itself.
+    struct EditorHealthStream(Option<TcpStream>);
+    impl Drop for EditorHealthStream { fn drop(&mut self){if let Some(s)=self.0.take(){let _=s.shutdown(std::net::Shutdown::Both);}} }
+    let mut editor_health=EditorHealthStream(None);
+    let health_conf=args.get(3).map(|root|Path::new(root).join("backup_settings.conf")).unwrap_or_default();
     let discovery = lan_discovery::Discovery::default();
     let auth_setup=std::env::var("SPEEDBACKUP_AUTH_SETUP").is_ok_and(|v|v=="1");
     let mut configs_saved = false;
@@ -1237,6 +1290,9 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
     let mut draft = String::from("{}");
     let mut draft_lease = 0u64;
     let mut theme_cache: Option<(Instant, io::Result<String>)> = None;
+    // Enumeration may wait on Android's package service. Keep it off the
+    // editor dispatcher so drafts, navigation and cancellation stay responsive.
+    let users_busy=std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let started = Instant::now();
     let mut last = started;
     let (icon_packages,icon_values)=session.as_ref().map(|s|icon_packages(s,args.get(4).is_some_and(|v|v=="restore"))).unwrap_or_default();
@@ -1249,6 +1305,7 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
         attempted:BTreeSet::new(),
     };
     let (tx, rx) = std::sync::mpsc::sync_channel(8);
+    let request_wake=RequestWake::new()?;
     let active = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     loop {
         if return_task
@@ -1288,9 +1345,11 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
                     active.fetch_add(1, Ordering::Relaxed);
                     let active = active.clone();
                     let tx = tx.clone();
+                    let wake=request_wake.writer.clone();
                     std::thread::spawn(move || {
                         let req = request(&mut stream);
                         let _ = tx.send((stream, req));
+                        let _ = wake.send(&[1]);
                         active.fetch_sub(1, Ordering::Relaxed);
                     });
                 }
@@ -1298,9 +1357,10 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
             Err(e) => return Err(e),
         }
-        let (mut stream, req) = match rx.recv_timeout(Duration::from_millis(10)) {
+        let (mut stream, req) = match rx.try_recv() {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(std::sync::mpsc::TryRecvError::Empty) => {request_wake.wait(&listener)?;continue;},
+            Err(_) => return Err(err("editor request channel closed")),
         };
         let req = match req {
             Ok(v) => v,
@@ -1327,6 +1387,18 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
     if req.method=="GET" && req.path=="/api/session" && req.body.is_empty() {
         let _=respond(&mut stream,"200 OK","application/json",r#"{"protocol":1,"kind":"editor","native":true}"#);continue;
     }
+        if req.method=="GET" && req.path=="/api/remote-health" {
+            if let Ok(dir)=std::env::var("SPEEDBACKUP_REMOTE_HEALTH_DIR") {
+                if let Some(old)=editor_health.0.take(){let _=old.shutdown(std::net::Shutdown::Both);}
+                editor_health.0=stream.try_clone().ok();let conf=health_conf.clone();
+                std::thread::spawn(move||{let _=super::remote_health::stream(stream,conf,PathBuf::from(dir));});continue;
+            }
+            let _=respond(&mut stream,"503 Service Unavailable","text/plain","區域網路狀態服務未連線");continue;
+        }
+        if req.method=="POST" && matches!(req.path.as_str(),"/api/discovery"|"/api/discovery-target") {
+            let available=std::env::var("SPEEDBACKUP_REMOTE_HEALTH_DIR").ok().is_some_and(|dir|super::remote_health::snapshot(&health_conf,Path::new(&dir))["lanAvailable"]==true);
+            if !available {let _=respond(&mut stream,"409 Conflict","text/plain","未連接區域網路，無法自動搜尋");continue;}
+        }
         if req.method=="POST" && req.path=="/api/discovery" {
             match stream.try_clone().and_then(|peer|discovery.start(peer,&req.body)) {
                 Ok(())=>{}, Err(error)=>{let _=respond(&mut stream,"409 Conflict","text/plain",&error.to_string());}
@@ -1335,6 +1407,15 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
         }
         if req.method=="POST" && req.path=="/api/discovery-stop" {
             discovery.stop(&req.body);let _=respond(&mut stream,"200 OK","text/plain","ok");continue;
+        }
+        if req.method=="POST" && req.path=="/api/discovery-target-stop" {
+            discovery.stop_target(&req.body);let _=respond(&mut stream,"200 OK","text/plain","ok");continue;
+        }
+        if req.method=="POST" && req.path=="/api/discovery-target" {
+            match stream.try_clone().and_then(|peer|discovery.target(peer,req.body)) {
+                Ok(())=>{},Err(error)=>{let _=respond(&mut stream,"409 Conflict","text/plain",&error.to_string());}
+            }
+            continue;
         }
         let config_before=configs.values().find_map(|s|s.as_ref().ok()).map(|s|s.original.clone());
         if appearance_request(&mut stream, &req) { continue; }
@@ -1422,9 +1503,17 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
                 let _ = respond(&mut stream, "200 OK", "text/plain", "ok");
             }
             ("GET", "/api/users") => {
-                match device_users() {
-                    Ok(body) => { let _ = respond(&mut stream, "200 OK", "application/json", &body); }
-                    Err(error) => { let _ = respond(&mut stream, "503 Service Unavailable", "text/plain", &error.to_string()); }
+                if users_busy.swap(true,std::sync::atomic::Ordering::AcqRel) {
+                    let _=respond(&mut stream,"503 Service Unavailable","text/plain","使用者清單讀取中");
+                } else {
+                    let busy=users_busy.clone();
+                    std::thread::spawn(move || {
+                        match device_users() {
+                            Ok(body) => { let _ = respond(&mut stream, "200 OK", "application/json", &body); }
+                            Err(error) => { let _ = respond(&mut stream, "503 Service Unavailable", "text/plain", &error.to_string()); }
+                        }
+                        busy.store(false,std::sync::atomic::Ordering::Release);
+                    });
                 }
             }
             ("GET", "/api/manager") => {
@@ -1593,6 +1682,8 @@ pub fn selection(args:&[String])->i32 {
 
 #[path = "web_menu.rs"]
 mod web_menu;
+#[path = "web_connection.rs"]
+mod web_connection;
 #[path = "web_console.rs"]
 mod web_console;
 pub fn console(args:&[String])->i32 { web_console::run(args) }
@@ -1603,11 +1694,13 @@ fn web_language(save: Option<&str>) -> io::Result<String> {
 }
 fn valid_appearance(value: &str) -> bool {
     let fields:Vec<_>=value.split('\t').collect();
-    fields.len()==2 && matches!(fields[0],"system"|"light"|"dark"|"space"|"night") && matches!(fields[1],"full"|"system"|"reduce")
+    fields.len()==2 && matches!(fields[0],"system"|"light"|"dark"|"amoled"|"space"|"night") && matches!(fields[1],"full"|"system"|"reduce")
 }
 fn web_preference(key: &str, default: &str, valid: fn(&str)->bool, save: Option<&str>) -> io::Result<String> {
+    web_preference_at(Path::new("/data/local/tmp/.speedbackup-web-preferences"),key,default,valid,save)
+}
+fn web_preference_at(parent: &Path, key: &str, default: &str, valid: fn(&str)->bool, save: Option<&str>) -> io::Result<String> {
     if save.is_some_and(|v| !valid(v)) { return Err(err("invalid web preference")); }
-    let parent = Path::new("/data/local/tmp/.speedbackup-web-preferences");
     if save.is_some() {
         use std::os::unix::fs::DirBuilderExt;
         match fs::DirBuilder::new().mode(0o700).create(parent) { Ok(()) => {}, Err(e) if e.kind()==io::ErrorKind::AlreadyExists=>{},Err(e)=>return Err(e) }
@@ -1635,8 +1728,29 @@ fn web_preference(key: &str, default: &str, valid: fn(&str)->bool, save: Option<
     guard()?;
     let value=if old.is_some(){read(&path)?.0}else{default.into()};
     guard()?;
-    if !valid(&value) {return Err(err("invalid saved web preference"));}
-    Ok(value)
+    if valid(&value) { return Ok(value); }
+    // Older/manual files may end in a line terminator. Keep writes strict and
+    // preserve the original file: reading preferences must never erase evidence.
+    let normalized=value.trim_end_matches(['\r','\n']);
+    if valid(normalized) { return Ok(normalized.into()); }
+    // Released web/native versions persisted these values in this same file.
+    // The intervening Miuix-only endpoint ignored the file, leaving old values
+    // behind. Migrate known formats, rather than treating them as corruption.
+    let migrated=if key=="style" {match normalized {
+        "md3e"=>Some("material"),
+        "fluent"|"compose"|"shadcn"=>Some("miuix"), // retired renderers
+        _=>None,
+    }} else {None};
+    if let Some(target)=migrated.filter(|v|valid(v)) {
+        super::publish_file::publish_bytes_guarded(target.as_bytes(), &path, Some(0o600), false, &mut guard)?;
+        ui_event("preference-migration", &format!("key=style from={normalized} to={target}"));
+        return Ok(target.into());
+    }
+    // An obsolete/corrupt cosmetic value must not block the whole native UI.
+    // Identity, symlink, I/O and concurrent-change failures above remain errors.
+    // Log only the known key, not user-supplied file contents.
+    ui_event("preference-fallback", &format!("key={key} reason=invalid-saved-value"));
+    Ok(default.into())
 }
 
 fn language_request(stream: &mut TcpStream, req: &Request, config: Option<&mut Session>, queue: Option<&Path>) -> Option<bool> {
@@ -1697,22 +1811,31 @@ pub fn prepare_origin(args: &[String]) -> i32 {
     let result=(|| -> io::Result<bool> {
         let dex=std::env::current_exe()?.parent().ok_or_else(||err("dex parent"))?.join("classes.dex");
         let (status,text)=bounded_output(Command::new("/system/bin/app_process").env("CLASSPATH",dex).args(["/system/bin","com.xayah.dex.AppListReturn","--prepare-origin",&args[0]]),12)?;
-        Ok(status.success() && text.trim()=="ORIGIN_OK")
+        let ok=status.success() && text.trim()=="ORIGIN_OK";
+        if !ok{terminal_eprintln!("ORIGIN_PREPARE_FAILED status={} detail={}",status,super::crash_diagnostics::redact(&text.chars().take(4096).collect::<String>()));}
+        Ok(ok)
     })();
     if matches!(result,Ok(true)) {0} else {130}
 }
 
 fn native_preference(key:&str,save:Option<&str>)->io::Result<String>{
     if key=="language" {return web_language(save);}
-    // Compatibility endpoint only: obsolete saved styles cannot block startup.
+    // Interface style and Material preferences have independent validated storage.
     if key=="style" {
-        if save.is_some_and(|v|v!="miuix") {return Err(err("unsupported component style"));}
-        return Ok("miuix".into());
+        return web_preference("style","miuix",|v|matches!(v,"miuix"|"material"),save);
+    }
+    if key=="material-palette" {
+        return web_preference(key,"TonalSpot",|v|matches!(v,"TonalSpot"|"Neutral"|"Vibrant"|"Expressive"|"Rainbow"|"FruitSalad"|"Monochrome"|"Fidelity"|"Content"|"Cmf"),save);
+    }
+    if key=="material-spec" {
+        return web_preference(key,"SPEC_2025",|v|matches!(v,"SPEC_2021"|"SPEC_2025"|"SPEC_2026"),save);
     }
     let (key,default,valid):(&str,&str,fn(&str)->bool)=if key=="scale" {
         ("scale","100",|v|matches!(v,"80"|"90"|"100"|"110"|"120"|"130"))
     }else if key=="monet"{("monet","on",|v|matches!(v,"on"|"off"))}
     else if key=="glass-blur"{("glass-blur","on",|v|matches!(v,"on"|"off"))}
+    else if key=="glass-content"{("glass-content","off",|v|matches!(v,"on"|"off"))}
+    else if key=="font-adaptive"{("font-adaptive","off",|v|matches!(v,"on"|"off"))}
     else if key=="glass-adaptive"{("glass-adaptive","off",|v|matches!(v,"on"|"off"))}
     else if matches!(key,"glass-blur-strength"|"glass-light"|"glass-transparency"|"glass-refraction"){
         (key,"100",|v|v.parse::<u8>().is_ok_and(|n|n<=100&&n.to_string()==v))
@@ -1722,6 +1845,80 @@ fn native_preference(key:&str,save:Option<&str>)->io::Result<String>{
 
 fn appearance_request(stream: &mut TcpStream, req: &Request) -> bool {
     // Called only after origin and session-token checks by all three controllers.
+    if matches!(req.path.as_str(),"/api/diagnostic-files"|"/api/diagnostic-view"|"/api/diagnostic-export"|"/api/diagnostic-sources") {
+        let mut response_started=false;
+        let result=(||->io::Result<()> {
+            if req.path=="/api/diagnostic-sources"{
+                if req.method!="GET"{return Err(err("invalid diagnostic method"));}
+                return respond(stream,"200 OK","application/json",&super::diagnostic_session::sources()?.to_string());
+            }
+            let parsed=serde_json::from_str::<serde_json::Value>(&req.body).ok();
+            let source=parsed.as_ref().and_then(|v|v.get("source")).and_then(|v|v.as_str()).unwrap_or("");
+            let selected=parsed.as_ref().and_then(|v|v.get("file")).and_then(|v|v.as_str()).unwrap_or(&req.body);
+            let level=parsed.as_ref().and_then(|v|v.get("level")).and_then(|v|v.as_str()).unwrap_or("ALL");
+            if !matches!(level,"ALL"|"ERROR"|"WARN"|"INFO"|"DEBUG"|"VERBOSE"|"FATAL"|"OTHER"){return Err(err("invalid diagnostic level"));}
+            if !source.is_empty()&&matches!(req.path.as_str(),"/api/diagnostic-files"|"/api/diagnostic-view"){
+                if req.method!="POST"{return Err(err("invalid historical method"));}
+                let view=super::diagnostic_session::history_response(source,if req.path=="/api/diagnostic-view"{Some(selected)}else{None},level)?;
+                return respond(stream,"200 OK","application/json",&view.to_string());
+            }
+            if req.path=="/api/diagnostic-export" {
+                if req.method!="GET"{return Err(err("invalid export method"));}
+                let selected_archive=req.headers.get("x-speedbackup-diagnostic-archive").map(String::as_str).unwrap_or("");
+                let path=if selected_archive.is_empty(){PathBuf::from(std::env::var("SPEED_DEBUG_ARCHIVE").map_err(|_|err("尚無除錯包"))?)}else{super::diagnostic_session::source_path(selected_archive)?};
+                if path.parent()!=Some(Path::new("/data/speed_debug")) || path.canonicalize()?!=path || !path.file_name().is_some_and(|v|v.to_string_lossy().starts_with("speed_debug_")&&v.to_string_lossy().ends_with(".tar")){return Err(err("invalid archive"));}
+                let file=OpenOptions::new().read(true).custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE|speedbackup_native_rs::O_NONBLOCK).open(path)?;
+                let m=file.metadata()?;
+                if !m.is_file() || m.nlink()!=1 || m.len()==0 || m.len()>1024*1024*1024{return Err(err("invalid archive size"));}
+                // Even a partial header write commits this response; never append a second HTTP response.
+                response_started=true;
+                write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/x-tar\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n",m.len())?;
+                io::copy(&mut file.take(m.len()),stream)?;return Ok(());
+            }
+            // Paths come only from the root-owned log menu, never HTTP input.
+            let run=PathBuf::from(std::env::var("SPEED_DEBUG_RUN_DIR").map_err(|_|err("日誌入口尚未準備"))?);
+            if !run.starts_with("/data/speed_debug") || run.canonicalize()?!=run || !run.is_dir(){return Err(err("invalid diagnostic directory"));}
+            let mut files=Vec::new();
+            fn scan(root:&Path,dir:&Path,depth:usize,out:&mut Vec<String>)->io::Result<()> {
+                if depth>4 || out.len()>=256{return Ok(());}
+                let mut entries=fs::read_dir(dir)?.collect::<Result<Vec<_>,_>>()?;entries.sort_by_key(|e|e.file_name());
+                for e in entries {
+                    if out.len()>=256{break;}
+                    let kind=e.file_type()?;let p=e.path();
+                    if kind.is_dir(){scan(root,&p,depth+1,out)?;}
+                    else if kind.is_file() && matches!(p.extension().and_then(|s|s.to_str()),Some("log"|"txt"|"tsv")){out.push(p.strip_prefix(root).map_err(|_|err("log path"))?.to_string_lossy().into_owned());}
+                }Ok(())
+            }
+            scan(&run,&run,0,&mut files)?;
+            if req.path=="/api/diagnostic-files" {
+                if req.method!="GET"{return Err(err("invalid list method"));}
+                return respond(stream,"200 OK","application/json",&format!("[{}]",files.iter().map(|s|json(s)).collect::<Vec<_>>().join(",")));
+            }
+            if req.method!="POST" || !files.iter().any(|f|f==selected) || !matches!(level,"ALL"|"ERROR"|"WARN"|"INFO"|"DEBUG"|"VERBOSE"|"FATAL"|"OTHER"){return Err(err("invalid log selection"));}
+            let path=run.join(selected);
+            if path.canonicalize()?!=path{return Err(err("log link rejected"));}
+            let mut file=OpenOptions::new().read(true).custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE|speedbackup_native_rs::O_NONBLOCK).open(path)?;
+            let m=file.metadata()?;if !m.is_file(){return Err(err("invalid log file"));}
+            use std::io::{Seek,SeekFrom};
+            let start=m.len().saturating_sub(65536);file.seek(SeekFrom::Start(start))?;
+            let mut bytes=Vec::new();file.take(65536).read_to_end(&mut bytes)?;
+            let text=String::from_utf8_lossy(&bytes);let text=if start>0{text.split_once('\n').map(|(_,s)|s).unwrap_or("")}else{&text};
+            let text=super::crash_diagnostics::redact(text);
+            let result=if parsed.is_some(){super::diagnostic_session::view_file(selected,&text,level,start>0)}else{serde_json::json!({"text":text,"truncated":start>0})};
+            respond(stream,"200 OK","application/json",&result.to_string())
+        })();
+        if let Err(e)=result{if !response_started{let _=respond(stream,"400 Bad Request","text/plain",&format!("日誌操作失敗：{e}"));}}
+        return true;
+    }
+    if req.path=="/api/shortcut-entries" {
+        let result=match req.method.as_str(){
+            "GET"=>super::entry_shortcuts::pending(),
+            "POST"=>super::entry_shortcuts::ack(&req.body).map(|_|"[]".to_owned()),
+            _=>Err(err("invalid shortcut request")),
+        };
+        match result{Ok(body)=>{let _=respond(stream,"200 OK","application/json",&body);},Err(_)=>{let _=respond(stream,"400 Bad Request","text/plain","shortcut registry unavailable");}}
+        return true;
+    }
     if req.path=="/api/system-wallpaper" {
         let image=(||->io::Result<File>{
             if req.method!="POST" || req.body.is_empty() || req.body.len()>4 || !req.body.bytes().all(|b|b.is_ascii_digit()){return Err(err("invalid user"));}
@@ -1745,7 +1942,7 @@ fn appearance_request(stream: &mut TcpStream, req: &Request) -> bool {
         let result=(||->io::Result<String>{
             if req.method!="GET" || !req.body.is_empty(){return Err(err("invalid preferences request"));}
             let mut fields=Vec::new();
-            for key in ["appearance","scale","style","monet","glass-blur","glass-blur-strength","glass-light","glass-transparency","glass-refraction","glass-adaptive","language"] {
+            for key in ["appearance","scale","style","material-palette","material-spec","monet","glass-blur","glass-blur-strength","glass-light","glass-transparency","glass-refraction","glass-adaptive","glass-content","font-adaptive","language"] {
                 fields.push(format!("{}:{}",json(key),json(&native_preference(key,None)?)));
             }
             Ok(format!("{{{}}}",fields.join(",")))
@@ -1766,7 +1963,7 @@ fn appearance_request(stream: &mut TcpStream, req: &Request) -> bool {
         } else {let _=respond(stream,"400 Bad Request","text/plain","無效診斷事件");}
         return true;
     }
-    if !matches!(req.path.as_str(),"/api/appearance"|"/api/scale"|"/api/style"|"/api/monet"|"/api/glass-blur-strength"|"/api/glass-blur"|"/api/glass-light"|"/api/glass-transparency"|"/api/glass-refraction"|"/api/glass-adaptive") {return false;}
+    if !matches!(req.path.as_str(),"/api/appearance"|"/api/scale"|"/api/style"|"/api/material-palette"|"/api/material-spec"|"/api/monet"|"/api/glass-blur-strength"|"/api/glass-blur"|"/api/glass-light"|"/api/glass-transparency"|"/api/glass-refraction"|"/api/glass-adaptive"|"/api/glass-content"|"/api/font-adaptive") {return false;}
     let result=match req.method.as_str(){
         "GET" if req.body.is_empty()=>native_preference(req.path.trim_start_matches("/api/"),None),
         "POST" if req.headers.get("content-type").is_some_and(|v|v=="text/plain;charset=UTF-8")=>native_preference(req.path.trim_start_matches("/api/"),Some(&req.body)),
@@ -1801,5 +1998,137 @@ mod metadata_resume_tests {
         assert!(session.save_text("overwrite").is_err());
         assert_eq!(fs::read_to_string(&path).unwrap(),"# external change\n");
         fs::remove_file(&path).unwrap();fs::remove_dir(&dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_export_tests {
+    use super::*;
+    #[test]
+    #[ignore = "isolated Android root-device test"]
+    fn diagnostic_preview_and_export() {
+        let root=Path::new("/data/speed_debug");fs::create_dir_all(root).unwrap();
+        let tag=format!("test_logs_{}",std::process::id());let run=root.join(&tag);
+        fs::create_dir(&run).unwrap();
+        let archive=root.join(format!("speed_debug_{tag}.tar"));
+        struct Cleanup(PathBuf,PathBuf);impl Drop for Cleanup{fn drop(&mut self){let _=fs::remove_dir_all(&self.0);let _=fs::remove_file(&self.1);}}
+        let _cleanup=Cleanup(run.clone(),archive.clone());
+        fs::write(run.join("main.log"),"[ERROR] failure\n[DEBUG] detail\n").unwrap();
+        fs::write(run.join("large.log"),"[INFO] line\n".repeat(10000)).unwrap();
+        std::os::unix::fs::symlink(run.join("main.log"),run.join("link.log")).unwrap();
+        fs::write(&archive,b"complete archive snapshot").unwrap();
+        unsafe{std::env::set_var("SPEED_DEBUG_RUN_DIR",&run);std::env::set_var("SPEED_DEBUG_ARCHIVE",&archive);}
+        fn call(method:&str,path:&str,body:&str)->String{
+            let listener=TcpListener::bind("127.0.0.1:0").unwrap();
+            let mut client=TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+            let (mut server,_)=listener.accept().unwrap();
+            let mut headers=BTreeMap::new();
+            if path=="/api/diagnostic-export"&&!body.is_empty(){headers.insert("x-speedbackup-diagnostic-archive".into(),body.into());}
+            let req=Request{method:method.into(),path:path.into(),headers,body:body.into()};
+            let t=std::thread::spawn(move||assert!(appearance_request(&mut server,&req)));
+            let mut result=String::new();client.read_to_string(&mut result).unwrap();t.join().unwrap();result
+        }
+        let list=call("GET","/api/diagnostic-files","");assert!(list.contains("main.log"));assert!(!list.contains("link.log"));
+        let view=call("POST","/api/diagnostic-view","main.log");assert!(view.contains("[ERROR] failure"));assert!(view.contains("[DEBUG] detail"));
+        let large=call("POST","/api/diagnostic-view","large.log");assert!(large.contains("\"truncated\":true"));assert!(large.len()<132000);
+        for name in ["../main.log","/etc/passwd","link.log"]{assert!(call("POST","/api/diagnostic-view",name).starts_with("HTTP/1.1 400"));}
+        let filtered=call("POST","/api/diagnostic-view",r#"{"file":"main.log","level":"ERROR"}"#);
+        // Application logs are complete reports; only logcat records are level-filtered.
+        assert!(filtered.contains("[ERROR] failure"));assert!(filtered.contains("[DEBUG] detail"));
+        fs::write(run.join("logcat-test.log"),"11-09 23:00:00.000 123 456 E Tag: failure\n11-09 23:00:00.001 123 456 D Tag: detail\n").unwrap();
+        let filtered=call("POST","/api/diagnostic-view",r#"{"file":"logcat-test.log","level":"ERROR"}"#);
+        assert!(filtered.contains("Tag: failure"));assert!(!filtered.contains("Tag: detail"));
+        assert!(call("POST","/api/diagnostic-view",r#"{"file":"../main.log","level":"ALL"}"#).starts_with("HTTP/1.1 400"));
+        assert!(call("POST","/api/diagnostic-files",r#"{"source":"../outside.tar"}"#).starts_with("HTTP/1.1 400"));
+        let exported=call("GET","/api/diagnostic-export","");assert!(exported.ends_with("complete archive snapshot"));
+        assert!(call("GET","/api/diagnostic-export",archive.file_name().unwrap().to_str().unwrap()).ends_with("complete archive snapshot"));
+        assert!(call("GET","/api/diagnostic-export","../outside.tar").starts_with("HTTP/1.1 400"));
+        assert!(call("POST","/api/diagnostic-export","").starts_with("HTTP/1.1 400"));
+        unsafe{std::env::remove_var("SPEED_DEBUG_RUN_DIR");}
+        assert!(call("GET","/api/diagnostic-export",archive.file_name().unwrap().to_str().unwrap()).ends_with("complete archive snapshot"));
+        assert!(call("GET","/api/diagnostic-files","").starts_with("HTTP/1.1 400"));
+        unsafe{std::env::remove_var("SPEED_DEBUG_RUN_DIR");std::env::remove_var("SPEED_DEBUG_ARCHIVE");}
+    }
+}
+
+#[cfg(test)]
+mod preference_recovery_tests {
+    use super::*;
+    use std::os::unix::fs::{PermissionsExt,symlink};
+    #[test]
+    fn invalid_cosmetic_value_recovers_without_mutating_or_weakening_identity() {
+        let dir=PathBuf::from(format!("/data/local/tmp/sb-pref-test-{}",random_hex().unwrap()));
+        fs::create_dir(&dir).unwrap();
+        fs::set_permissions(&dir,fs::Permissions::from_mode(0o700)).unwrap();
+        struct Cleanup(PathBuf);
+        impl Drop for Cleanup {fn drop(&mut self){let _=fs::remove_dir_all(&self.0);}}
+        let _cleanup=Cleanup(dir.clone());
+        let path=dir.join("style");
+        let valid=|v:&str|matches!(v,"material"|"miuix");
+        let get=||web_preference_at(&dir,"style","miuix",valid,None);
+        assert_eq!(get().unwrap(),"miuix");
+        for value in ["material", "material\n", "material\r\n", "unknown-old-style", "", "material\nmiuix"] {
+            fs::write(&path,value).unwrap();
+            fs::set_permissions(&path,fs::Permissions::from_mode(0o600)).unwrap();
+            assert_eq!(get().unwrap(),if value.trim_end_matches(['\r','\n'])=="material" {"material"} else {"miuix"});
+            assert_eq!(fs::read_to_string(&path).unwrap(),value);
+        }
+        for (legacy,target) in [("md3e","material"),("fluent","miuix"),("compose","miuix"),("shadcn","miuix"),("md3e\r\n","material")] {
+            // The old writer's bytes survive the Miuix-only release unchanged.
+            fs::write(&path,legacy).unwrap();
+            assert_eq!(get().unwrap(),target);
+            assert_eq!(fs::read_to_string(&path).unwrap(),target);
+            assert_eq!(fs::metadata(&path).unwrap().mode()&0o777,0o600);
+            let migrated_stamp=stamp(&fs::metadata(&path).unwrap());
+            assert_eq!(get().unwrap(),target);
+            assert_eq!(stamp(&fs::metadata(&path).unwrap()),migrated_stamp,"repeat read rewrote migrated file");
+            assert!(web_preference_at(&dir,"style","miuix",valid,Some(legacy)).is_err());
+        }
+        // Never interpret a style name in another preference as a migration.
+        let other=dir.join("monet");fs::write(&other,"md3e").unwrap();
+        fs::set_permissions(&other,fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(web_preference_at(&dir,"monet","on",|v|matches!(v,"on"|"off"),None).unwrap(),"on");
+        assert_eq!(fs::read_to_string(&other).unwrap(),"md3e");
+        assert!(web_preference_at(&dir,"style","miuix",valid,Some("material\n")).is_err());
+        assert_eq!(web_preference_at(&dir,"style","miuix",valid,Some("material")).unwrap(),"material");
+        assert_eq!(fs::read_to_string(&path).unwrap(),"material");
+        fs::write(&path,"md3e").unwrap();
+        fs::set_permissions(&path,fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(get().is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(),"md3e");
+        fs::set_permissions(&path,fs::Permissions::from_mode(0o600)).unwrap();
+        let link=dir.join("other");fs::hard_link(&path,&link).unwrap();assert!(get().is_err());fs::remove_file(&link).unwrap();
+        fs::rename(&path,&link).unwrap();symlink(&link,&path).unwrap();assert!(get().is_err());
+        fs::remove_file(&path).unwrap();fs::rename(&link,&path).unwrap();
+        fs::set_permissions(&dir,fs::Permissions::from_mode(0o755)).unwrap();assert!(get().is_err());
+    }
+}
+
+#[cfg(test)]
+mod transport_regression_tests {
+    use super::*;
+    #[test]
+    fn terminal_peer_close_does_not_panic_and_successful_output_is_preserved() {
+        let (mut writer,reader)=std::os::unix::net::UnixStream::pair().unwrap();
+        drop(reader);
+        assert_eq!(writer.write(b"probe").unwrap_err().kind(),io::ErrorKind::BrokenPipe);
+        terminal_notice_to(&mut writer,"worker already started");
+        // A working terminal still receives the same translated line.
+        let mut output=Vec::new();terminal_notice_to(&mut output,"fixture");
+        assert_eq!(output,b"fixture\n");
+    }
+    fn parse(bytes:&[u8])->(io::Result<Request>,(&'static str,usize,usize)) {
+        let listener=TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut client=TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (mut server,_)=listener.accept().unwrap();
+        client.write_all(bytes).unwrap();client.shutdown(std::net::Shutdown::Write).unwrap();
+        let mut progress=("headers",0,0);let result=request_inner(&mut server,&mut progress);(result,progress)
+    }
+    #[test]
+    fn empty_and_truncated_requests_remain_errors_with_byte_evidence() {
+        let (r,p)=parse(b"");assert_eq!(r.err().unwrap().kind(),io::ErrorKind::UnexpectedEof);assert_eq!(p,("headers",0,0));
+        let (r,p)=parse(b"GET /api/ping");assert!(r.is_err());assert_eq!(p,("headers",13,0));
+        let (r,p)=parse(b"POST /api/close HTTP/1.1\r\nContent-Length: 4\r\n\r\nab");assert!(r.is_err());assert_eq!(p,("body",2,4));
+        let (r,p)=parse(b"GET /api/ping HTTP/1.1\r\nContent-Length: 0\r\n\r\n");assert_eq!(r.unwrap().path,"/api/ping");assert_eq!(p,("body",0,0));
     }
 }

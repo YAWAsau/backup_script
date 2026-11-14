@@ -29,7 +29,6 @@
 -keep class com.xayah.dex.GuardLifecycle { public static void main(java.lang.String[]); }
 -dontwarn **
 
--keep class com.xayah.dex.SmbScanUtil { public static void main(java.lang.String[]); }
 -keep class com.xayah.dex.WebDavDiscoveryUtil { public static void main(java.lang.String[]); }
 -keep class com.xayah.dex.AppStateUtil { public static void main(java.lang.String[]); }
 
@@ -69,3 +68,5 @@
 -keep interface com.xayah.dex.PowerCompletion$Calls { *; }
 
 -keep class com.xayah.dex.MulticastGuard { public static void main(java.lang.String[]); }
+
+-keep class com.xayah.dex.WifiConnectionWatch { public static void main(java.lang.String[]); }

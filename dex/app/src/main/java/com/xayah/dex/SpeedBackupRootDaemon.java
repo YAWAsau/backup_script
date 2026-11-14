@@ -6,7 +6,6 @@ import android.net.Credentials;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 
 /**
  * Unified root-side AF_UNIX daemon for SpeedBackup hot paths.
@@ -177,7 +176,10 @@ public final class SpeedBackupRootDaemon {
                 ownerPid,
                 "SPEEDBACKUP_ROOT_DAEMON_READY_UNIX " + socketPath,
                 true,
-                SpeedBackupRootDaemon::handleClient);
+                SpeedBackupRootDaemon::handleClient, () -> {
+                    if("1".equals(System.getenv("SPEEDBACKUP_NATIVE_PREWARM_ENABLED")))
+                        System.err.println(CgroupFreezeUtil.ensureNativeDaemonForBatch("root-daemon-ready"));
+                });
     }
 
     private static int parsePositiveInt(String raw, int fallback) {
@@ -200,7 +202,7 @@ public final class SpeedBackupRootDaemon {
             OutputStream out = c.getOutputStream();
             String namespace = DaemonBootstrap.readUtf8Line(in).trim();
             if ("ping".equals(namespace)) {
-                writeResult(out, 0, "OK", "PONG\n");
+                DaemonBootstrap.writeResult(out, 0, "OK", "PONG\n");
                 return;
             }
             if ("hiddenapi".equals(namespace)) {
@@ -217,21 +219,18 @@ public final class SpeedBackupRootDaemon {
                 AppStateUtil.handleRootDaemonConnection(in, out);
                 return;
             }
-            writeResult(out, 2, "BAD_REQUEST", "ROOT_DAEMON_UNKNOWN_NAMESPACE " + sanitize(namespace) + "\n");
+            DaemonBootstrap.writeResult(out, 2, "BAD_REQUEST", "ROOT_DAEMON_UNKNOWN_NAMESPACE " + sanitize(namespace) + "\n");
         }
     }
 
     private static void handleHot(OutputStream out, InputStream in, boolean hiddenApi, int peerUid) throws IOException {
-        String command = DaemonBootstrap.readUtf8Line(in);
-        String protocolRaw = DaemonBootstrap.readUtf8Line(in);
-        String bodyLengthRaw = DaemonBootstrap.readUtf8Line(in);
-        int protocol = parsePositiveInt(protocolRaw, -1);
-        long bodyLength = parseLong(bodyLengthRaw, -2L);
-        if (protocol != HOT_PROTOCOL_VERSION || bodyLength < -1L) {
-            writeResult(out, 2, "BAD_REQUEST", "ROOT_DAEMON_BAD_HOT_REQUEST\n");
+        DaemonBootstrap.RequestHeader header=DaemonBootstrap.readRequestHeader(in);
+            String command=header.command;
+        if (!header.valid(HOT_PROTOCOL_VERSION)) {
+            DaemonBootstrap.writeResult(out, 2, "BAD_REQUEST", "ROOT_DAEMON_BAD_HOT_REQUEST\n");
             return;
         }
-        byte[] bodyBytes = bodyLength == -1L ? DaemonBootstrap.readAll(in) : DaemonBootstrap.readExactly(in, bodyLength);
+        byte[] bodyBytes = header.readBody(in);
         if (hiddenApi) {
             if (BackupUtilities.accepts(command)) {
                 DisplayTimeoutSettings.Result result=BackupUtilities.run(command,bodyBytes);
@@ -253,7 +252,7 @@ public final class SpeedBackupRootDaemon {
     }
 
     private static void writeHotResult(OutputStream out,String command,int rc,String name,String body) throws IOException {
-        try{writeResult(out,rc,name,body);}
+        try{DaemonBootstrap.writeResult(out,rc,name,body);}
         catch(IOException e){
             // Never retry a completed mutation or hide its delivery failure.
             String safe=command!=null&&command.matches("[A-Za-z][A-Za-z0-9_-]{0,79}")?command:"invalid";
@@ -267,18 +266,6 @@ public final class SpeedBackupRootDaemon {
             if (credentials != null && credentials.getUid() >= 0) return credentials.getUid();
         } catch (Throwable ignored) {}
         return fallback;
-    }
-
-    private static void writeResult(OutputStream out, int rc, String name, String body) throws IOException {
-        byte[] payload = (body == null ? "" : body).getBytes(StandardCharsets.UTF_8);
-        out.write(("RESULT " + rc + " " + name + "\n").getBytes(StandardCharsets.UTF_8));
-        out.write((String.valueOf(payload.length) + "\n").getBytes(StandardCharsets.UTF_8));
-        out.write(payload);
-        out.flush();
-    }
-
-    private static long parseLong(String raw, long fallback) {
-        try { return Long.parseLong(raw == null ? "" : raw.trim()); } catch (Throwable ignored) { return fallback; }
     }
 
     private static String sanitize(String raw) {

@@ -21,7 +21,7 @@ fn notification_origin_gate()->io::Result<bool>{
     let name=std::env::var("SPEEDBACKUP_WEB_ORIGIN_SOCKET").map_err(|_|err("origin absent"))?;
     if name!=format!("sb-web-origin-{owner}-1005-1"){return Err(err("origin scope"));}
     let stat=fs::read_to_string("/proc/self/stat")?;
-    let start=stat.rsplit_once(") ").and_then(|(_,s)|s.split_whitespace().nth(19)).ok_or_else(||err("origin identity"))?;
+    let start=speedbackup_native_rs::proc_stat::starttime(&stat).ok_or_else(||err("origin identity"))?;
     let address=std::os::unix::net::SocketAddr::from_abstract_name(name.as_bytes())?;
     let mut socket=UnixStream::connect_addr(&address)?;
     socket.set_read_timeout(Some(Duration::from_secs(3)))?;
@@ -121,7 +121,7 @@ fn progress_snapshot(s:&Shared,line:&str){
         2=>{if ('@'..='~').contains(&c){esc=0;}},
         _=>{if c=='\x1b'{esc=1;}else if !c.is_control(){visible.push(c);}}
     }}
-    if !visible.trim().is_empty(){let mut o=s.output.lock().unwrap();if o.progress!=visible{o.progress=visible;o.revision+=1;s.wake.notify_all();}}
+    if !visible.trim().is_empty()||["\x1b[2K","\x1b[0K","\x1b[K"].iter().any(|clear|line.contains(clear)){let mut o=s.output.lock().unwrap();if o.progress!=visible{o.progress=visible;o.revision+=1;s.wake.notify_all();}}
 }
 fn drain_progress(mut input:File,s:Arc<Shared>){let mut b=[0;16384];let mut pending=Vec::new();let mut line=String::new();loop{
     let n=match input.read(&mut b){Ok(0)=>break,Ok(n)=>n,Err(e)if e.kind()==io::ErrorKind::Interrupted=>continue,Err(_)=>break};pending.extend_from_slice(&b[..n]);
@@ -184,9 +184,9 @@ fn control_request(c:&mut UnixStream,state:Arc<Shared>,icons:mpsc::SyncSender<(S
                     // Peer PID comes from SO_PEERCRED, not RPC text. The caller
                     // remains alive waiting for this synchronous reply.
                     if let (Ok(exe),Ok(stat))=(std::env::current_exe(),fs::read_to_string(format!("/proc/{peer}/stat"))){
-                        if let (Some(parent),Some(start))=(exe.parent(),stat.rsplit_once(") ").and_then(|(_,f)|f.split_whitespace().nth(19))){
+                        if let (Some(parent),Some(start))=(exe.parent(),speedbackup_native_rs::proc_stat::starttime(&stat)){
                             match bounded_output(Command::new("/system/bin/app_process").env("CLASSPATH",parent.join("classes.dex")).args(["/system/bin","com.xayah.dex.AppListReturn","--rebind-origin",&peer.to_string(),&format!("{peer}:{start}")]),5) {
-                                Ok((status,_))=>eprintln!("CONSOLE_REBIND success={} exit={:?} signal={:?}",status.success(),status.code(),status.signal()),
+                                Ok((status,_))=>{eprintln!("CONSOLE_REBIND success={} exit={:?} signal={:?}",status.success(),status.code(),status.signal());if status.signal().is_some(){super::super::crash_diagnostics::capture_console();}},
                                 Err(e)=>eprintln!("CONSOLE_REBIND helper_unavailable reason={e}"),
                             }
                         }
@@ -213,7 +213,7 @@ fn ui_worker(state:Arc<Shared>,url:String,icons:mpsc::Receiver<(String,Vec<Strin
     let mut pending:Option<(Instant,mpsc::SyncSender<String>)>=None;
     loop{
         let closed=task.as_mut().is_some_and(ReturnTask::externally_closed);
-        if closed {task=None;displayed.clear();let mut u=state.ui.lock().unwrap();if u.reopen==opened{u.attached=false;}}
+        if closed {eprintln!("CONSOLE_VIEW_DISCONNECTED reason=controller_closed");task=None;displayed.clear();let mut u=state.ui.lock().unwrap();if u.reopen==opened{u.attached=false;}}
         let (revision,reopen,wanted,attached,stop,returning)={let u=state.ui.lock().unwrap();(u.revision,u.reopen,u.page.as_ref().filter(|_|!u.held&&!state.stopping.load(std::sync::atomic::Ordering::SeqCst)).map(|p|p.1.clone()).unwrap_or_else(||url.clone()),u.attached,u.stop,u.returning())};
         if stop {if let Some(t)=task.take(){let _=t.finish(false,false);}break;}
         // DONE often immediately precedes PAGE. Avoid loading a disposable
@@ -230,7 +230,11 @@ fn ui_worker(state:Arc<Shared>,url:String,icons:mpsc::Receiver<(String,Vec<Strin
             }else{
                 let start=Instant::now();
                 let navigation=if opened==reopen{task.as_mut().map(|t|t.navigate(&wanted)).unwrap_or(Navigation::Retry)}else{Navigation::Retry};
+                if {let u=state.ui.lock().unwrap();u.revision!=revision||u.reopen!=reopen} {
+                    eprintln!("CONSOLE_NAV superseded revision={revision}");continue;
+                }
                 if navigation==Navigation::Closed{
+                    eprintln!("CONSOLE_VIEW_DISCONNECTED reason=navigation_closed revision={revision}");
                     task=None;displayed.clear();let mut u=state.ui.lock().unwrap();if u.reopen==reopen{u.attached=false;}
                     if let Some((_,reply))=pending.take(){let _=reply.try_send("ERROR view disconnected".into());}
                     continue;
@@ -241,7 +245,8 @@ fn ui_worker(state:Arc<Shared>,url:String,icons:mpsc::Receiver<(String,Vec<Strin
                     let notification=state.ui.lock().unwrap().notification_reopen.take().is_some_and(|(r,_)|r==reopen);
                     if notification&&!notification_origin_gate().unwrap_or(false){let mut u=state.ui.lock().unwrap();if u.reopen==reopen{u.attached=false;}continue;}
                     if !origin_ready{origin_ready=super::prepare_origin(&["0".into()])==0;}
-                    if let Some(next)=if origin_ready{ReturnTask::capture_managed(&wanted,state.ui_signal.clone())}else{None}{task=Some(next);}else{let mut u=state.ui.lock().unwrap();if u.reopen==reopen{u.attached=false;}}
+                    if {let u=state.ui.lock().unwrap();u.revision!=revision||u.reopen!=reopen}{continue;}
+                    if let Some(next)=if origin_ready{ReturnTask::capture_managed(&wanted,state.ui_signal.clone())}else{None}{task=Some(next);}else{super::super::crash_diagnostics::capture_console();let mut u=state.ui.lock().unwrap();if u.reopen==reopen{u.attached=false;}}
                 }
                 {let mut u=state.ui.lock().unwrap();if u.attached&&u.reopen==reopen{displayed=wanted;opened=reopen;u.ready_reopen=Some(reopen);}}
                 eprintln!("CONSOLE_NAV mode={} elapsed_ms={} revision={revision} attached={}",if fast{"binder"}else{"launch"},start.elapsed().as_millis(),state.ui.lock().unwrap().attached);
@@ -361,6 +366,7 @@ fn cleanup_session_files(dir:&Path)->io::Result<()> {
     match failure{Some(e)=>Err(e),None=>Ok(())}
 }
 fn service(dir:&Path,entry:&Path,args:&[String])->io::Result<i32>{
+    super::super::restore_safety::app_data_namespace()?;
     private(dir)?;
     let lock=OpenOptions::new().read(true).write(true).create(true).mode(0o600).custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE).open(dir.join("lock"))?;
     if unsafe{flock(lock.as_raw_fd(),2|4)}!=0{return Err(err("job already active"));}
@@ -381,7 +387,20 @@ fn service(dir:&Path,entry:&Path,args:&[String])->io::Result<i32>{
     // A headless start may continue without a view; later OPEN requires a verified invoker.
     std::env::set_var("SPEEDBACKUP_CONSOLE_DIR",dir);
     std::env::set_var("SPEEDBACKUP_CONSOLE_URL",&url);
+    // Bind only menu start.sh entries, never a single-app/action wrapper.
+    // The wrapper's declared mode distinguishes backup and restore even after a directory rename.
+    std::env::remove_var("SPEEDBACKUP_SHORTCUT_ENTRY");std::env::remove_var("SPEEDBACKUP_SHORTCUT_MODE");
+    std::env::set_var("SPEEDBACKUP_SHORTCUT_BACKEND",std::env::current_exe()?);
+    if entry.file_name().and_then(|s|s.to_str())==Some("start.sh") {
+        if let (Ok(path),Ok(source))=(fs::canonicalize(entry),fs::read_to_string(entry)) {
+            let mode=source.lines().find_map(|line|match line.trim(){
+                "export SPEEDBACKUP_ENTRY_MODE=\"0\""=>Some("0"),
+                "export SPEEDBACKUP_ENTRY_MODE=\"2\""=>Some("2"),_=>None});
+            if let Some(mode)=mode {std::env::set_var("SPEEDBACKUP_SHORTCUT_ENTRY",path);std::env::set_var("SPEEDBACKUP_SHORTCUT_MODE",mode);}
+        }
+    }
     fs::write(dir.join("guard-active"),b"active\n")?;
+    let _crash_monitor=super::super::crash_diagnostics::monitor().map_err(|e|eprintln!("CRASH_MONITOR unavailable: {e}")).ok();
     let origin_ready=super::prepare_origin(&["1".into()])==0;
     // Session-owned full output, separate from the bounded live RAM tail. Replace
     // only this private session's archive, never truncate an existing hardlink.
@@ -405,7 +424,7 @@ fn service(dir:&Path,entry:&Path,args:&[String])->io::Result<i32>{
     });}
     let mut child=cmd.spawn()?;drop(cmd);let st=state.clone();let (read_done_tx,read_done)=mpsc::sync_channel(1);let read_thread=std::thread::spawn(move||{drain(reader,st);let _=read_done_tx.send(());});
     if let (Ok(stat),Ok(boot))=(fs::read_to_string(format!("/proc/{}/stat",child.id())),fs::read_to_string("/proc/sys/kernel/random/boot_id")){
-        if let Some(start)=stat.rsplit_once(") ").and_then(|(_,f)|f.split_whitespace().nth(19)) {*state.worker.lock().unwrap()=Some(format!("{}:{start}:{}",child.id(),boot.trim()));}
+        if let Some(start)=speedbackup_native_rs::proc_stat::starttime(&stat) {*state.worker.lock().unwrap()=Some(format!("{}:{start}:{}",child.id(),boot.trim()));}
     }
     let guard_marker=dir.join("guard-active");
     let st=state.clone();std::thread::spawn(move||{let rc=child.wait().map(|s|s.code().unwrap_or_else(||128+s.signal().unwrap_or(1))).unwrap_or(1);if read_done.recv_timeout(Duration::from_secs(2)).is_ok(){let _=read_thread.join();}let _=fs::remove_file(&guard_marker);let mut o=st.output.lock().unwrap();o.rc=Some(rc);st.wake.notify_all();drop(o);let mut u=st.ui.lock().unwrap();u.page=None;u.revision+=1;drop(u);st.sync_guard();let _=st.ui_signal.try_send(());let _=st.server_signal.try_send(ServerEvent::Changed);});
@@ -491,22 +510,32 @@ fn wait_closed(dir:&Path)->io::Result<()>{
     if dir.join("control").exists(){return Err(err("previous session is closing; retry shortly"));}Ok(())
 }
 fn reconnect(dir:&Path)->io::Result<bool>{
-    let mut finished=rpc_at(&dir,"PING",64).is_ok()&&close_finished_at(&dir)?;
+    let mut finished=if rpc_at(&dir,"PING",64).is_ok(){
+        match close_finished_at(dir){
+            Ok(value)=>value,
+            Err(e) if matches!(e.kind(),io::ErrorKind::ConnectionReset|io::ErrorKind::ConnectionAborted|io::ErrorKind::BrokenPipe|io::ErrorKind::ConnectionRefused)=>{
+                // User may close the finished page between PING and the close query.
+                // Wait for shutdown; the flock below still forbids duplicate workers.
+                wait_closed(dir)?;true
+            },
+            Err(e)=>return Err(e),
+        }
+    }else{false};
     if finished{wait_closed(&dir)?;}
     if let Ok(answer)=rpc_at(&dir,"OPEN",64){
         if answer=="OK"{
             let deadline=Instant::now()+Duration::from_secs(140);let mut failures=0;
             loop {match rpc_at(&dir,"VIEW_STATUS",64) {
-                Ok(status) if status=="READY"=>{println!("已接回現有工作；未重新執行工作。");return Ok(true);},
-                Ok(status) if status=="FAILED"=>return Err(err("現有工作仍保留，但畫面未能開啟；請查看 service.log 的 WEBVIEW_RETURN_UNAVAILABLE 與 CONSOLE_NAV，再從原終端重試。")),
+                Ok(status) if status=="READY"=>{super::terminal_notice("已接回現有工作；未重新執行工作。");return Ok(true);},
+                Ok(status) if status=="FAILED"=>return Err(err(&format!("現有工作仍保留，但畫面未能開啟。\n服務日誌：{}\n崩潰日誌：{}（背景收集中；若無權限，原因記於 status.log）\n除錯包：/data/speed_debug/（尚未進入腳本時可能未產生）\n請提供上述日誌，再從原入口重試。",dir.join("service.log").display(),dir.join("crashes").display()))),
                 Ok(status) if status=="PENDING"=>{failures=0;},
-                Ok(status) if status=="FINISHED"=>{println!("原工作已結束；未重新啟動工作。");return Ok(true);},
+                Ok(status) if status=="FINISHED"=>{super::terminal_notice("原工作已結束；未重新啟動工作。");return Ok(true);},
                 // Old supervisors have no readiness acknowledgement. Never call
                 // their early OPEN acknowledgement a successful attachment.
-                Err(e) if e.kind()==io::ErrorKind::Unsupported=>{println!("已向舊版工作送出接回要求，尚無畫面完成確認；若未開啟請從原終端重試，勿重複啟動備份。");return Ok(true);},
-                _=>{failures+=1;if failures>=3||!dir.join("control").exists(){return Err(err("接回控制連線中斷，無法確認工作狀態；未重新啟動工作，請檢查 service.log。"));}},
+                Err(e) if e.kind()==io::ErrorKind::Unsupported=>{super::terminal_notice("已向舊版工作送出接回要求，尚無畫面完成確認；若未開啟請從原終端重試，勿重複啟動備份。");return Ok(true);},
+                _=>{failures+=1;if failures>=3||!dir.join("control").exists(){return Err(err(&format!("接回控制連線中斷，無法確認工作狀態；未重新啟動工作，請檢查 {}。",dir.join("service.log").display())));}},
             }
-            if Instant::now()>=deadline{return Err(err("接回畫面尚未完成確認，等待已逾時；未重新啟動工作，請檢查 service.log。"));}
+            if Instant::now()>=deadline{return Err(err(&format!("接回畫面尚未完成確認，等待已逾時；未重新啟動工作，請檢查 {}。",dir.join("service.log").display())));}
             std::thread::sleep(Duration::from_millis(100));}
         }
         if answer!="FINISHED"{return Err(err("unexpected console reopen response"));}
@@ -536,6 +565,9 @@ fn caller_diagnostics(dir:&Path)->io::Result<()> {
     Ok(())
 }
 fn start(entry:&Path,args:&[String])->io::Result<i32>{
+    // Report the real rejection to shortcut/terminal callers before detaching.
+    // The service checks again in its own namespace before spawning the worker.
+    super::super::restore_safety::app_data_namespace()?;
     if unsafe{getuid()}!=0{return Err(err("root required"));}let entry=entry.canonicalize()?;if !entry.is_file(){return Err(err("entry file"));}
     crate::runtime_cache::on_start();
     // Old jobs own their original immutable binaries and paths. Never move them.
@@ -562,7 +594,7 @@ fn start(entry:&Path,args:&[String])->io::Result<i32>{
         if setsid()<0{return Err(io::Error::last_os_error());}Ok(())
     });}
     let mut child=cmd.spawn()?;let deadline=Instant::now()+Duration::from_secs(20);
-    while Instant::now()<deadline {if dir.join("ready").exists()&&rpc_at(&dir,"PING",64).is_ok(){println!("工作已由獨立服務啟動，可在原生 APK 查看；關閉 APK 不會中止工作。");return Ok(0);}if let Some(rc)=child.try_wait()?{return Err(err(&format!("console startup failed: {rc}")));}std::thread::sleep(Duration::from_millis(100));}
+    while Instant::now()<deadline {if dir.join("ready").exists()&&rpc_at(&dir,"PING",64).is_ok(){super::terminal_notice("工作已由獨立服務啟動，可在原生 APK 查看；關閉 APK 不會中止工作。");return Ok(0);}if let Some(rc)=child.try_wait()?{return Err(err(&format!("console startup failed: {rc}")));}std::thread::sleep(Duration::from_millis(100));}
     Err(err("console start pending; do not start a second job"))
 }
 pub(super) fn run(args:&[String])->i32{let result=match args{[mode,entry,tail @ ..]if mode=="start"=>start(Path::new(entry),tail),[mode,dir,entry,tail @ ..]if mode=="service"=>service(Path::new(dir),Path::new(entry),tail),_=>Err(err("console arguments"))};match result{Ok(rc)=>rc,Err(e)=>{ui_error("console",&e.to_string());65}}}
@@ -655,6 +687,23 @@ mod notification_tests {
         assert!(!s.ui.lock().unwrap().returning());
         append(&s,b"fallback diagnostic\n");rpc(&s,&page(&next));
         assert!(s.ui.lock().unwrap().held);
+    }
+    #[test]
+    fn explicit_progress_erase_clears_snapshot() {
+        let s=state();
+        progress_snapshot(&s,"封裝約95.1% 127 MB/s");
+        let revision=s.output.lock().unwrap().revision;
+        progress_snapshot(&s,"");
+        assert_eq!(s.output.lock().unwrap().revision,revision);
+        progress_snapshot(&s,"\x1b[2");
+        assert_eq!(s.output.lock().unwrap().revision,revision);
+        progress_snapshot(&s,"\x1b[2K");
+        assert!(s.output.lock().unwrap().progress.is_empty());
+        assert_eq!(s.output.lock().unwrap().revision,revision+1);
+        progress_snapshot(&s,"封裝約1.0% 10 MB/s\x1b[K");
+        assert_eq!(s.output.lock().unwrap().progress,"封裝約1.0% 10 MB/s");
+        progress_snapshot(&s,"\x1b[K");
+        assert!(s.output.lock().unwrap().progress.is_empty());
     }
     #[test]
     fn page_before_poll_and_progress_are_not_lost(){

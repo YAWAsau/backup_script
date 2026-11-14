@@ -4,12 +4,31 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
-internal class NativeEditorPage(private val session:NativeSession,context:Context):NativePage {
+internal class NativeEditorPage(private val session:NativeSession,private val context:Context):NativePage {
     private val c get()=session.controls
     private val selection=NativeSelection()
     private val form=NativeSettingsForm(context,session.catalog)
     private lateinit var manager:JSONObject
     private val settings=linkedMapOf<String,List<JSONObject>>()
+    @Volatile private var usersTransport:NativeApi?=null
+    private var usersRequested=false
+    private fun loadUsers(){
+        if(usersRequested||closed.get()||session.finished)return
+        usersRequested=true
+        val api=session.api.fork();usersTransport=api
+        if(closed.get()){api.close();return}
+        Thread({
+            try{
+                val a=JSONArray(api.get("users"))
+                val users=(0 until a.length()).map{a.get(it).toString()}
+                session.execute{if(!closed.get()&&!session.finished){form.users=users;session.emit()}}
+            }catch(_:Exception){
+                session.diagnostic("native-users-unavailable")
+                session.execute{if(!closed.get()&&!session.finished){form.users=emptyList();session.emit()}}
+            }
+            finally{api.close()}
+        },"editor-users").apply{isDaemon=true;start()}
+    }
     private var panel="apps"
     private var timeline=obj("sources" to JSONArray(),"targets" to JSONArray())
     private val icons=HashMap<String,String>()
@@ -28,40 +47,141 @@ internal class NativeEditorPage(private val session:NativeSession,context:Contex
     private var pingAt=0L
     private var picker:NativePickerController?=null
     @Volatile private var discovery:NativeDiscovery?=null
+    private var networkTransport:NativeApi?=null
+    private var networkEpoch=0L
+    private var networkVisible=false
+    private var lanAvailable=false
+    private var networkMessage="正在讀取區域網路狀態…"
+    private fun networkChanged(available:Boolean,message:String){
+        val changed=lanAvailable!=available||networkMessage!=message
+        lanAvailable=available;networkMessage=message
+        if(!available)discovery?.networkUnavailable(message)
+        if(available&&autoConnectionPending.isNotEmpty()){
+            val pending=autoConnectionPending;autoConnectionPending=""
+            if(panel==pending)startAutoConnection() else if(changed)session.emit()
+        }
+        else if(available&&initialDiscoveryPending){initialDiscoveryPending=false;openDiscovery()}
+        else if(changed)session.emit()
+    }
+    private fun startNetwork(){
+        if(networkTransport!=null||session.finished)return
+        val epoch=++networkEpoch;val api=session.api.fork();networkTransport=api
+        Thread({try{api.remoteHealth{line->val update=JSONObject(line);session.execute{
+            if(epoch==networkEpoch&&networkVisible&&!closed.get()&&!session.finished){
+                val available=update.optBoolean("lanAvailable")
+                networkChanged(available,if(available)"" else "未連接區域網路，無法自動搜尋")
+            }
+        }}}catch(_:Exception){session.execute{if(epoch==networkEpoch&&networkVisible&&!closed.get()&&!session.finished){networkTransport=null;networkChanged(false,"區域網路狀態服務未連線，請返回主選單重試")}}}
+        finally{api.close()}},"editor-network-events").apply{isDaemon=true;start()}
+    }
+    private fun stopNetwork(){++networkEpoch;networkTransport?.close();networkTransport=null;lanAvailable=false;networkMessage="正在讀取區域網路狀態…";discovery?.networkUnavailable(networkMessage)}
     private var initialDiscoveryPending=false
-    private fun openDiscovery(){discovery?.close();c.forgetPrefix("discovery:");discovery=NativeDiscovery(session).also{it.start()};session.emit()}
+    private fun openDiscovery(fresh:Boolean=false){discoveryProtocol="";if(!lanAvailable){session.status=networkMessage;session.emit();return};discoveryLogin=null;discovery?.close();c.forgetPrefix("discovery:");discovery=NativeDiscovery(session).also{it.start(fresh)};session.emit()}
+    private var autoConnectionPending=""
+    private var discoveryProtocol=""
+    private fun startAutoConnection(){
+        val fields=settings[panel]?:return
+        fun value(key:String)=fields.firstOrNull{it.optString("key")==key}?.optString("value").orEmpty()
+        val protocol=value("remote_type")
+        autoConnectionPending=""
+        if(value("remote_address_mode")!="auto"||protocol !in setOf("smb","webdav"))return
+        if(!lanAvailable){autoConnectionPending=panel;session.status=networkMessage;session.emit();return}
+        openDiscovery()
+        discoveryProtocol=if(protocol=="smb")"SMB" else "WebDAV"
+        val scan=discovery?:return
+        val url=value("${protocol}_url");val user=value("${protocol}_remote_user");val password=value("${protocol}_remote_pass")
+        // Only the previously configured endpoint may receive stored credentials without a new selection.
+        if(url.isNotBlank()&&user.isNotEmpty()&&password.isNotEmpty()){
+            val host=runCatching{java.net.URI(url).host}.getOrNull().orEmpty()
+            resolveDiscovery(scan,NativeDiscovery.Endpoint("",discoveryProtocol,host,url,value("remote_${protocol}_identity")),user,password)
+        }
+        session.emit()
+    }
+    private data class DiscoveryLogin(val endpoint:NativeDiscovery.Endpoint,var user:String,var password:String,val message:String)
+    private var discoveryLogin:DiscoveryLogin?=null
+    private fun requestDiscoveryLogin(endpoint:NativeDiscovery.Endpoint,message:String){
+        val prefix=if(endpoint.type=="SMB")"smb" else "webdav"
+        fun value(key:String)=settings.getValue(panel).firstOrNull{it.optString("key")==key}?.optString("value").orEmpty()
+        c.forgetPrefix("discovery:login:")
+        discoveryLogin=DiscoveryLogin(endpoint,value("${prefix}_remote_user"),value("${prefix}_remote_pass"),message)
+        session.emit()
+    }
+    private fun resolveDiscovery(scan:NativeDiscovery,endpoint:NativeDiscovery.Endpoint,user:String,password:String){
+        scan.resolve(endpoint,user,password,{target,error->
+            if(lanAvailable&&discovery===scan){requestDiscoveryLogin(target,error);discoveryLogin?.let{it.user=user;it.password=password};session.emit()}
+        }){verified->
+            if(lanAvailable&&discovery===scan){
+                val prefix=if(endpoint.type=="SMB")"smb" else "webdav"
+                settings.getValue(panel).forEach{field->when(field.optString("key")){
+                    "${prefix}_remote_user"->field.put("value",user)
+                    "${prefix}_remote_pass"->field.put("value",password)
+                }}
+                acceptDiscovery(scan,verified)
+                if(discovery==null){
+                    val keys=setOf("remote_type","remote_address_mode","remote_${prefix}_identity","${prefix}_url","${prefix}_remote_user","${prefix}_remote_pass")
+                    val fields=settings.getValue(panel)
+                    val saved=fields.map{field->JSONObject(field.toString()).apply{if(optString("key") !in keys)put("value",getString("original"))}}
+                    try {
+                        session.api.post("save-$panel",encodeSettings(saved))
+                        fields.filter{it.optString("key") in keys}.forEach{it.put("original",it.getString("value"))}
+                        session.status="連線驗證成功，地址與帳密已儲存。"
+                        changed()
+                    }catch(_:Exception){session.status="連線可用，但設定儲存失敗；內容已保留，請重試儲存。";session.emit()}
+                }
+            }
+        }
+    }
     private fun discoveryScreen():JSONObject {
         val scan=discovery!!
-        val rows=scan.endpoints.mapIndexed { index, endpoint ->
-            c.group("discovery:result:${endpoint.url}","setting",listOf(c.button("discovery:select:${endpoint.url}","選擇此地址"){
-                if(discovery!==scan||scan.endpoints.none{it.url==endpoint.url})return@button
+        val endpoints=scan.endpoints.filter{discoveryProtocol.isEmpty()||it.type==discoveryProtocol}
+        val rows=endpoints.mapIndexed { index, endpoint ->
+            c.group("discovery:result:${endpoint.url}","setting",listOf(c.button("discovery:select:${endpoint.url}","選擇此地址",scan.resolving||!lanAvailable){
+                if(!lanAvailable||discovery!==scan||scan.endpoints.none{it.url==endpoint.url})return@button
+                val fields=settings.getValue(panel)
+                val prefix=if(endpoint.type=="SMB")"smb" else "webdav"
+                fun value(key:String)=fields.firstOrNull{it.optString("key")==key}?.optString("value").orEmpty()
+                val user=value("${prefix}_remote_user");val password=value("${prefix}_remote_pass")
+                if(user.isEmpty()||password.isEmpty())requestDiscoveryLogin(endpoint,"請輸入此設備的登入帳密；若服務允許匿名存取，可留空後驗證。")
+                else resolveDiscovery(scan,endpoint,user,password)
+            }.put("navigation",true)),endpoint.title).put("iconKey",if(endpoint.type=="SMB")"smb_url" else "webdav_url").put("detail",endpoint.url).put("translateDetail",false).put("first",index==0).put("last",index==endpoints.lastIndex)
+        }
+        return c.screen("editor:discovery","自動發現電腦／NAS",
+            listOf(c.node("discovery:status",if(scan.running||scan.resolving)"loading" else "text",scan.message))+
+                (if(rows.isEmpty())emptyList() else listOf(c.group("discovery:results","settings-section",rows))),
+            listOf(c.button("discovery:back","返回手動設定"){scan.close();discovery=null;session.emit()},
+                c.button("discovery:refresh",if(scan.running)"停止搜尋" else "重新掃描",!scan.running&&!lanAvailable){if(scan.running){scan.stop();session.emit()}else openDiscovery(true)}),
+            session.status.ifEmpty{"選擇設備後讀取完整地址，沿用目前設定的帳密；確認可存取後再儲存。"}).apply{
+                discoveryLogin?.let{login->put("dialog",obj("id" to c.bind("discovery:login:dialog"){kind,_,_->if(kind in setOf("click","cancel","dismiss")){discoveryLogin=null;session.emit()}},"nodes" to arr(listOf(
+                    c.node("discovery:login:title","text","${login.endpoint.type} 帳號與密碼"),
+                    c.node("discovery:login:address","text",login.endpoint.url).put("translate",false),
+                    c.node("discovery:login:message","text",login.message),
+                    c.input("discovery:login:user","帳號",login.user){login.user=it},
+                    c.input("discovery:login:password","密碼",login.password){login.password=it}.put("password",true),
+                    c.group("discovery:login:actions","row",listOf(
+                        c.button("discovery:login:cancel","取消"){discoveryLogin=null;session.emit()},
+                        c.button("discovery:login:verify","驗證連線"){discoveryLogin=null;resolveDiscovery(scan,login.endpoint,login.user,login.password)}.put("materialPrimary",true)
+                    )).put("dialogAction",true)
+                ))))}
+            }
+    }
+    private fun acceptDiscovery(scan:NativeDiscovery,endpoint:NativeDiscovery.Endpoint){
                 val fields=settings.getValue(panel)
                 val auto=fields.firstOrNull{it.optString("key")=="remote_address_mode"}?.optString("value")=="auto"
-                if(auto&&endpoint.identity.isEmpty()){session.status="此地址尚未取得設備識別，請稍候或使用手動地址。";session.emit();return@button}
+                if(auto&&endpoint.identity.isEmpty()&&endpoint.type!="WebDAV"){session.status="此地址尚未取得設備識別，請稍候或使用手動地址。";session.emit();return}
+                val fixedWebdav=auto&&endpoint.identity.isEmpty()&&endpoint.type=="WebDAV"
                 val identity=fields.firstOrNull{it.optString("key")==if(endpoint.type=="SMB")"remote_smb_identity" else "remote_webdav_identity"}
-                if(auto&&identity==null){session.status="設定缺少設備識別欄位，請重新啟動腳本以更新設定。";session.emit();return@button}
-                val previousIdentity=identity?.optString("value")
+                if(auto&&identity==null){session.status="設定缺少設備識別欄位，請重新啟動腳本以更新設定。";session.emit();return}
                 val key=if(endpoint.type=="SMB")"smb_url" else "webdav_url"
                 val target=fields.firstOrNull{it.optString("key")==key}
                 val protocol=fields.firstOrNull{it.optString("key")=="remote_type"}
-                if(target==null||protocol==null){session.status="此設定不包含 ${endpoint.type} 地址欄位，請返回手動設定。";session.emit();return@button}
-                val previous=target.optString("value")
-                val path=if(previousIdentity==endpoint.identity&&endpoint.identity.isNotEmpty())runCatching{java.net.URI(previous).rawPath}.getOrNull() else null
-                val chosen=if(!path.isNullOrEmpty()&&path!="/")endpoint.url.substringBefore('/',endpoint.url).let{runCatching{val u=java.net.URI(endpoint.url);"${u.scheme}://${u.rawAuthority}$path"}.getOrDefault(endpoint.url)} else endpoint.url
+                if(target==null||protocol==null){session.status="此設定不包含 ${endpoint.type} 地址欄位，請返回手動設定。";session.emit();return}
+                if(fixedWebdav)fields.firstOrNull{it.optString("key")=="remote_address_mode"}?.put("value","manual")
                 identity?.put("value",endpoint.identity)
-                target.put("value",chosen)
+                target.put("value",endpoint.url)
                 protocol.put("value",if(endpoint.type=="SMB")"smb" else "webdav")
                 scan.close();discovery=null;form.connectionSetup=true
-                session.status=if(endpoint.type=="SMB")"已填入伺服器地址，請在 SMB 地址補上共用資料夾名稱，再儲存設定。" else "已填入 WebDAV 地址，請確認帳號與路徑後儲存設定。"
+                session.status=if(fixedWebdav)"已確認完整地址；此服務使用固定地址，儲存設定後即可使用。" else "已確認並填入完整地址，儲存設定後即可使用。"
                 changed()
-            }.put("navigation",true)),"${endpoint.name} · ${endpoint.type}").put("detail",endpoint.url).put("translateDetail",false).put("first",index==0).put("last",index==scan.endpoints.lastIndex)
-        }
-        return c.screen("editor:discovery","自動發現電腦／NAS",
-            listOf(c.node("discovery:status",if(scan.running)"loading" else "text",scan.message))+
-                (if(rows.isEmpty())emptyList() else listOf(c.group("discovery:results","settings-section",rows))),
-            listOf(c.button("discovery:back","返回手動設定"){scan.close();discovery=null;session.emit()},
-                c.button("discovery:refresh",if(scan.running)"停止搜尋" else "重新搜尋"){if(scan.running){scan.stop();session.emit()}else openDiscovery()}),
-            session.status.ifEmpty{"選擇設備後沿用已儲存帳密。SMB 設備已讀取識別碼；候選僅表示埠可連線，不能自動追蹤。"})
     }
     private var editing:JSONObject?=null
     private data class ListRow(val id:Long,var value:String)
@@ -101,7 +221,7 @@ internal class NativeEditorPage(private val session:NativeSession,context:Contex
             listOf(c.node("rows:help","text","每行一個項目；保留 # 註釋與原有順序。"))+pages+rows,
             listOf(c.button("rows:add","新增一行"){if(editing===field){editRows.add(ListRow(++nextRowId,""));val last=(editRows.size-1)/100;if(rowPage!=last)changeRowPage(last);session.emit()}},
                 c.button("rows:cancel","取消"){if(editing===field){editing=null;c.forgetPrefix("rows:item:");session.emit()}},
-                c.button("rows:save","確定"){if(editing===field){field.put("value",editRows.joinToString("\n"){it.value});editing=null;c.forgetPrefix("rows:item:");changed()}}),
+                c.button("rows:save","確定"){if(editing===field){field.put("value",editRows.joinToString("\n"){it.value});editing=null;c.forgetPrefix("rows:item:");changed()}}.put("materialPrimary",true)),
             "確定後回到設定，儲存設定才會寫入檔案。")
     }
     private val mode get()=manager.optString("mode")
@@ -201,7 +321,9 @@ internal class NativeEditorPage(private val session:NativeSession,context:Contex
                 }
             }
             settings[key]=fields
-            if(fields.any{it.getString("key")=="user"})form.users=JSONArray(session.api.get("users")).let{a->(0 until a.length()).map{a.get(it).toString()}}
+            // User enumeration runs after the first document is published.
+            // Preserve the actual conf value while the optional choices arrive.
+            if(fields.any{it.getString("key")=="user"}&&!usersRequested)session.later(0){loadUsers()}
         }
         panel=key
     }
@@ -240,7 +362,11 @@ internal class NativeEditorPage(private val session:NativeSession,context:Contex
     private fun settingsChanged()=settings.values.flatten().count{it.getString("value")!=it.getString("original")}
     private fun saveSettings(key:String){
         val fields=settings.getValue(key)
-        session.api.post("save-$key",encodeSettings(fields))
+        session.status="儲存中…";session.emit()
+        try {session.api.post("save-$key",encodeSettings(fields))}
+        catch(e:Exception){session.status="儲存失敗：${e.message}。編輯內容已保留，請確認檔案狀態後重試。";session.emit();throw e}
+        session.status="儲存成功";session.emit()
+        android.os.Handler(android.os.Looper.getMainLooper()).post {android.widget.Toast.makeText(context,"設定儲存成功",android.widget.Toast.LENGTH_SHORT).show()}
         fields.forEach{it.put("original",it.getString("value"))};draftDirty=true;try{flushDraft()}catch(e:Exception){session.status="設定已儲存，但草稿暫存失敗；請保留目前畫面。";session.diagnostic("native-settings-draft-failed")}
     }
     private fun timelineNodes():List<JSONObject>{
@@ -306,11 +432,27 @@ internal class NativeEditorPage(private val session:NativeSession,context:Contex
                 if(form.authSetup){session.status=retryStatus;session.emit()}
                 val response=session.api.post(if(submit)"save" else "finish",if(submit)selection.submission()+trailer else "")
                 session.finish(if(form.authSetup)retryStatus else response)
-            }catch(e:Exception){if(e is java.io.IOException&&e !is NativeApi.ApiFailure)submissionUnknown=true;session.status=(if(saved.isNotEmpty())"已儲存：${saved.joinToString("、")}。" else "")+"未完成：${e.message}。若連線中斷，請確認日誌與原檔狀態，勿假設未寫入。";session.emit()}
+            }catch(e:Exception){if(e is java.io.IOException&&e !is NativeApi.ApiFailure)submissionUnknown=true;session.status=(if(saved.isNotEmpty())"已儲存：${saved.joinToString("、")}。" else "")+"儲存／提交未完成：${e.message}。若連線中斷，請確認日誌與原檔狀態，勿假設未寫入。";session.emit()}
         }
         if(flow.isEmpty()&&!form.authSetup)session.confirm(if(mode=="remote-delete")"提交所選遠端備份？接下來仍需兩次確認才會刪除。" else "儲存並返回？各檔案分別儲存；中途失敗時已儲存的檔案會保留。",run)else run()
     }
     override fun render(model:JSONObject){
+        val baseRoute="editor:$panel:${if(panel=="apps")selection.page else "settings"}"
+        // Only a managed, clean editor can promise cancellation back to its menu.
+        // External launches and authentication retries have no in-app parent.
+        model.put("returnToMenu",manager.optBoolean("managed")&&!form.authSetup&&
+            !submissionUnknown&&discovery==null&&editing==null&&picker==null&&
+            !(panel!="apps"&&manager.optString("panel")=="manager")&&
+            !(panel=="apps"&&selection.page>0)&&selection.changed().isEmpty()&&
+            settingsChanged()==0&&selection.timeline.optString("mode","match")=="match")
+        model.put("backRoute",when {
+            submissionUnknown->""
+            discovery!=null||editing!=null->baseRoute
+            picker!=null->if(picker!!.returnsToEditor())baseRoute else ""
+            panel!="apps"&&manager.optString("panel")=="manager"->"editor:apps:${selection.page}"
+            panel=="apps"&&selection.page>0->"editor:apps:${selection.page-1}"
+            else->"" // Cancel can require confirmation or close an external session.
+        })
         // Rendering must never schedule writes or retry failed requests.
         if(!iconsReady&&panel=="apps"&&mode!="media"){
             pagePackages() // Clamp the restored page before assigning its stable route.
@@ -323,24 +465,25 @@ internal class NativeEditorPage(private val session:NativeSession,context:Contex
         editing?.let{field->model.put("screen",listScreen(field));return}
         val nodes=if(panel=="apps")appNodes() else form.rows(panel,if(manager.optBoolean("discoverySetup"))settings.getValue(panel).filter{it.optString("key") in setOf("remote_type","remote_address_mode","remote_smb_identity","remote_webdav_identity","smb_url","smb_remote_user","smb_remote_pass","webdav_url","webdav_remote_user","webdav_remote_pass")}else settings.getValue(panel),c,{changed()},{field->
             picker=NativePickerController(session,panel,field){picker=null;changed()};picker!!.loadInitial();changed()
-        },{field->openList(field)},{openDiscovery()}).toMutableList().apply{
+        },{field->openList(field)},{openDiscovery()},lanAvailable,networkMessage,{startAutoConnection()}).toMutableList().apply{
             if(!form.connectionSetup)add(c.group("settings:actions","row",listOf(c.button("settings:undo","還原未儲存修改"){session.confirm("還原這份設定尚未儲存的修改？"){settings.getValue(panel).forEach{it.put("value",it.getString("original"))};changed()}},
-            c.button("settings:save","儲存此設定"){session.confirm("儲存此設定？其他檔案不會一起寫入。"){saveSettings(panel);session.status="設定已儲存";session.emit()}}.put("primary",true))))
+            c.button("settings:save","儲存此設定"){session.confirm("儲存此設定？其他檔案不會一起寫入。"){saveSettings(panel);session.status="設定已儲存";session.emit()}}.put("materialPrimary",true))))
         }
         val tabs=if(manager.optString("panel")=="manager")listOf("apps" to "應用清單","backup" to "備份設定","restore" to "恢復設定").filter{it.first=="apps"||manager.optBoolean(it.first)}.map{(key,label)->c.button("editor:panel:$key",label,session.finished){if(key=="apps")panel=key else openSettings(key);changed()}.put("selected",key==panel)} else emptyList()
         val title=if(form.authSetup)"認證失敗，請重新輸入帳密" else if(panel!="apps"&&form.connectionSetup)(if(settings.getValue(panel).any{it.optString("key")=="remote_type"&&it.optString("value")=="smb"})"SMB" else "WebDAV")+" 連線設定" else if(panel!="apps")if(panel=="restore")"恢復設定" else "備份設定" else if(flow=="backup")"選擇備份應用" else if(flow.isNotEmpty())"選擇恢復項目" else if(mode=="remote-delete")"編輯遠端備份" else "應用清單"
         val label=if(form.authSetup)"儲存並重試" else if(manager.optBoolean("discoverySetup"))"連線並繼續" else if(flow=="backup")"下一步 · 開始備份" else if(flow.isNotEmpty())"下一步 · 開始恢復" else if(mode=="remote-delete")"刪除所選備份" else "儲存並返回"
         val count=selection.changed().size+settingsChanged()
         val hint=if(form.authSetup){if(count>0)"帳密尚未儲存" else "目前儲存的帳密未通過認證，請檢查使用者名稱與密碼。"}else (if(count>0)"$count 項已修改" else "尚未修改")+if(flow in setOf("restore","remote"))"\n恢復前請記得開啟目的 Google 帳號的時間軸，否則可能看不到歷史紀錄。" else ""
-        val subtitle=if(form.authSetup)"伺服器拒絕目前儲存的帳密。請修改後按「儲存並重試」，或返回。" else if(panel!="apps"&&form.connectionSetup)"確認地址與登入帳密後儲存。" else if(panel!="apps")"調整本次入口的設定；儲存後會重新載入。" else if(flow.isNotEmpty())"清單已同步；保留既有選取與註釋。選擇完成後按下一步執行。" else if(single)"勾選要處理的項目；儲存或取消後返回。" else "選擇要處理的應用；儲存或取消後返回。"
+        val subtitle=if(form.authSetup)"伺服器拒絕目前儲存的帳密。請修改後按「儲存並重試」，或返回。" else if(panel!="apps"&&form.connectionSetup)"確認地址與登入帳密後儲存。" else if(panel!="apps")"調整本次入口的設定；儲存後套用於下一次操作，無須重啟腳本。" else if(flow.isNotEmpty())"清單已同步；保留既有選取與註釋。選擇完成後按下一步執行。" else if(single)"勾選要處理的項目；儲存或取消後返回。" else "選擇要處理的應用；儲存或取消後返回。"
         val note=c.node("editor:note:$panel","text",if(panel!="apps")"修改設定後儲存；返回將保留已儲存的內容。" else if(single)"儲存選擇後返回；取消會保留原清單。" else "僅 APK／完整只能擇一；都不勾則略過。").put("muted",true)
-        val screen=c.screen("editor:$panel",title,(if(tabs.isNotEmpty())listOf(c.group("editor:tabs","row",tabs))else emptyList())+listOf(note)+nodes,listOf(c.button("editor:cancel",if(form.authSetup)"返回" else "取消",session.finished){cancel()},c.button("editor:save",label,session.finished||submissionUnknown){save()}),session.status.ifEmpty{hint},subtitle)
+        val screen=c.screen("editor:$panel",title,(if(tabs.isNotEmpty())listOf(c.group("editor:tabs","row",tabs))else emptyList())+listOf(note)+nodes,listOf(c.button("editor:cancel",if(form.authSetup)"返回" else "取消",session.finished){cancel()},c.button("editor:save",label,session.finished||submissionUnknown){save()}.put("materialPrimary",true)),session.status.ifEmpty{hint},subtitle)
         if(panel=="apps")screen.put("appPage",selection.page)
         model.put("screen",screen).put("sectionRoute","editor:$panel:${if(panel=="apps")selection.page else "settings"}")
     }
     override fun action(value:String){if(value.startsWith("picker:")){picker?.action(JSONObject(value.substringAfter(':')));changed();return};when(value){"cancel"->cancel();"back"->back();"save"->save()}}
     override fun back(){
         if(submissionUnknown){session.exit();return}
+        if(discoveryLogin!=null){discoveryLogin=null;session.emit();return}
         discovery?.let{it.close();discovery=null;session.emit();return}
         picker?.let{it.back();changed();return}
         if(editing!=null){editing=null;session.emit();return}
@@ -357,6 +500,6 @@ internal class NativeEditorPage(private val session:NativeSession,context:Contex
         if(android.os.SystemClock.elapsedRealtime()-pingAt>=30000){pingAt=android.os.SystemClock.elapsedRealtime();session.api.get("ping")}
     }
     override val tickIntervalMillis:Long get()=30000
-    override fun close(){discovery?.close();closed.set(true);iconsPreload?.cancel(false);iconsRetry?.cancel(false);draftTimer?.cancel(false)}
-    override fun lifecycle(visible:Boolean){if(visible&&initialDiscoveryPending){initialDiscoveryPending=false;openDiscovery()};if(!visible)discovery?.stop();if(session.finished)return;try{flushDraft(!visible)}finally{session.api.post("lifecycle",if(visible)"visible" else "hidden")}}
+    override fun close(){closed.set(true);usersTransport?.close();stopNetwork();discovery?.close();iconsPreload?.cancel(false);iconsRetry?.cancel(false);draftTimer?.cancel(false)}
+    override fun lifecycle(visible:Boolean){networkVisible=visible;if(visible)startNetwork() else stopNetwork();if(session.finished)return;try{flushDraft(!visible)}finally{session.api.post("lifecycle",if(visible)"visible" else "hidden")}}
 }

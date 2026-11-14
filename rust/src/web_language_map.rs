@@ -2474,3 +2474,10 @@ pub fn simplify(c:char)->char { match c {
 '龕'=>'龛',
 '龜'=>'龟',
 _=>c } }
+
+/// Localize static human-facing text only; callers keep paths and identifiers separate.
+pub fn text(value: &str) -> String {
+    let language = std::env::var("SPEEDBACKUP_UI_LANGUAGE").ok().filter(|v| matches!(v.as_str(), "zh-Hans" | "zh-Hant"))
+        .unwrap_or_else(|| std::env::var("SCRIPT_LANG").unwrap_or_default());
+    if matches!(language.as_str(), "zh-Hans" | "CN" | "cn") { value.chars().map(simplify).collect() } else { value.to_owned() }
+}

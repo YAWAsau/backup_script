@@ -25,9 +25,10 @@ internal class NativeCatalog(context:Context) {
                     if(key=="picker")continue // File names and paths are exact user data.
                     val child=value.opt(key)
                     if(child is String&&key=="detail"&&value.optBoolean("translateDetail"))value.put(key,if(child.startsWith("目前自訂值："))convert("目前自訂值：")+child.substringAfter("目前自訂值：") else convert(child))
-                    else if(child is String&&key in setOf("label","title","subtitle","hint","cancel","caption","description","status","zeroLabel","unset")&&!(literal&&key=="label")&&!(key=="description"&&value.optBoolean("literalDescription")))value.put(key,if(child.startsWith("目前自訂值："))convert("目前自訂值：")+child.substringAfter("目前自訂值：") else convert(child))
+                    else if(child is String&&key in setOf("label","title","subtitle","hint","cancel","caption","description","status","zeroLabel","unset")&&!((literal||value.optBoolean("literalLabel"))&&key=="label")&&!(key=="description"&&value.optBoolean("literalDescription")))value.put(key,if(child.startsWith("目前自訂值："))convert("目前自訂值：")+child.substringAfter("目前自訂值：") else convert(child))
                     else visit(child)
                 }
+                if(value.has("literalDetailSuffix")){value.put("detail",value.optString("detail")+value.optString("literalDetailSuffix"));value.remove("literalDetailSuffix")}
             }
         }}
         visit(model)

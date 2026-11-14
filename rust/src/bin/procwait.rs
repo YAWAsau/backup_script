@@ -1,3 +1,5 @@
+#[path = "../web_language_map.rs"]
+mod output_language;
 // procwait.rs - faithful Rust port of c/procwait.c
 // waitpid/pidfd based process waiter. Output markers, exit codes, and the
 // "pidfd only, never fall back to polling for the `pid` subcommand" design
@@ -94,7 +96,7 @@ fn wait_child(command: &[String]) -> i32 {
 /// not silently degrade to polling.
 fn wait_pidfd(pid: i32) -> i32 {
     if pid <= 0 {
-        eprintln!("procwait: PID 必須大於 0");
+        eprintln!("{}", output_language::text("procwait: PID 必須大於 0"));
         return 2;
     }
     let fd = unsafe { syscall(SYS_PIDFD_OPEN, pid, 0) } as i32;
@@ -105,7 +107,7 @@ fn wait_pidfd(pid: i32) -> i32 {
             return 0;
         }
         if e == ENOSYS || e == EINVAL {
-            eprintln!("procwait: 此核心不支援 pidfd_open；不使用輪詢 fallback");
+            eprintln!("{}", output_language::text("procwait: 此核心不支援 pidfd_open；不使用輪詢 fallback"));
             return 3;
         }
         eprintln!(
@@ -479,11 +481,11 @@ fn print_help(program: &str) {
         "用法:\n  {} run COMMAND [ARG...]\n  {} pid PID\n  {} pkg-gone USER_ID PACKAGE [TIMEOUT_MS] [STABLE_MS]\n  {} pkg-stable USER_ID PACKAGE [TIMEOUT_MS] [STABLE_MS]\n  {} uid-gone UID [TIMEOUT_MS] [STABLE_MS]\n",
         program, program, program, program, program
     );
-    println!("run：啟動自己的子程序並以 waitpid() 阻塞等待。");
-    println!("pid：以 pidfd_open()+poll() 等待任意 PID；核心不支援就報錯，");
-    println!("     不回退成 sleep/pidof 輪詢。");
-    println!("pkg-gone/pkg-stable：掃 /proc/cmdline 等 package 或 package:process 消失並穩定。");
-    println!("uid-gone：掃 /proc/<pid> owner uid 消失並穩定。");
+    println!("{}", output_language::text("run：啟動自己的子程序並以 waitpid() 阻塞等待。"));
+    println!("{}", output_language::text("pid：以 pidfd_open()+poll() 等待任意 PID；核心不支援就報錯，"));
+    println!("{}", output_language::text("     不回退成 sleep/pidof 輪詢。"));
+    println!("{}", output_language::text("pkg-gone/pkg-stable：掃 /proc/cmdline 等 package 或 package:process 消失並穩定。"));
+    println!("{}", output_language::text("uid-gone：掃 /proc/<pid> owner uid 消失並穩定。"));
 }
 
 pub(crate) fn run() {
@@ -502,7 +504,7 @@ pub(crate) fn run() {
         match parse_pid_main_arg(&args[2]) {
             Some(v) => wait_pidfd(v),
             None => {
-                eprintln!("procwait: 無效 PID");
+                eprintln!("{}", output_language::text("procwait: 無效 PID"));
                 2
             }
         }

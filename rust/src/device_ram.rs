@@ -1,5 +1,5 @@
 //! Optional vendor RAM facts. Isolate procfs reads from the startup process.
-use std::{io::Read, process::{Command, Stdio}, time::{Duration, Instant}};
+use std::{io::Read, process::{Command, Stdio}, time::Duration};
 
 pub fn merge(vendor: String, size: Option<u32>, extra: Option<(&str, u32)>) -> (String, Option<u32>) {
     match extra {
@@ -111,30 +111,12 @@ pub fn reader(args: &[String]) -> i32 {
 }
 
 fn collect(mut command: Command, budget: Duration) -> Option<String> {
-    let mut child = command.stdin(Stdio::null()).stdout(Stdio::piped())
-        .stderr(Stdio::null()).spawn().ok()?;
-    let deadline = Instant::now() + budget;
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                if !status.success() { return None; }
-                let mut bytes = Vec::new();
-                child.stdout.take()?.take(2049).read_to_end(&mut bytes).ok()?;
-                if bytes.len() > 2048 { return None; }
-                return String::from_utf8(bytes).ok();
-            }
-            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(5)),
-            _ => break,
-        }
-    }
-    // Child has not been reaped, so its PID cannot be reused. Never block on
-    // wait(): a broken driver can keep a task in uninterruptible kernel sleep.
-    let _ = child.kill();
-    let reap_deadline = Instant::now() + Duration::from_millis(100);
-    while Instant::now() < reap_deadline {
-        match child.try_wait() { Ok(None) => std::thread::sleep(Duration::from_millis(5)), _ => break }
-    }
-    None
+    let mut child=super::command_lifecycle::OwnedChild::spawn(command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null())).ok()?;
+    let status=super::command_lifecycle::wait_checked(&mut child,budget,||Ok(())).ok()?;
+    if !status.success(){return None;}
+    let mut bytes=Vec::new();child.stdout.take()?.take(2049).read_to_end(&mut bytes).ok()?;
+    if bytes.len()>2048{return None;}
+    String::from_utf8(bytes).ok()
 }
 
 pub fn fallback() -> Option<(&'static str, u32)> {
@@ -150,6 +132,7 @@ pub fn fallback() -> Option<(&'static str, u32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
     #[test]
     fn mv_known_unknown_and_malformed() {
         for (id,vendor,model,ufs) in [("0x06","SK hynix","HN8T281EJKX158","0x01ad"),("0x8f","未知 (ID:0x8f)","HN8T281EJKX158","0x01ad"),("0xff","Micron","THGJFMT2E46BATVB","0x0198")] {

@@ -312,8 +312,35 @@ try {
             $updated = [regex]::Replace($updated, $pattern, "$bin $hash")
         }
         Copy-Item -LiteralPath $toolsFile -Destination (Join-Path $BackupDir 'tools.sh')
-        [IO.File]::WriteAllText($toolsFile, $text.Substring(0, $table.Index) + $updated + $text.Substring($table.Index + $table.Length), $utf8)
-        Write-Step 'Updated native SHA rows in tools.sh'
+        # Publish validated binaries with their SHA table; restore the old pair on failure.
+        $runtimeDirectory = Split-Path -Parent $toolsFile
+        $published = @()
+        try {
+            foreach ($bin in $Bins) {
+                $runtimePath = Join-Path $runtimeDirectory $bin
+                $runtimeBackup = Join-Path $BackupDir ("runtime-" + $bin)
+                $existed = Test-Path -LiteralPath $runtimePath -PathType Leaf
+                if ($existed) { Copy-Item -LiteralPath $runtimePath -Destination $runtimeBackup }
+                $temporary = $runtimePath + '.' + $runId + '.tmp'
+                try {
+                    Copy-Item -LiteralPath (Join-Path $OutDir $bin) -Destination $temporary
+                    if ((Get-FileHash -LiteralPath $temporary).Hash -ne (Get-FileHash -LiteralPath (Join-Path $OutDir $bin)).Hash) { throw "Runtime staging checksum mismatch: $bin" }
+                    Move-Item -LiteralPath $temporary -Destination $runtimePath -Force
+                    $published += [pscustomobject]@{ Path = $runtimePath; Backup = $runtimeBackup; Existed = $existed }
+                } finally {
+                    if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary }
+                }
+            }
+            [IO.File]::WriteAllText($toolsFile, $text.Substring(0, $table.Index) + $updated + $text.Substring($table.Index + $table.Length), $utf8)
+        } catch {
+            foreach ($entry in $published) {
+                if ($entry.Existed) { Copy-Item -LiteralPath $entry.Backup -Destination $entry.Path -Force }
+                else { Remove-Item -LiteralPath $entry.Path }
+            }
+            Copy-Item -LiteralPath (Join-Path $BackupDir 'tools.sh') -Destination $toolsFile -Force
+            throw
+        }
+        Write-Step 'Published native runtime binaries and matching SHA rows in tools.sh'
     }
 
     Write-Host ''

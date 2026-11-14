@@ -15,6 +15,7 @@ import kotlin.math.abs
 
 suspend fun PointerInputScope.inspectDragGestures(
     consumeHorizontalDrag: Boolean = false,
+    gesturePosition: (Offset) -> Offset = { it },
     onDragStart: (down: PointerInputChange) -> Unit = {},
     onDragEnd: (change: PointerInputChange) -> Unit = {},
     onDragCancel: () -> Unit = {},
@@ -22,6 +23,10 @@ suspend fun PointerInputScope.inspectDragGestures(
 ) {
     awaitEachGesture {
         val initialDown = awaitFirstDown(false, PointerEventPass.Initial)
+        // A scrolling ancestor may consume DOWN to stop a fling. This gesture
+        // cannot become a click: do not show a glass press or capture its drag.
+        // Check in Initial, before the button's own clickable consumes Main.
+        if (consumeHorizontalDrag && initialDown.isConsumed) return@awaitEachGesture
 
         val down = awaitFirstDown(false)
         val drag = initialDown
@@ -29,6 +34,7 @@ suspend fun PointerInputScope.inspectDragGestures(
         onDragStart(down)
         onDrag(drag, Offset.Zero)
         if(consumeHorizontalDrag) {
+            val gestureStart = gesturePosition(down.position)
             var completed=false
             var horizontal=false
             try {
@@ -36,7 +42,9 @@ suspend fun PointerInputScope.inspectDragGestures(
                     // Inner button receives Main before clickable and pager.
                     val change=awaitPointerEvent(PointerEventPass.Main).changes.fastFirstOrNull{it.id==down.id}
                     if(change==null || (change.isConsumed&&!horizontal)){onDragCancel();completed=true;break}
-                    val delta=change.position-down.position
+                    // Layout motion is not finger motion. A stationary tap during a
+                    // pager spring changes local coordinates without being a drag.
+                    val delta=gesturePosition(change.position)-gestureStart
                     if(!horizontal && (abs(delta.x)>viewConfiguration.touchSlop || abs(delta.y)>viewConfiguration.touchSlop)) {
                         if(abs(delta.x)>abs(delta.y))horizontal=true
                         else {onDragCancel();completed=true;break} // vertical list keeps ownership
@@ -45,10 +53,11 @@ suspend fun PointerInputScope.inspectDragGestures(
                         if(horizontal)change.consume() // dragging is never a click
                         onDragEnd(change);completed=true;break
                     }
-                    onDrag(change,change.positionChange())
+                    val movement=change.positionChange() // Capture before consumption zeroes positionChange().
                     if(horizontal)change.consume()
                     val finalChange=awaitPointerEvent(PointerEventPass.Final).changes.fastFirstOrNull{it.id==down.id}
                     if(!horizontal&&finalChange?.isConsumed==true){onDragCancel();completed=true;break}
+                    onDrag(change,movement)
                 }
             } finally {if(!completed)onDragCancel()}
             return@awaitEachGesture

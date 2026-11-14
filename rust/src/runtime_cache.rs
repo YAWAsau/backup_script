@@ -19,7 +19,7 @@ fn references()->io::Result<Vec<Vec<u8>>> {
     let mut ancestors=std::collections::HashSet::new();let mut pid=std::process::id();
     for _ in 0..64 {if pid==0||!ancestors.insert(pid){break;}
         let stat=fs::read_to_string(format!("/proc/{pid}/stat"))?;
-        pid=stat.rsplit_once(") ").and_then(|(_,s)|s.split_whitespace().nth(1)).and_then(|s|s.parse().ok()).ok_or_else(invalid)?;
+        pid=speedbackup_native_rs::proc_stat::split(&stat).and_then(|(_,s)|s.split_whitespace().nth(1)).and_then(|s|s.parse().ok()).ok_or_else(invalid)?;
     }
     for entry in fs::read_dir("/proc")? {
         let entry=entry?;if !entry.file_name().as_encoded_bytes().iter().all(u8::is_ascii_digit){continue;}

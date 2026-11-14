@@ -531,7 +531,6 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.daemon_hardening.oom_protect.v1", true, true, "daemon best-effort oom_score_adj/renice self-protection");
         addCapability(capabilities, "dex.daemon_supervisor.watchdog.v1", true, true, "external Dex watchdog can restart killed root-side daemons while owner process is alive");
         addCapability(capabilities, "dex.http_util.get.v1", true, true, "short-lived HttpUtil get; used by tools Device_List sharded downloader");
-        addCapability(capabilities, "dex.smb.target_probe.v1", true, false, "direct configured host:port TCP probe for SMB target precheck; auth/share verification stays in tools via smbclient");
         addCapability(capabilities, "dex.device_list.download.v1", false, false, "removed: batch device-list downloader aborted on some Android 16 app_process builds; tools use HttpUtil sharded downloader");
         addCapability(capabilities, "dex.google_package_snapshot.shared.v1", true, true, "install-diagnostics+appstate-verify");
         addCapability(capabilities, "appstate.structured_result_codes.v2", true, true, "result-header+package+item-ndjson");

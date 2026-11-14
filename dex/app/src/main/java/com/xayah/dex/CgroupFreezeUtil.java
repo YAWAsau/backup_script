@@ -63,7 +63,6 @@ final class CgroupFreezeUtil {
     private static final AtomicInteger NEXT_TOKEN = new AtomicInteger(DaemonBootstrap.tokenSeed(1000));
     private static final Map<Integer, FreezeSession> SESSIONS = new HashMap<>();
 
-
     private static String scopedTmpDir() {
         String run = System.getenv("SPEEDBACKUP_RUN_TMPDIR");
         if (run != null && run.length() > 0) return run;
@@ -177,7 +176,6 @@ final class CgroupFreezeUtil {
                 || !"1".equals(parseEventsValue(readFileTrim(new File(root, "cgroup.events"), 1024), "frozen")))
             throw new java.io.IOException("timeline_uid_not_frozen");
     }
-
 
     static String start(int userId, String packageName, int explicitPid, int timeoutMs, String owner) {
         return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "start",
@@ -450,7 +448,6 @@ final class CgroupFreezeUtil {
                 .append('\n');
         return new OperationResult("cgroup-stop", ok).token(token).counts(session.entries.size(), stats.restored, 0, stats.failed, stats.missingPath).restoration(stats.failed == 0, stateDeleted).appendTo(out.toString());
     }
-
 
     static String refreshPrimaryAppScopePackageFreeze(int userId, String packageName, String reason, int timeoutMs) {
         return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "refreshPrimaryAppScopePackageFreeze",
@@ -945,7 +942,6 @@ final class CgroupFreezeUtil {
         }
     }
 
-
     private static boolean tryRestoreDeferredWakeBlockAfterPrimaryRelease(FreezeSession session, StringBuilder out, String tagPrefix) {
         if (session == null || !isPrimaryAppScopeOwner(session.owner)) return true;
         if (!AppWakeBlockUtil.hasPersistedPackage(session.userId, session.packageName)) {
@@ -977,10 +973,6 @@ final class CgroupFreezeUtil {
             return false;
         }
     }
-
-
-
-
 
     static String deferProcessObserverTokenToPrimaryScope(int token, int expectedUserId, String expectedPackageName, String reason) {
         return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "deferProcessObserverTokenToPrimaryScope",
@@ -1144,7 +1136,6 @@ final class CgroupFreezeUtil {
         return explicitPid > 0 && isPrimaryAppScopeOwner(owner) ? -1 : explicitPid;
     }
 
-
     private static StartPidResult tryNativeFreezePid(FreezeSession session, PidInfo p, int timeoutMs, StringBuilder out) {
         String helper = findNativeHelper();
         if (helper == null || helper.isEmpty()) return null;
@@ -1229,8 +1220,6 @@ final class CgroupFreezeUtil {
             return Boolean.FALSE;
         }
     }
-
-
 
     static String ensureNativeDaemonForBatch(String reason) {
         return CgroupLockMetrics.measure(CgroupFreezeUtil.class, "ensureNativeDaemonForBatch",
@@ -1433,18 +1422,6 @@ final class CgroupFreezeUtil {
         return false;
     }
 
-    static int nativePackageKillRemain(String output) {
-        if (output == null || output.isEmpty()) return -1;
-        int remain = -1;
-        for (String line : output.split("\n")) {
-            String trimmed = line == null ? "" : line.trim();
-            if (trimmed.startsWith("CGROUP_NATIVE_KILL_DONE ")) {
-                remain = parseInt(valueOfKey(trimmed, "remain"), remain);
-            }
-        }
-        return remain;
-    }
-
     static String nativeHelperPath() {
         return findNativeHelper();
     }
@@ -1472,7 +1449,6 @@ final class CgroupFreezeUtil {
         helperCacheAt = now;
         return null;
     }
-
 
     private static synchronized void publishDaemonCache(Boolean ok, long at) {
         daemonCacheOk = ok;
@@ -1685,7 +1661,6 @@ final class CgroupFreezeUtil {
     private static boolean isV1FreezerPath(String path) {
         return path != null && path.contains("cgroup.procs") && !path.endsWith("cgroup.freeze");
     }
-
 
     private static boolean definitelyAbsent(File path) {
         if (path == null) return false;
@@ -1982,7 +1957,6 @@ final class CgroupFreezeUtil {
         return info;
     }
 
-
     private static List<PidInfo> tryNativeScanPackage(String pkg, int userId, StringBuilder out) {
         String helper = findNativeHelper();
         if (helper == null || helper.isEmpty()) return null;
@@ -2045,51 +2019,6 @@ final class CgroupFreezeUtil {
         return uid >= 100000 ? uid / 100000 : 0;
     }
 
-
-
-    private static CandidateProbe inspectCandidate(Candidate c) {
-        CandidateProbe p = new CandidateProbe();
-        File freeze = new File(c.freezePath);
-        p.exists = freeze.exists();
-        p.readable = freeze.canRead();
-        p.writable = freeze.canWrite();
-        if (p.exists && p.readable) {
-            try { p.freezeValue = readFileTrim(freeze, 64); } catch (Throwable t) { p.freezeValue = t.getClass().getSimpleName(); }
-        } else {
-            p.freezeValue = "-";
-        }
-        File events = eventsFileForFreezePath(c.freezePath);
-        p.eventsExists = events.exists();
-        p.eventsReadable = events.canRead();
-        if (p.eventsExists && p.eventsReadable) {
-            try { p.eventsRaw = readFileTrim(events, 4096); } catch (Throwable t) { p.eventsRaw = t.getClass().getSimpleName(); }
-            p.frozen = parseEventsValue(p.eventsRaw, "frozen");
-            p.populated = parseEventsValue(p.eventsRaw, "populated");
-        } else {
-            p.eventsRaw = "-";
-            p.frozen = "-";
-            p.populated = "-";
-        }
-        return p;
-    }
-
-    private static Set<Candidate> buildCandidates(PidInfo pidInfo, int packageUid, String rawCgroup) {
-        Set<Candidate> candidates = new LinkedHashSet<>();
-        String unified = parseUnifiedCgroupPath(rawCgroup);
-        if (unified != null) candidates.add(new Candidate("proc-cgroup", buildCgroupFile(unified, "cgroup.freeze")));
-        int uidForPath = pidInfo != null && pidInfo.uid >= 0 ? pidInfo.uid : packageUid;
-        int pid = pidInfo == null ? -1 : pidInfo.pid;
-        if (uidForPath >= 0 && pid > 0) {
-            candidates.add(new Candidate("uid-pid", CGROUP_ROOT + "/uid_" + uidForPath + "/pid_" + pid + "/cgroup.freeze"));
-            candidates.add(new Candidate("uid", CGROUP_ROOT + "/uid_" + uidForPath + "/cgroup.freeze"));
-        }
-        if (packageUid >= 0 && packageUid != uidForPath && pid > 0) {
-            candidates.add(new Candidate("package-uid-pid", CGROUP_ROOT + "/uid_" + packageUid + "/pid_" + pid + "/cgroup.freeze"));
-            candidates.add(new Candidate("package-uid", CGROUP_ROOT + "/uid_" + packageUid + "/cgroup.freeze"));
-        }
-        return candidates;
-    }
-
     private static boolean waitFrozenValue(String freezePath, String expected, int timeoutMs, StringBuilder out, String tag) {
         long start = System.currentTimeMillis();
         long deadline = start + Math.max(1, timeoutMs);
@@ -2148,7 +2077,6 @@ final class CgroupFreezeUtil {
         for (FreezeSession s : all) if (s.token == token) return s;
         return null;
     }
-
 
     private static List<Integer> readPersistentTokensForPackage(int userId, String pkg) {
         List<FreezeSession> sessions = readAllPersistentSessions();
@@ -2275,8 +2203,6 @@ final class CgroupFreezeUtil {
         return raw.replace("%0D", "\r").replace("%0A", "\n").replace("%09", "\t").replace("%25", "%");
     }
 
-
-
     private static File eventsFileForFreezePath(String freezePath) {
         File freeze = new File(freezePath == null ? "" : freezePath);
         File dir = freeze.getParentFile();
@@ -2318,26 +2244,6 @@ final class CgroupFreezeUtil {
         return "-";
     }
 
-    private static String parseUnifiedCgroupPath(String raw) {
-        if (raw == null || raw.isEmpty()) return null;
-        String[] lines = raw.split("\\n");
-        for (String line : lines) {
-            if (line == null) continue;
-            if (line.startsWith("0::")) {
-                String path = line.substring(3).trim();
-                if (path.isEmpty()) return "/";
-                return path.startsWith("/") ? path : "/" + path;
-            }
-        }
-        return null;
-    }
-
-    private static String buildCgroupFile(String unifiedPath, String fileName) {
-        String path = unifiedPath == null || unifiedPath.isEmpty() ? "/" : unifiedPath;
-        if ("/".equals(path)) return CGROUP_ROOT + "/" + fileName;
-        return CGROUP_ROOT + path + "/" + fileName;
-    }
-
     private static String readProcCmdline(int pid) {
         try {
             byte[] data = readFileBytes(new File("/proc/" + pid + "/cmdline"), 8192);
@@ -2368,8 +2274,6 @@ final class CgroupFreezeUtil {
         } catch (Throwable ignored) {}
         return -1;
     }
-
-
 
     private static String readFileTrim(File f, int maxBytes) throws Exception {
         return new String(readFileBytes(f, maxBytes)).trim();
@@ -2470,31 +2374,6 @@ final class CgroupFreezeUtil {
         int pid;
         int uid;
         String cmdline;
-    }
-
-    private static final class Candidate {
-        final String source;
-        final String freezePath;
-        Candidate(String source, String freezePath) {
-            this.source = source == null ? "" : source;
-            this.freezePath = freezePath == null ? "" : freezePath;
-        }
-        @Override public boolean equals(Object other) {
-            return other instanceof Candidate && freezePath.equals(((Candidate) other).freezePath);
-        }
-        @Override public int hashCode() { return freezePath.hashCode(); }
-    }
-
-    private static final class CandidateProbe {
-        boolean exists;
-        boolean readable;
-        boolean writable;
-        String freezeValue = "-";
-        boolean eventsExists;
-        boolean eventsReadable;
-        String eventsRaw = "-";
-        String frozen = "-";
-        String populated = "-";
     }
 
     private static final class FreezeSession {

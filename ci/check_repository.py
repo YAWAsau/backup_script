@@ -131,6 +131,7 @@ def check_soc_data():
 
 
 def check_versions():
+    subprocess.run([sys.executable, str(ROOT / 'ci/check_selftest.py')], check=True)
     check_diagnostic_capabilities()
     check_freezer_capabilities()
     check_device_keys()
@@ -173,7 +174,7 @@ def check_versions():
     gradle = ROOT / 'webview/app/build.gradle.kts'
     version = re.search(r'\bversionCode\s*=\s*(\d+)', gradle.read_text(encoding='utf-8')) if gradle.exists() else re.search(r'android:versionCode="(\d+)"', manifest)
     minimum = re.search(r'private\s+static\s+final\s+long\s+APK_VERSION\s*=\s*(\d+)\s*;', checker)
-    require(re.search(r'getLongVersionCode\(\)\s*>=\s*APK_VERSION\b', checker),
+    require(re.search(r'getLongVersionCode\(\)\s*(?:>=|<)\s*APK_VERSION\b', checker),
             'APK minimum constant is not used by install check')
     require(version and minimum and int(version[1]) == int(minimum[1]) == host['version'],
             'Embedded APK version and Dex minimum differ; old APK would not auto-upgrade')
@@ -183,7 +184,11 @@ def check_versions():
     require(hashlib.sha256((ROOT / 'webview/embedded/speedbackup-webview.apk').read_bytes()).hexdigest() == host['apk_sha256'],
             'Embedded APK APK hash differs')
     require('APK_SHA="'+host['apk_sha256']+'"' in checker, 'Dex host content fingerprint differs from embedded APK')
-    print('APK: embedded sources/hash and auto-upgrade minimum match')
+    apk_bytes = (ROOT / 'webview/embedded/speedbackup-webview.apk').read_bytes()
+    require((ROOT / 'tools/speednative').is_file(), 'Missing speednative: build APK, then Dex, then Rust')
+    require(apk_bytes in (ROOT / 'tools/speednative').read_bytes(),
+            'Rust runtime embeds a different APK: build APK, then Dex, then Rust; do not parallelize these dependencies')
+    print('APK: embedded sources/hash, Rust payload and auto-upgrade minimum match')
     print('Versions: centralized component metadata checked')
 
 
@@ -215,7 +220,7 @@ def check(shells=False):
     own = [p for p in packages if p['name'] == cargo['package']['name']]
     require(len(own) == 1 and own[0]['version'] == cargo['package']['version'], 'Cargo.lock package version differs')
     for package in packages:
-        if package.get('source', '').startswith('registry+'):
+        if package.get('source', '').startswith(('registry+', 'git+')):
             vendor = ROOT / 'rust/vendor' / package['name']
             require((vendor / '.cargo-checksum.json').is_file(), f"Missing vendored crate: {package['name']}")
             meta = tomllib.loads((vendor / 'Cargo.toml').read_text(encoding='utf-8'))

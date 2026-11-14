@@ -26,7 +26,9 @@ public final class AppListTheme {
                 SpecVersion.SPEC_2025, DynamicScheme.Platform.PHONE);
         String[] names = {"seed", "bg", "card", "field", "text", "muted", "line", "primary",
                 "pressed", "footer", "danger", "selected", "on-primary", "accent"};
-        int[] colors = {seed, s.getBackground(), s.getSurfaceBright(), s.getSurfaceContainerHighest(),
+        // Light background and surfaceBright can be identical in Material palettes.
+        // Keep a separate page level beneath Miuix cards, like its standard light theme.
+        int[] colors = {seed, dark ? s.getBackground() : s.getSurfaceContainerLow(), s.getSurfaceBright(), s.getSurfaceContainerHighest(),
                 s.getOnSurface(), s.getOnSurfaceVariant(), s.getOutline(), s.getPrimary(),
                 s.getPrimaryContainer(), s.getSurfaceContainer(), s.getError(),
                 s.getSecondaryContainer(), s.getOnPrimary(), s.getSecondaryContainer()};

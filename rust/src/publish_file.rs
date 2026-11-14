@@ -7,7 +7,7 @@ use std::{
         fd::{AsRawFd, IntoRawFd},
         unix::{
             ffi::OsStrExt,
-            fs::{MetadataExt, OpenOptionsExt},
+            fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
         },
     },
     path::{Path, PathBuf},
@@ -409,6 +409,65 @@ fn publish_input<T: PublishInput>(
     // Atomic visibility, not a claim of parent-directory crash durability.
     Ok(total)
 }
+/// Compare all application entry points in one process; unchanged files are never published.
+pub fn sync_entry_wrappers(args: &[String]) -> i32 {
+    let started = std::time::Instant::now();
+    if args.len() != 4 { return 2; }
+    let result = (|| -> io::Result<(usize, usize)> {
+        let root = Path::new(&args[0]);
+        if !fs::symlink_metadata(root)?.is_dir() { return Err(io::Error::other("invalid backup root")); }
+        let mut templates = Vec::new();
+        for source in &args[1..] {
+            let path = Path::new(source);
+            regular(path)?;
+            let bytes = fs::read(path)?;
+            if bytes.is_empty() || bytes.len() > 1024 * 1024 { return Err(io::Error::other("invalid wrapper template")); }
+            templates.push(bytes);
+        }
+        let mut changed = 0;
+        let mut unchanged = 0;
+        for entry in fs::read_dir(root)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() { continue; }
+            let app = entry.path();
+            if !app.join("app_details.json").is_file() && !app.join("app_details").is_file() { continue; }
+            for (i, name) in ["recover.sh", "backup.sh", "upload.sh"].iter().enumerate() {
+                let target = app.join(name);
+                let metadata = match fs::symlink_metadata(&target) {
+                    Ok(value) => Some(value),
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+                    Err(error) => return Err(error),
+                };
+                if i != 0 && metadata.is_none() { continue; }
+                if let Some(metadata) = metadata {
+                    if !metadata.is_file() { return Err(io::Error::other("wrapper target is not regular")); }
+                    if metadata.len() == templates[i].len() as u64 {
+                        let mut file = OpenOptions::new().read(true)
+                            .custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE | 0x800).open(&target)?;
+                        let mut bytes = Vec::new();
+                        (&mut file).take(templates[i].len() as u64 + 1).read_to_end(&mut bytes)?;
+                        if bytes == templates[i] {
+                            // Emulated storage synthesizes mode bits; chmod cannot
+                            // make these files executable. Preserve its inode.
+                            if metadata.mode() & 0o111 == 0 && auto_preserve(&target)? {
+                                file.set_permissions(fs::Permissions::from_mode(0o755))?;
+                            }
+                            unchanged += 1; continue;
+                        }
+                    }
+                }
+                publish_bytes_guarded(&templates[i], &target, Some(0o755), auto_preserve(&target)?, &mut || Ok(()))?;
+                changed += 1;
+            }
+        }
+        Ok((changed, unchanged))
+    })();
+    match result {
+        Ok((changed, unchanged)) => { println!("ENTRY_WRAPPERS_SYNC changed={changed} unchanged={unchanged} elapsedMs={}", started.elapsed().as_millis()); 0 }
+        Err(error) => { eprintln!("ENTRY_WRAPPERS_SYNC_FAIL: {error}"); 1 }
+    }
+}
+
 pub fn run(args: &[String]) -> i32 {
     let started = std::time::Instant::now();
     if !(2..=4).contains(&args.len()) {

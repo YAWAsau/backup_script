@@ -28,10 +28,6 @@ public final class HiddenApiReflection {
         return clazz;
     }
 
-    public static Object invokeRequired(Object target, String methodName, Object... args) throws Exception {
-        return invokeFlexible(target, methodName, args);
-    }
-
     public static Object invokeFlexible(Object target, String methodName, Object... args) throws Exception {
         if (target == null) {
             throw new NullPointerException("target == null for " + methodName);

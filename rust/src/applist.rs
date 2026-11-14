@@ -64,6 +64,33 @@ mod tests {
     }
 
     #[test]
+    fn incomplete_module_scan_does_not_abort_or_silently_select() {
+        let data=inventory().replace("com.test.app", "com.oplus.apprecover").replace("App com.oplus.apprecover user", "App com.oplus.apprecover system|xposed-unknown");
+        let report=merge_report("",&data,"","","true","0").unwrap();
+        assert!(report.text.contains("#App com.oplus.apprecover"));assert_eq!(report.count,0);
+        let active=merge_report("App com.oplus.apprecover\n",&data,"","","true","0").unwrap();
+        assert_eq!(active.count,1);assert!(active.text.starts_with("App "));
+        let white=merge_report("",&data,"com.oplus.apprecover","","true","0").unwrap();assert_eq!(white.count,1);
+        assert!(merge_report("",&data.replace("inventoryEnd","broken"),"","","true","0").is_err());
+    }
+
+    #[test]
+    fn stale_default_roles_do_not_abort_valid_inventory() {
+        for role in ["defaultHome", "defaultIme"] {
+            let data = inventory().replace(&format!("{role}\t\t"), &format!("{role}\tcom.removed.app\t"));
+            let report = merge_report("", &data, "", "", "true", "0").unwrap();
+            assert_eq!(report.count, 1);
+            assert!(report.home.is_empty() && report.ime.is_empty());
+            assert!(!report.text.contains("com.removed.app"));
+            let profile = data.replace("inventoryBegin\t1\t0", "inventoryBegin\t1\t999")
+                .replace("inventoryEnd\t0", "inventoryEnd\t999");
+            assert!(merge_report("", &profile, "", "", "true", "999").is_ok());
+            let broken = data.replace("com.removed.app", "com.android.system");
+            assert!(merge_report("", &broken, "", "", "true", "0").is_err());
+        }
+    }
+
+    #[test]
     fn host_is_excluded_from_generated_and_existing_rows() {
         let inv = inventory().replace("#META\tinstalled\tcom.test.app\n", &format!("#META\tinstalled\t{}\n#META\tinstalled\tcom.test.app\n", HOST_PACKAGE))
             .replace("App com.test.app user", &format!("SpeedBackup {} user\nApp com.test.app user", HOST_PACKAGE))
@@ -282,6 +309,7 @@ fn disambiguate_labels(text: &str, home: &str) -> String {
 
 fn merge_report(old: &str, inventory: &str, whitelist: &str, blacklist: &str, mode: &str, user: &str) -> Result<MergeReport, String> {
     if !matches!(mode, "true" | "false") || user.parse::<u32>().is_err() { return Err("invalid mode/user".into()); }
+    let mut unknown = BTreeSet::new();
     let mut installed = BTreeSet::new();
     let mut selected = BTreeMap::new();
     let mut home = String::new();
@@ -311,13 +339,21 @@ fn merge_report(old: &str, inventory: &str, whitelist: &str, blacklist: &str, mo
         } else {
             let row: Vec<_> = line.split_whitespace().collect();
             if !begin || row.len() != 3 || !package(row[1]) || !installed.contains(row[1]) { return Err("invalid inventory row".into()); }
+            if row[2].split('|').any(|flag|flag=="xposed-unknown"){unknown.insert(row[1].to_string());}
             let label = row[0].replace(['/', '\\', ':'], "_").replace("..", "__");
             if selected.insert(row[1].to_string(), (label, row[2].split('|').any(|flag| flag == "xposed"))).is_some() { return Err("duplicate selected package".into()); }
         }
     }
     if !begin || !end || installed.is_empty() { return Err("incomplete or empty inventory".into()); }
-    for default in [&home, &ime] {
-        if !default.is_empty() && !selected.contains_key(default) { return Err("missing default package".into()); }
+    // Per-user settings may retain an uninstalled IME or reference a HOME
+    // belonging to another profile. These are optional role hints, not rows.
+    // An installed default omitted by the producer is still corruption.
+    for default in [&mut home, &mut ime] {
+        if !default.is_empty() && !installed.contains(default.as_str()) {
+            default.clear();
+        } else if !default.is_empty() && !selected.contains_key(default.as_str()) {
+            return Err("missing installed default package".into());
+        }
     }
     let white = configured_packages(whitelist);
     let black = configured_packages(blacklist);
@@ -385,12 +421,13 @@ fn merge_report(old: &str, inventory: &str, whitelist: &str, blacklist: &str, mo
             else if preload(&pkg) && xposed { "PRELOAD_XP" }
             else if preload(&pkg) && white.contains(pkg.as_str()) { "PRELOAD_WL" }
             else if preload(&pkg) { "PRELOAD" }
+            else if unknown.contains(&pkg) { "XPOSED_UNKNOWN" }
             else if xposed { "XPOSED" }
             else { "NORMAL" };
         events.push_str(&format!("{kind}\t{final_label}\t{pkg}\n"));
         if !force && black.contains(pkg.as_str()) && (mode == "true" || !blacklist_enabled) { continue; }
         let line = format!("{final_label} {pkg}");
-        if !force && !black.contains(pkg.as_str()) && preload(&pkg) && !xposed && !white.contains(pkg.as_str()) {
+        if !force && !white.contains(pkg.as_str()) && (unknown.contains(&pkg) || (!black.contains(pkg.as_str()) && preload(&pkg) && !xposed)) {
             comments.push(format!("#{line}"));
         } else { active.insert(pkg, line); added += 1; }
     }

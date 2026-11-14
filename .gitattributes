@@ -33,3 +33,8 @@ smb/baseline-overlay/third_party/waf/waflib/extras/gccdeps.py whitespace=blank-a
 smb/baseline-overlay/** -whitespace
 # Generated GNU Info separators resemble conflict markers; pinned SHA checks apply.
 tar/upstream/doc/tar.info* -diff
+
+# Patch context whitespace is significant; local Maven checksums cover exact bytes.
+busybox/patches/*.patch -text -whitespace
+webview/third_party/maven/** -text whitespace=cr-at-eol
+dex/third_party/maven/** -text whitespace=cr-at-eol

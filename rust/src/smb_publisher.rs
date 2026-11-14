@@ -41,9 +41,7 @@ fn bad(s: &str) -> io::Error {
     io::Error::new(io::ErrorKind::Other, s)
 }
 fn start(pid: u32) -> io::Result<String> {
-    fs::read_to_string(format!("/proc/{pid}/stat"))?
-        .rsplit_once(") ")
-        .and_then(|(_, s)| s.split_whitespace().nth(19))
+    speedbackup_native_rs::proc_stat::starttime(&fs::read_to_string(format!("/proc/{pid}/stat"))?)
         .map(str::to_owned)
         .ok_or_else(|| bad("process identity"))
 }

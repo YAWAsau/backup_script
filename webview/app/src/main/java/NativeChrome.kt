@@ -1,12 +1,10 @@
 package io.github.yawasau.speedbackup.webview
 
 import androidx.compose.foundation.background
-import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.preferredFrameRate
 import androidx.compose.ui.FrameRateCategory
@@ -16,13 +14,11 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.theme.darkColorScheme
-import top.yukonga.miuix.kmp.theme.lightColorScheme
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -37,21 +33,19 @@ import kotlinx.coroutines.isActive
 
 /** Semantic documents only; scrolling, geometry and hit testing belong to Compose. */
 class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
+    init { NativeUserWallpaper.initialize() }
     fun interface Action { fun invoke(id:String,epoch:String) }
     private var state by mutableStateOf<JSONObject?>(null)
     private var contentSignature=""
     private var navigationPending=false
-    private var pageBack by mutableStateOf(false)
-    private val routeHistory=ArrayList<String>()
+    private var navigationGeneration by mutableIntStateOf(0)
+    private var navMoving by mutableStateOf(false)
     fun hasContent():Boolean=state!=null
     fun beginNavigation(){navigationPending=true}
     fun endNavigation(){navigationPending=false}
-    fun resetNavigationHistory(){routeHistory.clear();pageBack=false}
+    private var menuReturnRoute=""
+    fun resetNavigationHistory(){menuReturnRoute="";navigationGeneration++}
     fun clearForDocument(){if(!navigationPending)clear()}
-    private var pages by mutableStateOf<Map<String,Prepared>>(emptyMap())
-    private var pageMoving=false
-    private var pageMovingUntil=0L
-    fun isPageMoving():Boolean=pageMoving&&android.os.SystemClock.uptimeMillis()<pageMovingUntil
     private var uiMoving by mutableStateOf(false)
     private var navigationMotionActive by mutableStateOf(false)
     fun setNavigationMoving(value:Boolean){navigationMotionActive=value}
@@ -71,17 +65,22 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
             var skyCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
             val backdrop=remember(skyBackdrop){GlassWindowBackdrop(skyBackdrop.graphicsLayer){skyCoordinates}}
             val data=state
-            val pageTransition=updateTransition(route(data),label="native-page")
-            val documentState=rememberSaveableStateHolder()
-            val savedKeys=remember { HashSet<String>() }
-            SideEffect{pageMoving=pageTransition.isRunning||pageTransition.currentState!=pageTransition.targetState}
-            LaunchedEffect(pageTransition.isRunning,pageTransition.currentState,pageTransition.targetState,data?.optString("epoch")) {
-                if(!pageTransition.isRunning&&pageTransition.currentState==pageTransition.targetState){
-                    val prefix=(data?.optString("epoch")?:"")+":"
-                    savedKeys.filter{!it.startsWith(prefix)}.forEach{documentState.removeState(it);savedKeys.remove(it)}
+            LaunchedEffect(customWallpaper,NativeUserWallpaper.committedOpacity,data?.optBoolean("fontAdaptive"),data?.optString("epoch")){
+                if(data?.optBoolean("fontAdaptive")==true)dispatch.invoke("native:refresh",data.optString("epoch"))
+            }
+            var exportEpoch by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+            val logExporter=androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/x-tar")){uri->
+                dispatch.invoke("diagnostic-export:"+(uri?.toString()?:""),exportEpoch)
+            }
+            var launchedExport by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+            LaunchedEffect(data?.optString("diagnosticExportRequest")){
+                val request=data?.optString("diagnosticExportRequest").orEmpty()
+                if(request.isNotEmpty()&&request!=launchedExport){
+                    launchedExport=request;exportEpoch=data?.optString("epoch").orEmpty()
+                    logExporter.launch("SpeedBackup_debug_${System.currentTimeMillis()}.tar")
                 }
             }
-            val moving=uiMoving||navigationMotionActive||pageTransition.isRunning
+            val moving=uiMoving||navigationMotionActive||navMoving
             val glassControls=remember(data?.optString("epoch")) { GlassMaterial.Controls(data?.optInt("glassLight",100)?:100,data?.optInt("glassTransparency",100)?:100,data?.optInt("glassRefraction",100)?:100,data?.optBoolean("glassAdaptive")==true,data?.optInt("glassBlurStrength",100)?:100) }
             LaunchedEffect(data?.optInt("glassLight",100),glassControls.editing,glassControls.pending){if(!glassControls.editing&&!glassControls.pending)glassControls.light=(data?.optInt("glassLight",100)?:100).coerceIn(0,100).toFloat()}
             LaunchedEffect(data?.optInt("glassTransparency",100),glassControls.editing,glassControls.pending){if(!glassControls.editing&&!glassControls.pending)glassControls.transparency=(data?.optInt("glassTransparency",100)?:100).coerceIn(0,100).toFloat()}
@@ -89,21 +88,25 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
             LaunchedEffect(data?.optInt("glassRefraction",100),glassControls.editing,glassControls.pending){if(!glassControls.editing&&!glassControls.pending)glassControls.refraction=(data?.optInt("glassRefraction",100)?:100).coerceIn(0,100).toFloat()}
             SideEffect{glassControls.adaptive=data?.optBoolean("glassAdaptive")==true}
             val background=Color(data?.optLong("background",0xff151c30L)?.toInt()?:0xff151c30.toInt())
-            val initialLuminance=remember(customWallpaper,background,NativeUserWallpaper.committedOpacity){
+            val initialLuminance=remember(customWallpaper,background,NativeUserWallpaper.transparency,NativeUserWallpaper.dim,data?.optLong("foreground")){
                 if(customWallpaper==null)background.red*.2126f+background.green*.7152f+background.blue*.0722f
                 else {
                     var sum=0.0
                     for(y in 0..4)for(x in 0..4){val pixel=customWallpaper.getPixel((customWallpaper.width-1)*x/4,(customWallpaper.height-1)*y/4);sum+=.2126*((pixel shr 16)and 255)+.7152*((pixel shr 8)and 255)+.0722*(pixel and 255)}
-                    (sum/(25*255)).toFloat()*NativeUserWallpaper.committedOpacity/100f+(background.red*.2126f+background.green*.7152f+background.blue*.0722f)*(1f-NativeUserWallpaper.committedOpacity/100f)
+                    val opacity=NativeUserWallpaper.transparency/100f
+                    val original=(sum/(25*255)).toFloat()*opacity+(background.red*.2126f+background.green*.7152f+background.blue*.0722f)*(1f-opacity)
+                    val overlay=if(Color(data?.optLong("foreground",0xffffffffL)?.toInt()?:-1).red>.5f)0f else 1f
+                    val dim=NativeUserWallpaper.dim/100f*opacity
+                    original*(1f-dim)+overlay*dim
                 }
             }
             val accent=Color(data?.optLong("accent",0xff96bdffL)?.toInt()?:0xff96bdff.toInt())
             val halo=remember { HaloPosition() }
             val hasLight=customWallpaper==null&&background.red+background.green+background.blue<1.5f&&data!=null&&data.optString("theme")!in setOf("space","night")&&data.optJSONObject("picker")==null
             val dynamicGlassBackground=customWallpaper==null&&data?.optBoolean("reducedMotion")!=true&&(hasLight||data?.optBoolean("nativeNightSky")==true||data?.optBoolean("nativeSky")==true)
-            LaunchedEffect(glassControls,glassControls.adaptive,resumed,moving,customWallpaper,dynamicGlassBackground){
-                if((glassControls.adaptive||customWallpaper!=null)&&resumed&&!moving){
-                    kotlinx.coroutines.delay(350)
+            LaunchedEffect(glassControls,glassControls.adaptive,glassControls.light,data?.optBoolean("glassContent"),resumed,moving,customWallpaper,dynamicGlassBackground){
+                if(!com.kyant.backdrop.isRuntimeShaderSupported()&&glassControls.adaptive&&resumed&&!moving){
+                    kotlinx.coroutines.delay(80)
                     glassControls.sampleTick++
                     if(dynamicGlassBackground)while(kotlinx.coroutines.currentCoroutineContext().isActive){kotlinx.coroutines.delay(1500);glassControls.sampleTick++}
                 }
@@ -122,60 +125,42 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
                     // Merge light into the one cached source BEFORE glass effects.
                     // Every control samples this texture once, as it does for stars.
                     if(hasLight)NativeWallpaper(background,accent,resumed&&!data!!.optBoolean("reducedMotion"),true,glassControls,halo)
-                }
-                // Keep page labels legible on arbitrary photos. The glass samples the
-                // original wallpaper layer, so adaptive local luminance stays meaningful.
-                if(customWallpaper!=null)androidx.compose.foundation.Canvas(Modifier.fillMaxSize()){
-                    val foreground=Color(data?.optLong("foreground",0xffffffffL)?.toInt()?:-1)
-                    drawRect((if(foreground.red>.5f)Color.Black else Color.White).copy(alpha=NativeUserWallpaper.dim/100f*NativeUserWallpaper.transparency/100f))
-                    // Protect black header/status-bar text on dark photos without washing
-                    // out the entire wallpaper or changing the user's dim preference.
-                    if(foreground.red<.5f){
-                        val extent=300.dp.toPx()*(data?.optDouble("scale",1.0)?.toFloat()?:1f)
-                        drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(
-                            0f to Color.White.copy(alpha=.76f),.65f to Color.White.copy(alpha=.76f),1f to Color.Transparent,
-                            startY=0f,endY=extent))
+                    // Record the same dimmed wallpaper that the page displays.
+                    // Glass refraction and luminance must not sample the undimmed photo.
+                    if(customWallpaper!=null)androidx.compose.foundation.Canvas(Modifier.fillMaxSize()){
+                        val foreground=Color(data?.optLong("foreground",0xffffffffL)?.toInt()?:-1)
+                        drawRect((if(foreground.red>.5f)Color.Black else Color.White).copy(alpha=NativeUserWallpaper.dim/100f*NativeUserWallpaper.transparency/100f))
+                        // Protect black header/status-bar text on dark photos without washing
+                        // out the entire wallpaper or changing the user's dim preference.
+                        if(foreground.red<.5f){
+                            val extent=300.dp.toPx()*(data?.optDouble("scale",1.0)?.toFloat()?:1f)
+                            drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(
+                                0f to Color.White.copy(alpha=.76f),.65f to Color.White.copy(alpha=.76f),1f to Color.Transparent,
+                                startY=0f,endY=extent))
+                        }
                     }
                 }
                 if(data!=null) {
                     val foreground=Color(data.optLong("foreground",0xffeeeeeeL).toInt())
-                    val base=if(foreground.red>.5f)darkColorScheme() else lightColorScheme()
-                    MiuixTheme(colors=base.copy(primary=accent,onSurface=foreground,onBackground=foreground,
-                        surface=background,surfaceVariant=Color(data.optLong("cardColor",0xff242424L).toInt()),
-                        surfaceContainer=Color(data.optLong("cardColor",0xff242424L).toInt()),secondaryContainer=Color(data.optLong("fieldColor",0xff434343L).toInt()))) {
-                    CompositionLocalProvider(com.kyant.backdrop.catalog.components.LocalGlassContrastEnabled provides (customWallpaper!=null),LocalNativeBackdrop provides backdrop,LocalNativeUiScale provides data.optDouble("scale",1.0).toFloat().coerceIn(.7f,1.5f),com.kyant.backdrop.catalog.components.LocalGlassBackgroundKey provides ("${customWallpaper?.hashCode()}:${NativeUserWallpaper.committedOpacity}:${data.optString("theme")}:${data.optLong("background")}:${data.optDouble("scale")}"),com.kyant.backdrop.catalog.components.LocalGlassInitialLuminance provides initialLuminance,com.kyant.backdrop.catalog.components.LocalGlassDynamicBackground provides dynamicGlassBackground,GlassMaterial.LocalActive provides (resumed&&!moving),GlassMaterial.LocalReducedMotion provides data.optBoolean("reducedMotion"),GlassMaterial.LocalControls provides glassControls,GlassMaterial.LocalBlurEnabled provides data.optBoolean("glassBlur",true)) {
-                    pageTransition.AnimatedContent(modifier=Modifier.fillMaxSize().then(if(android.os.Build.VERSION.SDK_INT>=30)Modifier.imePadding() else Modifier),contentKey={it},transitionSpec={
-                        val duration=if(initialState.isEmpty()||targetState.isEmpty()||data.optBoolean("reducedMotion"))0 else 400
-                        val motion=tween<androidx.compose.ui.unit.IntOffset>(duration,easing=FastOutSlowInEasing)
-                        val fade=tween<Float>(duration,easing=FastOutSlowInEasing)
-                        // Transparent pages share the live wallpaper. Stagger their visibility
-                        // so outgoing glyphs never show through incoming glass controls.
-                        val exitFade=tween<Float>(duration/3,easing=FastOutSlowInEasing)
-                        val enterFade=tween<Float>(duration-duration/3,delayMillis=duration/3,easing=FastOutSlowInEasing)
-                        if(pageBack)((slideInHorizontally(motion){-it*31/100}+scaleIn(fade,initialScale=.75f)+fadeIn(enterFade)) togetherWith
-                            (slideOutHorizontally(motion){it}+fadeOut(exitFade))).apply{targetContentZIndex=-1f}
-                        else (slideInHorizontally(motion){it}+fadeIn(enterFade)) togetherWith
-                            (slideOutHorizontally(motion){-it*31/100}+scaleOut(fade,targetScale=.75f)+fadeOut(exitFade))
-                    }) { pageKey ->
-                        val prepared=pages[pageKey]
-                        val page=prepared?.data
-                        if(page!=null) {
+                    val controlForeground=Color(data.optLong("controlForeground",data.optLong("foreground")).toInt())
+                    NativeAppTheme(data) {
+                    CompositionLocalProvider(LocalNativeBackdrop provides backdrop,LocalNativeUiScale provides data.optDouble("scale",1.0).toFloat().coerceIn(.7f,1.5f),com.kyant.backdrop.catalog.components.LocalGlassBackgroundKey provides ("${customWallpaper?.hashCode()}:${NativeUserWallpaper.transparency}:${NativeUserWallpaper.dim}:${data.optLong("foreground")}:${data.optString("theme")}:${data.optLong("background")}:${data.optDouble("scale")}"),com.kyant.backdrop.catalog.components.LocalGlassInitialLuminance provides initialLuminance,com.kyant.backdrop.catalog.components.LocalGlassDynamicBackground provides dynamicGlassBackground,GlassMaterial.LocalActive provides (resumed&&!moving),GlassMaterial.LocalReducedMotion provides data.optBoolean("reducedMotion"),GlassMaterial.LocalControls provides glassControls,GlassMaterial.LocalBlurEnabled provides data.optBoolean("glassBlur",true)) {
+                    key(navigationGeneration){NativeNavHost(route(data),currentPrepared!!,data.optBoolean("reducedMotion"),
+                        modifier=Modifier.fillMaxSize().then(if(android.os.Build.VERSION.SDK_INT>=30)Modifier.imePadding() else Modifier),
+                        onBack={dispatch.invoke("back",state?.optString("epoch").orEmpty())},root=data.optBoolean("navigationRoot"),backRoute=data.optString("backRoute").ifEmpty{if(data.optBoolean("returnToMenu"))menuReturnRoute else ""},onMotion={navMoving=it}) { prepared ->
+                        val page=prepared.data
+                        // Give each moving page the same cached wallpaper, so transparent controls
+                        // cannot expose the outgoing page's text during Miuix parallax.
+                        Box(Modifier.fillMaxSize().drawWithCache{onDrawBehind{drawLayer(skyBackdrop.graphicsLayer)}}) {
                             page.optJSONObject("menu")?.let { menu -> key(page.getString("epoch")){NativeMainMenu(menu,page,backdrop,dispatch){uiMoving=it}} }
                             page.optJSONObject("screen")?.let { screen ->
-                                val saveKey=page.getString("epoch")+":"+screen.getString("key")+if(screen.optInt("appPage",-1)>=0)":"+screen.optInt("appPage") else ""
-                                SideEffect{savedKeys.add(saveKey)}
-                                DisposableEffect(saveKey){onDispose{
-                                    if(state?.optString("epoch")!=page.optString("epoch")||(screen.optInt("appPage",-1)>=0&&route(state)!=pageKey)){
-                                        documentState.removeState(saveKey);savedKeys.remove(saveKey)
-                                    }
-                                }}
-                                documentState.SaveableStateProvider(saveKey){NativeDocument(screen,page,prepared.logs,backdrop,resumed,dispatch){uiMoving=it}}
+                                NativeDocument(screen,page,prepared.logs,backdrop,resumed,dispatch){uiMoving=it}
                             }
                             page.optJSONObject("picker")?.let { picker ->
                                 val density=androidx.compose.ui.platform.LocalDensity.current
-                                CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density,density.fontScale*page.optDouble("scale",1.0).toFloat().coerceIn(.7f,1.5f))){ NativePathPicker(picker,Color(page.optLong("foreground",0xffeeeeeeL).toInt()),background,accent,page.optString("uiStyle"),page.optBoolean("reducedMotion"),resumed){id->dispatch.invoke(id,page.getString("epoch"))} } }
+                                CompositionLocalProvider(LocalNativeUiScale provides 1f,androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density,density.fontScale*page.optDouble("scale",1.0).toFloat().coerceIn(.7f,1.5f))){ NativePathPicker(picker,Color(page.optLong("foreground",0xffeeeeeeL).toInt()),background,accent,page.optString("uiStyle"),page.optBoolean("reducedMotion"),resumed){id->dispatch.invoke(id,page.getString("epoch"))} } }
                         }
-                    }
+                    }}
                     }
                     }
                 }
@@ -189,7 +174,7 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
     }?:""
     fun routeKey():String=route(state)
     fun motionAllowed():Boolean = state?.optBoolean("reducedMotion") == false
-    fun clear(){navigationPending=false;pageMoving=false;routeHistory.clear();pages=emptyMap();uiMoving=false;state=null;contentSignature=""}
+    fun clear(){menuReturnRoute="";navigationPending=false;navigationGeneration++;navMoving=false;uiMoving=false;state=null;currentPrepared=null;contentSignature=""}
     data class Prepared(val data:JSONObject,val signature:String,val logs:List<NativeLogChunk>,val sequence:Long)
     companion object {
         /** Called only on the bounded model worker. Invalid models are rejected before rendering. */
@@ -230,28 +215,25 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
             return Prepared(next,next.toString(),chunkNativeLogs(logs,(4*density).toInt()),sequence)
         }
     }
+    private var currentPrepared by mutableStateOf<Prepared?>(null)
     fun applyPrepared(prepared:Prepared):Boolean {
-        val nextRoute=route(prepared.data)
-        if(routeHistory.isEmpty()&&state!=null)routeHistory.add(route(state))
-        if(nextRoute!=route(state)){
-            pageMoving=state!=null;pageMovingUntil=android.os.SystemClock.uptimeMillis()+5000L
-            val index=routeHistory.lastIndexOf(nextRoute)
-            pageBack=index>=0&&index<routeHistory.lastIndex
-            val oldScreen=state?.optJSONObject("screen");val newScreen=prepared.data.optJSONObject("screen")
-            if(state?.optString("epoch")==prepared.data.optString("epoch")&&oldScreen?.optInt("appPage",-1)?.let{it>=0}==true&&newScreen?.optInt("appPage",-1)?.let{it>=0}==true)
-                pageBack=newScreen!!.optInt("appPage")<oldScreen!!.optInt("appPage")
-            if(index>=0)while(routeHistory.size>index+1)routeHistory.removeAt(routeHistory.lastIndex)
-            else {routeHistory.add(nextRoute);if(routeHistory.size>32)routeHistory.removeAt(0)}
-        }
         navigationPending=false
-        // Bound retention to the current/outgoing routes; each keeps its own log rows.
-        val retained=LinkedHashMap(pages)
-        retained.remove(nextRoute);retained[nextRoute]=prepared
-        while(retained.size>3)retained.remove(retained.keys.first())
-        pages=retained
-        if(prepared.signature!=contentSignature){contentSignature=prepared.signature;state=prepared.data}
+        // Preserve the actual main-menu destination across preparation/log pages in
+        // this Binder lifetime: managed selectors still cancel to that same menu.
+        // Console Back itself never uses it. Rebind/clear resets this cached target.
+        val incoming=prepared.data
+        if(incoming.optJSONObject("menu")!=null)
+            menuReturnRoute=route(incoming)
+        // Log rows are extracted before the JSON signature is computed. Compare
+        // the cached immutable chunks too, or log-only updates are discarded.
+        if(prepared.signature!=contentSignature||prepared.logs!=currentPrepared?.logs){
+            contentSignature=prepared.signature
+            currentPrepared=prepared
+            state=prepared.data
+        }
         return true
     }
+
 }
 
 /** Shared static glass source plus visible random halo on an independent layer, at display-aligned 60 Hz. */

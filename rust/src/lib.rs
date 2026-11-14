@@ -1,3 +1,5 @@
+pub mod proc_stat;
+pub mod file_rpc_plan;
 pub mod signal_wait;
 use std::collections::HashSet;
 use std::ffi::CString;
@@ -69,7 +71,6 @@ extern "C" {
     pub fn fork() -> c_int;
     pub fn waitpid(pid: c_int, status: *mut c_int, options: c_int) -> c_int;
     pub fn execvp(file: *const c_char, argv: *const *const c_char) -> c_int;
-    pub fn lchown(path: *const c_char, owner: u32, group: u32) -> c_int;
     pub fn access(path: *const c_char, mode: c_int) -> c_int;
 }
 
@@ -796,15 +797,6 @@ pub fn write_file(path: &Path, body: &str) -> io::Result<()> {
     f.write_all(body.as_bytes())
 }
 
-pub fn lchown_path(path: &Path, uid: u32, gid: u32) -> io::Result<()> {
-    let c = cstring_path(path)?;
-    let rc = unsafe { lchown(c.as_ptr(), uid, gid) };
-    if rc == 0 {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
-    }
-}
 pub fn has_prefix_path(path: &Path, prefix: &str) -> bool {
     if prefix.is_empty() || prefix == "-" {
         return false;

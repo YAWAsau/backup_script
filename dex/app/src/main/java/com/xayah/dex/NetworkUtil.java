@@ -30,8 +30,16 @@ public class NetworkUtil {
     private static void human(String msg) { if ("1".equals(System.getenv("DEX_HUMAN_LOG"))) System.err.println("HUMAN " + msg); }
     private static void commandError(String command, Exception e) {
         System.err.println("ERROR_CODE=NETWORK_COMMAND_FAILED COMMAND=" + command
-                + " REASON=" + e.getClass().getSimpleName());
+                + " REASON=" + e.getClass().getSimpleName() + " DETAIL=" + safeFailureDetail(e));
         if (DEBUG) e.printStackTrace(System.err);
+    }
+    private static String safeFailureDetail(Exception e) {
+        String message = e.getMessage();
+        if ("ADD_NETWORK_FAILED".equals(message) || "ENABLE_NETWORK_FAILED".equals(message)
+                || "SAVE_NETWORK_FAILED".equals(message) || "WIFI_INPUT_TOO_LARGE".equals(message)
+                || "WIFI_DISABLED".equals(message) || "WIFI_NOT_READY".equals(message)
+                || "NULL_WIFI_ARRAY".equals(message) || "INVALID_WIFI_RECORD".equals(message)) return message;
+        return "UNSPECIFIED";
     }
     private static final String NETWORK_PREFIX = "network";
     private static final String NETWORK_SPLIT_SYMBOL = "_";
@@ -180,6 +188,21 @@ public class NetworkUtil {
         return known.length>0 && !config.allowedKeyManagement.isEmpty() && config.allowedKeyManagement.nextSetBit(known.length)<0;
     }
 
+    // Emit only structural facts and fixed reason codes: never SSIDs, keys or raw logcat.
+    private static void restoreFailureFacts(android.net.wifi.WifiManager manager, WifiConfiguration config) {
+        try {
+            System.err.println("WIFI_RESTORE_FACTS sdk=" + Build.VERSION.SDK_INT
+                    + " uid=" + android.os.Process.myUid() + " wifiState=" + manager.getWifiState()
+                    + " keyMgmt=" + config.allowedKeyManagement
+                    + " protocols=" + config.allowedProtocols
+                    + " authAlgorithms=" + config.allowedAuthAlgorithms
+                    + " pairwiseCiphers=" + config.allowedPairwiseCiphers
+                    + " groupCiphers=" + config.allowedGroupCiphers
+                    + " pskPresent=" + (config.preSharedKey != null)
+                    + " pskMasked=" + "*".equals(config.preSharedKey));
+        } catch (Exception ignored) { System.err.println("WIFI_RESTORE_FACTS unavailable"); }
+    }
+
     private static void restoreNetworks(String[] args) {
         try {
             int status = 0;
@@ -189,7 +212,12 @@ public class NetworkUtil {
             Set<Integer> networkIds = new HashSet<>();
             try {
                 WifiConfiguration[] networks = readNetworks(jsonPath);
+                android.net.wifi.WifiManager manager=Refine.unsafeCast(wifiManager);
+                int wifiState=manager.getWifiState();
+                System.err.println("WIFI_RESTORE_STATE sdk="+Build.VERSION.SDK_INT+" uid="+android.os.Process.myUid()+" wifiState="+wifiState+" records="+networks.length);
+                int recordIndex=0;
                 for (WifiConfiguration network : networks) {
+                    recordIndex++;
                     try {
                         if(!supportedSecurity(network)) {
                             System.err.println("WIFI_SKIPPED reason=UNSUPPORTED_SECURITY"); status=1; continue;
@@ -197,8 +225,7 @@ public class NetworkUtil {
                         int networkId = network.networkId;
                         network.networkId = -1;
                         int restoredId=wifiManager.addNetwork(network);
-                        if(restoredId<0)throw new IllegalStateException("ADD_NETWORK_FAILED");
-                        android.net.wifi.WifiManager manager=Refine.unsafeCast(wifiManager);
+                        if(restoredId<0){restoreFailureFacts(manager,network);int failedState=manager.getWifiState();throw new IllegalStateException(failedState==android.net.wifi.WifiManager.WIFI_STATE_DISABLED?"WIFI_DISABLED":failedState!=android.net.wifi.WifiManager.WIFI_STATE_ENABLED?"WIFI_NOT_READY":"ADD_NETWORK_FAILED");}
                         if(!manager.enableNetwork(restoredId,false))throw new IllegalStateException("ENABLE_NETWORK_FAILED");
                         if(Build.VERSION.SDK_INT>=30) {
                             boolean autojoin=WifiConfiguration.class.getField("allowAutojoin").getBoolean(network);
@@ -212,6 +239,7 @@ public class NetworkUtil {
                         }
                     } catch (Exception e) {
                         human("WiFi操作失敗: " + e.getMessage());
+                        System.err.println("WIFI_RESTORE_RECORD index="+recordIndex);
                         commandError("restoreNetworks.item", e);
                         status = 1;
                     }

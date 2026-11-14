@@ -74,7 +74,7 @@ configurations.configureEach {
 }
 
 dependencies {
-    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.2")
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.2-4efc64fc-SNAPSHOT")
     testImplementation(libs.junit)
     implementation(libs.refine.runtime)
     implementation(libs.gson)
@@ -90,9 +90,9 @@ kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarg
 dependencies { constraints {
  implementation("androidx.annotation:annotation:1.11.0")
  implementation("androidx.annotation:annotation-jvm:1.11.0")
- implementation("com.google.code.gson:gson:2.15.0")
+ implementation("com.google.code.gson:gson:2.15.1-a961b0fe-SNAPSHOT")
  implementation("com.google.errorprone:error_prone_annotations:2.52.0")
  implementation("org.jetbrains.kotlin:kotlin-stdlib:2.4.21")
  implementation("org.jetbrains:annotations:26.1.0")
- implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.2")
+ implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.2-4efc64fc-SNAPSHOT")
 } }

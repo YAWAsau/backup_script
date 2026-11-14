@@ -215,20 +215,17 @@ public class NotificationUtil extends BaseUtil {
         try (LocalSocket c = client) {
             InputStream in = c.getInputStream();
             OutputStream out = c.getOutputStream();
-            String command = DaemonBootstrap.readUtf8Line(in);
-            String protocolRaw = DaemonBootstrap.readUtf8Line(in);
-            String bodyLengthRaw = DaemonBootstrap.readUtf8Line(in);
-            int protocol = parsePositiveInt(protocolRaw, -1);
-            long bodyLength = parseLongDaemon(bodyLengthRaw, -2L);
+            DaemonBootstrap.RequestHeader header=DaemonBootstrap.readRequestHeader(in);
+            String command=header.command;
             int rc;
             String name;
             String body;
-            if (protocol != DAEMON_PROTOCOL_VERSION || bodyLength < -1L) {
+            if (!header.valid(DAEMON_PROTOCOL_VERSION)) {
                 rc = 2;
                 name = "BAD_REQUEST";
                 body = "NOTIFICATION_DAEMON_BAD_REQUEST\n";
             } else {
-                byte[] request = bodyLength == -1L ? DaemonBootstrap.readAll(in) : DaemonBootstrap.readExactly(in, bodyLength);
+                byte[] request = header.readBody(in);
                 int callingUid = peerUid(c);
                 if (callingUid < 0) {
                     rc = 2;
@@ -241,11 +238,7 @@ public class NotificationUtil extends BaseUtil {
                     body = result.stdout;
                 }
             }
-            byte[] response = body.getBytes(StandardCharsets.UTF_8);
-            out.write(("RESULT " + rc + " " + name + "\n").getBytes(StandardCharsets.UTF_8));
-            out.write((String.valueOf(response.length) + "\n").getBytes(StandardCharsets.UTF_8));
-            out.write(response);
-            out.flush();
+            DaemonBootstrap.writeResult(out,rc,name,body);
         } catch (Throwable t) {
             System.err.println("[notify-daemon] " + t.getClass().getName() + ": " + t.getMessage());
         }
@@ -301,10 +294,6 @@ public class NotificationUtil extends BaseUtil {
 
     private static int parsePositiveInt(String raw, int fallback) {
         try { int v = Integer.parseInt(raw == null ? "" : raw.trim()); return v > 0 ? v : fallback; } catch (Throwable ignored) { return fallback; }
-    }
-
-    private static long parseLongDaemon(String raw, long fallback) {
-        try { return Long.parseLong(raw == null ? "" : raw.trim()); } catch (Throwable ignored) { return fallback; }
     }
 
     private static int notifyBatchCommand(InputStream requestInput, int callingUid) {
@@ -619,7 +608,7 @@ public class NotificationUtil extends BaseUtil {
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder builder = new Notification.Builder(userContext, channel)
                 .setContentTitle(notificationText("SpeedBackup 工作仍在進行"))
-                .setContentText(notificationText("介面已停止；點此接回目前工作"))
+                .setContentText(notificationText("我的進程鼠掉了，點此接回目前工作"))
                 .setContentIntent(click).setTimeoutAfter(30000).setOngoing(true).setOnlyAlertOnce(true).setShowWhen(false);
         applySpeedBackupNotificationIcon(builder);
         manager.notify(tag, 2024, builder.build());
@@ -709,7 +698,7 @@ public class NotificationUtil extends BaseUtil {
         return CHANNEL_PROGRESS_ID;
     }
 
-    private static String notificationText(String value) {
+    static String notificationText(String value) {
         String language=System.getenv("SPEEDBACKUP_UI_LANGUAGE");
         boolean simplified=language!=null ? "zh-Hans".equals(language) : "CN".equalsIgnoreCase(System.getenv("SCRIPT_LANG"));
         if(!simplified)return value;
@@ -719,8 +708,8 @@ public class NotificationUtil extends BaseUtil {
             case "SpeedBackup 結果": return "SpeedBackup 结果";
             case "SpeedBackup 錯誤": return "SpeedBackup 错误";
             case "SpeedBackup 工作仍在進行": return "SpeedBackup 工作仍在进行";
-            case "介面已停止；點此接回目前工作": return "界面已停止；点此接回当前工作";
-            default:return value;
+            case "我的進程鼠掉了，點此接回目前工作": return "我的进程鼠掉了，点此接回当前工作";
+            default:return NotificationLanguage.CONVERTER.t2s(value);
         }
     }
 

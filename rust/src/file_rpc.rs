@@ -14,7 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 // Bump only when file-operation framing/semantics become incompatible.
-const FILE_CONTRACT: &[u8] = b"speedbackup.file-operations.v1";
+const FILE_CONTRACT: &[u8] = b"speedbackup.file-operations.v2";
 const MAX: usize = 65536;
 const OUTPUT: usize = 1048576;
 const MAX_RECEIPTS: usize = 16384;
@@ -80,8 +80,7 @@ fn bad() -> io::Error {
 }
 fn starttime(pid: i32) -> io::Result<String> {
     let text = fs::read_to_string(format!("/proc/{pid}/stat"))?;
-    text.rsplit_once(") ")
-        .and_then(|(_, tail)| tail.split_whitespace().nth(19))
+    speedbackup_native_rs::proc_stat::starttime(&text)
         .map(str::to_owned)
         .ok_or_else(bad)
 }
@@ -182,7 +181,8 @@ fn permitted(args: &[String]) -> bool {
         Some("external-tree-check")
         | Some("external-tree-clear")
         | Some("external-policy-fused")
-        | Some("external-policy-repair") => 4,
+        | Some("external-policy-repair")
+        | Some("external-policy-repair-selinux") => 4,
         Some("selinux-restore-external") => 2,
         Some("selinux-restore") => 3,
         _ => return false,
@@ -221,7 +221,7 @@ fn mutation_lease() -> io::Result<std::fs::File> {
 fn zombie(pid: i32) -> bool {
     fs::read_to_string(format!("/proc/{pid}/stat"))
         .ok()
-        .and_then(|v| v.rsplit_once(") ").map(|(_, s)| s.starts_with("Z ")))
+        .and_then(|v| speedbackup_native_rs::proc_stat::split(&v).map(|(_, s)| s.starts_with("Z ")))
         .unwrap_or(false)
 }
 fn run_worker(
@@ -427,6 +427,10 @@ fn serve(socket: &Path, owner: i32, owner_start: &str) -> io::Result<()> {
     if unsafe { geteuid() } != 0 || owner <= 1 || starttime(owner)?.as_str() != owner_start {
         return Err(bad());
     }
+    let raw_owner_fd=unsafe {syscall(434,owner as std::os::raw::c_long,0 as std::os::raw::c_long)};
+    let owner_fd=if raw_owner_fd>=0 {Some(unsafe{OwnedFd::from_raw_fd(raw_owner_fd as c_int)})}else{None};
+    // Close PID-reuse between reading stat and opening pidfd.
+    if starttime(owner)?.as_str()!=owner_start {return Err(bad());}
     let dir = socket.parent().ok_or_else(bad)?;
     let meta = fs::symlink_metadata(dir)?;
     if !meta.is_dir()
@@ -483,17 +487,17 @@ fn serve(socket: &Path, owner: i32, owner_start: &str) -> io::Result<()> {
         let (mut s, _) = match listener.accept() {
             Ok(v) => v,
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                // Wake immediately on an incoming request, without 500 /proc reads per idle second.
-                let mut ready = PollFd {
-                    fd: listener.as_raw_fd(),
-                    events: 1,
-                    revents: 0,
-                };
-                if unsafe { poll(&mut ready, 1, 100) } < 0
+                // No idle timer on pidfd kernels: requests, owner exit and
+                // termination signals are the only wakeups. Old kernels retain
+                // the bounded owner-identity fallback.
+                let mut ready = [PollFd {fd:listener.as_raw_fd(),events:1,revents:0},
+                    PollFd {fd:owner_fd.as_ref().map_or(-1,AsRawFd::as_raw_fd),events:1,revents:0}];
+                if unsafe { poll(ready.as_mut_ptr(), 2, if owner_fd.is_some(){-1}else{100}) } < 0
                     && io::Error::last_os_error().raw_os_error() != Some(4)
                 {
                     return Err(io::Error::last_os_error());
                 }
+                if ready[1].revents!=0 {break;}
                 continue;
             }
             Err(e) => return Err(e),
@@ -574,16 +578,14 @@ fn serve(socket: &Path, owner: i32, owner_start: &str) -> io::Result<()> {
             continue;
         }
         let fresh_exec=policy_cache.prepare(fields[4] == "app-permissions");
-        let (state, rc, body) = match run_worker(
-            &mut s,
-            &listener,
-            &fields[4..],
-            owner,
-            owner_start,
-            ms,
-            &[lock.as_raw_fd(), record.as_raw_fd()],
-            fresh_exec,
-        ) {
+        let (state, rc, body) = match speedbackup_native_rs::file_rpc_plan::execute(&fields[4..], |stage| {
+            // Revalidate between stages as well: a disconnected owner cannot
+            // start a second mutation after the first worker has completed.
+            if STOP.load(Ordering::Relaxed) || peer_gone(&s)
+                || starttime(owner).ok().as_deref()!=Some(owner_start) {return Err(bad());}
+            run_worker(&mut s, &listener, stage, owner, owner_start, ms,
+                &[lock.as_raw_fd(),record.as_raw_fd()],fresh_exec)
+        }) {
             Ok((rc, body)) => ("done", rc, body),
             Err(_) => ("not-started", 124, Vec::new()),
         };
@@ -601,6 +603,7 @@ pub fn command(args: &[String]) -> i32 {
         Ok(p) => p,
         Err(_) => return 2,
     };
+    if let Err(e)=super::speedscan::daemon_health::register_process("file_broker",std::process::id()) {eprintln!("FILE_RPC_HEALTH_FAILED {e}");return 1;}
     match serve(Path::new(&args[0]), owner, &args[2]) {
         Ok(()) => 0,
         Err(e) => {

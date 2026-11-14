@@ -69,31 +69,4 @@ public final class ActivityCompat {
         }
     }
 
-    public static boolean killProcessGroupNoThrow(int uid, int pid) {
-        if (uid <= 0 || pid <= 0) return false;
-        try {
-            Object rc = HiddenApiReflection.invokeFlexible(
-                    HiddenApiReflection.classForNameCached("android.os.Process"),
-                    "killProcessGroup", uid, pid);
-            if (rc instanceof Integer) {
-                return ((Integer) rc) == 0;
-            }
-            return true;
-        } catch (Throwable first) {
-            CompatDebug.throwable("killProcessGroup(uid,pid)", first);
-        }
-        try {
-            Object rc = HiddenApiReflection.invokeFlexible(
-                    HiddenApiReflection.classForNameCached("android.os.Process"),
-                    "killProcessGroup", uid, pid, android.system.OsConstants.SIGKILL);
-            if (rc instanceof Integer) {
-                return ((Integer) rc) == 0;
-            }
-            return true;
-        } catch (Throwable second) {
-            CompatDebug.throwable("killProcessGroup(uid,pid,signal)", second);
-            return false;
-        }
-    }
-
 }

@@ -444,6 +444,19 @@ object WebDavUtil {
             exitProcess(2)
         }
         when (args[0]) {
+            "discoveryCheck" -> {
+                // Selected endpoint only. Credentials travel over a private pipe,
+                // never argv; reuse the transfer client's TLS/auth/redirect rules.
+                val bytes=ByteArray(16385);var count=0
+                while(count<bytes.size){val n=System.`in`.read(bytes,count,bytes.size-count);if(n<0)break;count+=n}
+                require(count<=16384)
+                val request=org.json.JSONObject(String(bytes,0,count,Charsets.UTF_8))
+                val code=runCatching {
+                    val (status,body)=propfindRaw(request.optString("user"),request.optString("password"),request.getString("url"),0)
+                    if(status==207){if(parseDavEntries(body).any{it.isDirectory&&it.status in 200..299})207 else 422}else status
+                }.getOrElse{HttpCore.extractCode(it)}
+                println("{\"code\":$code}")
+            }
             "version" -> { println(DexBuildInfo.VERSION_DISPLAY); exitProcess(0) }
             "mkdirrel" -> cmdMkdirRel(args)
             "mkdirsrel" -> cmdMkdirsRel(args)

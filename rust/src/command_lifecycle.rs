@@ -1,5 +1,5 @@
 //! Owned-child supervision; no shell watchdog and no PID-reuse window.
-use speedbackup_native_rs::{close, kill, pidfd_open, poll, PollFd, POLLIN, SIGKILL, SIGTERM};
+use speedbackup_native_rs::{kill, pidfd_open, poll, PollFd, POLLIN, SIGKILL, SIGTERM};
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::unix::process::ExitStatusExt;
@@ -9,8 +9,102 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicI32, Ordering};
 static CANCEL:AtomicI32=AtomicI32::new(0);
-extern "C" fn cancelled(sig:i32){CANCEL.store(sig,Ordering::Relaxed);}
-extern "C" {fn signal(sig:i32,handler:usize)->usize;}
+static CANCEL_FD:AtomicI32=AtomicI32::new(-1);
+extern "C" fn cancelled(sig:i32){
+    CANCEL.store(sig,Ordering::Relaxed);
+    let fd=CANCEL_FD.load(Ordering::Relaxed);if fd>=0{unsafe{write(fd,[1u8].as_ptr() as _,1);}}
+}
+struct SignalWake(std::os::unix::net::UnixStream,std::os::unix::net::UnixStream);
+impl Drop for SignalWake{fn drop(&mut self){CANCEL_FD.store(-1,Ordering::Relaxed);}}
+extern "C" {fn signal(sig:i32,handler:usize)->usize;fn write(fd:i32,buf:*const std::ffi::c_void,count:usize)->isize;}
+
+/// Kill helpers when their spawning thread exits; close the pre-exec owner race.
+pub fn parent_guard(command:&mut Command) {
+    use std::os::unix::process::CommandExt;
+    unsafe {command.pre_exec(||{
+        unsafe extern "C" {fn getppid()->i32;fn prctl(option:i32,a:std::os::raw::c_ulong,b:std::os::raw::c_ulong,c:std::os::raw::c_ulong,d:std::os::raw::c_ulong)->i32;}
+        let parent=getppid();
+        if parent<=1||prctl(1,9,0,0,0)!=0||getppid()!=parent{return Err(io::Error::other("helper owner exited"));}
+        Ok(())
+    });}
+}
+
+/// Own the child until reaped; all early exits kill only this unreaped child.
+struct Reaper {pending:std::sync::Mutex<Vec<std::process::Child>>,wake:std::os::unix::net::UnixStream}
+fn reaper()->io::Result<std::sync::Arc<Reaper>> {
+    use std::sync::{Arc,Mutex,OnceLock};
+    static INSTANCE:OnceLock<Mutex<Option<Arc<Reaper>>>>=OnceLock::new();
+    let mut slot=INSTANCE.get_or_init(||Mutex::new(None)).lock().unwrap();
+    if let Some(value)=slot.as_ref(){return Ok(value.clone());}
+    let(read,write)=std::os::unix::net::UnixStream::pair()?;
+    read.set_nonblocking(true)?;write.set_nonblocking(true)?;
+    let value=Arc::new(Reaper{pending:Mutex::new(Vec::new()),wake:write});
+    let worker=value.clone();
+    // Create the supervisor before any child: resource exhaustion cannot lose ownership.
+    std::thread::Builder::new().name("child-reaper".into()).spawn(move||{
+        use std::os::fd::{AsRawFd,FromRawFd,OwnedFd};
+        let mut children:Vec<(std::process::Child,Option<OwnedFd>)>=Vec::new();
+        loop {
+            let pending=std::mem::take(&mut *worker.pending.lock().unwrap());
+            for child in pending{
+                let fd=pidfd_open(child.id() as i32).ok().map(|fd|unsafe{OwnedFd::from_raw_fd(fd)});
+                children.push((child,fd));
+            }
+            children.retain_mut(|(child,_)|match child.try_wait(){Ok(Some(_))=>false,Err(e) if e.raw_os_error()==Some(10)=>false,_=>true});
+            let mut fds=vec![PollFd{fd:read.as_raw_fd(),events:POLLIN,revents:0}];
+            fds.extend(children.iter().filter_map(|(_,fd)|fd.as_ref().map(|fd|PollFd{fd:fd.as_raw_fd(),events:POLLIN,revents:0})));
+            // Compatibility fallback is active only while a child lacks pidfd support.
+            let timeout=if children.iter().any(|(_,fd)|fd.is_none()){10}else{-1};
+            if unsafe{poll(fds.as_mut_ptr(),fds.len() as _,timeout)}<0&&io::Error::last_os_error().kind()!=io::ErrorKind::Interrupted{
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let mut bytes=[0u8;256];while (&read).read(&mut bytes).is_ok_and(|n|n>0){}
+        }
+    })?;
+    *slot=Some(value.clone());Ok(value)
+}
+pub struct OwnedChild {child:Option<std::process::Child>,reaper:std::sync::Arc<Reaper>}
+impl OwnedChild {pub fn spawn(command:&mut Command)->io::Result<Self>{let reaper=reaper()?;Ok(Self{child:Some(command.spawn()?),reaper})}}
+impl std::ops::Deref for OwnedChild {type Target=std::process::Child;fn deref(&self)->&Self::Target{self.child.as_ref().unwrap()}}
+impl std::ops::DerefMut for OwnedChild {fn deref_mut(&mut self)->&mut Self::Target{self.child.as_mut().unwrap()}}
+impl Drop for OwnedChild {
+    fn drop(&mut self){if let Some(mut child)=self.child.take(){
+        if matches!(child.try_wait(),Ok(Some(_))){return;}
+        let _=child.kill();
+        self.reaper.pending.lock().unwrap().push(child);
+        let _=(&self.reaper.wake).write_all(&[1]);
+    }}
+}
+
+/// Cancellation is both state and a pollable event, so idle helpers never tick.
+pub struct CancelEvent {flag:std::sync::atomic::AtomicBool,read:std::os::unix::net::UnixStream,write:std::os::unix::net::UnixStream}
+impl CancelEvent {
+    pub fn new()->io::Result<Self>{let(read,write)=std::os::unix::net::UnixStream::pair()?;write.set_nonblocking(true)?;Ok(Self{flag:std::sync::atomic::AtomicBool::new(false),read,write})}
+    pub fn store(&self,value:bool,order:Ordering){if value&&!self.flag.swap(true,order){let _=(&self.write).write_all(&[1]);}}
+    pub fn fd(&self)->std::os::fd::RawFd {use std::os::fd::AsRawFd;self.read.as_raw_fd()}
+}
+impl std::ops::Deref for CancelEvent {type Target=std::sync::atomic::AtomicBool;fn deref(&self)->&Self::Target{&self.flag}}
+
+pub fn wait_checked(child:&mut OwnedChild,timeout:Duration,check:impl FnMut()->io::Result<()>)->io::Result<std::process::ExitStatus>{wait_events(child,timeout,&[],check)}
+/// Wait on child completion, cancellation/output events, or the absolute timeout.
+/// Only old kernels without pidfd require bounded waitpid polling.
+pub fn wait_events(child:&mut OwnedChild,timeout:Duration,events:&[std::os::fd::RawFd],mut check:impl FnMut()->io::Result<()>)->io::Result<std::process::ExitStatus>{
+    use std::os::fd::{FromRawFd,AsRawFd,OwnedFd};
+    let descriptor=if std::env::var("SPEEDBACKUP_NATIVE_WAIT_BACKEND").as_deref()==Ok("poll"){None}else{pidfd_open(child.id() as i32).ok().map(|f|unsafe{OwnedFd::from_raw_fd(f)})};
+    let deadline=Instant::now()+timeout;
+    loop {
+        check()?;
+        match child.try_wait(){Ok(Some(status))=>return Ok(status),Err(e) if e.kind()==io::ErrorKind::Interrupted=>continue,Err(e)=>return Err(e),_=>{}}
+        let remaining=deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero(){return Err(io::Error::new(io::ErrorKind::TimedOut,"child timeout"));}
+        let ms=remaining.as_millis().min(if descriptor.is_some(){i32::MAX as u128}else{10}).max(1) as i32;
+        let mut fds=events.iter().map(|fd|PollFd{fd:*fd,events:POLLIN,revents:0}).collect::<Vec<_>>();
+        if let Some(fd)=&descriptor{fds.push(PollFd{fd:fd.as_raw_fd(),events:POLLIN,revents:0});}
+        let result=unsafe{poll(fds.as_mut_ptr(),fds.len() as _,ms)};
+        if result<0 {let error=io::Error::last_os_error();if error.kind()!=io::ErrorKind::Interrupted{return Err(error);}}
+        if fds.iter().any(|p|p.revents&0x20!=0){return Err(io::Error::other("invalid wait descriptor"));}
+    }
+}
 
 fn trace_open() -> Option<File> {
     let path=std::env::var_os("SPEEDBACKUP_BOUNDED_LOG").filter(|p| !p.is_empty())?;
@@ -36,37 +130,32 @@ pub fn bounded(args: &[String]) -> i32 {
     let output=match File::create(&args[2]) {Ok(f)=>f,Err(_)=>return 1};
     let exe=match std::env::current_exe(){Ok(p)=>p,Err(_)=>return 1};
     let start=Instant::now();
+    use std::os::fd::AsRawFd;
+    let (read,write)=match std::os::unix::net::UnixStream::pair(){Ok(v)=>v,Err(_)=>return 125};
+    if write.set_nonblocking(true).is_err(){return 125;}
+    let wake=SignalWake(read,write);
+    CANCEL.store(0,Ordering::Relaxed);CANCEL_FD.store(wake.1.as_raw_fd(),Ordering::Relaxed);
     for sig in [1,2,15]{unsafe{signal(sig,cancelled as *const () as usize);}}
-    let mut child=match Command::new(exe).arg("speedscan").args(&args[3..])
-        .stdin(Stdio::null()).stdout(output).stderr(Stdio::inherit()).spawn(){Ok(c)=>c,Err(_)=>return 1};
+    let mut child=match OwnedChild::spawn(Command::new(exe).arg("speedscan").args(&args[3..])
+        .stdin(Stdio::null()).stdout(output).stderr(Stdio::inherit())){Ok(c)=>c,Err(_)=>return 1};
     let pid=child.id() as i32;
-    let fd=if std::env::var("SPEEDBACKUP_NATIVE_WAIT_BACKEND").as_deref()==Ok("poll"){None}else{pidfd_open(pid).ok()};
-    let backend=if fd.is_some(){"pidfd"}else{"waitpid"};
+    let backend=if std::env::var("SPEEDBACKUP_NATIVE_WAIT_BACKEND").as_deref()==Ok("poll"){"waitpid"}else{"pidfd-or-waitpid"};
     let mut diagnostic=trace_open();
     trace(&mut diagnostic,format!("NATIVE_BOUNDED_BEGIN tag={} pid={} timeoutMs={} backend={}",args[1],pid,ms,backend));
-    let mut timeout=false;let mut phase=0;let mut deadline=Duration::from_millis(ms);
-    let rc=loop {
-        let cancel=CANCEL.load(Ordering::Relaxed);
-        match child.try_wait(){
-            Ok(Some(s))=>break if cancel!=0{128+cancel}else if timeout{124}else{s.code().unwrap_or(128+s.signal().unwrap_or(0))},
-            Err(e) if e.kind()==io::ErrorKind::Interrupted=>continue,
-            Err(_)=>break 125,
-            Ok(None)=>{}
+    let result=wait_events(&mut child,Duration::from_millis(ms),&[wake.0.as_raw_fd()],||if CANCEL.load(Ordering::Relaxed)!=0{Err(io::Error::from(io::ErrorKind::Interrupted))}else{Ok(())});
+    let rc=match result {
+        Ok(status)=>status.code().unwrap_or(128+status.signal().unwrap_or(0)),
+        Err(error)=>{
+            // Preserve TERM grace, then KILL grace, and retain ownership throughout.
+            unsafe{kill(pid,SIGTERM);}
+            if wait_checked(&mut child,Duration::from_millis(700),||Ok(())).is_err(){
+                unsafe{kill(pid,SIGKILL);}
+                if wait_checked(&mut child,Duration::from_millis(700),||Ok(())).is_err(){eprintln!("NATIVE_BOUNDED_UNREAPED pid={pid}");}
+            }
+            let cancel=CANCEL.load(Ordering::Relaxed);
+            if cancel!=0{128+cancel}else if error.kind()==io::ErrorKind::TimedOut{124}else{125}
         }
-        let now=start.elapsed();
-        if cancel!=0 && phase==0{deadline=now;}
-        if now>=deadline {
-            if phase==2 { eprintln!("NATIVE_BOUNDED_UNREAPED pid={} timeout=true signal={}",pid,cancel);break if cancel!=0{128+cancel}else{124}; }
-            timeout=true;
-            // Child has not been reaped. PID cannot be recycled before try_wait.
-            unsafe {kill(pid,if phase==0{SIGTERM}else{SIGKILL});}
-            phase+=1;deadline=now+Duration::from_millis(700);
-        }
-        let wait=deadline.saturating_sub(start.elapsed()).as_millis().min(if fd.is_some(){1000}else{10}) as i32;
-        if let Some(fd)=fd {let mut p=PollFd{fd,events:POLLIN,revents:0};unsafe{poll(&mut p,1,wait.max(1));}}
-        else {std::thread::sleep(Duration::from_millis(wait.max(1) as u64));}
     };
-    if let Some(fd)=fd {unsafe{close(fd);}}
     let done=format!("NATIVE_BOUNDED_DONE tag={} pid={} rc={} elapsedMs={} backend={}",args[1],pid,rc,start.elapsed().as_millis(),backend);
     if rc!=0 {eprintln!("{}",done);}
     trace(&mut diagnostic,done);
@@ -143,4 +232,21 @@ pub fn prune_legacy(args:&[String])->i32 {
         if res.is_ok(){removed+=1}else{retained+=1}
     }
     println!("TMPDIR_ROOT_NAMESPACE_PRUNE removed={} retained={} legacyOnly=1 backend=rust",removed,retained);0
+}
+
+#[cfg(test)] mod lifecycle_tests {
+    use super::*;
+    #[test] fn completion_and_timeout(){
+        let mut child=OwnedChild::spawn(Command::new("/system/bin/sh").args(["-c","exit 7"])).unwrap();
+        assert_eq!(wait_checked(&mut child,Duration::from_secs(2),||Ok(())).unwrap().code(),Some(7));
+        let mut child=OwnedChild::spawn(Command::new("/system/bin/sh").args(["-c","exec sleep 30"])).unwrap();
+        let start=Instant::now();assert_eq!(wait_checked(&mut child,Duration::from_millis(50),||Ok(())).unwrap_err().kind(),io::ErrorKind::TimedOut);drop(child);assert!(start.elapsed()<Duration::from_secs(2));
+    }
+    #[test] fn cancellation_wakes_wait(){
+        let cancel=std::sync::Arc::new(CancelEvent::new().unwrap());let flag=cancel.clone();
+        let mut child=OwnedChild::spawn(Command::new("/system/bin/sh").args(["-c","exec sleep 30"])).unwrap();
+        let writer=std::thread::spawn(move||{std::thread::sleep(Duration::from_millis(50));flag.store(true,Ordering::Release);});
+        let start=Instant::now();let result=wait_events(&mut child,Duration::from_secs(30),&[cancel.fd()],||if cancel.load(Ordering::Acquire){Err(io::Error::from(io::ErrorKind::Interrupted))}else{Ok(())});
+        assert_eq!(result.unwrap_err().kind(),io::ErrorKind::Interrupted);assert!(start.elapsed()<Duration::from_secs(2));writer.join().unwrap();
+    }
 }

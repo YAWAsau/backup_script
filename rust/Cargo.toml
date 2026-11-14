@@ -1,6 +1,6 @@
 [package]
 name = "speedbackup-native-rs"
-version = "1123.0.0"
+version = "1147.0.0"
 edition = "2021"
 autobins = false
 license = "GPL-3.0-only"
@@ -22,3 +22,26 @@ strip = "symbols"
 [[bin]]
 name = "speednative"
 path = "src/main.rs"
+
+[patch.crates-io]
+itoa = { git = "https://github.com/dtolnay/itoa", rev = "9339ca99a43c550b5ee36e2afe524d1c90413461" }
+memchr = { git = "https://github.com/BurntSushi/memchr", rev = "bd6068c30e9074a90c285e47912fa0b047d07597" }
+proc-macro2 = { git = "https://github.com/dtolnay/proc-macro2", rev = "8058872fd1eacdd6b13d3cd78c5637f0dd0c0120" }
+quote = { git = "https://github.com/dtolnay/quote", rev = "27be8db3c8eb07e7ccd83c2e695d5297c2466253" }
+serde = { git = "https://github.com/serde-rs/serde", rev = "aa7913ad0211fef960df68e7812a6211145a888c" }
+serde_core = { git = "https://github.com/serde-rs/serde", rev = "aa7913ad0211fef960df68e7812a6211145a888c" }
+serde_derive = { git = "https://github.com/serde-rs/serde", rev = "aa7913ad0211fef960df68e7812a6211145a888c" }
+serde_json = { git = "https://github.com/serde-rs/json", rev = "8c535a260ce561eaab4111aafc29038eb9f77ff3" }
+syn = { git = "https://github.com/dtolnay/syn", rev = "97ec37dda8a893a460066da694fd1eb7cb30538a" }
+unicode-ident = { git = "https://github.com/dtolnay/unicode-ident", rev = "28018f288934fa6be60a6e791e071b7a7195643e" }
+zmij = { git = "https://github.com/dtolnay/zmij", rev = "35355256734db2c69a19aba4cae98c7fd8e14adf" }
+fastrand = { git = "https://github.com/smol-rs/fastrand", rev = "7a1cc2c69ebde6cb3442809213db3fe19a2cb0ba" }
+flume = { git = "https://github.com/zesterer/flume", rev = "6bb48467b47ebbc85794c6b6072614d086bdf930" }
+if-addrs = { git = "https://github.com/messense/if-addrs", rev = "2221caa52575fa8774609885a050febcce17ad93" }
+libc = { git = "https://github.com/rust-lang/libc", rev = "ccc2ff4aaab962f7fde7b8edda7379c045b1ca12" }
+log = { git = "https://github.com/rust-lang/log", rev = "75fcb86da1cce3b9476c58c911482ec43ec235f4" }
+mdns-sd = { git = "https://github.com/keepsimple1/mdns-sd", rev = "8eb02e58c27b423095fac14796896841a28efd16" }
+mio = { git = "https://github.com/tokio-rs/mio", rev = "5e2b24a46287dfe06ad025b6ff5b997497bdb606" }
+scopeguard = { git = "https://github.com/bluss/scopeguard", rev = "bb988222848d39b0b9037b29da3a3a1eb05ebf4b" }
+socket-pktinfo = { git = "https://github.com/pixsper/socket-pktinfo", rev = "c6e67877f079411bb1de395b2843a12ddc6f555b" }
+socket2 = { git = "https://github.com/rust-lang/socket2", rev = "8b8b96fdaa1301698fd2b6f4de188635df4a8bd1" }

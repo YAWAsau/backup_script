@@ -1,3 +1,5 @@
+#[path = "../web_language_map.rs"]
+mod output_language;
 // filewatch.rs - faithful Rust port of c/filewatch.c
 // Minimal inotify event waiter for Android/Linux.
 // Ported 1:1 against c/filewatch.c behavior: same exit codes, same stdout/stderr
@@ -432,14 +434,14 @@ fn watch_path(path: &str, once: bool) -> i32 {
 }
 
 fn print_help(program: &str) {
-    println!("用法:");
+    println!("{}", output_language::text("用法:"));
     println!("  {} --wait-exists PATH", program);
     println!("  {} --once PATH", program);
     println!("  {} PATH", program);
     println!();
-    println!("--wait-exists：檔案已存在就立即成功，否則阻塞等待建立/移入。");
-    println!("--once：等待指定檔案或目錄的第一個 inotify 事件後退出。");
-    println!("無選項：持續輸出指定檔案或目錄的事件。");
+    println!("{}", output_language::text("--wait-exists：檔案已存在就立即成功，否則阻塞等待建立/移入。"));
+    println!("{}", output_language::text("--once：等待指定檔案或目錄的第一個 inotify 事件後退出。"));
+    println!("{}", output_language::text("無選項：持續輸出指定檔案或目錄的事件。"));
 }
 
 pub(crate) fn run() {

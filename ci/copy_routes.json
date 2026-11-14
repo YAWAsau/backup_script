@@ -235,14 +235,6 @@
     },
     {
       "file": "tools/tools.sh",
-      "context": "_appdetails_bundle_build_local_for_current_upload",
-      "line": "cp -f \"$_jf\" \"$_stage/$_name/app_details.json\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || continue",
-      "count": 1,
-      "category": "retained-existing",
-      "reason": "Existing v925 retained copy in _appdetails_bundle_build_local_for_current_upload; this inventory freezes the migration baseline. Destination changes require renewed FUSE and failure-semantics review."
-    },
-    {
-      "file": "tools/tools.sh",
       "context": "_appdetails_bundle_seed_remote_json_cache",
       "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_stats ]] && cp -f \"$_stats\" \"$SPEED_DEBUG_RUN_DIR/appdetails_seed_index.stats\" 2>/dev/null || true",
       "count": 1,

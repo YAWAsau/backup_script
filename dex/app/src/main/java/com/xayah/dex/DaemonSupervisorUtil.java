@@ -79,6 +79,22 @@ public final class DaemonSupervisorUtil {
             int pid = bestEffortPid(p);
             if (pid > 1) {
                 writePid(pidFile, pid);
+                if("webdav".equals(component)) {
+                    String run=System.getenv("SPEEDBACKUP_RUN_TMPDIR");
+                    Long start=DaemonBootstrap.readProcStarttime(pid);
+                    if(run!=null) {
+                        File target=new File(run,".health-service-webdav_daemon");
+                        File tmp=new File(run,".health-service-webdav_daemon.tmp."+android.os.Process.myPid());
+                        try {
+                            try(FileOutputStream out=new FileOutputStream(tmp)){out.write((pid+" "+(start==null?0:start)+"\n").getBytes(StandardCharsets.US_ASCII));}
+                            android.system.Os.chmod(tmp.getPath(),0600);
+                            android.system.Os.rename(tmp.getPath(),target.getPath());
+                        } catch(Exception e) {
+                            // Health metadata failure must not turn a live launch into a failed launch.
+                            System.err.println("DAEMON_HEALTH_REGISTER_FAILED component="+component+" error="+e.getClass().getSimpleName());
+                        } finally { tmp.delete(); }
+                    }
+                }
                 DaemonHardening.protectPid(pid, component);
                 return pid;
             }

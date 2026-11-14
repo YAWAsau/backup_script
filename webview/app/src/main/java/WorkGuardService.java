@@ -75,7 +75,7 @@ public final class WorkGuardService extends Service {
         Intent open=new Intent(this,MainActivity.class).setAction("io.github.yawasau.speedbackup.RESUME").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent tap=PendingIntent.getActivity(this,ID,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(this,CHANNEL).setSmallIcon(notificationIcon).setColor(0xff3975f6).setContentTitle(NativeLanguage.text(this,"SpeedBackup 工作進行中"))
-            .setContentText(NativeLanguage.text(this,detached?"畫面已關閉；點此接回目前工作":"點此開啟目前工作；關閉畫面不會停止作業"))
+            .setContentText(NativeLanguage.text(this,detached?"我的進程鼠掉了，點此接回目前工作":"點此開啟目前工作；關閉畫面不會停止作業"))
             .setContentIntent(tap).setOngoing(true).setOnlyAlertOnce(true).setCategory(Notification.CATEGORY_SERVICE).build();
     }
     @Override public int onStartCommand(Intent intent,int flags,int startId){

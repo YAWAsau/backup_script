@@ -46,11 +46,10 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Generated version metadata is out of sync.' }
     }
 
-    & pwsh -NoProfile -File (Join-Path $rootDir 'dex/build_dex.ps1') -JavaHome $env:JAVA_HOME -SdkRoot $sdkRoot -NoDaemon
-    if ($LASTEXITCODE -ne 0) { throw 'Dex build failed.' }
-    & pwsh -NoProfile -File (Join-Path $rootDir 'rust/build.ps1') -Sdk $sdkRoot -Ndk (Join-Path $sdkRoot "ndk/$($config.ndk)")
-    if ($LASTEXITCODE -ne 0) { throw 'Rust build failed.' }
+    & pwsh -NoProfile -File (Join-Path $rootDir 'build.ps1') -JavaHome $env:JAVA_HOME -SdkRoot $sdkRoot -Ndk (Join-Path $sdkRoot "ndk/$($config.ndk)") -SigningDir (Join-Path $env:RUNNER_TEMP 'speedbackup-ci-signing')
+    if ($LASTEXITCODE -ne 0) { throw 'APK / Dex / Rust build failed.' }
 
+    Copy-Item -LiteralPath (Join-Path $rootDir 'webview/out/speedbackup-webview.apk') -Destination (Join-Path $outputDir 'SpeedBackup_UI.apk')
     & python (Join-Path $PSScriptRoot 'check_repository.py') package
     if ($LASTEXITCODE -ne 0) { throw 'Artifact validation/packaging failed.' }
 } finally {

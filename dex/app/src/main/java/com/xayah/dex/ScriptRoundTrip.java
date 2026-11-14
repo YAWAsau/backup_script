@@ -11,7 +11,6 @@ final class ScriptRoundTrip {
     private static Map<String, String> create() {
         Map<String, String> lines = new HashMap<>();
         lines.put("\t# 正常完成路徑也要先停掉使用 TMPDIR socket/pid 的 daemon/prewarm，避免目錄被刪後又被背景預熱程式重建。", "\t# 正常完成路徑也要先停掉使用 TMPDIR socket/pid 的 daemon/prewarm，避免目錄被刪後又被背景預熱程序重建。");
-        lines.put("\t\trm -f \"$_f\" 2>/dev/null && _speed_debug_pack_log \"[speed_debug] 已刪除舊除錯壓縮檔: $_f\"", "\t\trm -f \"$_f\" 2>/dev/null && _speed_debug_pack_log \"[speed_debug] 已刪除舊除錯壓縮包: $_f\"");
         lines.put("\t# 後續清理只刪除目錄內舊 log/壓縮檔，不刪除 /data/speed_debug 本身，避免重複觸發首次 dex 完整度測試。", "\t# 後續清理只刪除目錄內舊 log/壓縮包，不刪除 /data/speed_debug 本身，避免重複觸發首次 dex 完整度測試。");
         lines.put("\t'\\r 預掃資料大小 %d/%d %s'|'\\r 預掃遠端清單 %d/%d') ;;", "\t'\\r 預掃數據大小 %d/%d %s'|'\\r 預掃遠端清單 %d/%d') ;;");
         lines.put("\t# appList 前臺逐行輸出會產生 100+ 條 MSG。舊版高速路徑沒有", "\t# appList 前台逐行輸出會產生 100+ 條 MSG。舊版高速路徑沒有");
@@ -52,6 +51,9 @@ final class ScriptRoundTrip {
         lines.put("\t# 優先使用嚴格 state 驗證，避免 stale pid file 遇到 PID reuse 時誤殺其他程式。", "\t# 優先使用嚴格 state 驗證，避免 stale pid file 遇到 PID reuse 時誤殺其他程序。");
         lines.put("\tprintf '上傳:%s；列表:%s；發佈:%s；校驗:%s；清理:%s", "\tprintf '上傳:%s；列表:%s；發布:%s；校驗:%s；清理:%s");
         lines.put("\t\techoRgb \"WebDAV 完成判定: 收到 HTTP 2xx 纔算成功 (BODY_DONE 僅代表已送入伺服端)\" \"3\"", "\t\techoRgb \"WebDAV 完成判定: 收到 HTTP 2xx 才算成功 (BODY_DONE 僅代表已送入伺服端)\" \"3\"");
+        lines.put("        *'remote_url 必須'*|*'remote_url 是 smb://'*|*'未知遠端類型'*) _reason='遠端類型與地址格式不符；請確認 WebDAV 使用 http:// 或 https://，SMB 使用 smb://。' ;;", "        *'remote_url 必須'*|*'remote_url 是 smb://'*|*'未知遠程類型'*) _reason='遠端類型與地址格式不符；請確認 WebDAV 使用 http:// 或 https://，SMB 使用 smb://。' ;;");
+        lines.put("        *'認證失敗'*|*'認證失敗'*|*'認證資訊不可用'*|*'HTTP 401'*|*'LOGON_FAILURE'*) _reason='遠端認證失敗；請確認帳號與密碼，儲存設定後重試。' ;;", "        *'認證失敗'*|*'认证失败'*|*'認證資訊不可用'*|*'HTTP 401'*|*'LOGON_FAILURE'*) _reason='遠端認證失敗；請確認帳號與密碼，儲存設定後重試。' ;;");
+        lines.put("        *'連線失敗'*|*'連接失敗'*|*'連線逾時'*|*'連線／LAN 路由'*|*'Connection refused'*|*'timed out'*) _reason='無法連線至遠端；請確認網路、伺服器狀態、地址與連接埠後重試。' ;;", "        *'連線失敗'*|*'连接失败'*|*'連線逾時'*|*'連線／LAN 路由'*|*'Connection refused'*|*'timed out'*) _reason='無法連線至遠端；請確認網路、伺服器狀態、地址與連接埠後重試。' ;;");
         lines.put("# 430: JSON domain helper，所有非 app_details 熱路徑 JSON 也從這裏進出。", "# 430: JSON domain helper，所有非 app_details 熱路徑 JSON 也從這裡進出。");
         lines.put("# speedscan native bridge：大量檔案掃描、集合比對、manifest/app_details 審覈與恢復 payload plan 由 Rust 產生；Android framework 仍交 Dex，APK live install 仍交 shell pm/hybrid。", "# speedscan native bridge：大量檔案掃描、集合比對、manifest/app_details 審核與恢復 payload plan 由 Rust 產生；Android framework 仍交 Dex，APK live install 仍交 shell pm/hybrid。");
         lines.put("\tlocal _owner_msg=\"設置使用者組$1\" _label_msg=\"selinux上下文設置\"", "\tlocal _owner_msg=\"設置用戶組$1\" _label_msg=\"selinux上下文設置\"");
@@ -119,19 +121,14 @@ final class ScriptRoundTrip {
         lines.put("# 舊備份程式被強制終止時，EXIT trap 可能來不及執行。", "# 舊備份程序被強制終止時，EXIT trap 可能來不及執行。");
         lines.put("            _reason=\"舊版工作鎖只有 PID ${_pid:-未知}，缺少程式身分紀錄；目前無法覈對為 SpeedBackup 腳本，未發送停止訊號。請先在原本執行入口結束舊工作，再重新啟動；若原入口已無法操作，確認沒有其他重要工作後重新啟動手機。\"", "            _reason=\"舊版工作鎖只有 PID ${_pid:-未知}，缺少程序身分紀錄；目前無法核對為 SpeedBackup 腳本，未發送停止訊號。請先在原本執行入口結束舊工作，再重新啟動；若原入口已無法操作，確認沒有其他重要工作後重新啟動手機。\"");
         lines.put("            _speedbackup_web_select \"舊版工作無法覈對\" \"關閉\" \"關閉\"", "            _speedbackup_web_select \"舊版工作無法核對\" \"關閉\" \"關閉\"");
-        lines.put("        _SPEEDBACKUP_WEB_DESCRIPTION=\"偵測到只有 PID 的舊版工作鎖，已覈對目前程式為 SpeedBackup 腳本。停止後，尚未完成的備份／恢復不算成功。\"", "        _SPEEDBACKUP_WEB_DESCRIPTION=\"偵測到只有 PID 的舊版工作鎖，已核對目前程序為 SpeedBackup 腳本。停止後，尚未完成的備份／恢復不算成功。\"");
+        lines.put("        _SPEEDBACKUP_WEB_DESCRIPTION=\"偵測到只有 PID 的舊版工作鎖，已覈對目前程式為 SpeedBackup 腳本；程式仍存活，不能當成殘留鎖刪除。舊終端選單可能仍在等待輸入，請優先從原終端正常退出。這類舊工作沒有原生接回通道；停止後，尚未完成的備份／恢復不算成功。\"", "        _SPEEDBACKUP_WEB_DESCRIPTION=\"偵測到只有 PID 的舊版工作鎖，已核對目前程序為 SpeedBackup 腳本；程序仍存活，不能當成殘留鎖刪除。舊終端選單可能仍在等待輸入，請優先從原終端正常退出。這類舊工作沒有原生接回通道；停止後，尚未完成的備份／恢復不算成功。\"");
         lines.put("        *stage=owner_record*|*stage=owner_process_identity*|*stage=legacy_owner_identity*) _reason=\"工作身分已變更或原程式已結束，無法確認停止目標。\" ;;", "        *stage=owner_record*|*stage=owner_process_identity*|*stage=legacy_owner_identity*) _reason=\"工作身分已變更或原程序已結束，無法確認停止目標。\" ;;");
         lines.put("        *stage=controller_ancestors*) _reason=\"停止目標包含目前控制程式，為避免誤殺已拒絕。\" ;;", "        *stage=controller_ancestors*) _reason=\"停止目標包含目前控制程序，為避免誤殺已拒絕。\" ;;");
         lines.put("        *stage=wait_pidfd_exit*) _reason=\"已發送停止訊號，但等待程式退出失敗。\" ;;", "        *stage=wait_pidfd_exit*) _reason=\"已發送停止訊號，但等待程序退出失敗。\" ;;");
         lines.put("        *stage=remove_verified_lease*) _reason=\"程式已停止，但工作鎖清理失敗。\" ;;", "        *stage=remove_verified_lease*) _reason=\"程序已停止，但工作鎖清理失敗。\" ;;");
         lines.put("\t\t_speedbackup_ui_echo \"已有備份程式執行中；請重新執行 start.sh，使用介面中的停止工作選項\"", "\t\t_speedbackup_ui_echo \"已有備份程序執行中；請重新執行 start.sh，使用介面中的停止工作選項\"");
         lines.put("\t\t\t# 這裏只記錄，不提前還原，避免螢幕關閉後卡住後續 final-pack-skip / tmpdir cleanup。", "\t\t\t# 這裡只記錄，不提前還原，避免螢幕關閉後卡住後續 final-pack-skip / tmpdir cleanup。");
-        lines.put("\t# SMB 傳輸仍交給 smbclient；這裏只找 445 open 的候選主機。", "\t# SMB 傳輸仍交給 smbclient；這裡只找 445 open 的候選主機。");
-        lines.put("# 自動偵測區網 SMB 並設定 remote_url (取第一臺有可用共享的主機)", "# 自動偵測區網 SMB 並設定 remote_url (取第一台有可用共享的主機)");
         lines.put("\t\t_SMB_TARGET_PROBE_HINT_ZH=\"請在設定頁移除 SMB 地址路徑中的分號、驚歎號、引號、反引號、管線或換行字元\"", "\t\t_SMB_TARGET_PROBE_HINT_ZH=\"請在設定頁移除 SMB 地址路徑中的分號、驚嘆號、引號、反引號、管線或換行字元\"");
-        lines.put("\t\t\t\t_SMB_TARGET_PROBE_HINT_ZH=\"腳本已先用 Dex 快速探測，Dex 不可用時纔回退 nc；請開啟 SMB 伺服器、確認 IP/port、防火牆與同網段\"", "\t\t\t\t_SMB_TARGET_PROBE_HINT_ZH=\"腳本已先用 Dex 快速探測，Dex 不可用時才回退 nc；請開啟 SMB 伺服器、確認 IP/port、防火牆與同網段\"");
-        lines.put("\t\t_SMB_TARGET_PROBE_HINT_ZH=\"請檢查 /data/local/tmp 是否可寫，以及設定頁的 SMB 使用者名與密碼是否含異常字元\"", "\t\t_SMB_TARGET_PROBE_HINT_ZH=\"請檢查 /data/local/tmp 是否可寫，以及設定頁的 SMB 用戶名與密碼是否含異常字元\"");
-        lines.put("\t\t\t_SMB_TARGET_PROBE_HINT_ZH=\"請在設定頁移除 SMB 地址路徑中的分號、驚歎號、引號、反引號、管線或換行字元\"", "\t\t\t_SMB_TARGET_PROBE_HINT_ZH=\"請在設定頁移除 SMB 地址路徑中的分號、驚嘆號、引號、反引號、管線或換行字元\"");
         lines.put("\techoRgb \"遠端不再儲存 restore_settings.conf；下載後本地生成，tools/ 使用本機補齊，入口/清單本地重建\" \"3\"", "\techoRgb \"遠端不再保存 restore_settings.conf；下載後本地生成，tools/ 使用本機補齊，入口/清單本地重建\" \"3\"");
         lines.put("# 這裏實際驗證「協議認證 + 遠端根 + Backup_zstd_X 子目錄」；任一失敗都必須在 Restore() 前中止。", "# 這裡實際驗證「協議認證 + 遠端根 + Backup_zstd_X 子目錄」；任一失敗都必須在 Restore() 前中止。");
         lines.put("# 注意：串流下載 stdout 是真實資料流，不能落檔也不能插入文字；這裏只記 meta/stderr/rc/HTTP code。", "# 注意：串流下載 stdout 是真實資料流，不能落檔也不能插入文字；这里只記 meta/stderr/rc/HTTP code。");
@@ -156,9 +153,6 @@ final class ScriptRoundTrip {
         lines.put("\t# 啟動時 remote_setup 已跑過, 這裏只檢查狀態", "\t# 啟動時 remote_setup 已跑過, 這裡只檢查狀態");
         lines.put("\t# 合併遠端 app_details.json 到本地，避免丟失遠端已有的字段", "\t# 合併遠端 app_details.json 到本地，避免丢失遠端已有的字段");
         lines.put("\t\t\t# 合併遠端資料到本地（本地資料優先，但保留遠端已有的字段）", "\t\t\t# 合併遠端數據到本地（本地數據優先，但保留遠端已有的字段）");
-        lines.put("\t\techoRgb \"請在設定頁選擇備份方式，並確認對應的 SMB 或 WebDAV 地址、使用者名稱與密碼\" \"3\"", "\t\techoRgb \"請在設定頁選擇備份方式，並確認對應的 SMB 或 WebDAV 地址、用戶名稱與密碼\" \"3\"");
-        lines.put("# 掃描使用既有 scan_smb() / _smb_scan_hosts()：優先 dex 併發 socket，fallback nc 併發。", "# 掃描使用既有 scan_smb() / _smb_scan_hosts()：優先 dex 併發 socket，fallback nc 並發。");
-        lines.put("\t# appList_network.txt 只有 Media 自訂資料夾壓縮檔可以裸列 *.tar/*.tar.zst。", "\t# appList_network.txt 只有 Media 自定義資料夾壓縮包可以裸列 *.tar/*.tar.zst。");
         lines.put("\t# Media 壓縮檔在 appList_network.txt 只允許第一層檔名；帶 slash 的 app payload / 子路徑一律不是 Media。", "\t# Media 壓縮包在 appList_network.txt 只允許第一層檔名；帶 slash 的 app payload / 子路徑一律不是 Media。");
         lines.put("# 這裏在 Media staging 第一次建立時先種入遠端既有 JSON，再由本輪備份覆寫有變更的 entry。", "# 這裡在 Media staging 第一次建立時先種入遠端既有 JSON，再由本輪備份覆寫有變更的 entry。");
         lines.put("# 列出遠端可用的備份目錄併產生 appList_network.txt", "# 列出遠端可用的備份目錄並產生 appList_network.txt");
@@ -186,7 +180,7 @@ final class ScriptRoundTrip {
         lines.put("\t\t\t_speedbackup_ui_must_rgb \"設備存在多使用者,選擇操作目標使用者\"", "\t\t\t_speedbackup_ui_must_rgb \"設備存在多用戶,選擇操作目標用戶\"");
         lines.put("\t\t\t\t[[ $REPLY = 0 ]] && echoRgb \"主使用者:$REPLY\" \"2\" || echoRgb \"分身使用者:$REPLY\" \"2\"", "\t\t\t\t[[ $REPLY = 0 ]] && echoRgb \"主用戶:$REPLY\" \"2\" || echoRgb \"分身用戶:$REPLY\" \"2\"");
         lines.put("\t\t\techoRgb \"主使用者:$user_id\" \"2\"", "\t\t\techoRgb \"主用戶:$user_id\" \"2\"");
-        lines.put("\t*) echoRgb \"請勿修改備份資料夾名稱，保持原本的Backup_壓縮演算法名稱_使用者id\" \"0\" && exit 2 ;;", "\t*) echoRgb \"請勿修改備份資料夾名稱，保持原本的Backup_壓縮算法名稱_使用者id\" \"0\" && exit 2 ;;");
+        lines.put("\t*) echoRgb \"請勿修改備份資料夾名稱，保持原本的Backup_壓縮演算法名稱_使用者id\" \"0\" && return 2 ;;", "\t*) echoRgb \"請勿修改備份資料夾名稱，保持原本的Backup_壓縮算法名稱_使用者id\" \"0\" && return 2 ;;");
         lines.put("#因接收USER_ID環境變數問題故將函數放在此處", "#因接收USER_ID環境變量問題故將函數放在此處");
         lines.put("\t\t\t\twarnInstallFlagsUnsupported) _dex_human_emit \"$_pkg\" \"警告：此係統不支援反射設定 installFlags：$4\" ;;", "\t\t\t\twarnInstallFlagsUnsupported) _dex_human_emit \"$_pkg\" \"警告：此系統不支援反射設定 installFlags：$4\" ;;");
         lines.put("\t\t\t\twarnParamUnsupported) _dex_human_emit \"$_pkg\" \"警告：此係統不支援 session 參數 $4\" ;;", "\t\t\t\twarnParamUnsupported) _dex_human_emit \"$_pkg\" \"警告：此系統不支援 session 參數 $4\" ;;");
@@ -331,7 +325,6 @@ final class ScriptRoundTrip {
         lines.put("\t# 某些流程/併發 trap 可能已清掉暫存清單；不存在時視為空，避免 stderr.log 出現 cat: No such file。", "\t# 某些流程/並發 trap 可能已清掉暫存清單；不存在時視為空，避免 stderr.log 出現 cat: No such file。");
         lines.put("\t\t\techoRgb \"開始備份自訂目錄\" \"1\"", "\t\t\techoRgb \"開始備份自定義目錄\" \"1\"");
         lines.put("\t\t\t\t[[ ! -f $mediatxt ]] && echo \"#不需要恢復的資料夾請在開頭使用#註釋 比如：#Download\" > \"$mediatxt\"", "\t\t\t\t[[ ! -f $mediatxt ]] && echo \"#不需要恢復的資料夾請在開頭使用#注釋 比如：#Download\" > \"$mediatxt\"");
-        lines.put("\t\t\t\t\t\techoRgb \"KernelSU adb不支援備份\" \"0\"", "\t\t\t\t\t\techoRgb \"KernelSU adb不支持備份\" \"0\"");
         lines.put("\t\t\tnotification_progress \"102\" \"$B\" \"$B\" \"Media備份完成 $(endtime 1 \"自訂備份\")\"", "\t\t\tnotification_progress \"102\" \"$B\" \"$B\" \"Media備份完成 $(endtime 1 \"自定義備份\")\"");
         lines.put("\t\t\tendtime 1 \"自訂備份\"", "\t\t\tendtime 1 \"自定義備份\"");
         lines.put("\t\t\techoRgb \"自訂路徑為空 無法備份\" \"0\"", "\t\t\techoRgb \"自定義路徑為空 無法備份\" \"0\"");
@@ -346,10 +339,6 @@ final class ScriptRoundTrip {
         lines.put("# 壓縮檔清單從 Media/app_details.json 推導，避免重新上傳 mediaList.txt。", "# 壓縮包清單從 Media/app_details.json 推導，避免重新上傳 mediaList.txt。");
         lines.put("\t\techoRgb \"Media/app_details.json 沒有可恢復的自訂資料夾 key，跳過串流 Media 恢復\" \"0\"", "\t\techoRgb \"Media/app_details.json 沒有可恢復的自定義資料夾 key，跳過串流 Media 恢復\" \"0\"");
         lines.put("\techoRgb \"串流 Media metadata 已下載，將依 appList_network.txt 選項恢復自訂資料夾壓縮檔\" \"1\"", "\techoRgb \"串流 Media metadata 已下載，將依 appList_network.txt 選項恢復自定義資料夾壓縮包\" \"1\"");
-        lines.put("\t*) echoRgb \"串流恢復自訂資料夾僅支援 smb / webdav (目前 remote_type=$remote_type)\" \"0\"; return 1 ;;", "\t*) echoRgb \"串流恢復自定義資料夾僅支援 smb / webdav (目前 remote_type=$remote_type)\" \"0\"; return 1 ;;");
-        lines.put("\t\techoRgb \"請先執行 '列出遠端備份' 產生清單，保留 Media 後再來串流恢復自訂資料夾\" \"3\"", "\t\techoRgb \"請先執行 '列出遠端備份' 產生清單，保留 Media 後再來串流恢復自定義資料夾\" \"3\"");
-        lines.put("\t\techoRgb \"appList_network.txt 沒有 Media 或自訂資料夾壓縮檔項目，沒有可串流恢復的自訂資料夾\" \"0\"", "\t\techoRgb \"appList_network.txt 沒有 Media 或自定義資料夾壓縮包項目，沒有可串流恢復的自定義資料夾\" \"0\"");
-        lines.put("\techoRgb \"串流恢復自訂資料夾來源: $remote_type://$REMOTE_HOST/ ($_RESTORE_SUBDIR)\" \"3\"", "\techoRgb \"串流恢復自定義資料夾來源: $remote_type://$REMOTE_HOST/ ($_RESTORE_SUBDIR)\" \"3\"");
         lines.put("\tdisable_verify || { echoRgb \"無法儲存安裝安全設定，已停止恢復\" 0; return 1; }", "\tdisable_verify || { echoRgb \"無法保存安裝安全設定，已停止恢復\" 0; return 1; }");
         lines.put("\t\t\"\"|0) echoRgb \"appList.txt包名為空或是被註釋了\\n 請執行start.sh獲取應用列表再來恢復\" \"0\"; exit 1 ;;", "\t\t\"\"|0) echoRgb \"appList.txt包名為空或是被注釋了\\n 請執行start.sh獲取應用列表再來恢復\" \"0\"; exit 1 ;;");
         lines.put("\t\t\t_speedbackup_prompt_hint \"檢測目前使用者$user與恢復資料夾使用者:$Get_user不同，選項一繼續恢復，選項二不恢復並離開腳本\"", "\t\t\t_speedbackup_prompt_hint \"檢測當前用戶$user與恢復資料夾用戶:$Get_user不同，選項一繼續恢復，選項二不恢復並離開腳本\"");
@@ -388,7 +377,6 @@ final class ScriptRoundTrip {
         lines.put("        _selection_phase=\"取得本機應用併合併既有清單\"", "        _selection_phase=\"取得本機應用並合併既有清單\"");
         lines.put("\t# 快照備份前遠端大小 (backup() 主函數纔有做這個快照, backup_media 是獨立函數需自己補上,", "\t# 快照備份前遠端大小 (backup() 主函數才有做這個快照, backup_media 是獨立函數需自己補上,");
         lines.put("\t\t\t[[ ! -f $mediatxt ]] && echo \"#不需要恢復的資料夾請在開頭使用#註釋 比如：#Download\" > \"$mediatxt\"", "\t\t\t[[ ! -f $mediatxt ]] && echo \"#不需要恢復的資料夾請在開頭使用#注釋 比如：#Download\" > \"$mediatxt\"");
-        lines.put("\t\t\t\t\techoRgb \"KernelSU adb不支援備份\" \"0\"", "\t\t\t\t\techoRgb \"KernelSU adb不支持備份\" \"0\"");
         lines.put("\t\t# 收尾: 若 Media 內無任何備份檔 (全部跳過/不支援), 清掉空殼避免上傳空目錄", "\t\t# 收尾: 若 Media 內無任何備份檔 (全部跳過/不支持), 清掉空殼避免上傳空目錄");
         lines.put("\t\t# 故改用 _media_created 旗標 (有實際處理過至少一個資料夾纔會被設成1) 判斷, 不能沿用本機檔案掃描", "\t\t# 故改用 _media_created 旗標 (有實際處理過至少一個資料夾才會被設成1) 判斷, 不能沿用本機檔案掃描");
         lines.put("\t\tendtime 1 \"自訂備份\"", "\t\tendtime 1 \"自定義備份\"");
