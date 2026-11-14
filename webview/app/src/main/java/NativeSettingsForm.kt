@@ -55,7 +55,7 @@ internal class NativeSettingsForm(context:Context,private val catalog:NativeCata
                 key=="user"->"使用者"
                 key in setOf("rgb_a","rgb_b","rgb_c")->"終端配色"
                 key=="log_max_size_mb"->"日誌"
-                key in setOf("update","cdn")->"腳本更新"
+                key in setOf("update","cdn")->"自動更新"
                 Regex("^(Zstd_|Compression_method|Backup_suffix)").containsMatchIn(key)->"壓縮與封裝"
                 Regex("^(restore_|recovery_mode|media_recovery)").containsMatchIn(key)->"恢復設定"
                 key in paths||key in lists||key=="mount_point"->"路徑與清單"

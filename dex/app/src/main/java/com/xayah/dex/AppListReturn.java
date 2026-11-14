@@ -17,8 +17,8 @@ import java.util.concurrent.atomic.*;
 /** Root-side one-session native APK transport. No browser tasks, polling or arbitrary commands. */
 public final class AppListReturn {
     private static final String PACKAGE="io.github.yawasau.speedbackup.webview";
-    private static final long APK_VERSION=138;
-    private static final String APK_SHA="84b01978e6226e8d402662f981ff6d31eb7b15c2ca4e03b85aeb1b1a639c65bd";
+    private static final long APK_VERSION=147;
+    private static final String APK_SHA="372a7453fb8d3066cfbee15201793c32cffbb54a4cebb7984ca9d4623ac10b7b";
     private static final String PROTOCOL="speedbackup.webview.v1";
     private static final String CERT="73d49c551002cb071ac89ac6bad572ec999dc0b9f2fbb381130f84fbd0ea251e";
     private static int number(Object value,String name,int fallback){try{return ((Number)field(value,name)).intValue();}catch(Exception e){return fallback;}}

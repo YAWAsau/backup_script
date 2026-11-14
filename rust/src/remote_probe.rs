@@ -58,6 +58,7 @@ pub(crate) fn webdav_code(tools:&Path,scratch:&Scratch,body:&str,cancel:Option<&
 }
 fn webdav_code_budget(tools:&Path,scratch:&Scratch,body:&str,cancel:Option<&CancelEvent>,budget:Duration)->io::Result<i64>{
     let mut cmd=Command::new("/system/bin/app_process");
+    cmd.current_dir("/");
     cmd.env("CLASSPATH",tools.join("classes.dex")).args(["/system/bin","com.xayah.dex.WebDavUtil","discoveryCheck"]);
     let(ok,text)=execute_for(cmd,scratch,Some(body),cancel,budget.min(Duration::from_secs(12)))?;
     if !ok{return Ok(0);}
@@ -72,6 +73,35 @@ pub(crate) fn smb_command(tools:&Path,scratch:&Scratch,host:&str,port:u16,user:&
     if share.is_empty(){cmd.args(["-g","-L",&format!("//{host}")]);}else{cmd.arg(format!("//{host}/{share}")).args(["-c","pwd; exit"]);}
     Ok(cmd)
 }
+// Only an explicit negotiated/selected line from the successful connection.
+// Never infer from configured maximums or from a separate forced-version probe.
+pub(crate) fn dialect_name(code:&str)->&'static str {
+    match code {"SMB2_02"=>"2.0.2","SMB2_10"=>"2.1","SMB3_00"=>"3.0","SMB3_02"=>"3.0.2","SMB3_11"=>"3.1.1",_=>""}
+}
+fn negotiated_dialect(text:&str)->&str {
+    let mut found="";
+    for line in text.lines() {
+        let lower=line.to_ascii_lowercase();
+        let tail=if let Some(i)=lower.find("selected protocol"){&line[i+17..]}
+            else if let Some(i)=lower.find("negotiated dialect"){&line[i+18..]}else{continue};
+        let token=tail.trim_start_matches(|c:char|c.is_ascii_whitespace()||c==':'||c=='='||c=='[')
+            .split(|c:char|!c.is_ascii_alphanumeric()&&c!='_').next().unwrap_or("");
+        if !dialect_name(token).is_empty() {if !found.is_empty()&&found!=token{return "";}found=token;}
+    }
+    found
+}
+#[cfg(test)] mod dialect_tests {
+    use super::*;
+    #[test] fn negotiated_only() {
+        assert_eq!(negotiated_dialect(" negotiated dialect[SMB2_02] against server[192.168.0.113]"),"SMB2_02");
+        assert_eq!(negotiated_dialect("Selected protocol SMB3_11"),"SMB3_11");
+        assert_eq!(negotiated_dialect("client max protocol = SMB3_11\nSMB3_11 supported"),"");
+        assert_eq!(negotiated_dialect("Selected protocol SMB3_11_EXTRA"),"");
+        assert_eq!(negotiated_dialect("Selected protocol SMB3_11\nnegotiated dialect[SMB2_02]"),"");
+        assert_eq!(dialect_name("SMB3_11"),"3.1.1");
+        assert_eq!(dialect_name("NT1"),"");
+    }
+}
 pub(crate) fn smb_failed(ok:bool,text:&str)->bool {
     if !ok{return true;}
     let lower=text.to_ascii_lowercase();
@@ -81,10 +111,11 @@ pub fn webdav_reason(code:i64,user:&str,pass:&str)->&'static str {
     match code {401=>if user.is_empty(){"account_missing"}else if pass.is_empty(){"password_missing"}else{"auth_failed"},403=>"access_denied",404=>"path_missing",405|501|422=>"protocol_error",429=>"rate_limited",500..=599=>"server_error",_=>"connection_failed"}
 }
 fn settings(conf:&Path)->io::Result<std::collections::BTreeMap<String,String>> {Ok(super::web_settings::parse_runtime(&super::runtime_conf::read(conf)?)?.into_iter().map(|f|(f.key,f.value)).collect())}
-pub fn probe(conf:&Path,cancel:Option<&CancelEvent>)->Result<(),String>{probe_impl(conf,cancel,true)}
-pub(crate) fn probe_saved(conf:&Path,cancel:Option<&CancelEvent>)->Result<(),String>{probe_impl(conf,cancel,false)}
-fn probe_impl(conf:&Path,cancel:Option<&CancelEvent>,track:bool)->Result<(),String>{
-    let run=||->io::Result<Result<(),String>>{
+pub fn probe(conf:&Path,cancel:Option<&CancelEvent>)->Result<(),String>{probe_with_dialect(conf,cancel).map(|_|())}
+pub(crate) fn probe_with_dialect(conf:&Path,cancel:Option<&CancelEvent>)->Result<String,String>{probe_impl(conf,cancel,true)}
+pub(crate) fn probe_saved(conf:&Path,cancel:Option<&CancelEvent>)->Result<(),String>{probe_impl(conf,cancel,false).map(|_|())}
+fn probe_impl(conf:&Path,cancel:Option<&CancelEvent>,track:bool)->Result<String,String>{
+    let run=||->io::Result<Result<String,String>>{
         let begin=Instant::now();
         let mut map=match settings(conf){Ok(v)=>v,Err(_)=>return Ok(Err("invalid_config".into()))};
         let protocol=map.get("remote_type").cloned().unwrap_or_default();
@@ -95,7 +126,7 @@ fn probe_impl(conf:&Path,cancel:Option<&CancelEvent>,track:bool)->Result<(),Stri
             if identity.is_empty(){return Ok(Err("discovery_unconfigured".into()));}
             if protocol=="webdav"&&!super::applist_web::lan_discovery::valid_webdav_identity(&identity,&url){return Ok(Err("discovery_unconfigured".into()));}
             if protocol=="webdav" {match probe_saved(conf,cancel){
-                Ok(())=>return Ok(Ok(())),
+                Ok(())=>return Ok(Ok(String::new())),
                 Err(reason) if !matches!(reason.as_str(),"connection_failed"|"timeout")=>return Ok(Err(reason)),
                 Err(_)=>{}
             }}
@@ -117,7 +148,7 @@ fn probe_impl(conf:&Path,cancel:Option<&CancelEvent>,track:bool)->Result<(),Stri
                 let scratch=Scratch::new()?;
                 let body=json!({"url":url,"user":user,"password":pass}).to_string();
                 let code=webdav_code_budget(tools,&scratch,&body,cancel,remaining)?;
-                if code==207{return Ok(Ok(()));}
+                if code==207{return Ok(Ok(String::new()));}
                 if code==404 {
                     let base=url.trim_end_matches('/');let rest=base.split_once("://").map(|v|v.1).unwrap_or("");
                     if rest.contains('/') {url=base.rsplit_once('/').unwrap().0.to_owned();continue;}
@@ -130,9 +161,14 @@ fn probe_impl(conf:&Path,cancel:Option<&CancelEvent>,track:bool)->Result<(),Stri
         if share.is_empty(){return Ok(Err("share_required".into()));}
         if matches!(share,"."|"..")||share.chars().any(char::is_control)||share.contains(['\\','?','#']){return Ok(Err("invalid_address".into()));}
         let scratch=Scratch::new()?;
-        let cmd=smb_command(tools,&scratch,&host,port,user,pass,share)?;
+        let mut cmd=smb_command(tools,&scratch,&host,port,user,pass,share)?;
+        cmd.args(["-d","6"]);
         let(ok,text)=execute(cmd,&scratch,None,cancel)?;
-        if !smb_failed(ok,&text){return Ok(Ok(()));}
+        // Verbose GENSEC can report failed Kerberos before successful NTLM.
+        // Successful exit plus the client's tree-connect marker proves access.
+        if ok&&(text.lines().any(|line|line.trim()=="tconx ok")||!smb_failed(ok,&text)){
+            return Ok(Ok(negotiated_dialect(&text).to_owned()));
+        }
         let reason=super::remote_control::smb_reason(&text);
         Ok(Err(if reason=="auth_failed"{webdav_reason(401,user,pass)}else{reason}.into()))
     };

@@ -113,6 +113,7 @@ internal val nativeSettingIconLabels=mapOf(
     "語言" to "Shell_LANG",
     "亮屏偽裝" to "setDisplayPowerMode",
     "腳本自更新" to "update",
+    "自動更新" to "update",
     "更新節點" to "cdn",
     "使用者" to "user",
     "終端主題色" to "rgb_a",

@@ -9,7 +9,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 & python -X utf8 (Join-Path $PSScriptRoot 'restore_upstream.py') --check
-if ($LASTEXITCODE -ne 0) { throw 'Restore the matching upstream ZIP before building.' }
+if ($LASTEXITCODE -ne 0) { throw 'Bundled upstream source integrity check failed.' }
 & (Join-Path $PSScriptRoot 'sync_version.ps1')
 $hostExe = Join-Path $PSHOME 'pwsh.exe'
 if (-not (Test-Path -LiteralPath $hostExe)) { $hostExe = Join-Path $PSHOME 'powershell.exe' }

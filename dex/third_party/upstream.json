@@ -1,0 +1,14 @@
+{
+  "gson": {
+    "repository": "https://github.com/google/gson",
+    "commit": "a961b0fe088f8558d00cc1b56e506a3656907a91",
+    "version": "2.15.1-a961b0fe-SNAPSHOT",
+    "sha256": "58dc24dbb818c18340a598337c76e75d35f2295b507b51bbdba5d8b62eb78eff"
+  },
+  "hiddenapibypass": {
+    "repository": "https://github.com/LSPosed/AndroidHiddenApiBypass",
+    "commit": "4efc64fcada7df15e7b5ba068e774343b760270d",
+    "version": "6.2-4efc64fc-SNAPSHOT",
+    "sha256": "dcdbd6fc8f70d722b06700cbe30888ded5d329bc3088d3ad92deddbdc8895db3"
+  }
+}

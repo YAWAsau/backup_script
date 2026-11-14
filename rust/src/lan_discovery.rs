@@ -200,6 +200,7 @@ fn webdav_probe(run:&Run,parameters:&[String],timeout:Duration,mut emit:impl FnM
             let scratch=super::super::remote_probe::Scratch::new()?;
             let exe=std::env::current_exe()?;
             let mut cmd=std::process::Command::new("/system/bin/app_process");
+            cmd.current_dir("/");
             cmd.env("CLASSPATH",exe.with_file_name("classes.dex"))
                 .args(["/system/bin","com.xayah.dex.WebDavDiscoveryUtil","scanWebDavStream"])
                 .args(parameters).args([if timeout.as_secs()>14{"30000"}else{"12000"},"96","0"]);

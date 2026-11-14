@@ -1,0 +1,48 @@
+{
+  "AndroidLiquidGlass": {
+    "repository": "https://github.com/Kyant0/AndroidLiquidGlass",
+    "commit": "eb4a0ea2e17542ea28c2e71088f7dd9acf77aad5",
+    "version": "2.0.1-eb4a0ea2-SNAPSHOT",
+    "adaptations": [
+      "Android-only awaitFrame alias to avoid self-recursion",
+      "Disabled-state and configurable shape support",
+      "Web theme brightness and page drag position inputs",
+      "Stable external tab selection and latest callback; exit excluded from drag selection",
+      "Shared optical surface for buttons and navigation; anchored press scale without drag translation",
+      "Window-coordinate backdrop across Compose owners avoids exception-driven coordinate fallback",
+      "Upstream centered-coordinate radius fix applied to guarded SafeLensShaders; custom glass core retained"
+    ],
+    "window_inverse_scope": {
+      "commit": "65ab177e90e5c1d8c62e70cf7755841982da65f6",
+      "source": "https://raw.githubusercontent.com/Kyant0/AndroidLiquidGlass/65ab177e90e5c1d8c62e70cf7755841982da65f6/backdrop/src/commonMain/kotlin/com/kyant/backdrop/internal/InverseLayerScope.kt"
+    }
+  },
+  "Tweak-Alpha": {
+    "repository": "https://github.com/lumkit/Tweak-Alpha",
+    "commit": "785261ce45b028ef36d477055d6bdc0b787b26c1",
+    "adaptations": [
+      "Native file picker selection/navigation flow adapted to authenticated Rust browse API; no independent file writes"
+    ]
+  },
+  "Miuix": {
+    "repository": "https://github.com/compose-miuix-ui/miuix",
+    "commit": "9d4b9c85c18707c7da12cf8c497ea57955fcf81e",
+    "version": "0.9.4-9d4b9c8-SNAPSHOT",
+    "patch": "patches/miuix-deferred-predictive-back.patch",
+    "tests": "194 navigation tests passed"
+  },
+  "MaterialKolor": {
+    "repository": "https://github.com/jordond/MaterialKolor",
+    "commit": "c5100e46c3996503c025d86448bfb8d59a28a463",
+    "version": "6.0.0-c5100e46-SNAPSHOT",
+    "mcu_checked_revision": "194144d75ed7d34f06264a625e086db81a7ab9aa",
+    "mcu_review": "Latest Kotlin algorithms unchanged from pinned submodule"
+  },
+  "libsu": {
+    "repository": "https://github.com/topjohnwu/libsu",
+    "commit": "4910d8dcc1ea3273246614b356fba56e1ce002a5",
+    "version": "6.0.0-4910d8dc-SNAPSHOT",
+    "module": "core",
+    "build": "Original upstream source; official Gradle/AGP; only core module selected."
+  }
+}

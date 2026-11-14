@@ -1,0 +1,30 @@
+{
+  "repository": "https://github.com/BYVoid/OpenCC",
+  "commit": "fae2a0a911c30764e669a7d8b0591cd8e852934a",
+  "license": "Apache-2.0",
+  "files": {
+    "CJK_Compatibility_Ideographs.txt": "e9623acec48d384f99d37d2760bd14a00b6d0cddad7707290dbb0b8c97a2904a",
+    "HKPhrases.txt": "de3ed57532c9e57e73998f696ec8afe49307b44aa01a8342aa9ae6ed1f6dd9da",
+    "LICENSE": "d4d265b6ef2cfd0fb645acee9d9092103d5fadbdae887eb87c58a5d9b0780e19",
+    "s2twp.json": "681dd1ff5f3a1efe93a6f56006ee7f58f767fa0366fd3a2ec6165c983e39415d",
+    "scripts/common.py": "9f467c0aa1e1f44b0ccfb3c0170a873af1043bea7342c733f4ed61b3b5d8eae5",
+    "scripts/extract_tofu_risk.py": "da82c04b3db65901f845f8ea41e9b675d34d24f33d9623da5edc85901f78d0f4",
+    "scripts/generate_st_phrases_from_regional_phrases.py": "94b214bec33ae0034e303a2d009f690649962c133ef39411999f2ce271fa9b32",
+    "scripts/reverse.py": "2f1cdfff49f3af85e9f1f88fa92be936b21e83ac3ec72d0ffca214b49630bec9",
+    "STCharacters.txt": "a0ca1601c70648cf48b33c3c6210ccbecc5c7eead4b4c3daf76587ba2c03582b",
+    "STPhrases.txt": "24d23700f4f3d1860b899aa90896dcc7ec56c535a0b3a246bbf5a7048c7bdeb8",
+    "STPhrases_GeneratedFromRegionalPhrases.txt": "3bb87c6d0f9f9454a8559f221309a56bbe212dcad2b6c72f198b8480d1bbb606",
+    "t2s.json": "96fe5cc374a80ccc49e3370006cce3aefe4af955868ae0b14fb3079ec695be4f",
+    "TSCharacters.txt": "9ff46a7d30e5765375eb13d33f2b03a34d298913caf2b120380679f33ae1642d",
+    "TSCharactersExt.txt": "239a67aae2bb6b4999f65e1df50ee67794ea5b63d269a8e6cb9a99efe0eb749e",
+    "TSPhrases.txt": "1b1e60a3d50492bc088bcd4372152570b5f0ccbe2ded0b66c90b6b8eeb5f849f",
+    "tw2sp.json": "f8cf900c1b456a7d2e8477f5bf146814071d28ad64ef37fbc0ae757930c167d5",
+    "TWPhrases.txt": "4d3f83634d8a02be5fc82def7e6ae418ab2ab501b100952da5ef934460813a41",
+    "TWPhrasesRev.txt": "46d6165c6ff17dbcb169fe5ee72c410f5a9555b64ca99f067bb2d0b30248a2f6",
+    "TWVariants.txt": "245b94eb5842957e735dd44b7e7d4ff469a3643126cc8fa511adda5281e9cb86",
+    "TWVariantsPhrases.txt": "36df033675a2e9152927fa8419f0732a061cb4909c5060f25a5cfc9b08ffff06",
+    "TWVariantsRev.txt": "9acedefa5422ee1dd3152981eb2f52ebb5a2b8da0c19430b406f382140db3e64",
+    "TWVariantsRevPhrases.txt": "5ebfb4bdc938c2b14e01ace378988d5d3dc12462b3496ef1d424951ccd371256"
+  },
+  "generated": "TWVariantsRev: upstream reverse.py; TSCharactersExt: extract_tofu_risk.py; STPhrases_GeneratedFromRegionalPhrases: pinned regional keys projected by official OpenCC 1.4.2 t2s with pinned text dictionaries (length >=3, unique keys)."
+}

@@ -47,6 +47,9 @@ internal class NativeEditorPage(private val session:NativeSession,private val co
     private var pingAt=0L
     private var picker:NativePickerController?=null
     @Volatile private var discovery:NativeDiscovery?=null
+    private var silentDiscovery=false
+    private var backgroundInputMatches:(()->Boolean)?=null
+    private fun discoveryVisible()=discovery?.let{!silentDiscovery||!it.resolving}==true
     private var networkTransport:NativeApi?=null
     private var networkEpoch=0L
     private var networkVisible=false
@@ -76,24 +79,29 @@ internal class NativeEditorPage(private val session:NativeSession,private val co
     }
     private fun stopNetwork(){++networkEpoch;networkTransport?.close();networkTransport=null;lanAvailable=false;networkMessage="正在讀取區域網路狀態…";discovery?.networkUnavailable(networkMessage)}
     private var initialDiscoveryPending=false
-    private fun openDiscovery(fresh:Boolean=false){discoveryProtocol="";if(!lanAvailable){session.status=networkMessage;session.emit();return};discoveryLogin=null;discovery?.close();c.forgetPrefix("discovery:");discovery=NativeDiscovery(session).also{it.start(fresh)};session.emit()}
+    private fun openDiscovery(fresh:Boolean=false){discoveryProtocol="";if(!lanAvailable){session.status=networkMessage;session.emit();return};silentDiscovery=false;discoveryLogin=null;discovery?.close();c.forgetPrefix("discovery:");discovery=NativeDiscovery(session).also{it.start(fresh)};session.emit()}
     private var autoConnectionPending=""
     private var discoveryProtocol=""
     private fun startAutoConnection(){
         val fields=settings[panel]?:return
+        discovery?.close();discovery=null;discoveryLogin=null
         fun value(key:String)=fields.firstOrNull{it.optString("key")==key}?.optString("value").orEmpty()
         val protocol=value("remote_type")
         autoConnectionPending=""
         if(value("remote_address_mode")!="auto"||protocol !in setOf("smb","webdav"))return
         if(!lanAvailable){autoConnectionPending=panel;session.status=networkMessage;session.emit();return}
-        openDiscovery()
-        discoveryProtocol=if(protocol=="smb")"SMB" else "WebDAV"
-        val scan=discovery?:return
         val url=value("${protocol}_url");val user=value("${protocol}_remote_user");val password=value("${protocol}_remote_pass")
         // Only the previously configured endpoint may receive stored credentials without a new selection.
         if(url.isNotBlank()&&user.isNotEmpty()&&password.isNotEmpty()){
+            discovery?.close();discoveryLogin=null;c.forgetPrefix("discovery:")
+            silentDiscovery=true
+            val scan=NativeDiscovery(session);discovery=scan
+            discoveryProtocol=if(protocol=="smb")"SMB" else "WebDAV"
             val host=runCatching{java.net.URI(url).host}.getOrNull().orEmpty()
             resolveDiscovery(scan,NativeDiscovery.Endpoint("",discoveryProtocol,host,url,value("remote_${protocol}_identity")),user,password)
+        }else{
+            openDiscovery()
+            discoveryProtocol=if(protocol=="smb")"SMB" else "WebDAV"
         }
         session.emit()
     }
@@ -107,10 +115,24 @@ internal class NativeEditorPage(private val session:NativeSession,private val co
         session.emit()
     }
     private fun resolveDiscovery(scan:NativeDiscovery,endpoint:NativeDiscovery.Endpoint,user:String,password:String){
+        val background=silentDiscovery
+        val originPanel=panel
+        val prefix=if(endpoint.type=="SMB")"smb" else "webdav"
+        val watched=setOf("remote_type","remote_address_mode","remote_${prefix}_identity","${prefix}_url","${prefix}_remote_user","${prefix}_remote_pass")
+        fun inputs()=settings[originPanel].orEmpty().filter{it.optString("key") in watched}.map{it.optString("key") to it.optString("value")}
+        val originalInputs=inputs()
+        if(background)backgroundInputMatches={panel==originPanel&&inputs()==originalInputs}
+        fun current():Boolean {
+            if(closed.get()||session.finished||!lanAvailable||discovery!==scan)return false
+            if(background&&(panel!=originPanel||inputs()!=originalInputs)){
+                scan.close();discovery=null;session.emit();return false
+            }
+            return true
+        }
         scan.resolve(endpoint,user,password,{target,error->
-            if(lanAvailable&&discovery===scan){requestDiscoveryLogin(target,error);discoveryLogin?.let{it.user=user;it.password=password};session.emit()}
+            if(current()){requestDiscoveryLogin(target,error);discoveryLogin?.let{it.user=user;it.password=password};session.emit()}
         }){verified->
-            if(lanAvailable&&discovery===scan){
+            if(current()){
                 val prefix=if(endpoint.type=="SMB")"smb" else "webdav"
                 settings.getValue(panel).forEach{field->when(field.optString("key")){
                     "${prefix}_remote_user"->field.put("value",user)
@@ -179,7 +201,10 @@ internal class NativeEditorPage(private val session:NativeSession,private val co
                 identity?.put("value",endpoint.identity)
                 target.put("value",endpoint.url)
                 protocol.put("value",if(endpoint.type=="SMB")"smb" else "webdav")
-                scan.close();discovery=null;form.connectionSetup=true
+                // Discovery is a child of the current editor. Preserve its entry mode:
+                // shrinking a full settings page here also reuses/clamps its scroll state
+                // and makes Save finish the editor instead of returning to that page.
+                scan.close();discovery=null
                 session.status=if(fixedWebdav)"已確認完整地址；此服務使用固定地址，儲存設定後即可使用。" else "已確認並填入完整地址，儲存設定後即可使用。"
                 changed()
     }
@@ -327,7 +352,10 @@ internal class NativeEditorPage(private val session:NativeSession,private val co
         }
         panel=key
     }
-    private fun changed(){draftDirty=true;draftTimer?.cancel(false);draftTimer=session.later(100){flushDraft()};prepareIcons();session.emit()}
+    private fun changed(){
+        if(silentDiscovery&&discovery!=null&&backgroundInputMatches?.invoke()==false){discovery?.close();discovery=null}
+        draftDirty=true;draftTimer?.cancel(false);draftTimer=session.later(100){flushDraft()};prepareIcons();session.emit()
+    }
     private fun currentDraft():String {
         val edits=JSONObject()
         for((key,fields) in settings){val values=JSONObject();for(f in fields)if(f.getString("value")!=f.getString("original"))values.put(f.getString("key"),arr(listOf(f.getString("original"),f.getString("value"))));edits.put(key,values)}
@@ -419,6 +447,7 @@ internal class NativeEditorPage(private val session:NativeSession,private val co
     }
     private fun save(){
         if(session.finished||submissionUnknown)return
+        if(silentDiscovery){discovery?.close();discovery=null}
         val run=run@{
             if(session.finished||submissionUnknown)return@run
             val saved=mutableListOf<String>()
@@ -441,13 +470,13 @@ internal class NativeEditorPage(private val session:NativeSession,private val co
         // Only a managed, clean editor can promise cancellation back to its menu.
         // External launches and authentication retries have no in-app parent.
         model.put("returnToMenu",manager.optBoolean("managed")&&!form.authSetup&&
-            !submissionUnknown&&discovery==null&&editing==null&&picker==null&&
+            !submissionUnknown&&!discoveryVisible()&&editing==null&&picker==null&&
             !(panel!="apps"&&manager.optString("panel")=="manager")&&
             !(panel=="apps"&&selection.page>0)&&selection.changed().isEmpty()&&
             settingsChanged()==0&&selection.timeline.optString("mode","match")=="match")
         model.put("backRoute",when {
             submissionUnknown->""
-            discovery!=null||editing!=null->baseRoute
+            discoveryVisible()||editing!=null->baseRoute
             picker!=null->if(picker!!.returnsToEditor())baseRoute else ""
             panel!="apps"&&manager.optString("panel")=="manager"->"editor:apps:${selection.page}"
             panel=="apps"&&selection.page>0->"editor:apps:${selection.page-1}"
@@ -460,7 +489,7 @@ internal class NativeEditorPage(private val session:NativeSession,private val co
             model.put("sectionRoute","editor:apps:${selection.page}")
             return
         }
-        discovery?.let{model.put("screen",discoveryScreen()).put("sectionRoute","editor:discovery");return}
+        if(discoveryVisible()){model.put("screen",discoveryScreen()).put("sectionRoute","editor:discovery");return}
         picker?.let{model.put("picker",it.model());model.put("sectionRoute","picker:${it.identity}");return}
         editing?.let{field->model.put("screen",listScreen(field));return}
         val nodes=if(panel=="apps")appNodes() else form.rows(panel,if(manager.optBoolean("discoverySetup"))settings.getValue(panel).filter{it.optString("key") in setOf("remote_type","remote_address_mode","remote_smb_identity","remote_webdav_identity","smb_url","smb_remote_user","smb_remote_pass","webdav_url","webdav_remote_user","webdav_remote_pass")}else settings.getValue(panel),c,{changed()},{field->
@@ -484,7 +513,7 @@ internal class NativeEditorPage(private val session:NativeSession,private val co
     override fun back(){
         if(submissionUnknown){session.exit();return}
         if(discoveryLogin!=null){discoveryLogin=null;session.emit();return}
-        discovery?.let{it.close();discovery=null;session.emit();return}
+        discovery?.let{val visible=discoveryVisible();it.close();discovery=null;if(visible){session.emit();return}}
         picker?.let{it.back();changed();return}
         if(editing!=null){editing=null;session.emit();return}
         if(panel!="apps"&&manager.optString("panel")=="manager"){panel="apps";changed();return}
@@ -493,6 +522,7 @@ internal class NativeEditorPage(private val session:NativeSession,private val co
     }
     private fun cancel(){
         if(submissionUnknown){session.exit();return}
+        if(silentDiscovery){discovery?.close();discovery=null}
         val cancel={session.finish(session.api.post("cancel",""))}
         if(form.authSetup)cancel() else if(selection.changed().isNotEmpty()||settingsChanged()>0||selection.timeline.optString("mode","match")!="match")session.confirm("取消並返回？未儲存修改將放棄；先前已儲存的設定會保留。",cancel)else cancel()
     }

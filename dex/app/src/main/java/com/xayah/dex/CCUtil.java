@@ -96,6 +96,14 @@ public class CCUtil {
     private static void selftest() {
         CCHelper ccHelper = new CCHelper();
         int failed = 0;
+        failed += check("TW storage", "硬碟", ccHelper.s2t("闪存"));
+        failed += check("TW storage repeated", "硬碟", ccHelper.s2t(ccHelper.s2t("快閃記憶體")));
+        for (String label : new String[]{"閃存", "闪存", "快閃記憶體", "硬碟", "硬盘", "存儲", "存储"}) {
+            failed += check("TW storage alias " + label, "硬碟", ccHelper.s2t(label));
+            failed += check("CN storage alias " + label, "存储", ccHelper.t2s(label));
+            failed += check("storage switch " + label, "硬碟", ccHelper.s2t(ccHelper.t2s(label)));
+        }
+        failed += check("storage sentence", "儲存空間", ccHelper.s2t("存储空间"));
         failed += check("S2T 默认", "預設", ccHelper.s2t("默认"));
         failed += check("S2T 文件夹", "資料夾", ccHelper.s2t("文件夹"));
         failed += check("S2T 认证用户名", "認證使用者名稱", ccHelper.s2t("认证用户名"));
@@ -111,6 +119,11 @@ public class CCUtil {
         failed += check("T2S 迴圈", "循环", ccHelper.t2s("迴圈"));
         failed += check("T2S 重複", "重复", ccHelper.t2s("重複"));
         failed += check("T2S 合併", "合并", ccHelper.t2s("合併"));
+        failed += check("T2S repeat folder", "打开文件夹", ccHelper.t2s(ccHelper.t2s("開啟資料夾")));
+        failed += check("T2S repeat config", "配置文件", ccHelper.t2s(ccHelper.t2s("設定檔")));
+        failed += check("T2S document", "文档", ccHelper.t2s("文檔"));
+        failed += check("S2T regional terms", "軟體 網路 滑鼠 影片 記憶體", ccHelper.s2t("软件 网络 鼠标 视频 内存"));
+        failed += check("T2S regional terms", "软件 网络 鼠标 视频 内存", ccHelper.t2s("軟體 網路 滑鼠 影片 記憶體"));
         if (failed == 0) {
             System.out.println("CCUTIL_SELFTEST_OK cchelper.table_refresh.v1 zh_tw_polish.v1 repeat_merge_fix.v1");
             System.exit(0);

@@ -9,14 +9,33 @@ internal class NativeCatalog(context:Context) {
         @Volatile private var cached:NativeCatalog?=null
         fun get(context:Context):NativeCatalog=cached?:synchronized(this){cached?:NativeCatalog(context.applicationContext).also{cached=it}}
     }
-    private val language=context.assets.open("language.json").bufferedReader().use{JSONObject(it.readText())}
+    private val language=com.xayah.dex.CCHelper()
+    // Compatibility for backend-supplied labels. Local controls use stable IDs.
+    private fun metadataAliases(labels:Map<String,String>):Map<String,String> = buildMap {
+        for((label,key) in labels) {
+            put(label,key);put(language.s2t(label),key);put(language.t2s(label),key)
+        }
+    }
+    private val settingKeys by lazy { metadataAliases(nativeSettingIconLabels) }
+    private val homeKeys by lazy { metadataAliases(nativeHomeIconLabels) }
+    private val groupKeys by lazy { metadataAliases(mapOf("備份" to "backup","備份相關功能" to "backup","恢復" to "restore","恢復相關功能" to "restore")) }
+    fun settingIconKey(label:String):String=settingKeys[label].orEmpty()
+    fun homeIconKey(label:String):String=homeKeys[label]?:"unknown"
+    fun groupOrder(label:String):Int=when(groupKeys[label]){"backup"->0;"restore"->1;else->2}
+    private val translations=object:LinkedHashMap<String,String>(128,0.75f,true){
+        override fun removeEldestEntry(eldest:MutableMap.MutableEntry<String,String>?):Boolean=size>512
+    }
     fun text(value:String,locale:String):String {
-        val table=language.getJSONObject(if(locale=="zh-Hans")"simplified" else "traditional")
-        return buildString(value.length){for(ch in value)append(table.optString(ch.toString(),ch.toString()))}
+        if(value.all{it.code<128})return value
+        val simplified=locale=="zh-Hans"
+        val key=(if(simplified)"S:" else "T:")+value
+        if(value.length<=2048)synchronized(translations){translations[key]?.let{return it}}
+        val converted=if(simplified)language.t2s(value) else language.s2t(value)
+        if(value.length<=2048)synchronized(translations){translations[key]=converted}
+        return converted
     }
     fun localize(model:JSONObject,locale:String){
-        val table=language.getJSONObject(if(locale=="zh-Hans")"simplified" else "traditional")
-        fun convert(value:String)=buildString(value.length){for(ch in value)append(table.optString(ch.toString(),ch.toString()))}
+        fun convert(value:String)=text(value,locale)
         fun visit(value:Any?){when(value){
             is org.json.JSONArray->for(i in 0 until value.length())visit(value.opt(i))
             is JSONObject->{

@@ -9,13 +9,30 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import org.json.JSONObject
 
-internal fun nativeHomeIconKey(label:String)=when(label){
-    "品牌"->"brand";"型號"->"model";"閃存"->"storage";"處理器"->"processor";"記憶體"->"memory"
-    "Android"->"android";"核心"->"kernel";"SELinux"->"selinux";"目前使用者"->"user"
-    "執行時間"->"runtime";"開機時間"->"uptime";"深度睡眠"->"sleep";"腳本版本"->"script-version"
-    "管理器"->"manager";"busybox版本"->"busybox-version";"busybox路徑"->"busybox-path"
-    "腳本路徑"->"script-path";"作者"->"author";"支援"->"support";else->"unknown"
-}
+internal val nativeHomeIconLabels=mapOf(
+    "品牌" to "brand",
+    "型號" to "model",
+    "閃存" to "storage",
+    "快閃記憶體" to "storage",
+    "闪存" to "storage",
+    "硬盘" to "storage",
+    "存儲" to "storage",
+    "處理器" to "processor",
+    "記憶體" to "memory",
+    "Android" to "android",
+    "核心" to "kernel",
+    "SELinux" to "selinux",
+    "目前使用者" to "user",
+    "執行時間" to "runtime",
+    "開機時間" to "uptime",
+    "深度睡眠" to "sleep",
+    "腳本版本" to "script-version",
+    "管理器" to "manager",
+    "busybox版本" to "busybox-version",
+    "busybox路徑" to "busybox-path",
+    "腳本路徑" to "script-path",
+    "作者" to "author",
+    "支援" to "support")
 @Composable internal fun NativeHomeInfoGroup(rows:List<JSONObject>,card:Color,text:Color){
     if(LocalNativeMaterial.current){
         val colors=androidx.compose.material3.MaterialTheme.colorScheme

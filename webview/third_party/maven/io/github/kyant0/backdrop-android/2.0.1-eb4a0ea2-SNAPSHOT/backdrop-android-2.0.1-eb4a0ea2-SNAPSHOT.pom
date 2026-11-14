@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!-- This module was also published with a richer model, Gradle metadata,  -->
+  <!-- which should be used instead. Do not delete the following line which  -->
+  <!-- is to indicate to Gradle or any Gradle module metadata file consumer  -->
+  <!-- that they should prefer consuming it instead. -->
+  <!-- do_not_remove: published-with-gradle-metadata -->
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>io.github.kyant0</groupId>
+  <artifactId>backdrop-android</artifactId>
+  <version>2.0.1-eb4a0ea2-SNAPSHOT</version>
+  <packaging>aar</packaging>
+  <name>Backdrop</name>
+  <description>Compose Multiplatform Liquid Glass effects</description>
+  <url>https://github.com/Kyant0/AndroidLiquidGlass</url>
+  <inceptionYear>2025</inceptionYear>
+  <licenses>
+    <license>
+      <name>The Apache License, Version 2.0</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <developers>
+    <developer>
+      <id>Kyant0</id>
+      <name>Kyant</name>
+      <url>https://github.com/Kyant0</url>
+    </developer>
+  </developers>
+  <scm>
+    <connection>scm:git:git://github.com/Kyant0/AndroidLiquidGlass.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/Kyant0/AndroidLiquidGlass.git</developerConnection>
+    <url>https://github.com/Kyant0/AndroidLiquidGlass</url>
+  </scm>
+  <dependencies>
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-stdlib</artifactId>
+      <version>2.4.10</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.compose.foundation</groupId>
+      <artifactId>foundation-android</artifactId>
+      <version>1.12.0</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.compose.ui</groupId>
+      <artifactId>ui-android</artifactId>
+      <version>1.12.0</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.compose.ui</groupId>
+      <artifactId>ui-graphics-android</artifactId>
+      <version>1.12.0</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.github.kyant0</groupId>
+      <artifactId>shapes-android</artifactId>
+      <version>1.2.1</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains</groupId>
+      <artifactId>annotations</artifactId>
+      <version>26.1.0</version>
+      <scope>runtime</scope>
+    </dependency>
+  </dependencies>
+</project>

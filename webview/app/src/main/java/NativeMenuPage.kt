@@ -21,7 +21,8 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
     private fun blocked(item:JSONObject)=session.finished||(menu.optBoolean("healthEnabled")&&!localMode()&&item.optString("remote") !in setOf("","setup")&&health.optString("status")!="ready")
     private fun healthModel():JSONObject {
         val state=if(localMode())"local" else if(health.optString("status") in setOf("ready","checking"))health.optString("status") else if(health.optBoolean("lanAvailable")&&connectionPrompt.scanning)"discovering" else if(health.optBoolean("lanAvailable")&&connectionPrompt.found)"setup" else health.optString("status","offline")
-        val protocol=when(health.optString("protocol")){"smb"->"SMB";"webdav"->"WebDAV";else->"遠端"}
+        val dialect=health.optString("smbDialect").takeIf{it in setOf("2.0.2","2.1","3.0","3.0.2","3.1.1")}.orEmpty()
+        val protocol=when(health.optString("protocol")){"smb"->if(state=="ready"&&dialect.isNotEmpty())"SMB $dialect" else "SMB";"webdav"->"WebDAV";else->"遠端"}
         val reason=when(health.optString("reason")){
             "account_missing"->"未設定帳號，伺服器要求驗證"
             "password_missing"->"未設定密碼，伺服器要求驗證"
@@ -54,7 +55,7 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
         }
         val network=health.optJSONObject("network")?:JSONObject()
         val rows=network.optJSONArray("rows")?:JSONArray()
-        val warning=network.optString("detail")
+        val warning=listOf(network.optString("detail"),if(state=="ready"&&health.optString("protocol")=="smb"&&dialect.isEmpty())"SMB 協定版本未回報" else "").filter{it.isNotEmpty()}.joinToString("\n")
         val daemons=JSONArray()
         val daemonState=health.optJSONObject("daemons")?:JSONObject()
         for((key,name) in listOf("rust" to "Rust daemon","dex" to "Dex daemon")) {
@@ -87,14 +88,15 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
         val epoch=++healthEpoch;val api=session.api.fork();healthTransport=api
         val initialGeneration=health.optLong("generation",-1);var sawChecking=false
         healthConfirmedForOffer=false
-        Thread({try{api.post("remote-refresh","");api.remoteHealth{line->val update=JSONObject(line);session.execute{if(epoch==healthEpoch&&visible&&!session.finished){
+        Thread({try{api.observeRemoteHealth{line->val update=JSONObject(line);session.execute{if(epoch==healthEpoch&&visible&&!session.finished){
             health=update
             if(health.optString("status")=="checking")sawChecking=true
             healthConfirmedForOffer=health.optString("status")=="offline"&&(sawChecking||health.optLong("generation",-1)>initialGeneration)
             if(health.optString("status") in setOf("ready","local"))connectionPrompt.connected()
             connectionPrompt.start();session.emit()
         }}}}
-            catch(_:Exception){session.execute{if(epoch==healthEpoch&&visible&&!session.finished){
+            catch(e:Exception){session.execute{if(epoch==healthEpoch&&visible&&!session.finished){
+                session.diagnostic("health-stream:"+e.javaClass.simpleName)
                 healthTransport=null
                 healthStreamStopped()
                 session.emit()
@@ -190,7 +192,7 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
         if(menu.optBoolean("preparing"))return listOf(controls.node("preparing","heading","正在同步最新清單，保留既有勾選與註釋。"))
         val options=choices.filterNot{it.optBoolean("setting")||hidden(it)}
         if(group.isNotEmpty()&&options.none{it.optString("group")==group})group=""
-        val groups=options.map{it.optString("group")}.filter{it.isNotEmpty()}.distinct().sortedBy{when(it){"備份","備份相關功能"->0;"恢復","恢復相關功能"->1;else->2}}
+        val groups=options.map{it.optString("group")}.filter{it.isNotEmpty()}.distinct().sortedBy{session.catalog.groupOrder(it)}
         if(groups.isNotEmpty()&&group.isEmpty())return options.filter{it.optString("group").isEmpty()&&it.getString("id")!="0"}.map{item->controls.button("choice:${item.getString("id")}",item.getString("label"),blocked(item)){choose(item.getString("id"))}}+groups.map{g->controls.button("group:$g",g,options.filter{it.optString("group")==g}.all{blocked(it)}){group=g;session.emit()}.put("navigation",true)}
         if(menu.optBoolean("input"))return listOf(controls.input("menu:input",menu.getString("title"),text){text=it},controls.button("menu:submit","確認",session.finished){require(text.length<=2048&&!text.any{it<' '});submit("input",text)}.put("primary",true))
         val nodes=mutableListOf<JSONObject>()
@@ -211,15 +213,15 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
         return nodes
     }
     private fun appearanceNodes():List<JSONObject>{
-        val logChoices=choices.filter{it.optBoolean("setting")&&session.catalog.text(it.getString("label"),"zh-Hant")=="日誌"}
+        val logChoices=choices.filter{it.optBoolean("setting")&&session.catalog.settingIconKey(it.getString("label"))=="logs"}
         val nodes=choices.filter{it.optBoolean("setting")&&it !in logChoices}.map{item->controls.button("choice:${item.getString("id")}",item.getString("label"),blocked(item)){choose(item.getString("id"))}.put("navigation",true)}.toMutableList()
         fun setting(key:String,label:String,options:List<Pair<String,String>>){nodes+=controls.select("appearance:$key",label,session.appearance.values[key]?:"",options){value->
             session.status="儲存中…";session.emit()
             try {session.api.post(key,if(key=="appearance")value+"\tfull" else value);session.appearance.values[key]=value;session.status="儲存成功"}
             catch(e:Exception){session.status="儲存失敗：${e.message}"}
             session.emit()
-        }}
-        nodes+=controls.button("wallpaper:settings","壁紙"){wallpaper=true;session.emit()}.put("navigation",true)
+        }.put("iconKey",key)}
+        nodes+=controls.button("wallpaper:settings","壁紙"){wallpaper=true;session.emit()}.put("navigation",true).put("iconKey","wallpaper")
         setting("style","介面風格",listOf("miuix" to "Miuix","material" to "Material"))
         setting("language","介面語言",listOf("zh-Hant" to "繁體中文","zh-Hans" to "简体中文"))
         setting("appearance","外觀",listOf("system" to "跟隨系統","light" to "淺色","dark" to "深色","amoled" to "AMOLED 純黑","space" to "星空","night" to "夜空"))
@@ -232,7 +234,7 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
                 try{session.api.post("material-spec",value);session.appearance.values["material-spec"]=value;session.status="儲存成功"}
                 catch(e:Exception){session.status="儲存失敗：${e.message}"}
                 session.emit()
-            }
+            }.put("iconKey","material-spec")
         }
         setting("scale","顯示大小",listOf(80,90,100,110,120,130).map{it.toString() to "$it%"})
         setting("font-adaptive","字體自適應",listOf("on" to "開啟","off" to "關閉"))
@@ -241,48 +243,49 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
         }
         for((key,label) in listOf("glass-blur-strength" to "模糊程度","glass-light" to "透光強度","glass-transparency" to "透明度","glass-refraction" to "折射強度"))nodes+=controls.node("appearance:$key","range",label){kind,value,_->
             if(kind=="value"&&(key!="glass-blur-strength"||session.appearance.values["glass-blur"]!="off")){require(value.toInt() in 0..100);session.api.post(key,if(key=="appearance")value+"\tfull" else value);session.appearance.values[key]=value;session.emit()}
-        }.put("disabled",key=="glass-blur-strength"&&session.appearance.values["glass-blur"]=="off").put("key",key).put("value",session.appearance.values[key]).put("min",0).put("max",100).put("step",1)
+        }.put("iconKey",key).put("disabled",key=="glass-blur-strength"&&session.appearance.values["glass-blur"]=="off").put("key",key).put("value",session.appearance.values[key]).put("min",0).put("max",100).put("step",1)
         nodes+=controls.button("appearance:reset","恢復玻璃預設"){
             for((key,value) in listOf("glass-blur" to "on","glass-blur-strength" to "100","glass-light" to "100","glass-transparency" to "100","glass-refraction" to "100","glass-adaptive" to "off","glass-content" to "off")){session.api.post(key,if(key=="appearance")value+"\tfull" else value);session.appearance.values[key]=value}
             session.emit()
-        }
-        nodes+=controls.button("about","關於"){legal="about";session.emit()}.put("navigation",true)
+        }.put("iconKey","reset")
+        nodes+=controls.button("about","關於"){legal="about";session.emit()}.put("navigation",true).put("iconKey","about")
         nodes+=logChoices.map{item->controls.button("choice:${item.getString("id")}",item.getString("label"),blocked(item)){choose(item.getString("id"))}.put("navigation",true)}
         val descriptions=mapOf(
-            "玻璃透視內容" to "讓內容延伸至底部導覽列背後；關閉可減少文字與玻璃重疊。",
-            "備份設定" to "設定備份內容、保存位置與遠端連線。",
-            "恢復設定" to "設定恢復方式與應用資料處理選項。",
-            "日誌" to "查看日誌等級，匯出完整工作階段的除錯包。",
-            "壁紙" to "選擇程式背景，調整透明度、模糊與壓暗。",
-            "介面語言" to "切換繁體中文或簡體中文，儲存後立即更新介面。",
-            "外觀" to "選擇淺色、深色、跟隨系統或動態背景。",
-            "顯示大小" to "調整文字與介面控制項的顯示比例。",
-            "字體自適應" to "依壁紙明暗調整壁紙上的文字；卡片、彈窗與按鈕維持所選外觀的字色。",
-            "高斯模糊" to "讓介面卡片與玻璃元件後方的背景柔化。",
-            "莫奈動態配色" to "使用系統壁紙衍生的主題配色。",
-            "自適應玻璃亮度" to "依背景亮度調整玻璃顏色與文字對比。",
-            "模糊程度" to "調整背景柔化強度，需先開啟高斯模糊。",
-            "透光強度" to "調整背景光線穿透玻璃的程度。",
-            "透明度" to "調整玻璃元件的透明程度。",
-            "折射強度" to "調整液態玻璃對背景的折射效果。",
-            "恢復玻璃預設" to "將模糊、透光、透明與折射還原為預設值。",
-            "關於" to "查看鳴謝、開源許可與專案資訊。")
+            "glass-content" to "讓內容延伸至底部導覽列背後；關閉可減少文字與玻璃重疊。",
+            "backup-settings" to "設定備份內容、保存位置與遠端連線。",
+            "restore-settings" to "設定恢復方式與應用資料處理選項。",
+            "logs" to "查看日誌等級，匯出完整工作階段的除錯包。",
+            "wallpaper" to "選擇程式背景，調整透明度、模糊與壓暗。",
+            "language" to "切換繁體中文或簡體中文，儲存後立即更新介面。",
+            "appearance" to "選擇淺色、深色、跟隨系統或動態背景。",
+            "scale" to "調整文字與介面控制項的顯示比例。",
+            "font-adaptive" to "依壁紙明暗調整壁紙上的文字；卡片、彈窗與按鈕維持所選外觀的字色。",
+            "glass-blur" to "讓介面卡片與玻璃元件後方的背景柔化。",
+            "monet" to "使用系統壁紙衍生的主題配色。",
+            "glass-adaptive" to "依背景亮度調整玻璃顏色與文字對比。",
+            "glass-blur-strength" to "調整背景柔化強度，需先開啟高斯模糊。",
+            "glass-light" to "調整背景光線穿透玻璃的程度。",
+            "glass-transparency" to "調整玻璃元件的透明程度。",
+            "glass-refraction" to "調整液態玻璃對背景的折射效果。",
+            "reset" to "將模糊、透光、透明與折射還原為預設值。",
+            "about" to "查看鳴謝、開源許可與專案資訊。")
         for(node in nodes){
-            val label=session.catalog.text(node.getString("label"),"zh-Hant")
-            descriptions[label]?.let{node.put("description",it)}
-            nativeSettingIconLabels[label]?.let{node.put("iconKey",it)}
+            val key=node.optString("iconKey").ifEmpty{session.catalog.settingIconKey(node.getString("label"))}
+            descriptions[key]?.let{node.put("description",it)}
+            if(key.isNotEmpty())node.put("iconKey",key)
         }
         return nodes
     }
     private fun info():JSONArray {
-        val hardware=setOf("品牌","型號","處理器","記憶體","閃存","Android")
-        val versions=setOf("腳本版本","管理器","busybox版本","busybox路徑","腳本路徑","作者","支援")
+        val hardware=setOf("brand","model","processor","memory","storage","android")
+        val versions=setOf("script-version","manager","busybox-version","busybox-path","script-path","author","support")
         val rows=menu.getJSONArray("info").modelObjects()
+        fun identity(row:JSONObject)=row.optString("id").ifEmpty{session.catalog.homeIconKey(row.getString("key"))}
         return arr(listOf("裝置資訊","執行環境","版本與路徑").mapIndexedNotNull{index,title->
-            val selected=rows.filter{r->val key=session.catalog.text(r.getString("key"),"zh-Hant");val id=r.optString("id");val h=if(id.isEmpty())key in hardware else id in setOf("brand","model","processor","memory","storage","android");val v=if(id.isEmpty())key in versions else id in setOf("script-version","manager","busybox-version","busybox-path","script-path","author","support");when(index){0->h;2->v;else->!h&&!v}}
+            val selected=rows.filter{r->val id=identity(r);when(index){0->id in hardware;2->id in versions;else->id !in hardware&&id !in versions}}
             if(selected.isEmpty())null else obj("title" to title,"rows" to arr(selected.map{r->
                 val key=r.getString("key");val value=r.getString("value")
-                obj("label" to key,"value" to value,"iconKey" to r.optString("id").ifEmpty{nativeHomeIconKey(session.catalog.text(key,"zh-Hant"))})
+                obj("label" to key,"value" to value,"iconKey" to identity(r))
             }))
         })
     }
@@ -364,7 +367,7 @@ internal class NativeMenuPage(private val session:NativeSession):NativePage {
         for(node in nodes){
             if(node.optString("kind")=="button"&&!node.optBoolean("primary")&&!node.optBoolean("selected")){
                 node.put("navigation",true)
-                rows+=controls.group("$key:row:${node.getString("id")}","setting",listOf(node),node.getString("label")).put("detail","").put("spacious",spacious).put("iconKey",node.optString("iconKey").ifEmpty{nativeSettingIconLabels[node.getString("label")].orEmpty()})
+                rows+=controls.group("$key:row:${node.getString("id")}","setting",listOf(node),node.getString("label")).put("detail","").put("spacious",spacious).put("iconKey",node.optString("iconKey").ifEmpty{session.catalog.settingIconKey(node.getString("label"))})
             }else{flush();result+=node}
         }
         flush();return result

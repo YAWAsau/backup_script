@@ -6,7 +6,7 @@ plugins {
 android {
  namespace = "io.github.yawasau.speedbackup.webview"
  compileSdkVersion("android-37.0")
- defaultConfig { applicationId = "io.github.yawasau.speedbackup.webview"; minSdk = 28; targetSdk = 36; versionCode = 138; versionName = "1.138" }
+ defaultConfig { applicationId = "io.github.yawasau.speedbackup.webview"; minSdk = 28; targetSdk = 36; versionCode = 147; versionName = "1.147" }
  sourceSets["main"].apply { manifest.srcFile("../AndroidManifest.xml"); java.srcDir(layout.buildDirectory.dir("generated/host").get().asFile); res.srcDir("../res") }
  buildFeatures { compose = true }
  buildTypes { release { isMinifyEnabled = true; isShrinkResources = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt")) } }
@@ -14,7 +14,20 @@ android {
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21) } }
 val prepareHost by tasks.registering(Copy::class) { from("../MainActivity.java"); into(layout.buildDirectory.dir("generated/host")) }
-tasks.named("preBuild") { dependsOn(prepareHost) }
+// Copy only the three Android-independent shared converter sources, not Dex APIs.
+val prepareOpenCc by tasks.registering(Sync::class) {
+ doFirst {
+  for (name in listOf("CCHelper.java", "OpenCcPhrases.java", "OpenCcPhraseData.java")) {
+   check(file("../../dex/app/src/main/java/com/xayah/dex/$name").isFile) { "Missing shared converter: $name; use the complete project checkout." }
+  }
+ }
+ from("../../dex/app/src/main/java") {
+  include("com/xayah/dex/CCHelper.java", "com/xayah/dex/OpenCcPhrases.java", "com/xayah/dex/OpenCcPhraseData.java")
+ }
+ into(layout.buildDirectory.dir("generated/opencc"))
+}
+android.sourceSets["main"].java.srcDir(layout.buildDirectory.dir("generated/opencc").get().asFile)
+tasks.named("preBuild") { dependsOn(prepareHost, prepareOpenCc) }
 dependencies {
  implementation("androidx.compose.material3:material3:1.5.0-rc01")
  implementation("androidx.compose.material:material-icons-extended:1.7.8")

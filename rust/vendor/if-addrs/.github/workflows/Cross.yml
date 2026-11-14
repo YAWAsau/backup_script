@@ -1,0 +1,57 @@
+# We could use `@actions-rs/cargo` Action ability to automatically install `cross` tool
+# in order to compile our application for some unusual targets.
+
+on: [push, pull_request]
+
+name: Cross-compile
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - aarch64-linux-android
+          - x86_64-unknown-freebsd
+          - x86_64-unknown-netbsd
+          - x86_64-unknown-illumos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --target=${{ matrix.target }}
+
+  apple:
+    name: Apple Build on ${{ matrix.target }}
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-ios
+            tier3: false
+          - target: aarch64-apple-watchos
+            tier3: true
+          - target: aarch64-apple-tvos
+            tier3: true
+          - target: aarch64-apple-visionos
+            tier3: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        if: ${{ !matrix.tier3 }}
+        with:
+          toolchain: 'stable'
+          targets: ${{ matrix.target }}
+          components: rust-src
+      - uses: dtolnay/rust-toolchain@master
+        if: ${{ matrix.tier3 }}
+        with:
+          toolchain: 'nightly'
+          components: rust-src
+
+      - name: Build
+        run: cargo build --target ${{ matrix.target }} ${{ matrix.tier3 && '-Zbuild-std' || '' }}

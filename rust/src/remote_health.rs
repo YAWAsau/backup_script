@@ -24,9 +24,9 @@ impl WifiWatcher {
     fn start(dir: &Path) -> io::Result<Self> {
         use std::process::{Command,Stdio};
         let dex=std::env::current_exe()?.parent().ok_or_else(||error("executable parent"))?.join("classes.dex");
-        let child=super::command_lifecycle::OwnedChild::spawn(Command::new("/system/bin/app_process").env("CLASSPATH",dex)
-            .args(["/system/bin","com.xayah.dex.WifiConnectionWatch"]).arg(dir)
-            .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()))?;
+        let child=super::command_lifecycle::OwnedChild::spawn(Command::new("/system/bin/app_process").current_dir("/").env("CLASSPATH",dex)
+            .args(["/system/bin","com.xayah.dex.WifiConnectionWatch"]).arg(dir.canonicalize()?)
+            .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit()))?;
         Ok(Self(child))
     }
 }
@@ -37,10 +37,16 @@ impl Drop for WifiWatcher {
     }
 }
 fn wifi_snapshot(dir: &Path, alive: bool) -> Value {
-    if !alive {return json!({"available":false});}
-    fs::read(dir.join("wifi.json")).ok().filter(|b|b.len()<=4096)
-        .and_then(|b|serde_json::from_slice::<Value>(&b).ok()).filter(Value::is_object)
-        .unwrap_or(json!({"available":false}))
+    let unavailable=|reason:&str|json!({"available":false,"snapshotDiagnostic":reason});
+    if !alive {return unavailable("monitor_not_alive");}
+    match fs::read(dir.join("wifi.json")) {
+        Err(e)=>json!({"available":false,"snapshotDiagnostic":"read_failed","readErrorKind":format!("{:?}",e.kind())}),
+        Ok(bytes) if bytes.len()>4096=>unavailable("snapshot_too_large"),
+        Ok(bytes)=>match serde_json::from_slice::<Value>(&bytes) {
+            Ok(value) if value.is_object()=>value,
+            _=>unavailable("invalid_json_object"),
+        }
+    }
 }
 fn error(s: &str) -> io::Error {
     io::Error::other(s)
@@ -284,6 +290,25 @@ fn network_display(wifi:&Value,route:Option<&str>,ready:bool)->Value {
     if detail.is_empty()&&!ready&&kind.is_empty()&&wifi["available"]!=true {detail.push("連線方式資訊無法取得".into());}
     json!({"rows":rows,"detail":detail.join("；"),"interface":interface,"kind":kind})
 }
+// Keep diagnostic output bounded and omit SSID/BSSID, addresses, routes and credentials.
+fn wifi_diagnostic(wifi:&Value, network:&Value, alive:bool, status:&str) {
+    static LAST:std::sync::Mutex<(String,usize)>=std::sync::Mutex::new((String::new(),0));
+    let mut fields=serde_json::Map::new();
+    for key in ["available","connected","frequencyMhz","rssiDbm","wifiStandard","linkSpeedMbps","linkWidthMhz","widthMhz","networkKnown","sharingKnown","diagnostic","snapshotDiagnostic","readErrorKind"] {
+        if let Some(value)=wifi.get(key){fields.insert(key.into(),value.clone());}
+    }
+    let kinds=|key:&str|wifi[key].as_array().map(|values|values.iter().map(|v|v["kind"].clone()).collect::<Vec<_>>()).unwrap_or_default();
+    let record=json!({"stage":"rust_display","monitorAlive":alive,"status":status,"wifi":fields,
+        "linkKinds":kinds("links"),"sharingKinds":kinds("sharing"),"routeInterfacePresent":network["interface"].as_str().is_some_and(|s|!s.is_empty()),
+        "selectedKind":network["kind"],"rows":network["rows"],"rowCount":network["rows"].as_array().map_or(0,Vec::len)}).to_string();
+    if let Ok(mut last)=LAST.lock(){
+        if last.0!=record&&last.1<128 {
+            let _=writeln!(io::stderr().lock(),"WIFI_DIAG {record}");
+            last.0=record;last.1+=1;
+            if last.1==128 {let _=writeln!(io::stderr().lock(),"WIFI_DIAG limit_reached=128");}
+        }
+    }
+}
 pub fn snapshot(conf: &Path, dir: &Path) -> Value {
     let (key, protocol, auto_discovery) = connection(conf).unwrap_or_else(|_| (String::new(), "invalid".into(), false));
     let state = fs::read(dir.join("state"))
@@ -313,7 +338,7 @@ pub fn snapshot(conf: &Path, dir: &Path) -> Value {
         else {safe_reason(state["reason"].as_str().unwrap_or("connection_failed"))};
     let reason=display_reason(reason,&wifi);
     let network=network_display(&wifi,state["route"].as_str(),status=="ready");
-    json!({"autoDiscovery":auto_discovery,"lanAvailable":alive&&lan,"protocol":protocol,"status":status,"reason":reason,"network":network,"wifi":wifi,"daemons":super::daemon_health::snapshot(dir,alive),"generation":state["generation"].as_u64().unwrap_or(0)})
+    json!({"smbDialect":if status=="ready"&&protocol=="smb"{state["smbDialect"].as_str().unwrap_or("")}else{""},"autoDiscovery":auto_discovery,"lanAvailable":alive&&lan,"protocol":protocol,"status":status,"reason":reason,"network":network,"wifi":wifi,"daemons":super::daemon_health::snapshot(dir,alive),"generation":state["generation"].as_u64().unwrap_or(0)})
 }
 pub fn event(dir: &Path, message: &str) -> io::Result<()> {
     private(dir)?;
@@ -328,8 +353,8 @@ fn begin_probe(conf:&Path,dir:&Path,generation:u64)->io::Result<ProbeWorker>{
     let cancel=std::sync::Arc::new(super::command_lifecycle::CancelEvent::new()?);
     let flag=cancel.clone();let conf=conf.to_owned();let dir=dir.to_owned();
     std::thread::Builder::new().name("remote-probe".into()).spawn(move||{
-        let result=super::remote_probe::probe(&conf,Some(&flag));
-        let(status,reason)=match result{Ok(())=>("ready",String::new()),Err(reason)=>("offline",reason)};
+        let result=super::remote_probe::probe_with_dialect(&conf,Some(&flag));
+        let(status,reason)=match result{Ok(dialect)=>("ready",dialect),Err(reason)=>("offline",reason)};
         // Completion cannot be dropped on a full control queue. A bounded blocking
         // send is event driven and the owner continues draining while probes run.
         if let Ok(socket)=UnixDatagram::unbound(){
@@ -360,7 +385,7 @@ fn watch(conf: &Path, dir: &Path, owner: u32) -> io::Result<()> {
     control.set_nonblocking(true)?;
     let changes = ino(&[conf.parent().ok_or_else(|| error("conf parent"))?, dir])?;
     let net = network()?;
-    let mut wifi=WifiWatcher::start(dir).ok();
+    let mut wifi=match WifiWatcher::start(dir){Ok(w)=>Some(w),Err(e)=>{let _=writeln!(io::stderr().lock(),"WIFI_DIAG watcher_start_error={:?}",e.kind());None}};
     super::daemon_health::register_process("wifi_watcher",wifi.as_ref().map(|w|w.0.id()).unwrap_or(0))?;
     if let Ok(pid)=std::env::var("SPEEDBACKUP_CONSOLE_OWNER").unwrap_or_default().parse::<u32>() {super::daemon_health::register_process("console",pid)?;}
     super::daemon_health::register_process("remote_health",std::process::id())?;
@@ -386,7 +411,7 @@ fn watch(conf: &Path, dir: &Path, owner: u32) -> io::Result<()> {
     let publish = |key: &str, protocol: &str, status: &str, generation: u64, reason: &str, route: Option<&str>| {
         atomic(
             dir,
-            &json!({"key":key,"protocol":protocol,"status":status,"reason":if status=="offline"{safe_reason(reason)}else{""},"generation":generation,"pid":pid,"start":start,"route":route}),
+            &json!({"key":key,"protocol":protocol,"status":status,"smbDialect":if status=="ready"&&protocol=="smb"{super::remote_probe::dialect_name(reason)}else{""},"reason":if status=="offline"{safe_reason(reason)}else{""},"generation":generation,"pid":pid,"start":start,"route":route}),
         )
     };
     publish(&key, &protocol, status, generation, &reason,route.as_deref())?;
@@ -397,7 +422,11 @@ fn watch(conf: &Path, dir: &Path, owner: u32) -> io::Result<()> {
         probe_deadline = Some(std::time::Instant::now() + std::time::Duration::from_secs(60));
     }
     loop {
-        let update = snapshot(conf, dir).to_string() + "\n";
+        let view = snapshot(conf, dir);
+        // Only the session-owned watcher logs diagnostics. Its stderr is routed
+        // to the debug archive by _remote_health_start; readers stay silent.
+        wifi_diagnostic(&view["wifi"], &view["network"], true, view["status"].as_str().unwrap_or("offline"));
+        let update = view.to_string() + "\n";
         if update != last_event {
             clients.retain_mut(|c| c.write_all(update.as_bytes()).is_ok());
             last_event = update;
@@ -554,7 +583,7 @@ fn watch(conf: &Path, dir: &Path, owner: u32) -> io::Result<()> {
                             && matches!(*s, "ready" | "offline")
                         {
                             lan=available_network(dir);
-                            reason=probe_reason(details.first().copied().unwrap_or("connection_failed"),lan||!target_requires_lan(conf)).to_string();
+                            reason=if *s=="ready"{details.first().copied().filter(|v|!super::remote_probe::dialect_name(v).is_empty()).unwrap_or("").to_owned()}else{probe_reason(details.first().copied().unwrap_or("connection_failed"),lan||!target_requires_lan(conf)).to_owned()};
                             status = if protocol == "local" {
                                 "local"
                             } else if *s == "ready" {

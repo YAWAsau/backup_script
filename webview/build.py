@@ -15,6 +15,7 @@ def run(args):
 embedded=S/'embedded';embedded.mkdir(exist_ok=True)
 inputs=['build.py','gradlew','gradlew.bat','MainActivity.java','AndroidManifest.xml','build.gradle.kts','settings.gradle.kts','gradle.properties','app/build.gradle.kts','gradle/wrapper/gradle-wrapper.properties','gradle/wrapper/gradle-wrapper.jar']
 inputs += [p.relative_to(S).as_posix() for base in ['res','app/src','third_party'] for p in sorted((S/base).rglob('*')) if p.is_file()]
+inputs += ['../dex/app/src/main/java/com/xayah/dex/' + name for name in ['CCHelper.java','OpenCcPhrases.java','OpenCcPhraseData.java']]
 source_hashes={n:hashlib.sha256((S/n).read_bytes()).hexdigest() for n in inputs}
 def apk_version(apk):
  badging=run([bt/'aapt2.exe','dump','badging',apk])

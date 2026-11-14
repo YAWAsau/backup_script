@@ -35,7 +35,7 @@ final class NativeApi implements AutoCloseable {
         }
     }
 
-    NativeApi fork() { return new NativeApi(origin + "/#" + token); }
+    NativeApi fork() { NativeApi api=new NativeApi(origin + "/#" + token);api.diagnostic=diagnostic;return api; }
 
     void exportDiagnostics(java.io.OutputStream out, String source) throws IOException {
         HttpURLConnection c=(HttpURLConnection)URI.create(origin+"/api/diagnostic-export").toURL().openConnection(java.net.Proxy.NO_PROXY);
@@ -104,6 +104,15 @@ final class NativeApi implements AutoCloseable {
             if(android.util.Log.isLoggable("SpeedBackupTiming",android.util.Log.DEBUG))
                 android.util.Log.d("SpeedBackupTiming", "api="+route+" elapsedMs="+(android.os.SystemClock.elapsedRealtime()-started));
         }
+    }
+
+    // Refresh requests verification; it must not gate observation of existing metadata.
+    void observeRemoteHealth(java.util.function.Consumer<String> event) throws IOException {
+        try { post("remote-refresh", ""); }
+        catch(IOException error) {
+            if(diagnostic!=null)diagnostic.accept("health-refresh:"+error.getClass().getSimpleName());
+        }
+        remoteHealth(event);
     }
 
     void remoteHealth(java.util.function.Consumer<String> event) throws IOException {

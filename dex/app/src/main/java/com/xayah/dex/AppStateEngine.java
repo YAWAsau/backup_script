@@ -328,7 +328,7 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.machine_stdout.v1", true, true, "stdout=data-only;stderr=diagnostic");
         addCapability(capabilities, "dex.label_path_segment_safe.v1", true, true, "Dex app labels emitted to tools are path-segment sanitized for local/remote backup roots");
         addCapability(capabilities, "dex.webdav.relpath_traversal_guard.v1", true, true, "WebDavUtil buildRelUrl rejects dot-dot traversal in relative paths");
-        addCapability(capabilities, "dex.cchelper.glossary.v1", true, false, "CCHelper applies SpeedBackup phrase glossary after OpenCC character conversion");
+        addCapability(capabilities, "dex.cchelper.glossary.v1", true, false, "CCHelper applies the SpeedBackup glossary after OpenCC s2twp/tw2sp profiles");
         addCapability(capabilities, "dex.cchelper.table_refresh.v1", true, false, "CCHelper table refresh with zh-TW polish and selftest");
         addCapability(capabilities, "dex.cchelper.zh_tw_polish.v1", true, false, "CCHelper can polish already-Traditional SpeedBackup wording without script self-rewrite");
         addCapability(capabilities, "dex.cchelper.repeat_merge_fix.v1", true, false, "CCHelper maps 重复/合并 to 重複/合併 in zh-TW and back to 简中 correctly");
@@ -386,7 +386,7 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.ssaid.state_cache_shutdown_bounded.v1", true, true, "SSAID SettingsState HandlerThreads are quitSafely, bounded-joined, force-quit if needed, and then removed from STATE_CACHE");
         addCapability(capabilities, "dex.daemon_supervisor.pid_starttime.v1", true, true, "daemon supervisor validates supervised daemon identity by pid plus /proc starttime to avoid pid reuse false-alive");
         addCapability(capabilities, "dex.daemon_supervisor.pid_starttime_cmdline.v1", true, true, "daemon supervisor also verifies /proc cmdline class/mode/socket before treating a pidfile process as the supervised daemon");
-        addCapability(capabilities, "dex.cchelper.table_hardening.v1", true, true, "CCHelper conversion tables skip malformed lines, use codepoint maps, and sort phrase replacements longest-first at runtime");
+        addCapability(capabilities, "dex.cchelper.table_hardening.v1", true, true, "CCHelper uses pinned generated tries, ordered profiles and codepoint-safe fallback; shared APK/Dex conversion");
         addCapability(capabilities, "dex.device_model_db.entry_count_runtime.v1", true, true, "DeviceModelDb.entryCount returns BY_KEY.size so model count reflects actual normalized map entries");
         addCapability(capabilities, "dex.device_model_db.entry_count_selfcheck.v1", true, true, "deviceFacts reports expected/runtime DeviceModelDb entry-count equality so generated table shrink/duplication is visible in dex_check");
         addCapability(capabilities, "dex.convergence.boundary_100_reviewed.v1", true, true, "records that APK live install stays shell pm/hybrid while Dex/Rust own stable facts, profiles, audits and manifest/planner producers");

@@ -279,11 +279,12 @@
     "id": "reference:opencc-phrases",
     "name": "OpenCC phrase dictionaries",
     "author": "BYVoid and OpenCC contributors",
-    "version": "fae2a0a911c3",
+    "version": "fae2a0a911c30764e669a7d8b0591cd8e852934a",
     "license": "Apache-2.0",
     "url": "https://github.com/BYVoid/OpenCC",
-    "description": "Dex 繁簡轉換的詞組語境資料；轉為本專案內嵌緊湊索引，未引入原生引擎。",
+    "description": "OpenCC s2twp／tw2sp 字形與地區詞彙轉換資料；APK 與 Dex 共用生成的 Java 詞庫，另保留 SpeedBackup 專案用詞修正。",
     "components": [
+      "APK／WebUI",
       "Dex",
       "詞庫資料"
     ]

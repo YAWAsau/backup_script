@@ -20,17 +20,17 @@ __pycache__/
 *.pyc
 /tools/*.before-*
 
-# Restore-only upstream trees; publish the matching upstream ZIP as a Release asset.
+# Native tool source trees intentionally excluded from this project package.
 /busybox/
 /zstd/
 /smb/
 /tar/
-/findutils/
-/compat/
-/rust/vendor/
-/webview/third_party/
-/dex/third_party/
-/third_party/opencc-phrases/
-/third_party/ui/
+/webview/out/
+/webview/build/
+/webview/**/build/
+/webview/.gradle/
+/webview/local.properties
 /tools/*.bak_*
 /SpeedBackup_*_UPSTREAM*.zip
+
+/findutils/

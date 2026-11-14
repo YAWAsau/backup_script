@@ -1,0 +1,172 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../material-kolor-core/6.0.0-c5100e46-SNAPSHOT/material-kolor-core-6.0.0-c5100e46-SNAPSHOT.module",
+    "group": "com.materialkolor",
+    "module": "material-kolor-core",
+    "version": "6.0.0-c5100e46-SNAPSHOT",
+    "attributes": {
+      "org.gradle.status": "integration"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.8.2"
+    }
+  },
+  "variants": [
+    {
+      "name": "androidApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.materialkolor",
+          "module": "material-color-utilities",
+          "version": {
+            "requires": "6.0.0-c5100e46-SNAPSHOT"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-core",
+          "version": {
+            "requires": "1.11.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "material-kolor-core.aar",
+          "url": "material-kolor-core-android-6.0.0-c5100e46-SNAPSHOT.aar",
+          "size": 73667,
+          "sha512": "9830235f4211743162b5e3bce6d7de3d9994f1e89ab415681663643b3f7ab759bd1365426974da013cb14461e7d8bcf6b83a661beca2c3baf63f57586f1ac002",
+          "sha256": "cda5aaae64078c1916aa3f2eb825f0889e130059428ddd15d8c2a51c56372132",
+          "sha1": "907f1f4049c57aaa5cf6249c8138a1c670a41b3e",
+          "md5": "c691d2b9bf6196dedf70c63e55272591"
+        }
+      ]
+    },
+    {
+      "name": "androidRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.materialkolor",
+          "module": "material-color-utilities",
+          "version": {
+            "requires": "6.0.0-c5100e46-SNAPSHOT"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-core",
+          "version": {
+            "requires": "1.11.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.runtime",
+          "module": "runtime",
+          "version": {
+            "requires": "1.12.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.ui",
+          "module": "ui",
+          "version": {
+            "requires": "1.12.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.foundation",
+          "module": "foundation",
+          "version": {
+            "requires": "1.12.2"
+          }
+        },
+        {
+          "group": "dev.drewhamilton.poko",
+          "module": "poko-annotations",
+          "version": {
+            "requires": "0.23.2"
+          }
+        },
+        {
+          "group": "com.github.ajalt.colormath",
+          "module": "colormath",
+          "version": {
+            "requires": "3.7.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.11.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "material-kolor-core.aar",
+          "url": "material-kolor-core-android-6.0.0-c5100e46-SNAPSHOT.aar",
+          "size": 73667,
+          "sha512": "9830235f4211743162b5e3bce6d7de3d9994f1e89ab415681663643b3f7ab759bd1365426974da013cb14461e7d8bcf6b83a661beca2c3baf63f57586f1ac002",
+          "sha256": "cda5aaae64078c1916aa3f2eb825f0889e130059428ddd15d8c2a51c56372132",
+          "sha1": "907f1f4049c57aaa5cf6249c8138a1c670a41b3e",
+          "md5": "c691d2b9bf6196dedf70c63e55272591"
+        }
+      ]
+    },
+    {
+      "name": "androidSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "material-kolor-core-android-sources.jar",
+          "url": "material-kolor-core-android-6.0.0-c5100e46-SNAPSHOT-sources.jar",
+          "size": 28616,
+          "sha512": "07994304426dc9b64f80928d3a317a5f8a5fd47291ac1ebd5f4af884241213c9dc8b59508774e95b198a4adcc2abaa3780841abb3ee992dcc58b490fd645832d",
+          "sha256": "cb022ff154c37ade771add3bdc5e5e1f64f071d7f7dde941d5a5ba6a3ed0ee31",
+          "sha1": "42d107dbf8d93d6f363230c40fa40e33184bdd3e",
+          "md5": "377c1dd8e35f6ce98f73f6893863e1de"
+        }
+      ]
+    }
+  ]
+}

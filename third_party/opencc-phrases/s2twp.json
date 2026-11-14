@@ -1,0 +1,47 @@
+{
+  "name": "Simplified Chinese to Traditional Chinese (Taiwan Standard, with Taiwan Phrases)",
+  "normalization": [
+    { "dict": { "type": "ocd2", "file": "CJK_Compatibility_Ideographs.ocd2" } }
+  ],
+  "segmentation": {
+    "type": "mmseg",
+    "dict": {
+      "type": "group",
+      "match_policy": "union",
+      "dicts": [
+        { "type": "ocd2", "file": "STPhrases.ocd2" },
+        { "type": "ocd2", "file": "STPhrases_GeneratedFromRegionalPhrases.ocd2" }
+      ]
+    }
+  },
+  "conversion_chain": [
+    {
+      "dict": {
+        "type": "group",
+        "match_policy": "short_circuit",
+        "dicts": [
+          {
+            "type": "group",
+            "match_policy": "union",
+            "dicts": [
+              { "type": "ocd2", "file": "STPhrases.ocd2" },
+              { "type": "ocd2", "file": "STPhrases_GeneratedFromRegionalPhrases.ocd2" }
+            ]
+          },
+          { "type": "ocd2", "file": "STCharacters.ocd2" }
+        ]
+      }
+    },
+    {
+      "dict": {
+        "type": "group",
+        "match_policy": "short_circuit",
+        "dicts": [
+          { "type": "ocd2", "file": "TWPhrases.ocd2" },
+          { "type": "ocd2", "file": "TWVariantsPhrases.ocd2" },
+          { "type": "ocd2", "file": "TWVariants.ocd2" }
+        ]
+      }
+    }
+  ]
+}

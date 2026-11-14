@@ -772,7 +772,7 @@ fn read_theme() -> io::Result<String> {
         .parent()
         .ok_or_else(|| err("theme path"))?
         .join("classes.dex");
-    let mut child = Command::new("/system/bin/app_process")
+    let mut child = Command::new("/system/bin/app_process").current_dir("/")
         .env("CLASSPATH", dex)
         .args(["/system/bin", "com.xayah.dex.AppListTheme"])
         .stdin(Stdio::null())
@@ -914,7 +914,7 @@ fn prepare_host_access(user:u32,sdk:u32) {
     });}});
 }
 fn ensure_webview(dex: &Path) -> io::Result<()> {
-    fn check(dex: &Path)->io::Result<(std::process::ExitStatus,String)>{bounded_output(Command::new("/system/bin/app_process").env("CLASSPATH",dex).args(["/system/bin","com.xayah.dex.AppListReturn","--check"]),8)}
+    fn check(dex: &Path)->io::Result<(std::process::ExitStatus,String)>{bounded_output(Command::new("/system/bin/app_process").current_dir("/").env("CLASSPATH",dex).args(["/system/bin","com.xayah.dex.AppListReturn","--check"]),8)}
     let (status,text)=check(dex)?;
     if status.success()&&text.trim()=="OK" {return Ok(());}
     if status.code()!=Some(10){return Err(err("WebView identity check failed"));}
@@ -955,6 +955,7 @@ impl ReturnTask {
         let url=Some(url?); // no installation or helper for legacy return-only mode
         let dex = std::env::current_exe().ok()?.parent()?.join("classes.dex");
         let mut command = Command::new("/system/bin/app_process");
+        command.current_dir("/");
         command
             .env("CLASSPATH", &dex)
             .env("SPEEDBACKUP_UI_LANGUAGE",web_language(None).unwrap_or_else(|_|"zh-Hant".into()))
@@ -1800,7 +1801,7 @@ pub fn focus_origin(args: &[String]) -> i32 {
     if !args.is_empty() { return 2; }
     let result=(|| -> io::Result<bool> {
         let dex=std::env::current_exe()?.parent().ok_or_else(||err("dex parent"))?.join("classes.dex");
-        let (status,text)=bounded_output(Command::new("/system/bin/app_process").env("CLASSPATH",dex).args(["/system/bin","com.xayah.dex.AppListReturn","--focus-origin"]),10)?;
+        let (status,text)=bounded_output(Command::new("/system/bin/app_process").current_dir("/").env("CLASSPATH",dex).args(["/system/bin","com.xayah.dex.AppListReturn","--focus-origin"]),10)?;
         Ok(status.success() && matches!(text.trim(),"RETURNED"|"ALREADY_ORIGIN"))
     })();
     if matches!(result,Ok(true)) {0} else {130}
@@ -1810,7 +1811,7 @@ pub fn prepare_origin(args: &[String]) -> i32 {
     if args.len()!=1 || !matches!(args[0].as_str(),"0"|"1") { return 2; }
     let result=(|| -> io::Result<bool> {
         let dex=std::env::current_exe()?.parent().ok_or_else(||err("dex parent"))?.join("classes.dex");
-        let (status,text)=bounded_output(Command::new("/system/bin/app_process").env("CLASSPATH",dex).args(["/system/bin","com.xayah.dex.AppListReturn","--prepare-origin",&args[0]]),12)?;
+        let (status,text)=bounded_output(Command::new("/system/bin/app_process").current_dir("/").env("CLASSPATH",dex).args(["/system/bin","com.xayah.dex.AppListReturn","--prepare-origin",&args[0]]),12)?;
         let ok=status.success() && text.trim()=="ORIGIN_OK";
         if !ok{terminal_eprintln!("ORIGIN_PREPARE_FAILED status={} detail={}",status,super::crash_diagnostics::redact(&text.chars().take(4096).collect::<String>()));}
         Ok(ok)

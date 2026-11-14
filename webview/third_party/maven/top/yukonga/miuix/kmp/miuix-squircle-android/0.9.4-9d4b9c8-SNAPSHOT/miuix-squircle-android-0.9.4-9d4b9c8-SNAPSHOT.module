@@ -1,0 +1,123 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../miuix-squircle/0.9.4-9d4b9c8-SNAPSHOT/miuix-squircle-0.9.4-9d4b9c8-SNAPSHOT.module",
+    "group": "top.yukonga.miuix.kmp",
+    "module": "miuix-squircle",
+    "version": "0.9.4-9d4b9c8-SNAPSHOT",
+    "attributes": {
+      "org.gradle.status": "integration"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.9.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "androidApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "top.yukonga.miuix.kmp",
+          "module": "miuix-material",
+          "version": {
+            "requires": "0.9.4-9d4b9c8-SNAPSHOT"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "miuix-squircle.aar",
+          "url": "miuix-squircle-android-0.9.4-9d4b9c8-SNAPSHOT.aar",
+          "size": 54316,
+          "sha512": "6fe70f8ab008d1cab8a779485f262a550666254f4b2886c1f499226265a9386e0893c5d6401c877bd77394a59e4a519a688f3feb03187624a391e8618e3d6a9e",
+          "sha256": "01c05c64572c9d94c455ba487fa3755267bc3beba0ab47aff2466742f9f88e17",
+          "sha1": "558271c4f0782d363b02ce915e1e981dc12ed929",
+          "md5": "90ae9b9273f3f6907dd7721df3c2df42"
+        }
+      ]
+    },
+    {
+      "name": "androidRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "top.yukonga.miuix.kmp",
+          "module": "miuix-material",
+          "version": {
+            "requires": "0.9.4-9d4b9c8-SNAPSHOT"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.foundation",
+          "module": "foundation",
+          "version": {
+            "requires": "1.12.2"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "miuix-squircle.aar",
+          "url": "miuix-squircle-android-0.9.4-9d4b9c8-SNAPSHOT.aar",
+          "size": 54316,
+          "sha512": "6fe70f8ab008d1cab8a779485f262a550666254f4b2886c1f499226265a9386e0893c5d6401c877bd77394a59e4a519a688f3feb03187624a391e8618e3d6a9e",
+          "sha256": "01c05c64572c9d94c455ba487fa3755267bc3beba0ab47aff2466742f9f88e17",
+          "sha1": "558271c4f0782d363b02ce915e1e981dc12ed929",
+          "md5": "90ae9b9273f3f6907dd7721df3c2df42"
+        }
+      ]
+    },
+    {
+      "name": "androidSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "miuix-squircle-android-0.9.4-9d4b9c8-SNAPSHOT-sources.jar",
+          "url": "miuix-squircle-android-0.9.4-9d4b9c8-SNAPSHOT-sources.jar",
+          "size": 38005,
+          "sha512": "f55070df2c50c99cfbac6da260494eb9e66dbfc57bdb5b6375363aa5e3cc07edb124029a34a5470e9eac53d964bc898e27e0f1f60145059aec7c7ac8626b2ea0",
+          "sha256": "17e5305e6defc3000e54c98978e6aab9ed72898bd5516cae96db399a9ac25696",
+          "sha1": "7e2aa693c1f8af54ab663e5a5af602ea990354fe",
+          "md5": "dd571c545d6c8d65bce928c51a05516f"
+        }
+      ]
+    }
+  ]
+}

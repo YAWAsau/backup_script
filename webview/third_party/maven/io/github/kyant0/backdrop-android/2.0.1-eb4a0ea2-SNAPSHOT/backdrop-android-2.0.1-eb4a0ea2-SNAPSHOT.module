@@ -1,0 +1,137 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../backdrop/2.0.1-eb4a0ea2-SNAPSHOT/backdrop-2.0.1-eb4a0ea2-SNAPSHOT.module",
+    "group": "io.github.kyant0",
+    "module": "backdrop",
+    "version": "2.0.1-eb4a0ea2-SNAPSHOT",
+    "attributes": {
+      "org.gradle.status": "integration"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.7.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "androidApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "backdrop.aar",
+          "url": "backdrop-android-2.0.1-eb4a0ea2-SNAPSHOT.aar",
+          "size": 131048,
+          "sha512": "485cf1f7bb5c5177a2bccea8a4a4aa3c9314d5effa88d74ff6c929f756fe2b1663c3dc9d80fd0a5e43829fa23b64164dceb2315fe0ced50c54bf3469f5421da6",
+          "sha256": "a3f1bfc313588e1dd9bdaafac462d6cf5b560c39fd73352d7c5ab1582c42d71a",
+          "sha1": "87d29831685c392e0cc6d97526576906db9c5909",
+          "md5": "146508a57d2aab61a8a04b7dff762474"
+        }
+      ]
+    },
+    {
+      "name": "androidRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.10"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.foundation",
+          "module": "foundation",
+          "version": {
+            "requires": "1.12.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.ui",
+          "module": "ui",
+          "version": {
+            "requires": "1.12.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.ui",
+          "module": "ui-graphics",
+          "version": {
+            "requires": "1.12.0"
+          }
+        },
+        {
+          "group": "io.github.kyant0",
+          "module": "shapes",
+          "version": {
+            "requires": "1.2.1"
+          }
+        },
+        {
+          "group": "org.jetbrains",
+          "module": "annotations",
+          "version": {
+            "requires": "26.1.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "backdrop.aar",
+          "url": "backdrop-android-2.0.1-eb4a0ea2-SNAPSHOT.aar",
+          "size": 131048,
+          "sha512": "485cf1f7bb5c5177a2bccea8a4a4aa3c9314d5effa88d74ff6c929f756fe2b1663c3dc9d80fd0a5e43829fa23b64164dceb2315fe0ced50c54bf3469f5421da6",
+          "sha256": "a3f1bfc313588e1dd9bdaafac462d6cf5b560c39fd73352d7c5ab1582c42d71a",
+          "sha1": "87d29831685c392e0cc6d97526576906db9c5909",
+          "md5": "146508a57d2aab61a8a04b7dff762474"
+        }
+      ]
+    },
+    {
+      "name": "androidSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "backdrop-android-sources.jar",
+          "url": "backdrop-android-2.0.1-eb4a0ea2-SNAPSHOT-sources.jar",
+          "size": 28628,
+          "sha512": "5d8ad9400b924298601f5f5c521dd046dfeb6a7645384f0bec1b2fd4a65f5fdb8d2084eece08163a82d848314a17bac4816e3be7df5bd648e91f14e591da17a8",
+          "sha256": "52635c4063f90103706e90bc9471c27c7bdc4ff1b7b4730b8a9fd7b3e268352c",
+          "sha1": "2f85137965793c97e0d949f78dbaacef83af9a77",
+          "md5": "0a28d63a18ecc1ea0918dfa561e2ca36"
+        }
+      ]
+    }
+  ]
+}

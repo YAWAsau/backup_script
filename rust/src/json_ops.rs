@@ -47,8 +47,58 @@ fn usable_ram(text: &str) -> Option<u64> {
     (kb>0 && kb<=1024*1024*1024).then_some(kb)
 }
 fn soc_key(value:&str)->String {value.trim().to_ascii_lowercase()}
+fn soc_usable(s: &str) -> bool {
+    !s.trim().is_empty() && !matches!(soc_key(s).as_str(), "null"|"unknown"|"n/a"|"none"|"na")
+}
+// Only hardware/model fields identify a chip; ARM Processor/CPU part rows describe cores.
+fn soc_cpu_candidates(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in text.lines().take(8192) {
+        let Some((key, value)) = line.split_once(':') else { continue; };
+        let value = value.trim();
+        if !key.trim().eq_ignore_ascii_case("Hardware")
+            && !(key.trim().eq_ignore_ascii_case("model name") && value.contains("Atom(TM)")) { continue; }
+        if !soc_usable(value) || value.len() > 256 { continue; }
+        let mut add = |s: &str| { if !out.iter().any(|x: &String|soc_key(x)==soc_key(s)) { out.push(s.to_owned()); } };
+        add(value);
+        // Preserve SKU suffixes (MT6991Z/TCZB, SM8650-Q-AA), never strip to a family.
+        for token in value.split(|c: char|!c.is_ascii_alphanumeric() && c!='-' && c!='/') {
+            let upper=token.to_ascii_uppercase();
+            if ["SM","SDM","MSM","MT","EXYNOS"].iter().any(|prefix|
+                upper.strip_prefix(prefix).is_some_and(|rest|rest.starts_with(|c: char|c.is_ascii_digit()))) { add(token); }
+        }
+    }
+    out
+}
+fn soc_sources(table: &V, device: String, prop: impl Fn(&str)->String, cpu: &str) -> Vec<(String,String)> {
+    let mut sources=vec![("argument".into(),device)];
+    for key in ["ro.soc.model","ro.vendor.soc.model.part_name","ro.vendor.soc.model_name","ro.vendor.soc.model","ro.mediatek.platform"] {
+        sources.push((key.into(),prop(key)));
+    }
+    let cpu=soc_cpu_candidates(cpu);
+    // Only a table-backed cpuinfo model may precede broad board/hardware properties.
+    for value in &cpu {
+        let found=soc_resolve(table,std::slice::from_ref(value));
+        if !found.0.ends_with("（系統回報）") && found.0!="未知" {sources.push(("cpuinfo".into(),value.clone()));}
+    }
+    for key in ["ro.board.platform","ro.hardware"] { sources.push((key.into(),prop(key))); }
+    if !sources.iter().any(|(_,v)|soc_usable(v)) {
+        if let Some(value)=cpu.first() {sources.push(("cpuinfo-unmapped".into(),value.clone()));}
+    }
+    sources.retain(|(_,v)|soc_usable(v));
+    sources
+}
+fn soc_source_diagnostic(table: &V, sources: &[(String,String)]) -> String {
+    let mut names=Vec::new();
+    let entries:Vec<_>=sources.iter().map(|(source,value)| {
+        let resolved=soc_resolve(table,std::slice::from_ref(value)).0;
+        if !resolved.ends_with("（系統回報）") && resolved!="未知" && !names.contains(&resolved) {names.push(resolved.clone());}
+        format!("{}={}=>{}",source,value,resolved)
+    }).collect();
+    format!("conflict={} {}",names.len()>1,entries.join("; ")).replace(['\t','\r','\n']," ")
+}
 fn soc_resolve(table:&V,candidates:&[String])->(String,String) {
-    let usable=|s:&str|!s.trim().is_empty()&&!matches!(soc_key(s).as_str(),"null"|"unknown"|"n/a"|"none");
+    let usable=soc_usable;
     for candidate in candidates.iter().filter(|s|usable(s)) {
         let exact=g(table,candidate.trim());
         let d=if exact.object(){exact}else if let V::Object(rows)=table {
@@ -72,10 +122,7 @@ fn soc_device_resolve(table: &V, candidates: &[String], brand: &str, product: &s
     if !resolved.0.ends_with("（系統回報）") { return resolved; }
     let platform = candidates.iter().any(|s| soc_key(s) == "mt6991");
     // Conflicting platform/model properties must keep the system-reported fallback.
-    let conflict = candidates.iter().any(|s| {
-        let s = soc_key(s);
-        !matches!(s.as_str(), "" | "null" | "unknown" | "n/a" | "none" | "mt6991")
-    });
+    let conflict = candidates.iter().any(|s| soc_usable(s) && soc_key(s) != "mt6991");
     if platform && !conflict && soc_key(product) == "dali"
         && matches!(soc_key(brand).as_str(), "redmi" | "xiaomi") {
         // Do not infer RAM technology/speed from the phone's marketing specification.
@@ -581,10 +628,13 @@ fn execute(op: &str, v: &V, a: &Vars, file: &str) -> Result<Vec<V>, String> {
             .map(|v| alt(v, "digest", string("")))
             .collect()),
         "soc-info" => {
-            let mut candidates=vec![var(a,"device")];
-            for key in ["ro.soc.model","ro.vendor.soc.model","ro.mediatek.platform","ro.board.platform","ro.hardware"] {candidates.push(device_property(key));}
+            use std::io::Read;
+            let mut cpu=String::new();
+            if let Ok(file)=std::fs::File::open("/proc/cpuinfo") { let _=file.take(256*1024).read_to_string(&mut cpu); }
+            let sources=soc_sources(v,var(a,"device"),device_property,&cpu);
+            let candidates:Vec<_>=sources.iter().map(|(_,value)|value.clone()).collect();
             let (name,spec)=soc_device_resolve(v,&candidates,&device_property("ro.product.brand"),&ram_product());
-            Ok(vec![string(format!("DEVICE\t{}",name.replace(['\t','\r','\n']," "))),string(format!("RAM\t{}",ram_info(&spec)))])
+            Ok(vec![string(format!("DEVICE\t{}",name.replace(['\t','\r','\n']," "))),string(format!("RAM\t{}",ram_info(&spec))),string(format!("SOC_SOURCES\t{}",soc_source_diagnostic(v,&sources)))])
         }
         "webdav-contract" => {
             let mut xs = vec![raw(&g(v, "serverProfile"))];
@@ -1647,6 +1697,31 @@ pub(super) fn run(args: &[String]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn soc_new_sources_keep_priority_and_report_conflicts() {
+        let table=V::Object(vec![
+            ("SM8750".into(),V::Object(vec![("NAME".into(),string("Elite"))])),
+            ("SM8850".into(),V::Object(vec![("NAME".into(),string("Elite Gen 5"))])),
+            ("MT6991Z/TCZB".into(),V::Object(vec![("NAME".into(),string("9400+"))])),
+        ]);
+        let choose=|sources: &[(String,String)]|soc_resolve(&table,&sources.iter().map(|(_,v)|v.clone()).collect::<Vec<_>>()).0;
+        for key in ["ro.vendor.soc.model.part_name","ro.vendor.soc.model_name"] {
+            let sources=soc_sources(&table,String::new(),|k|if k==key{"SM8850".into()}else{String::new()},"");
+            assert_eq!(choose(&sources),"Elite Gen 5");
+        }
+        let sources=soc_sources(&table,"SM8750".into(),|_|String::new(),"Hardware : Qualcomm Technologies, Inc (SM8850)");
+        assert_eq!(choose(&sources),"Elite");
+        assert!(soc_source_diagnostic(&table,&sources).contains("conflict=true"));
+        let sources=soc_sources(&table,"unknown".into(),|_|String::new(),"Hardware : MediaTek MT6991Z/TCZB");
+        assert_eq!(choose(&sources),"9400+");
+        let sources=soc_sources(&table,String::new(),|_|String::new(),"Hardware : mystery-board");
+        assert_eq!(choose(&sources),"mystery-board（系統回報）");
+        let sources=soc_sources(&table,"MT6991".into(),|_|String::new(),"Hardware : Generic ARM Board");
+        assert_eq!(soc_device_resolve(&table,&sources.iter().map(|(_,v)|v.clone()).collect::<Vec<_>>(),"Redmi","dali").0,"MediaTek Dimensity 9400+");
+        assert_eq!(soc_cpu_candidates("Processor : ARMv8 Processor\nCPU part : 0xd05\nSerial : SM8750\nmodel name : ARM Cortex-A78"),Vec::<String>::new());
+        assert_eq!(soc_cpu_candidates("Hardware: Qualcomm (SM8650-Q-AA)"),vec!["Qualcomm (SM8650-Q-AA)","SM8650-Q-AA"]);
+        assert!(soc_sources(&table,String::new(),|_|"N/A".into(),"").is_empty());
+    }
     #[test]
     fn soc_board_fallback_requires_verified_identity_and_preserves_exact_sku() {
         let table=parse(r#"{"MT6991Z/CZB":{"VENDOR":"MediaTek","NAME":"Dimensity 9400"}}"#).unwrap();

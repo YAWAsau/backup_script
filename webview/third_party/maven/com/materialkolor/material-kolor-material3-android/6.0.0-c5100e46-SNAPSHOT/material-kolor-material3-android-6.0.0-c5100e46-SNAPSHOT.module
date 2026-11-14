@@ -1,0 +1,150 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../material-kolor-material3/6.0.0-c5100e46-SNAPSHOT/material-kolor-material3-6.0.0-c5100e46-SNAPSHOT.module",
+    "group": "com.materialkolor",
+    "module": "material-kolor-material3",
+    "version": "6.0.0-c5100e46-SNAPSHOT",
+    "attributes": {
+      "org.gradle.status": "integration"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.8.2"
+    }
+  },
+  "variants": [
+    {
+      "name": "androidApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.materialkolor",
+          "module": "material-kolor-core",
+          "version": {
+            "requires": "6.0.0-c5100e46-SNAPSHOT"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "material-kolor-material3.aar",
+          "url": "material-kolor-material3-android-6.0.0-c5100e46-SNAPSHOT.aar",
+          "size": 171721,
+          "sha512": "c28defc811b4a4faca4da3b3dd383c6f504663b1ceaea0c30f46dbbcf12526b588f0f9b9e8a8b8d770b32b068398d27ed489f97b1be0ca60f02f1e33ad84b8a1",
+          "sha256": "9af893536b1ef272878d3ff6e819aa874828ba8f8863052b6e08611d78709b4e",
+          "sha1": "346c6486ed257542c0e155b1bb15ca84cb7b4a3b",
+          "md5": "1aa62e25cb9a3f2570a0a678dc2d59b0"
+        }
+      ]
+    },
+    {
+      "name": "androidRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.materialkolor",
+          "module": "material-kolor-core",
+          "version": {
+            "requires": "6.0.0-c5100e46-SNAPSHOT"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.runtime",
+          "module": "runtime",
+          "version": {
+            "requires": "1.12.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.ui",
+          "module": "ui",
+          "version": {
+            "requires": "1.12.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.foundation",
+          "module": "foundation",
+          "version": {
+            "requires": "1.12.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.material3",
+          "module": "material3",
+          "version": {
+            "requires": "1.12.0-alpha03"
+          },
+          "excludes": [
+            {
+              "group": "androidx.compose.material3",
+              "module": "*"
+            }
+          ]
+        }
+      ],
+      "files": [
+        {
+          "name": "material-kolor-material3.aar",
+          "url": "material-kolor-material3-android-6.0.0-c5100e46-SNAPSHOT.aar",
+          "size": 171721,
+          "sha512": "c28defc811b4a4faca4da3b3dd383c6f504663b1ceaea0c30f46dbbcf12526b588f0f9b9e8a8b8d770b32b068398d27ed489f97b1be0ca60f02f1e33ad84b8a1",
+          "sha256": "9af893536b1ef272878d3ff6e819aa874828ba8f8863052b6e08611d78709b4e",
+          "sha1": "346c6486ed257542c0e155b1bb15ca84cb7b4a3b",
+          "md5": "1aa62e25cb9a3f2570a0a678dc2d59b0"
+        }
+      ]
+    },
+    {
+      "name": "androidSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "material-kolor-material3-android-sources.jar",
+          "url": "material-kolor-material3-android-6.0.0-c5100e46-SNAPSHOT-sources.jar",
+          "size": 17056,
+          "sha512": "842b652dc1ede3d1e6afd732862a29a2811b5d6745e1dd5eccde9ab8588850efea47c817168881117ccb8b4df13fa87c06f87c40b24ee6b076b66e602e57e1ba",
+          "sha256": "59d86e421b93a60b3f94f0017fdbeeca70b22aa010685f21f39966c4c984878b",
+          "sha1": "a486dfe3838bf8974150b96d3e4f76161e3ca81a",
+          "md5": "7d8237143e41e999c05c2a87f2b50dda"
+        }
+      ]
+    }
+  ]
+}

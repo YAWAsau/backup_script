@@ -1,0 +1,149 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  lint:
+    name: Lint and Documentation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: |
+          cargo fmt --all -- --check
+          cargo fmt --manifest-path fuzz/Cargo.toml --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Clippy without default features
+        run: cargo clippy --all-targets --no-default-features -- -D warnings
+
+      - name: Documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --no-deps --all-features
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+          - macos-15
+    env:
+      RUST_LOG: debug
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Clippy
+        if: runner.os == 'Windows'
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Test default features
+        if: runner.os != 'macOS'
+        timeout-minutes: 5
+        run: cargo test
+
+      - name: Test default features (macOS)
+        if: runner.os == 'macOS'
+        env:
+          # macOS 15 Local Network Privacy blocks multicast on LAN interfaces
+          # (sendto fails with EHOSTUNREACH) for unsigned binaries like the
+          # test executables. Processes running as root are exempt, so run the
+          # test binaries via sudo. See Apple TN3179.
+          CARGO_TARGET_AARCH64_APPLE_DARWIN_RUNNER: sudo -E
+        timeout-minutes: 5
+        run: cargo test
+
+      - name: Test all features
+        if: runner.os != 'macOS'
+        timeout-minutes: 5
+        run: cargo test --all-features
+
+      - name: Test all features (macOS)
+        if: runner.os == 'macOS'
+        env:
+          # Run test binaries as root: see "Test default features (macOS)".
+          CARGO_TARGET_AARCH64_APPLE_DARWIN_RUNNER: sudo -E
+        timeout-minutes: 5
+        run: cargo test --all-features
+
+  msrv:
+    name: MSRV (Rust 1.71.0)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@1.71.0
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check minimum supported Rust version
+        run: cargo check --all-features
+
+      - name: Check without default features
+        run: cargo check --no-default-features
+
+  fuzz:
+    name: Build Fuzz Targets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "fuzz -> target"
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+
+      - name: Build fuzz targets
+        run: cargo fuzz build --target x86_64-unknown-linux-gnu

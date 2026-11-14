@@ -701,16 +701,8 @@ public class NotificationUtil extends BaseUtil {
     static String notificationText(String value) {
         String language=System.getenv("SPEEDBACKUP_UI_LANGUAGE");
         boolean simplified=language!=null ? "zh-Hans".equals(language) : "CN".equalsIgnoreCase(System.getenv("SCRIPT_LANG"));
-        if(!simplified)return value;
-        switch(value){
-            case "SpeedBackup 結束提示": return "SpeedBackup 结束提示";
-            case "SpeedBackup 進度": return "SpeedBackup 进度";
-            case "SpeedBackup 結果": return "SpeedBackup 结果";
-            case "SpeedBackup 錯誤": return "SpeedBackup 错误";
-            case "SpeedBackup 工作仍在進行": return "SpeedBackup 工作仍在进行";
-            case "我的進程鼠掉了，點此接回目前工作": return "我的进程鼠掉了，点此接回当前工作";
-            default:return NotificationLanguage.CONVERTER.t2s(value);
-        }
+        if(value==null)return null;
+        return simplified ? NotificationLanguage.CONVERTER.t2s(value) : NotificationLanguage.CONVERTER.s2t(value);
     }
 
     private static NotificationChannel makeChannel(String id, int importance) {
@@ -1053,7 +1045,7 @@ public class NotificationUtil extends BaseUtil {
         String display(String value) {
             if (value == null) return null;
             if ("zh-Hans".equals(language) || "CN".equalsIgnoreCase(language)) return NotificationLanguage.CONVERTER.t2s(value);
-            if ("zh-Hant".equals(language) || "TW".equalsIgnoreCase(language)) return value;
+            if ("zh-Hant".equals(language) || "TW".equalsIgnoreCase(language)) return NotificationLanguage.CONVERTER.s2t(value);
             return notificationText(value);
         }
 

@@ -8,7 +8,7 @@ impl MulticastGuard {
         use std::{io::{self, Read}, os::fd::AsRawFd, process::{Command, Stdio}, time::{Duration, Instant}};
         let dex = std::env::current_exe()?.parent()
             .ok_or_else(|| io::Error::other("missing executable parent"))?.join("classes.dex");
-        let child = Command::new("/system/bin/app_process").env("CLASSPATH", dex)
+        let child = Command::new("/system/bin/app_process").current_dir("/").env("CLASSPATH", dex)
             .args(["/system/bin", "com.xayah.dex.MulticastGuard"])
             .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()?;
         // Install cleanup before any fallible handshake operation.

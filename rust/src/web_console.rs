@@ -185,7 +185,7 @@ fn control_request(c:&mut UnixStream,state:Arc<Shared>,icons:mpsc::SyncSender<(S
                     // remains alive waiting for this synchronous reply.
                     if let (Ok(exe),Ok(stat))=(std::env::current_exe(),fs::read_to_string(format!("/proc/{peer}/stat"))){
                         if let (Some(parent),Some(start))=(exe.parent(),speedbackup_native_rs::proc_stat::starttime(&stat)){
-                            match bounded_output(Command::new("/system/bin/app_process").env("CLASSPATH",parent.join("classes.dex")).args(["/system/bin","com.xayah.dex.AppListReturn","--rebind-origin",&peer.to_string(),&format!("{peer}:{start}")]),5) {
+                            match bounded_output(Command::new("/system/bin/app_process").current_dir("/").env("CLASSPATH",parent.join("classes.dex")).args(["/system/bin","com.xayah.dex.AppListReturn","--rebind-origin",&peer.to_string(),&format!("{peer}:{start}")]),5) {
                                 Ok((status,_))=>{eprintln!("CONSOLE_REBIND success={} exit={:?} signal={:?}",status.success(),status.code(),status.signal());if status.signal().is_some(){super::super::crash_diagnostics::capture_console();}},
                                 Err(e)=>eprintln!("CONSOLE_REBIND helper_unavailable reason={e}"),
                             }
@@ -366,6 +366,12 @@ fn cleanup_session_files(dir:&Path)->io::Result<()> {
     match failure{Some(e)=>Err(e),None=>Ok(())}
 }
 fn service(dir:&Path,entry:&Path,args:&[String])->io::Result<i32>{
+    let absolute_dir=dir.canonicalize()?;let absolute_entry=entry.canonicalize()?;
+    let dir=absolute_dir.as_path();let entry=absolute_entry.as_path();
+    // CLI dispatch is still single-threaded here; all service threads start below.
+    // The launcher directory may be replaced while this service stays alive.
+    // ART initializes user.dir with getcwd; an unreachable cwd can crash before Java main.
+    std::env::set_current_dir("/")?;
     super::super::restore_safety::app_data_namespace()?;
     private(dir)?;
     let lock=OpenOptions::new().read(true).write(true).create(true).mode(0o600).custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE).open(dir.join("lock"))?;
@@ -587,7 +593,7 @@ fn start(entry:&Path,args:&[String])->io::Result<i32>{
     caller_diagnostics(&dir)?;
     if reconnect(&dir)? { return Ok(0); }
     let logfile=OpenOptions::new().write(true).create(true).append(true).mode(0o600).custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE).open(dir.join("service.log"))?;
-    let mut cmd=Command::new(std::env::current_exe()?);cmd.args(["speedscan","console-service"]).arg(&dir).arg(&entry).args(args).stdin(Stdio::null()).stdout(logfile.try_clone()?).stderr(logfile);
+    let mut cmd=Command::new(std::env::current_exe()?);cmd.current_dir("/").args(["speedscan","console-service"]).arg(&dir).arg(&entry).args(args).stdin(Stdio::null()).stdout(logfile.try_clone()?).stderr(logfile);
     unsafe{cmd.pre_exec(||{
         unsafe extern "C"{fn signal(sig:i32,handler:usize)->usize;}
         if signal(2,0)==usize::MAX{return Err(io::Error::last_os_error());}

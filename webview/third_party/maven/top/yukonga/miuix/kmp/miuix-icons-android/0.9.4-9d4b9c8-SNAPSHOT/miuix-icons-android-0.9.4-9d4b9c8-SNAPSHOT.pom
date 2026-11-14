@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!-- This module was also published with a richer model, Gradle metadata,  -->
+  <!-- which should be used instead. Do not delete the following line which  -->
+  <!-- is to indicate to Gradle or any Gradle module metadata file consumer  -->
+  <!-- that they should prefer consuming it instead. -->
+  <!-- do_not_remove: published-with-gradle-metadata -->
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>top.yukonga.miuix.kmp</groupId>
+  <artifactId>miuix-icons-android</artifactId>
+  <version>0.9.4-9d4b9c8-SNAPSHOT</version>
+  <packaging>aar</packaging>
+  <name>miuix-icons</name>
+  <description>Extended icon library for Miuix</description>
+  <url>https://github.com/compose-miuix-ui/miuix</url>
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>https://github.com/compose-miuix-ui/miuix/blob/main/LICENSE</url>
+    </license>
+  </licenses>
+  <developers>
+    <developer>
+      <id>compose-miuix-ui</id>
+      <name>compose-miuix-ui</name>
+      <url>https://github.com/compose-miuix-ui</url>
+    </developer>
+  </developers>
+  <scm>
+    <connection>https://github.com/compose-miuix-ui/miuix.git</connection>
+    <url>https://github.com/compose-miuix-ui/miuix</url>
+  </scm>
+  <issueManagement>
+    <system>Github</system>
+    <url>https://github.com/compose-miuix-ui/miuix/issues</url>
+  </issueManagement>
+  <dependencies>
+    <dependency>
+      <groupId>top.yukonga.miuix.kmp</groupId>
+      <artifactId>miuix-core-android</artifactId>
+      <version>0.9.4-9d4b9c8-SNAPSHOT</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-stdlib</artifactId>
+      <version>2.4.21</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.compose.foundation</groupId>
+      <artifactId>foundation-android</artifactId>
+      <version>1.12.2</version>
+      <scope>runtime</scope>
+    </dependency>
+  </dependencies>
+</project>

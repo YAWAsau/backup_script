@@ -1,0 +1,165 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../miuix-nav/0.9.4-9d4b9c8-SNAPSHOT/miuix-nav-0.9.4-9d4b9c8-SNAPSHOT.module",
+    "group": "top.yukonga.miuix.kmp",
+    "module": "miuix-nav",
+    "version": "0.9.4-9d4b9c8-SNAPSHOT",
+    "attributes": {
+      "org.gradle.status": "integration"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.9.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "androidApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "miuix-nav.aar",
+          "url": "miuix-nav-android-0.9.4-9d4b9c8-SNAPSHOT.aar",
+          "size": 237406,
+          "sha512": "2f7528e4a80b78e8bb81d4fa1384a7452bb1fce86739f040d2fc131b2abab16c4a44a84ec2d8a9e9ec67a518e4e0ba8814c9be986274a4056a0a23b6feb31dc6",
+          "sha256": "4564a2588e7fa21734ae98d504a6e5721af118675acf5d8155625888a01fe9d4",
+          "sha1": "1a0bd2bd93f9b0554e4c8c33f54347b09bb9fff2",
+          "md5": "74805c81d3c523ca98b06f8143716824"
+        }
+      ]
+    },
+    {
+      "name": "androidRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "top.yukonga.miuix.kmp",
+          "module": "miuix-squircle",
+          "version": {
+            "requires": "0.9.4-9d4b9c8-SNAPSHOT"
+          }
+        },
+        {
+          "group": "androidx.navigationevent",
+          "module": "navigationevent-compose",
+          "version": {
+            "requires": "1.2.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.foundation",
+          "module": "foundation",
+          "version": {
+            "requires": "1.12.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.androidx.lifecycle",
+          "module": "lifecycle-runtime",
+          "version": {
+            "requires": "2.11.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.androidx.lifecycle",
+          "module": "lifecycle-runtime-compose",
+          "version": {
+            "requires": "2.11.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.androidx.lifecycle",
+          "module": "lifecycle-viewmodel",
+          "version": {
+            "requires": "2.11.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.androidx.lifecycle",
+          "module": "lifecycle-viewmodel-compose",
+          "version": {
+            "requires": "2.11.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-collections-immutable",
+          "version": {
+            "requires": "0.5.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-json",
+          "version": {
+            "requires": "1.13.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "miuix-nav.aar",
+          "url": "miuix-nav-android-0.9.4-9d4b9c8-SNAPSHOT.aar",
+          "size": 237406,
+          "sha512": "2f7528e4a80b78e8bb81d4fa1384a7452bb1fce86739f040d2fc131b2abab16c4a44a84ec2d8a9e9ec67a518e4e0ba8814c9be986274a4056a0a23b6feb31dc6",
+          "sha256": "4564a2588e7fa21734ae98d504a6e5721af118675acf5d8155625888a01fe9d4",
+          "sha1": "1a0bd2bd93f9b0554e4c8c33f54347b09bb9fff2",
+          "md5": "74805c81d3c523ca98b06f8143716824"
+        }
+      ]
+    },
+    {
+      "name": "androidSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "miuix-nav-android-0.9.4-9d4b9c8-SNAPSHOT-sources.jar",
+          "url": "miuix-nav-android-0.9.4-9d4b9c8-SNAPSHOT-sources.jar",
+          "size": 79908,
+          "sha512": "17d56da564857d649f9255d19ebe62938f6c06218b537a3ff07bb652a1d937d8fe70ea8bcefa6d89fa110410329eb16d561976c49a6d5e6da28af2d52cb280fb",
+          "sha256": "f0b47937ec52a1be285fe540551c09512db0252842fba256a65b774f84b93cdd",
+          "sha1": "d08733f671f67b31ceee158daf666165685bada9",
+          "md5": "0cd9b848752e97dedcf9cb5794cdef62"
+        }
+      ]
+    }
+  ]
+}

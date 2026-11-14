@@ -1,0 +1,426 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.materialkolor",
+    "module": "material-color-utilities",
+    "version": "6.0.0-c5100e46-SNAPSHOT",
+    "attributes": {
+      "org.gradle.status": "integration"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.8.2"
+    }
+  },
+  "variants": [
+    {
+      "name": "metadataApiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.platform.type": "common"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "dev.drewhamilton.poko",
+          "module": "poko-annotations",
+          "version": {
+            "requires": "0.23.2"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "material-color-utilities-metadata.jar",
+          "url": "material-color-utilities-6.0.0-c5100e46-SNAPSHOT.jar",
+          "size": 42128,
+          "sha512": "8697308a5d7f817568f851968032fcb4be517e2d3e3f0c30518334503bf8bedb647c93d483b45e2e2e79d5c273b41c4efd6d92a54f3d9d06ba06e65685fd1d32",
+          "sha256": "70081063d15684b6f77b4e95e1b9287b89242c1089aafa68571d0e17f090515d",
+          "sha1": "71db3786232fadaa15d3e38a594c3f9391a3b896",
+          "md5": "bc1261d0fb67ea6b988c20b2d560ee79"
+        }
+      ]
+    },
+    {
+      "name": "metadataSourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.platform.type": "common"
+      },
+      "files": [
+        {
+          "name": "material-color-utilities-kotlin-sources.jar",
+          "url": "material-color-utilities-6.0.0-c5100e46-SNAPSHOT-sources.jar",
+          "size": 96647,
+          "sha512": "9b28de8c2517bb5bf3faca9e1425707d99c0c28193f268af6c6aebc7e14c193e989bcc56add8666f9628a76edad5af1483e10d2e6016db698fe0992fa52ceccb",
+          "sha256": "74815b63be4301925c6714ceb06fbdb5a7e5bc3286daf073e1b56e7e8045ed9b",
+          "sha1": "f9328f7c8d450363d95a3a7c047ab55f202c0382",
+          "md5": "fa09254693c0ae28a9dd2b378db6835a"
+        }
+      ]
+    },
+    {
+      "name": "androidApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-android/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-android-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-android",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "androidRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-android/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-android-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-android",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "androidSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-android/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-android-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-android",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "iosArm64ApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-iosarm64/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-iosarm64-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-iosarm64",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "iosArm64SourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-iosarm64/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-iosarm64-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-iosarm64",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "iosArm64MetadataElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-iosarm64/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-iosarm64-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-iosarm64",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64ApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-iossimulatorarm64/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-iossimulatorarm64-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-iossimulatorarm64",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64SourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-iossimulatorarm64/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-iossimulatorarm64-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-iossimulatorarm64",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64MetadataElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-iossimulatorarm64/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-iossimulatorarm64-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-iossimulatorarm64",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "jsApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.js.compiler": "ir",
+        "org.jetbrains.kotlin.platform.type": "js"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-js/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-js-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-js",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "jsRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.js.compiler": "ir",
+        "org.jetbrains.kotlin.platform.type": "js"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-js/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-js-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-js",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "jsSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.js.compiler": "ir",
+        "org.jetbrains.kotlin.platform.type": "js"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-js/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-js-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-js",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "jvmApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-jvm/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-jvm-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-jvm",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "jvmRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-jvm/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-jvm-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-jvm",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "jvmSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-jvm/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-jvm-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-jvm",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "macosArm64ApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.native.target": "macos_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-macosarm64/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-macosarm64-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-macosarm64",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "macosArm64SourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.native.target": "macos_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-macosarm64/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-macosarm64-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-macosarm64",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "macosArm64MetadataElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.native.target": "macos_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-macosarm64/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-macosarm64-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-macosarm64",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "wasmJsApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.platform.type": "wasm",
+        "org.jetbrains.kotlin.wasm.target": "js"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-wasm-js/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-wasm-js-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-wasm-js",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "wasmJsRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.platform.type": "wasm",
+        "org.jetbrains.kotlin.wasm.target": "js"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-wasm-js/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-wasm-js-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-wasm-js",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    },
+    {
+      "name": "wasmJsSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.platform.type": "wasm",
+        "org.jetbrains.kotlin.wasm.target": "js"
+      },
+      "available-at": {
+        "url": "../../material-color-utilities-wasm-js/6.0.0-c5100e46-SNAPSHOT/material-color-utilities-wasm-js-6.0.0-c5100e46-SNAPSHOT.module",
+        "group": "com.materialkolor",
+        "module": "material-color-utilities-wasm-js",
+        "version": "6.0.0-c5100e46-SNAPSHOT"
+      }
+    }
+  ]
+}

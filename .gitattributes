@@ -38,3 +38,12 @@ tar/upstream/doc/tar.info* -diff
 busybox/patches/*.patch -text -whitespace
 webview/third_party/maven/** -text whitespace=cr-at-eol
 dex/third_party/maven/** -text whitespace=cr-at-eol
+
+# Bundled snapshots retain exact manifest bytes.
+findutils/** -text -whitespace
+compat/** -text -whitespace
+rust/vendor/** -text -whitespace
+webview/third_party/** -text -whitespace
+dex/third_party/** -text -whitespace
+third_party/opencc-phrases/** -text -whitespace
+third_party/ui/** -text -whitespace

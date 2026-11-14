@@ -155,11 +155,11 @@ shell_language="zh-TW"
 MODDIR_NAME="${MODDIR##*/}"
 tools_path="$MODDIR/tools"
 script="${0##*/}"
-backup_version="202611082132"
+backup_version="202611141753"
 # 固定用 GitHub release tag 作為線上更新比較基準；不要用每日 rebuild 日期，避免本地開發版被誤判舊版。
 speedbackup_release_tag="202607232022"
 # Show readiness immediately, before cache/config checks and the UI relay exist.
-speedbackup_script_version="v1138"
+speedbackup_script_version="v1155"
 # Generated from versions.properties. tools_version.log records actual tool
 # versions; operation logs do not repeat release-version markers.
 # Compatibility input alias, independent of the release version.
@@ -8891,13 +8891,13 @@ _speedbackup_tool_sha_table() {
 		fi
 	done <<'SB_TOOL_SHA_TABLE'
 busybox fe6f918463dbd936b8955996ac8761651f4f74f3721e06677ef999165d191409
-classes.dex 91a6fba9b2496d526f0f560b9794aca1661c38188f2c67382741777f96d39773
+classes.dex 4485f3cd854e68b529cea7d2e197c30db5954b75b5010ca8ea208ec650bd0123
 cmd 08da8ac23b6e99788fd3ce6c19c7b5a083b2ad48be35963a48d01d6ee7f3bb6d
-dex_check.sh 4a4d10fdca17ae6b5cc343f3aca5c145eae9006c6a664d2b003abd52a1e1d129
+dex_check.sh 3f6c212e1f2e491e647e7e06858be8726e8cb3f93c1dc45240cb7e08c41a6fc1
 find b54a044b4de266b5e64ca1caa3ed53c7a0fa20788a00ab4f18db0c34f77e3e5a
 keycheck 50645ee0e0d2a7d64fb4a1286446df7a4445f3d11aefd49eeeb88515b314c363
 smbclient 0015c60833578ec5780ebfa6d5832bca0af9f88619a45e10400ef5aa3c317cd1
-speednative 971eb19a32593ca0550ad3afd66d8a772313b37cc54e6c5af7f5477e315ff605
+speednative cdfccb9d624a08384248a98361bf192a74fc3e84e6ad3fbcadedb096ce87028a
 tar c8ef62565fb377dea0f6346260abf1ab1c67411ee1024825fd6b0ac8bd92c66c
 zstd 67df122604176cd78df693fdbc91d5a87bad948362f5bc4b92caf451dcb4ceb3
 SB_TOOL_SHA_TABLE
@@ -18552,6 +18552,7 @@ if [[ -f $tools_path/soc.json ]]; then
 	if _soc_json_read_info "$tools_path/soc.json" "$Socname" "$_soc_out"; then
 		DEVICE_NAME="$(awk -F'\t' '$1=="DEVICE"{print $2; exit}' "$_soc_out")"
 		RAMINFO="$(awk -F'\t' '$1=="RAM"{print $2; exit}' "$_soc_out")"
+		_speed_debug_log "DEVICE_SOC_SOURCES $(awk -F'\t' '$1=="SOC_SOURCES"{print $2; exit}' "$_soc_out")"
 	else
 		DEVICE_NAME="未知"
 		RAMINFO="未知"
@@ -18689,9 +18690,9 @@ _speedbackup_select_runtime_user() {
     		user_id="$(ls /data/user | tr ' ' '\n')"
     		if [[ $user_id != "" && $(ls /data/user | tr ' ' '\n' | wc -l) -gt 1 ]]; then
     			echo "$user_id" | while read -r; do
-    				[[ $REPLY = 0 ]] && _speedbackup_ui_must_rgb "主用戶:$REPLY" "2" || _speedbackup_ui_must_rgb "分身用戶:$REPLY" "2"
+    				[[ $REPLY = 0 ]] && _speedbackup_ui_must_rgb "主使用者:$REPLY" "2" || _speedbackup_ui_must_rgb "分身使用者:$REPLY" "2"
     			done
-    			_speedbackup_ui_must_rgb "設備存在多用戶,選擇操作目標用戶"
+    			_speedbackup_ui_must_rgb "裝置存在多使用者,選擇操作目標使用者"
                 user_id="$(printf '%s\n' "$user_id" | awk '/^[0-9]+$/')"
                 _user_labels="$(printf '%s\n' "$user_id" | awk '$0 ~ /^[0-9]+$/ {print ($0==0 ? "主使用者 " : "分身使用者 ") $0}')"
                 _speedbackup_web_select "選擇操作使用者" "$_user_labels" "取消"
@@ -18708,24 +18709,24 @@ _speedbackup_select_runtime_user() {
     		user_id="$(ls /data/user | tr ' ' '\n')"
     		if [[ $user_id != "" && $(ls /data/user | tr ' ' '\n' | wc -l) -gt 1 ]]; then
     			echo "$user_id" | while read -r; do
-    				[[ $REPLY = 0 ]] && echoRgb "主用戶:$REPLY" "2" || echoRgb "分身用戶:$REPLY" "2"
+    				[[ $REPLY = 0 ]] && echoRgb "主使用者:$REPLY" "2" || echoRgb "分身使用者:$REPLY" "2"
     			done
     		else
-    			echoRgb "主用戶:$user_id" "2"
+    			echoRgb "主使用者:$user_id" "2"
     		fi
     	fi
     else
     	case $(echo "${0%}") in
     	*Backup_zstd_*) user="${SPEEDBACKUP_REGEN_USER:-$(echo "${0%}" | sed -e 's/.*\/Backup_zstd_\([0-9]*\).*/\1/' -e 's/.*\/Backup_tar_\([0-9]*\).*/\1/')}" ;;
     	*Backup_tar_*) user="$(echo "${0%}" | sed 's/.*\/Backup_tar_\([0-9]*\).*/\1/')" ;;
-    	*) echoRgb "請勿修改備份資料夾名稱，保持原本的Backup_壓縮算法名稱_使用者id" "0" && return 2 ;;
+    	*) echoRgb "請勿修改備份資料夾名稱，保持原本的Backup_壓縮演算法名稱_使用者id" "0" && return 2 ;;
     	esac
     fi
     [[ $user != 0 ]] && am start-user "$user" </dev/null
     path="/data/media/$user/Android"
     path2="/data/user/$user"
     path3="/data/user_de/$user"
-    [[ ! -d $path2 ]] && echoRgb "選取的使用者 $user 分區不存在；請在設定頁的「使用者」選擇目前裝置存在的使用者" "0" && return 2
+    [[ ! -d $path2 ]] && echoRgb "選取的使用者 $user 分割槽不存在；請在設定頁的「使用者」選擇目前裝置存在的使用者" "0" && return 2
     export USER_ID="$user"
     return 0
 }

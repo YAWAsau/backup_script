@@ -31,6 +31,14 @@ public final class WifiConnectionWatch {
     private final WifiManager wifi;
     private final ConnectivityManager connectivity;
     private String last = "";
+    // Bounded, structural diagnostics only: never exception messages or network identities.
+    private final JSONObject diagnostic = new JSONObject();
+    private void diag(String key,Object value) {
+        try { diagnostic.put(key,value); } catch(Exception ignored) { }
+    }
+    private void failure(String stage,Throwable error) {
+        diag(stage,error.getClass().getSimpleName());
+    }
     private Object tetherManager,tetherCallback;
     private final java.util.Map<String,Integer> tethered=new java.util.TreeMap<>();
     private final java.util.Map<String,Integer> localOnly=new java.util.TreeMap<>();
@@ -182,7 +190,9 @@ public final class WifiConnectionWatch {
     }
     private void publish(JSONObject value) {
         try {
-            networkMetadata(value);
+            try { networkMetadata(value); }
+            catch(Exception | LinkageError error) { failure("networkMetadataError",error); throw error; }
+            value.put("diagnostic",new JSONObject(diagnostic.toString()));
             String text=value.toString();
             if(text.equals(last))return;
             File temporary=new File(directory,"wifi.new");
@@ -190,21 +200,35 @@ public final class WifiConnectionWatch {
             android.system.Os.chmod(temporary.getPath(),0600);
             Files.move(temporary.toPath(),new File(directory,"wifi.json").toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
             last=text;
-        } catch(Exception ignored) { }
+        } catch(Exception | LinkageError error) {
+            System.err.println("WIFI_DIAG publish_error="+error.getClass().getSimpleName());
+        }
     }
     @SuppressWarnings("deprecation")
     private void update(WifiInfo supplied) {
         JSONObject value=new JSONObject();
+        diag("sdk",Build.VERSION.SDK_INT);
+        diag("source",supplied==null?"legacy_api":"capabilities_callback");
+        diag("wifiManagerPresent",wifi!=null);
+        diag("connectivityManagerPresent",connectivity!=null);
+        diag("primaryNetworkPresent",primaryNetwork!=null);
+        diag("connectionInfoError",JSONObject.NULL);
+        diag("networkInfoError",JSONObject.NULL);
+        diag("legacyNetworkInfoPresent",JSONObject.NULL);
+        diag("legacyConnected",JSONObject.NULL);
+        diag("updateError",JSONObject.NULL);
+        diag("networkMetadataError",JSONObject.NULL);
         try {
             value.put("available",true).put("connected",false);
             if(wifi==null)throw new IllegalStateException();
             WifiInfo info=supplied;
             if(info==null) {
-                try { info=wifi.getConnectionInfo(); } catch(Exception ignored) { }
+                try { info=wifi.getConnectionInfo(); } catch(Exception error) { failure("connectionInfoError",error); }
             }
             boolean connected=false;
-            try { android.net.NetworkInfo state=connectivity.getNetworkInfo(ConnectivityManager.TYPE_WIFI);connected=state!=null&&state.isConnected(); } catch(Exception ignored) { }
+            try { android.net.NetworkInfo state=connectivity.getNetworkInfo(ConnectivityManager.TYPE_WIFI);diag("legacyNetworkInfoPresent",state!=null);connected=state!=null&&state.isConnected();diag("legacyConnected",connected); } catch(Exception error) { failure("networkInfoError",error); }
             if(supplied!=null)connected=true;
+            diag("wifiInfoPresent",info!=null);diag("connectedDecision",connected);
             if(!connected||info==null) { publish(value);return; }
             value.put("connected",true);
             String ssid=info.getSSID();
@@ -233,7 +257,8 @@ public final class WifiConnectionWatch {
                     }
                 }
             } catch(Exception | LinkageError ignored) { }
-        } catch(Exception | LinkageError ignored) {
+        } catch(Exception | LinkageError error) {
+            failure("updateError",error);
             try { value.put("available",false); } catch(Exception impossible) { }
         }
         publish(value);
@@ -258,15 +283,19 @@ public final class WifiConnectionWatch {
             try {
                 if(Build.VERSION.SDK_INT>=33)context.registerReceiver(receiver,filter,null,handler,Context.RECEIVER_EXPORTED);
                 else context.registerReceiver(receiver,filter,null,handler);
-            } catch(Exception ignored) { receiver=null; }
+            } catch(Exception error) { active.failure("receiverRegistrationError",error);receiver=null; }
+            active.diag("receiverRegistered",receiver!=null);
             active.startTether(context,handler);
             callback=Build.VERSION.SDK_INT>=31?new DetailedCallback(active):new BasicCallback(active);
             try { watch.connectivity.registerNetworkCallback(new NetworkRequest.Builder().clearCapabilities().build(),callback,handler); }
-            catch(Exception ignored) { callback=null; }
+            catch(Exception error) { active.failure("callbackRegistrationError",error);callback=null; }
+            active.diag("callbackRegistered",callback!=null);
             handler.post(()->active.update(null));
             // The owning Rust process holds this pipe. EOF terminates even on old kernels.
             System.in.read();
-        } catch(Exception | LinkageError ignored) {
+        } catch(Exception | LinkageError error) {
+            System.err.println("WIFI_DIAG startup_error="+error.getClass().getSimpleName());
+            if(watch!=null)watch.failure("startupError",error);
             if(watch!=null)watch.publish(new JSONObject());
         } finally {
             if(watch!=null)watch.stopTether();
@@ -291,6 +320,8 @@ public final class WifiConnectionWatch {
         @Override public void onCapabilitiesChanged(Network n,NetworkCapabilities capabilities){
             watch.lostNetworks.remove(n);
             Object transport=capabilities.getTransportInfo();
+            watch.diag("callbackTransport",transport==null?"null":transport.getClass().getSimpleName());
+            watch.diag("callbackWifiTransport",capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI));
             if(transport instanceof WifiInfo) {
                 WifiInfo info=(WifiInfo)transport;
                 try { if(Boolean.FALSE.equals(info.getClass().getMethod("isPrimary").invoke(info)))return; } catch(Exception ignored) { }
