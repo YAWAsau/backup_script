@@ -332,6 +332,7 @@ public final class AppStateEngine {
         addCapability(capabilities, "dex.cchelper.table_refresh.v1", true, false, "CCHelper table refresh with zh-TW polish and selftest");
         addCapability(capabilities, "dex.cchelper.zh_tw_polish.v1", true, false, "CCHelper can polish already-Traditional SpeedBackup wording without script self-rewrite");
         addCapability(capabilities, "dex.cchelper.repeat_merge_fix.v1", true, false, "CCHelper maps 重复/合并 to 重複/合併 in zh-TW and back to 简中 correctly");
+        addCapability(capabilities, "dex.cchelper.tw_vocabulary.v1", true, false, "CCHelper maps Taiwan vocabulary the tw2sp profiles keep (串流/清單/紀錄/檔) to mainland wording before conversion");
         addCapability(capabilities, "appstate.snapshot.batch.v2", true, true, "canonical-ndjson");
         addCapability(capabilities, "appstate.snapshot.batch.parallel.v1", true, true, "bounded-fixed-pool-1-2-4;input-order-stable;max4");
         addCapability(capabilities, "appstate.run_results.v1", true, true, "run-local retry-aware package summaries");

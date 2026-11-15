@@ -373,6 +373,7 @@ $requiredDexStrings = @(
     "dex.cchelper.table_refresh.v1",
     "dex.cchelper.zh_tw_polish.v1",
     "dex.cchelper.repeat_merge_fix.v1",
+    "dex.cchelper.tw_vocabulary.v1",
     "CCUTIL_SELFTEST_OK cchelper.table_refresh.v1 zh_tw_polish.v1 repeat_merge_fix.v1",
     "dex.process_observer.taskstack_package_guard.v1",
     "PACKAGE_SCOPE_TRIGGER reason=taskstack-top-target",

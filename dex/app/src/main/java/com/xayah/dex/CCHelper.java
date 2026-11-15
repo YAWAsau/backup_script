@@ -86,6 +86,38 @@ public class CCHelper {
             {"设定", "配置"}
     };
 
+    /**
+     * Taiwan vocabulary, which the pinned OpenCC profiles keep intact: they normalise the
+     * script (乾/干, 髮/发) but not the words, so 串流/呼叫/清單 reached the Simplified UI as
+     * Simplified glyphs with Taiwan wording. OpenCC ships the missing stage as TWPhrases and
+     * runs it before the character table in tw2sp; this converter applies the same order here.
+     *
+     * Longest key first. Compounds stay listed explicitly (檔案 beside 檔) so a shorter entry
+     * cannot split them into 文件案, and entries overlap T2S_PHRASES on purpose: whatever this
+     * table already turned into mainland wording simply falls through there unchanged.
+     */
+    private static final String[][] TW_TERMS = new String[][]{
+            {"檔案名稱", "文件名"},
+            {"伺服端", "服务端"},
+            {"壓縮檔", "压缩包"},
+            {"映像檔", "镜像"},
+            {"正規化", "规范化"},
+            {"用戶端", "客户端"},
+            {"設定檔", "配置文件"},
+            {"串流", "流式"},
+            {"套件", "软件包"},
+            {"封包", "数据包"},
+            {"封存", "归档"},
+            {"文檔", "文档"},
+            {"檔名", "文件名"},
+            {"檔案", "文件"},
+            {"清單", "列表"},
+            {"紀錄", "记录"},
+            {"逾時", "超时"},
+            {"預掃", "预扫描"},
+            {"檔", "文件"}
+    };
+
     private static boolean asciiOnly(String text) {
         for (int i = 0; i < text.length(); i++) if (text.charAt(i) >= 128) return false;
         return true;
@@ -124,6 +156,9 @@ public class CCHelper {
         if (text != null) text = REPEATED_ALGORITHM.matcher(text).replaceAll("演算法");
         if (text == null || text.isEmpty()) return text == null ? "" : text;
         if (asciiOnly(text)) return text;
+        // Vocabulary first, then the character table, then the project glossary - the same
+        // order OpenCC uses for tw2sp. The 文件 guard below still sees the result.
+        text = applyPhraseMap(text, TW_TERMS);
         // In this file-management product, 文件 is the Simplified target for
         // 檔案, not the Taiwan word for a document. Protect it before tw2sp so
         // already-localized model labels stay stable when rendered again.
