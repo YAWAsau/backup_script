@@ -599,10 +599,11 @@ final class ScriptRoundTrip {
         lines.put("\t# 複用恢復模式選單的 dumpname/get_name Apkname：它已負責 appList/mediaList、recover.sh/backup.sh、一致性檢查與舊備份 apk probe。", "\t# 復用恢復模式選單的 dumpname/get_name Apkname：它已負責 appList/mediaList、recover.sh/backup.sh、一致性檢查與舊備份 apk probe。");
         lines.put("\techoRgb \"已本地補齊入口/列表: start.sh appList.txt/mediaList.txt app wrappers=${_cnt}\" \"1\"", "\techoRgb \"已本地補齊入口/清單: start.sh appList.txt/mediaList.txt app wrappers=${_cnt}\" \"1\"");
         lines.put("\t\t\t\techoRgb \"備份目錄工具同步失敗，該目錄可能仍有舊工具：$_br/tools；請檢視 speed_debug\" \"0\"", "\t\t\t\techoRgb \"備份目錄工具同步失敗，該目錄可能仍有舊工具：$_br/tools；請查看 speed_debug\" \"0\"");
+        lines.put("\t# conf 含中文路徑、密碼和多行值，必須完整保留；註解由啟動時的模板重新整理。", "\t# conf 含中文路徑、密碼和多行值，必須完整保留；註解由啟動時的模板刷新。");
         lines.put("\techoRgb \"指令碼語言為$_lang，整體轉換為$Script_target_language；只更新主 tools.sh，再同步到既有備份目錄\" \"3\"", "\techoRgb \"腳本語言為$_lang，整體轉換為$Script_target_language；只更新主 tools.sh，再同步到既有備份目錄\" \"3\"");
         lines.put("\t\t\techoRgb \"語系轉換後 tools.sh 語法檢查失敗，已保留原檔案\" \"0\"", "\t\t\techoRgb \"語系轉換後 tools.sh 語法檢查失敗，已保留原檔\" \"0\"");
         lines.put("\t\techoRgb \"tools.sh 語系轉換失敗，已保留原檔案\" \"0\"", "\t\techoRgb \"tools.sh 語系轉換失敗，已保留原檔\" \"0\"");
-        lines.put("\t# 非指令碼資源/設定檔案可同步轉換；這些不是執行中的 tools.sh，不會造成半更新指令碼狀態。", "\t# 非腳本資源/設定檔可同步轉換；這些不是執行中的 tools.sh，不會造成半更新腳本狀態。");
+        lines.put("\t# 設定檔案保留原值；重新載入後由各自的設定模板重新整理註解。", "\t# 設定檔保留原值；重新載入後由各自的設定模板刷新註解。");
         lines.put("\t# 只備份入口指令碼；不碰 app payload/json。", "\t# 只備份入口腳本；不碰 app payload/json。");
         lines.put("\t# r15: full release 更新時，以更新包 tools/ manifest 為準，刪除目標 tools/ 多出的舊檔案。", "\t# r15: full release 更新時，以更新包 tools/ manifest 為準，刪除目標 tools/ 多出的舊檔。");
         lines.put("# 449: update_state.json 僅作自動更新/CLI/debug 狀態記錄；不是 KSU Manager / WebUI 介面契約。", "# 449: update_state.json 僅作自動更新/CLI/debug 狀態紀錄；不是 KSU Manager / WebUI 介面契約。");
