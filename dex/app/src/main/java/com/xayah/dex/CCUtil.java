@@ -121,6 +121,17 @@ public class CCUtil {
         failed += check("T2S 合併", "合并", ccHelper.t2s("合併"));
         failed += check("T2S repeat folder", "打开文件夹", ccHelper.t2s(ccHelper.t2s("開啟資料夾")));
         failed += check("T2S repeat config", "配置文件", ccHelper.t2s(ccHelper.t2s("設定檔")));
+        for (String[] phrase : new String[][]{
+                {"設定詳細", "配置详细"},
+                {"設定遺失", "配置丢失"},
+                {"設定丟失", "配置丢失"}
+        }) {
+            failed += check("T2S " + phrase[0], phrase[1], ccHelper.t2s(phrase[0]));
+            failed += check("T2S repeat " + phrase[0], phrase[1], ccHelper.t2s(ccHelper.t2s(phrase[0])));
+            failed += check("config language switch " + phrase[0], phrase[1], ccHelper.t2s(ccHelper.s2t(phrase[1])));
+        }
+        failed += check("T2S setting verb", "设置为默认值", ccHelper.t2s("設定為預設值"));
+        failed += check("T2S setting folder", "设置文件夹", ccHelper.t2s("設定資料夾"));
         failed += check("T2S document", "文档", ccHelper.t2s("文檔"));
         failed += check("S2T regional terms", "軟體 網路 滑鼠 影片 記憶體", ccHelper.s2t("软件 网络 鼠标 视频 内存"));
         failed += check("T2S regional terms", "软件 网络 鼠标 视频 内存", ccHelper.t2s("軟體 網路 滑鼠 影片 記憶體"));

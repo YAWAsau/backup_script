@@ -2683,11 +2683,6 @@ _conf_patch_log() {
 	[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} ]] || return 0
 	printf '%s\n' "$*" >> "$SPEED_DEBUG_RUN_DIR/conf_patch.log" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}
 }
-_conf_sanitize_legacy_comment_noise() {
-    local _file="${1:-$conf_path}"
-    [[ -n $_file && -f $_file ]] || return 0
-    "${SPEEDBACKUP_NATIVE_EXE:-/data/.speedbackup/tools/speednative}" speedscan conf sanitize "$_file" || { _CONF_WRITE_FAILED=1; return 1; }
-}
 _conf_template_sync_current() {
 	# 每次啟動都把 conf 更新成目前模板：保留使用者設定值，刷新註解/排序，移除已廢棄公開配置。
 	# 注意：這不是重置設定。update_*_settings_conf 會使用剛 source 進來的變數值輸出模板。
@@ -21794,7 +21789,9 @@ _speedbackup_sync_embedded_backup_tools() {
 # 用法: ts_inplace <檔案>
 ts_inplace() {
 	local f="$1" tmp _mode _owner _context _rc=1
-	[[ -f $f && ! -L $f ]] || return 1
+	[[ -f "$f" && ! -L "$f" ]] || return 1
+	# conf 含中文路徑、密碼和多行值，必須完整保留；註解由啟動時的模板刷新。
+	case $f in *.conf) return 0 ;; esac
 	tmp="$(mktemp "${f}.ts.XXXXXXXX")" || return 1
 	if ts < "$f" > "$tmp"; then
 		if cmp -s "$tmp" "$f"; then
@@ -21825,7 +21822,6 @@ _speedbackup_translate_file_once() {
 	_abs="$(cd "${_file%/*}" 2>/dev/null && pwd -P)/${_file##*/}"
 	[[ -n $_done && -f $_done ]] && _sb_file_has_exact_line "$_abs" "$_done" && return 0
 	if ts_inplace "$_file"; then
-		case ${_file##*/} in backup_settings.conf|restore_settings.conf) _conf_sanitize_legacy_comment_noise "$_file" ;; esac
 		[[ -n $_done ]] && printf '%s\n' "$_abs" >> "$_done" 2>/dev/null
 		return 0
 	fi
@@ -21867,7 +21863,7 @@ _speedbackup_startup_language_sync() {
 		rm -rf "$_tmp_dir" 2>/dev/null
 		return 1
 	fi
-	# 非腳本資源/設定檔可同步轉換；這些不是執行中的 tools.sh，不會造成半更新腳本狀態。
+	# 設定檔保留原值；重新載入後由各自的設定模板刷新註解。
 	for _conf in "$_root/backup_settings.conf" "$_root/restore_settings.conf" "${conf_path:-}"; do
 		_speedbackup_translate_file_once "$_conf" "$_done" && _changed=1
 	done
@@ -22305,14 +22301,13 @@ _sb_update_translate_target_confs() {
 	for _c in "$_root/backup_settings.conf" "$_root/restore_settings.conf"; do
 		[[ -f $_c ]] || continue
 		if ts_inplace "$_c"; then
-			_conf_sanitize_legacy_comment_noise "$_c"
 			_n=$((_n + 1))
 		else
 			_SB_UPDATE_CONF_WARNINGS=$((${_SB_UPDATE_CONF_WARNINGS:-0} + 1))
-			_sb_update_report_line "$_report" "WARN: conf translation failed; original retained: $_c"
+			_sb_update_report_line "$_report" "WARN: conf preservation failed; original retained: $_c"
 		fi
 	done
-	[[ $_n -gt 0 ]] && _sb_update_report_line "$_report" "- translated conf files: $_n -> $_root"
+	[[ $_n -gt 0 ]] && _sb_update_report_line "$_report" "- preserved conf files: $_n -> $_root (comments refresh on startup)"
 	return 0
 }
 
