@@ -16,18 +16,19 @@ internal class NativeConnectionPrompt(private val session:NativeSession,private 
     private var revision=""
     private var revisionEpoch=0L
     private var revisionTransport:NativeApi?=null
-    private fun clearRevision(){++revisionEpoch;revisionTransport?.close();revisionTransport=null;revision=""}
+    private var revisionLoading=false
+    private fun clearRevision(){revisionLoading=false;++revisionEpoch;revisionTransport?.close();revisionTransport=null;revision=""}
     private fun loadRevision(){
         clearRevision()
         val epoch=revisionEpoch
         val api=session.api.fork();revisionTransport=api
-        message="正在讀取連線設定…";session.emit()
+        revisionLoading=true;message="正在讀取連線設定…";session.emit()
         Thread({
             val value=try{api.get("connection-revision")}catch(_:Exception){""}
             finally{api.close()}
             session.execute{
                 if(!closed&&showing&&revisionEpoch==epoch&&revisionTransport===api){
-                    revisionTransport=null;revision=value
+                    revisionLoading=false;revisionTransport=null;revision=value
                     message=if(value.isEmpty())"無法讀取設定版本，請取消後重試。" else "請輸入登入帳密；匿名服務可留空驗證。"
                     session.emit()
                 }
@@ -86,6 +87,7 @@ internal class NativeConnectionPrompt(private val session:NativeSession,private 
         val endpoint=selected
         val nodes=mutableListOf(c.node("connection:title","text",if(endpoint==null)"發現 SMB／WebDAV 服務" else "${endpoint.type} 連線設定"))
         if(endpoint==null){
+            if(discovery.running)nodes+=c.node("connection:scan","loading",discovery.message)
             nodes+=c.node("connection:hint","text","選擇設備後輸入帳密；驗證可用才儲存，不會開始備份。")
             discovery.endpoints.filterNot{it.candidate}.forEach{item->nodes+=c.button("connection:choose:${item.url}","${item.title}\n${item.url}"){
                 c.forgetPrefix("connection:user");c.forgetPrefix("connection:password")
@@ -94,7 +96,7 @@ internal class NativeConnectionPrompt(private val session:NativeSession,private 
             }.put("literalLabel",true).put("navigation",true)}
         }else{
             nodes+=c.node("connection:url","text",endpoint.url).put("translate",false)
-            nodes+=c.node("connection:message",if(busy)"loading" else "text",if(discovery.resolving||message.isEmpty()||discovery.endpoints.none{it.url==endpoint.url})discovery.message else message)
+            nodes+=c.node("connection:message",if(busy||revisionLoading)"loading" else "text",if(discovery.resolving||message.isEmpty()||discovery.endpoints.none{it.url==endpoint.url})discovery.message else message)
             nodes+=c.input("connection:user","帳號",user){user=it}.put("disabled",busy)
             nodes+=c.input("connection:password","密碼",password){password=it}.put("password",true).put("disabled",busy)
             if(!busy&&discovery.endpoints.none{it.url==endpoint.url}){

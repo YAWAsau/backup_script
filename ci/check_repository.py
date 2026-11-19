@@ -13,6 +13,7 @@ import tomllib
 import zipfile
 from pathlib import Path
 from check_copy_routes import check as check_copy_routes
+from check_dex_apk import verify_dex_apk
 
 ROOT = Path(__file__).resolve().parent.parent
 REQUIRED_TOOLS = {
@@ -61,6 +62,8 @@ def verify_runtime(directory):
         require(path.is_file() and not path.is_symlink(), f'Missing regular runtime file: {name}')
         actual = sha256(path.read_bytes())
         require(actual == expected, f'{name}: runtime SHA mismatch; expected {expected}, got {actual}')
+    host = json.loads((ROOT / 'webview/embedded/metadata.json').read_text(encoding='utf-8'))
+    verify_dex_apk(directory / 'classes.dex', host['apk_sha256'])
     import runpy
     guard = runpy.run_path(str(ROOT / 'ci/verify_smb_rng.py'))
     guard['verify'](directory / 'smbclient')
@@ -69,6 +72,7 @@ def verify_runtime(directory):
 
 def check_diagnostic_capabilities():
     """Reject stale startup gates before they can ship and block first launch."""
+    subprocess.run([sys.executable, str(ROOT / 'ci/generate_capabilities.py'), '--check'], check=True)
     rust = (ROOT / 'rust/src/json_caps.rs').read_text(encoding='utf-8')
     contract = re.search(r'const CAPS_DIAGNOSTIC:.*?=\s*&\[(.*?)\];', rust, re.S)
     require(contract is not None, 'Missing Rust diagnostic capability contract')
@@ -184,6 +188,12 @@ def check_versions():
     require(hashlib.sha256((ROOT / 'webview/embedded/speedbackup-webview.apk').read_bytes()).hexdigest() == host['apk_sha256'],
             'Embedded APK APK hash differs')
     require('APK_SHA="'+host['apk_sha256']+'"' in checker, 'Dex host content fingerprint differs from embedded APK')
+    verify_dex_apk(ROOT / 'tools/classes.dex', host['apk_sha256'])
+    built_dex = ROOT / 'dex/classes.dex'
+    if built_dex.exists():
+        require(built_dex.is_file() and
+                built_dex.read_bytes() == (ROOT / 'tools/classes.dex').read_bytes(),
+                'tools/classes.dex differs from dex/classes.dex')
     apk_bytes = (ROOT / 'webview/embedded/speedbackup-webview.apk').read_bytes()
     require((ROOT / 'tools/speednative').is_file(), 'Missing speednative: build APK, then Dex, then Rust')
     require(apk_bytes in (ROOT / 'tools/speednative').read_bytes(),
@@ -197,6 +207,8 @@ def check(shells=False):
     subprocess.run([sys.executable, str(ROOT / 'ci/generate_script_roundtrip.py'), '--check'], check=True)
     subprocess.run([sys.executable, str(ROOT / "ci/check_whitespace.py"), "--repository"], check=True)
     names = git('ls-files', '-z').decode('utf-8').rstrip('\0').split('\0')
+    deleted = set(git('ls-files', '--deleted', '-z').decode('utf-8').rstrip('\0').split('\0'))
+    names = [name for name in names if name not in deleted]
     for name in ['start.sh', 'tools/tools.sh', 'tools/dex_check.sh', 'tools/soc.json',
                  'rust/Cargo.toml', 'rust/Cargo.lock', 'rust/src/main.rs', 'rust/build.ps1',
                  'dex/build_dex.ps1', 'dex/gradlew', 'dex/gradlew.bat',

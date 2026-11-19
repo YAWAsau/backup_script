@@ -69,10 +69,13 @@ internal class NativeSettingsForm(context:Context,private val catalog:NativeCata
                     fun origin(text:String)=runCatching{java.net.URI(text).let{u->"${u.scheme}://${u.rawAuthority}"}}.getOrNull()
                     if(origin(value)!=origin(next))fields.firstOrNull{it.optString("key")=="remote_${key.substringBefore('_')}_identity"}?.put("value","")
                 }
+                // The existing protocol selector still means local when cleared.
+                // An explicit protocol choice resumes its legacy inferred mode.
+                if(key=="remote_type"&&next!=value)fields.firstOrNull{it.optString("key")=="backup_location"}?.put("value","")
                 f.put("value",next);change()
                 if(next!=value&&key in setOf("remote_type","remote_address_mode"))remoteChanged()
             }
-            val options=if(key=="user"&&users?.isNotEmpty()!=false)listOf("" to "留空（啟動時選擇）")+users.orEmpty().map{it to "使用者 $it"}
+            val options=if(key=="backup_location")listOf("" to "依備份方式設定","local" to "本地備份","remote" to "遠端備份") else if(key=="user"&&users?.isNotEmpty()!=false)listOf("" to "留空（啟動時選擇）")+users.orEmpty().map{it to "使用者 $it"}
                 else choices.optJSONArray(key)?.let{a->(0 until a.length()).map{a.getJSONArray(it).let{v->v.getString(0) to v.getString(1)}}}?.filter{!connectionSetup||key!="remote_type"||it.first.isNotEmpty()}
             val range=ranges[key]
             val child=when{
@@ -96,11 +99,11 @@ internal class NativeSettingsForm(context:Context,private val catalog:NativeCata
                 val apply=c.button("$id:apply","套用所選範本"){applyDavPreset(fields,f);change()}.put("standard",true).put("materialPrimary",true)
                 rows.add(c.group("$id:preset-row","setting",listOf(preset,apply),"WebDAV／NAS 範本").put("iconKey","preset").put("detail",davMessage.ifEmpty{"先填入伺服器位址與帳號，再套用範本；不會修改密碼。Nextcloud／ownCloud／Koofr 建議使用專用應用程式密碼。"}).put("translateDetail",true))
             }
-            rows.add(c.group("$id:row","setting",listOf(child),label).put("iconKey",key).put("detail",(if(compact)if(key.endsWith("_url"))if(protocol=="smb")"填入伺服器地址與共用資料夾路徑。" else "確認伺服器地址與 WebDAV 路徑。" else "" else catalog.help(key,f.optString("help"),mode))).put("translateDetail",true).put("literalDetailSuffix",if(key in paths&&value.isNotEmpty())"\n$value" else "").put("first",true).put("last",true))
+            rows.add(c.group("$id:row","setting",listOf(child),label).put("iconKey",key).put("detail",(if(compact)if(key.endsWith("_url"))if(protocol=="smb")"填入伺服器地址與共用資料夾路徑。" else "確認伺服器地址與 WebDAV 路徑。" else "" else catalog.help(key,mode))).put("translateDetail",true).put("literalDetailSuffix",if(key in paths&&value.isNotEmpty())"\n$value" else "").put("first",true).put("last",true))
         }
-        return groups.flatMap{(category,rows)->
+        return groups.map{(category,rows)->
             rows.forEachIndexed{i,row->row.put("first",i==0).put("last",i==rows.lastIndex)}
-            listOf(c.node("settings:$mode:heading:$category","heading",category).put("level","H3").put("settingCategory",true),c.group("settings:$mode:section:$category","settings-section",rows))
+            c.group("settings:$mode:section:$category","settings-section",rows)
         }
     }
 }

@@ -1,11 +1,11 @@
 {
   "sourceInputs": {
-    "webview/app/build.gradle.kts": "d4a26ddd0d330d0d9073470e2e92d4dbc8126f31b44e8af66fefd3c5fd44107b",
+    "webview/app/build.gradle.kts": "2ffd67447ef416af499d254ca625abc4427e1de719a132347e4a4185e2e1b089",
     "dex/app/build.gradle.kts": "242fc6ce3bbd98551d5d53a67a32049e68422ae3d49db6d6f87bdba8b43a285e",
     "dex/hiddenapi/build.gradle.kts": "b9a7deb0012a6652129216e7be999b655e9ea72e4f14d1f548d5ca76859c05b9",
     "dex/gradle/libs.versions.toml": "2a4df85523958673f07f5de108e44abf382466dcf20829bfccc38b3ac6917eb0",
-    "rust/Cargo.toml": "b308a42e9c24b36090f04bceb1bcb4c25d87be7ad04cbc9c9715ea022426b336",
-    "rust/Cargo.lock": "738642275cd5a8b91297bf817833be2370fc5f8fc47309a7c6430296aa3851c0"
+    "rust/Cargo.toml": "04300327b144f79534d02f2d41c7d2365d7c0d21cc81ee031fbae17c7530fc9b",
+    "rust/Cargo.lock": "090332d757cb2ea8370d11a2e495b6f7cc00efd29ad3eb20bf0f737c77a59538"
   },
   "entries": [
     {
@@ -2366,147 +2366,147 @@
       "coordinate": "org.lsposed.hiddenapibypass:hiddenapibypass:6.2-4efc64fc-SNAPSHOT"
     },
     {
-      "id": "top.yukonga.miuix.kmp:miuix-core-android:0.9.4-9d4b9c8-SNAPSHOT",
+      "id": "top.yukonga.miuix.kmp:miuix-core-android:0.9.4-d8efe18-sb1-SNAPSHOT",
       "name": "miuix-core",
       "author": "compose-miuix-ui",
-      "version": "0.9.4-9d4b9c8-SNAPSHOT",
+      "version": "0.9.4-d8efe18-sb1-SNAPSHOT",
       "license": "The Apache Software License, Version 2.0",
       "url": "https://github.com/compose-miuix-ui/miuix",
       "description": "Core utilities for Miuix",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "top.yukonga.miuix.kmp:miuix-core-android:0.9.4-9d4b9c8-SNAPSHOT"
+      "coordinate": "top.yukonga.miuix.kmp:miuix-core-android:0.9.4-d8efe18-sb1-SNAPSHOT"
     },
     {
-      "id": "top.yukonga.miuix.kmp:miuix-core:0.9.4-9d4b9c8-SNAPSHOT",
+      "id": "top.yukonga.miuix.kmp:miuix-core:0.9.4-d8efe18-sb1-SNAPSHOT",
       "name": "miuix-core",
       "author": "compose-miuix-ui",
-      "version": "0.9.4-9d4b9c8-SNAPSHOT",
+      "version": "0.9.4-d8efe18-sb1-SNAPSHOT",
       "license": "The Apache Software License, Version 2.0",
       "url": "https://github.com/compose-miuix-ui/miuix",
       "description": "Core utilities for Miuix",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "top.yukonga.miuix.kmp:miuix-core:0.9.4-9d4b9c8-SNAPSHOT"
+      "coordinate": "top.yukonga.miuix.kmp:miuix-core:0.9.4-d8efe18-sb1-SNAPSHOT"
     },
     {
-      "id": "top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-9d4b9c8-SNAPSHOT",
+      "id": "top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-d8efe18-sb1-SNAPSHOT",
       "name": "miuix-icons",
       "author": "compose-miuix-ui",
-      "version": "0.9.4-9d4b9c8-SNAPSHOT",
+      "version": "0.9.4-d8efe18-sb1-SNAPSHOT",
       "license": "The Apache Software License, Version 2.0",
       "url": "https://github.com/compose-miuix-ui/miuix",
       "description": "Extended icon library for Miuix",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-9d4b9c8-SNAPSHOT"
+      "coordinate": "top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-d8efe18-sb1-SNAPSHOT"
     },
     {
-      "id": "top.yukonga.miuix.kmp:miuix-material-android:0.9.4-9d4b9c8-SNAPSHOT",
+      "id": "top.yukonga.miuix.kmp:miuix-material-android:0.9.4-d8efe18-sb1-SNAPSHOT",
       "name": "miuix-material",
       "author": "compose-miuix-ui",
-      "version": "0.9.4-9d4b9c8-SNAPSHOT",
+      "version": "0.9.4-d8efe18-sb1-SNAPSHOT",
       "license": "The Apache Software License, Version 2.0",
       "url": "https://github.com/compose-miuix-ui/miuix",
       "description": "Material and render primitives for Miuix",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "top.yukonga.miuix.kmp:miuix-material-android:0.9.4-9d4b9c8-SNAPSHOT"
+      "coordinate": "top.yukonga.miuix.kmp:miuix-material-android:0.9.4-d8efe18-sb1-SNAPSHOT"
     },
     {
-      "id": "top.yukonga.miuix.kmp:miuix-material:0.9.4-9d4b9c8-SNAPSHOT",
+      "id": "top.yukonga.miuix.kmp:miuix-material:0.9.4-d8efe18-sb1-SNAPSHOT",
       "name": "miuix-material",
       "author": "compose-miuix-ui",
-      "version": "0.9.4-9d4b9c8-SNAPSHOT",
+      "version": "0.9.4-d8efe18-sb1-SNAPSHOT",
       "license": "The Apache Software License, Version 2.0",
       "url": "https://github.com/compose-miuix-ui/miuix",
       "description": "Material and render primitives for Miuix",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "top.yukonga.miuix.kmp:miuix-material:0.9.4-9d4b9c8-SNAPSHOT"
+      "coordinate": "top.yukonga.miuix.kmp:miuix-material:0.9.4-d8efe18-sb1-SNAPSHOT"
     },
     {
-      "id": "top.yukonga.miuix.kmp:miuix-nav-android:0.9.4-9d4b9c8-SNAPSHOT",
+      "id": "top.yukonga.miuix.kmp:miuix-nav-android:0.9.4-d8efe18-sb1-SNAPSHOT",
       "name": "miuix-nav",
       "author": "compose-miuix-ui",
-      "version": "0.9.4-9d4b9c8-SNAPSHOT",
+      "version": "0.9.4-d8efe18-sb1-SNAPSHOT",
       "license": "The Apache Software License, Version 2.0",
       "url": "https://github.com/compose-miuix-ui/miuix",
       "description": "Self-contained navigation runtime for Miuix",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "top.yukonga.miuix.kmp:miuix-nav-android:0.9.4-9d4b9c8-SNAPSHOT"
+      "coordinate": "top.yukonga.miuix.kmp:miuix-nav-android:0.9.4-d8efe18-sb1-SNAPSHOT"
     },
     {
-      "id": "top.yukonga.miuix.kmp:miuix-preference-android:0.9.4-9d4b9c8-SNAPSHOT",
+      "id": "top.yukonga.miuix.kmp:miuix-preference-android:0.9.4-d8efe18-sb1-SNAPSHOT",
       "name": "miuix-preference",
       "author": "compose-miuix-ui",
-      "version": "0.9.4-9d4b9c8-SNAPSHOT",
+      "version": "0.9.4-d8efe18-sb1-SNAPSHOT",
       "license": "The Apache Software License, Version 2.0",
       "url": "https://github.com/compose-miuix-ui/miuix",
       "description": "Preference components for Miuix",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "top.yukonga.miuix.kmp:miuix-preference-android:0.9.4-9d4b9c8-SNAPSHOT"
+      "coordinate": "top.yukonga.miuix.kmp:miuix-preference-android:0.9.4-d8efe18-sb1-SNAPSHOT"
     },
     {
-      "id": "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4-9d4b9c8-SNAPSHOT",
+      "id": "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4-d8efe18-sb1-SNAPSHOT",
       "name": "miuix-squircle",
       "author": "compose-miuix-ui",
-      "version": "0.9.4-9d4b9c8-SNAPSHOT",
+      "version": "0.9.4-d8efe18-sb1-SNAPSHOT",
       "license": "The Apache Software License, Version 2.0",
       "url": "https://github.com/compose-miuix-ui/miuix",
       "description": "Squircle corner library for Miuix",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4-9d4b9c8-SNAPSHOT"
+      "coordinate": "top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4-d8efe18-sb1-SNAPSHOT"
     },
     {
-      "id": "top.yukonga.miuix.kmp:miuix-squircle:0.9.4-9d4b9c8-SNAPSHOT",
+      "id": "top.yukonga.miuix.kmp:miuix-squircle:0.9.4-d8efe18-sb1-SNAPSHOT",
       "name": "miuix-squircle",
       "author": "compose-miuix-ui",
-      "version": "0.9.4-9d4b9c8-SNAPSHOT",
+      "version": "0.9.4-d8efe18-sb1-SNAPSHOT",
       "license": "The Apache Software License, Version 2.0",
       "url": "https://github.com/compose-miuix-ui/miuix",
       "description": "Squircle corner library for Miuix",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "top.yukonga.miuix.kmp:miuix-squircle:0.9.4-9d4b9c8-SNAPSHOT"
+      "coordinate": "top.yukonga.miuix.kmp:miuix-squircle:0.9.4-d8efe18-sb1-SNAPSHOT"
     },
     {
-      "id": "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4-9d4b9c8-SNAPSHOT",
+      "id": "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4-d8efe18-sb2-SNAPSHOT",
       "name": "miuix-ui",
       "author": "compose-miuix-ui",
-      "version": "0.9.4-9d4b9c8-SNAPSHOT",
+      "version": "0.9.4-d8efe18-sb2-SNAPSHOT",
       "license": "The Apache Software License, Version 2.0",
       "url": "https://github.com/compose-miuix-ui/miuix",
       "description": "A UI library for Compose Multiplatform",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4-9d4b9c8-SNAPSHOT"
+      "coordinate": "top.yukonga.miuix.kmp:miuix-ui-android:0.9.4-d8efe18-sb2-SNAPSHOT"
     },
     {
-      "id": "top.yukonga.miuix.kmp:miuix-ui:0.9.4-9d4b9c8-SNAPSHOT",
+      "id": "top.yukonga.miuix.kmp:miuix-ui:0.9.4-d8efe18-sb1-SNAPSHOT",
       "name": "miuix-ui",
       "author": "compose-miuix-ui",
-      "version": "0.9.4-9d4b9c8-SNAPSHOT",
+      "version": "0.9.4-d8efe18-sb1-SNAPSHOT",
       "license": "The Apache Software License, Version 2.0",
       "url": "https://github.com/compose-miuix-ui/miuix",
       "description": "A UI library for Compose Multiplatform",
       "components": [
         "APK／WebUI"
       ],
-      "coordinate": "top.yukonga.miuix.kmp:miuix-ui:0.9.4-9d4b9c8-SNAPSHOT"
+      "coordinate": "top.yukonga.miuix.kmp:miuix-ui:0.9.4-d8efe18-sb1-SNAPSHOT"
     }
   ]
 }

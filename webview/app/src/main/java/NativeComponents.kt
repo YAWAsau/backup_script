@@ -104,7 +104,7 @@ internal val NativeActionHeight = 56.dp
 
     if(navigation&&label.isNotBlank()&&!returnArrow&&!label.startsWith("返回")){
         NativePreferenceScale { top.yukonga.miuix.kmp.preference.ArrowPreference(title=label,
-            modifier=modifier,enabled=enabled,onClick=onClick,insideMargin=PaddingValues(vertical=12.dp),startAction=nativeSettingIconSlot(enabled)) }
+            modifier=modifier,enabled=enabled,onClick=onClick,insideMargin=PaddingValues(vertical=16.dp),startAction=nativeSettingIconSlot(enabled)) }
         return
     }
     if(dropdown||navigation){
@@ -116,7 +116,7 @@ internal val NativeActionHeight = 56.dp
         val backwards=returnArrow||label.startsWith("返回")
         NativePreferenceScale {
             top.yukonga.miuix.kmp.basic.BasicComponent(title=label,modifier=modifier,enabled=enabled,onClick=onClick,
-                insideMargin=PaddingValues(vertical=12.dp),
+                insideMargin=PaddingValues(vertical=16.dp),
                 startAction=if(backwards){{NativePreferenceArrow(false,ink,backwards=true)}}else nativeSettingIconSlot(visualEnabled),
                 endActions={if(!backwards)NativePreferenceArrow(dropdown,ink.copy(alpha=ink.alpha*.65f))})
         }
@@ -167,7 +167,7 @@ internal val NativeActionHeight = 56.dp
     if(!LocalNativeMaterial.current&&!dropdown){
         NativePreferenceScale { top.yukonga.miuix.kmp.preference.ArrowPreference(
             title=title,summary=summary.ifBlank{null},enabled=enabled,onClick=onClick,
-            insideMargin=PaddingValues(vertical=12.dp),
+            insideMargin=PaddingValues(vertical=16.dp),
             startAction=nativeSettingIconSlot(visualEnabled),endActions={if(value.isNotEmpty())top.yukonga.miuix.kmp.basic.Text(value)}) }
         return
     }
@@ -193,7 +193,7 @@ internal val NativeActionHeight = 56.dp
     if(LocalNativeMaterial.current){MaterialSwitchPreference(title,summary,checked,enabled,onChange);return}
         NativePreferenceScale { top.yukonga.miuix.kmp.preference.SwitchPreference(
             checked=checked,onCheckedChange=onChange,title=title,summary=summary.ifBlank{null},enabled=enabled,
-            insideMargin=PaddingValues(vertical=12.dp),startAction=nativeSettingIconSlot(enabled)) }
+            insideMargin=PaddingValues(vertical=16.dp),startAction=nativeSettingIconSlot(enabled)) }
 
 }
 

@@ -15,6 +15,9 @@ final class HostLifeline {
             try {
                 if(previous!=null)previous.close();
                 current.connect(new LocalSocketAddress(next,LocalSocketAddress.Namespace.ABSTRACT));
+                // Abstract names are not identities. Authenticate before accepting the
+                // acknowledgement or retaining an idle connection to another process.
+                if(current.getPeerCredentials().getUid()!=0)throw new SecurityException("origin peer is not root");
                 // No payload, token or heartbeat. Root checks peer UID and process identity.
                 if(current.getInputStream().read()!=1)throw new java.io.IOException("not accepted");
                 android.util.Log.i("SpeedBackupGuard","Death-event connection established");

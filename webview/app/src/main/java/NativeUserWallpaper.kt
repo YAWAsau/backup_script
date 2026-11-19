@@ -170,7 +170,7 @@ internal object NativeUserWallpaper {
         if(busy)return
         busy=true;status="正在匯入背景圖片…"
         val app=context.applicationContext
-        scope.launch { mutex.withLock {
+        scope.launch { try { mutex.withLock {
             try {
                 val result=withContext(Dispatchers.IO){
                     val temporary=File.createTempFile("wallpaper-import-",".tmp",app.cacheDir)
@@ -183,19 +183,25 @@ internal object NativeUserWallpaper {
                     image
                 }
                 bitmap=result;rendered=result;refresh();setEnabled(app,true);status=if(system)if(systemDefault)"未找到可讀取的系統圖片，已套用系統預設壁紙。" else "已套用目前系統壁紙" else "已套用自訂背景"
-            }catch(_:OutOfMemoryError){status="記憶體不足，原背景已保留。"}
+            }catch(e:CancellationException){throw e}
+            catch(_:OutOfMemoryError){status="記憶體不足，原背景已保留。"}
             catch(_:Exception){status=if(system)"無法讀取系統靜態壁紙；原背景已保留，可改用匯入圖片。" else "匯入失敗，請選擇 32 MB 以內的有效圖片；原背景已保留。"}
-            finally{busy=false}
-        } }
+        } } finally{busy=false} }
     }
     fun clear(context:Context){
         if(busy)return
-        busy=true
+        busy=true;status="正在恢復原本背景…"
         val app=context.applicationContext
-        scope.launch { mutex.withLock {
-            try{withContext(Dispatchers.IO){file(app).delete()};bitmap=null;rendered=null;refresh();status="已恢復目前外觀的背景"}
-            finally{busy=false}
-        } }
+        scope.launch { try { mutex.withLock {
+            withContext(Dispatchers.IO){
+                val target=file(app)
+                target.delete()
+                check(!target.baseFile.exists()&&!File(target.baseFile.path+".bak").exists()&&!File(target.baseFile.path+".new").exists())
+            }
+            bitmap=null;rendered=null;refresh();status="已恢復目前外觀的背景"
+        } } catch(e:CancellationException){throw e}
+        catch(_:Exception){status="恢復背景失敗，原背景已保留，請重試。"}
+        finally{busy=false} }
     }
 }
 
@@ -229,7 +235,7 @@ internal object NativeUserWallpaper {
     }
 }
 
-@Composable internal fun NativeWallpaperSettings(text:Color,container:Color,accent:Color,style:TextStyle,enabled:Boolean,onImport:()->Unit,wallpaperText:Color=text,onSystem:()->Unit){
+@Composable internal fun NativeWallpaperSettings(text:Color,container:Color,accent:Color,style:TextStyle,enabled:Boolean,onImport:()->Unit,wallpaperText:Color=text,animate:Boolean=false,onSystem:()->Unit){
     val context=LocalContext.current
     var choosing by remember { mutableStateOf(false) }
     val available=enabled&&!NativeUserWallpaper.busy
@@ -256,7 +262,8 @@ internal object NativeUserWallpaper {
                 } }
             }
         }
-        if(NativeUserWallpaper.status.isNotEmpty())BasicText(NativeLanguage.text(context,NativeUserWallpaper.status),Modifier.padding(if(LocalNativeMaterial.current)16.dp else 0.dp),style=style)
+        if(NativeUserWallpaper.busy)NativeLoadingStatus(NativeLanguage.text(context,NativeUserWallpaper.status),"miuix",text,accent,style,animate)
+        else if(NativeUserWallpaper.status.isNotEmpty())BasicText(NativeLanguage.text(context,NativeUserWallpaper.status),Modifier.padding(if(LocalNativeMaterial.current)16.dp else 0.dp),style=style)
     }
     }
 }

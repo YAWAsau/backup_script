@@ -1,0 +1,165 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../miuix-ui/0.9.4-d8efe18-sb1-SNAPSHOT/miuix-ui-0.9.4-d8efe18-sb1-SNAPSHOT.module",
+    "group": "top.yukonga.miuix.kmp",
+    "module": "miuix-ui",
+    "version": "0.9.4-d8efe18-sb1-SNAPSHOT",
+    "attributes": {
+      "org.gradle.status": "integration"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.9.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "androidApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "top.yukonga.miuix.kmp",
+          "module": "miuix-core",
+          "version": {
+            "requires": "0.9.4-d8efe18-sb1-SNAPSHOT"
+          }
+        },
+        {
+          "group": "top.yukonga.miuix.kmp",
+          "module": "miuix-squircle",
+          "version": {
+            "requires": "0.9.4-d8efe18-sb1-SNAPSHOT"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.foundation",
+          "module": "foundation",
+          "version": {
+            "requires": "1.12.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "miuix-ui.aar",
+          "url": "miuix-ui-android-0.9.4-d8efe18-sb1-SNAPSHOT.aar",
+          "size": 2008407,
+          "sha512": "e75e7ebccc2fa720b9c2c9968aa62813f3a98ec5d86f9d1c9e35715cbd88abe7329ef41fc12cbdf33fbb8d1e174f5d3b6a1ffdc179a28d34667d2281e50fe0db",
+          "sha256": "8189161d30c133807491181ebc897b4addc8be2c067cd0f41962393ee9ca2526",
+          "sha1": "00021786c99a78070162297bc55c5e67f4bc6d7b",
+          "md5": "42a50f5c2589359b8afcd70375f43026"
+        }
+      ]
+    },
+    {
+      "name": "androidRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "top.yukonga.miuix.kmp",
+          "module": "miuix-core",
+          "version": {
+            "requires": "0.9.4-d8efe18-sb1-SNAPSHOT"
+          }
+        },
+        {
+          "group": "top.yukonga.miuix.kmp",
+          "module": "miuix-squircle",
+          "version": {
+            "requires": "0.9.4-d8efe18-sb1-SNAPSHOT"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.foundation",
+          "module": "foundation",
+          "version": {
+            "requires": "1.12.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "androidx.navigationevent",
+          "module": "navigationevent-compose",
+          "version": {
+            "requires": "1.2.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.material3",
+          "module": "material3-window-size-class",
+          "version": {
+            "requires": "1.12.0-alpha03"
+          }
+        },
+        {
+          "group": "com.materialkolor",
+          "module": "material-color-utilities",
+          "version": {
+            "requires": "6.0.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "miuix-ui.aar",
+          "url": "miuix-ui-android-0.9.4-d8efe18-sb1-SNAPSHOT.aar",
+          "size": 2008407,
+          "sha512": "e75e7ebccc2fa720b9c2c9968aa62813f3a98ec5d86f9d1c9e35715cbd88abe7329ef41fc12cbdf33fbb8d1e174f5d3b6a1ffdc179a28d34667d2281e50fe0db",
+          "sha256": "8189161d30c133807491181ebc897b4addc8be2c067cd0f41962393ee9ca2526",
+          "sha1": "00021786c99a78070162297bc55c5e67f4bc6d7b",
+          "md5": "42a50f5c2589359b8afcd70375f43026"
+        }
+      ]
+    },
+    {
+      "name": "androidSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "miuix-ui-android-0.9.4-d8efe18-sb1-SNAPSHOT-sources.jar",
+          "url": "miuix-ui-android-0.9.4-d8efe18-sb1-SNAPSHOT-sources.jar",
+          "size": 259810,
+          "sha512": "5749ce3ba0d672e6b001bac0ff1db7df222b942a494d4cbc63bf463169cbc2040c7876e33fb7a75970865023e44b7af2c2423524dd5319f27b49abbea31caa26",
+          "sha256": "d4b5dfd5c2995501da28836e741a8a462659f2e9fcf2a7d4c7c3aa6f992328c1",
+          "sha1": "39942c87b0bbfd7ed9b2bb241d2be9d0f277f778",
+          "md5": "d7600df776aae71fefdf46a2f9c2d5f1"
+        }
+      ]
+    }
+  ]
+}

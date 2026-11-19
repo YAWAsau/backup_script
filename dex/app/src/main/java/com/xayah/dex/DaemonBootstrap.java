@@ -279,7 +279,10 @@ final class DaemonBootstrap {
         byte[] payload=(body==null?"":body).getBytes(StandardCharsets.UTF_8);
         out.write(("RESULT "+rc+" "+name+"\n").getBytes(StandardCharsets.UTF_8));
         out.write((payload.length+"\n").getBytes(StandardCharsets.UTF_8));
-        out.write(payload);out.flush();
+        // A zero-length frame is complete after its header. Android LocalSocket can
+        // report EPIPE for even a zero-byte write once the receiver closes normally.
+        if(payload.length>0)out.write(payload);
+        out.flush();
     }
 
     static Long readProcStarttime(int pid) {

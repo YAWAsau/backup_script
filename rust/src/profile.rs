@@ -7,8 +7,8 @@ enum V {
     String(String),
     Atom(String),
 }
-fn quote(s: &str) -> String {
-    let mut o = String::from("\"");
+fn quote_into(s: &str, o: &mut String) {
+    o.push('"');
     for c in s.chars() {
         match c {
             '"' => o.push_str("\\\""),
@@ -23,7 +23,6 @@ fn quote(s: &str) -> String {
         }
     }
     o.push('"');
-    o
 }
 #[path = "json_parse.rs"]
 mod json_parse;
@@ -59,49 +58,29 @@ impl V {
         matches!(self, V::Object(_))
     }
     fn emit(&self, pretty: bool, depth: usize) -> String {
+        let mut out=String::new();self.emit_into(pretty,depth,&mut out);out
+    }
+    fn emit_into(&self, pretty: bool, depth: usize, out: &mut String) {
+        fn indent(out:&mut String,depth:usize){for _ in 0..depth{out.push_str("  ");}}
         match self {
-            V::String(s) => quote(s),
-            V::Atom(s) => s.clone(),
-            V::Object(v) => {
-                let parts: Vec<_> = v
-                    .iter()
-                    .map(|(k, x)| {
-                        format!(
-                            "{}{}{}",
-                            quote(k),
-                            if pretty { ": " } else { ":" },
-                            x.emit(pretty, depth + 1)
-                        )
-                    })
-                    .collect();
-                container("{", "}", parts, pretty, depth)
+            V::String(s)=>quote_into(s,out),
+            V::Atom(s)=>out.push_str(s),
+            V::Object(v)=>{
+                out.push('{');
+                for (i,(k,x)) in v.iter().enumerate(){
+                    if i>0{out.push(',');}if pretty{out.push('\n');indent(out,depth+1);}
+                    quote_into(k,out);out.push(':');if pretty{out.push(' ');}x.emit_into(pretty,depth+1,out);
+                }
+                if pretty&&!v.is_empty(){out.push('\n');indent(out,depth);}out.push('}');
             }
-            V::Array(v) => container(
-                "[",
-                "]",
-                v.iter().map(|x| x.emit(pretty, depth + 1)).collect(),
-                pretty,
-                depth,
-            ),
+            V::Array(v)=>{
+                out.push('[');
+                for (i,x) in v.iter().enumerate(){
+                    if i>0{out.push(',');}if pretty{out.push('\n');indent(out,depth+1);}x.emit_into(pretty,depth+1,out);
+                }
+                if pretty&&!v.is_empty(){out.push('\n');indent(out,depth);}out.push(']');
+            }
         }
-    }
-}
-fn container(a: &str, b: &str, p: Vec<String>, pretty: bool, d: usize) -> String {
-    if p.is_empty() {
-        return format!("{}{}", a, b);
-    }
-    if pretty {
-        let pad = "  ".repeat(d + 1);
-        format!(
-            "{}\n{}{}\n{}{}",
-            a,
-            pad,
-            p.join(&format!(",\n{}", pad)),
-            "  ".repeat(d),
-            b
-        )
-    } else {
-        format!("{}{}{}", a, p.join(","), b)
     }
 }
 fn atom(s: &str) -> V {

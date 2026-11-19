@@ -26,10 +26,23 @@
   },
   "Miuix": {
     "repository": "https://github.com/compose-miuix-ui/miuix",
-    "commit": "9d4b9c85c18707c7da12cf8c497ea57955fcf81e",
-    "version": "0.9.4-9d4b9c8-SNAPSHOT",
+    "commit": "d8efe1872c08c863a8b33e7044dd2a8b43038032",
+    "version": "0.9.4-d8efe18-sb1-SNAPSHOT",
     "patch": "patches/miuix-deferred-predictive-back.patch",
-    "tests": "194 navigation tests passed"
+    "tests": "51 UI desktop tests including 24 pager contracts; 193 patched navigation desktop tests passed",
+    "adaptations": [
+      "Retain deferred predictive-back patch",
+      "Count final coalesced pointer displacement before takeover release",
+      "Accept per-theme touch snap animation and native vertical overscroll signal",
+      "Both homepage themes use cross-axis pager; retain each theme snap spec and overscroll effect"
+    ],
+    "gesture_patch": "patches/miuix-pager-release-delta.patch",
+    "ui_version": "0.9.4-d8efe18-sb2-SNAPSHOT",
+    "slider_patch": {
+      "file": "patches/miuix-slider-layout-read.patch",
+      "upstream_commit": "3a980f7c509c62c6d315f71ac28b40ecc8d31f3b",
+      "scope": "Slider variants only; defer layout state reads into pointer handlers. Other modules remain sb1; custom liquid glass unchanged."
+    }
   },
   "MaterialKolor": {
     "repository": "https://github.com/jordond/MaterialKolor",

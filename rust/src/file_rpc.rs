@@ -189,34 +189,55 @@ fn permitted(args: &[String]) -> bool {
     };
     args.len() == count
 }
-fn mutation_lease() -> io::Result<std::fs::File> {
-    let dir = Path::new("/data/.speedbackup-fileops");
+fn mutation_lease() -> io::Result<Vec<std::fs::File>> {
     use std::os::unix::fs::DirBuilderExt;
-    match fs::DirBuilder::new().mode(0o700).create(dir) {
-        Ok(()) => (),
-        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => (),
+    fn directory(dir: &Path, mode: u32, create: bool) -> io::Result<()> {
+        if create {
+            match fs::DirBuilder::new().mode(mode).create(dir) {
+                Ok(()) => (),
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => (),
+                Err(e) => return Err(e),
+            }
+        }
+        let m = fs::symlink_metadata(dir)?;
+        if !m.is_dir() || m.uid() != 0 || m.mode() & 0o7777 != mode
+            || fs::canonicalize(dir)? != dir {
+            return Err(bad());
+        }
+        Ok(())
+    }
+    directory(Path::new("/data/.speedbackup"), 0o711, true)?;
+    let canonical = Path::new("/data/.speedbackup/fileops");
+    directory(canonical, 0o700, true)?;
+    let mut dirs = vec![canonical];
+    let legacy = Path::new("/data/.speedbackup-fileops");
+    match fs::symlink_metadata(legacy) {
+        Ok(_) => {
+            directory(legacy, 0o700, false)?;
+            dirs.push(legacy);
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => (),
         Err(e) => return Err(e),
     }
-    let m = fs::symlink_metadata(dir)?;
-    if !m.is_dir() || m.uid() != 0 || m.mode() & 0o777 != 0o700 || fs::canonicalize(dir)? != dir {
-        return Err(bad());
+    // Canonical first, then compatibility lease for existing live jobs.
+    // Offline retirement must wait for jobs to drain. Arbitrary old binaries
+    // started after offline retirement are unsupported.
+    let mut leases = Vec::new();
+    for dir in dirs {
+        let f = OpenOptions::new()
+            .write(true).create(true).mode(0o600)
+            .custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE)
+            .open(dir.join("mutation.lock"))?;
+        let m = f.metadata()?;
+        if !m.is_file() || m.uid() != 0 || m.nlink() != 1
+            || m.mode() & 0o7777 != 0o600
+            || unsafe { flock(f.as_raw_fd(), 2 | 4) } != 0 {
+            return Err(bad());
+        }
+        leases.push(f);
     }
-    let f = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .mode(0o600)
-        .custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE)
-        .open(dir.join("mutation.lock"))?;
-    let m = f.metadata()?;
-    if !m.is_file()
-        || m.uid() != 0
-        || m.nlink() != 1
-        || m.mode() & 0o777 != 0o600
-        || unsafe { flock(f.as_raw_fd(), 2 | 4) } != 0
-    {
-        return Err(bad());
-    }
-    Ok(f)
+    // Close only: explicit LOCK_UN would release descendants' inherited lease.
+    Ok(leases)
 }
 fn zombie(pid: i32) -> bool {
     fs::read_to_string(format!("/proc/{pid}/stat"))
@@ -255,8 +276,11 @@ fn run_worker(
             for fd in close_fds {
                 close(*fd);
             }
-            if fcntl(lease.as_raw_fd(), 2, 0) < 0 {
-                _exit(125);
+            for file in &lease {
+                let flags = fcntl(file.as_raw_fd(), 1);
+                if flags < 0 || fcntl(file.as_raw_fd(), 2, flags & !1) < 0 {
+                    _exit(125);
+                }
             }
             signal(10, parent_died as *const () as usize);
             if prctl(1, 10, 0, 0, 0) != 0 || getppid() != parent {

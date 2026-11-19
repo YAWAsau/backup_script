@@ -1,0 +1,268 @@
+diff --git a/build-logic/src/main/kotlin/module.publication.gradle.kts b/build-logic/src/main/kotlin/module.publication.gradle.kts
+index 3278b86..5455c68 100644
+--- a/build-logic/src/main/kotlin/module.publication.gradle.kts
++++ b/build-logic/src/main/kotlin/module.publication.gradle.kts
+@@ -26,7 +26,7 @@ val versionSuffix = when {
+         if (v.isNullOrBlank()) "-rc" else "-rc$v"
+     }
+ 
+-    else -> "-${getGitHashShort()}-SNAPSHOT"
++    else -> "-${getGitHashShort()}-sb1-SNAPSHOT"
+ }
+ 
+ group = BuildConfig.LIBRARY_ID
+diff --git a/miuix-ui/src/commonMain/kotlin/top/yukonga/miuix/kmp/utils/PagerGestureUtils.kt b/miuix-ui/src/commonMain/kotlin/top/yukonga/miuix/kmp/utils/PagerGestureUtils.kt
+index 03a1cd6..1515946 100644
+--- a/miuix-ui/src/commonMain/kotlin/top/yukonga/miuix/kmp/utils/PagerGestureUtils.kt
++++ b/miuix-ui/src/commonMain/kotlin/top/yukonga/miuix/kmp/utils/PagerGestureUtils.kt
+@@ -5,6 +5,7 @@
+ 
+ package top.yukonga.miuix.kmp.utils
+ 
++import androidx.compose.animation.core.AnimationSpec
+ import androidx.compose.animation.core.SpringSpec
+ import androidx.compose.animation.core.animate
+ import androidx.compose.animation.core.spring
+@@ -98,6 +99,7 @@ private suspend fun PagerState.animateToPage(
+     scrollScope: ScrollScope,
+     target: Int,
+     initialVelocity: Float = 0f,
++    animationSpec: AnimationSpec<Float> = PagerNavigationSpringSpec,
+ ) = with(scrollScope) {
+     if (pageCount == 0) return@with
+     val destination = target.coerceIn(0, pageCount - 1)
+@@ -110,7 +112,7 @@ private suspend fun PagerState.animateToPage(
+             initialValue = 0f,
+             targetValue = distance,
+             initialVelocity = initialVelocity,
+-            animationSpec = PagerNavigationSpringSpec,
++            animationSpec = animationSpec,
+         ) { currentValue, _ ->
+             previousValue += scrollBy(currentValue - previousValue)
+         }
+@@ -158,6 +160,8 @@ object PagerGestureNestedScrollConnection : NestedScrollConnection {
+  * @param mode the interception mode; [PagerInterceptionMode.CrossAxis] is the default.
+  * @param enabled when false the modifier is a no-op.
+  * @param onTriggered called when the pager takes over an input.
++ * @param snapAnimationSpec touch-release animation; use the same spec as the pager fling behavior.
++ * @param isVerticalOverscrollInProgress optional signal from a known vertical child using a non-Miuix overscroll effect.
+  */
+ fun Modifier.pagerGestureOverride(
+     pagerState: PagerState,
+@@ -165,10 +169,12 @@ fun Modifier.pagerGestureOverride(
+     mode: PagerInterceptionMode = PagerInterceptionMode.CrossAxis,
+     enabled: Boolean = true,
+     onTriggered: (() -> Unit)? = null,
++    snapAnimationSpec: AnimationSpec<Float> = PagerNavigationSpringSpec,
++    isVerticalOverscrollInProgress: (() -> Boolean)? = null,
+ ): Modifier = when (mode) {
+     PagerInterceptionMode.CrossAxis ->
+         if (enabled) {
+-            pagerNonTouchScroll(pagerState, flingBehavior).then(PagerPageGestureElement(pagerState, onTriggered))
++            pagerNonTouchScroll(pagerState, flingBehavior).then(PagerPageGestureElement(pagerState, onTriggered, snapAnimationSpec, isVerticalOverscrollInProgress))
+         } else {
+             this
+         }
+@@ -185,22 +191,28 @@ fun Modifier.pagerGestureOverride(
+     mode: Int,
+     enabled: Boolean = true,
+     onTriggered: (() -> Unit)? = null,
++    snapAnimationSpec: AnimationSpec<Float> = PagerNavigationSpringSpec,
++    isVerticalOverscrollInProgress: (() -> Boolean)? = null,
+ ): Modifier = pagerGestureOverride(
+     pagerState = pagerState,
+     flingBehavior = flingBehavior,
+     mode = PagerInterceptionMode.entries.getOrElse(mode) { PagerInterceptionMode.Native },
+     enabled = enabled,
+     onTriggered = onTriggered,
++    snapAnimationSpec = snapAnimationSpec,
++    isVerticalOverscrollInProgress = isVerticalOverscrollInProgress,
+ )
+ 
+ private data class PagerPageGestureElement(
+     val pagerState: PagerState,
+     val onIntercepted: (() -> Unit)?,
++    val snapAnimationSpec: AnimationSpec<Float>,
++    val isVerticalOverscrollInProgress: (() -> Boolean)?,
+ ) : ModifierNodeElement<PagerPageGestureNode>() {
+-    override fun create(): PagerPageGestureNode = PagerPageGestureNode(pagerState, onIntercepted)
++    override fun create(): PagerPageGestureNode = PagerPageGestureNode(pagerState, onIntercepted, snapAnimationSpec, isVerticalOverscrollInProgress)
+ 
+     override fun update(node: PagerPageGestureNode) {
+-        node.update(pagerState, onIntercepted)
++        node.update(pagerState, onIntercepted, snapAnimationSpec, isVerticalOverscrollInProgress)
+     }
+ 
+     override fun InspectorInfo.inspectableProperties() {
+@@ -213,11 +225,13 @@ private data class PagerPageGestureElement(
+ private class PagerPageGestureNode(
+     private var pagerState: PagerState,
+     private var onIntercepted: (() -> Unit)?,
++    snapAnimationSpec: AnimationSpec<Float>,
++    private var isVerticalOverscrollInProgress: (() -> Boolean)?,
+ ) : DelegatingNode(),
+     CompositionLocalConsumerModifierNode,
+     PointerInputModifierNode {
+ 
+-    private val motion = PagerPageMotion(pagerState, onIntercepted)
++    private val motion = PagerPageMotion(pagerState, onIntercepted, snapAnimationSpec)
+     private val childMotion = PagerChildMotionConnection()
+ 
+     init {
+@@ -259,7 +273,7 @@ private class PagerPageGestureNode(
+     private fun childMotionAt(position: Offset): PagerChildMotion {
+         if (childMotion.direction == Orientation.Horizontal) return PagerChildMotion.Horizontal
+         val coordinates = requireLayoutCoordinates()
+-        var vertical = childMotion.direction == Orientation.Vertical
++        var vertical = childMotion.direction == Orientation.Vertical || isVerticalOverscrollInProgress?.invoke() == true
+         var horizontal = false
+         traverseDescendants(OverscrollMotionNode.Key) { descendant ->
+             if (descendant is OverscrollMotionNode &&
+@@ -305,18 +319,19 @@ private class PagerPageGestureNode(
+         dragNode.onCancelPointerInput()
+     }
+ 
+-    fun update(state: PagerState, onIntercepted: (() -> Unit)?) {
++    fun update(state: PagerState, onIntercepted: (() -> Unit)?, snapAnimationSpec: AnimationSpec<Float>, isVerticalOverscrollInProgress: (() -> Boolean)?) {
++        this.isVerticalOverscrollInProgress = isVerticalOverscrollInProgress
+         if (pagerState !== state) {
+             // A queued stop from the old Foundation recognizer must never settle the new state.
+             motion.cancel()
+             takeoverNode.reset()
+             undelegate(dragNode)
+             pagerState = state
+-            motion.update(state, onIntercepted)
++            motion.update(state, onIntercepted, snapAnimationSpec)
+             dragNode = delegate(PagerPageDragNode(motion))
+             childMotion.stop()
+         } else {
+-            motion.update(state, onIntercepted)
++            motion.update(state, onIntercepted, snapAnimationSpec)
+         }
+         refreshEnvironment()
+     }
+@@ -386,6 +401,9 @@ private class PagerPageTakeoverNode(
+         val change = pointerEvent.changes.fastFirstOrNull { it.id == tracked } ?: return
+         velocityTracker.addPointerInputChange(change)
+         if (!change.pressed) {
++            // ACTION_UP can carry the last coalesced movement. Queue it before
++            // closing the drag so settling uses the complete finger displacement.
++            if (isHandlingPointer) motion.dragBy(change.position.x - change.previousPosition.x)
+             val replacement = pointerEvent.changes.fastFirstOrNull { it.pressed && it.type != PointerType.Mouse }
+             if (replacement != null) {
+                 pointerId = replacement.id
+@@ -517,6 +535,7 @@ private class PagerChildMotionConnection : NestedScrollConnection {
+ private class PagerPageMotion(
+     private var pagerState: PagerState,
+     private var onIntercepted: (() -> Unit)?,
++    private var snapAnimationSpec: AnimationSpec<Float>,
+ ) {
+     private var settleJob: Job? = null
+     private var takeoverJob: Job? = null
+@@ -530,9 +549,10 @@ private class PagerPageMotion(
+     var touchSlop: Float = 0f
+     var directionSign: Float = -1f
+ 
+-    fun update(state: PagerState, intercepted: (() -> Unit)?) {
++    fun update(state: PagerState, intercepted: (() -> Unit)?, snapAnimationSpec: AnimationSpec<Float>) {
+         pagerState = state
+         onIntercepted = intercepted
++        this.snapAnimationSpec = snapAnimationSpec
+     }
+ 
+     fun cancel() {
+@@ -627,6 +647,7 @@ private class PagerPageMotion(
+ 
+     private suspend fun settle(state: PagerState, sign: Float, velocity: Velocity) {
+         val minimum = minimumVelocity
++        val animationSpec = snapAnimationSpec
+         state.scroll(MutatePriority.Default) {
+             val position = state.currentPage + state.currentPageOffsetFraction
+             val signedVelocity = velocity.x * sign
+@@ -635,7 +656,7 @@ private class PagerPageMotion(
+                 signedVelocity < -minimum -> floor(position).toInt()
+                 else -> position.roundToInt()
+             }
+-            state.animateToPage(this, target, signedVelocity)
++            state.animateToPage(this, target, signedVelocity, animationSpec)
+         }
+     }
+ }
+diff --git a/miuix-ui/src/desktopTest/kotlin/top/yukonga/miuix/kmp/utils/PagerGestureContractTest.kt b/miuix-ui/src/desktopTest/kotlin/top/yukonga/miuix/kmp/utils/PagerGestureContractTest.kt
+index 83607f0..bea4ce8 100644
+--- a/miuix-ui/src/desktopTest/kotlin/top/yukonga/miuix/kmp/utils/PagerGestureContractTest.kt
++++ b/miuix-ui/src/desktopTest/kotlin/top/yukonga/miuix/kmp/utils/PagerGestureContractTest.kt
+@@ -370,6 +370,73 @@ class PagerGestureContractTest {
+         assertEquals(0, outerClaims)
+     }
+ 
++    @Test
++    fun touchReleaseUsesConfiguredAnimationSpec() = runComposeUiTest {
++        lateinit var pager: PagerState
++        setContent {
++            pager = rememberPagerState { 3 }
++            val spec = androidx.compose.animation.core.tween<Float>(2000, easing = androidx.compose.animation.core.LinearEasing)
++            val fling = PagerDefaults.flingBehavior(pager, snapAnimationSpec = spec)
++            HorizontalPager(
++                state = pager,
++                modifier = Modifier.size(400.dp).testTag("custom-spec").pagerGestureOverride(pager, fling, snapAnimationSpec = spec),
++                userScrollEnabled = false,
++                pageNestedScrollConnection = PagerGestureNestedScrollConnection,
++            ) { Box(Modifier.fillMaxSize()) }
++        }
++        waitForIdle()
++        mainClock.autoAdvance = false
++        swipePage("custom-spec")
++        waitForIdle()
++        mainClock.advanceTimeBy(900)
++        waitForIdle()
++        assertTrue(pager.isScrollInProgress, "Touch release must use the supplied 2-second spec, not the Miuix spring")
++        finishAnimations()
++        assertEquals(1, pager.currentPage)
++        assertEquals(0f, pager.currentPageOffsetFraction, 0.001f)
++    }
++
++    @Test
++    fun takeoverReleaseIncludesLastPointerDelta() = runComposeUiTest {
++        lateinit var pager: PagerState
++        lateinit var effect: MiuixOverscrollEffect
++        var claims = 0
++        setContent {
++            pager = rememberPagerState { 3 }
++            TestPager(pager, onTriggered = { claims++ }) { page ->
++                val overscroll = remember { MiuixOverscrollEffect() }
++                if (page == 0) effect = overscroll
++                LazyColumn(Modifier.fillMaxSize().testTag("release-list-$page"), overscrollEffect = overscroll) {
++                    items(20) { Box(Modifier.fillMaxWidth().height(60.dp)) }
++                }
++            }
++        }
++        waitForIdle()
++        mainClock.autoAdvance = false
++        onNodeWithTag("release-list-0").performTouchInput {
++            down(center)
++            repeat(5) { moveBy(Offset(0f, 16f), delayMillis = 16) }
++        }
++        waitForIdle()
++        onNodeWithTag("release-list-0").performTouchInput { up() }
++        advanceUntil { effect.isVerticallyRebounding }
++        onNodeWithTag("pager").performTouchInput {
++            down(Offset(width * 0.85f, centerY))
++            moveTo(Offset(width * 0.65f, centerY), delayMillis = 16)
++        }
++        waitForIdle()
++        assertEquals(1, claims, "This must exercise vertical rebound takeover")
++        onNodeWithTag("pager").performTouchInput {
++            advanceEventTime(200)
++            // Android may deliver the last coalesced displacement with ACTION_UP.
++            updatePointerTo(0, Offset(width * 0.10f, centerY))
++            up()
++        }
++        finishAnimations()
++        assertEquals(1, pager.currentPage, "Release displacement must count before choosing the destination")
++        assertEquals(0f, pager.currentPageOffsetFraction, 0.001f)
++    }
++
+     @Test
+     fun actionCancelSettlesPartialDragWithZeroVelocity() = runComposeUiTest {
+         lateinit var pager: PagerState

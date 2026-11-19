@@ -61,15 +61,43 @@ public final class EntryShortcuts {
         String path=path(c,id);if(!validPath(path)){if(!automatic)toast(c,"請先從備份或恢復目錄的 start.sh 啟動");return;}
         ShortcutManager manager=c.getSystemService(ShortcutManager.class);SharedPreferences prefs=c.getSharedPreferences(PREFS,0);
         if(manager==null||!manager.isRequestPinShortcutSupported()){if(!automatic)toast(c,"目前桌面不支援建立捷徑");return;}
-        boolean restore="2".equals(prefs.getString(id+".mode",""));
-        Intent launch=new Intent(c,LauncherActivity.class).setAction(Intent.ACTION_MAIN).putExtra("entryId",id);
-        ShortcutInfo shortcut=new ShortcutInfo.Builder(c,id).setShortLabel(title(c,id)).setLongLabel("SpeedBackup "+title(c,id)+" · "+path)
-            .setIcon(Icon.createWithResource(c,restore?R.drawable.ic_shortcut_restore:R.drawable.ic_shortcut_backup)).setIntent(launch).build();
+        ShortcutInfo shortcut=build(c,id,path);
         try{
             for(ShortcutInfo existing:manager.getPinnedShortcuts())if(existing.getId().equals(id)){manager.updateShortcuts(java.util.Collections.singletonList(shortcut));prefs.edit().putBoolean(id+".requested",true).apply();if(!automatic)toast(c,"桌面捷徑已存在");return;}
             if(automatic&&prefs.getBoolean(id+".requested",false))return;
             if(manager.requestPinShortcut(shortcut,null))prefs.edit().putBoolean(id+".requested",true).apply();
         }catch(RuntimeException unavailable){if(!automatic)toast(c,"無法加入桌面，請在桌面設定確認捷徑權限");}
+    }
+    private static ShortcutInfo build(Context c,String id,String path){
+        boolean restore="2".equals(mode(c,id));
+        Intent launch=new Intent(c,LauncherActivity.class).setAction(Intent.ACTION_MAIN).putExtra("entryId",id);
+        return new ShortcutInfo.Builder(c,id).setShortLabel(title(c,id)).setLongLabel("SpeedBackup "+title(c,id)+" · "+path)
+            .setIcon(adaptiveIcon(c,restore)).setIntent(launch).build();
+    }
+    private static Icon adaptiveIcon(Context c,boolean restore){
+        // The vector uses the same 108-unit canvas / 66-unit safe zone as the
+        // launcher foreground. Keep it unmasked: the launcher owns the shape.
+        android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(432,432,android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.drawable.Drawable drawable=c.getDrawable(restore?R.drawable.ic_shortcut_restore:R.drawable.ic_shortcut_backup).mutate();
+        drawable.setBounds(0,0,bitmap.getWidth(),bitmap.getHeight());
+        drawable.draw(new android.graphics.Canvas(bitmap));
+        return Icon.createWithAdaptiveBitmap(bitmap);
+    }
+    // Updates existing IDs only: never requests a new pin or changes saved paths.
+    static void refreshPinned(Context c){
+        try{
+            ShortcutManager manager=c.getSystemService(ShortcutManager.class);
+            if(manager==null)return;
+            java.util.ArrayList<ShortcutInfo> updates=new java.util.ArrayList<>();
+            for(ShortcutInfo existing:manager.getPinnedShortcuts()){
+                String id=existing.getId(),entry=path(c,id),mode=mode(c,id);
+                if(validPath(entry)&&("0".equals(mode)||"2".equals(mode)))updates.add(new ShortcutInfo.Builder(c,id)
+                    .setShortLabel(title(c,id))
+                    .setLongLabel("SpeedBackup "+title(c,id)+" · "+entry)
+                    .build());
+            }
+            if(!updates.isEmpty())manager.updateShortcuts(updates);
+        }catch(RuntimeException unavailable){android.util.Log.w("SpeedBackupShortcut","Shortcut refresh unavailable",unavailable);}
     }
     static void toast(Context c,String message){android.widget.Toast.makeText(c,NativeLanguage.text(c,message),android.widget.Toast.LENGTH_LONG).show();}
 }

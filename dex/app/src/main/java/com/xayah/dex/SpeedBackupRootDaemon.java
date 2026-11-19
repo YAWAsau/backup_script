@@ -177,8 +177,12 @@ public final class SpeedBackupRootDaemon {
                 "SPEEDBACKUP_ROOT_DAEMON_READY_UNIX " + socketPath,
                 true,
                 SpeedBackupRootDaemon::handleClient, () -> {
-                    if("1".equals(System.getenv("SPEEDBACKUP_NATIVE_PREWARM_ENABLED")))
-                        System.err.println(CgroupFreezeUtil.ensureNativeDaemonForBatch("root-daemon-ready"));
+                    if("1".equals(System.getenv("SPEEDBACKUP_NATIVE_PREWARM_ENABLED"))) {
+                        String result = CgroupFreezeUtil.ensureNativeDaemonForBatch("root-daemon-ready");
+                        if (OperationResult.exitCode(result, "cgroup-daemon-ensure") == 0)
+                            DiagnosticLog.write("root_daemon_diagnostic.log", result);
+                        else System.err.println("[ERROR] " + result);
+                    }
                 });
     }
 
@@ -203,6 +207,11 @@ public final class SpeedBackupRootDaemon {
             String namespace = DaemonBootstrap.readUtf8Line(in).trim();
             if ("ping".equals(namespace)) {
                 DaemonBootstrap.writeResult(out, 0, "OK", "PONG\n");
+                return;
+            }
+            if ("ui-socket-metadata".equals(namespace)) {
+                try {DaemonBootstrap.writeResult(out,0,"OK",AppListReturn.socketMetadata()+"\n");}
+                catch(Exception failure){DaemonBootstrap.writeResult(out,1,"FAIL","UI_METADATA_UNAVAILABLE\n");}
                 return;
             }
             if ("hiddenapi".equals(namespace)) {

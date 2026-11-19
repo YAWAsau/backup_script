@@ -54,6 +54,15 @@ final class BackupGuardRelease {
                     if (!cgroupOk) {
                         r = CgroupFreezeUtil.restorePersistedPackage(user, pkg, "local-read-release"); out.append(r);
                         cgroupOk = restored(r, "cgroup-restore-package", -1);
+                        if (cgroupOk && wchan != 0) {
+                            w = ProcessObserverUtil.wchanStatus(user, pkg, "thawed"); out.append(w);
+                        }
+                    }
+                    // Only the final sample gates release: an earlier mismatch may have
+                    // recovered, but successful stop/restore cannot override a remaining mismatch.
+                    if (wchanMismatch(w)) {
+                        cgroupOk = false;
+                        out.append("GUARD_RELEASE_WCHAN_MISMATCH_RETAINED\n");
                     }
                     if (w.contains("PROCESS_OBSERVER_WCHAN_ERROR")) cgroupOk = false;
                 } catch (Throwable e) { cgroupOk = false; out.append("GUARD_CGROUP_EXCEPTION\n"); }

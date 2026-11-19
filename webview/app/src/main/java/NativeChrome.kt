@@ -1,7 +1,6 @@
 package io.github.yawasau.speedbackup.webview
 
 import androidx.compose.foundation.background
-import androidx.compose.animation.core.*
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -9,19 +8,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.preferredFrameRate
 import androidx.compose.ui.FrameRateCategory
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -37,24 +32,22 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
     fun interface Action { fun invoke(id:String,epoch:String) }
     private var state by mutableStateOf<JSONObject?>(null)
     private var contentSignature=""
-    private var navigationPending=false
+    private var promptBackground by mutableStateOf<Prepared?>(null)
     private var navigationGeneration by mutableIntStateOf(0)
     private var navMoving by mutableStateOf(false)
+    private var menuHandoff by mutableStateOf(false)
+    private var handoffTerminal:Prepared?=null
     fun hasContent():Boolean=state!=null
-    fun beginNavigation(){navigationPending=true}
-    fun endNavigation(){navigationPending=false}
     private var menuReturnRoute=""
     fun resetNavigationHistory(){menuReturnRoute="";navigationGeneration++}
-    fun clearForDocument(){if(!navigationPending)clear()}
     private var uiMoving by mutableStateOf(false)
-    private var navigationMotionActive by mutableStateOf(false)
-    fun setNavigationMoving(value:Boolean){navigationMotionActive=value}
     private val composeView=ComposeView(activity).apply {
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         setContent {
             var resumed by remember { mutableStateOf(activity.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) }
+            var presentationVisible by remember { mutableStateOf(activity.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) }
             DisposableEffect(activity) {
-                val observer=androidx.lifecycle.LifecycleEventObserver { _,_ -> resumed=activity.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) }
+                val observer=androidx.lifecycle.LifecycleEventObserver { _,_ -> resumed=activity.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED);presentationVisible=activity.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED) }
                 activity.lifecycle.addObserver(observer)
                 onDispose { activity.lifecycle.removeObserver(observer) }
             }
@@ -65,6 +58,19 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
             var skyCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
             val backdrop=remember(skyBackdrop){GlassWindowBackdrop(skyBackdrop.graphicsLayer){skyCoordinates}}
             val data=state
+            LaunchedEffect(menuHandoff,data?.optString("epoch"),data?.optLong("handoffDeadline")) {
+                if(menuHandoff) {
+                    // Match the session's bounded host-navigation wait. If the host
+                    // never replaces the menu, expose the real terminal state.
+                    val deadline=data?.optLong("handoffDeadline")?:0L
+                    kotlinx.coroutines.delay((deadline-android.os.SystemClock.elapsedRealtime()).coerceIn(0L,HOST_HANDOFF_TIMEOUT_MS))
+                    handoffTerminal?.let { currentPrepared=it }
+                    handoffTerminal=null;menuHandoff=false
+                }
+            }
+            val prompt=data?.optBoolean("prompt")==true
+            val base=if(prompt)promptBackground else currentPrepared
+            val baseData=base?.data?:data
             LaunchedEffect(customWallpaper,NativeUserWallpaper.committedOpacity,data?.optBoolean("fontAdaptive"),data?.optString("epoch")){
                 if(data?.optBoolean("fontAdaptive")==true)dispatch.invoke("native:refresh",data.optString("epoch"))
             }
@@ -80,7 +86,7 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
                     logExporter.launch("SpeedBackup_debug_${System.currentTimeMillis()}.tar")
                 }
             }
-            val moving=uiMoving||navigationMotionActive||navMoving
+            val moving=uiMoving||navMoving
             val glassControls=remember(data?.optString("epoch")) { GlassMaterial.Controls(data?.optInt("glassLight",100)?:100,data?.optInt("glassTransparency",100)?:100,data?.optInt("glassRefraction",100)?:100,data?.optBoolean("glassAdaptive")==true,data?.optInt("glassBlurStrength",100)?:100) }
             LaunchedEffect(data?.optInt("glassLight",100),glassControls.editing,glassControls.pending){if(!glassControls.editing&&!glassControls.pending)glassControls.light=(data?.optInt("glassLight",100)?:100).coerceIn(0,100).toFloat()}
             LaunchedEffect(data?.optInt("glassTransparency",100),glassControls.editing,glassControls.pending){if(!glassControls.editing&&!glassControls.pending)glassControls.transparency=(data?.optInt("glassTransparency",100)?:100).coerceIn(0,100).toFloat()}
@@ -101,9 +107,7 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
                 }
             }
             val accent=Color(data?.optLong("accent",0xff96bdffL)?.toInt()?:0xff96bdff.toInt())
-            val halo=remember { HaloPosition() }
-            val hasLight=customWallpaper==null&&background.red+background.green+background.blue<1.5f&&data!=null&&data.optString("theme")!in setOf("space","night")&&data.optJSONObject("picker")==null
-            val dynamicGlassBackground=customWallpaper==null&&data?.optBoolean("reducedMotion")!=true&&(hasLight||data?.optBoolean("nativeNightSky")==true||data?.optBoolean("nativeSky")==true)
+            val dynamicGlassBackground=customWallpaper==null&&data?.optBoolean("reducedMotion")!=true&&(data?.optBoolean("nativeNightSky")==true||data?.optBoolean("nativeSky")==true)
             LaunchedEffect(glassControls,glassControls.adaptive,glassControls.light,data?.optBoolean("glassContent"),resumed,moving,customWallpaper,dynamicGlassBackground){
                 if(!com.kyant.backdrop.isRuntimeShaderSupported()&&glassControls.adaptive&&resumed&&!moving){
                     kotlinx.coroutines.delay(80)
@@ -117,14 +121,11 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
                         Box(Modifier.fillMaxSize().background(background)){
                             androidx.compose.foundation.Image(customWallpaper.asImageBitmap(),null,Modifier.fillMaxSize(),alpha=NativeUserWallpaper.transparency/100f,contentScale=androidx.compose.ui.layout.ContentScale.Crop)
                         }
+                    else if(data?.optBoolean("nativeSky")==true)
+                        NativeSky(Modifier.fillMaxSize(),resumed&&!data.optBoolean("reducedMotion"))
                     else if(data?.optBoolean("nativeNightSky")==true)
                         NativeNightSky(Modifier.fillMaxSize(),resumed&&!data.optBoolean("reducedMotion"))
-                    else if(data?.optBoolean("nativeSky")==true&&data.optJSONObject("picker")==null)
-                        NativeSky(Modifier.fillMaxSize(),resumed&&!data.optBoolean("reducedMotion"))
-                    else NativeWallpaper(background,accent,false)
-                    // Merge light into the one cached source BEFORE glass effects.
-                    // Every control samples this texture once, as it does for stars.
-                    if(hasLight)NativeWallpaper(background,accent,resumed&&!data!!.optBoolean("reducedMotion"),true,glassControls,halo)
+                    else Box(Modifier.fillMaxSize().background(background))
                     // Record the same dimmed wallpaper that the page displays.
                     // Glass refraction and luminance must not sample the undimmed photo.
                     if(customWallpaper!=null)androidx.compose.foundation.Canvas(Modifier.fillMaxSize()){
@@ -145,22 +146,29 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
                     val controlForeground=Color(data.optLong("controlForeground",data.optLong("foreground")).toInt())
                     NativeAppTheme(data) {
                     CompositionLocalProvider(LocalNativeBackdrop provides backdrop,LocalNativeUiScale provides data.optDouble("scale",1.0).toFloat().coerceIn(.7f,1.5f),com.kyant.backdrop.catalog.components.LocalGlassBackgroundKey provides ("${customWallpaper?.hashCode()}:${NativeUserWallpaper.transparency}:${NativeUserWallpaper.dim}:${data.optLong("foreground")}:${data.optString("theme")}:${data.optLong("background")}:${data.optDouble("scale")}"),com.kyant.backdrop.catalog.components.LocalGlassInitialLuminance provides initialLuminance,com.kyant.backdrop.catalog.components.LocalGlassDynamicBackground provides dynamicGlassBackground,GlassMaterial.LocalActive provides (resumed&&!moving),GlassMaterial.LocalReducedMotion provides data.optBoolean("reducedMotion"),GlassMaterial.LocalControls provides glassControls,GlassMaterial.LocalBlurEnabled provides data.optBoolean("glassBlur",true)) {
-                    key(navigationGeneration){NativeNavHost(route(data),currentPrepared!!,data.optBoolean("reducedMotion"),
+                    key(navigationGeneration){NativeNavHost(route(baseData),base?:currentPrepared!!,data.optBoolean("reducedMotion"),
                         modifier=Modifier.fillMaxSize().then(if(android.os.Build.VERSION.SDK_INT>=30)Modifier.imePadding() else Modifier),
-                        onBack={dispatch.invoke("back",state?.optString("epoch").orEmpty())},root=data.optBoolean("navigationRoot"),backRoute=data.optString("backRoute").ifEmpty{if(data.optBoolean("returnToMenu"))menuReturnRoute else ""},onMotion={navMoving=it}) { prepared ->
+                        onBack={dispatch.invoke("back",state?.optString("epoch").orEmpty())},root=data.optBoolean("navigationRoot"),previewBack=!prompt,boundaryBack=!prompt,backRoute=data.optString("backRoute").ifEmpty{if(data.optBoolean("returnToMenu"))menuReturnRoute else ""},onMotion={navMoving=it}) { prepared ->
                         val page=prepared.data
+                        val pageDispatch=if(prompt||menuHandoff)Action{_,_->} else dispatch
+                        CompositionLocalProvider(LocalNativeNavigationActive provides (LocalNativeNavigationActive.current&&!prompt),LocalNativePresentationVisible provides (LocalNativePresentationVisible.current&&presentationVisible)) {
                         // Give each moving page the same cached wallpaper, so transparent controls
                         // cannot expose the outgoing page's text during Miuix parallax.
                         Box(Modifier.fillMaxSize().drawWithCache{onDrawBehind{drawLayer(skyBackdrop.graphicsLayer)}}) {
-                            page.optJSONObject("menu")?.let { menu -> key(page.getString("epoch")){NativeMainMenu(menu,page,backdrop,dispatch){uiMoving=it}} }
-                            page.optJSONObject("screen")?.let { screen ->
-                                NativeDocument(screen,page,prepared.logs,backdrop,resumed,dispatch){uiMoving=it}
+                            page.optJSONObject("menu")?.let { menu -> key(page.getString("epoch")){NativeMainMenu(menu,page,backdrop,pageDispatch){uiMoving=it}} }
+                            page.optJSONObject("screen")?.takeUnless{prompt&&base==null}?.let { screen ->
+                                NativeDocument(screen,page,prepared.logs,backdrop,resumed,pageDispatch){uiMoving=it}
                             }
                             page.optJSONObject("picker")?.let { picker ->
                                 val density=androidx.compose.ui.platform.LocalDensity.current
-                                CompositionLocalProvider(LocalNativeUiScale provides 1f,androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density,density.fontScale*page.optDouble("scale",1.0).toFloat().coerceIn(.7f,1.5f))){ NativePathPicker(picker,Color(page.optLong("foreground",0xffeeeeeeL).toInt()),background,accent,page.optString("uiStyle"),page.optBoolean("reducedMotion"),resumed){id->dispatch.invoke(id,page.getString("epoch"))} } }
+                                CompositionLocalProvider(LocalNativeUiScale provides 1f,androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density,density.fontScale*page.optDouble("scale",1.0).toFloat().coerceIn(.7f,1.5f))){ NativePathPicker(picker,Color(page.optLong("foreground",0xffeeeeeeL).toInt()),background,accent,page.optString("uiStyle"),page.optBoolean("reducedMotion"),resumed){id->pageDispatch.invoke(id,page.getString("epoch"))} } }
                         }
-                    }}
+                    }}}
+                    val overlay=if(prompt)data.optJSONObject("screen") else data.optJSONObject("overlay")
+                    overlay?.let{NativeDocument(it,data,emptyList(),backdrop,resumed,dispatch){uiMoving=it}}
+                    if(menuHandoff)Box(Modifier.fillMaxSize().clearAndSetSemantics{}.pointerInput(Unit){
+                        awaitPointerEventScope { while(true)awaitPointerEvent().changes.forEach{it.consume()} }
+                    })
                     }
                     }
                 }
@@ -172,9 +180,7 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
         it.optJSONObject("picker")?.let{picker->"picker:"+picker.getString("session")} ?: it.optString("sectionRoute").takeIf{key->key.isNotEmpty()} ?: it.optJSONObject("menu")?.let{menu->"menu:"+menu.optString("title")}
             ?:it.optJSONObject("screen")?.let{screen->screen.optString("key")} ?:"picker"
     }?:""
-    fun routeKey():String=route(state)
-    fun motionAllowed():Boolean = state?.optBoolean("reducedMotion") == false
-    fun clear(){menuReturnRoute="";navigationPending=false;navigationGeneration++;navMoving=false;uiMoving=false;state=null;currentPrepared=null;contentSignature=""}
+    fun clear(){menuReturnRoute="";navigationGeneration++;navMoving=false;uiMoving=false;menuHandoff=false;handoffTerminal=null;state=null;currentPrepared=null;contentSignature="";promptBackground=null}
     data class Prepared(val data:JSONObject,val signature:String,val logs:List<NativeLogChunk>,val sequence:Long)
     companion object {
         /** Called only on the bounded model worker. Invalid models are rejected before rendering. */
@@ -184,6 +190,7 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
             require((next.optJSONArray("body")?.length()?:0)==0)
             validateNativeMenu(next.optJSONObject("menu"))
             validateNativeDocument(next.optJSONObject("screen"))
+            validateNativeDocument(next.optJSONObject("overlay"))
             val buttons=next.getJSONArray("buttons");require(buttons.length() in 0..4)
             val allowed=setOf("nav-home","nav-actions","nav-style","cancel","save","continue","stop","close")
             for(i in 0 until buttons.length()) {
@@ -217,77 +224,32 @@ class NativeChrome(activity:ComponentActivity,private val dispatch:Action) {
     }
     private var currentPrepared by mutableStateOf<Prepared?>(null)
     fun applyPrepared(prepared:Prepared):Boolean {
-        navigationPending=false
         // Preserve the actual main-menu destination across preparation/log pages in
         // this Binder lifetime: managed selectors still cancel to that same menu.
         // Console Back itself never uses it. Rebind/clear resets this cached target.
         val incoming=prepared.data
+        // Never overwrite a live menu's cached navigation entry with the
+        // temporary disabled controls/status produced by successful submission.
+        // The session remains finished; this changes presentation only.
+        val previous=currentPrepared
+        val holdMenu=incoming.optBoolean("menuHandoff")&&previous?.data?.optJSONObject("menu")!=null&&
+            !previous.data.optBoolean("menuHandoff")&&previous.data.optString("epoch")==incoming.optString("epoch")&&
+            route(previous.data)==route(incoming)
+        menuHandoff=holdMenu
+        handoffTerminal=if(holdMenu)prepared else null
+        if(incoming.optBoolean("prompt")){
+            if(state?.optBoolean("prompt")!=true)promptBackground=currentPrepared
+        }else promptBackground=null
         if(incoming.optJSONObject("menu")!=null)
             menuReturnRoute=route(incoming)
         // Log rows are extracted before the JSON signature is computed. Compare
         // the cached immutable chunks too, or log-only updates are discarded.
         if(prepared.signature!=contentSignature||prepared.logs!=currentPrepared?.logs){
             contentSignature=prepared.signature
-            currentPrepared=prepared
+            if(!holdMenu)currentPrepared=prepared
             state=prepared.data
         }
         return true
     }
 
-}
-
-/** Shared static glass source plus visible random halo on an independent layer, at display-aligned 60 Hz. */
-private class HaloPosition { var offset by mutableStateOf(Offset(-.2f,-.1f)) }
-
-@Composable private fun NativeWallpaper(background:Color,accent:Color,moving:Boolean,overlay:Boolean=false,controls:GlassMaterial.Controls?=null,position:HaloPosition=remember { HaloPosition() }) {
-    var lightOffset by position::offset
-    LaunchedEffect(moving) {
-        if(!moving)return@LaunchedEffect
-        val random=kotlin.random.Random.Default
-        while(true) {
-            val from=lightOffset
-            var to:Offset
-            do{to=Offset(random.nextFloat()*.8f-.4f,random.nextFloat()*.6f-.3f)}while((to-from).getDistance()<.28f)
-            val duration=random.nextLong(4000,7000)*1_000_000L
-            val start=withFrameNanos{it};var last=start;var complete=false
-            while(!complete)withFrameNanos { frame ->
-                if(frame-last>=16_000_000L) {
-                    val t=((frame-start).toFloat()/duration).coerceIn(0f,1f)
-                    val smooth=t*t*(3-2*t)
-                    lightOffset=from+(to-from)*smooth
-                    last=frame;complete=t>=1f
-                }
-            }
-        }
-    }
-    Box(Modifier.fillMaxSize().then(if(moving)Modifier.preferredFrameRate(60f) else Modifier).drawWithCache {
-        // Rasterize smooth gradients once at wallpaper resolution. The animated
-        // shared source redraws bitmap samples, not several full-screen shaders.
-        val width=384
-        val height=(width*size.height/size.width.coerceAtLeast(1f)).toInt().coerceIn(1,1536)
-        val w=width.toFloat();val h=height.toFloat()
-        val bitmap=android.graphics.Bitmap.createBitmap(width,height,android.graphics.Bitmap.Config.ARGB_8888)
-        val canvas=android.graphics.Canvas(bitmap);val paint=android.graphics.Paint(3)
-        val dark=background.red+background.green+background.blue<1.5f
-        val lightColor=if(dark)accent else Color.White
-        fun radial(color:Color,alphas:FloatArray,stops:FloatArray?,x:Float,y:Float,radius:Float) {
-            paint.shader=android.graphics.RadialGradient(x,y,radius,alphas.map{color.copy(alpha=it).toArgb()}.toIntArray(),stops,android.graphics.Shader.TileMode.CLAMP)
-            canvas.drawRect(0f,0f,w,h,paint)
-        }
-        if(!overlay)canvas.drawColor(background.toArgb())
-        if(overlay&&dark)radial(lightColor,floatArrayOf(.50f,.45f,.20f,0f),floatArrayOf(0f,.10f,.45f,1f),w*.5f,h*.45f,minOf(w,h)*.42f)
-        else if(dark) {
-            radial(lightColor,floatArrayOf(.25f,0f),null,w*.22f,h*.28f,maxOf(w,h)*.48f)
-            radial(Color(0xff8cd6df),floatArrayOf(.12f,0f),null,w*.85f,h*.67f,maxOf(w,h)*.44f)
-            radial(Color.White,floatArrayOf(.045f,0f),null,w*.6f,h*.1f,maxOf(w,h)*.38f)
-        }
-        val image=bitmap.asImageBitmap()
-        onDrawBehind {
-            // Translate the cached bitmap in the draw phase. The shared parent
-            // already supplies an offscreen source; no extra full-screen light FBO.
-            withTransform({if(overlay)translate(lightOffset.x*size.width,lightOffset.y*size.height)}) {
-                drawImage(image,dstSize=IntSize(size.width.toInt(),size.height.toInt()),alpha=if(overlay)((controls?.light?:100f)/100f).coerceIn(0f,1f) else 1f)
-            }
-        }
-    })
 }

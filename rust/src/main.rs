@@ -11,9 +11,11 @@ mod file_rpc;
 mod smb_publisher;
 mod tool_sha_cache;
 mod runtime_cache;
+mod runtime_layout;
 mod tool_diagnostics;
 mod pm_process;
 mod pm_session;
+mod ui_context_resolver;
 #[path = "bin/netwatch.rs"]
 mod netwatch;
 #[path = "bin/procwait.rs"]
@@ -27,6 +29,10 @@ mod unixsock;
 
 fn main() {
     let args: Vec<_> = std::env::args_os().collect();
+    if args.get(1).is_some_and(|s|s=="--resolve-ui-context") {
+        let values:Result<Vec<_>,_>=args.into_iter().skip(2).map(|s|s.into_string()).collect();
+        std::process::exit(match values{Ok(v)=>ui_context_resolver::run(&v),Err(_)=>2});
+    }
     if args.get(1).is_some_and(|s| s=="--diagnostic-tools")
         && args.first().and_then(|s| std::path::Path::new(s).file_name()) == Some(std::ffi::OsStr::new("speednative")) {
         let values:Result<Vec<_>,_>=args.into_iter().skip(2).map(|s|s.into_string()).collect();

@@ -214,7 +214,7 @@ public class NetworkUtil {
                 WifiConfiguration[] networks = readNetworks(jsonPath);
                 android.net.wifi.WifiManager manager=Refine.unsafeCast(wifiManager);
                 int wifiState=manager.getWifiState();
-                System.err.println("WIFI_RESTORE_STATE sdk="+Build.VERSION.SDK_INT+" uid="+android.os.Process.myUid()+" wifiState="+wifiState+" records="+networks.length);
+                DiagnosticInfo.write("WIFI_RESTORE_STATE sdk="+Build.VERSION.SDK_INT+" uid="+android.os.Process.myUid()+" wifiState="+wifiState+" records="+networks.length);
                 int recordIndex=0;
                 for (WifiConfiguration network : networks) {
                     recordIndex++;

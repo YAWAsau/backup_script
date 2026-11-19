@@ -17,8 +17,8 @@ import java.util.concurrent.atomic.*;
 /** Root-side one-session native APK transport. No browser tasks, polling or arbitrary commands. */
 public final class AppListReturn {
     private static final String PACKAGE="io.github.yawasau.speedbackup.webview";
-    private static final long APK_VERSION=147;
-    private static final String APK_SHA="372a7453fb8d3066cfbee15201793c32cffbb54a4cebb7984ca9d4623ac10b7b";
+    private static final long APK_VERSION=185;
+    private static final String APK_SHA="faf1a3c9f5db5706c432b2b5325a7118b4bb7f41189db7dacb7210385cf4476e";
     private static final String PROTOCOL="speedbackup.webview.v1";
     private static final String CERT="73d49c551002cb071ac89ac6bad572ec999dc0b9f2fbb381130f84fbd0ea251e";
     private static int number(Object value,String name,int fallback){try{return ((Number)field(value,name)).intValue();}catch(Exception e){return fallback;}}
@@ -132,8 +132,8 @@ public final class AppListReturn {
     }
     private static PackageInfo installed(int user) throws Exception {
         Object pm=HiddenApiServices.interfaceService("package","android.content.pm.IPackageManager$Stub");
-        try{return (PackageInfo)call(pm,"getPackageInfo",PACKAGE,0x08000000L,user);}
-        catch(NoSuchMethodException e){return (PackageInfo)call(pm,"getPackageInfo",PACKAGE,0x08000000,user);}
+        try{return (PackageInfo)call(pm,"getPackageInfo",PACKAGE,0x08001000L,user);}
+        catch(NoSuchMethodException e){return (PackageInfo)call(pm,"getPackageInfo",PACKAGE,0x08001000,user);}
     }
     // Called only after signature, version and APK identity validation. Normal
     // manifest permissions are install-time grants; POST_NOTIFICATIONS is the
@@ -171,6 +171,38 @@ public final class AppListReturn {
             System.err.println("SHORTCUT_ACCESS status=unavailable reason="+e.getClass().getSimpleName());
         }
     }
+    // Explicit monitor opt-in only; never called by ordinary host startup.
+    private static void grantOverlay() throws Exception {
+        if(android.system.Os.getuid()!=0)throw new SecurityException("overlay requires root");
+        int user=number(call(HiddenApiServices.activity(),"getCurrentUser"),"id",-1);
+        if(user<0)throw new IllegalStateException("current user unavailable");
+        PackageInfo info=installed(user);
+        // Reuse the existing signature/version/APK-hash verification policy,
+        // including its signed newer-host compatibility rule, before any grant.
+        if(!verify(info))throw new SecurityException("installed host verification failed");
+        if(info.requestedPermissions==null || !java.util.Arrays.asList(info.requestedPermissions).contains("android.permission.SYSTEM_ALERT_WINDOW"))
+            throw new SecurityException("installed host does not declare overlay permission");
+        if(info.applicationInfo.uid<0 || info.applicationInfo.uid/100000!=user ||
+                !PACKAGE.equals(info.applicationInfo.packageName))
+            throw new SecurityException("host user identity mismatch");
+        // Resolve Android's named operation only: no guessed OEM numeric AppOp.
+        Field operation=Class.forName("android.app.AppOpsManager").getDeclaredField("OP_SYSTEM_ALERT_WINDOW");
+        operation.setAccessible(true);
+        if(operation.getType()!=int.class || !java.lang.reflect.Modifier.isStatic(operation.getModifiers()))
+            throw new IllegalStateException("invalid overlay operation");
+        int op=operation.getInt(null);
+        if(op<0)throw new IllegalStateException("invalid overlay operation");
+        Object service=HiddenApiServices.interfaceService("appops","com.android.internal.app.IAppOpsService$Stub");
+        // Do not grant to a stale selected user if Android switched during verification.
+        if(number(call(HiddenApiServices.activity(),"getCurrentUser"),"id",-1)!=user)
+            throw new SecurityException("current user changed");
+        call(service,"setMode",op,info.applicationInfo.uid,PACKAGE,android.app.AppOpsManager.MODE_ALLOWED);
+        Object after=call(service,"checkOperation",op,info.applicationInfo.uid,PACKAGE);
+        if(!Integer.valueOf(android.app.AppOpsManager.MODE_ALLOWED).equals(after))
+            throw new SecurityException("overlay not allowed");
+        System.out.print("OVERLAY_OK");
+        System.out.flush();
+    }
     private static void prepareHostAccess(int user) throws IOException {
         if(user<0)throw new IOException("host user");
         // Identity was verified above. Native owns the bounded permission policy.
@@ -178,6 +210,22 @@ public final class AppListReturn {
         System.out.flush();
         String reply=new BufferedReader(new InputStreamReader(System.in,java.nio.charset.StandardCharsets.UTF_8)).readLine();
         if(!"HOST_ACCESS_DONE".equals(reply))throw new IOException("host access handshake");
+    }
+    static String socketMetadata() throws Exception {
+        if(android.system.Os.getuid()!=0)throw new SecurityException("root required");
+        HiddenApiBypassBridge.installExemptionsOnce();
+        int user=number(call(HiddenApiServices.activity(),"getCurrentUser"),"id",-1);
+        return socketMetadata(user);
+    }
+    static String socketMetadata(int user) throws Exception {
+        if(android.system.Os.getuid()!=0||user<0)throw new SecurityException("host user unavailable");
+        PackageInfo info=installed(user);
+        if(!verify(info))return "INSTALL\t"+user;
+        ApplicationInfo app=info.applicationInfo;
+        if(app.uid/100000!=user||!PACKAGE.equals(app.packageName))throw new SecurityException("host metadata identity");
+        String se=(String)field(app,"seInfo"),suffix=(String)field(app,"seInfoUser");
+        if(se==null||suffix==null||!(se+suffix).matches("[A-Za-z0-9_:=.,-]{1,1024}"))throw new SecurityException("host seinfo");
+        return "UI_META\t"+app.uid+"\t"+se+suffix;
     }
     private static boolean trustedLauncherPackage(PackageInfo info) throws Exception {
         if(info==null)return false;
@@ -375,7 +423,7 @@ public final class AppListReturn {
             !args[3].equals(String.valueOf(original.id))||!args[4].equals(String.valueOf(original.user))||!args[5].equals(String.valueOf(original.display))||
             !args[6].equals(original.base.flattenToString())||!args[7].equals(original.top.flattenToString()))throw new IllegalStateException("origin changed before capture");
         checkAncestor(owner,original);
-        try(LocalServerSocket server=new LocalServerSocket(name)){
+        try(LocalServerSocket server=UiSocketLabel.bind(name,original.user)){
             HiddenApiHelper.initializeContext();
             final int guardUser=original.user;
             final AtomicInteger trustedHostUid=new AtomicInteger(-1);
@@ -463,7 +511,7 @@ public final class AppListReturn {
             String.valueOf(expected.id),String.valueOf(expected.user),String.valueOf(expected.display),expected.base.flattenToString(),expected.top.flattenToString())
             .redirectInput(new File("/dev/null")).redirectError(new File("/dev/null")).start();
         FutureTask<String> ready=new FutureTask<>(()->boundedLine(process.getInputStream()));Thread reader=new Thread(ready,"origin-ready");reader.setDaemon(true);reader.start();
-        try{if(!"ORIGIN_READY".equals(ready.get(4,TimeUnit.SECONDS))||!"OK".equals(originCommand(name,identity,"PROBE")))throw new IOException("origin startup");}
+        try{if(!"ORIGIN_READY".equals(ready.get(12,TimeUnit.SECONDS))||!"OK".equals(originCommand(name,identity,"PROBE")))throw new IOException("origin startup");}
         catch(Exception failure){process.destroyForcibly();throw failure;}
         finally{process.getInputStream().close();}
     }
@@ -532,7 +580,13 @@ public final class AppListReturn {
     public static void main(String[] args){
         try {
             DaemonHardening.protectSelf("webview-controller");
-            HiddenApiBypassBridge.installExemptionsOnce();Object atm=activity();
+            HiddenApiBypassBridge.installExemptionsOnce();
+            if(args.length>0&&args[0].equals("--grant-overlay")){
+                if(args.length!=1)throw new IllegalArgumentException("overlay arguments");
+                grantOverlay();System.exit(0);return;
+            }
+            if(args.length==1&&args[0].equals("--socket-metadata")){System.out.println(socketMetadata());System.out.flush();return;}
+            Object atm=activity();
             if(args.length>0&&args[0].equals("--origin")){originServer(args,atm);return;}
             if(args.length==1&&args[0].equals("--notification-check")){
                 String result=originCommand(System.getenv("SPEEDBACKUP_WEB_ORIGIN_SOCKET"),ownerIdentity(System.getenv("SPEEDBACKUP_WEB_OWNER_PID")),"HOST_OPEN");
@@ -577,7 +631,7 @@ public final class AppListReturn {
             if(origin.user<0)throw new IllegalStateException("origin unsupported");
             if(args.length!=1)throw new IllegalStateException("native APK unavailable");
             String url=args[0];Uri uri=Uri.parse(url);
-            if(!"http".equals(uri.getScheme())||!"127.0.0.1".equals(uri.getHost())||uri.getPort()<1||uri.getUserInfo()!=null||!"/".equals(uri.getPath())||uri.getQuery()!=null||uri.getFragment()==null||!uri.getFragment().matches("[0-9a-f]{64}"))throw new IllegalArgumentException("URL");
+            if(!"unix".equals(uri.getScheme())||uri.getHost()==null||!uri.getHost().matches("sb-ui-[0-9a-f]{64}")||uri.getPort()!=-1||uri.getUserInfo()!=null||!"/".equals(uri.getPath())||uri.getQuery()!=null||uri.getFragment()==null||!uri.getFragment().matches("[0-9a-f]{64}"))throw new IllegalArgumentException("URL");
             String owner=System.getenv("SPEEDBACKUP_WEB_OWNER_PID");
             final String identity=ownerIdentity(owner);
             final String originName=System.getenv("SPEEDBACKUP_WEB_ORIGIN_SOCKET");
@@ -664,7 +718,7 @@ public final class AppListReturn {
                         boolean ok=false,detached=false;CountDownLatch done=new CountDownLatch(1);
                         try{
                             String target=nav[2];Uri targetUri=Uri.parse(target);
-                            if(!"http".equals(targetUri.getScheme())||!"127.0.0.1".equals(targetUri.getHost())||targetUri.getPort()<1||targetUri.getUserInfo()!=null||!"/".equals(targetUri.getPath())||targetUri.getQuery()!=null||targetUri.getFragment()==null||!targetUri.getFragment().matches("[0-9a-f]{64}"))throw new SecurityException("navigation URL");
+                            if(!"unix".equals(targetUri.getScheme())||targetUri.getHost()==null||!targetUri.getHost().matches("sb-ui-[0-9a-f]{64}")||targetUri.getPort()!=-1||targetUri.getUserInfo()!=null||!"/".equals(targetUri.getPath())||targetUri.getQuery()!=null||targetUri.getFragment()==null||!targetUri.getFragment().matches("[0-9a-f]{64}"))throw new SecurityException("navigation URL");
                             // An existing authenticated Binder can update its page in the background.
                             // This does not launch/focus an Activity or change the current app.
                             if(!scoped||!identity.equals(ownerIdentity(owner))||!"OK".equals(originCommand(originName,identity,"PROBE"))||closed.getCount()==0||endpoint.get()==null||!endpoint.get().isBinderAlive()){

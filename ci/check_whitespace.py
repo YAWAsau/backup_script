@@ -18,7 +18,12 @@ def main():
         if top != ROOT.resolve():
             raise SystemExit('Repository check must run from its own Git checkout')
         names = subprocess.check_output(['git', 'ls-files', '-z'], cwd=ROOT).decode('utf-8').split('\0')
-        names = sorted(n for n in names if n)
+        # Query deletions without refreshing, staging, or changing the real index.
+        # Keep this exclusion repository-only: source-package files are mandatory.
+        deleted = set(subprocess.check_output(
+            ['git', 'ls-files', '--deleted', '-z'], cwd=ROOT
+        ).decode('utf-8').split('\0'))
+        names = sorted({n for n in names if n and n not in deleted})
         if not names:
             raise SystemExit('No tracked repository files to check')
     else:

@@ -193,6 +193,9 @@ mod tar_input;
 #[path = "../workflow.rs"]
 mod workflow;
 use std::collections::{BTreeMap, HashMap, HashSet};
+#[path = "../restore_item.rs"]
+mod restore_item;
+
 use std::env;
 use std::ffi::CString;
 use std::fs::{self, File, OpenOptions};
@@ -500,7 +503,7 @@ fn usage() {
     eprintln!("  speedscan cleanup-legacy-namespaces /data/.speedbackup/tmp");
     eprintln!("  speedscan dir-size PATH");
     eprintln!("  speedscan dir-size-map MANIFEST");
-    eprintln!("  speedscan dir-size-manifest PKG_LIST OUT_MANIFEST OUT_EXISTS BACKUP_MODE BACKUP_OBB BACKUP_USER ANDROID_ROOT USER_ROOT USER_DE_ROOT");
+    eprintln!("  speedscan dir-size-manifest PKG_LIST OUT_MANIFEST OUT_EXISTS BACKUP_MODE ANDROID_ROOT USER_ROOT USER_DE_ROOT");
     eprintln!("  speedscan tsv-decimal-sum FILE COLUMN");
     eprintln!("  speedscan smb-plan RAW PREFIX MAP_OUT SNAPSHOT_BASE|- (context on stdin)");
     eprintln!("  speedscan smb-list RAW PREFIX");
@@ -526,7 +529,7 @@ fn usage() {
     eprintln!("  speedscan selected-list APPLIST BLACKLIST OUT BLACKLIST_MODE");
     eprintln!("  speedscan apk-size-map PKG_APK_PATHS OUT");
     eprintln!("  speedscan backup-prescan-exact-input EXACT_ROWS DIR_TAR_MAP PKG_APK_PATHS DETAILS_OUT STATS_OUT");
-    eprintln!("  speedscan backup-prescan-plan MODE ROOT DETAILS_OUT STATS_OUT BACKUP_MODE BACKUP_USER BACKUP_OBB");
+    eprintln!("  speedscan backup-prescan-plan MODE ROOT DETAILS_OUT STATS_OUT BACKUP_MODE");
     eprintln!("  speedscan backup-prescan-summary SELECTED DIRSIZES APKMAP RSKIP LSKIP OUT REMOTE_STREAM REMOTE_TYPE");
     eprintln!("  speedscan backup-root-index ROOT OUT [MAXDEPTH]");
     eprintln!("  speedscan storage-summary PATH");
@@ -537,14 +540,14 @@ fn usage() {
     eprintln!("  speedscan tree-pack-plan ROOT OUT [EXCLUDE_FILE|-] [MAX_ROWS|-]");
     eprintln!("  speedscan entry-size-facts ROOT OUT [EXCLUDE_FILE|-] [MAX_ROWS|-]");
     eprintln!("  speedscan changed-entry-facts MANIFEST OUT");
-    eprintln!("  speedscan local-fastskip-join SELECTED SUMMARY STATE DIRSIZES EXISTS ARCHIVES BLACKSET OUT DIAG STATS BACKUP_MODE BACKUP_OBB BACKUP_USER BLACKLIST_MODE");
-    eprintln!("  speedscan local-fastskip-presize-plan SELECTED SUMMARY STATE EXISTS ARCHIVES BLACKSET OUT_MANIFEST OUT_STATS OUT_DIAG BACKUP_MODE BACKUP_OBB BACKUP_USER BLACKLIST_MODE ANDROID_ROOT USER_ROOT USER_DE_ROOT");
-    eprintln!("  speedscan local-fastskip-presize-plan-v4 SELECTED SUMMARY STATE BLACKSET BACKUP_ROOT OUT_EXISTS OUT_ARCHIVES OUT_MANIFEST OUT_STATS OUT_DIAG OUT_TINY BACKUP_MODE BACKUP_OBB BACKUP_USER BLACKLIST_MODE ANDROID_ROOT USER_ROOT USER_DE_ROOT");
-    eprintln!("  speedscan local-fastskip-presize-bundle-v1 RAW_APPLIST PKG_VER_MAP APPDETAILS_ROOT CURRENT_APPSTATE_TSV|- BLACKSET BACKUP_ROOT OUT_SELECTED OUT_SUMMARY OUT_STATE OUT_EXISTS OUT_ARCHIVES OUT_MANIFEST OUT_STATS OUT_DIAG OUT_TINY BACKUP_MODE BACKUP_OBB BACKUP_USER BLACKLIST_MODE ANDROID_ROOT USER_ROOT USER_DE_ROOT");
-    eprintln!("  speedscan remote-fastskip-presize-bundle-v1 RAW_APPLIST PKG_VER_MAP APPDETAILS_ROOT CURRENT_APPSTATE_TSV|- BLACKSET REMOTE_PAYLOAD_RELS OUT_PAYLOAD_SET OUT_SELECTED OUT_SUMMARY OUT_STATE OUT_EXISTS OUT_ARCHIVES OUT_MANIFEST OUT_STATS OUT_DIAG OUT_TINY BACKUP_MODE BACKUP_OBB BACKUP_USER BLACKLIST_MODE ANDROID_ROOT USER_ROOT USER_DE_ROOT");
-    eprintln!("  speedscan backup-entry-presence-map SELECTED OUT BACKUP_MODE BACKUP_OBB BACKUP_USER ANDROID_ROOT USER_ROOT USER_DE_ROOT");
+    eprintln!("  speedscan local-fastskip-join SELECTED SUMMARY STATE DIRSIZES EXISTS ARCHIVES BLACKSET OUT DIAG STATS BACKUP_MODE BLACKLIST_MODE");
+    eprintln!("  speedscan local-fastskip-presize-plan SELECTED SUMMARY STATE EXISTS ARCHIVES BLACKSET OUT_MANIFEST OUT_STATS OUT_DIAG BACKUP_MODE BLACKLIST_MODE ANDROID_ROOT USER_ROOT USER_DE_ROOT");
+    eprintln!("  speedscan local-fastskip-presize-plan-v4 SELECTED SUMMARY STATE BLACKSET BACKUP_ROOT OUT_EXISTS OUT_ARCHIVES OUT_MANIFEST OUT_STATS OUT_DIAG OUT_TINY BACKUP_MODE BLACKLIST_MODE ANDROID_ROOT USER_ROOT USER_DE_ROOT");
+    eprintln!("  speedscan local-fastskip-presize-bundle-v1 RAW_APPLIST PKG_VER_MAP APPDETAILS_ROOT CURRENT_APPSTATE_TSV|- BLACKSET BACKUP_ROOT OUT_SELECTED OUT_SUMMARY OUT_STATE OUT_EXISTS OUT_ARCHIVES OUT_MANIFEST OUT_STATS OUT_DIAG OUT_TINY BACKUP_MODE BLACKLIST_MODE ANDROID_ROOT USER_ROOT USER_DE_ROOT");
+    eprintln!("  speedscan remote-fastskip-presize-bundle-v1 RAW_APPLIST PKG_VER_MAP APPDETAILS_ROOT CURRENT_APPSTATE_TSV|- BLACKSET REMOTE_PAYLOAD_RELS OUT_PAYLOAD_SET OUT_SELECTED OUT_SUMMARY OUT_STATE OUT_EXISTS OUT_ARCHIVES OUT_MANIFEST OUT_STATS OUT_DIAG OUT_TINY BACKUP_MODE BLACKLIST_MODE ANDROID_ROOT USER_ROOT USER_DE_ROOT");
+    eprintln!("  speedscan backup-entry-presence-map SELECTED OUT BACKUP_MODE ANDROID_ROOT USER_ROOT USER_DE_ROOT");
     eprintln!("  speedscan payload-archive-set PAYLOAD_SET OUT");
-    eprintln!("  speedscan remote-stream-local-read-plan SELECTED DIRSIZES OUT BACKUP_MODE BACKUP_OBB BACKUP_USER ANDROID_ROOT USER_ROOT USER_DE_ROOT\n  speedscan remote-stream-local-read-plan-v2 SELECTED DIRSIZES EXISTS OUT BACKUP_MODE BACKUP_OBB BACKUP_USER\n  speedscan remote-stream-local-read-final-plan SELECTED DIRSIZES EXISTS REMOTE_SUMMARY PAYLOAD_SET OUT STATS BACKUP_MODE BACKUP_OBB BACKUP_USER");
+    eprintln!("  speedscan remote-stream-local-read-plan SELECTED DIRSIZES OUT BACKUP_MODE ANDROID_ROOT USER_ROOT USER_DE_ROOT\n  speedscan remote-stream-local-read-plan-v2 SELECTED DIRSIZES EXISTS OUT BACKUP_MODE\n  speedscan remote-stream-local-read-final-plan SELECTED DIRSIZES EXISTS REMOTE_SUMMARY PAYLOAD_SET OUT STATS BACKUP_MODE");
     eprintln!("  speedscan selected-apps-map RAW_APPLIST PKG_VER_MAP OUT");
     eprintln!("  speedscan appdetails-summary-map ROOT OUT");
     eprintln!("  speedscan restore-package-maps ROOT PACKAGE UID VERSION");
@@ -561,7 +564,7 @@ fn usage() {
     eprintln!("  speedscan appdetails-seed-index ROOT SEED_OUT OUT_PREFIX");
     eprintln!("  speedscan remote-manifest-plan REMOTE_FILES|- BUNDLE_ROOT|- INSTALLED_PACKAGES|- OUT_PREFIX");
     eprintln!("  speedscan restore-payload-plan APP_DIR APP_DETAILS|- OUT_PREFIX");
-    eprintln!("  speedscan manifest-diff-cache-index SELECTED REMOTE_SUMMARY DIRSIZES PAYLOAD_SET CHANGED OUT_PREFIX BACKUP_MODE BACKUP_OBB BACKUP_USER [STATE_MAP|-]");
+    eprintln!("  speedscan manifest-diff-cache-index SELECTED REMOTE_SUMMARY DIRSIZES PAYLOAD_SET CHANGED OUT_PREFIX BACKUP_MODE [STATE_MAP|-]");
     eprintln!("  speedscan capabilities");
 }
 
@@ -1085,37 +1088,48 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
 
     // Components are lexical routing keys only. Keep the original paths and
     // fresh filesystem checks in path_nested_collapse_safe for every candidate.
-    let mut raw_groups: Vec<(PathBuf, Vec<std::ffi::OsString>, Vec<(usize, PathBuf)>)> = Vec::new();
+    let mut raw_groups: Vec<Option<(PathBuf, Vec<std::ffi::OsString>, Vec<(usize, PathBuf)>)>> = Vec::new();
+    let mut root_index = std::collections::BTreeMap::<Vec<std::ffi::OsString>, Vec<usize>>::new();
     for (idx, row) in rows.iter().enumerate() {
         let target = PathBuf::from(&row.2);
         let key: Vec<_> = target.components().map(|c| c.as_os_str().to_os_string()).collect();
-        let mut best: Option<usize> = None;
+        let mut candidates = Vec::new();
+        for depth in 0..=key.len() {
+            if let Some(indices) = root_index.get(&key[..depth]) { candidates.extend_from_slice(indices); }
+        }
+        // Keep the original candidate-check order, including duplicate lexical roots.
+        candidates.sort_unstable();
+        let mut best = None;
         let mut best_depth = usize::MAX;
-        for (gidx, (root, root_key, _)) in raw_groups.iter().enumerate() {
-            if key.starts_with(root_key) && path_nested_collapse_safe(root, &target) {
-                let depth = root_key.len();
-                if depth < best_depth {
-                    best = Some(gidx);
-                    best_depth = depth;
-                }
+        for gidx in candidates {
+            let (root, root_key, _) = raw_groups[gidx].as_ref().unwrap();
+            if path_nested_collapse_safe(root, &target) && root_key.len() < best_depth {
+                best = Some(gidx); best_depth = root_key.len();
             }
         }
         if let Some(gidx) = best {
-            raw_groups[gidx].2.push((idx, target));
+            raw_groups[gidx].as_mut().unwrap().2.push((idx, target));
             continue;
         }
+        let mut descendants: Vec<_> = root_index.range(key.clone()..)
+            .take_while(|(old_key, _)| old_key.starts_with(&key))
+            .flat_map(|(_, indices)| indices.iter().copied()).collect();
+        descendants.sort_unstable();
         let mut targets = vec![(idx, target.clone())];
-        let mut keep = Vec::with_capacity(raw_groups.len() + 1);
-        for (old_root, old_key, old_targets) in raw_groups.drain(..) {
-            if old_key.starts_with(&key) && path_nested_collapse_safe(&target, &old_root) {
+        for gidx in descendants {
+            let (old_root, _, _) = raw_groups[gidx].as_ref().unwrap();
+            if path_nested_collapse_safe(&target, old_root) {
+                let (_, old_key, old_targets) = raw_groups[gidx].take().unwrap();
                 targets.extend(old_targets);
-            } else {
-                keep.push((old_root, old_key, old_targets));
+                let indices = root_index.get_mut(&old_key).unwrap();
+                indices.retain(|index| *index != gidx);
+                if indices.is_empty() { root_index.remove(&old_key); }
             }
         }
-        keep.push((target, key, targets));
-        raw_groups = keep;
+        root_index.entry(key.clone()).or_default().push(raw_groups.len());
+        raw_groups.push(Some((target, key, targets)));
     }
+    drop(root_index);
 
     let hint_file = env::var("SPEEDSCAN_DIRSIZE_HINTS_FILE")
         .ok()
@@ -1123,7 +1137,7 @@ fn cmd_dir_size_map(manifest: &str) -> i32 {
     let hints = load_dir_size_hints(hint_file.as_deref());
     let hint_rows = hints.len();
     let mut root_groups: Vec<DirSizeRootGroup> = raw_groups
-        .into_iter()
+        .into_iter().flatten()
         .map(|(root, _, targets)| (root, targets))
         .map(|g| {
             let estimate_bytes = dir_size_group_estimate(&g, &rows, &hints);
@@ -4882,7 +4896,7 @@ impl FingerprintMatch {
 }
 
 fn cmd_local_fastskip_join(args: &[String]) -> i32 {
-    if args.len() < 16 {
+    if args.len() < 14 {
         return 2;
     }
     let selected = &args[2];
@@ -4896,9 +4910,7 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
     let diag_s = &args[10];
     let stats_s = &args[11];
     let backup_mode = &args[12];
-    let backup_obb = &args[13];
-    let backup_user = &args[14];
-    let blacklist_mode = &args[15];
+    let blacklist_mode = &args[13];
     let fp = FingerprintMatch::load(summary);
     let mut out = match File::create(out_s) {
         Ok(v) => v,
@@ -4911,18 +4923,19 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
     let sel = read_tsv_rows_required(selected);
     let mut meta: HashSet<String> = HashSet::new();
     let mut rver: HashMap<String, String> = HashMap::new();
-    let mut rsize: HashMap<(String, String), String> = HashMap::new();
+    let mut rsize: HashMap<(&str, &str), &str> = HashMap::new();
     let mut state_valid: HashMap<String, String> = HashMap::new();
-    for r in read_tsv_rows_required(summary) {
+    let summary_input_rows = read_tsv_rows_required(summary);
+    for r in &summary_input_rows {
         if r.len() >= 9 {
             let app = r[0].clone();
             meta.insert(app.clone());
             rver.insert(app.to_string(), r[2].clone());
-            rsize.insert((app.to_string(), "user".into()), r[3].clone());
-            rsize.insert((app.to_string(), "user_de".into()), r[4].clone());
-            rsize.insert((app.to_string(), "data".into()), r[5].clone());
-            rsize.insert((app.to_string(), "obb".into()), r[6].clone());
-            rsize.insert((app.to_string(), "media".into()), r[7].clone());
+            rsize.insert((r[0].as_str(), "user"), r[3].as_str());
+            rsize.insert((r[0].as_str(), "user_de"), r[4].as_str());
+            rsize.insert((r[0].as_str(), "data"), r[5].as_str());
+            rsize.insert((r[0].as_str(), "obb"), r[6].as_str());
+            rsize.insert((r[0].as_str(), "media"), r[7].as_str());
             state_valid.insert(app, r[8].clone());
         }
     }
@@ -4938,25 +4951,28 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
             nstate += 1;
         }
     }
-    let mut lsize: HashMap<(String, String), String> = HashMap::new();
-    for r in read_tsv_rows_required(dirsizes) {
+    let mut lsize: HashMap<(&str, &str), &str> = HashMap::new();
+    let dirsizes_input_rows = read_tsv_rows_required(dirsizes);
+    for r in &dirsizes_input_rows {
         if r.len() >= 3 {
-            lsize.insert((r[0].clone(), r[1].clone()), r[2].clone());
+            lsize.insert((r[0].as_str(), r[1].as_str()), r[2].as_str());
         }
     }
-    let mut dexists: HashSet<(String, String)> = HashSet::new();
+    let mut dexists: HashSet<(&str, &str)> = HashSet::new();
     let mut nexists = 0u64;
-    for r in read_tsv_rows_required(exists) {
+    let exists_input_rows = read_tsv_rows_required(exists);
+    for r in &exists_input_rows {
         if r.len() >= 2 {
-            dexists.insert((r[0].clone(), r[1].clone()));
+            dexists.insert((r[0].as_str(), r[1].as_str()));
             nexists += 1;
         }
     }
-    let mut arch: HashSet<(String, String)> = HashSet::new();
+    let mut arch: HashSet<(&str, &str)> = HashSet::new();
     let mut narch = 0u64;
-    for r in read_tsv_rows_required(archives) {
+    let archives_input_rows = read_tsv_rows_required(archives);
+    for r in &archives_input_rows {
         if r.len() >= 2 {
-            arch.insert((r[0].clone(), r[1].clone()));
+            arch.insert((r[0].as_str(), r[1].as_str()));
             narch += 1;
         }
     }
@@ -5011,7 +5027,7 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
             });
             continue;
         }
-        if !arch.contains(&(app.to_string(), "apk".to_string())) {
+        if !arch.contains(&(app.as_str(), "apk")) {
             write_fast_miss(WriteFastMissArgs {
                 out: &mut diag,
                 app,
@@ -5054,7 +5070,7 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
             });
             continue;
         }
-        if backup_mode == "true" && !nodata && backup_user == "true" && pkg != "bin.mt.plus" {
+        if backup_mode == "true" && !nodata && pkg != "bin.mt.plus" {
             if state_valid.get(app).map(|s| s.as_str()) != Some("1")
                 || st_old.get(app).map(|s| s.as_str()) != Some("1")
             {
@@ -5105,13 +5121,13 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
                            misses: &mut u64,
                            miss_apps: &mut HashSet<String>|
          -> bool {
-            let fs_key = (pkg.to_string(), entry.to_string());
-            let app_key = (app.to_string(), entry.to_string());
+            let fs_key = (pkg.as_str(), entry);
+            let app_key = (app.as_str(), entry);
             if !dexists.contains(&fs_key) {
                 return true;
             }
             let cur = match lsize.get(&fs_key) {
-                Some(v) => v.clone(),
+                Some(v) => *v,
                 None => {
                     write_fast_miss(WriteFastMissArgs {
                         out: diag,
@@ -5120,7 +5136,7 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
                         reason: "local_size_missing",
                         entry,
                         cur: "",
-                        old: rsize.get(&app_key).map(|s| s.as_str()).unwrap_or(""),
+                        old: rsize.get(&app_key).copied().unwrap_or(""),
                         miss_count: misses,
                         miss_apps,
                     });
@@ -5135,7 +5151,7 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
                     reason: "local_size_invalid",
                     entry,
                     cur: &cur,
-                    old: rsize.get(&app_key).map(|s| s.as_str()).unwrap_or(""),
+                    old: rsize.get(&app_key).copied().unwrap_or(""),
                     miss_count: misses,
                     miss_apps,
                 });
@@ -5187,7 +5203,7 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
             true
         };
         if backup_mode == "true" && !nodata && pkg != "bin.mt.plus" {
-            if backup_obb == "true" {
+            {
                 if !check_entry("data", &mut diag, &mut misses, &mut miss_apps) {
                     ok = false;
                 }
@@ -5198,7 +5214,7 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
                     ok = false;
                 }
             }
-            if backup_user == "true" {
+            {
                 if !check_entry("user", &mut diag, &mut misses, &mut miss_apps) {
                     ok = false;
                 }
@@ -5231,30 +5247,13 @@ fn cmd_local_fastskip_join(args: &[String]) -> i32 {
     0
 }
 
-fn full_dirsize_enabled_entries(
-    backup_mode: &str,
-    backup_obb: &str,
-    backup_user: &str,
-) -> Vec<&'static str> {
-    let mut v: Vec<&'static str> = Vec::new();
-    if backup_mode != "true" {
-        return v;
-    }
-    // Preserve the historical full-manifest shell order exactly.
-    if backup_user == "true" {
-        v.push("user");
-        v.push("user_de");
-    }
-    if backup_obb == "true" {
-        v.push("data");
-        v.push("obb");
-        v.push("media");
-    }
-    v
+fn full_dirsize_enabled_entries(backup_mode:&str)->&'static [&'static str] {
+    // Preserve manifest ordering without allocating a vector for every package.
+    if backup_mode=="true" {&["user","user_de","data","obb","media"]} else {&[]}
 }
 
 fn cmd_dir_size_manifest(args: &[String]) -> i32 {
-    if args.len() < 11 {
+    if args.len() < 9 {
         return 2;
     }
     let start = Instant::now();
@@ -5262,17 +5261,15 @@ fn cmd_dir_size_manifest(args: &[String]) -> i32 {
     let out_manifest = &args[3];
     let out_exists = &args[4];
     let backup_mode = &args[5];
-    let backup_obb = &args[6];
-    let backup_user = &args[7];
-    let android_root = &args[8];
-    let user_root = &args[9];
-    let user_de_root = &args[10];
+    let android_root = &args[6];
+    let user_root = &args[7];
+    let user_de_root = &args[8];
     let f = match File::open(pkg_list) {
         Ok(v) => v,
         Err(_) => return 3,
     };
     let mut manifest = match File::create(out_manifest) {
-        Ok(v) => v,
+        Ok(v) => BufWriter::new(v),
         Err(_) => return 4,
     };
     let mut exists = match File::create(out_exists) {
@@ -5290,7 +5287,7 @@ fn cmd_dir_size_manifest(args: &[String]) -> i32 {
             continue;
         }
         packages += 1;
-        for entry in full_dirsize_enabled_entries(backup_mode, backup_obb, backup_user) {
+        for &entry in full_dirsize_enabled_entries(backup_mode) {
             let path = path_for_backup_entry(entry, android_root, user_root, user_de_root, pkg);
             if path.is_empty() {
                 continue;
@@ -5308,22 +5305,21 @@ fn cmd_dir_size_manifest(args: &[String]) -> i32 {
         }
     }
     let manifest_rows = primary_rows + auxiliary_rows;
+    note_io(manifest.flush());
     println!("DIR_SIZE_MANIFEST packages={} primaryRows={} auxiliaryRows={} manifestRows={} existsRows={} elapsedMs={} schema=speedscan.dir_size_manifest.v1",packages,primary_rows,auxiliary_rows,manifest_rows,primary_rows,start.elapsed().as_millis());
     0
 }
 
 fn cmd_backup_entry_presence_map(args: &[String]) -> i32 {
-    if args.len() < 10 {
+    if args.len() < 8 {
         return 2;
     }
     let selected = &args[2];
     let out_s = &args[3];
     let backup_mode = &args[4];
-    let backup_obb = &args[5];
-    let backup_user = &args[6];
-    let android_root = &args[7];
-    let user_root = &args[8];
-    let user_de_root = &args[9];
+    let android_root = &args[5];
+    let user_root = &args[6];
+    let user_de_root = &args[7];
     let rows = read_tsv_rows_required(selected);
     let mut found: Vec<(String, String)> = Vec::new();
     for r in rows.iter() {
@@ -5332,7 +5328,7 @@ fn cmd_backup_entry_presence_map(args: &[String]) -> i32 {
         }
         let pkg = &r[1];
         let nodata = r[2].as_str() == "1";
-        for entry in presize_enabled_entries(backup_mode, backup_obb, backup_user, nodata, pkg) {
+        for &entry in presize_enabled_entries(backup_mode, nodata, pkg) {
             let p = path_for_backup_entry(entry, android_root, user_root, user_de_root, pkg);
             if p.is_empty() {
                 continue;
@@ -5431,82 +5427,67 @@ fn path_for_backup_entry(
     }
 }
 
-fn presize_enabled_entries(
-    backup_mode: &str,
-    backup_obb: &str,
-    backup_user: &str,
-    nodata: bool,
-    pkg: &str,
-) -> Vec<&'static str> {
-    let mut v: Vec<&'static str> = Vec::new();
-    if backup_mode != "true" || nodata || pkg == "bin.mt.plus" {
-        return v;
-    }
-    if backup_obb == "true" {
-        v.push("data");
-        v.push("obb");
-        v.push("media");
-    }
-    if backup_user == "true" {
-        v.push("user");
-        v.push("user_de");
-    }
-    v
+fn presize_enabled_entries(backup_mode:&str,nodata:bool,pkg:&str)->&'static [&'static str] {
+    if backup_mode=="true"&&!nodata&&pkg!="bin.mt.plus" {&["data","obb","media","user","user_de"]} else {&[]}
 }
 
-fn write_presize_manifest_entry(out: &mut File, pkg: &str, entry: &str, path: &str) -> (u64, u64) {
-    note_io(writeln!(
-        out,
-        "{}\t{}\t{}",
-        tsv_sanitize(pkg),
-        entry,
-        tsv_sanitize(path)
-    ));
+// v4 retains typed rows until tiny-directory filtering is complete. Standalone
+// plans stream directly; neither path serializes a manifest just to parse it again.
+trait PresizeManifest {
+    fn row(&mut self,pkg:&str,entry:&str,path:&str);
+    fn finish(&mut self)->io::Result<()>;
+}
+impl PresizeManifest for BufWriter<File> {
+    fn row(&mut self,pkg:&str,entry:&str,path:&str){note_io(writeln!(self,"{}\t{}\t{}",tsv_sanitize(pkg),entry,tsv_sanitize(path)));}
+    fn finish(&mut self)->io::Result<()>{self.flush()}
+}
+impl PresizeManifest for Vec<[String;3]> {
+    fn row(&mut self,pkg:&str,entry:&str,path:&str){self.push([tsv_sanitize(pkg),entry.to_owned(),tsv_sanitize(path)]);}
+    fn finish(&mut self)->io::Result<()>{Ok(())}
+}
+#[derive(Default)]
+struct PresizeFacts {
+    manifest:Vec<[String;3]>,
+    old_sizes:HashMap<(String,String),String>,
+    old_missing_apps:HashSet<String>,
+    archive_rows:usize,
+}
+fn write_presize_manifest_entry<W:PresizeManifest>(out: &mut W, pkg: &str, entry: &str, path: &str) -> (u64, u64) {
+    out.row(pkg,entry,path);
     let mut aux = 0u64;
     let base = Path::new(path);
     let mut maybe_add = |suffix: &str, child: &str| {
         let p = base.join(child);
         if fs::metadata(&p).map(|m| m.is_dir()).unwrap_or(false) {
-            let typ = format!("{}_exclude_{}", entry, suffix);
-            let ps = p.to_string_lossy();
-            note_io(writeln!(
-                out,
-                "{}\t{}\t{}",
-                tsv_sanitize(pkg),
-                typ,
-                tsv_sanitize(ps.as_ref())
-            ));
+            out.row(pkg,&format!("{}_exclude_{}",entry,suffix),&p.to_string_lossy());
             aux += 1;
         }
     };
     match entry {
-        "user" | "user_de" => {
-            maybe_add("cache", "cache");
-            maybe_add("code_cache", "code_cache");
-        }
+        "user" | "user_de" => {maybe_add("cache", "cache");maybe_add("code_cache", "code_cache");}
         "data" | "obb" | "media" => maybe_add("cache", "cache"),
         _ => {}
     }
     (1 + aux, aux)
 }
 
-struct WritePresizeExistingEntriesArgs<'a> {
-    out: &'a mut File,
-    diag: &'a mut File,
-    dexists: &'a HashSet<(String, String)>,
+// Group once by package so row lookups borrow strings instead of allocating tuple keys.
+type PresizePresence=HashMap<String,HashSet<String>>;
+struct WritePresizeExistingEntriesArgs<'a,W:PresizeManifest> {
+    out: &'a mut W,
+    diag: &'a mut dyn Write,
+    dexists: &'a PresizePresence,
     app: &'a str,
     pkg: &'a str,
     nodata: bool,
     reason: &'a str,
     backup_mode: &'a str,
-    backup_obb: &'a str,
-    backup_user: &'a str,
     android_root: &'a str,
     user_root: &'a str,
     user_de_root: &'a str,
 }
 
-fn write_presize_existing_entries(args: WritePresizeExistingEntriesArgs<'_>) -> (u64, u64) {
+fn write_presize_existing_entries<W:PresizeManifest>(args: WritePresizeExistingEntriesArgs<'_,W>) -> (u64, u64) {
     let WritePresizeExistingEntriesArgs {
         out,
         diag,
@@ -5516,16 +5497,15 @@ fn write_presize_existing_entries(args: WritePresizeExistingEntriesArgs<'_>) -> 
         nodata,
         reason,
         backup_mode,
-        backup_obb,
-        backup_user,
         android_root,
         user_root,
         user_de_root,
     } = args;
+    let Some(existing)=dexists.get(pkg) else{return (0,0)};
     let mut rows = 0u64;
     let mut aux_rows = 0u64;
-    for entry in presize_enabled_entries(backup_mode, backup_obb, backup_user, nodata, pkg) {
-        if !dexists.contains(&(pkg.to_string(), entry.to_string())) {
+    for &entry in presize_enabled_entries(backup_mode, nodata, pkg) {
+        if !existing.contains(entry) {
             continue;
         }
         let path = path_for_backup_entry(entry, android_root, user_root, user_de_root, pkg);
@@ -5671,7 +5651,6 @@ fn rewrite_presize_stats_v4(args: RewritePresizeStatsV4Args<'_>) -> bool {
 }
 
 struct RunFastskipPresizePlanV4AfterFactsArgs<'a> {
-    selected: &'a str,
     summary: &'a str,
     state: &'a str,
     blackset: &'a str,
@@ -5682,8 +5661,6 @@ struct RunFastskipPresizePlanV4AfterFactsArgs<'a> {
     out_diag: &'a str,
     out_tiny: &'a str,
     backup_mode: &'a str,
-    backup_obb: &'a str,
-    backup_user: &'a str,
     blacklist_mode: &'a str,
     android_root: &'a str,
     user_root: &'a str,
@@ -5701,7 +5678,6 @@ fn run_fastskip_presize_plan_v4_after_facts(
     args: RunFastskipPresizePlanV4AfterFactsArgs<'_>,
 ) -> i32 {
     let RunFastskipPresizePlanV4AfterFactsArgs {
-        selected,
         summary,
         state,
         blackset,
@@ -5712,8 +5688,6 @@ fn run_fastskip_presize_plan_v4_after_facts(
         out_diag,
         out_tiny,
         backup_mode,
-        backup_obb,
-        backup_user,
         blacklist_mode,
         android_root,
         user_root,
@@ -5727,49 +5701,15 @@ fn run_fastskip_presize_plan_v4_after_facts(
         log_prefix,
     } = args;
     let planner_start = Instant::now();
-    let v3_args = vec![
-        "speedscan".to_string(),
-        "local-fastskip-presize-plan".to_string(),
-        selected.to_string(),
-        summary.to_string(),
-        state.to_string(),
-        out_exists.to_string(),
-        out_archives.to_string(),
-        blackset.to_string(),
-        out_manifest.to_string(),
-        out_stats.to_string(),
-        out_diag.to_string(),
-        backup_mode.to_string(),
-        backup_obb.to_string(),
-        backup_user.to_string(),
-        blacklist_mode.to_string(),
-        android_root.to_string(),
-        user_root.to_string(),
-        user_de_root.to_string(),
-    ];
-    let rc = cmd_local_fastskip_presize_plan(&v3_args);
+    let mut facts=PresizeFacts::default();
+    let rc = run_presize_plan(PresizePlanInputs{summary,state,exists:out_exists,archives:out_archives,blackset,out_manifest,out_stats,out_diag,backup_mode,blacklist_mode,android_root,user_root,user_de_root},selected_rows,Some(&mut facts));
     let planner_ms = planner_start.elapsed().as_millis();
     if rc != 0 {
         return rc;
     }
 
     let tiny_start = Instant::now();
-    let mut old_sizes: HashMap<(String, String), String> = HashMap::new();
-    for r in read_tsv_rows(summary) {
-        if r.len() >= 8 {
-            let app = r[0].clone();
-            old_sizes.insert((app.clone(), "user".to_string()), r[3].clone());
-            old_sizes.insert((app.clone(), "user_de".to_string()), r[4].clone());
-            old_sizes.insert((app.clone(), "data".to_string()), r[5].clone());
-            old_sizes.insert((app.clone(), "obb".to_string()), r[6].clone());
-            old_sizes.insert((app, "media".to_string()), r[7].clone());
-        }
-    }
-    let old_missing_apps: HashSet<String> = read_tsv_rows(out_diag)
-        .into_iter()
-        .filter(|r| r.len() >= 3 && r[2] == "old_size_missing")
-        .map(|r| r[0].clone())
-        .collect();
+    let PresizeFacts{manifest:manifest_rows,old_sizes,old_missing_apps,archive_rows}=facts;
     let live_set: HashSet<(String, String)> = live.iter().cloned().collect();
     let mut tiny_primary: HashMap<(String, String), u64> = HashMap::new();
     let mut tiny_all: Vec<(String, String, u64)> = Vec::new();
@@ -5783,7 +5723,7 @@ fn run_fastskip_presize_plan_v4_after_facts(
         if !old_missing_apps.contains(app) {
             continue;
         }
-        for entry in presize_enabled_entries(backup_mode, backup_obb, backup_user, nodata, pkg) {
+        for &entry in presize_enabled_entries(backup_mode, nodata, pkg) {
             if !live_set.contains(&(pkg.clone(), entry.to_string())) {
                 continue;
             }
@@ -5823,27 +5763,24 @@ fn run_fastskip_presize_plan_v4_after_facts(
     tiny_all.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
     tiny_all.dedup_by(|a, b| a.0 == b.0 && a.1 == b.1);
     let mut tiny_file = match File::create(out_tiny) {
-        Ok(v) => v,
+        Ok(v) => BufWriter::new(v),
         Err(_) => return 4,
     };
     for (pkg, entry, size) in &tiny_all {
         note_io(writeln!(tiny_file, "{}\t{}\t{}", tsv_sanitize(pkg), entry, size));
     }
+    note_io(tiny_file.flush());
     drop(tiny_file);
 
-    let manifest_rows = read_tsv_rows(out_manifest);
     let tmp_manifest = format!("{}.presize-tmp", out_manifest);
     let mut mf = match File::create(&tmp_manifest) {
-        Ok(v) => v,
+        Ok(v) => BufWriter::new(v),
         Err(_) => return 4,
     };
     let mut scan_rows = 0u64;
     let mut scan_primary = 0u64;
     let mut scan_aux = 0u64;
     for r in manifest_rows {
-        if r.len() < 3 {
-            continue;
-        }
         let pkg = &r[0];
         let typ = &r[1];
         let entry = typ.strip_suffix("_exclude_code_cache")
@@ -5860,6 +5797,7 @@ fn run_fastskip_presize_plan_v4_after_facts(
             scan_primary += 1;
         }
     }
+    note_io(mf.flush());
     drop(mf);
     if fs::rename(&tmp_manifest, out_manifest).is_err() {
         let _ = fs::remove_file(&tmp_manifest);
@@ -5887,12 +5825,12 @@ fn run_fastskip_presize_plan_v4_after_facts(
         return 4;
     }
     println!("{}\tOK\tselected={}\tliveRows={}\tarchiveRows={}\tscanRows={}\tscanPrimaryRows={}\tscanAuxiliaryRows={}\ttinyRows={}\ttinyPrimaryRows={}\ttinyAuxiliaryRows={}\tpresenceElapsedMs={}\tarchiveElapsedMs={}\tplannerElapsedMs={}\ttinyProbeElapsedMs={}\ttotalElapsedMs={}\tschema={}",
-        log_prefix,selected_rows.len(),live.len(),read_tsv_rows(out_archives).len(),scan_rows,scan_primary,scan_aux,tiny_rows,tiny_primary_rows,tiny_aux_rows,presence_ms,archive_ms,planner_ms,tiny_ms,total_ms,schema);
+        log_prefix,selected_rows.len(),live.len(),archive_rows,scan_rows,scan_primary,scan_aux,tiny_rows,tiny_primary_rows,tiny_aux_rows,presence_ms,archive_ms,planner_ms,tiny_ms,total_ms,schema);
     0
 }
 
 fn cmd_local_fastskip_presize_plan_v4(args: &[String]) -> i32 {
-    if args.len() < 20 {
+    if args.len() < 18 {
         return 2;
     }
     let total_start = Instant::now();
@@ -5908,14 +5846,12 @@ fn cmd_local_fastskip_presize_plan_v4(args: &[String]) -> i32 {
     let out_diag = &args[11];
     let out_tiny = &args[12];
     let backup_mode = &args[13];
-    let backup_obb = &args[14];
-    let backup_user = &args[15];
-    let blacklist_mode = &args[16];
-    let android_root = &args[17];
-    let user_root = &args[18];
-    let user_de_root = &args[19];
+    let blacklist_mode = &args[14];
+    let android_root = &args[15];
+    let user_root = &args[16];
+    let user_de_root = &args[17];
 
-    let selected_rows = read_tsv_rows(selected);
+    let selected_rows = read_tsv_rows_required(selected);
     let presence_start = Instant::now();
     let mut live: Vec<(String, String)> = Vec::new();
     for r in &selected_rows {
@@ -5924,7 +5860,7 @@ fn cmd_local_fastskip_presize_plan_v4(args: &[String]) -> i32 {
         }
         let pkg = &r[1];
         let nodata = r[2].as_str() == "1";
-        for entry in presize_enabled_entries(backup_mode, backup_obb, backup_user, nodata, pkg) {
+        for &entry in presize_enabled_entries(backup_mode, nodata, pkg) {
             let p = path_for_backup_entry(entry, android_root, user_root, user_de_root, pkg);
             if !p.is_empty()
                 && fs::metadata(Path::new(&p))
@@ -5938,12 +5874,13 @@ fn cmd_local_fastskip_presize_plan_v4(args: &[String]) -> i32 {
     live.sort();
     live.dedup();
     let mut exists_file = match File::create(out_exists) {
-        Ok(v) => v,
+        Ok(v) => BufWriter::new(v),
         Err(_) => return 4,
     };
     for (pkg, entry) in &live {
         note_io(writeln!(exists_file, "{}\t{}", tsv_sanitize(pkg), entry));
     }
+    note_io(exists_file.flush());
     drop(exists_file);
     let presence_ms = presence_start.elapsed().as_millis();
 
@@ -5963,17 +5900,17 @@ fn cmd_local_fastskip_presize_plan_v4(args: &[String]) -> i32 {
     archives.sort();
     archives.dedup();
     let mut archive_file = match File::create(out_archives) {
-        Ok(v) => v,
+        Ok(v) => BufWriter::new(v),
         Err(_) => return 4,
     };
     for (app, entry) in &archives {
         note_io(writeln!(archive_file, "{}\t{}", tsv_sanitize(app), entry));
     }
+    note_io(archive_file.flush());
     drop(archive_file);
     let archive_ms = archive_start.elapsed().as_millis();
 
     run_fastskip_presize_plan_v4_after_facts(RunFastskipPresizePlanV4AfterFactsArgs {
-        selected,
         summary,
         state,
         blackset,
@@ -5984,8 +5921,6 @@ fn cmd_local_fastskip_presize_plan_v4(args: &[String]) -> i32 {
         out_diag,
         out_tiny,
         backup_mode,
-        backup_obb,
-        backup_user,
         blacklist_mode,
         android_root,
         user_root,
@@ -6000,53 +5935,74 @@ fn cmd_local_fastskip_presize_plan_v4(args: &[String]) -> i32 {
     })
 }
 
-fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
-    if args.len() < 18 {
-        return 2;
+struct PresizePlanInputs<'a> {
+    summary: &'a str,
+    state: &'a str,
+    exists: &'a str,
+    archives: &'a str,
+    blackset: &'a str,
+    out_manifest: &'a str,
+    out_stats: &'a str,
+    out_diag: &'a str,
+    backup_mode: &'a str,
+    blacklist_mode: &'a str,
+    android_root: &'a str,
+    user_root: &'a str,
+    user_de_root: &'a str,
+}
+fn cmd_local_fastskip_presize_plan(args:&[String])->i32 {
+    if args.len()<16{return 2;}
+    let selected=read_tsv_rows_required(&args[2]);
+    run_presize_plan(PresizePlanInputs{summary:&args[3],state:&args[4],exists:&args[5],archives:&args[6],blackset:&args[7],out_manifest:&args[8],out_stats:&args[9],out_diag:&args[10],backup_mode:&args[11],blacklist_mode:&args[12],android_root:&args[13],user_root:&args[14],user_de_root:&args[15]},&selected,None)
+}
+fn run_presize_plan(input:PresizePlanInputs<'_>,sel:&[Vec<String>],facts:Option<&mut PresizeFacts>)->i32 {
+    // Preserve early destination errors, but specialize each writer at compile time.
+    // Standalone plans incur no per-row mode dispatch or v4 fact capture checks.
+    let file=match File::create(input.out_manifest){Ok(file)=>file,Err(_)=>return 4};
+    match facts {
+        Some(f)=>{
+            drop(file);
+            let mut rows=std::mem::take(&mut f.manifest);
+            let rc=run_presize_plan_into::<_,true>(input,sel,&mut rows,Some(f));
+            f.manifest=rows;rc
+        },
+        None=>run_presize_plan_into::<_,false>(input,sel,&mut BufWriter::new(file),None),
     }
-    let selected = &args[2];
-    let summary = &args[3];
-    let state = &args[4];
-    let exists = &args[5];
-    let archives = &args[6];
-    let blackset = &args[7];
-    let out_manifest = &args[8];
-    let out_stats = &args[9];
-    let out_diag = &args[10];
-    let backup_mode = &args[11];
-    let backup_obb = &args[12];
-    let backup_user = &args[13];
-    let blacklist_mode = &args[14];
-    let android_root = &args[15];
-    let user_root = &args[16];
-    let user_de_root = &args[17];
-    let mut out = match File::create(out_manifest) {
-        Ok(v) => v,
-        Err(_) => return 4,
+}
+fn run_presize_plan_into<W:PresizeManifest,const CAPTURE:bool>(input:PresizePlanInputs<'_>,sel:&[Vec<String>],out:&mut W,facts:Option<&mut PresizeFacts>)->i32 {
+    let PresizePlanInputs{summary,state,exists,archives,blackset,out_manifest:_,out_stats,out_diag,backup_mode,blacklist_mode,android_root,user_root,user_de_root}=input;
+    let (mut captured_sizes,mut missing_apps,mut archive_rows)=match facts {
+        Some(f)=>(Some(&mut f.old_sizes),Some(&mut f.old_missing_apps),Some(&mut f.archive_rows)),
+        None=>(None,None,None),
     };
     let mut stats = match File::create(out_stats) {
-        Ok(v) => v,
+        Ok(v) => BufWriter::new(v),
         Err(_) => return 4,
     };
     let mut diag = match File::create(out_diag) {
-        Ok(v) => v,
+        Ok(v) => BufWriter::new(v),
         Err(_) => return 4,
     };
-    let sel = read_tsv_rows_required(selected);
     let mut meta: HashSet<String> = HashSet::new();
     let mut rver: HashMap<String, String> = HashMap::new();
-    let mut rsize: HashMap<(String, String), String> = HashMap::new();
+    let mut rsize: HashMap<(&str, &str), &str> = HashMap::new();
     let mut state_valid: HashMap<String, String> = HashMap::new();
-    for r in read_tsv_rows_required(summary) {
+    let summary_input_rows = read_tsv_rows_required(summary);
+    for r in &summary_input_rows {
+        // v4 historically accepts sizes from eight-column legacy summaries too.
+        if CAPTURE {if let Some(sizes)=captured_sizes.as_deref_mut() {
+            if r.len()>=8 {for (i,entry) in ["user","user_de","data","obb","media"].iter().enumerate(){sizes.insert((r[0].clone(),(*entry).into()),r[i+3].clone());}}
+        }
+        }
         if r.len() >= 9 {
             let app = r[0].clone();
             meta.insert(app.clone());
             rver.insert(app.to_string(), r[2].clone());
-            rsize.insert((app.to_string(), "user".into()), r[3].clone());
-            rsize.insert((app.to_string(), "user_de".into()), r[4].clone());
-            rsize.insert((app.to_string(), "data".into()), r[5].clone());
-            rsize.insert((app.to_string(), "obb".into()), r[6].clone());
-            rsize.insert((app.to_string(), "media".into()), r[7].clone());
+            rsize.insert((r[0].as_str(), "user"), r[3].as_str());
+            rsize.insert((r[0].as_str(), "user_de"), r[4].as_str());
+            rsize.insert((r[0].as_str(), "data"), r[5].as_str());
+            rsize.insert((r[0].as_str(), "obb"), r[6].as_str());
+            rsize.insert((r[0].as_str(), "media"), r[7].as_str());
             state_valid.insert(app, r[8].clone());
         }
     }
@@ -6060,16 +6016,19 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
             st_match.insert(r[0].clone(), r[4].clone());
         }
     }
-    let mut dexists: HashSet<(String, String)> = HashSet::new();
-    for r in read_tsv_rows_required(exists) {
+    let mut dexists=PresizePresence::new();
+    let exists_input_rows = read_tsv_rows_required(exists);
+    for r in &exists_input_rows {
         if r.len() >= 2 {
-            dexists.insert((r[0].clone(), r[1].clone()));
+            dexists.entry(r[0].clone()).or_default().insert(r[1].clone());
         }
     }
-    let mut arch: HashSet<(String, String)> = HashSet::new();
-    for r in read_tsv_rows_required(archives) {
+    let mut arch: HashSet<(&str, &str)> = HashSet::new();
+    let archive_input=read_tsv_rows_required(archives);
+    if CAPTURE {if let Some(count)=archive_rows.as_deref_mut(){*count=archive_input.len();}}
+    for r in &archive_input {
         if r.len() >= 2 {
-            arch.insert((r[0].clone(), r[1].clone()));
+            arch.insert((r[0].as_str(), r[1].as_str()));
         }
     }
     let mut black: HashSet<String> = HashSet::new();
@@ -6117,7 +6076,7 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
             first_full += 1;
             non_size_miss += 1;
             let (n, a) = write_presize_existing_entries(WritePresizeExistingEntriesArgs {
-                out: &mut out,
+                out: &mut *out,
                 diag: &mut diag,
                 dexists: &dexists,
                 app,
@@ -6125,8 +6084,6 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
                 nodata,
                 reason: "local_json_missing",
                 backup_mode,
-                backup_obb,
-                backup_user,
                 android_root,
                 user_root,
                 user_de_root,
@@ -6137,7 +6094,7 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
             full_dirsize_rows += n;
             continue;
         }
-        if !arch.contains(&(app.to_string(), "apk".to_string())) {
+        if !arch.contains(&(app.as_str(), "apk")) {
             note_io(writeln!(
                 diag,
                 "{}\t{}\tapk_archive_missing",
@@ -6147,7 +6104,7 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
             first_full += 1;
             non_size_miss += 1;
             let (n, a) = write_presize_existing_entries(WritePresizeExistingEntriesArgs {
-                out: &mut out,
+                out: &mut *out,
                 diag: &mut diag,
                 dexists: &dexists,
                 app,
@@ -6155,8 +6112,6 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
                 nodata,
                 reason: "apk_archive_missing",
                 backup_mode,
-                backup_obb,
-                backup_user,
                 android_root,
                 user_root,
                 user_de_root,
@@ -6177,7 +6132,7 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
             ));
             non_size_miss += 1;
             let (n, a) = write_presize_existing_entries(WritePresizeExistingEntriesArgs {
-                out: &mut out,
+                out: &mut *out,
                 diag: &mut diag,
                 dexists: &dexists,
                 app,
@@ -6185,8 +6140,6 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
                 nodata,
                 reason: "current_version_missing",
                 backup_mode,
-                backup_obb,
-                backup_user,
                 android_root,
                 user_root,
                 user_de_root,
@@ -6206,7 +6159,7 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
             ));
             non_size_miss += 1;
             let (n, a) = write_presize_existing_entries(WritePresizeExistingEntriesArgs {
-                out: &mut out,
+                out: &mut *out,
                 diag: &mut diag,
                 dexists: &dexists,
                 app,
@@ -6214,8 +6167,6 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
                 nodata,
                 reason: "apk_version_mismatch",
                 backup_mode,
-                backup_obb,
-                backup_user,
                 android_root,
                 user_root,
                 user_de_root,
@@ -6226,7 +6177,7 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
             full_dirsize_rows += n;
             continue;
         }
-        if backup_mode == "true" && !nodata && backup_user == "true" && pkg != "bin.mt.plus" {
+        if backup_mode == "true" && !nodata && pkg != "bin.mt.plus" {
             let fail_reason = if state_valid.get(app).map(|s| s.as_str()) != Some("1")
                 || st_old.get(app).map(|s| s.as_str()) != Some("1")
             {
@@ -6248,7 +6199,7 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
                 ));
                 non_size_miss += 1;
                 let (n, a) = write_presize_existing_entries(WritePresizeExistingEntriesArgs {
-                    out: &mut out,
+                    out: &mut *out,
                     diag: &mut diag,
                     dexists: &dexists,
                     app,
@@ -6256,8 +6207,6 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
                     nodata,
                     reason,
                     backup_mode,
-                    backup_obb,
-                    backup_user,
                     android_root,
                     user_root,
                     user_de_root,
@@ -6269,14 +6218,13 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
                 continue;
             }
         }
-        let entries = presize_enabled_entries(backup_mode, backup_obb, backup_user, nodata, pkg);
+        let entries = presize_enabled_entries(backup_mode, nodata, pkg);
         let mut forced_reason: Option<&'static str> = None;
         for entry in entries.iter() {
-            let fs_key = (pkg.to_string(), (*entry).to_string());
-            if !dexists.contains(&fs_key) {
+            if !dexists.get(pkg).is_some_and(|existing|existing.contains(*entry)) {
                 continue;
             }
-            let app_key = (app.to_string(), (*entry).to_string());
+            let app_key = (app.as_str(), *entry);
             let old = rsize.get(&app_key).cloned().unwrap_or_default();
             if old.is_empty() || old == "null" {
                 forced_reason = Some("old_size_missing");
@@ -6288,6 +6236,7 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
             }
         }
         if let Some(reason) = forced_reason {
+            if CAPTURE&&reason=="old_size_missing" {if let Some(apps)=missing_apps.as_deref_mut(){apps.insert(tsv_sanitize(app));}}
             note_io(writeln!(
                 diag,
                 "{}\t{}\t{}",
@@ -6297,7 +6246,7 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
             ));
             non_size_miss += 1;
             let (n, a) = write_presize_existing_entries(WritePresizeExistingEntriesArgs {
-                out: &mut out,
+                out: &mut *out,
                 diag: &mut diag,
                 dexists: &dexists,
                 app,
@@ -6305,8 +6254,6 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
                 nodata,
                 reason,
                 backup_mode,
-                backup_obb,
-                backup_user,
                 android_root,
                 user_root,
                 user_de_root,
@@ -6319,15 +6266,14 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
         }
         candidates += 1;
         for entry in entries.iter() {
-            let fs_key = (pkg.to_string(), (*entry).to_string());
-            if !dexists.contains(&fs_key) {
+            if !dexists.get(pkg).is_some_and(|existing|existing.contains(*entry)) {
                 continue;
             }
             let path = path_for_backup_entry(entry, android_root, user_root, user_de_root, pkg);
             if path.is_empty() {
                 continue;
             }
-            let (n, a) = write_presize_manifest_entry(&mut out, pkg, entry, &path);
+            let (n, a) = write_presize_manifest_entry(&mut *out, pkg, entry, &path);
             manifest_rows += n;
             auxiliary_rows += a;
             primary_rows += 1;
@@ -6351,163 +6297,44 @@ fn cmd_local_fastskip_presize_plan(args: &[String]) -> i32 {
     note_io(writeln!(stats, "fullDirsizeRows\t{}", full_dirsize_rows));
     note_io(writeln!(stats, "compareRows\t{}", compare_rows));
     note_io(writeln!(stats, "planMode\t{}", plan_mode));
+    note_io(out.finish());note_io(stats.flush());note_io(diag.flush());
     println!("LOCAL_FASTSKIP_PRESIZE_PLAN selected={} candidates={} manifestRows={} primaryRows={} auxiliaryRows={} firstFull={} nonSizeMiss={} fullDirsizeRows={} compareRows={} planMode={} schema=speedscan.local_fastskip_presize_plan_v3.v1",sel.len(),candidates,manifest_rows,primary_rows,auxiliary_rows,first_full,non_size_miss,full_dirsize_rows,compare_rows,plan_mode);
     0
 }
 
-fn cmd_remote_stream_local_read_plan(args: &[String]) -> i32 {
-    if args.len() < 11 {
-        return 2;
-    }
-    let selected = &args[2];
-    let dirsizes = &args[3];
-    let out_s = &args[4];
-    let backup_mode = &args[5];
-    let backup_obb = &args[6];
-    let backup_user = &args[7];
-    let android_root = &args[8];
-    let user_root = &args[9];
-    let user_de_root = &args[10];
-    let sel = read_tsv_rows_required(selected);
-    let mut out = match File::create(out_s) {
-        Ok(v) => v,
-        Err(_) => return 4,
-    };
-    let mut lsize: HashMap<(String, String), String> = HashMap::new();
-    for r in read_tsv_rows_required(dirsizes) {
-        if r.len() >= 3 {
-            lsize.insert((r[0].clone(), r[1].clone()), r[2].clone());
-        }
-    }
-    let mut rows = 0u64;
-    for r in sel.iter() {
-        if r.len() < 3 {
-            continue;
-        }
-        let app = &r[0];
-        let pkg = &r[1];
-        let nodata = r[2].as_str() == "1";
-        if backup_mode != "true" || nodata || pkg == "bin.mt.plus" {
-            continue;
-        }
-        let mut add_entry = |entry: &str, base: &str, sub: &str| {
-            let path = Path::new(base).join(sub).join(pkg);
-            if !path.is_dir() {
-                return;
-            }
-            let key = (pkg.to_string(), entry.to_string());
-            let cur = lsize.get(&key).cloned().unwrap_or_default();
-            // Every existing directory can contribute archive entries, even at zero data bytes.
-            // A missing/invalid prescan row is kept conservatively because Backup_data()
-            // can fall back to calc_dir_size(); uncertainty must delay release, never make
-            // it happen before a later local read.
-            let reason = if cur.is_empty() {
-                "local_size_missing"
-            } else if cur.chars().all(|c| c.is_ascii_digit()) {
-                "local_entry_possible"
-            } else {
-                "local_size_uncertain"
-            };
-            note_io(writeln!(
-                out,
-                "{}\t{}\t{}\t{}\t{}",
-                tsv_sanitize(app),
-                tsv_sanitize(pkg),
-                entry,
-                reason,
-                cur
-            ));
-            rows = rows.wrapping_add(1);
-        };
-        if backup_obb == "true" {
-            add_entry("data", android_root, "data");
-            add_entry("obb", android_root, "obb");
-            add_entry("media", android_root, "media");
-        }
-        if backup_user == "true" {
-            add_entry("user", user_root, "");
-            add_entry("user_de", user_de_root, "");
-        }
-    }
-    0
+fn cmd_remote_stream_local_read_plan(args:&[String])->i32 {
+    if args.len()<9{return 2;}
+    conservative_read_plan(&args[2],&args[3],&args[4],&args[5],true,|pkg,entry|{
+        Path::new(&path_for_backup_entry(entry,&args[6],&args[7],&args[8],pkg)).is_dir()
+    })
 }
 
-fn cmd_remote_stream_local_read_plan_v2(args: &[String]) -> i32 {
-    if args.len() < 9 {
-        return 2;
-    }
-    let selected = &args[2];
-    let dirsizes = &args[3];
-    let exists = &args[4];
-    let out_s = &args[5];
-    let backup_mode = &args[6];
-    let backup_obb = &args[7];
-    let backup_user = &args[8];
-    let sel = read_tsv_rows(selected);
-    let mut out = match File::create(out_s) {
-        Ok(v) => v,
-        Err(_) => return 4,
-    };
-    let mut lsize: HashMap<(String, String), String> = HashMap::new();
-    for r in read_tsv_rows(dirsizes) {
-        if r.len() >= 3 {
-            lsize.insert((r[0].clone(), r[1].clone()), r[2].clone());
+fn cmd_remote_stream_local_read_plan_v2(args:&[String])->i32 {
+    if args.len()<7{return 2;}
+    let exists:HashSet<(String,String)>=read_tsv_rows(&args[4]).into_iter().filter(|r|r.len()>=2&&!r[0].is_empty()&&!r[1].is_empty()).map(|r|(r[0].clone(),r[1].clone())).collect();
+    conservative_read_plan(&args[2],&args[3],&args[5],&args[6],false,|pkg,entry|exists.contains(&(pkg.to_owned(),entry.to_owned())))
+}
+
+fn conservative_read_plan(selected:&str,sizes:&str,output:&str,mode:&str,required:bool,exists:impl Fn(&str,&str)->bool)->i32 {
+    let read=if required{read_tsv_rows_required}else{read_tsv_rows};
+    let selected=read(selected);
+    let file=match File::create(output){Ok(f)=>f,Err(_)=>return 4};
+    let mut out=BufWriter::new(file);
+    let sizes:HashMap<(String,String),String>=read(sizes).into_iter().filter(|r|r.len()>=3).map(|r|((r[0].clone(),r[1].clone()),r[2].clone())).collect();
+    for row in selected.iter().filter(|r|r.len()>=3) {
+        let (app,pkg)=(&row[0],&row[1]);
+        for &entry in presize_enabled_entries(mode,row[2]=="1",pkg) {
+            if !exists(pkg,entry){continue;}
+            let size=sizes.get(&(pkg.clone(),entry.to_owned())).map(String::as_str).unwrap_or("");
+            let reason=if size.is_empty(){"local_size_missing"}else if size.bytes().all(|c|c.is_ascii_digit()){"local_entry_possible"}else{"local_size_uncertain"};
+            note_io(writeln!(out,"{}\t{}\t{}\t{}\t{}",tsv_sanitize(app),tsv_sanitize(pkg),entry,reason,size));
         }
     }
-    let mut dexists: HashSet<(String, String)> = HashSet::new();
-    for r in read_tsv_rows(exists) {
-        if r.len() >= 2 && !r[0].is_empty() && !r[1].is_empty() {
-            dexists.insert((r[0].clone(), r[1].clone()));
-        }
-    }
-    for r in sel.iter() {
-        if r.len() < 3 {
-            continue;
-        }
-        let app = &r[0];
-        let pkg = &r[1];
-        let nodata = r[2].as_str() == "1";
-        if backup_mode != "true" || nodata || pkg == "bin.mt.plus" {
-            continue;
-        }
-        let mut add_entry = |entry: &str| {
-            let key = (pkg.to_string(), entry.to_string());
-            if !dexists.contains(&key) {
-                return;
-            }
-            let cur = lsize.get(&key).cloned().unwrap_or_default();
-            let reason = if cur.is_empty() {
-                "local_size_missing"
-            } else if cur.chars().all(|c| c.is_ascii_digit()) {
-                "local_entry_possible"
-            } else {
-                "local_size_uncertain"
-            };
-            note_io(writeln!(
-                out,
-                "{}\t{}\t{}\t{}\t{}",
-                tsv_sanitize(app),
-                tsv_sanitize(pkg),
-                entry,
-                reason,
-                cur
-            ));
-        };
-        if backup_obb == "true" {
-            add_entry("data");
-            add_entry("obb");
-            add_entry("media");
-        }
-        if backup_user == "true" {
-            add_entry("user");
-            add_entry("user_de");
-        }
-    }
-    0
+    note_io(out.flush());0
 }
 
 fn cmd_remote_stream_local_read_final_plan(args: &[String]) -> i32 {
-    if args.len() < 12 {
+    if args.len() < 10 {
         return 2;
     }
     let selected = &args[2];
@@ -6518,8 +6345,6 @@ fn cmd_remote_stream_local_read_final_plan(args: &[String]) -> i32 {
     let out_s = &args[7];
     let stats_s = &args[8];
     let backup_mode = &args[9];
-    let backup_obb = &args[10];
-    let backup_user = &args[11];
     let fp = FingerprintMatch::load(summary);
     let sel = read_tsv_rows_required(selected);
     let mut lsize: HashMap<(String, String), String> = HashMap::new();
@@ -6550,17 +6375,16 @@ fn cmd_remote_stream_local_read_final_plan(args: &[String]) -> i32 {
         .filter_map(|r| r.first().cloned())
         .collect();
     let mut out = match File::create(out_s) {
-        Ok(v) => v,
+        Ok(v) => BufWriter::new(v),
         Err(_) => return 4,
     };
     let mut stats = match File::create(stats_s) {
-        Ok(v) => v,
+        Ok(v) => BufWriter::new(v),
         Err(_) => return 4,
     };
     let mut actual_entries = 0u64;
     let mut final_apps = 0u64;
     let mut skipped_unchanged = 0u64;
-    let skipped_small = 0u64;
     let mut payload_missing = 0u64;
     let mut remote_size_missing = 0u64;
     let mut local_size_uncertain = 0u64;
@@ -6614,15 +6438,7 @@ fn cmd_remote_stream_local_read_final_plan(args: &[String]) -> i32 {
             // Emitting one row per app avoids rebuilding a 200+ row shell cache.
             final_row = Some((entry.to_string(), reason.to_string(), cur, old));
         };
-        if backup_obb == "true" {
-            consider("data");
-            consider("obb");
-            consider("media");
-        }
-        if backup_user == "true" {
-            consider("user");
-            consider("user_de");
-        }
+        for entry in ["data","obb","media","user","user_de"] {consider(entry);}
         if let Some((entry, reason, cur, old)) = final_row {
             note_io(writeln!(
                 out,
@@ -6644,13 +6460,14 @@ fn cmd_remote_stream_local_read_final_plan(args: &[String]) -> i32 {
         actual_entries,
         final_apps,
         skipped_unchanged,
-        skipped_small,
+        0,
         payload_missing,
         remote_size_missing,
         local_size_uncertain,
         size_mismatch
     ));
-    println!("REMOTE_STREAM_LOCAL_READ_FINAL_PLAN selected={} actualEntries={} finalApps={} skippedUnchanged={} skippedSmall={} payloadMissing={} remoteSizeMissing={} localSizeUncertain={} sizeMismatch={} schema=speedscan.remote_stream_local_read_final_plan.v1",sel.len(),actual_entries,final_apps,skipped_unchanged,skipped_small,payload_missing,remote_size_missing,local_size_uncertain,size_mismatch);
+    note_io(out.flush());note_io(stats.flush());
+    println!("REMOTE_STREAM_LOCAL_READ_FINAL_PLAN selected={} actualEntries={} finalApps={} skippedUnchanged={} skippedSmall={} payloadMissing={} remoteSizeMissing={} localSizeUncertain={} sizeMismatch={} schema=speedscan.remote_stream_local_read_final_plan.v1",sel.len(),actual_entries,final_apps,skipped_unchanged,0,payload_missing,remote_size_missing,local_size_uncertain,size_mismatch);
     0
 }
 
@@ -6986,19 +6803,45 @@ fn stream_display_bytes(n: u64) -> String {
     format!("{}.{:02} {}", hundredths / 100, hundredths % 100, label)
 }
 
+// This adapter intentionally accepts only the WebDAV completion receipt, not
+// other SBRESULT schemas. Return bytes as a fact, not text to parse again later.
+fn stream_completion_bytes(bytes: &str) -> Result<u64, String> {
+    if bytes.is_empty() || !bytes.bytes().all(|b| b.is_ascii_digit()) { return Err("receipt bytes".into()); }
+    bytes.parse::<u64>().map_err(|_| "receipt bytes".into())
+}
+
+// Compatibility boundary for callers of the original file-receipt command.
+fn stream_receipt_bytes(receipt: &str, expected: &str) -> Result<u64, String> {
+    let mut rows = receipt.lines();
+    let row = rows.next().ok_or("receipt row count")?;
+    if rows.next().is_some() { return Err("receipt row count".into()); }
+    let f: Vec<_> = row.split('\t').collect();
+    if f.len() != 7 || f[..4] != ["SBRESULT", "1", "webdav-stream", "ok"] || f[6] != expected
+        || f[4].len() != 3 || !f[4].bytes().all(|b| b.is_ascii_digit()) || !f[4].starts_with('2') {
+        return Err("receipt identity/status".into());
+    }
+    stream_completion_bytes(f[5])
+}
+
 fn cmd_stream_entry_finish(args: &[String]) -> i32 {
+    cmd_stream_entry_finish_impl(args, false)
+}
+
+fn cmd_stream_entry_finish_facts(args: &[String]) -> i32 {
+    cmd_stream_entry_finish_impl(args, true)
+}
+
+fn cmd_stream_entry_finish_impl(args: &[String], facts: bool) -> i32 {
     if args.len() != 17 || args[4] != "webdav" || args[7] != "0" { return 2; }
-    let result = (|| -> Result<(String, u64, String), String> {
-        let receipt = fs::read_to_string(&args[14]).map_err(|e| e.to_string())?;
-        let rows: Vec<_> = receipt.lines().collect();
-        if rows.len() != 1 { return Err("receipt row count".into()); }
-        let f: Vec<_> = rows[0].split('\t').collect();
-        if f.len() != 7 || f[..4] != ["SBRESULT", "1", "webdav-stream", "ok"] || f[6] != args[15]
-            || f[4].len() != 3 || !f[4].bytes().all(|b| b.is_ascii_digit()) || !f[4].starts_with('2') {
-            return Err("receipt identity/status".into());
-        }
-        let stored = f[5].parse::<u64>().map_err(|_| "receipt bytes")?;
-        if f[5].is_empty() || !f[5].bytes().all(|b| b.is_ascii_digit()) { return Err("receipt bytes".into()); }
+    let result = (|| -> Result<(Option<u64>, u64, String), String> {
+        // Only the legacy boundary reads a receipt. The facts boundary receives
+        // publication authority from the parent and validates its decimal IPC.
+        let stored = if facts {
+            stream_completion_bytes(&args[14])?
+        } else {
+            let receipt = fs::read_to_string(&args[14]).map_err(|e| e.to_string())?;
+            stream_receipt_bytes(&receipt, &args[15])?
+        };
         let input = if args[6].eq_ignore_ascii_case("tar") { Some(stored) } else {
             fs::read_to_string(&args[13]).ok().and_then(|raw| raw.lines().filter_map(|line| {
                 let before = line.split_once(" B =>")?.0;
@@ -7019,18 +6862,50 @@ fn cmd_stream_entry_finish(args: &[String]) -> i32 {
             // Assemble the record before append: do not split path and newline into separate writes.
             f.write_all(format!("{}\n", args[5]).as_bytes()).map_err(|e| e.to_string())?;
         }
-        Ok((input.map(|v| v.to_string()).unwrap_or("-".into()), stored, rate))
+        Ok((input, stored, rate))
     })();
     match result {
         Ok((input, stored, rate)) => {
             // Telemetry failure must not discard a validated upload receipt.
             let telemetry = cmd_stream_entry_perf_stage(args);
-            println!("STREAM_FINISH_RESULT\t{}\t{}\t{}\t{}\t{}", input, stored, rate,
-                input.parse::<u64>().map(stream_display_bytes).unwrap_or("-".into()), stream_display_bytes(stored));
+            println!("STREAM_FINISH_RESULT\t{}\t{}\t{}\t{}\t{}",
+                input.map(|v| v.to_string()).unwrap_or("-".into()), stored, rate,
+                input.map(stream_display_bytes).unwrap_or("-".into()), stream_display_bytes(stored));
             if telemetry != 0 { eprintln!("STREAM_FINISH_TELEMETRY_FAILED rc={}", telemetry); }
             0
         }
         Err(e) => { eprintln!("STREAM_FINISH_ERROR {}", e); 1 }
+    }
+}
+
+#[cfg(test)]
+mod stream_completion_tests {
+    use super::*;
+    #[test]
+    fn legacy_receipt_and_facts_adapters_agree() {
+        let row = |bytes: &str| format!("SBRESULT\t1\twebdav-stream\tok\t201\t{bytes}\tapp/data.tar\n");
+        for bytes in ["0", "0001", "42", "18446744073709551615"] {
+            assert_eq!(stream_receipt_bytes(&row(bytes), "app/data.tar"), stream_completion_bytes(bytes));
+        }
+        for bytes in ["+1", "18446744073709551616"] {
+            assert_eq!(stream_receipt_bytes(&row(bytes), "app/data.tar").unwrap_err(), "receipt bytes");
+        }
+        assert_eq!(stream_receipt_bytes(&row("1"), "other").unwrap_err(), "receipt identity/status");
+        assert!(stream_receipt_bytes(&row("1").replace("201", "300"), "app/data.tar").is_err());
+        assert!(stream_receipt_bytes(&(row("1") + "\n"), "app/data.tar").is_err());
+        assert_eq!(stream_receipt_bytes(&row("42").replace('\n', "\r\n"), "app/data.tar").unwrap(), 42);
+    }
+
+    #[test]
+    fn normalized_completion_decimal_contract() {
+        for bytes in ["0", "0001", "18446744073709551615"] {
+            assert_eq!(stream_completion_bytes(bytes).unwrap(), bytes.parse::<u64>().unwrap());
+        }
+        for bytes in ["", "-", "+1", "-1", " 1", "１", "18446744073709551616", "1\t2", "1\r\n"] {
+            assert_eq!(stream_completion_bytes(bytes).unwrap_err(), "receipt bytes");
+        }
+        assert_eq!(stream_display_bytes(0), "0 bytes");
+        assert_eq!(stream_display_bytes(1024), "1.00 KB");
     }
 }
 
@@ -9090,6 +8965,12 @@ fn load_pkg_version_map(path_s: &str) -> HashMap<String, String> {
     out
 }
 
+fn write_tsv_record(out: &mut File, args: std::fmt::Arguments<'_>) {
+    let mut record = std::fmt::format(args);
+    record.push('\n');
+    note_io(out.write_all(record.as_bytes()));
+}
+
 fn cmd_selected_apps_map(args: &[String]) -> i32 {
     if args.len() < 5 {
         return 2;
@@ -9131,9 +9012,7 @@ fn cmd_selected_apps_map(args: &[String]) -> i32 {
         }
         let app = sanitize_app_folder_name(&name, &pkg);
         let ver = versions.get(&pkg).cloned().unwrap_or_default();
-        note_io(writeln!(
-            out,
-            "{}\t{}\t{}\t{}",
+        write_tsv_record(&mut out, format_args!("{}\t{}\t{}\t{}",
             tsv_sanitize(&app),
             tsv_sanitize(&pkg),
             nodata,
@@ -9188,9 +9067,7 @@ fn cmd_appdetails_summary_map(args: &[String]) -> i32 {
             } else {
                 "0"
             };
-            note_io(writeln!(
-                out,
-                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            write_tsv_record(&mut out, format_args!("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
                 tsv_sanitize(&app),
                 tsv_sanitize(&pkg),
                 tsv_sanitize(&ver),
@@ -9299,9 +9176,7 @@ fn cmd_appstate_match_map(args: &[String]) -> i32 {
             if eq {
                 matched = matched.wrapping_add(1);
             }
-            note_io(writeln!(
-                out,
-                "{}\t{}\t{}\t{}\t{}",
+            write_tsv_record(&mut out, format_args!("{}\t{}\t{}\t{}\t{}",
                 tsv_sanitize(&app),
                 tsv_sanitize(&pkg),
                 if old_ok { "1" } else { "0" },
@@ -9341,7 +9216,7 @@ fn append_local_presize_bundle_stats(
 }
 
 fn cmd_local_fastskip_presize_bundle_v1(args: &[String]) -> i32 {
-    if args.len() < 24 {
+    if args.len() < 22 {
         return 2;
     }
     let total_start = Instant::now();
@@ -9361,12 +9236,10 @@ fn cmd_local_fastskip_presize_bundle_v1(args: &[String]) -> i32 {
     let out_diag = &args[15];
     let out_tiny = &args[16];
     let backup_mode = &args[17];
-    let backup_obb = &args[18];
-    let backup_user = &args[19];
-    let blacklist_mode = &args[20];
-    let android_root = &args[21];
-    let user_root = &args[22];
-    let user_de_root = &args[23];
+    let blacklist_mode = &args[18];
+    let android_root = &args[19];
+    let user_root = &args[20];
+    let user_de_root = &args[21];
 
     let selected_start = Instant::now();
     let selected_args = vec![
@@ -9435,8 +9308,6 @@ fn cmd_local_fastskip_presize_bundle_v1(args: &[String]) -> i32 {
         out_diag.to_string(),
         out_tiny.to_string(),
         backup_mode.to_string(),
-        backup_obb.to_string(),
-        backup_user.to_string(),
         blacklist_mode.to_string(),
         android_root.to_string(),
         user_root.to_string(),
@@ -9530,7 +9401,7 @@ fn append_remote_presize_bundle_stats(args: AppendRemotePresizeBundleStatsArgs<'
 }
 
 fn cmd_remote_fastskip_presize_bundle_v1(args: &[String]) -> i32 {
-    if args.len() < 25 {
+    if args.len() < 23 {
         return 2;
     }
     let total_start = Instant::now();
@@ -9551,12 +9422,10 @@ fn cmd_remote_fastskip_presize_bundle_v1(args: &[String]) -> i32 {
     let out_diag = &args[16];
     let out_tiny = &args[17];
     let backup_mode = &args[18];
-    let backup_obb = &args[19];
-    let backup_user = &args[20];
-    let blacklist_mode = &args[21];
-    let android_root = &args[22];
-    let user_root = &args[23];
-    let user_de_root = &args[24];
+    let blacklist_mode = &args[19];
+    let android_root = &args[20];
+    let user_root = &args[21];
+    let user_de_root = &args[22];
 
     let selected_start = Instant::now();
     let selected_args = vec![
@@ -9617,8 +9486,6 @@ fn cmd_remote_fastskip_presize_bundle_v1(args: &[String]) -> i32 {
         out_selected.to_string(),
         out_exists.to_string(),
         backup_mode.to_string(),
-        backup_obb.to_string(),
-        backup_user.to_string(),
         android_root.to_string(),
         user_root.to_string(),
         user_de_root.to_string(),
@@ -9658,7 +9525,6 @@ fn cmd_remote_fastskip_presize_bundle_v1(args: &[String]) -> i32 {
     live.dedup();
     let presize_start = Instant::now();
     let rc = run_fastskip_presize_plan_v4_after_facts(RunFastskipPresizePlanV4AfterFactsArgs {
-        selected: out_selected,
         summary: out_summary,
         state: out_state,
         blackset,
@@ -9669,8 +9535,6 @@ fn cmd_remote_fastskip_presize_bundle_v1(args: &[String]) -> i32 {
         out_diag,
         out_tiny,
         backup_mode,
-        backup_obb,
-        backup_user,
         blacklist_mode,
         android_root,
         user_root,
@@ -9852,10 +9716,21 @@ fn cmd_restore_payload_plan(args: &[String]) -> i32 {
     let mut split_count = 0u64;
     let mut base_present = false;
     let mut payloads: Vec<String> = Vec::new();
+    // Optional execution list preserves backup-root-index's broader legacy
+    // acceptance (including malformed archive suffixes), not metadata tails.
+    let mut execution_payloads: Vec<String> = Vec::new();
+    let execution_only = args.get(6).map(String::as_str) == Some("execution-only-v1");
+    if args.get(5).is_some() && validate_root_dir_for_speedscan(&args[2]).is_err() {
+        // Match backup-root-index's no-follow root gate; shell retains its
+        // established scanner/find fallback for symlink or invalid roots.
+        return 3;
+    }
     let inventory_path = format!("{}.apk_inventory.tsv", out_prefix);
-    if let Err(error) = restore_apk_inventory::begin(Path::new(&inventory_path)) {
-        eprintln!("RESTORE_APK_INVENTORY_FAILED stage=clear_previous reason={}", error);
-        return 1;
+    if !execution_only {
+        if let Err(error) = restore_apk_inventory::begin(Path::new(&inventory_path)) {
+            eprintln!("RESTORE_APK_INVENTORY_FAILED stage=clear_previous reason={}", error);
+            return 1;
+        }
     }
     let mut inventory: Vec<(String, u64)> = Vec::new();
     let mut inventory_valid = true;
@@ -9863,13 +9738,15 @@ fn cmd_restore_payload_plan(args: &[String]) -> i32 {
         for e in rd {
             let e = match e { Ok(e) => e, Err(_) => { inventory_valid = false; continue; } };
             let p = e.path();
-            let metadata = match fs::metadata(&p) { Ok(m) => m, Err(_) => { inventory_valid = false; continue; } };
+            let metadata = match if execution_only { fs::symlink_metadata(&p) } else { fs::metadata(&p) } {
+                Ok(m) => m, Err(_) => { inventory_valid = false; continue; }
+            };
             if !metadata.is_file() { continue; }
             let name = match p.file_name() {
                 Some(v) => v.to_string_lossy().into_owned(),
                 None => continue,
             };
-            if name.ends_with(".apk") && !name.starts_with('.') {
+            if !execution_only && name.ends_with(".apk") && !name.starts_with('.') {
                 match p.file_name().and_then(|n| n.to_str()) {
                     Some(exact_name) => inventory.push((exact_name.to_owned(), metadata.len())),
                     None => inventory_valid = false,
@@ -9882,6 +9759,11 @@ fn cmd_restore_payload_plan(args: &[String]) -> i32 {
                     split_count = split_count.wrapping_add(1);
                 }
             }
+            if (name.contains(".tar") || name.contains(".zst"))
+                && e.file_type().map(|t| t.is_file()).unwrap_or(false)
+            {
+                execution_payloads.push(p.to_string_lossy().into_owned());
+            }
             if appdetails_is_payload_tail(&name) {
                 payloads.push(name);
             }
@@ -9889,6 +9771,22 @@ fn cmd_restore_payload_plan(args: &[String]) -> i32 {
     }
     else {
         inventory_valid = false;
+    }
+    if let Some(output) = args.get(5) {
+        execution_payloads.sort();
+        // Never invent a sanitized pathname. The old TSV index projects such
+        // names differently; reject this optimization and use that exact path.
+        if !inventory_valid || execution_payloads.iter().any(|p| p.contains(['\t', '\r', '\n'])) {
+            return 1;
+        }
+        if fs::write(output, execution_payloads.iter()
+            .map(|p| format!("{}\n", p)).collect::<String>()).is_err() {
+            return 1;
+        }
+    }
+    if execution_only {
+        println!("RESTORE_PAYLOAD_EXECUTION\t1");
+        return 0;
     }
     payloads.sort();
     let apk_kind = if apk_count == 0 {
@@ -9943,7 +9841,7 @@ fn cmd_restore_payload_plan(args: &[String]) -> i32 {
 }
 
 fn cmd_manifest_diff_cache_index(args: &[String]) -> i32 {
-    if args.len() < 11 {
+    if args.len() < 9 {
         return 2;
     }
     let start = Instant::now();
@@ -9954,8 +9852,6 @@ fn cmd_manifest_diff_cache_index(args: &[String]) -> i32 {
     let changed = &args[6];
     let out_prefix = &args[7];
     let backup_mode = &args[8];
-    let backup_obb = &args[9];
-    let backup_user = &args[10];
     let diff_out = format!("{}.diff.tsv", out_prefix);
     let fast_out = format!("{}.fast_skip_ok", out_prefix);
     let missing_out = format!("{}.payload_missing_map", out_prefix);
@@ -9968,7 +9864,7 @@ fn cmd_manifest_diff_cache_index(args: &[String]) -> i32 {
     let payload_rows = read_tsv_rows_required(payload_set);
     let changed_set = load_line_set(changed);
     // One map per batch; an absent/unreadable state map disables data fast-skip.
-    let states: HashMap<String, bool> = args.get(11)
+    let states: HashMap<String, bool> = args.get(9)
         .and_then(|p| read_lines(Path::new(p)).ok()).unwrap_or_default()
         .iter().filter_map(|line| {
             let r: Vec<&str> = line.split('\t').collect();
@@ -10097,17 +9993,17 @@ fn cmd_manifest_diff_cache_index(args: &[String]) -> i32 {
             }
         };
         if backup_mode == "true" && !nodata && pkg != "bin.mt.plus" {
-            if backup_obb == "true" {
+            {
                 check_entry("data", &mut ok, &mut reason);
                 check_entry("obb", &mut ok, &mut reason);
                 check_entry("media", &mut ok, &mut reason);
             }
-            if backup_user == "true" {
+            {
                 check_entry("user", &mut ok, &mut reason);
                 check_entry("user_de", &mut ok, &mut reason);
             }
         }
-        if ok && backup_mode == "true" && !nodata && backup_user == "true" && pkg != "bin.mt.plus"
+        if ok && backup_mode == "true" && !nodata && pkg != "bin.mt.plus"
             && (!state_valid.contains(app.as_str()) || states.get(app) != Some(&true)) {
             ok = false;
             reason = "appstate_changed_or_unverified".to_owned();
@@ -10275,9 +10171,9 @@ pub(crate) fn run() {
             0
         }
         Some("--capabilities") | Some("capabilities") => {
-            println!("speedscan.stream_bench.v1 speedscan.flash_info.v1 speedscan.backup_prescan_plan.v1 speedscan.remote_maps.v1 speedscan.remaining_batch.v1 speedscan.changed_apps_plan.v1");
+            println!("speedscan.backup_scope_single.v1 speedscan.stream_bench.v1 speedscan.flash_info.v1 speedscan.backup_prescan_plan.v1 speedscan.remote_maps.v1 speedscan.remaining_batch.v1 speedscan.changed_apps_plan.v1");
             println!("speedscan.restore_package_maps.v1");
-            println!("speedscan.owned_bounded_run.v1 speedscan.facts_result.v1 speedscan.profile_finalize_stage.v1 speedscan.stream_entry_finish.v1 speedscan.smb_publisher.v1 speedscan.json_ops.v1 speedscan.profile_transform.v1 speedscan.profile_backup_map.v1 speedscan.bundle_audit_fields.v1 speedscan.app_permissions.android_policy.v2 speedscan.process_lease.v1 speedscan.process_lease_stop.v1 speedscan.backup_run_model.v1 speedscan.backup_plan_coverage.v1 speedscan.tar_source_manifest.v1 speedscan.restore_source_verify.v1 speedscan.debug_consolidate.v1 speedscan.payload_stats.v1 speedscan.restore_tree_audit_bytes.v1 speedscan.result_contract.v1 speedscan.remote_app_select.v1 speedscan.remote_orphan_plan.v1 speedscan.restore_tree_manifest_bytes.v1 speedscan.appdetails_seed_index_strict_meta.v1 speedscan.appdetails_seed_index.v1 speedscan.backup_prescan_exact_input_batch.v1 speedscan.tar_input_hardlink_type_safe.v1 speedscan.dir_size_tar_input_map.v1 speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.posix_recursive_scan.v1 speedscan.dir_size_map_workers.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan.v1 speedscan.local_fastskip_presize_plan_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_audit_seed_expansion.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.rust_convergence_source.v1 speedscan.full_convergence_stage3.v1");
+            println!("speedscan.owned_bounded_run.v1 speedscan.facts_result.v1 speedscan.profile_finalize_stage.v1 speedscan.stream_entry_finish.v1 speedscan.stream_entry_finish_facts.v1 speedscan.smb_publisher.v1 speedscan.json_ops.v1 speedscan.profile_transform.v1 speedscan.profile_backup_map.v1 speedscan.bundle_audit_fields.v1 speedscan.app_permissions.android_policy.v2 speedscan.process_lease.v1 speedscan.process_lease_stop.v1 speedscan.backup_run_model.v1 speedscan.backup_plan_coverage.v1 speedscan.tar_source_manifest.v1 speedscan.restore_source_verify.v1 speedscan.debug_consolidate.v1 speedscan.payload_stats.v1 speedscan.restore_tree_audit_bytes.v1 speedscan.result_contract.v1 speedscan.remote_app_select.v1 speedscan.remote_orphan_plan.v1 speedscan.restore_tree_manifest_bytes.v1 speedscan.appdetails_seed_index_strict_meta.v1 speedscan.appdetails_seed_index.v1 speedscan.backup_prescan_exact_input_batch.v1 speedscan.tar_input_hardlink_type_safe.v1 speedscan.dir_size_tar_input_map.v1 speedscan.tree_pack_plan.v1 speedscan.restore_tree_verify.v1 speedscan.app_media_index.v1 speedscan.posix_recursive_scan.v1 speedscan.dir_size_map_workers.v1 speedscan.dir_size_map_nested_singlepass.v1 speedscan.dir_size_map_v2.v1 speedscan.dir_size_map_profiler.v1 speedscan.dir_size_map_workers8_cap.v1 speedscan.dir_size_map_workers24_cap.v1 speedscan.tsv_decimal_sum.v1 speedscan.entry_size_facts.v1 speedscan.changed_entry_facts.v1 speedscan.local_fastskip_join.v1 speedscan.local_fastskip_join_stats_v2.v1 speedscan.local_fastskip_presize_plan.v1 speedscan.local_fastskip_presize_plan_v2.v1 speedscan.local_fastskip_presize_plan_v3.v1 speedscan.local_fastskip_presize_plan_v4.v1 speedscan.local_fastskip_presize_bundle_v1.v1 speedscan.remote_fastskip_presize_bundle_v1.v1 speedscan.backup_entry_presence_map.v1 speedscan.payload_archive_set.v1 speedscan.dir_size_manifest.v1 speedscan.dir_size_worker_scanroots.v1 speedscan.dir_size_map_route_trie.v1 speedscan.dir_size_map_hint_schedule.v1 speedscan.remote_stream_local_read_plan.v1 speedscan.remote_stream_local_read_plan.v2 speedscan.remote_stream_local_read_final_plan.v1 speedscan.stream_entry_perf_resolver.v1 speedscan.stream_entry_perf_child_elapsed.v1 speedscan.stream_entry_post_body_semantics.v1 speedscan.argv_non_utf8_clean_fail.v1 speedscan.appdetails_bundle_audit.v1 speedscan.appdetails_bundle_audit_seedless_stage_cover.v1 speedscan.appdetails_bundle_audit_scoped_cover.v1 speedscan.appdetails_bundle_audit_seedless_taint.v1 speedscan.appdetails_bundle_audit_seed_expansion.v1 speedscan.appdetails_bundle_manifest.v1 speedscan.appdetails_health_batch.v1 speedscan.remote_manifest_plan.v1 speedscan.restore_payload_plan.v1 speedscan.manifest_diff_cache_index.v1 speedscan.manifest_diff_cache_index.v2 speedscan.selected_apps_map.v1 speedscan.appdetails_summary_map.v1 speedscan.appstate_match_map.v1 speedscan.appstate_match_canonical_v2.v1 speedscan.appstate_match_canonical_v3.v1 speedscan.appstate_match_canonical_v4.v1 speedscan.remote_orphan_candidates.v1 speedscan.restore_payload_plan_full.v1 speedscan.full_convergence_stage4.v1 speedscan.full_convergence_stage5.v1 speedscan.rust_convergence_source.v1 speedscan.full_convergence_stage3.v1");
             0
         }
         Some("conf") => runtime_conf::command(&args[2..]),
@@ -10307,7 +10203,7 @@ pub(crate) fn run() {
         Some("applist-merge") => crate::applist::run(&args[2..]),
         Some("dir-size") if args.len() >= 3 => cmd_dir_size(&args[2]),
         Some("dir-size-map") if args.len() >= 3 => cmd_dir_size_map(&args[2]),
-        Some("dir-size-manifest") if args.len() >= 11 => cmd_dir_size_manifest(&args),
+        Some("dir-size-manifest") if args.len() >= 9 => cmd_dir_size_manifest(&args),
         Some("smb-entries" | "smb-plan" | "smb-list" | "smb-snapshot" | "upload-map" | "remote-list-filter" | "upload-dirs" | "changed-apps-plan") => {
             match remote_maps::run(&args[1..]) { Ok(()) => 0, Err(error) => { eprintln!("speedscan: remote facts rejected: {error}"); 3 } }
         }
@@ -10355,9 +10251,14 @@ pub(crate) fn run() {
         Some("backup-prescan-exact-input") if args.len() >= 7 => {
             cmd_backup_prescan_exact_input(&args[2], &args[3], &args[4], &args[5], &args[6], None)
         }
-        Some("backup-prescan-plan") if args.len() == 9 => {
+        Some("backup-prescan-plan") if args.len() == 7 || args.len() == 9 => {
             let root = Path::new(&args[3]);
-            match prescan_rows::generate(&args[2], root, args[6] == "true", args[7] == "true", args[8] == "true") {
+            let plan = if args.len() == 9 {
+                prescan_rows::generate_with_policy(&args[2], root, args[6] == "true", Some((&args[7], &args[8])))
+            } else {
+                prescan_rows::generate(&args[2], root, args[6] == "true")
+            };
+            match plan {
                 Ok(plan) => cmd_backup_prescan_exact_input("in-memory", "in-memory", &root.join(".pkg_apk_paths").to_string_lossy(), &args[4], &args[5], Some(plan)),
                 Err(error) => { eprintln!("speedscan: prescan plan rejected: {error}"); 3 }
             }
@@ -10401,34 +10302,35 @@ pub(crate) fn run() {
         Some("changed-entry-facts") if args.len() >= 4 => {
             cmd_changed_entry_facts(&args[2], &args[3])
         }
-        Some("local-fastskip-join") if args.len() >= 16 => cmd_local_fastskip_join(&args),
-        Some("local-fastskip-presize-bundle-v1") if args.len() >= 24 => {
+        Some("local-fastskip-join") if args.len() >= 14 => cmd_local_fastskip_join(&args),
+        Some("local-fastskip-presize-bundle-v1") if args.len() >= 22 => {
             cmd_local_fastskip_presize_bundle_v1(&args)
         }
-        Some("remote-fastskip-presize-bundle-v1") if args.len() >= 25 => {
+        Some("remote-fastskip-presize-bundle-v1") if args.len() >= 23 => {
             cmd_remote_fastskip_presize_bundle_v1(&args)
         }
-        Some("local-fastskip-presize-plan-v4") if args.len() >= 20 => {
+        Some("local-fastskip-presize-plan-v4") if args.len() >= 18 => {
             cmd_local_fastskip_presize_plan_v4(&args)
         }
-        Some("local-fastskip-presize-plan") if args.len() >= 18 => {
+        Some("local-fastskip-presize-plan") if args.len() >= 16 => {
             cmd_local_fastskip_presize_plan(&args)
         }
-        Some("backup-entry-presence-map") if args.len() >= 10 => {
+        Some("backup-entry-presence-map") if args.len() >= 8 => {
             cmd_backup_entry_presence_map(&args)
         }
         Some("payload-archive-set") if args.len() >= 4 => cmd_payload_archive_set(&args),
-        Some("remote-stream-local-read-plan") if args.len() >= 11 => {
+        Some("remote-stream-local-read-plan") if args.len() >= 9 => {
             cmd_remote_stream_local_read_plan(&args)
         }
-        Some("remote-stream-local-read-plan-v2") if args.len() >= 9 => {
+        Some("remote-stream-local-read-plan-v2") if args.len() >= 7 => {
             cmd_remote_stream_local_read_plan_v2(&args)
         }
-        Some("remote-stream-local-read-final-plan") if args.len() >= 12 => {
+        Some("remote-stream-local-read-final-plan") if args.len() >= 10 => {
             cmd_remote_stream_local_read_final_plan(&args)
         }
         Some("stream-entry-perf-stage") if args.len() >= 13 => cmd_stream_entry_perf_stage(&args),
         Some("stream-entry-finish") => cmd_stream_entry_finish(&args),
+        Some("stream-entry-finish-facts-v1") => cmd_stream_entry_finish_facts(&args),
         Some("stream-entry-perf-finalize") if args.len() >= 4 => {
             cmd_stream_entry_perf_finalize(&args)
         }
@@ -10492,7 +10394,7 @@ pub(crate) fn run() {
         },
         Some("remote-manifest-plan") if args.len() >= 6 => cmd_remote_manifest_plan(&args),
         Some("restore-payload-plan") if args.len() >= 5 => cmd_restore_payload_plan(&args),
-        Some("manifest-diff-cache-index") if args.len() >= 11 => {
+        Some("manifest-diff-cache-index") if args.len() >= 9 => {
             cmd_manifest_diff_cache_index(&args)
         }
         _ => {
@@ -10506,3 +10408,7 @@ pub(crate) fn run() {
 #[cfg(test)]
 #[path = "../audit_tests.rs"]
 mod audit_tests;
+
+#[cfg(test)]
+#[path = "../convergence_tests.rs"]
+mod convergence_tests;

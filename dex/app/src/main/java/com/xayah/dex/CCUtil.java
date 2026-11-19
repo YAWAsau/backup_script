@@ -150,6 +150,21 @@ public class CCUtil {
         failed += check("T2S 備份檔案", "备份文件", ccHelper.t2s("備份檔案"));
         failed += check("T2S 文檔", "文档", ccHelper.t2s("文檔"));
         failed += check("T2S 非串流檔案處理方式", "非流式文件处理方式", ccHelper.t2s("非串流檔案處理方式"));
+        failed += check("T2S complete prescan", "预扫描", ccHelper.t2s("預掃描"));
+        failed += check("T2S non-file compounds", "档位 档次 档期 换挡 挂挡 排挡", ccHelper.t2s("檔位 檔次 檔期 換檔 掛檔 排檔"));
+        failed += check("T2S configuration details", "配置详细 配置丢失", ccHelper.t2s("設定詳細 設定遺失"));
+        String[] tw = {"預掃", "串流上傳", "遠端清單", "逾時", "設定檔", "封包", "封存", "文檔"};
+        String[] cn = {"预扫描", "流式上传", "远程列表", "超时", "配置文件", "数据包", "归档", "文档"};
+        for (int i = 0; i < tw.length; i++) {
+            String value = tw[i];
+            for (int cycle = 0; cycle < 10; cycle++) {
+                value = ccHelper.t2s(value);
+                failed += check("toggle CN " + i + ":" + cycle, cn[i], value);
+                failed += check("repeat CN " + i + ":" + cycle, value, ccHelper.t2s(value));
+                value = ccHelper.s2t(value);
+                failed += check("toggle TW " + i + ":" + cycle, tw[i], value);
+            }
+        }
         if (failed == 0) {
             System.out.println("CCUTIL_SELFTEST_OK cchelper.table_refresh.v1 zh_tw_polish.v1 repeat_merge_fix.v1");
             System.exit(0);

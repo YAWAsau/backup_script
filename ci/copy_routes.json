@@ -11,11 +11,11 @@
     },
     {
       "file": "tools/tools.sh",
-      "context": "_speedbackup_root_tmp_state_cleanup_rescue",
+      "context": "_speedbackup_run_state_release",
       "line": "cp \"$_out\" \"$SPEED_DEBUG_RUN_DIR/cgroup_lock_metrics.log\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null} || true",
       "count": 1,
       "category": "private-copy",
-      "reason": "Runtime working/debug copy in _speedbackup_root_tmp_state_cleanup_rescue; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
+      "reason": "Rescue adapter preserves the cgroup cleanup command receipt in the private per-run debug directory before removing its temporary output; destination and copy behavior are unchanged by moving ownership into _speedbackup_run_state_release."
     },
     {
       "file": "tools/tools.sh",
@@ -148,7 +148,7 @@
     {
       "file": "tools/tools.sh",
       "context": "_appdetails_bundle_audit_guard",
-      "line": "cp -f \"$_taint_file\" \"${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/appdetails_bundle_seedless_taint.flag\" 2>/dev/null || true",
+      "line": "cp -f \"$_taint_file\" \"${SPEED_DEBUG_RUN_DIR:-/data/.speedbackup/debug}/appdetails_bundle_seedless_taint.flag\" 2>/dev/null || true",
       "count": 1,
       "category": "private-copy",
       "reason": "Runtime working/debug copy in _appdetails_bundle_audit_guard; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
@@ -571,38 +571,6 @@
     },
     {
       "file": "tools/tools.sh",
-      "context": "_remote_manifest_plan_refresh",
-      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s ${_prefix}.remote_apps.lst ]] && cp -f \"${_prefix}.remote_apps.lst\" \"$SPEED_DEBUG_RUN_DIR/remote_manifest_apps.lst\" 2>/dev/null || true",
-      "count": 1,
-      "category": "private-copy",
-      "reason": "Runtime working/debug copy in _remote_manifest_plan_refresh; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
-    },
-    {
-      "file": "tools/tools.sh",
-      "context": "_remote_manifest_plan_refresh",
-      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s ${_prefix}.remote_payload_rels.lst ]] && cp -f \"${_prefix}.remote_payload_rels.lst\" \"$SPEED_DEBUG_RUN_DIR/remote_manifest_payload_rels.lst\" 2>/dev/null || true",
-      "count": 1,
-      "category": "private-copy",
-      "reason": "Runtime working/debug copy in _remote_manifest_plan_refresh; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
-    },
-    {
-      "file": "tools/tools.sh",
-      "context": "_remote_manifest_plan_refresh",
-      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s ${_prefix}.folder_without_appdetails.lst ]] && cp -f \"${_prefix}.folder_without_appdetails.lst\" \"$SPEED_DEBUG_RUN_DIR/remote_manifest_folder_without_appdetails.lst\" 2>/dev/null || true",
-      "count": 1,
-      "category": "private-copy",
-      "reason": "Runtime working/debug copy in _remote_manifest_plan_refresh; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
-    },
-    {
-      "file": "tools/tools.sh",
-      "context": "_remote_manifest_plan_refresh",
-      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s ${_prefix}.orphan_candidates.tsv ]] && cp -f \"${_prefix}.orphan_candidates.tsv\" \"$SPEED_DEBUG_RUN_DIR/remote_manifest_orphan_candidates.tsv\" 2>/dev/null || true",
-      "count": 1,
-      "category": "private-copy",
-      "reason": "Runtime working/debug copy in _remote_manifest_plan_refresh; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
-    },
-    {
-      "file": "tools/tools.sh",
       "context": "_remote_payload_set_from_manifest_plan",
       "line": "cp -f \"$_src\" \"$_out\" 2>>${SPEED_DEBUG_ERR_LOG:-/dev/null}",
       "count": 1,
@@ -648,14 +616,6 @@
       "count": 1,
       "category": "private-copy",
       "reason": "Runtime working/debug copy in _manifest_diff_cache_index_refresh; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
-    },
-    {
-      "file": "tools/tools.sh",
-      "context": "_restore_payload_plan_log",
-      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s ${_prefix}.payloads.tsv ]] && cp -f \"${_prefix}.payloads.tsv\" \"$SPEED_DEBUG_RUN_DIR/restore_payload_plan_${_label//[!a-zA-Z0-9_.-]/_}.tsv\" 2>/dev/null || true",
-      "count": 1,
-      "category": "private-copy",
-      "reason": "Runtime working/debug copy in _restore_payload_plan_log; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
     },
     {
       "file": "tools/tools.sh",
@@ -764,7 +724,7 @@
     {
       "file": "tools/tools.sh",
       "context": "_remote_orphan_cleanup_stream",
-      "line": "cp -f \"$_bundle_root/.speedbackup_appdetails_bundle_seedless_taint\" \"${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/appdetails_bundle_seedless_taint.flag\" 2>/dev/null || true",
+      "line": "cp -f \"$_bundle_root/.speedbackup_appdetails_bundle_seedless_taint\" \"${SPEED_DEBUG_RUN_DIR:-/data/.speedbackup/debug}/appdetails_bundle_seedless_taint.flag\" 2>/dev/null || true",
       "count": 1,
       "category": "private-copy",
       "reason": "Runtime working/debug copy in _remote_orphan_cleanup_stream; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
@@ -772,7 +732,7 @@
     {
       "file": "tools/tools.sh",
       "context": "_remote_orphan_cleanup_stream",
-      "line": "[[ -f \"$_bundle_root/.speedbackup_appdetails_bundle_ignored_remote_payload_apps.lst\" ]] && cp -f \"$_bundle_root/.speedbackup_appdetails_bundle_ignored_remote_payload_apps.lst\" \"${SPEED_DEBUG_RUN_DIR:-/data/speed_debug}/appdetails_ignored_remote_payload_apps.lst\" 2>/dev/null || true",
+      "line": "[[ -f \"$_bundle_root/.speedbackup_appdetails_bundle_ignored_remote_payload_apps.lst\" ]] && cp -f \"$_bundle_root/.speedbackup_appdetails_bundle_ignored_remote_payload_apps.lst\" \"${SPEED_DEBUG_RUN_DIR:-/data/.speedbackup/debug}/appdetails_ignored_remote_payload_apps.lst\" 2>/dev/null || true",
       "count": 1,
       "category": "private-copy",
       "reason": "Runtime working/debug copy in _remote_orphan_cleanup_stream; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
@@ -891,30 +851,6 @@
     },
     {
       "file": "tools/tools.sh",
-      "context": "_package_live_state_status",
-      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/package_live_state_${_safe_stage}_${_safe_pkg}.txt\" 2>/dev/null || true",
-      "count": 1,
-      "category": "private-copy",
-      "reason": "Runtime working/debug copy in _package_live_state_status; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
-    },
-    {
-      "file": "tools/tools.sh",
-      "context": "_package_install_snapshot_status",
-      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/package_install_snapshot_${_safe_stage}_${_safe_pkg}.txt\" 2>/dev/null || true",
-      "count": 1,
-      "category": "private-copy",
-      "reason": "Runtime working/debug copy in _package_install_snapshot_status; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
-    },
-    {
-      "file": "tools/tools.sh",
-      "context": "_package_restriction_snapshot_status",
-      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/package_restriction_snapshot_${_safe_stage}_${_safe_pkg}.txt\" 2>/dev/null || true",
-      "count": 1,
-      "category": "private-copy",
-      "reason": "Runtime working/debug copy in _package_restriction_snapshot_status; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
-    },
-    {
-      "file": "tools/tools.sh",
       "context": "_cgroup_freezer_native_freeze_retry_pkg",
       "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/cgroup_wchan_corrective_freeze_${_safe_phase}_${_safe_pkg}.txt\" 2>/dev/null || true",
       "count": 1,
@@ -944,14 +880,6 @@
       "count": 1,
       "category": "private-copy",
       "reason": "Runtime working/debug copy in _cgroup_freezer_native_kill_pkg; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
-    },
-    {
-      "file": "tools/tools.sh",
-      "context": "_uid_live_state_status",
-      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/uid_live_state_${_safe_stage}_${_safe_pkg}.txt\" 2>/dev/null || true",
-      "count": 1,
-      "category": "private-copy",
-      "reason": "Runtime working/debug copy in _uid_live_state_status; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
     },
     {
       "file": "tools/tools.sh",
@@ -1008,22 +936,6 @@
       "count": 1,
       "category": "private-copy",
       "reason": "Runtime working/debug copy in _restore_install_bundle_fetch_set; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
-    },
-    {
-      "file": "tools/tools.sh",
-      "context": "_restore_installer_context_facts_call",
-      "line": "[[ -n \"${SPEED_DEBUG_RUN_DIR:-}\" && -d \"${SPEED_DEBUG_RUN_DIR:-}\" ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/installer_context_facts_failed.tsv\" 2>/dev/null || true",
-      "count": 1,
-      "category": "private-copy",
-      "reason": "Runtime working/debug copy in _restore_installer_context_facts_call; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
-    },
-    {
-      "file": "tools/tools.sh",
-      "context": "_restore_install_plan_facts_call",
-      "line": "[[ -n \"${SPEED_DEBUG_RUN_DIR:-}\" && -d \"${SPEED_DEBUG_RUN_DIR:-}\" ]] && cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/restore_install_plan_failed.tsv\" 2>/dev/null || true",
-      "count": 1,
-      "category": "private-copy",
-      "reason": "Runtime working/debug copy in _restore_install_plan_facts_call; retain cp semantics. If its destination is moved to public shared storage, review and use generated-file publication where applicable."
     },
     {
       "file": "tools/tools.sh",
@@ -1256,6 +1168,30 @@
       "count": 1,
       "category": "fresh-stage",
       "reason": "Retain the selected Maps app_details.json from the verified remote bundle before its icon extraction directory is removed. Destination is a fresh private selection-flow report, checked non-symlink and cleared before copy; failure is logged and metadata preparation rejects missing or mismatched cache. Never overwrites the user list or remote backup."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_speedbackup_plan_debug_copy",
+      "line": "[[ -n ${SPEED_DEBUG_RUN_DIR:-} && -d ${SPEED_DEBUG_RUN_DIR:-} && -s $_source ]] && cp -f \"$_source\" \"$SPEED_DEBUG_RUN_DIR/$_name\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Snapshot existing native remote-manifest and restore-payload plan sidecars into fixed caller-selected private debug filenames. Source nonempty checks and ignored copy errors retain diagnostic-only behavior; these copies do not publish or validate backup payloads."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_restore_install_facts_file_finish",
+      "line": "[[ -n \"${SPEED_DEBUG_RUN_DIR:-}\" && -d \"${SPEED_DEBUG_RUN_DIR:-}\" ]] && cp -f \"$_file\" \"$SPEED_DEBUG_RUN_DIR/$_failed_name\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Preserve the failed installer-context or restore-install-plan RPC reply in the existing private debug directory before deleting its private reply file. Callers supply fixed diagnostic filenames; cp retains the original best-effort snapshot behavior, not backup-data publication."
+    },
+    {
+      "file": "tools/tools.sh",
+      "context": "_package_status_query",
+      "line": "cp -f \"$_out\" \"$SPEED_DEBUG_RUN_DIR/${_prefix}_${_safe_stage}_${_safe_pkg}.txt\" 2>/dev/null || true",
+      "count": 1,
+      "category": "private-copy",
+      "reason": "Copy the query receipt from the operation temporary file into the private per-run diagnostic directory before cleanup. The prefix is chosen only by the four fixed package/UID status wrappers; stage and package names are sanitized. This consolidates their existing best-effort diagnostic copies and never publishes a backup payload or public configuration."
     }
   ]
 }

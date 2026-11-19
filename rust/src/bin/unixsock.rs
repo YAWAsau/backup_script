@@ -1,13 +1,13 @@
 // unixsock.rs - faithful Rust port of c/unixsock.c
-// Relays stdin -> unix/tcp socket -> stdout, with optional two-line response
+// Relays stdin -> Unix socket -> stdout, with optional two-line response
 // header capture (exact-length / chunked / raw-until-EOF body framing).
 // Every exit-code decision and the EPIPE-on-stdout "consumer closed early is
 // not an error" behavior is reproduced exactly against c/unixsock.c.
 
 use speedbackup_native_rs::c_strerror;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::io::{self, BufReader, ErrorKind, Read, Write};
-use std::net::{Shutdown, TcpStream};
+use std::net::Shutdown;
 use std::os::fd::FromRawFd;
 use std::os::unix::ffi::OsStringExt;
 use std::os::unix::fs::OpenOptionsExt;
@@ -25,35 +25,11 @@ struct SockAddrUn {
     sun_path: [std::os::raw::c_char; UNIX_SUN_PATH_MAX],
 }
 
-#[repr(C)]
-struct AddrInfo {
-    ai_flags: i32,
-    ai_family: i32,
-    ai_socktype: i32,
-    ai_protocol: i32,
-    ai_addrlen: u32,
-    // Bionic puts canonname before addr; glibc/musl put it after addr.
-    // A Linux layout on Android reads the null canonname as a sockaddr.
-    #[cfg(target_os = "android")]
-    ai_canonname: *mut std::os::raw::c_char,
-    ai_addr: *mut std::os::raw::c_void,
-    #[cfg(not(target_os = "android"))]
-    ai_canonname: *mut std::os::raw::c_char,
-    ai_next: *mut AddrInfo,
-}
 
 extern "C" {
     fn open(path: *const std::os::raw::c_char, flags: i32, ...) -> i32;
     fn write(fd: i32, buf: *const std::os::raw::c_void, count: usize) -> isize;
     fn fchmod(fd: i32, mode: u32) -> i32;
-    fn getaddrinfo(
-        node: *const std::os::raw::c_char,
-        service: *const std::os::raw::c_char,
-        hints: *const AddrInfo,
-        res: *mut *mut AddrInfo,
-    ) -> i32;
-    fn freeaddrinfo(res: *mut AddrInfo);
-    fn gai_strerror(code: i32) -> *const std::os::raw::c_char;
     fn socket(domain: i32, ty: i32, protocol: i32) -> i32;
     fn connect(fd: i32, addr: *const std::os::raw::c_void, len: u32) -> i32;
     fn close(fd: i32) -> i32;
@@ -67,11 +43,9 @@ extern "C" {
     fn _exit(status: i32) -> !;
 }
 
-const AF_UNSPEC: i32 = 0;
 const AF_UNIX: i32 = 1;
 const SOCK_STREAM: i32 = 1;
 const SOCK_CLOEXEC: i32 = 0o2000000;
-const IPPROTO_TCP: i32 = 6;
 const SIGPIPE: i32 = 13;
 const SIG_IGN: usize = 1;
 const EINTR: i32 = 4;
@@ -81,44 +55,11 @@ const O_TRUNC: i32 = 0o1000;
 const O_NONBLOCK: i32 = 0o4000;
 const O_CLOEXEC: i32 = 0o2000000;
 
-enum Conn {
-    Unix(UnixStream),
-    Tcp(TcpStream),
-}
-impl Conn {
-    fn shutdown(&self, how: Shutdown) -> io::Result<()> {
-        match self {
-            Conn::Unix(s) => s.shutdown(how),
-            Conn::Tcp(s) => s.shutdown(how),
-        }
-    }
-}
-impl Read for Conn {
-    fn read(&mut self, b: &mut [u8]) -> io::Result<usize> {
-        match self {
-            Conn::Unix(s) => s.read(b),
-            Conn::Tcp(s) => s.read(b),
-        }
-    }
-}
-impl Write for Conn {
-    fn write(&mut self, b: &[u8]) -> io::Result<usize> {
-        match self {
-            Conn::Unix(s) => s.write(b),
-            Conn::Tcp(s) => s.write(b),
-        }
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        match self {
-            Conn::Unix(s) => s.flush(),
-            Conn::Tcp(s) => s.flush(),
-        }
-    }
-}
+type Conn = UnixStream;
 
 fn usage() {
     eprintln!(
-        "unixsock {}\nUsage:\n  unixsock relay-unix <socketPath> [--header-file <path>]\n  unixsock relay-tcp <host> <port> [--header-file <path>]\n  unixsock root-args-unix <socketPath> <namespace> <command> <headerPath> [args...]\n  unixsock root-file-unix <socketPath> <namespace> <command> <headerPath> <bodyPath> [appstateUser appstateExtra]\n  unixsock capabilities\n\nstdin is copied to the socket. At stdin EOF the write side is half-closed,\nwhile the socket response continues to stdout. With --header-file, the first\ntwo newline-terminated response lines are written to that file and only the\nremaining binary body is written to stdout. The second header line may be\nan exact byte count, -1 (raw until EOF), or -2 (daemon chunk framing).\nWith --allow-plain-response and --header-file, a single-line plain\nresponse at EOF or a nonnumeric second response line is replayed to\nstdout and the header file receives the first line plus -1. Strict\nframed behavior is unchanged without --allow-plain-response.",
+        "unixsock {}\nUsage:\n  unixsock relay-unix <socketPath> [--header-file <path>]\n  unixsock root-args-unix <socketPath> <namespace> <command> <headerPath> [args...]\n  unixsock root-file-unix <socketPath> <namespace> <command> <headerPath> <bodyPath> [appstateUser appstateExtra]\n  unixsock capabilities\n\nstdin is copied to the socket. At stdin EOF the write side is half-closed,\nwhile the socket response continues to stdout. With --header-file, the first\ntwo newline-terminated response lines are written to that file and only the\nremaining binary body is written to stdout. The second header line may be\nan exact byte count, -1 (raw until EOF), or -2 (daemon chunk framing).\nWith --allow-plain-response and --header-file, a single-line plain\nresponse at EOF or a nonnumeric second response line is replayed to\nstdout and the header file receives the first line plus -1. Strict\nframed behavior is unchanged without --allow-plain-response.",
         VERSION
     );
 }
@@ -505,61 +446,6 @@ fn connect_unix_socket(path: &str) -> io::Result<UnixStream> {
     Ok(unsafe { UnixStream::from_raw_fd(fd) })
 }
 
-fn connect_tcp_socket(host: &str, port: &str) -> io::Result<TcpStream> {
-    let chost = CString::new(host).map_err(|_| io::Error::from_raw_os_error(22))?;
-    let cport = CString::new(port).map_err(|_| io::Error::from_raw_os_error(22))?;
-    let hints = AddrInfo {
-        ai_flags: 0,
-        ai_family: AF_UNSPEC,
-        ai_socktype: SOCK_STREAM,
-        ai_protocol: IPPROTO_TCP,
-        ai_addrlen: 0,
-        ai_addr: std::ptr::null_mut(),
-        ai_canonname: std::ptr::null_mut(),
-        ai_next: std::ptr::null_mut(),
-    };
-    let mut result: *mut AddrInfo = std::ptr::null_mut();
-    let rc = unsafe { getaddrinfo(chost.as_ptr(), cport.as_ptr(), &hints, &mut result) };
-    if rc != 0 {
-        let msg = unsafe {
-            let p = gai_strerror(rc);
-            if p.is_null() {
-                "Unknown error".to_string()
-            } else {
-                CStr::from_ptr(p).to_string_lossy().into_owned()
-            }
-        };
-        return Err(io::Error::other(format!(
-            "getaddrinfo: {} (EAI {})",
-            msg, rc
-        )));
-    }
-
-    let mut item = result;
-    while !item.is_null() {
-        let ai = unsafe { &*item };
-        let fd = unsafe { socket(ai.ai_family, ai.ai_socktype | SOCK_CLOEXEC, ai.ai_protocol) };
-        if fd >= 0 {
-            if unsafe { connect(fd, ai.ai_addr as *const _, ai.ai_addrlen) } == 0 {
-                unsafe {
-                    freeaddrinfo(result);
-                }
-                return Ok(unsafe { TcpStream::from_raw_fd(fd) });
-            }
-            // C closes the failed fd without restoring the previous errno.
-            unsafe {
-                close(fd);
-            }
-        }
-        item = ai.ai_next;
-    }
-    unsafe {
-        freeaddrinfo(result);
-    }
-    // Match the C caller's eventual strerror(errno): preserve whatever errno
-    // remains after the last socket/connect/close/freeaddrinfo sequence.
-    Err(io::Error::last_os_error())
-}
 
 fn copy_request_to_socket(conn: &mut Conn) -> i32 {
     let mut stdin = io::stdin().lock();
@@ -995,9 +881,8 @@ pub(crate) fn run() {
         std::process::exit(2);
     }
 
-    let rc = if matches!(args[1].as_str(), "webdav-env-unix" | "webdav-env-tcp") {
-        let tcp = args[1] == "webdav-env-tcp";
-        let at = if tcp { 4 } else { 3 };
+    let rc = if args[1] == "webdav-env-unix" {
+        let at = 3;
         // Header bytes never enter argv or logs, and may be non-UTF-8 just as
         // the old Shell pipe permitted. environ is restricted to the owner.
         let prefix = std::env::var_os("SPEEDBACKUP_DAV_REQUEST").map(|s| s.into_vec());
@@ -1005,8 +890,7 @@ pub(crate) fn run() {
         if args.len() != at + 2 || !matches!(args.last().map(String::as_str), Some("0" | "-1")) || prefix.is_none() {
             2
         } else {
-            let conn = if tcp { connect_tcp_socket(&args[2], &args[3]).map(Conn::Tcp) }
-                       else { connect_unix_socket(&args[2]).map(Conn::Unix) };
+            let conn = connect_unix_socket(&args[2]);
             match conn {
                 Ok(conn) => relay_connection(conn, Some(args[at].clone()), false,
                     prefix.as_deref(), args[at+1] == "-1"),
@@ -1035,7 +919,7 @@ pub(crate) fn run() {
                 }
                 Ok((body, header)) => match connect_unix_socket(&args[2]) {
                     Ok(s) => {
-                        root_request_connection(Conn::Unix(s), &[&header, &body], args[5].clone())
+                        root_request_connection(s, &[&header, &body], args[5].clone())
                     }
                     Err(e) => {
                         eprintln!("unixsock: connect failed: {}", c_strerror(&e));
@@ -1052,7 +936,7 @@ pub(crate) fn run() {
             match root_args_request(&args[3], &args[4], &args[6..]) {
                 Err(rc) => rc,
                 Ok(request) => match connect_unix_socket(&args[2]) {
-                    Ok(s) => root_request_connection(Conn::Unix(s), &[&request], args[5].clone()),
+                    Ok(s) => root_request_connection(s, &[&request], args[5].clone()),
                     Err(e) => {
                         eprintln!("unixsock: connect failed: {}", c_strerror(&e));
                         3
@@ -1069,32 +953,14 @@ pub(crate) fn run() {
                 rc
             }
             Ok((hf, allow)) => match connect_unix_socket(&args[2]) {
-                Ok(s) => relay_connection(Conn::Unix(s), hf, allow, None, true),
+                Ok(s) => relay_connection(s, hf, allow, None, true),
                 Err(e) => {
                     eprintln!("unixsock: connect failed: {}", c_strerror(&e));
                     3
                 }
             },
         }
-    } else if args[1] == "relay-tcp" {
-        if args.len() < 4 {
-            usage();
-            2
-        } else {
-            match parse_relay_args(&args, 4) {
-                Err(rc) => {
-                    usage();
-                    rc
-                }
-                Ok((hf, allow)) => match connect_tcp_socket(&args[2], &args[3]) {
-                    Ok(s) => relay_connection(Conn::Tcp(s), hf, allow, None, true),
-                    Err(e) => {
-                        eprintln!("unixsock: connect failed: {}", c_strerror(&e));
-                        3
-                    }
-                },
-            }
-        }
+
     } else {
         usage();
         2
@@ -1337,14 +1203,6 @@ mod root_args_tests {
         }
     }
 
-    #[test]
-    fn resolver_error_preserves_gai_reason() {
-        let err = connect_tcp_socket("127.0.0.1", "speedbackup-nonexistent-service").unwrap_err();
-        let message = c_strerror(&err);
-        assert!(message.contains("getaddrinfo:"), "{message}");
-        assert!(message.contains("EAI"), "{message}");
-        assert!(err.raw_os_error().is_none());
-    }
 
     #[test]
     fn large_binary_file_and_appstate_frame() {
@@ -1407,38 +1265,6 @@ mod root_args_tests {
         }
     }
 
-    #[test]
-    fn tcp_numeric_hostname_ipv6_and_refusal() {
-        // Exercise libc's actual sockaddr output, rather than a copied layout.
-        for (listen, host) in [
-            ("127.0.0.1:0", "127.0.0.1"),
-            ("127.0.0.1:0", "localhost"),
-            ("[::1]:0", "::1"),
-        ] {
-            let listener = std::net::TcpListener::bind(listen).unwrap();
-            let port = listener.local_addr().unwrap().port().to_string();
-            let mut client = connect_tcp_socket(host, &port).unwrap();
-            let (mut server, _) = listener.accept().unwrap();
-            let timeout = Some(std::time::Duration::from_secs(3));
-            client.set_read_timeout(timeout).unwrap();
-            server.set_read_timeout(timeout).unwrap();
-            client.write_all(b"request\0\xff").unwrap();
-            client.shutdown(std::net::Shutdown::Write).unwrap();
-            let mut request = Vec::new();
-            server.read_to_end(&mut request).unwrap();
-            assert_eq!(request, b"request\0\xff");
-            server.write_all(b"response\0\xff").unwrap();
-            drop(server);
-            let mut response = Vec::new();
-            client.read_to_end(&mut response).unwrap();
-            assert_eq!(response, b"response\0\xff");
-            drop(listener);
-            assert_eq!(
-                connect_tcp_socket(host, &port).unwrap_err().kind(),
-                ErrorKind::ConnectionRefused
-            );
-        }
-    }
 
     // End-to-end: run both CLI paths against the same fragmented fake daemon.
     // The environment is set only by the isolated Android test runner.

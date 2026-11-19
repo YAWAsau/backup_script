@@ -5,7 +5,7 @@ import org.json.JSONObject
 /** Read the existing event stream; opening this page never starts a daemon. */
 internal fun nativeDaemonStatusNodes(controls:NativeControls,health:JSONObject,monitorAvailable:Boolean,refresh:()->Unit):List<JSONObject>{
     val nodes=mutableListOf<JSONObject>()
-    nodes+=controls.node("daemon:note","text","列出本次作業的 daemon 與常駐服務；按需服務未啟動屬正常。核心服務驗證握手，其餘依程序存活判斷。").put("muted",true)
+    nodes+=controls.node("daemon:note","text","列出本次作業的 daemon 與常駐服務；按需服務未啟動屬正常。核心服務驗證握手，其餘依程序存活判斷。延遲為健康監測器到 daemon 的最近一次成功握手往返時間（Unix socket），不含連線建立；不是 App 到 Rust 的 HTTP 直連延遲，亦非頁面更新耗時。").put("muted",true)
     if(monitorAvailable)nodes+=controls.button("daemon:refresh","重新檢查"){refresh()}
     else nodes+=controls.node("daemon:unavailable","text","此入口未提供狀態監測；請從完整主選單查看。").put("muted",true)
     val groups=listOf(
@@ -37,6 +37,10 @@ internal fun nativeDaemonStatusNodes(controls:NativeControls,health:JSONObject,m
             val details=mutableListOf<String>()
             if(name=="RootDaemon")details+="整合 Hidden API、AppState、通知與程序觀察"
             if(state=="ready")row?.optInt("pid",0)?.takeIf{it>1}?.let{details+="PID $it"}
+            if(monitorAvailable&&state=="ready"&&row?.optString("verification")=="handshake"){
+                val ms=row.optDouble("handshakeRttMs",Double.NaN)
+                if(ms.isFinite()&&ms>=0.0)details+="最近握手往返：${String.format(java.util.Locale.ROOT,"%.3f",ms)} ms"
+            }
             when(reason){
                 "monitor_stopped"->details+="狀態監測已中斷，無法確認程序目前是否存活"
                 "handshake_failed"->details+="服務握手未通過"
@@ -45,7 +49,7 @@ internal fun nativeDaemonStatusNodes(controls:NativeControls,health:JSONObject,m
             }
             if(state=="unknown"&&reason!="monitor_stopped")details+="尚無本次作業的監測資料"
             controls.group("daemon:$key:$name","setting",listOf(controls.node("daemon:value:$key:$name","text",label)),name)
-                .put("detail",details.joinToString(" · ")).put("iconKey","daemon")
+                .put("detail",details.joinToString(" · ")).put("translateDetail",true).put("iconKey","daemon")
         }
         nodes+=controls.node("daemon:heading:$key","heading",title)
         nodes+=controls.group("daemon:group:$key","settings-section",children)

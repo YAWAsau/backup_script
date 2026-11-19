@@ -1,0 +1,2577 @@
+{
+  "capabilities": [
+    {
+      "id": "dex.capabilities.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "json"
+    },
+    {
+      "id": "dex.machine_stdout.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "stdout=data-only;stderr=diagnostic"
+    },
+    {
+      "id": "dex.label_path_segment_safe.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Dex app labels emitted to tools are path-segment sanitized for local/remote backup roots"
+    },
+    {
+      "id": "dex.webdav.relpath_traversal_guard.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDavUtil buildRelUrl rejects dot-dot traversal in relative paths"
+    },
+    {
+      "id": "dex.cchelper.glossary.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "CCHelper applies the SpeedBackup glossary after OpenCC s2twp/tw2sp profiles"
+    },
+    {
+      "id": "dex.cchelper.table_refresh.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "CCHelper table refresh with zh-TW polish and selftest"
+    },
+    {
+      "id": "dex.cchelper.zh_tw_polish.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "CCHelper can polish already-Traditional SpeedBackup wording without script self-rewrite"
+    },
+    {
+      "id": "dex.cchelper.repeat_merge_fix.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "CCHelper maps 重复/合并 to 重複/合併 in zh-TW and back to 简中 correctly"
+    },
+    {
+      "id": "dex.cchelper.tw_vocabulary.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "Taiwan product vocabulary with stable repeated conversion"
+    },
+    {
+      "id": "appstate.snapshot.batch.v2",
+      "enabled": true,
+      "required": true,
+      "detail": "canonical-ndjson"
+    },
+    {
+      "id": "appstate.snapshot.batch.parallel.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "bounded-fixed-pool-1-2-4;input-order-stable;max4"
+    },
+    {
+      "id": "appstate.run_results.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "run-local retry-aware package summaries"
+    },
+    {
+      "id": "appstate.result_files.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "typed results and bounded streaming"
+    },
+    {
+      "id": "dex.control_results.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "typed control completion"
+    },
+    {
+      "id": "appstate.ssaid.typed_result.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "typed results and bounded streaming"
+    },
+    {
+      "id": "webdav.stream_result.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "typed results and bounded streaming"
+    },
+    {
+      "id": "webdav.chunk_write_coalesced.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "typed results and bounded streaming"
+    },
+    {
+      "id": "dex.result_contract.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "typed results and bounded streaming"
+    },
+    {
+      "id": "appstate.snapshot.direct_files.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "snapshotAppStateBatchFiles writes run-scoped staging NDJSON/state/error files and returns compact TSV summary; shell publishes canonical maps; legacy relay/reducer remains fallback"
+    },
+    {
+      "id": "appstate.snapshot.direct_files.single_pass.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "direct-file snapshot consumes shared canonical batch records and serialized rows once; no response-body split or JsonParser reparse"
+    },
+    {
+      "id": "appstate.snapshot.direct_files.telemetry_v2.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "shared snapshot core/serialize plus direct snapshot/state/error write/publish/total timing fields"
+    },
+    {
+      "id": "appstate.snapshot.compact_persist.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "drop-non-restorable-display-fields"
+    },
+    {
+      "id": "appstate.foreground_state.batch.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "canonical-ndjson;simple-label+packageName+active"
+    },
+    {
+      "id": "appstate.foreground_state.simple_batch.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "app-items-only-label+packageName+active-boolean;no-uid-no-process-no-importance"
+    },
+    {
+      "id": "appstate.foreground_state.robust.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "hidden-iam-first+public-api-second+dumpsys-fallback;android9-17-target"
+    },
+    {
+      "id": "appstate.foreground_running.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "list-running-packages+importance+source"
+    },
+    {
+      "id": "appstate.foreground_list.json.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "single-json;top+foreground+foreground_service+active+background+cached;packageName+label"
+    },
+    {
+      "id": "appstate.foreground_list.simple_json.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "app-items-only-label+packageName;no-uid-no-process-no-importance"
+    },
+    {
+      "id": "appstate.foreground_top.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "focused-top-package+dumpsys-activity-window-fallback"
+    },
+    {
+      "id": "appstate.default_home.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "PackageManager HOME intent resolution; detects ResolverActivity as partial"
+    },
+    {
+      "id": "appstate.default_ime.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Default input method resolver exported for tools cgroup-first backup/restore policy"
+    },
+    {
+      "id": "appstate.default_ime.exec_settings.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "Default IME is resolved by executing settings --user USER_ID get secure default_input_method, then PackageManager enriches label/install state"
+    },
+    {
+      "id": "dex.settings.exec_shim.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "settingsGet/settingsPut wrap /system/bin/settings --user USER_ID get|put namespace key [value] with NDJSON output; no ContentResolver caller-identity guess"
+    },
+    {
+      "id": "dex.pm.facts.single.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "packageFacts emits one-package PackageManager facts TSV; optional diagnostic/single-pkg fallback, not daemon-ready required"
+    },
+    {
+      "id": "dex.pm.installed_users_facts.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "packageInstalledUsers emits compact per-user install visibility facts; optional diagnostic, not daemon-ready required"
+    },
+    {
+      "id": "dex.pm.visible_after_install.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "packageVisibleAfterInstall emits bounded install visibility facts for restore post-install wait"
+    },
+    {
+      "id": "dex.storage_volume_facts.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "storageVolumeFacts emits File/StorageManager volume facts; tools collects it during framework facts prefetch"
+    },
+    {
+      "id": "dex.home_ime_launcher_facts.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "homeImeLauncherFacts emits default HOME/IME plus launcher candidates facts; tools collects it during framework facts prefetch"
+    },
+    {
+      "id": "dex.app_inventory.package_facts.batch.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "appInventoryPackageFactsBatch emits stable PackageManager/installer/source/split/data-dir TSV facts; tools consumes facts and still owns plans"
+    },
+    {
+      "id": "dex.pm.pre_restore_package_state.batch.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "preRestorePackageStateBatch emits installedForUser/installedAnyUser/enabled/hidden/suspended/installer facts; tools still owns restore and trim policy"
+    },
+    {
+      "id": "dex.pm.installer_context_facts.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "installerContextFacts emits installer package availability/uid/dataDir/source facts; tools still owns installer strategy"
+    },
+    {
+      "id": "dex.pm.restore_install_plan.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "restoreInstallPlan emits session-only PackageManager install route facts for single/split APK restore; tools consumes as contract field"
+    },
+    {
+      "id": "dex.pm.restore_install_plan_batch.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "restoreInstallPlanBatch emits batched session-only PackageManager install route facts for restore planning"
+    },
+    {
+      "id": "dex.pm.restore_install_plan_shell_pm.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "restore APK installation uses shell pm session execution; Dex remains responsible for installer/plan facts only"
+    },
+    {
+      "id": "webdav.profile_contract.dex.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "backendprofilerel emits machine-readable put/list/publish/verify/cleanup/security contract fields; tools consumes policy fields instead of re-deriving server quirks"
+    },
+    {
+      "id": "webdav.profile_contract_full.dex.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "WebDAV backend profile carries server identity, support tier, strategy, cleanup and security advisory as a complete machine-readable contract"
+    },
+    {
+      "id": "webdav.profile_contract_authoritative.dex.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "WebDAV strategy display and policy fields are consumed as a Dex-owned contract instead of shell-side server-name heuristics"
+    },
+    {
+      "id": "dex.appstate.android16_17_policy_contract.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "AppState Android 16/17 permission/AppOps/special-access behavior is declared through Dex capability policy and batch facts rather than ad-hoc shell dumpsys parsing"
+    },
+    {
+      "id": "dex.pm.post_install_facts_batch.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "appInventoryPostInstallFactsBatch refreshes PackageManager facts after APK install; tools still owns restore decisions"
+    },
+    {
+      "id": "dex.default_role_facts.batch.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "defaultRoleFacts emits HOME/DIALER/SMS/BROWSER/ASSISTANT role holders; tools still owns policy"
+    },
+    {
+      "id": "dex.storage_media_facts.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "storageMediaFacts emits user data/media/emulated path facts; tools still owns restore decisions"
+    },
+    {
+      "id": "dex.framework_facts.batch.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "frameworkFacts emits compact per-package PM/AppState/AppOps restriction facts for diagnostics; tools still owns plans"
+    },
+    {
+      "id": "dex.device_facts.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "deviceFacts emits raw Build/SystemProperties facts and ROM hints; tools still owns decisions"
+    },
+    {
+      "id": "dex.device_model_name_map.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "Device_List is Dex-builtin only; external tools/Device_List override is intentionally removed"
+    },
+    {
+      "id": "dex.build_info.unified_version.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "DexBuildInfo is the single source of truth for public classes.dex version output"
+    },
+    {
+      "id": "dex.daemon.read_exactly.body_limit.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "daemon framed readExactly rejects negative and oversized bodies above 64 MiB before allocation"
+    },
+    {
+      "id": "dex.daemon.token_seed_shared.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "shared DaemonBootstrap tokenSeed is used by wake-block, cgroup-freeze, process-observer and uid-net-block token spaces"
+    },
+    {
+      "id": "dex.notification.peer_credentials_uid.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "notification daemon resolves AF_UNIX peer uid with LocalSocket.getPeerCredentials without Binder-derived fallback in raw socket context"
+    },
+    {
+      "id": "dex.notification.peer_uid_fail_closed.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "notification daemon rejects a client when LocalSocket peer uid is unavailable instead of using Binder fallback in raw socket context"
+    },
+    {
+      "id": "dex.ssaid.state_cache_shutdown.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "daemon shutdown closes cached SSAID SettingsState HandlerThreads and clears STATE_CACHE"
+    },
+    {
+      "id": "dex.ssaid.state_cache_shutdown_bounded.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "SSAID SettingsState HandlerThreads are quitSafely, bounded-joined, force-quit if needed, and then removed from STATE_CACHE"
+    },
+    {
+      "id": "dex.daemon_supervisor.pid_starttime.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "daemon supervisor validates supervised daemon identity by pid plus /proc starttime to avoid pid reuse false-alive"
+    },
+    {
+      "id": "dex.daemon_supervisor.pid_starttime_cmdline.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "daemon supervisor also verifies /proc cmdline class/mode/socket before treating a pidfile process as the supervised daemon"
+    },
+    {
+      "id": "dex.cchelper.table_hardening.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "CCHelper uses pinned generated tries, ordered profiles and codepoint-safe fallback; shared APK/Dex conversion"
+    },
+    {
+      "id": "dex.device_model_db.entry_count_runtime.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "DeviceModelDb.entryCount returns BY_KEY.size so model count reflects actual normalized map entries"
+    },
+    {
+      "id": "dex.device_model_db.entry_count_selfcheck.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "deviceFacts reports expected/runtime DeviceModelDb entry-count equality so generated table shrink/duplication is visible in dex_check"
+    },
+    {
+      "id": "dex.convergence.boundary_100_reviewed.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "records that APK live install stays shell pm/hybrid while Dex/Rust own stable facts, profiles, audits and manifest/planner producers"
+    },
+    {
+      "id": "appstate.default_home.role_fallback.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "RoleManager HOME holder fallback when resolveActivity returns android/empty"
+    },
+    {
+      "id": "appstate.default_home.get_home_activities.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "PackageManager getHomeActivities default ComponentName fallback before role/single-candidate fallback"
+    },
+    {
+      "id": "appstate.default_home.get_home_activities.reflect.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "Compile-safe reflection bridge for getHomeActivities on SDK stubs that hide the method"
+    },
+    {
+      "id": "appstate.foreground_state.dumpsys_fallback.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "activity-processes+oom+activities+window"
+    },
+    {
+      "id": "appstate.shared_payload.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "snapshot=restore=verify"
+    },
+    {
+      "id": "appstate.special_access.integrated.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "snapshot+restore+verify"
+    },
+    {
+      "id": "appstate.restore.batch.v3",
+      "enabled": true,
+      "required": true,
+      "detail": "canonical-ndjson+structured-items"
+    },
+    {
+      "id": "appstate.verify.batch.v3",
+      "enabled": true,
+      "required": true,
+      "detail": "canonical-ndjson+structured-mismatch"
+    },
+    {
+      "id": "appstate.restore.batch.v4",
+      "enabled": true,
+      "required": true,
+      "detail": "runtime-permission-uid-op+explicit-package-op"
+    },
+    {
+      "id": "appstate.verify.batch.v4",
+      "enabled": true,
+      "required": true,
+      "detail": "effective-runtime-op+stable-flags"
+    },
+    {
+      "id": "appstate.verify.vendor_classification.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "VERIFY_VENDOR_CONSTRAINED emitted by Dex when all verify mismatches are vendor/platform-constrained AppOps or pruned legacy records"
+    },
+    {
+      "id": "appstate.restore.vendor_classification.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "restoreAppStateBatch treats known platform/vendor-owned runtime and scoped AppOps as non-partial structured vendor-constrained successes"
+    },
+    {
+      "id": "appstate.restore.permission_appop_vendor_classification.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "permissionAppOp restore classifies active IME INTERACT_ACROSS_PROFILES op=93 default-to-allowed policy drift as non-partial vendor constrained success"
+    },
+    {
+      "id": "appstate.android17_runtime_permission_appop_package_fallback.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Android 17 runtime location AppOps retry package-scope mode when uid-scope restore leaves effective mode ignored"
+    },
+    {
+      "id": "appstate.special_access_package_fallback.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Legacy usage-stats/all-files effective allow with unknown UID restores package mode and verifies readback; unresolved location/special-access differences remain mismatches"
+    },
+    {
+      "id": "dex.process_observer.bounded_recovery.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Binder death and native EOF trigger bounded recovery; reconnected subscriptions reconcile live target state; stop cancels retries"
+    },
+    {
+      "id": "appstate.uid_raw_service_query.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "UID raw mode fallback via getUidOps with switch/default-op semantics"
+    },
+    {
+      "id": "dex.root_daemon.ready_before_appstate_init.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Root daemon publishes READY before optional AppState cleanup/bootstrap to avoid Android Canary startup hangs"
+    },
+    {
+      "id": "dex.root_daemon.ready_before_hiddenapi_init.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Root daemon publishes READY before hidden-api exemption/bootstrap on Android Canary; HiddenApi initializes lazily per request"
+    },
+    {
+      "id": "dex.root_daemon.ready_before_hardening.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Root daemon publishes READY before best-effort daemon hardening on Android Canary; hardening runs after socket bind/READY"
+    },
+    {
+      "id": "dex.root_daemon.capability_signature.compilefix.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "compilefix: RootDaemon capability rows use the stable addCapability(JsonArray,String,boolean,boolean,String) signature"
+    },
+    {
+      "id": "dex.daemon_supervisor.r8_keep.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "keeps DaemonSupervisorUtil in release R8 output so app_process supervisor does not crash with ClassNotFoundException on Android Canary"
+    },
+    {
+      "id": "appstate.verify.android17_platform_permission_policy.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Android 17 platform-retained privileged/system permission drift is classified as vendor/platform constrained during verify"
+    },
+    {
+      "id": "appstate.verify.default_dialer_vendor_classification.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "verify classifies default/system dialer platform-retained WRITE_SECURE_SETTINGS/INTERACT_ACROSS_USERS/full-screen-intent drift as vendor constrained"
+    },
+    {
+      "id": "appstate.appops_reset.integrated.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "package-scoped"
+    },
+    {
+      "id": "appstate.ssaid.integrated.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "snapshot+restore+verify+uid-key-settings_ssaid"
+    },
+    {
+      "id": "appstate.ssaid.hardening.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "restore-validates-16hex-lowercase;reports-uidKey-filePath-file-readback-source;file-metadata-audit"
+    },
+    {
+      "id": "appstate.ssaid.metadata_restore.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "preserve-or-self-heal-settings_ssaid-owner-mode-context-after-root-atomic-write"
+    },
+    {
+      "id": "appstate.appops.effective_scope_drift.v2",
+      "enabled": true,
+      "required": true,
+      "detail": "otherAppOps raw package/uid drift tolerated when effective mode is restored; derived op2/op10/op41/op42 missing-row verify tolerated"
+    },
+    {
+      "id": "appstate.other_appops.unknown_skip.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "skip framework-rejected unknown/private otherAppOps such as op154/op155 instead of poisoning AppState restore/verify"
+    },
+    {
+      "id": "dex.app_inventory.package_status.single.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "single-package PackageManager status facade for restore-time installed/version/uid decisions"
+    },
+    {
+      "id": "dex.app_inventory.package_filter_batch.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "appInventorySnapshot supports packages:<csv> batch filtering from one cached inventory scan"
+    },
+    {
+      "id": "dex.app_inventory.display_label_facts.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Separate raw display label/source from stable backup directory label; resource fallbacks"
+    },
+    {
+      "id": "dex.cgroup.lock_metrics.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Measure current global monitor wait/hold time without changing lock ownership; status and cleanup summaries"
+    },
+    {
+      "id": "dex.app_inventory.getlist_onecall.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "appInventoryGetlist combines user/xposed inventory, targeted system packages and default HOME metadata in one daemon command"
+    },
+    {
+      "id": "dex.app_inventory.xposed_module_facts.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "AppInventory uses one canonical detector for legacy assets/xposed_init plus modern java/native entrypoints and exposes additive module-format facts"
+    },
+    {
+      "id": "dex.app_inventory.xposed_runtime_facts.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "appInventoryGetlist emits positive-evidence-only Xposed framework/manager facts; missing evidence remains unknown, never absent"
+    },
+    {
+      "id": "dex.process_observer.watch.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "IActivityManager.registerProcessObserver event-driven per-package process watch; no polling"
+    },
+    {
+      "id": "dex.process_observer.guard.v2",
+      "enabled": true,
+      "required": true,
+      "detail": "observer action uses force-stop + verify + killUid/process-group escalation; success requires final alive=false"
+    },
+    {
+      "id": "dex.process_observer.pre_guard.v3",
+      "enabled": true,
+      "required": true,
+      "detail": "observer start immediately runs pre-guard/top-check before waiting for callbacks"
+    },
+    {
+      "id": "dex.process_observer.task_stack.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "registerTaskStackListener event path catches top-activity/task-stack changes without polling"
+    },
+    {
+      "id": "dex.process_observer.taskstack_package_guard.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "TOP task-stack transition without event PID triggers immediate package-scope cgroup freeze for high-risk packages; freezer failure escalates to force-stop/kill"
+    },
+    {
+      "id": "dex.process_observer.live_respawn_guard.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "task-stack targetAlive-not-top triggers immediate package-scope guard instead of waiting for a later shell checkpoint"
+    },
+    {
+      "id": "dex.process_observer.cgroup_high_risk_only.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "ProcessObserver cgroup-freeze primary path is restricted to the hardcoded high-risk package set; ordinary packages use instant force-stop/kill guard"
+    },
+    {
+      "id": "dex.process_observer.high_risk_notop_cgroup_freeze.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "high-risk targetAlive-not-top task-stack events keep cgroup-freeze-first semantics instead of force-stopping QQ/WeChat-style packages"
+    },
+    {
+      "id": "dex.process_observer.cgroup_freeze_reuse.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "high-risk ProcessObserver reuses already-frozen package pid sets instead of opening duplicate cgroup freezer tokens"
+    },
+    {
+      "id": "dex.process_observer.cgroup_freeze_reuse_all_alive_pids.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "high-risk pid-scope cgroup freeze records the full alive pid-set so sibling callbacks reuse the same cgroup token"
+    },
+    {
+      "id": "dex.process_observer.cgroup_stale_token_prune.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "high-risk process observer prunes cgroup tokens whose frozen pid-set has already exited before freezing a newer pid generation"
+    },
+    {
+      "id": "dex.process_observer.cgroup_dead_pid_package_retry.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "high-risk onProcessDied dead-pid cgroup failures retry package-scope cgroup freeze before any force-stop fallback"
+    },
+    {
+      "id": "dex.process_observer.high_risk_top_fast_freeze.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "high-risk TOP task-stack transitions attempt direct package-scope cgroup freeze before heavier guard-stop context collection"
+    },
+    {
+      "id": "dex.process_observer.debounce.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "recent final alive=false suppresses redundant process-died force-stop actions"
+    },
+    {
+      "id": "dex.process_observer.debounce.v2",
+      "enabled": true,
+      "required": true,
+      "detail": "debounce elapsedMs is monotonic/clamped and action execution is serialized to avoid negative debug deltas"
+    },
+    {
+      "id": "dex.process_observer.lifecycle_token.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "non-blocking processObserverStart/processObserverStop token lifecycle for tools payloads; no duration guessing"
+    },
+    {
+      "id": "dex.process_observer.bootstrap_gate.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "callbacks are not actioned until wake-block apply and pre-guard complete, avoiding startup callback interleaving"
+    },
+    {
+      "id": "dex.process_observer.global_daemon.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "RootDaemon registers process observer/task stack listener once and routes callbacks to active targets"
+    },
+    {
+      "id": "dex.process_observer.target_lifecycle.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "processObserverStart/Stop add and remove package targets while global listeners stay registered"
+    },
+    {
+      "id": "dex.process_observer.batch_watchset.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "processObserverBatchStart/Stop batch watch-set commands are available for tools; no per-app empty fallback call"
+    },
+    {
+      "id": "dex.process_observer.batch_stop_safe.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "processObserverBatchStop reports ok/restoreOk/stateDeleted and preserves failed sessions for safety-net cleanup"
+    },
+    {
+      "id": "dex.process_observer.restore_session_nologd.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "ProcessObserver restore session can disable per-target native logd observer for fast batch stop while preserving framework callbacks"
+    },
+    {
+      "id": "dex.process_observer.restore_session_direct_start.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "ProcessObserver can build and start restore guard session directly from restore_package_compare_map.tsv, avoiding shell per-app spec construction"
+    },
+    {
+      "id": "dex.process_observer.restore_session_facts_cache.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "ProcessObserver restore session direct start emits restore_session_facts.tsv with HOME/IME/role/package uid installed facts"
+    },
+    {
+      "id": "dex.process_observer.restore_action_policy_builder.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "ProcessObserver Dex direct start owns restore-session action building from policy flags, HOME/IME and high-risk hints"
+    },
+    {
+      "id": "dex.process_observer.batch_cleanup_stale.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "ProcessObserver exposes TTL-bound cleanup for batch persistent safety state; tools uses TTL=0 on controlled exit to leave no root tmp namespace"
+    },
+    {
+      "id": "dex.tmp_state.run_tmpdir_scope.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Dex safety state/socket paths honor SPEEDBACKUP_RUN_TMPDIR and do not create root-level /data/local/tmp namespaces during normal tools runs"
+    },
+    {
+      "id": "dex.process_observer.batch_stop_summary_tsv.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "ProcessObserver batch stop can write per-package result summary TSV for tools/debug without parsing token detail logs"
+    },
+    {
+      "id": "dex.process_observer.batch_persistent_safety.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "processObserver batch writes per-token persistent safety state; stale cleanup restores wake-block/cgroup safety nets before deleting state"
+    },
+    {
+      "id": "dex.app_wake_block.persistent_state.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "wake-block writes atomic disk snapshot after original-state capture and each touched AppOps/standby apply"
+    },
+    {
+      "id": "dex.app_wake_block.persistent_restore.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "wake-block can restore by wake token, process-observer owner token, package, or all stale snapshots after daemon restart"
+    },
+    {
+      "id": "dex.app_wake_block.restore_verify.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "wake-block restore aggregates AppOps/standby shell rc; failed restore keeps persistent state and reports failure"
+    },
+    {
+      "id": "dex.app_wake_block.persistent_cleanup.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "wake-block persistent state cleanup restores stale snapshots and deletes only after restore confirms stateDeleted=true"
+    },
+    {
+      "id": "dex.app_wake_block.state_delete_verify.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "wake-block restore success requires persisted state deletion; delete failure reports STOP_FAILED and retains state"
+    },
+    {
+      "id": "dex.app_wake_block.cleanup_force_zero_ttl.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "appWakeBlockCleanupStale TTL_MS=0 treats all persistent states as stale for manual/post-restore cleanup"
+    },
+    {
+      "id": "dex.app_wake_block.cleanup_restore_failed_retain_state.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "TTL cleanup retains stale wake-block state files when restore fails, preserving audit trail and retry ability"
+    },
+    {
+      "id": "dex.app_wake_block.snapshot_unsafe_refuse_apply.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "wake-block refuses to apply AppOps/standby restrictions when the original-state snapshot is unsafe, avoiding unrecoverable residual restrictions"
+    },
+    {
+      "id": "dex.app_wake_block.exempted_restore_alias.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "legacy compatibility marker; superseded by deviceidle whitelist restore"
+    },
+    {
+      "id": "dex.app_wake_block.deviceidle_whitelist_restore.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "exempted standby bucket is restored through deviceidle whitelist instead of unsupported am set-standby-bucket exempted"
+    },
+    {
+      "id": "dex.app_wake_block.direct_appops.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "wake-block AppOps get/set prefers AppOpsManager hidden API before shell fallback"
+    },
+    {
+      "id": "dex.app_wake_block.direct_appops_public_name.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "wake-block maps RUN_IN_BACKGROUND/RUN_ANY_IN_BACKGROUND to public AppOps names before strOpToOp, avoiding unnecessary cmd appops fallback"
+    },
+    {
+      "id": "dex.app_wake_block.direct_standby.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "wake-block standby bucket get/set prefers UsageStatsManager/IUsageStatsManager before shell fallback"
+    },
+    {
+      "id": "dex.app_wake_block.direct_deviceidle.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "wake-block deviceidle whitelist get/set prefers IDeviceIdleController before shell fallback"
+    },
+    {
+      "id": "appstate.deviceidle_whitelist.direct_collect.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "AppState batterySettings deviceidleWhitelist collection prefers IDeviceIdleController before dumpsys fallback"
+    },
+    {
+      "id": "appstate.deviceidle_whitelist.direct_restore.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "AppState deviceidle whitelist restore prefers IDeviceIdleController before cmd/dumpsys fallback"
+    },
+    {
+      "id": "dex.force_stop.best_effort_daemon_first.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "tools force-stop helper prefers forceStopPackageBatch daemon before am force-stop fallback"
+    },
+    {
+      "id": "dex.process_observer.raw_transaction_code.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "process observer callback log includes raw Binder transaction code for AIDL mapping diagnostics"
+    },
+    {
+      "id": "dex.process_observer.direct_top_check.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "process observer TOP_CHECK uses IActivityTaskManager direct reflection; no dumpsys activity/window shell path"
+    },
+    {
+      "id": "dex.uid_live_state.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "uidLiveState emits UID/running-process/procState facts with IUidObserver API probe; no planner/hash"
+    },
+    {
+      "id": "dex.package_install_snapshot.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "packageInstallSnapshot emits installer/sourceDir/dataDir/MATCH_UNINSTALLED/packagesForUid facts; no planner/hash"
+    },
+    {
+      "id": "dex.package_restriction_snapshot.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "packageRestrictionSnapshot emits standby/hibernation/auto-revoke/AppOps restriction facts; no planner/hash"
+    },
+    {
+      "id": "dex.process_observer.pure_event_cgroup_first.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "observer startup/pre-guard force-stop is disabled; event PID or TOP package scope is frozen first, kill only when freezer fails"
+    },
+    {
+      "id": "dex.uid_net_block.netpolicy_direct.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "per-UID network block prefers INetworkPolicyManager Binder policy before any shell route"
+    },
+    {
+      "id": "dex.uid_net_block.netd_direct_probe.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "diagnostic direct INetd bandwidth naughty-app Binder provider is available as optional hard mode/probe"
+    },
+    {
+      "id": "dex.uid_net_block.persistent_restore.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "UID network block writes persistent state and restores stale/missing tokens with expected user/package guard"
+    },
+    {
+      "id": "dex.uid_net_block.cleanup_restore_failed_retain_state.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "TTL cleanup retains stale UID network block state files when restore fails, preserving audit trail and retry ability"
+    },
+    {
+      "id": "dex.uid_net_block.smart_policy.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "tools can enable per-UID network block only for high-risk packages to avoid broad overhead"
+    },
+    {
+      "id": "dex.cgroup_freezer.lifecycle.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "cgroup freezer tar-scope guard with start/stop tokens, freeze-all-current-pids, per-pid /proc cgroup path resolution, cgroup.events verification, persistent restore cleanup, and process-observer new-pid sessions"
+    },
+    {
+      "id": "dex.process_observer.cgroup_freezer_guard.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "process observer freezes newly awakened high-risk package pids during tar-scope guard and falls back to event-driven force-stop when unavailable"
+    },
+    {
+      "id": "dex.cgroup_freezer.persistent_restore.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "cgroup freezer persistent state restore/cleanup for unexpected exit or daemon restart"
+    },
+    {
+      "id": "dex.process_observer.cgroup_freezer_fallback_kill.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "process observer escalates to event-driven force-stop/kill when cgroup freezer is unavailable or verify fails"
+    },
+    {
+      "id": "dex.cgroup_freezer.native_helper_optional.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "cgroup freezer lifecycle can use optional native cgfreezer helper for raw /proc and cgroup.freeze hot path, with Java fallback and the same persistent restore semantics"
+    },
+    {
+      "id": "dex.process_observer.native_logd_events_optional.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "process observer can use optional native cgfreezer LOG_ID_EVENTS helper as a secondary event source for am_proc_start/am_proc_died, pid cache, and low-overhead new-pid detection"
+    },
+    {
+      "id": "dex.cgroup_freezer.native_daemon_optional.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "optional cgfreezerd unix socket daemon provides persistent scan/freeze/thaw/logd event hot path with Dex lifecycle/state fallback"
+    },
+    {
+      "id": "dex.cgroup_freezer.batch_daemon_prewarm.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "tools can prewarm/verify native cgfreezerd once at batch start so per-app freeze uses an already-running daemon"
+    },
+    {
+      "id": "dex.cgroup_freezer.persistent_batch_session.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "native cgfreezerd stays alive after batch prewarm; each app sends fast SCAN/FREEZE/THAW/KILL commands and resolves uid/pid in C for the current round"
+    },
+    {
+      "id": "dex.cgroup_freezer.native_package_atomic.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "native cgfreezerd FREEZE_PKG performs one live C-side package scan and freezes all current package pids in one daemon request while Dex retains token and persistent restore ownership"
+    },
+    {
+      "id": "dex.cgroup_freezer.native_package_kill_live_rescan.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "when FREEZE_PKG fails, Dex orders native KILL_PKG live /proc scan+identity-verified SIGKILL, AMS force-stop, then native post-force-stop rescan before legacy Dex escalation"
+    },
+    {
+      "id": "dex.cgroup_freezer.native_thaw_uid_emergency.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "native THAW_UID is reserved for uncertain native package-freeze cleanup and thaws app-UID cgroup and Binder freezer state"
+    },
+    {
+      "id": "dex.cgroup_freezer.stop_final_release_thaw_uid.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "cgroupFreezeStop performs a final app-scope THAW_UID release before persistent-state deletion so backup/restore app scopes end thawed even if original Android freezer state was frozen"
+    },
+    {
+      "id": "dex.cgroup_freezer.process_observer_stop_defer_to_app_scope.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "processObserver cgroup token stop defers thaw/restore while a primary backup/restore app-scope freeze token for the same package is still active; final app-scope THAW_UID performs the release"
+    },
+    {
+      "id": "dex.cgroup_freezer.primary_app_scope_package_freeze.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "primary backup/restore app-scope freeze ignores shell-supplied firstPid for selection and always starts package-scope freeze so all currently alive package pids are captured before tar/restore payload work"
+    },
+    {
+      "id": "dex.cgroup_freezer.primary_app_scope_refresh.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "primary backup/restore app-scope freeze can be refreshed by tools and ProcessObserver to re-freeze all currently alive package pids and absorb new pids without opening a separate observer token"
+    },
+    {
+      "id": "dex.process_observer.primary_cgroup_refresh.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "ProcessObserver refreshes the active primary app-scope cgroup token instead of opening/stopping a separate cgroup token while backup/restore payload work is still running"
+    },
+    {
+      "id": "dex.process_observer.wake_block_stop_defer_to_app_scope.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "processObserver wake-block restore is deferred while a primary backup/restore cgroup app-scope token is still active; the primary cgroup final release restores deferred wake-block package state after THAW_UID"
+    },
+    {
+      "id": "dex.cgroup_freezer.daemon_parent_control.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "cgfreezerd parent handles HELLO/CAPS/PING/STATUS/STOP directly without forking, ensuring complete STOP responses and daemon health counters"
+    },
+    {
+      "id": "dex.process_observer.dead_event_noop.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "ProcessObserver ignores onProcessDied callbacks when no target process remains alive, avoiding unnecessary cgroup fallback force-stop during restore cleanup"
+    },
+    {
+      "id": "dex.cgroup_freezer.binder_freeze_optional.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "optional native Binder freezer ioctl barrier before cgroup.freeze, with unsupported/EAGAIN fallback to cgroup freezer"
+    },
+    {
+      "id": "dex.cgroup_freezer.v1_fallback_optional.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "optional native cgfreezerd cgroup v1 freezer fallback for older Android/kernel devices when cgroup v2 per-pid freezer is unavailable; Dex lifecycle/state semantics remain unchanged"
+    },
+    {
+      "id": "dex.cgroup_freezer.native_scan_package_optional.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "cgroup freezer can use optional native cgfreezer scan-package for low-overhead /proc package pid scanning, with Java fallback"
+    },
+    {
+      "id": "dex.cgroup_freezer.cgroup_first_no_suspend.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "tools starts cgroup freezer before legacy kill/suspend and skips package suspend when freezer token is active"
+    },
+    {
+      "id": "dex.process_observer.event_pid_freeze_first.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "ProcessObserver attempts cgroup freeze for eventPid even before full /proc scan sees the process"
+    },
+    {
+      "id": "dex.process_observer.smart_policy.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "tools can choose guard-stop without wake-block for low-risk apps and restricted wake-block for high-risk packages"
+    },
+    {
+      "id": "dex.process_observer.restore_freeze_action.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "ProcessObserver accepts cgroup-freeze action so restore freeze-list/default HOME respawns are frozen event-driven instead of monitor-only"
+    },
+    {
+      "id": "dex.app_wake_block.token_match_guard.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "wake-block persistent restore validates expected user/package with owner/wake token to prevent cross-session token collision mismatch"
+    },
+    {
+      "id": "dex.app_wake_block.token_epoch.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "wake-block token seed includes process time/pid epoch to reduce token reuse after daemon restart"
+    },
+    {
+      "id": "dex.process_observer.token_epoch.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "process-observer token seed includes process time/pid epoch to reduce owner-token reuse after daemon restart"
+    },
+    {
+      "id": "dex.process_observer.stop_missing_restore.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "processObserverStop missing-token path invokes Dex persistent wake-block restore before tools shell fallback"
+    },
+    {
+      "id": "dex.app_kill.top_check.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "appKillGuard/processObserver guard logs topPackage/topActivity before and after force-stop"
+    },
+    {
+      "id": "dex.app_kill.context.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "kill guard emits KILL_CONTEXT killState=foreground/background/foreground-service-event/background-subprocess/already-dead"
+    },
+    {
+      "id": "dex.app_kill.verify.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "single package kill guard with before/after alive-pid verification"
+    },
+    {
+      "id": "dex.app_wake_block.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "short-window force-stop/AppOps/standby-bucket wake block with snapshot+restore token"
+    },
+    {
+      "id": "dex.app_wake_block.restore.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "wake-block logs original RUN_IN_BACKGROUND/RUN_ANY_IN_BACKGROUND/standby bucket and restores touched state"
+    },
+    {
+      "id": "dex.app_wake_block.parser.v2",
+      "enabled": true,
+      "required": true,
+      "detail": "wake-block parser separates AppOps packageMode/uidMode/effectiveMode and maps numeric standby buckets such as 10=active"
+    },
+    {
+      "id": "dex.hidden_api.bootstrap.v2",
+      "enabled": true,
+      "required": true,
+      "detail": "Hidden API exemption bootstrap is attempted once as an optional compatibility helper in app_process/root-daemon mode"
+    },
+    {
+      "id": "dex.hidden_api.bypass_softgate.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "HiddenApiBypass success is no longer a hard capability gate; functional hidden/service API smoke tests decide pass/fail"
+    },
+    {
+      "id": "dex.hidden_api.runtime_probe.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "runtime probe reports non-SDK class/method/service availability for process observer, task stack, force-stop, AppOps and standby APIs"
+    },
+    {
+      "id": "appstate.daemon.af_unix.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "stream-framed"
+    },
+    {
+      "id": "appstate.daemon.runtime_preinit.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "context+pm+appops-before-ready"
+    },
+    {
+      "id": "dex.daemon_bootstrap.shared.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "appstate+notify+hiddenapi"
+    },
+    {
+      "id": "dex.daemon_bootstrap.sequential_guard.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "request-exception-does-not-kill-sequential-daemon"
+    },
+    {
+      "id": "dex.daemon_hardening.oom_protect.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "daemon best-effort oom_score_adj/renice self-protection"
+    },
+    {
+      "id": "dex.daemon_supervisor.watchdog.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "external Dex watchdog can restart killed root-side daemons while owner process is alive"
+    },
+    {
+      "id": "dex.http_util.get.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "short-lived HttpUtil get; used by tools Device_List sharded downloader"
+    },
+    {
+      "id": "dex.device_list.download.v1",
+      "enabled": false,
+      "required": false,
+      "detail": "removed: batch device-list downloader aborted on some Android 16 app_process builds; tools use HttpUtil sharded downloader"
+    },
+    {
+      "id": "dex.google_package_snapshot.shared.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "install-diagnostics+appstate-verify"
+    },
+    {
+      "id": "appstate.structured_result_codes.v2",
+      "enabled": true,
+      "required": true,
+      "detail": "result-header+package+item-ndjson"
+    },
+    {
+      "id": "appstate.scoped_appops_fields.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "packageMode+uidMode+effectiveMode"
+    },
+    {
+      "id": "appstate.location_policy_separation.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "preserves granted location stored mode when global location is disabled; verifies raw state separately from effective policy"
+    },
+    {
+      "id": "appstate.location_restore_order.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "restores related grants before location AppOps and rechecks known location policy after package fallback"
+    },
+    {
+      "id": "appstate.scoped_default_equivalence.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "normalizes framework default only with matching known package and uid scopes"
+    },
+    {
+      "id": "appstate.explicit_package_mode_snapshot.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "getOpsForPackage-not-effective-check"
+    },
+    {
+      "id": "appstate.default_appop_missing_equivalent.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "missing-row-equals-mode-default"
+    },
+    {
+      "id": "appstate.permission_denied_item_partial.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "item-level-securityexception-does-not-poison-batch"
+    },
+    {
+      "id": "appstate.legacy_permission_normalize.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "skip-nonchangeable-grants+special-appop-permission-bridge"
+    },
+    {
+      "id": "appstate.permission_appop_nonrestorable_skip.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "skip framework-rejected private permission AppOps such as SYSTEM_APPLICATION_OVERLAY/op164"
+    },
+    {
+      "id": "appstate.permission_flags_nonrestorable_skip.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "skip framework-rejected custom permission flag writes such as Shizuku API_V23 flags=0"
+    },
+    {
+      "id": "appstate.non_ok_structured_body.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "daemon-body-kept-for-non-ok-package-results"
+    },
+    {
+      "id": "appstate.runtime_permission_uid_restore.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "clear-package+set-uid-effective-mode"
+    },
+    {
+      "id": "appstate.permission_flags.stable_mask.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "exclude-os-managed-revoked-compat"
+    },
+    {
+      "id": "appstate.special_access.deduplicated.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "special-op-owned-by-specialAccess"
+    },
+    {
+      "id": "appstate.localization.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "permission+appops+mode+special-cn;raw-fields-preserved"
+    },
+    {
+      "id": "appstate.localization.raw_plus_cn.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "raw-machine-fields-plus-best-effort-cn-display-fields"
+    },
+    {
+      "id": "appstate.batch_preflight_validation.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "reject-before-mutation"
+    },
+    {
+      "id": "appstate.token_sections",
+      "enabled": false,
+      "required": false,
+      "detail": "removed"
+    },
+    {
+      "id": "appops.reset.package_batch",
+      "enabled": false,
+      "required": false,
+      "detail": "removed-from-public-surface"
+    },
+    {
+      "id": "webdav.rel_only.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "only *rel WebDAV operations are exposed for stream/atomic/data paths"
+    },
+    {
+      "id": "webdav.relpath.strict_gate.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDavUtil rejects absolute/dot-dot/control/encoded traversal relative paths before URL build"
+    },
+    {
+      "id": "webdav.legacy_url_surface",
+      "enabled": false,
+      "required": false,
+      "detail": "non-rel URL aliases removed: mkdirs/putstdin/putstdinchunked/getstdout/move/copy"
+    },
+    {
+      "id": "webdav.daemon.af_unix",
+      "enabled": true,
+      "required": true,
+      "detail": "stream-framed"
+    },
+    {
+      "id": "webdav.daemon.mkcol_cache.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "per-daemon-url-cache"
+    },
+    {
+      "id": "webdav.daemon.list_cache.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "per-daemon-propfind-cache-invalidated-on-write"
+    },
+    {
+      "id": "webdav.putbatchrel.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "manifest-rel-to-localfile-batch-put"
+    },
+    {
+      "id": "webdav.managed_put.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Dex-managed direct/atomic rel upload policy"
+    },
+    {
+      "id": "webdav.putstdin.skip_parent_mkdir.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "putstdinmanagedrel accepts parent mkdir mode from tools; batch-ensured parents can skip per-payload MKCOL while non-cached paths are ensured inside WebDavUtil"
+    },
+    {
+      "id": "webdav.list_classify.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDavUtil classifylistrel emits kind/rel/size/mtime/name TSV for app payload, app metadata, media payload and reserved payload classification"
+    },
+    {
+      "id": "webdav.classify_depth1_walk_fallback.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "classifylistrel falls back to recursive Depth:1 walk when Depth:infinity PROPFIND is rejected by the server"
+    },
+    {
+      "id": "webdav.remote_list.deep_facts.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "remote depth listing facts are classified inside Dex; tools consumes TSV facts and keeps app_details/restore planning in shell"
+    },
+    {
+      "id": "webdav.prepare_dirs_plan.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDavUtil preparedirsplanrel owns WebDAV directory list/exists/create transaction while tools passes desired app-dir manifest and seeds cache from TSV facts"
+    },
+    {
+      "id": "webdav.prepare_dirs_created_only_progress.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDavUtil preparedirsplanrel reports progress against directories that actually need creation so existing remote app directories stay out of user-facing progress"
+    },
+    {
+      "id": "webdav.prepare_dirs_parallel_mkcol.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDavUtil preparedirsplanrel uses a bounded four-worker direct-MKCOL fast path for direct children proven missing by the root Depth:1 listing, with conservative ensureDirRel fallback"
+    },
+    {
+      "id": "webdav.prepare_dirs_full_timing.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Directory preparation reports full-call, root listing, parsing and creation times on every branch"
+    },
+    {
+      "id": "webdav.classify_parallel_depth1.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDavUtil classifylistrel parallelizes verified Depth:1 recursive listing across top-level subtrees with a bounded four-worker pool and serial fallback"
+    },
+    {
+      "id": "webdav.profile_visible_compact.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "tools displays a compact WebDAV capability summary once while full feature facts stay in debug logs"
+    },
+    {
+      "id": "webdav.managed_list_classify.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "managedlistclassifyrel exposes transport-owned WebDAV classified TSV facts without shell-side file type guessing"
+    },
+    {
+      "id": "webdav.managed_batch_put_with_parents.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "managedbatchputrelwithparents accepts rel/local manifest and performs parent prepare plus managed PUT as a transport transaction; tools still owns backup plan"
+    },
+    {
+      "id": "webdav.propfind.no_cache.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDavUtil PROPFIND sends no-cache headers to reduce stale directory listings from rclone/proxies"
+    },
+    {
+      "id": "webdav.managed_probe.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Dex-managed WebDAV stream capability probe"
+    },
+    {
+      "id": "webdav.cjk_put_replay_probe.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "replay-safe managed probe retries encoded CJK PUT 404 with raw UTF-8 and caches successful origin path mode"
+    },
+    {
+      "id": "webdav.managed_probe.nodot_temp.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "managed probe uses non-dot temp names because some Android/NAS WebDAV roots reject hidden dotfiles with HTTP 404"
+    },
+    {
+      "id": "webdav.stream_probe.subdir.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "remote_stream managed probe runs inside Backup_zstd_X after MKCOL instead of PUT-ing directly under remote_url root"
+    },
+    {
+      "id": "webdav.daemon.normal_diagnostics_log.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "normal WebDAV managed upload diagnostics are written to webdav_daemon_info.log instead of daemon stderr"
+    },
+    {
+      "id": "webdav.daemon.read_body_limit.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDAV daemon manifest/control request bodies reject oversized allocations above 64 MiB while stream uploads remain direct InputStream paths"
+    },
+    {
+      "id": "webdav.tsv_output.control_guard.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDAV listrel/classifylistrel skip remote href entries containing TAB/CR/LF/control characters before emitting tools TSV"
+    },
+    {
+      "id": "webdav.direct_children_manifest.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDavUtil emits one-level safe D/N child listings for tools remote restore menus"
+    },
+    {
+      "id": "webdav.download_manifest.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDavUtil recursively generates safe rel-to-local download manifests so tools does not parse remote href TSV hotpaths"
+    },
+    {
+      "id": "webdav.orphan_roots_manifest.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDavUtil emits safe top-level BUNDLE/DIR/FILE manifest rows for remote orphan cleanup without shell parsing WebDAV href trees"
+    },
+    {
+      "id": "dex.daemon.common_framed_reader.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "HiddenApi/Notification/AppState/RootDaemon framed socket readers call the shared DaemonBootstrap bounded read helpers"
+    },
+    {
+      "id": "rust.native_primitives.convergence_source.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "Rust source tree is the convergence target for speedscan/eventwait/cgfreezer/unixsock/uidexec native primitives; rebuild native helpers to activate"
+    },
+    {
+      "id": "rust.native_replacement_rc.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "Rust helper tree includes an all-helper replacement RC parity harness; Android native binaries must be rebuilt and smoke-tested to activate"
+    },
+    {
+      "id": "webdav.rclone_json_direct_put.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "rclone app_details.json direct PUT handled inside WebDavUtil"
+    },
+    {
+      "id": "webdav.rclone_direct_all.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "rclone managed WebDAV uploads use direct PUT to avoid MOVE stat noise"
+    },
+    {
+      "id": "webdav.pan123_managed_direct.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "123pan official WebDAV managed uploads use direct PUT to avoid .part MOVE HTTP 500"
+    },
+    {
+      "id": "webdav.compat_probe.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Dex-side WebDAV OPTIONS/PUT/MOVE/STAT/GET/COPY/DELETE feature probe"
+    },
+    {
+      "id": "webdav.base_preflight.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "configured-base split+stat+404-only parent-chain MKCOL+verify inside WebDavUtil daemon"
+    },
+    {
+      "id": "webdav.directory_ensure.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "relative directory stat+404-only parent-chain MKCOL+verify inside WebDavUtil daemon"
+    },
+    {
+      "id": "webdav.options_preflight.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "OPTIONS method policy and advisory Allow analysis inside WebDavUtil daemon"
+    },
+    {
+      "id": "dex.root_unified_daemon.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "HiddenApi/AppState/Notification can share SpeedBackupRootDaemon AF_UNIX daemon with old-daemon fallback"
+    },
+    {
+      "id": "dex.display_power.root_daemon.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "setDisplayPowerMode is available as a RootDaemon hot command"
+    },
+    {
+      "id": "dex.app_inventory.snapshot.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "PackageManager inventory snapshot includes package/label/uid/version/source/flag as JSONL or shell map formats"
+    },
+    {
+      "id": "dex.app_inventory.daemon_cache.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "SpeedBackupRootDaemon HiddenApi namespace reuses AppInventory cache within the same run"
+    },
+    {
+      "id": "dex.app_inventory.source_paths.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "AppInventory exports sourceDir/splitSourceDirs and pkgApkPathMap for APK backup without shell pm path"
+    },
+    {
+      "id": "dex.app_inventory.pkg_uid.single.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "single package UID refresh after install touched restore"
+    },
+    {
+      "id": "dex.package_manager.batch_facts.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "PackageManager facts stay Dex-side through AppInventory/packageLiveState/packageInstallSnapshot; no restorePlan ownership"
+    },
+    {
+      "id": "dex.appops.restriction_facts.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "AppOps/restriction facts are queried in Dex snapshots; shell only consumes facts"
+    },
+    {
+      "id": "dex.process_observer.integrated_wake_block.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "processObserver action suffixes *-appops/*-restricted start wake-block internally and restore on observer stop"
+    },
+    {
+      "id": "dex.process_observer.action_wake_suffix.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "guard-stop-restricted/guard-kill-restricted single-command observer+wake-block syntax"
+    },
+    {
+      "id": "webdav.deep_policy_table.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDavUtil exposes consolidated vendor/pacer/PROPFIND/error-policy capability marker for deeper Dex-side WebDAV policy"
+    },
+    {
+      "id": "webdav.stream_heartbeat_error_kind.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDavUtil managed stream logs low-noise heartbeat/progress/idle/fail kind with sent bytes"
+    },
+    {
+      "id": "webdav.stream_stall_watchdog.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDavUtil aborts managed stream uploads when source bytes stop advancing for a bounded interval"
+    },
+    {
+      "id": "webdav.stream_stall_socket_abort.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDavUtil closes the active WebDAV socket from the stall watchdog to interrupt blocking socket writes"
+    },
+    {
+      "id": "webdav.stream_finalize_response_timeout.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "legacy capability alias: managed streaming PUT has a bounded post-body response wait"
+    },
+    {
+      "id": "webdav.stream_post_body_response_timeout.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "managed streaming PUT bounds server processing/response wait after client request-body emission without treating body completion as remote success"
+    },
+    {
+      "id": "webdav.stream_finalize_phase_guard.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "legacy capability alias: source-byte stall watchdog is disabled after request-body EOF"
+    },
+    {
+      "id": "webdav.stream_post_body_phase_guard.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "source-byte stall watchdog is disabled after client request-body EOF while waiting for synchronous server/provider processing and HTTP response"
+    },
+    {
+      "id": "webdav.alist_new_payload_direct.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "AList default :5244 /dav profile can use direct-new-known-missing for filelist-confirmed new payloads while existing payloads keep atomic replacement"
+    },
+    {
+      "id": "webdav.known_missing_direct_by_fact.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "filelist-confirmed missing streaming payloads use the final path directly even when vendor detection is generic; existing payloads still keep the backend auto/atomic replacement policy"
+    },
+    {
+      "id": "webdav.alist_long_finalize.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "legacy capability alias: AList-family post-body server-processing wait may use a longer bound"
+    },
+    {
+      "id": "webdav.alist_openlist_sync_put_semantics.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "official AList, OpenList/AListLiteAndroid, and :5244/dav fallback share synchronous WebDAV PUT semantics: client body completion is not remote success; 2xx response is required"
+    },
+    {
+      "id": "webdav.pathmode_retry_http400.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Replay-safe WebDAV requests retry HTTP 400 as well as 404 with alternate encoded/raw UTF-8 path mode for CJK AList/cloud-drive mounts"
+    },
+    {
+      "id": "webdav.backend_profile.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "Dex owns WebDAV backend profile detection and direct/atomic/post-body/path-mode policy selection; tools only passes relPath and known-missing hints"
+    },
+    {
+      "id": "webdav.server_provider_profile.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "OPTIONS preflight exposes server family/display plus presentation-only backing-provider hints covering major China/global cloud drives without using unverified hints to select transport policy"
+    },
+    {
+      "id": "webdav.redirect_auth_guard.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "authenticated redirects reject HTTPS-to-HTTP downgrade and cross-host/port credential forwarding"
+    },
+    {
+      "id": "webdav.feature_profile.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "runtime managed/compat probe facts constrain WebDAV atomic publish policy instead of relying only on server names"
+    },
+    {
+      "id": "webdav.feature_profile_complete.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "full runtime feature facts cover stream/fixed PUT, GET, MKCOL, DELETE, Depth0/1/infinity, recursive fallback, MOVE/COPY/STAT/remote-size/atomic/quota/body/cleanup"
+    },
+    {
+      "id": "webdav.backend_contract_probe.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "backup preflight runs a disposable full WebDAV contract probe after the minimal stream gate; optional feature failures are profiled without blindly disabling direct streaming"
+    },
+    {
+      "id": "webdav.list_strategy_by_fact.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "remote recursive listing skips known-bad Depth: infinity and uses verified Depth:1 recursive walk when capability facts require it"
+    },
+    {
+      "id": "webdav.fixed_put_chunked_fallback.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "replayable local-file PUT switches to chunked transfer when runtime facts prove fixed Content-Length PUT unsupported but stream PUT works"
+    },
+    {
+      "id": "webdav.nas_identity_profile.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "presentation-only NAS identity hints recognize Synology DSM, QNAP QTS/QuTS, UGREEN UGOS Pro, fnOS, ZSpace, TrueNAS, ASUSTOR ADM, TerraMaster TOS, OpenMediaVault, and Unraid without granting unprobed transport capabilities"
+    },
+    {
+      "id": "webdav.speedbackup_identity.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "bounded cached same-origin public capabilities identify SpeedBackup; transfer behavior remains probe-driven"
+    },
+    {
+      "id": "webdav.sftpgo_identity.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "presentation-only SFTPGo WebDAV identity is recognized from the Server header while all transport capabilities remain probe-driven"
+    },
+    {
+      "id": "webdav.zspace_identity.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "presentation-only 极空间/ZSpace NAS WebDAV identity is recognized from Server hints or the observed SabreDAV volume-root URL shape while all transport capabilities remain probe-driven"
+    },
+    {
+      "id": "webdav.nas_identity_extended.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "presentation-only NAS identity hints recognize TrueNAS, ASUSTOR ADM, TerraMaster TOS, OpenMediaVault, and Unraid from explicit host/path/server tokens while all transport capabilities remain probe-driven"
+    },
+    {
+      "id": "webdav.generic_nas_dav5005_identity.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "presentation-only local NAS WebDAV identity recognizes private-IP :5005/:5006 /Dav-style endpoints with empty Server headers without granting unprobed transport capabilities"
+    },
+    {
+      "id": "webdav.replayable_put_paths_fact_driven.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "all production replayable local-file WebDAV PUT paths consume measured fixed-vs-chunked facts instead of assuming Content-Length support"
+    },
+    {
+      "id": "webdav.atomic_policy_fact_priority.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "when runtime atomic-publish facts are known they override legacy vendor direct-all defaults; vendor identity remains fallback/semantic context only"
+    },
+    {
+      "id": "webdav.managed_probe_chunked.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "managed stream probe uses a replayable tiny Transfer-Encoding: chunked PUT so production stream support is proven without replaying archive data"
+    },
+    {
+      "id": "webdav.backend_support_tier.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDAV backend profile exposes VERIFIED/COMPATIBLE/GENERIC/EXPERIMENTAL support tier and feature source"
+    },
+    {
+      "id": "webdav.pacer_retry_after_jitter.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "replay-safe control requests use bounded exponential backoff with jitter and Retry-After hints; streaming PUT remains non-replayable"
+    },
+    {
+      "id": "webdav.move_copy_verify_after_ambiguous.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "ambiguous MOVE/COPY transport results are verified against destination/source facts instead of blind mutation retry"
+    },
+    {
+      "id": "webdav.put_verify_after_ambiguous.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "ambiguous PUT terminal results are verified with remote STAT before atomic publish or direct-known-missing cleanup decisions"
+    },
+    {
+      "id": "webdav.put_405_ambiguous_stat.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "PUT-specific 405 responses from WebDAV bridge providers are treated as verify-eligible but never blindly retried"
+    },
+    {
+      "id": "webdav.direct_put_verify_before_cleanup.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "direct known-missing PUT failures verify the final path before any failed-upload cleanup can delete a provider-committed object"
+    },
+    {
+      "id": "webdav.put_2xx_body_semantic_guard.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "PUT 2xx responses with conservative JSON error schemas are reclassified and must pass independent remote verification before success is trusted"
+    },
+    {
+      "id": "webdav.put_2xx_stat_verify.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "PUT 2xx success is independently verified with remote STAT size checks, with GET body compare where replayable local data is available"
+    },
+    {
+      "id": "webdav.cloudreve_identity.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDAV OPTIONS profile can identify Cloudreve so tools can block high-risk remote orphan DELETE paths"
+    },
+    {
+      "id": "webdav.alist_version_security_advisory.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDAV OPTIONS/backend profiles report AList version security advisory state for CVE-2026-25161 without blocking clean SpeedBackup paths"
+    },
+    {
+      "id": "webdav.quota_probe.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "OPTIONS preflight performs advisory DAV quota-available-bytes/quota-used-bytes probe"
+    },
+    {
+      "id": "webdav.upload_size_verify_batch.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "final streaming upload verification batch-compares sentBytes against one remote classified size map"
+    },
+    {
+      "id": "webdav.locked_cleanup_deferred.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "HTTP 423 cleanup uses bounded delayed retries and explicitly defers stubborn orphan cleanup without changing upload success semantics"
+    },
+    {
+      "id": "webdav.jianguoyun_500m_guard.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "public Jianguoyun WebDAV known-size uploads fail early and streams abort at the documented default 500M single-file bound"
+    },
+    {
+      "id": "webdav.backend_decision_log.dex.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "WebDavUtil emits machine-readable WEBDAV_BACKEND_PROFILE and WEBDAV_BACKEND_DECISION records for managed upload policy decisions"
+    },
+    {
+      "id": "dex.source.libsardine_removed.v1",
+      "enabled": true,
+      "required": false,
+      "detail": "unused non-included libsardine source tree removed from release source package"
+    },
+    {
+      "id": "webdav.atomic_probe.v2",
+      "enabled": true,
+      "required": true,
+      "detail": "PUT part + MOVE publish + GET byte compare + COPY + overwrite regression"
+    },
+    {
+      "id": "webdav.vendor_quirks.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "auto/rclone/nextcloud/jianguoyun/123pan/generic WebDAV quirk profile"
+    },
+    {
+      "id": "webdav.vendor_auto_detect.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "detect server profile from OPTIONS headers and observed probe behavior"
+    },
+    {
+      "id": "webdav.pacer_retry_backoff.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "bounded retry/backoff for replay-safe WebDAV control operations"
+    },
+    {
+      "id": "webdav.directory_cache.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "daemon directory exists/missing/failed state cache"
+    },
+    {
+      "id": "webdav.propfind_xml_tolerant.v2",
+      "enabled": true,
+      "required": true,
+      "detail": "namespace/local-name PROPFIND parser with regex fallback"
+    },
+    {
+      "id": "webdav.error_policy_table.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "central MKCOL/MOVE/COPY/DELETE/OPTIONS/PROPFIND/HEAD policy table"
+    },
+    {
+      "id": "webdav.regression_suite.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "rclone serve WebDAV compat regression script contract"
+    },
+    {
+      "id": "webdav.buffer.autotune.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "legacy-compat"
+    },
+    {
+      "id": "webdav.buffer.autotune.v2",
+      "enabled": false,
+      "required": false,
+      "detail": "rolled-back-after-ab-test"
+    },
+    {
+      "id": "webdav.buffer.autotune.v3",
+      "enabled": true,
+      "required": true,
+      "detail": "256k-512k-1m-stable-cap"
+    },
+    {
+      "id": "webdav.socket.read_idle_timeout.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "socket-so-timeout-45s-no-infinite-read"
+    },
+    {
+      "id": "webdav.socket.write_idle_watchdog.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "close-origin-socket-when-request-write-stalls-45s"
+    },
+    {
+      "id": "webdav.empty_body_retry_before_payload",
+      "enabled": true,
+      "required": true,
+      "detail": "internal"
+    },
+    {
+      "id": "notification.speedbackup_status",
+      "enabled": true,
+      "required": false,
+      "detail": "notifyBatch"
+    },
+    {
+      "id": "notification.inline_small_icon.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "notifyBatch uses inline SpeedBackup archive-check small icon for pure classes.dex runtime"
+    },
+    {
+      "id": "notification.brand_color.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "notifyBatch sets SpeedBackup accent color #2F6FED on Notification.Builder"
+    },
+    {
+      "id": "hiddenapi.lsposed_hiddenapibypass.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "AndroidHiddenApiBypass 6.1 is kept as an optional one-shot helper; failure is reported but does not fail app_process functional gates"
+    },
+    {
+      "id": "hiddenapi.daemon.af_unix.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "getPackageUid+getInstallSourceInfo+installSessionCreate+installSessionCommit+forceStopPackageBatch"
+    },
+    {
+      "id": "hiddenapi.force_stop_package_batch.daemon.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "single-package-or-batch-force-stop-via-hiddenapi-daemon"
+    },
+    {
+      "id": "hiddenapi.daemon.response_body.capture.fix.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "ping+forceStopPackageBatch-body-returned-on-socket"
+    },
+    {
+      "id": "hiddenapi.install_session.hybrid_write.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "createSession=PlayUID;write=root;commit=PlayUID"
+    },
+    {
+      "id": "hiddenapi.install_session.batch",
+      "enabled": false,
+      "required": false,
+      "detail": "removed; use installSessionCreate/installSessionCommit"
+    },
+    {
+      "id": "hiddenapi.install_precheck_apks",
+      "enabled": false,
+      "required": false,
+      "detail": "removed; root pm install-write path does not need Play-readable APK precheck"
+    },
+    {
+      "id": "hiddenapi.hot_cli_removed.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "hot commands are daemon-only"
+    },
+    {
+      "id": "notification.daemon.af_unix.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "notifyBatch"
+    },
+    {
+      "id": "notification.hot_cli_removed.v1",
+      "enabled": true,
+      "required": true,
+      "detail": "notifyBatch is daemon-only"
+    },
+    {
+      "id": "notification.app_settings_backup_restore",
+      "enabled": false,
+      "required": false,
+      "detail": "removed"
+    }
+  ],
+  "contracts": {
+    "CAPS_MISSING": [
+      "dex.capabilities.v1",
+      "dex.machine_stdout.v1",
+      "dex.root_unified_daemon.v1",
+      "hiddenapi.daemon.af_unix.v1",
+      "hiddenapi.force_stop_package_batch.daemon.v1",
+      "dex.app_inventory.snapshot.v1",
+      "dex.app_inventory.pkg_uid.single.v1",
+      "dex.app_inventory.package_status.single.v1",
+      "dex.app_inventory.getlist_onecall.v1",
+      "dex.app_inventory.display_label_facts.v1",
+      "dex.cgroup.lock_metrics.v1",
+      "dex.app_inventory.xposed_module_facts.v1",
+      "dex.app_inventory.xposed_runtime_facts.v1",
+      "dex.app_inventory.package_facts.batch.v1",
+      "dex.pm.pre_restore_package_state.batch.v1",
+      "dex.pm.installer_context_facts.v1",
+      "dex.pm.post_install_facts_batch.v1",
+      "dex.settings.exec_shim.v1",
+      "dex.pm.visible_after_install.v1",
+      "dex.framework_facts.batch.v1",
+      "appstate.snapshot.batch.v2",
+      "appstate.restore.batch.v4",
+      "appstate.verify.batch.v4",
+      "appstate.run_results.v1",
+      "appstate.result_files.v1",
+      "appstate.ssaid.typed_result.v1",
+      "dex.control_results.v1",
+      "webdav.stream_result.v1",
+      "webdav.chunk_write_coalesced.v1",
+      "dex.result_contract.v1",
+      "appstate.verify.vendor_classification.dex.v1",
+      "appstate.daemon.af_unix.v1",
+      "appstate.structured_result_codes.v2",
+      "appstate.ssaid.integrated.v1",
+      "appstate.special_access.integrated.v1",
+      "appstate.scoped_appops_fields.v1",
+      "appstate.default_home.v1",
+      "appstate.foreground_state.batch.v1",
+      "appstate.foreground_list.json.v1",
+      "dex.process_observer.global_daemon.v1",
+      "dex.process_observer.target_lifecycle.v1",
+      "dex.process_observer.batch_watchset.v1",
+      "dex.process_observer.batch_stop_safe.v1",
+      "dex.process_observer.taskstack_package_guard.v1",
+      "dex.app_wake_block.persistent_restore.v1",
+      "dex.app_wake_block.cleanup_restore_failed_retain_state.v1",
+      "dex.app_wake_block.snapshot_unsafe_refuse_apply.v1",
+      "dex.daemon.read_exactly.body_limit.v1",
+      "dex.uid_net_block.persistent_restore.v1",
+      "dex.uid_net_block.cleanup_restore_failed_retain_state.v1",
+      "dex.cgroup_freezer.lifecycle.v1",
+      "dex.cgroup_freezer.persistent_batch_session.v1",
+      "dex.cgroup_freezer.native_package_atomic.v1",
+      "dex.cgroup_freezer.primary_app_scope_package_freeze.v1",
+      "dex.cgroup_freezer.native_package_kill_live_rescan.v1",
+      "dex.cgroup_freezer.native_thaw_uid_emergency.v1",
+      "dex.cgroup_freezer.daemon_parent_control.v1",
+      "dex.display_power.root_daemon.v1",
+      "webdav.rel_only.v1",
+      "webdav.relpath.strict_gate.v1",
+      "webdav.managed_put.v1",
+      "webdav.managed_list_classify.v1",
+      "webdav.managed_batch_put_with_parents.v1",
+      "webdav.propfind.no_cache.v1",
+      "webdav.stream_heartbeat_error_kind.dex.v1",
+      "webdav.daemon.read_body_limit.v1",
+      "webdav.tsv_output.control_guard.v1",
+      "webdav.direct_children_manifest.dex.v1",
+      "webdav.prepare_dirs_created_only_progress.dex.v1",
+      "webdav.prepare_dirs_full_timing.dex.v1",
+      "webdav.profile_visible_compact.dex.v1",
+      "webdav.download_manifest.dex.v1",
+      "webdav.orphan_roots_manifest.dex.v1",
+      "dex.daemon.common_framed_reader.v1",
+      "rust.native_replacement_rc.v1",
+      "webdav.stream_stall_watchdog.dex.v1",
+      "webdav.stream_stall_socket_abort.dex.v1",
+      "webdav.stream_post_body_response_timeout.dex.v1",
+      "webdav.stream_post_body_phase_guard.dex.v1",
+      "webdav.alist_new_payload_direct.dex.v1",
+      "webdav.known_missing_direct_by_fact.dex.v1",
+      "webdav.alist_openlist_sync_put_semantics.dex.v1",
+      "webdav.pathmode_retry_http400.dex.v1",
+      "webdav.backend_profile.dex.v1",
+      "webdav.server_provider_profile.dex.v1",
+      "webdav.redirect_auth_guard.dex.v1",
+      "webdav.feature_profile.dex.v1",
+      "webdav.feature_profile_complete.dex.v1",
+      "webdav.backend_contract_probe.dex.v1",
+      "webdav.list_strategy_by_fact.dex.v1",
+      "webdav.fixed_put_chunked_fallback.dex.v1",
+      "webdav.nas_identity_profile.dex.v1",
+      "webdav.speedbackup_identity.dex.v1",
+      "webdav.sftpgo_identity.dex.v1",
+      "webdav.zspace_identity.dex.v1",
+      "webdav.nas_identity_extended.dex.v1",
+      "webdav.replayable_put_paths_fact_driven.dex.v1",
+      "webdav.atomic_policy_fact_priority.dex.v1",
+      "webdav.managed_probe_chunked.dex.v1",
+      "webdav.backend_support_tier.dex.v1",
+      "webdav.pacer_retry_after_jitter.dex.v1",
+      "webdav.move_copy_verify_after_ambiguous.dex.v1",
+      "webdav.put_verify_after_ambiguous.dex.v1",
+      "webdav.put_405_ambiguous_stat.dex.v1",
+      "webdav.direct_put_verify_before_cleanup.dex.v1",
+      "webdav.put_2xx_body_semantic_guard.dex.v1",
+      "webdav.put_2xx_stat_verify.dex.v1",
+      "webdav.cloudreve_identity.dex.v1",
+      "webdav.alist_version_security_advisory.dex.v1",
+      "webdav.quota_probe.dex.v1",
+      "webdav.upload_size_verify_batch.dex.v1",
+      "webdav.locked_cleanup_deferred.dex.v1",
+      "webdav.jianguoyun_500m_guard.dex.v1",
+      "webdav.backend_decision_log.dex.v1",
+      "rust.native_primitives.convergence_source.v1",
+      "notification.daemon.af_unix.v1",
+      "notification.inline_small_icon.v1"
+    ],
+    "CAPS_CONTRACT": [
+      "dex.capabilities.v1",
+      "dex.machine_stdout.v1",
+      "dex.root_unified_daemon.v1",
+      "hiddenapi.daemon.af_unix.v1",
+      "hiddenapi.force_stop_package_batch.daemon.v1",
+      "dex.app_inventory.snapshot.v1",
+      "dex.app_inventory.pkg_uid.single.v1",
+      "dex.app_inventory.package_status.single.v1",
+      "dex.app_inventory.getlist_onecall.v1",
+      "dex.app_inventory.display_label_facts.v1",
+      "dex.cgroup.lock_metrics.v1",
+      "dex.app_inventory.xposed_module_facts.v1",
+      "dex.app_inventory.xposed_runtime_facts.v1",
+      "dex.app_inventory.package_facts.batch.v1",
+      "dex.pm.pre_restore_package_state.batch.v1",
+      "dex.pm.installer_context_facts.v1",
+      "dex.pm.post_install_facts_batch.v1",
+      "dex.settings.exec_shim.v1",
+      "dex.pm.visible_after_install.v1",
+      "dex.framework_facts.batch.v1",
+      "appstate.snapshot.batch.v2",
+      "appstate.restore.batch.v4",
+      "appstate.verify.batch.v4",
+      "appstate.run_results.v1",
+      "appstate.result_files.v1",
+      "appstate.ssaid.typed_result.v1",
+      "dex.control_results.v1",
+      "webdav.stream_result.v1",
+      "webdav.chunk_write_coalesced.v1",
+      "dex.result_contract.v1",
+      "appstate.verify.vendor_classification.dex.v1",
+      "appstate.daemon.af_unix.v1",
+      "appstate.structured_result_codes.v2",
+      "appstate.ssaid.integrated.v1",
+      "appstate.special_access.integrated.v1",
+      "appstate.scoped_appops_fields.v1",
+      "appstate.default_home.v1",
+      "appstate.foreground_state.batch.v1",
+      "appstate.foreground_list.json.v1",
+      "dex.process_observer.global_daemon.v1",
+      "dex.process_observer.target_lifecycle.v1",
+      "dex.process_observer.batch_watchset.v1",
+      "dex.process_observer.batch_stop_safe.v1",
+      "dex.process_observer.taskstack_package_guard.v1",
+      "dex.app_wake_block.persistent_restore.v1",
+      "dex.app_wake_block.cleanup_restore_failed_retain_state.v1",
+      "dex.app_wake_block.snapshot_unsafe_refuse_apply.v1",
+      "dex.daemon.read_exactly.body_limit.v1",
+      "dex.uid_net_block.persistent_restore.v1",
+      "dex.uid_net_block.cleanup_restore_failed_retain_state.v1",
+      "dex.cgroup_freezer.lifecycle.v1",
+      "dex.cgroup_freezer.persistent_batch_session.v1",
+      "dex.cgroup_freezer.native_package_atomic.v1",
+      "dex.cgroup_freezer.primary_app_scope_package_freeze.v1",
+      "dex.cgroup_freezer.native_package_kill_live_rescan.v1",
+      "dex.cgroup_freezer.native_thaw_uid_emergency.v1",
+      "dex.cgroup_freezer.daemon_parent_control.v1",
+      "dex.display_power.root_daemon.v1",
+      "webdav.rel_only.v1",
+      "webdav.relpath.strict_gate.v1",
+      "webdav.managed_put.v1",
+      "webdav.managed_list_classify.v1",
+      "webdav.managed_batch_put_with_parents.v1",
+      "webdav.propfind.no_cache.v1",
+      "webdav.stream_heartbeat_error_kind.dex.v1",
+      "webdav.daemon.read_body_limit.v1",
+      "webdav.tsv_output.control_guard.v1",
+      "webdav.direct_children_manifest.dex.v1",
+      "webdav.prepare_dirs_created_only_progress.dex.v1",
+      "webdav.prepare_dirs_full_timing.dex.v1",
+      "webdav.profile_visible_compact.dex.v1",
+      "webdav.download_manifest.dex.v1",
+      "webdav.orphan_roots_manifest.dex.v1",
+      "dex.daemon.common_framed_reader.v1",
+      "rust.native_replacement_rc.v1",
+      "webdav.stream_stall_watchdog.dex.v1",
+      "webdav.stream_stall_socket_abort.dex.v1",
+      "webdav.stream_post_body_response_timeout.dex.v1",
+      "webdav.stream_post_body_phase_guard.dex.v1",
+      "webdav.alist_new_payload_direct.dex.v1",
+      "webdav.known_missing_direct_by_fact.dex.v1",
+      "webdav.alist_openlist_sync_put_semantics.dex.v1",
+      "webdav.pathmode_retry_http400.dex.v1",
+      "webdav.backend_profile.dex.v1",
+      "webdav.server_provider_profile.dex.v1",
+      "webdav.redirect_auth_guard.dex.v1",
+      "webdav.feature_profile.dex.v1",
+      "webdav.feature_profile_complete.dex.v1",
+      "webdav.backend_contract_probe.dex.v1",
+      "webdav.list_strategy_by_fact.dex.v1",
+      "webdav.fixed_put_chunked_fallback.dex.v1",
+      "webdav.nas_identity_profile.dex.v1",
+      "webdav.speedbackup_identity.dex.v1",
+      "webdav.sftpgo_identity.dex.v1",
+      "webdav.zspace_identity.dex.v1",
+      "webdav.nas_identity_extended.dex.v1",
+      "webdav.replayable_put_paths_fact_driven.dex.v1",
+      "webdav.atomic_policy_fact_priority.dex.v1",
+      "webdav.managed_probe_chunked.dex.v1",
+      "webdav.backend_support_tier.dex.v1",
+      "webdav.pacer_retry_after_jitter.dex.v1",
+      "webdav.move_copy_verify_after_ambiguous.dex.v1",
+      "webdav.put_verify_after_ambiguous.dex.v1",
+      "webdav.put_405_ambiguous_stat.dex.v1",
+      "webdav.direct_put_verify_before_cleanup.dex.v1",
+      "webdav.put_2xx_body_semantic_guard.dex.v1",
+      "webdav.put_2xx_stat_verify.dex.v1",
+      "webdav.cloudreve_identity.dex.v1",
+      "webdav.alist_version_security_advisory.dex.v1",
+      "webdav.quota_probe.dex.v1",
+      "webdav.upload_size_verify_batch.dex.v1",
+      "webdav.locked_cleanup_deferred.dex.v1",
+      "webdav.jianguoyun_500m_guard.dex.v1",
+      "webdav.backend_decision_log.dex.v1",
+      "rust.native_primitives.convergence_source.v1",
+      "notification.daemon.af_unix.v1",
+      "notification.inline_small_icon.v1"
+    ],
+    "CAPS_DIRECT": [
+      "appstate.snapshot.direct_files.v1"
+    ],
+    "CAPS_SINGLE": [
+      "appstate.snapshot.direct_files.single_pass.v1"
+    ],
+    "CAPS_TELEMETRY": [
+      "appstate.snapshot.direct_files.telemetry_v2.v1"
+    ],
+    "CAPS_OBSERVER": [
+      "dex.process_observer.batch_watchset.v1",
+      "dex.process_observer.batch_stop_safe.v1",
+      "dex.process_observer.batch_persistent_safety.v1"
+    ],
+    "CAPS_SESSION": [
+      "dex.process_observer.restore_session_direct_start.v1",
+      "dex.process_observer.restore_session_facts_cache.v1",
+      "dex.process_observer.restore_action_policy_builder.v1",
+      "dex.process_observer.batch_stop_summary_tsv.v1"
+    ],
+    "CAPS_DIAGNOSTIC": [
+      "dex.capabilities.v1",
+      "dex.machine_stdout.v1",
+      "dex.label_path_segment_safe.v1",
+      "dex.webdav.relpath_traversal_guard.v1",
+      "dex.root_unified_daemon.v1",
+      "dex.root_daemon.ready_before_appstate_init.v1",
+      "dex.root_daemon.ready_before_hiddenapi_init.v1",
+      "dex.root_daemon.ready_before_hardening.v1",
+      "dex.root_daemon.capability_signature.compilefix.v1",
+      "dex.daemon_supervisor.r8_keep.v1",
+      "hiddenapi.daemon.af_unix.v1",
+      "hiddenapi.force_stop_package_batch.daemon.v1",
+      "dex.app_inventory.snapshot.v1",
+      "dex.app_inventory.pkg_uid.single.v1",
+      "dex.app_inventory.package_status.single.v1",
+      "dex.app_inventory.package_filter_batch.v1",
+      "dex.app_inventory.getlist_onecall.v1",
+      "dex.app_inventory.display_label_facts.v1",
+      "dex.cgroup.lock_metrics.v1",
+      "dex.app_inventory.xposed_module_facts.v1",
+      "dex.app_inventory.xposed_runtime_facts.v1",
+      "dex.app_inventory.package_facts.batch.v1",
+      "dex.pm.pre_restore_package_state.batch.v1",
+      "dex.pm.installer_context_facts.v1",
+      "dex.pm.restore_install_plan.v1",
+      "dex.pm.restore_install_plan_batch.v1",
+      "webdav.profile_contract.dex.v1",
+      "webdav.profile_contract_full.dex.v1",
+      "webdav.profile_contract_authoritative.dex.v1",
+      "dex.appstate.android16_17_policy_contract.v1",
+      "dex.hidden_api.bypass_softgate.v1",
+      "appstate.snapshot.batch.v2",
+      "appstate.snapshot.batch.parallel.v1",
+      "appstate.snapshot.direct_files.v1",
+      "appstate.snapshot.direct_files.single_pass.v1",
+      "appstate.snapshot.direct_files.telemetry_v2.v1",
+      "appstate.restore.batch.v4",
+      "appstate.verify.batch.v4",
+      "appstate.run_results.v1",
+      "appstate.result_files.v1",
+      "appstate.ssaid.typed_result.v1",
+      "dex.control_results.v1",
+      "webdav.stream_result.v1",
+      "webdav.chunk_write_coalesced.v1",
+      "dex.result_contract.v1",
+      "appstate.verify.vendor_classification.dex.v1",
+      "appstate.restore.vendor_classification.dex.v1",
+      "appstate.restore.permission_appop_vendor_classification.dex.v1",
+      "appstate.android17_runtime_permission_appop_package_fallback.v1",
+      "appstate.location_policy_separation.v1",
+      "appstate.location_restore_order.v1",
+      "appstate.verify.android17_platform_permission_policy.dex.v1",
+      "appstate.special_access_package_fallback.v1",
+      "appstate.verify.default_dialer_vendor_classification.dex.v1",
+      "appstate.daemon.af_unix.v1",
+      "appstate.structured_result_codes.v2",
+      "appstate.ssaid.integrated.v1",
+      "appstate.special_access.integrated.v1",
+      "appstate.scoped_appops_fields.v1",
+      "appstate.default_home.v1",
+      "appstate.default_ime.v1",
+      "appstate.default_ime.exec_settings.v1",
+      "dex.settings.exec_shim.v1",
+      "dex.pm.visible_after_install.v1",
+      "dex.framework_facts.batch.v1",
+      "dex.device_facts.v1",
+      "dex.device_model_name_map.v1",
+      "dex.build_info.unified_version.v1",
+      "dex.daemon.read_exactly.body_limit.v1",
+      "dex.daemon.token_seed_shared.v1",
+      "dex.notification.peer_credentials_uid.v1",
+      "dex.notification.peer_uid_fail_closed.v1",
+      "dex.ssaid.state_cache_shutdown.v1",
+      "dex.ssaid.state_cache_shutdown_bounded.v1",
+      "dex.daemon_supervisor.pid_starttime.v1",
+      "dex.daemon_supervisor.pid_starttime_cmdline.v1",
+      "dex.cchelper.table_hardening.v1",
+      "dex.device_model_db.entry_count_runtime.v1",
+      "dex.device_model_db.entry_count_selfcheck.v1",
+      "appstate.foreground_state.batch.v1",
+      "appstate.foreground_list.json.v1",
+      "dex.process_observer.global_daemon.v1",
+      "dex.process_observer.target_lifecycle.v1",
+      "dex.process_observer.batch_watchset.v1",
+      "dex.process_observer.batch_stop_safe.v1",
+      "dex.process_observer.batch_persistent_safety.v1",
+      "dex.process_observer.taskstack_package_guard.v1",
+      "dex.process_observer.live_respawn_guard.v1",
+      "dex.process_observer.cgroup_high_risk_only.v1",
+      "dex.process_observer.high_risk_notop_cgroup_freeze.v1",
+      "dex.process_observer.cgroup_freeze_reuse.v1",
+      "dex.process_observer.cgroup_freeze_reuse_all_alive_pids.v1",
+      "dex.process_observer.cgroup_stale_token_prune.v1",
+      "dex.process_observer.cgroup_dead_pid_package_retry.v1",
+      "dex.process_observer.high_risk_top_fast_freeze.v1",
+      "dex.process_observer.restore_freeze_action.v1",
+      "dex.process_observer.restore_session_direct_start.v1",
+      "dex.process_observer.restore_session_facts_cache.v1",
+      "dex.process_observer.restore_action_policy_builder.v1",
+      "dex.process_observer.batch_cleanup_stale.v1",
+      "dex.tmp_state.run_tmpdir_scope.v1",
+      "dex.process_observer.batch_stop_summary_tsv.v1",
+      "dex.app_wake_block.persistent_restore.v1",
+      "dex.app_wake_block.cleanup_restore_failed_retain_state.v1",
+      "dex.app_wake_block.snapshot_unsafe_refuse_apply.v1",
+      "dex.uid_net_block.persistent_restore.v1",
+      "dex.uid_net_block.cleanup_restore_failed_retain_state.v1",
+      "dex.cgroup_freezer.lifecycle.v1",
+      "dex.cgroup_freezer.persistent_batch_session.v1",
+      "dex.cgroup_freezer.native_package_atomic.v1",
+      "dex.cgroup_freezer.primary_app_scope_package_freeze.v1",
+      "dex.cgroup_freezer.primary_app_scope_refresh.v1",
+      "dex.process_observer.primary_cgroup_refresh.v1",
+      "dex.process_observer.wake_block_stop_defer_to_app_scope.v1",
+      "dex.cgroup_freezer.native_package_kill_live_rescan.v1",
+      "dex.cgroup_freezer.native_thaw_uid_emergency.v1",
+      "dex.cgroup_freezer.daemon_parent_control.v1",
+      "dex.display_power.root_daemon.v1",
+      "webdav.rel_only.v1",
+      "webdav.managed_put.v1",
+      "webdav.putstdin.skip_parent_mkdir.v1",
+      "webdav.managed_list_classify.v1",
+      "webdav.classify_depth1_walk_fallback.dex.v1",
+      "webdav.managed_batch_put_with_parents.v1",
+      "webdav.propfind.no_cache.v1",
+      "webdav.stream_heartbeat_error_kind.dex.v1",
+      "webdav.daemon.read_body_limit.v1",
+      "webdav.tsv_output.control_guard.v1",
+      "webdav.direct_children_manifest.dex.v1",
+      "webdav.prepare_dirs_created_only_progress.dex.v1",
+      "webdav.prepare_dirs_full_timing.dex.v1",
+      "webdav.prepare_dirs_parallel_mkcol.dex.v1",
+      "webdav.classify_parallel_depth1.dex.v1",
+      "webdav.profile_visible_compact.dex.v1",
+      "webdav.download_manifest.dex.v1",
+      "webdav.orphan_roots_manifest.dex.v1",
+      "dex.daemon.common_framed_reader.v1",
+      "rust.native_replacement_rc.v1",
+      "webdav.stream_stall_watchdog.dex.v1",
+      "webdav.stream_stall_socket_abort.dex.v1",
+      "webdav.stream_post_body_response_timeout.dex.v1",
+      "webdav.stream_post_body_phase_guard.dex.v1",
+      "webdav.alist_new_payload_direct.dex.v1",
+      "webdav.known_missing_direct_by_fact.dex.v1",
+      "webdav.alist_openlist_sync_put_semantics.dex.v1",
+      "webdav.pathmode_retry_http400.dex.v1",
+      "webdav.backend_profile.dex.v1",
+      "webdav.server_provider_profile.dex.v1",
+      "webdav.redirect_auth_guard.dex.v1",
+      "webdav.feature_profile.dex.v1",
+      "webdav.feature_profile_complete.dex.v1",
+      "webdav.backend_contract_probe.dex.v1",
+      "webdav.list_strategy_by_fact.dex.v1",
+      "webdav.fixed_put_chunked_fallback.dex.v1",
+      "webdav.nas_identity_profile.dex.v1",
+      "webdav.speedbackup_identity.dex.v1",
+      "webdav.sftpgo_identity.dex.v1",
+      "webdav.zspace_identity.dex.v1",
+      "webdav.nas_identity_extended.dex.v1",
+      "webdav.generic_nas_dav5005_identity.dex.v1",
+      "webdav.replayable_put_paths_fact_driven.dex.v1",
+      "webdav.atomic_policy_fact_priority.dex.v1",
+      "webdav.managed_probe_chunked.dex.v1",
+      "webdav.backend_support_tier.dex.v1",
+      "webdav.pacer_retry_after_jitter.dex.v1",
+      "webdav.move_copy_verify_after_ambiguous.dex.v1",
+      "webdav.put_verify_after_ambiguous.dex.v1",
+      "webdav.put_405_ambiguous_stat.dex.v1",
+      "webdav.direct_put_verify_before_cleanup.dex.v1",
+      "webdav.put_2xx_body_semantic_guard.dex.v1",
+      "webdav.put_2xx_stat_verify.dex.v1",
+      "webdav.cloudreve_identity.dex.v1",
+      "webdav.alist_version_security_advisory.dex.v1",
+      "webdav.quota_probe.dex.v1",
+      "webdav.upload_size_verify_batch.dex.v1",
+      "webdav.locked_cleanup_deferred.dex.v1",
+      "webdav.jianguoyun_500m_guard.dex.v1",
+      "webdav.backend_decision_log.dex.v1",
+      "rust.native_primitives.convergence_source.v1",
+      "notification.daemon.af_unix.v1",
+      "notification.inline_small_icon.v1"
+    ]
+  }
+}

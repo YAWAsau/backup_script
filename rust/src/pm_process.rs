@@ -77,10 +77,14 @@ pub(crate) fn classify(
         }
         return ("unknown", "-".into());
     }
-    let success = text.lines().any(|line| line == "Success");
-    let failure = text
-        .lines()
-        .any(|line| line.starts_with("Failure [") && line.ends_with(']'));
+    // One pass retains both terminal facts: seeing Success alone must not
+    // short-circuit before a contradictory Failure later in the same capture.
+    let (mut success, mut failure) = (false, false);
+    for line in text.lines() {
+        success |= line == "Success";
+        failure |= line.starts_with("Failure [") && line.ends_with(']');
+        if success && failure { break; }
+    }
     match (code, success, failure) {
         (0, true, false) => ("success", "-".into()),
         (1, false, true) => ("failure", "-".into()),
@@ -256,6 +260,10 @@ mod tests {
             (1, "Failure [denied]\n", true, "failure"),
             (124, "Success\n", true, "unknown"),
             (0, "Success\nFailure [bad]\n", true, "unknown"),
+            (1, "Failure [bad]\nSuccess\n", true, "unknown"),
+            (0, "Success\nSuccess\n", true, "success"),
+            (1, "Failure [bad]\nFailure [bad]\n", true, "failure"),
+            (0, "Success\nFailure [unterminated\n", true, "success"),
             (0, "", true, "unknown"),
             (1, "Failure [bad]\n", false, "unknown"),
             (127, "Failure [bad]\n", true, "unknown"),

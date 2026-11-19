@@ -9,7 +9,6 @@ use std::{
     ffi::CString,
     fs::{self, OpenOptions},
     io::{self, BufRead, BufReader, Read, Write},
-    net::TcpStream,
     os::{
         fd::{AsRawFd, FromRawFd, OwnedFd},
         unix::{
@@ -126,8 +125,9 @@ fn identity(pid: u32) -> String {
 fn connection(conf: &Path) -> io::Result<(String, String, bool)> {
     let fields = super::web_settings::parse_runtime(&super::runtime_conf::read(conf)?)?;
     let map: BTreeMap<_, _> = fields.into_iter().map(|f| (f.key, f.value)).collect();
-    let protocol = map.get("remote_type").cloned().unwrap_or_default();
+    let protocol = if map.get("backup_location").is_some_and(|v|v=="local") {String::new()} else {map.get("remote_type").cloned().unwrap_or_default()};
     let keys = [
+        "backup_location",
         "remote_type",
         "remote_address_mode",
         "remote_smb_identity",
@@ -193,6 +193,9 @@ fn host_requires_lan(host:&str)->bool {
 }
 fn next_check(protocol: &str) -> (&'static str, &'static str, bool) {
     if protocol=="local" {("local","",false)}else {("checking","",true)}
+}
+fn keep_ready_on_resume(previous:&str,next:&str,unchanged:bool)->bool {
+    previous=="ready"&&next=="checking"&&unchanged
 }
 fn connection_check(protocol:&str,conf:&Path,lan:bool)->(&'static str,&'static str,bool){
     if protocol!="local"&&target_requires_lan(conf)&&!lan{("offline","no_lan",false)}
@@ -271,8 +274,10 @@ fn network_display(wifi:&Value,route:Option<&str>,ready:bool)->Value {
     let mut shared=std::collections::BTreeSet::new();
     for link in sharing {if let Some(kind)=link["kind"].as_str(){shared.insert(format!("{}中",label(kind)));}}
     detail.extend(shared);
-    // AP signal strength cannot be inferred from the phone's upstream Wi-Fi RSSI.
-    if wifi["connected"]==true&&(kind=="wifi"||(interface.is_empty()&&sharing.is_empty())) {
+    // WifiInfo describes the station, not necessarily the selected route (or AP).
+    let separate_wifi=kind!="wifi"&&(!interface.is_empty()||!sharing.is_empty());
+    if wifi["connected"]==true && wifi["available"]!=false {
+        let wifi_start=rows.len();
         let frequency=wifi["frequencyMhz"].as_i64().unwrap_or(0);
         let band=match frequency{2400..=2500=>"2.4 GHz",4900..=5924=>"5 GHz",5925..=7125=>"6 GHz",_=>"無法取得"};
         let rssi=wifi["rssiDbm"].as_i64();
@@ -284,8 +289,18 @@ fn network_display(wifi:&Value,route:Option<&str>,ready:bool)->Value {
         rows.push(json!({"label":"連線速率","caption":rate}));
         let standard=match wifi["wifiStandard"].as_i64(){Some(1)=>"802.11a/b/g",Some(4)=>"Wi-Fi 4",Some(5)=>"Wi-Fi 5",Some(6)=>"Wi-Fi 6",Some(7)=>"802.11ad",Some(8)=>"Wi-Fi 7",_=>"無法取得"};
         let caption=if standard=="無法取得"{"Wi-Fi"}else{standard};
-        if let Some(row)=rows.iter_mut().find(|row|row["label"]=="連線"){row["caption"]=json!(caption);}else{rows.insert(0,json!({"label":"連線","caption":caption}));}
-        if rssi.is_some_and(|r|r< -67){detail.push("訊號偏弱，傳輸速度可能受限".into());}
+        if separate_wifi {
+            // Explicit station labels prevent upstream RSSI/rate being read as AP or VPN data.
+            for row in &mut rows[wifi_start..] {
+                row["label"]=json!(format!("Wi-Fi {}",row["label"].as_str().unwrap_or("")));
+            }
+            if let Some(row)=rows[..wifi_start].iter_mut().find(|row|row["label"]=="連線") {
+                row["caption"]=json!(format!("{}；{}",row["caption"].as_str().unwrap_or(""),caption));
+            } else {
+                rows.insert(wifi_start,json!({"label":"Wi-Fi 連線","caption":caption}));
+            }
+        } else if let Some(row)=rows.iter_mut().find(|row|row["label"]=="連線"){row["caption"]=json!(caption);}else{rows.insert(0,json!({"label":"連線","caption":caption}));}
+        if rssi.is_some_and(|r|r< -67){detail.push(if separate_wifi{"Wi-Fi 訊號偏弱，傳輸速度可能受限"}else{"訊號偏弱，傳輸速度可能受限"}.into());}
     }
     if detail.is_empty()&&!ready&&kind.is_empty()&&wifi["available"]!=true {detail.push("連線方式資訊無法取得".into());}
     json!({"rows":rows,"detail":detail.join("；"),"interface":interface,"kind":kind})
@@ -303,9 +318,9 @@ fn wifi_diagnostic(wifi:&Value, network:&Value, alive:bool, status:&str) {
         "selectedKind":network["kind"],"rows":network["rows"],"rowCount":network["rows"].as_array().map_or(0,Vec::len)}).to_string();
     if let Ok(mut last)=LAST.lock(){
         if last.0!=record&&last.1<128 {
-            let _=writeln!(io::stderr().lock(),"WIFI_DIAG {record}");
+            let _=writeln!(io::stdout().lock(),"[DEBUG] WIFI_DIAG {record}");
             last.0=record;last.1+=1;
-            if last.1==128 {let _=writeln!(io::stderr().lock(),"WIFI_DIAG limit_reached=128");}
+            if last.1==128 {let _=writeln!(io::stdout().lock(),"[DEBUG] WIFI_DIAG limit_reached=128");}
         }
     }
 }
@@ -385,7 +400,7 @@ fn watch(conf: &Path, dir: &Path, owner: u32) -> io::Result<()> {
     control.set_nonblocking(true)?;
     let changes = ino(&[conf.parent().ok_or_else(|| error("conf parent"))?, dir])?;
     let net = network()?;
-    let mut wifi=match WifiWatcher::start(dir){Ok(w)=>Some(w),Err(e)=>{let _=writeln!(io::stderr().lock(),"WIFI_DIAG watcher_start_error={:?}",e.kind());None}};
+    let mut wifi=match WifiWatcher::start(dir){Ok(w)=>Some(w),Err(e)=>{let _=writeln!(io::stderr().lock(),"[ERROR] WIFI_WATCH watcher_start_error={:?}",e.kind());None}};
     super::daemon_health::register_process("wifi_watcher",wifi.as_ref().map(|w|w.0.id()).unwrap_or(0))?;
     if let Ok(pid)=std::env::var("SPEEDBACKUP_CONSOLE_OWNER").unwrap_or_default().parse::<u32>() {super::daemon_health::register_process("console",pid)?;}
     super::daemon_health::register_process("remote_health",std::process::id())?;
@@ -423,8 +438,8 @@ fn watch(conf: &Path, dir: &Path, owner: u32) -> io::Result<()> {
     }
     loop {
         let view = snapshot(conf, dir);
-        // Only the session-owned watcher logs diagnostics. Its stderr is routed
-        // to the debug archive by _remote_health_start; readers stay silent.
+        // Only the session-owned watcher logs diagnostics. Its stdout is routed
+        // to wifi_diagnostic.log; stderr remains separate for failures.
         wifi_diagnostic(&view["wifi"], &view["network"], true, view["status"].as_str().unwrap_or("offline"));
         let update = view.to_string() + "\n";
         if update != last_event {
@@ -554,14 +569,25 @@ fn watch(conf: &Path, dir: &Path, owner: u32) -> io::Result<()> {
                         let _=fs::write(dir.join("daemon-refresh"),b"refresh");
                         paused = false;
                         generation += 1;
-                        lan=available_network(dir);
-                        let (s,r,p)=connection_check(&protocol,conf,lan);status=s;reason=r.into();pending=p;
+                        let current_lan=available_network(dir);
+                        let unchanged=current_lan==lan&&route_key(conf)==route&&
+                            connection(conf).is_ok_and(|(k,p,_)|k==key&&p==protocol);
+                        lan=current_lan;
+                        let (s,r,p)=connection_check(&protocol,conf,lan);
+                        // Returning from settings still rechecks the server. Retain
+                        // the last verified presentation (including SMB dialect)
+                        // while the same endpoint/route is checked in background.
+                        if !keep_ready_on_resume(status,s,unchanged){status=s;reason=r.into();}
+                        pending=p;
                     }
-                    ["refresh"] if !busy && !paused => {
+                    ["refresh"] if !paused => {
+                        // Local handshakes are independent of an in-flight remote probe.
                         let _=fs::write(dir.join("daemon-refresh"),b"refresh");
-                        generation += 1;
-                        lan=available_network(dir);
-                        let (s,r,p)=connection_check(&protocol,conf,lan);status=s;reason=r.into();pending=p;
+                        if !busy {
+                            generation += 1;
+                            lan=available_network(dir);
+                            let (s,r,p)=connection_check(&protocol,conf,lan);status=s;reason=r.into();pending=p;
+                        }
                     }
                     ["failure", details @ ..] if details.len()<=1 => {
                         if let Some(worker)=&worker{worker.0.store(true,std::sync::atomic::Ordering::Release);}
@@ -620,7 +646,7 @@ fn watch(conf: &Path, dir: &Path, owner: u32) -> io::Result<()> {
         }
     }
 }
-pub fn stream(mut tcp: TcpStream, conf: PathBuf, dir: PathBuf) -> io::Result<()> {
+pub fn stream(mut tcp: UnixStream, conf: PathBuf, dir: PathBuf) -> io::Result<()> {
     let mut events = UnixStream::connect(dir.join("events"))?;
     tcp.set_write_timeout(Some(std::time::Duration::from_secs(3)))?;
     tcp.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n")?;
@@ -770,15 +796,48 @@ pub fn command(args: &[String]) -> i32 {
             assert!(!offline["rows"].as_array().unwrap().iter().any(|r|r["label"]=="連線速率"));
         }
     }
+    #[test] fn connected_wifi_is_independent_of_route() {
+        for (kind,caption) in [("","網路介面"),("vpn","VPN"),("cellular","行動網路"),("ethernet","有線網路"),("wifi","Wi-Fi 7")] {
+            let mut metadata=serde_json::json!({"available":true,"connected":true,"frequencyMhz":6135,"linkSpeedMbps":2594,"linkWidthMhz":"320","rssiDbm":-39,"wifiStandard":8,"links":[{"kind":"cellular"},{"kind":"cellular"},{"interface":"wlan0","kind":"wifi"}]});
+            if !kind.is_empty(){metadata["links"].as_array_mut().unwrap().push(serde_json::json!({"interface":"route0","kind":kind}));}
+            for ready in [false,true] {
+                let view=super::network_display(&metadata,Some("dev=route0"),ready);
+                assert_eq!(view["kind"],kind);
+                let rows=view["rows"].as_array().unwrap();
+                assert_eq!(rows.len(),6);
+                let expected=if kind=="wifi" {caption.to_owned()} else if ready||!kind.is_empty() {format!("{caption}；Wi-Fi 7")} else {"Wi-Fi 7".to_owned()};
+                assert_eq!(rows[0]["caption"],expected);
+                assert_eq!(rows[0]["label"],if !ready&&kind.is_empty(){"Wi-Fi 連線"}else{"連線"});
+                assert!(rows.iter().any(|r|r["caption"]=="6135 MHz"));
+                assert!(rows.iter().any(|r|r["caption"]=="2594 Mbps"));
+                assert!(rows.iter().any(|r|r["caption"]=="320 MHz"));
+                assert!(rows.iter().any(|r|r["label"]==if kind=="wifi"{"訊號"}else{"Wi-Fi 訊號"}));
+            }
+            metadata["connected"]=serde_json::json!(false);
+            for ready in [false,true] {
+                let view=super::network_display(&metadata,Some("dev=route0"),ready);
+                assert!(view["rows"].as_array().unwrap().len()<=6);
+                assert!(!view["rows"].as_array().unwrap().iter().any(|r|r["caption"]=="2594 Mbps"));
+            }
+        }
+    }
     #[test] fn tether_route_wins_over_upstream_wifi() {
         let metadata=serde_json::json!({"available":true,"connected":true,"frequencyMhz":6135,"rssiDbm":-55,"links":[{"interface":"wlan0","kind":"wifi"}],"sharing":[{"interface":"vendor_usb42","kind":"usb_tether"},{"interface":"oem_ap7","kind":"hotspot"}]});
-        let usb=super::network_display(&metadata,Some("dev=vendor_usb42|src=192.168.42.129"),true);
-        assert_eq!(usb["kind"],"usb_tether");assert_eq!(usb["rows"].as_array().unwrap().len(),1);
-        assert!(usb["detail"].as_str().unwrap().contains("USB 網路分享中"));
-        let hotspot=super::network_display(&metadata,Some("dev=oem_ap7"),true);
-        assert_eq!(hotspot["kind"],"hotspot");assert_eq!(hotspot["rows"].as_array().unwrap().len(),1);
-        let wifi=super::network_display(&metadata,Some("dev=wlan0"),true);
-        assert_eq!(wifi["rows"][3]["caption"],"-55 dBm 很好");
+        for ready in [false,true] {
+            for (route,kind,caption) in [("dev=vendor_usb42|src=192.168.42.129","usb_tether","USB 網路分享；Wi-Fi"),("dev=oem_ap7","hotspot","Wi-Fi 熱點分享；Wi-Fi"),("dev=wlan0","wifi","Wi-Fi")] {
+                let view=super::network_display(&metadata,Some(route),ready);
+                assert_eq!(view["kind"],kind);
+                assert_eq!(view["rows"].as_array().unwrap().len(),6);
+                assert_eq!(view["rows"][0]["caption"],caption);
+                assert_eq!(view["rows"][3]["label"],if kind=="wifi"{"訊號"}else{"Wi-Fi 訊號"});
+                assert_eq!(view["rows"][3]["caption"],"-55 dBm 很好");
+                assert!(view["detail"].as_str().unwrap().contains("USB 網路分享中"));
+            }
+            let view=super::network_display(&metadata,None,ready);
+            assert_eq!(view["rows"].as_array().unwrap().len(),6);
+            assert_eq!(view["rows"][0]["caption"],if ready{"網路（類型未提供）；Wi-Fi"}else{"Wi-Fi"});
+            assert_eq!(view["rows"][3]["label"],"Wi-Fi 訊號");
+        }
         let unknown=super::network_display(&serde_json::json!({}),Some("dev=custom0"),true);
         assert_eq!(unknown["detail"],"");
         assert_eq!(super::probe_reason("auth_failed",false),"auth_failed");
@@ -807,5 +866,11 @@ pub fn command(args: &[String]) -> i32 {
     #[test] fn reasons_are_fixed_codes_not_server_text() {
         assert_eq!(super::safe_reason("auth_failed"),"auth_failed");
         assert_eq!(super::safe_reason("password=private\nserver reply"),"connection_failed");
+    }
+    #[test] fn resume_preserves_only_verified_unchanged_connections(){
+        assert!(super::keep_ready_on_resume("ready","checking",true));
+        for previous in ["checking","offline","local"]{assert!(!super::keep_ready_on_resume(previous,"checking",true));}
+        assert!(!super::keep_ready_on_resume("ready","checking",false));
+        assert!(!super::keep_ready_on_resume("ready","offline",true));
     }
 }

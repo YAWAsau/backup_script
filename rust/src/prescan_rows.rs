@@ -46,8 +46,10 @@ fn keyed(rows: Vec<Vec<String>>, width: usize, paired: bool) -> io::Result<HashM
             return Err(invalid());
         }
         let key = if paired { format!("{}\t{}", columns[0], columns[1]) } else { columns[0].clone() };
-        if let Some(previous) = result.insert(key, columns.clone()) {
-            if previous != columns { return Err(invalid()); }
+        match result.entry(key) {
+            std::collections::hash_map::Entry::Vacant(slot) => { slot.insert(columns); }
+            std::collections::hash_map::Entry::Occupied(slot) if slot.get() != &columns => return Err(invalid()),
+            _ => (),
         }
     }
     Ok(result)
@@ -65,7 +67,19 @@ fn equal(left: &str, right: &str) -> bool {
     }
 }
 
-pub fn generate(mode: &str, root: &Path, backup: bool, user: bool, external: bool) -> io::Result<Plan> {
+pub fn generate(mode: &str, root: &Path, backup: bool) -> io::Result<Plan> {
+    generate_with_policy(mode, root, backup, None)
+}
+
+pub fn generate_with_policy(mode: &str, root: &Path, backup: bool, policy: Option<(&str, &str)>) -> io::Result<Plan> {
+    if let Some((normal, nodata)) = policy {
+        // Reject partial/foreign policy contracts; shell falls back to its
+        // established prescan path rather than accepting a truncated mask.
+        let valid = |mask: &str| matches!(mask,
+            "|apk|" | "|apk|user|user_de|" | "|apk|data|obb|media|" |
+            "|apk|user|user_de|data|obb|media|");
+        if !valid(normal) || nodata != "|apk|" { return Err(invalid()); }
+    }
     let started = Instant::now();
     let remote = match mode { "local" => false, "remote" => true, _ => return Err(invalid()) };
     let first_full = remote && [".remote_firstfull_presize_active", ".remote_filelist_ok", ".remote_files"]
@@ -118,16 +132,26 @@ pub fn generate(mode: &str, root: &Path, backup: bool, user: bool, external: boo
             || !has_archive(app, "apk") || (remote && (changed.contains_key(app) || changed.contains_key(pkg))) {
             append(&mut rows, "APK", "apk");
         }
-        if !backup || columns[2] == "1" || pkg == "bin.mt.plus" { continue; }
+        // Shell supplies the operation-scoped stable policy. Legacy native
+        // callers retain their original boolean contract. Prescan's upstream
+        // existence/tar-input facts already filter blacklisted data; do not
+        // reinterpret blacklist text here with a different parser.
+        let (allow_user, allow_external) = if let Some((normal, nodata)) = policy {
+            let mask = if columns[2] == "1" || pkg == "bin.mt.plus" { nodata } else { normal };
+            (mask.split('|').any(|k| k == "user"), mask.split('|').any(|k| k == "data"))
+        } else {
+            let data = backup && columns[2] != "1" && pkg != "bin.mt.plus";
+            (data, data)
+        };
         let mut entries = Vec::new();
-        if user { entries.extend([("user", 3, 9), ("user_de", 4, 10)]); }
-        if user && old.is_none() {
+        if allow_user { entries.extend([("user", 3, 9), ("user_de", 4, 10)]); }
+        if allow_user && old.is_none() {
             let special = match pkg.as_str() { "github.tornaco.android.thanos" => "thanox", "org.frknkrc44.hma_oss" => "hma", _ => "" };
             if !special.is_empty() && counts.get(&(pkg.clone(), special.into())) == Some(&1) {
                 entries.push((special, usize::MAX, usize::MAX));
             }
         }
-        if external { entries.extend([("data", 5, 11), ("obb", 6, 12), ("media", 7, 13)]); }
+        if allow_external { entries.extend([("data", 5, 11), ("obb", 6, 12), ("media", 7, 13)]); }
         for (entry, size_column, fingerprint_column) in entries {
             let key = format!("{pkg}\t{entry}");
             let tar_key = (pkg.clone(), entry.to_owned());

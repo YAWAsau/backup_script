@@ -24,6 +24,6 @@ import org.json.JSONObject
         selected=option.getString("value")==value,onClick={select(option.getString("value"))}) }}
     NativePreferenceScale {
         WindowDropdownPreference(entry=DropdownEntry(entries),title=title,summary=summary.ifBlank{null},enabled=enabled,
-            insideMargin=PaddingValues(vertical=12.dp),startAction=nativeSettingIconSlot(enabled),onExpandedChange=onExpandedChange)
+            insideMargin=PaddingValues(vertical=16.dp),startAction=nativeSettingIconSlot(enabled),onExpandedChange=onExpandedChange)
     }
 }

@@ -30,6 +30,7 @@ class LauncherActivity:ComponentActivity() {
     private fun text(s:String)=NativeLanguage.text(this,s)
     override fun onCreate(state:Bundle?){
         super.onCreate(state)
+        EntryShortcuts.refreshPinned(this)
         val appearance=NativeAppearance(this).apply{loadLocal()}
         setContent {
             val configuration=androidx.compose.ui.platform.LocalConfiguration.current
@@ -49,7 +50,8 @@ class LauncherActivity:ComponentActivity() {
             if(shownPicker!=null) NativePathPicker(shownPicker,foreground,background,accent,uiStyle,reducedMotion=theme.optBoolean("reducedMotion"),onBack={picker?.back()},delegateRootBack=true){picker?.action(it)} else
             Column(Modifier.fillMaxSize().background(background).systemBarsPadding().padding(24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
                 BasicText("SpeedBackup",style=nativeTextStyle(color=foreground,fontSize=24.sp))
-                BasicText(page.second,style=nativeTextStyle(color=foreground,fontSize=16.sp))
+                if(busy)NativeLoadingStatus(page.second,uiStyle,foreground,accent,nativeTextStyle(fontSize=16.sp),rememberNativeResumed()&&!theme.optBoolean("reducedMotion"))
+                else BasicText(page.second,style=nativeTextStyle(color=foreground,fontSize=16.sp))
                 CompositionLocalProvider(LocalNativeFooterAction provides true) {
                 NativeDialogButton(text("重試"),uiStyle,foreground,field,nativeTextStyle(fontSize=17.sp),!busy,Modifier.fillMaxWidth(),primary=LocalNativeMaterial.current){launchEntry()}
                 if(EntryShortcuts.path(this@LauncherActivity,intent.getStringExtra("entryId"))!=null)NativeDialogButton(text("重新選擇 start.sh"),uiStyle,foreground,field,nativeTextStyle(fontSize=17.sp),!busy,Modifier.fillMaxWidth()){

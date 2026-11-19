@@ -186,7 +186,7 @@ pub fn reduce(plan: &str, events: &str, sizes: &str) -> io::Result<BTreeMap<Stri
             || f[..3].iter().any(|v| v.is_empty())
             || !matches!(
                 f[4],
-                "consider" | "begin" | "success" | "failed" | "skipped"
+                "consider" | "begin" | "success" | "failed" | "skipped" | "blocked"
             )
         {
             return Err(bad("invalid entry event"));
@@ -211,6 +211,9 @@ pub fn reduce(plan: &str, events: &str, sizes: &str) -> io::Result<BTreeMap<Stri
         if f[4] == "consider" {
             continue;
         }
+        if e.state == "blocked" {
+            return Err(bad("blocked entry is terminal for this run"));
+        }
         if attempt < e.attempt {
             return Err(bad("out-of-order attempt"));
         }
@@ -229,6 +232,15 @@ pub fn reduce(plan: &str, events: &str, sizes: &str) -> io::Result<BTreeMap<Stri
             if e.attempt == 0 {
                 e.elapsed_ms = Some(0);
             }
+        } else if f[4] == "blocked" {
+            // Not attempted is not failed or successful. Keep its first cause;
+            // never overwrite a published payload with a later run abort.
+            if e.state != "pending" || e.began.is_some() || attempt != 0
+                || rc.is_none() || rc == Some(0) || input.is_some() || output.is_some() {
+                return Err(bad("invalid blocked event"));
+            }
+            e.state = "blocked".into();
+            e.rc = rc;
         } else if f[4] == "skipped" {
             if e.began.is_some() {
                 return Err(bad("attempt cannot become skipped"));
@@ -599,6 +611,18 @@ mod tests {
             ""
         )
         .is_err());
+    }
+    #[test]
+    fn blocked_is_incomplete_and_cannot_overwrite_success() {
+        let blocked = event(0, "blocked", 2, "74").replace("\t100\t50\t", "\t-\t-\t");
+        let rows = reduce("DIR\tApp\tpkg\tuser\t100\n", &blocked, "").unwrap();
+        let mut totals = Totals::default();
+        totals.accept(&rows["App/user"]).unwrap();
+        assert_eq!((totals.success, totals.failed, totals.incomplete), (0, 0, 1));
+        assert!(reduce("", &(blocked.clone() + &event(1, "begin", 3, "-")), "").is_err());
+        assert!(reduce("", &(blocked.clone() + &event(0, "skipped", 3, "0")), "").is_err());
+        let done = event(1, "begin", 1, "-") + &event(1, "success", 2, "0");
+        assert!(reduce("", &(done + &blocked), "").is_err());
     }
     #[test]
     fn totals_overflow_is_reported() {

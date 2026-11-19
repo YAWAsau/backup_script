@@ -94,7 +94,7 @@
     "id": "reference:miuix",
     "name": "Miuix",
     "author": "compose-miuix-ui",
-    "version": "0.9.4-9d4b9c8-SNAPSHOT",
+    "version": "0.9.4-d8efe18-sb1-SNAPSHOT",
     "license": "Apache-2.0",
     "url": "https://github.com/compose-miuix-ui/miuix",
     "description": "原生介面使用的 Miuix 執行期程式庫；版本亦列於解析依賴。",
@@ -635,6 +635,18 @@
     "description": "Rust 依賴；精確版本與源碼提交記錄於 Cargo.lock，完整源碼及授權隨包供離線建置。",
     "components": [
       "Rust／Cargo"
+    ]
+  },
+  {
+    "id": "miuix-about-effect",
+    "name": "Miuix OS3 background effect",
+    "author": "compose-miuix-ui contributors",
+    "version": "d8efe1872c08c863a8b33e7044dd2a8b43038032",
+    "license": "Apache-2.0",
+    "url": "https://github.com/compose-miuix-ui/miuix",
+    "description": "OS3 background shader and palettes; Android integration adapted for SpeedBackup.",
+    "components": [
+      "APK／WebUI"
     ]
   }
 ]

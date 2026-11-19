@@ -5,7 +5,7 @@ use std::{
     os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::Path,
 };
-const KNOWN:&str="Background_apps_ignore|Backup_Mode|Backup_obb_data|Backup_suffix|Backup_user_data|Compression_method|Custom_path|Output_path|Shell_LANG|Zstd_level|Zstd_size_hint|Zstd_small_max_bytes|Zstd_small_threads|Zstd_threads|background_execution|backup_calllogs|backup_media|backup_messages|blacklist|blacklist_mode|cdn|list_location|log_max_size_mb|low_battery_mode|media_recovery|mount_point|notification_enable|pc_auto_shutdown|recovery_mode|remote_keep_local|remote_stream|remote_address_mode|remote_smb_identity|remote_webdav_identity|remote_type|remote_upload_per_app|restore_allow_low_target_sdk|restore_calllogs|restore_messages|rgb_a|rgb_b|rgb_c|setDisplayPowerMode|smb_remote_pass|smb_remote_user|smb_url|system|update|user|webdav_remote_pass|webdav_remote_user|webdav_url|whitelist";
+const KNOWN:&str="Background_apps_ignore|Backup_Mode|Backup_suffix|Compression_method|Custom_path|Output_path|Shell_LANG|Zstd_level|Zstd_size_hint|Zstd_small_max_bytes|Zstd_small_threads|Zstd_threads|background_execution|backup_calllogs|backup_location|backup_media|backup_messages|blacklist|blacklist_mode|cdn|list_location|log_max_size_mb|low_battery_mode|media_recovery|mount_point|notification_enable|pc_auto_shutdown|recovery_mode|remote_keep_local|remote_stream|remote_address_mode|remote_smb_identity|remote_webdav_identity|remote_type|remote_upload_per_app|restore_allow_low_target_sdk|restore_calllogs|restore_messages|rgb_a|rgb_b|rgb_c|setDisplayPowerMode|smb_remote_pass|smb_remote_user|smb_url|system|update|user|webdav_remote_pass|webdav_remote_user|webdav_url|whitelist";
 pub fn assignments(text: &str, only: &str) -> io::Result<String> {
     let mut out = String::new();
     for f in super::web_settings::parse_runtime(text)? {
@@ -48,7 +48,7 @@ pub fn commit(source: &Path, target: &Path) -> io::Result<()> {
     publish(target, &before, &output)
 }
 fn publish(target: &Path, before: &str, output: &str) -> io::Result<()> {
-    super::web_settings::parse_runtime(output)?;
+    let output=super::web_settings::compact(output)?;
     let m = fs::symlink_metadata(target)?;
     if before == output {
         return Ok(());
@@ -106,6 +106,18 @@ pub fn command(args: &[String]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn both_migrations_keep_values_without_conf_comments(){
+        let input="# user note\nShell_LANG='0' # language\nwebdav_remote_pass='secret # value'\nCustom_path='/sdcard/資料 #1\n# /sdcard/disabled'\n";
+        for backup in [true,false] {
+            let out=migrate(input,backup).unwrap();
+            assert!(!out.contains("# user note")&&!out.contains("# language"));
+            assert!(out.contains("webdav_remote_pass='secret # value'\n"));
+            assert!(out.contains("Custom_path='/sdcard/資料 #1\n# /sdcard/disabled'\n"));
+            assert_eq!(migrate(&out,backup).unwrap(),out);
+            let keys="Shell_LANG|webdav_remote_pass|Custom_path";
+            assert_eq!(assignments(input,keys).unwrap(),assignments(&out,keys).unwrap());
+        }
+    }
     #[test]
     fn literal_and_selection() {
         let a = assignments(
@@ -225,23 +237,10 @@ const RESTORE_INSERTS: &[(&str, &str, &str)] = &[
     ("rgb_b", "rgb_c", "rgb_c=213"),
 ];
 
-fn sanitize(text: &str) -> String {
-    text.split_inclusive('\n')
-        .map(|line| {
-            let mut line = line.to_string();
-            if line.starts_with('#') {
-                while line.contains("演演算法") {
-                    line = line.replace("演演算法", "演算法");
-                }
-            }
-            line
-        })
-        .collect()
-}
 fn migrate(text: &str, backup: bool) -> io::Result<String> {
     // Operate on parsed field spans, so multiline lists/passwords are never
     // mistaken for assignments or comments during legacy cleanup.
-    let mut output = sanitize(text);
+    let mut output = super::web_settings::compact(text)?;
     let fields = super::web_settings::parse_runtime(&output)?;
     let common = [
         "webdav_stream_heartbeat_sec",
@@ -308,12 +307,12 @@ fn migrate(text: &str, backup: bool) -> io::Result<String> {
             output.push('\n');
         }
     }
-    Ok(output)
+    super::web_settings::compact(&output)
 }
 fn transform_file(path: &Path, only_sanitize: bool) -> io::Result<()> {
     let before = read(path)?;
     let output = if only_sanitize {
-        sanitize(&before)
+        super::web_settings::compact(&before)?
     } else {
         match path.file_name().and_then(|n| n.to_str()) {
             Some("backup_settings.conf") => migrate(&before, true)?,

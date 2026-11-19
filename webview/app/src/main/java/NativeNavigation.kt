@@ -26,6 +26,8 @@ import top.yukonga.miuix.kmp.nav.core.*
 import top.yukonga.miuix.kmp.nav.transition.NavTransitions
 
 internal val LocalNativeNavigationActive=staticCompositionLocalOf { true }
+// Presentation eligibility includes revealed predictive-back parents, not just input ownership.
+internal val LocalNativePresentationVisible=compositionLocalOf { true }
 
 private data class NativeRoute(val id:String):NavKey
 
@@ -115,6 +117,7 @@ internal fun <T:Any> NativeNavHost(
         }
         true
     }
+    val parentPresentationVisible=LocalNativePresentationVisible.current
     Box(modifier) {
     NavDisplay(backStack=stack,modifier=Modifier.fillMaxSize(),
         transition=if(reducedMotion)NavTransitions.None else NavTransitions.MiuixDefault,
@@ -164,7 +167,7 @@ internal fun <T:Any> NativeNavHost(
                     settling=scope.launch{progress.animateTo(0f,settleSpec)}
                 }
             }
-            models[key.id]?.let { model -> CompositionLocalProvider(LocalNativeNavigationActive provides top){
+            models[key.id]?.let { model -> CompositionLocalProvider(LocalNativeNavigationActive provides top,LocalNativePresentationVisible provides (parentPresentationVisible&&(top||transition.isRunning))){
                 Box(Modifier.fillMaxSize().graphicsLayer {
                     val p=progress.value
                     scaleX=1f-p*.08f;scaleY=scaleX

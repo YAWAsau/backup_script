@@ -492,7 +492,6 @@ object WebDavUtil {
             "classifylistrel" -> cmdClassifyListRel(args)
             "encodepath" -> cmdEncodePath(args)
             "decodepath" -> cmdDecodePath(args)
-            "daemon" -> cmdDaemon(args)
             "daemonunix" -> cmdDaemonUnix(args)
             else -> {
                 printUsage()
@@ -502,10 +501,6 @@ object WebDavUtil {
     }
 
     // ---------------------------------------------------------------- daemon ----
-
-    private fun cmdDaemon(args: Array<String>) {
-        throw SecurityException("TCP daemon disabled; use authenticated AF_UNIX")
-    }
 
     private fun cmdDaemonUnix(args: Array<String>) {
         require(args.size >= 2) { "daemonunix <socketPath> [idleTimeoutSec] [ownerPid]" }
@@ -1916,7 +1911,7 @@ object WebDavUtil {
     private fun writePrepareDirsProgress(pathRaw: String, total: Int, done: Int, existing: Int, created: Int, failed: Int, status: String, rel: String) {
         val path = pathRaw.trim()
         if (path.isEmpty()) return
-        if (!(path.startsWith("/data/local/tmp/") || path.startsWith("/data/speed_debug/"))) return
+        if (!(path.startsWith("/data/local/tmp/") || (path.startsWith("/data/speed_debug/") || path.startsWith("/data/.speedbackup/debug/")))) return
         runCatching {
             val file = File(path)
             file.parentFile?.mkdirs()
@@ -2067,14 +2062,14 @@ object WebDavUtil {
         } }
         val headEnd = System.nanoTime()
         if (headCode in 200..299 && headEntry != null && headEntry!!.length >= 0L) {
-            System.err.println("DAV_STAT_TIMING headUs=${(headEnd-timingStart)/1000} propfindUs=0 parseUs=0 totalUs=${(System.nanoTime()-timingStart)/1000} method=HEAD http=$headCode")
+            DiagnosticLog.write("webdav_diagnostic.log", "DAV_STAT_TIMING headUs=${(headEnd-timingStart)/1000} propfindUs=0 parseUs=0 totalUs=${(System.nanoTime()-timingStart)/1000} method=HEAD http=$headCode")
             return headCode to headEntry
         }
 
         val (pfCode, body) = propfindRaw(user, pass, url, 0)
         val pfEnd = System.nanoTime()
         val entry = if (pfCode in 200..299) parseDavEntries(body).firstOrNull() else null
-        System.err.println("DAV_STAT_TIMING headUs=${(headEnd-timingStart)/1000} propfindUs=${(pfEnd-headEnd)/1000} parseUs=${(System.nanoTime()-pfEnd)/1000} totalUs=${(System.nanoTime()-timingStart)/1000} method=PROPFIND headHttp=$headCode http=$pfCode")
+        DiagnosticLog.write("webdav_diagnostic.log", "DAV_STAT_TIMING headUs=${(headEnd-timingStart)/1000} propfindUs=${(pfEnd-headEnd)/1000} parseUs=${(System.nanoTime()-pfEnd)/1000} totalUs=${(System.nanoTime()-timingStart)/1000} method=PROPFIND headHttp=$headCode http=$pfCode")
         return pfCode to entry
     }
 
@@ -3007,10 +3002,10 @@ object WebDavUtil {
      * HTTP 404. HttpCore may retry the same PUT once with a raw UTF-8 request target and cache the
      * successful path mode for the subsequent non-replayable streaming PUT on the same origin.
      */
-    private fun putReplayableBytesAttempt(user: String, pass: String, url: String, bytes: ByteArray): PutAttempt {
+    private fun putReplayableProbeAttempt(user: String, pass: String, url: String, bytes: ByteArray, chunked: Boolean): PutAttempt {
         val headers = linkedMapOf(
             "Content-Type" to "application/octet-stream",
-            "Content-Length" to bytes.size.toString()
+            (if (chunked) "Transfer-Encoding" else "Content-Length") to (if (chunked) "chunked" else bytes.size.toString())
         )
         val bodyDone = AtomicBoolean(false)
         var semanticCode = 0
@@ -3024,7 +3019,7 @@ object WebDavUtil {
                 headers = headers,
                 canReplayBody = true,
                 onRequestBodyComplete = { bodyDone.set(true) },
-                bodyWriter = { out -> out.write(bytes) },
+                bodyWriter = { out -> if (chunked) ByteArrayInputStream(bytes).use { input -> HttpCore.writeChunked(input, out) } else out.write(bytes) },
                 responseConsumer = { status, respHeaders, respInput ->
                     val semantic = consumePutResponseSemanticStatus(status, respHeaders, respInput)
                     if (semantic.first == PUT_SEMANTIC_FAILURE_HTTP_CODE) {
@@ -3043,56 +3038,11 @@ object WebDavUtil {
         }
     }
 
-    private fun putReplayableBytes(user: String, pass: String, url: String, bytes: ByteArray): Int {
-        return putReplayableBytesAttempt(user, pass, url, bytes).code
-    }
-
-    /**
-     * Replay-safe chunked PUT used by the managed stream capability probe.
-     *
-     * The real archive stream is non-replayable, but this tiny in-memory body can be recreated,
-     * allowing the probe to verify Transfer-Encoding: chunked without weakening production
-     * stream retry semantics.
-     */
-    private fun putReplayableChunkedBytesAttempt(user: String, pass: String, url: String, bytes: ByteArray): PutAttempt {
-        val headers = linkedMapOf(
-            "Content-Type" to "application/octet-stream",
-            "Transfer-Encoding" to "chunked"
-        )
-        val bodyDone = AtomicBoolean(false)
-        var semanticCode = 0
-        var semanticReason = ""
-        return runCatching {
-            val code = http.request(
-                method = "PUT",
-                url = url,
-                user = user,
-                pass = pass,
-                headers = headers,
-                canReplayBody = true,
-                onRequestBodyComplete = { bodyDone.set(true) },
-                bodyWriter = { out -> ByteArrayInputStream(bytes).use { input -> HttpCore.writeChunked(input, out) } },
-                responseConsumer = { status, respHeaders, respInput ->
-                    val semantic = consumePutResponseSemanticStatus(status, respHeaders, respInput)
-                    if (semantic.first == PUT_SEMANTIC_FAILURE_HTTP_CODE) {
-                        semanticCode = semantic.first
-                        semanticReason = semantic.second
-                    }
-                }
-            )
-            val finalCode = if (code in 200..299 && semanticCode == PUT_SEMANTIC_FAILURE_HTTP_CODE) {
-                infoLog("WEBDAV_PUT_2XX_BODY_RECLASSIFY http=$code synthetic=$PUT_SEMANTIC_FAILURE_HTTP_CODE reason=$semanticReason action=probe-stat-verify-before-success")
-                PUT_SEMANTIC_FAILURE_HTTP_CODE
-            } else code
-            PutAttempt(finalCode, null, bodyDone.get())
-        }.getOrElse { e ->
-            PutAttempt(HttpCore.extractCode(e), e, bodyDone.get())
-        }
-    }
-
-    private fun putReplayableChunkedBytes(user: String, pass: String, url: String, bytes: ByteArray): Int {
-        return putReplayableChunkedBytesAttempt(user, pass, url, bytes).code
-    }
+    // Only these small in-memory capability probes are replayable.
+    private fun putReplayableBytesAttempt(user: String, pass: String, url: String, bytes: ByteArray): PutAttempt =
+        putReplayableProbeAttempt(user, pass, url, bytes, false)
+    private fun putReplayableChunkedBytesAttempt(user: String, pass: String, url: String, bytes: ByteArray): PutAttempt =
+        putReplayableProbeAttempt(user, pass, url, bytes, true)
 
     // server product and backing-provider presentation are deliberately separate.
     // WebDAV headers can identify the front-end product (AList/OpenList/rclone/etc.), but an
@@ -3491,10 +3441,6 @@ object WebDavUtil {
         val kind = classifyServerKind(baseUrl, code, body)
         cacheServerKind(baseUrl, code, kind)
         return kind
-    }
-
-    private fun isAppDetailsJson(relPath: String): Boolean {
-        return relPath.trimEnd('/').substringAfterLast('/') == "app_details.json"
     }
 
     private fun isAlistFamily(kind: String): Boolean = kind == "alist" || kind == "openlist" || kind == "alist_compatible"
@@ -4774,23 +4720,6 @@ object WebDavUtil {
         return out
     }
 
-    private class LimitedInputStream(private val source: InputStream, private var remaining: Long) : InputStream() {
-        override fun read(): Int {
-            if (remaining <= 0) return -1
-            val b = source.read()
-            if (b >= 0) remaining--
-            return b
-        }
-
-        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-            if (remaining <= 0) return -1
-            val want = minOf(length.toLong(), remaining).toInt()
-            val n = source.read(buffer, offset, want)
-            if (n > 0) remaining -= n.toLong()
-            return n
-        }
-    }
-
     private fun printUsage() {
         println("WebDavUtil $VERSION commands:")
         println("  version")
@@ -4837,7 +4766,6 @@ object WebDavUtil {
         println("  classifylistrel <user> <pass> <baseUrl> <relPath> [depth]  (TSV kind\trel\tsize\tmtime\tname)")
         println("  encodepath <text>")
         println("  decodepath <text>")
-        println("  daemon TCP mode is disabled; use daemon-unix")
         println("  daemonunix <socketPath> [idleTimeoutSec] [ownerPid] (persistent mode, AF_UNIX filesystem socket)")
     }
 

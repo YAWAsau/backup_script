@@ -203,7 +203,7 @@ try {
     $env:CC_aarch64_linux_android = $Clang
     $env:AR_aarch64_linux_android = $LlvmAr
     $env:RUSTFLAGS = '-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384'
-    $env:CARGO_PROFILE_RELEASE_OPT_LEVEL = 'z'
+    $env:CARGO_PROFILE_RELEASE_OPT_LEVEL = 's'
     $env:CARGO_PROFILE_RELEASE_LTO = 'true'
     $env:CARGO_PROFILE_RELEASE_CODEGEN_UNITS = '1'
     $env:CARGO_PROFILE_RELEASE_PANIC = 'abort'

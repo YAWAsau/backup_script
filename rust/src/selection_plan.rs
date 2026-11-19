@@ -25,7 +25,7 @@ fn selected_ssaid_rows(list:&str,generated:&str)->io::Result<String>{
 fn payload(name:&str)->bool {
  let exact=selection_rows(&format!("{name}\n"),"media").is_ok_and(|r|r.len()==1&&r[0].enabled&&r[0].label==name);
  exact&&!name.is_empty()&&!name.contains(['/', '\\'])&&!name.chars().any(char::is_control)
- &&(name.ends_with(".tar")||name.ends_with(".tar.zst"))
+ &&super::super::restore_item::downloadable_media_stem(name).is_some()
 }
 fn media_plan(keys:&str,remote:&str,selected:Option<&str>)->io::Result<String>{
  let keys:BTreeSet<_>=keys.lines().filter(|l|!l.is_empty()).collect();
@@ -33,7 +33,7 @@ fn media_plan(keys:&str,remote:&str,selected:Option<&str>)->io::Result<String>{
  let wanted:BTreeSet<_>=selected.as_ref().into_iter().flatten().filter(|r|r.enabled).map(|r|r.label.as_str()).collect();
  let all=selected.is_none()||(wanted.contains("Media")&&!wanted.iter().any(|s|payload(s)));let mut result=BTreeSet::new();
  for raw in remote.lines(){let name=raw.trim_end_matches('\r');if !payload(name){continue;}
-  let stem=name.strip_suffix(".tar.zst").or_else(||name.strip_suffix(".tar")).unwrap();
+  let stem=super::super::restore_item::downloadable_media_stem(name).unwrap();
   if keys.contains(stem)&&(all||wanted.contains(name)){result.insert(name);}
  }
  Ok(result.into_iter().map(|s|format!("{s}\n")).collect())

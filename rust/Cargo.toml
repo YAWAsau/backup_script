@@ -1,6 +1,6 @@
 [package]
 name = "speedbackup-native-rs"
-version = "1159.0.0"
+version = "1208.0.0"
 edition = "2021"
 autobins = false
 license = "GPL-3.0-only"
@@ -13,7 +13,7 @@ mdns-sd = { version = "=0.21.7", default-features = false }
 serde_json = { version = "=1.0.154", features = ["raw_value"] }
 
 [profile.release]
-opt-level = "z"
+opt-level = "s"
 lto = true
 codegen-units = 1
 panic = "abort"

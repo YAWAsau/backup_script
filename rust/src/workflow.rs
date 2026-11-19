@@ -36,6 +36,12 @@ fn present(
         _ => false,
     }
 }
+fn select_codec<'a>(remote: &str, preferred: &'a str, alternate: &'a str) -> &'a str {
+    if remote.lines().any(|r| r == preferred) { preferred }
+    else if remote.lines().any(|r| r == alternate) { alternate }
+    else { preferred }
+}
+
 pub fn frame(mut input: impl Read, mut output: impl Write) -> io::Result<()> {
     let mut buf = [0u8; 65536];
     loop {
@@ -56,6 +62,17 @@ pub fn run(args: &[String]) -> i32 {
         match args.get(1).map(String::as_str) {
             Some("frame-stream") if args.len() == 2 => {
                 frame(io::stdin().lock(), io::stdout().lock())?;
+                Ok(0)
+            }
+            Some("payload-presence") if args.len() == 7 && args[2] == "select" && args[3] == "v1" => {
+                // Select both codecs from one authoritative read. Unknown/unreadable
+                // indexes leave the caller's preferred source unchanged.
+                let preferred = &args[5];
+                let alternate = &args[6];
+                if !safe(preferred) || !safe(alternate) { return Err(invalid()); }
+                let remote = fs::read_to_string(&args[4])?;
+                let selected = select_codec(&remote, preferred, alternate);
+                println!("{}", selected);
                 Ok(0)
             }
             Some("payload-presence") if args.len() == 7 && args[2] == "any" => {
@@ -120,6 +137,17 @@ pub fn run(args: &[String]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn codec_selection_preserves_preference_and_empty_index_default() {
+        let p = "App/user.tar.zst";
+        let a = "App/user.tar";
+        assert_eq!(select_codec("", p, a), p);
+        assert_eq!(select_codec(&format!("{a}\n{p}\n"), p, a), p);
+        assert_eq!(select_codec(&format!("{a}\r\n"), p, a), a);
+        assert_eq!(select_codec(a, p, a), a);
+        assert_eq!(select_codec("Other/user.tar", p, a), p);
+        assert_eq!(select_codec(p, a, p), p);
+    }
     #[test]
     fn receipt_requires_remote_confirmation() {
         let r = HashSet::from(["A/user.tar".to_owned()]);

@@ -6,7 +6,7 @@ plugins {
 android {
  namespace = "io.github.yawasau.speedbackup.webview"
  compileSdkVersion("android-37.0")
- defaultConfig { applicationId = "io.github.yawasau.speedbackup.webview"; minSdk = 28; targetSdk = 36; versionCode = 147; versionName = "1.147" }
+ defaultConfig { applicationId = "io.github.yawasau.speedbackup.webview"; minSdk = 28; targetSdk = 36; versionCode = 185; versionName = "1.185" }
  sourceSets["main"].apply { manifest.srcFile("../AndroidManifest.xml"); java.srcDir(layout.buildDirectory.dir("generated/host").get().asFile); res.srcDir("../res") }
  buildFeatures { compose = true }
  buildTypes { release { isMinifyEnabled = true; isShrinkResources = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt")) } }
@@ -17,12 +17,12 @@ val prepareHost by tasks.registering(Copy::class) { from("../MainActivity.java")
 // Copy only the three Android-independent shared converter sources, not Dex APIs.
 val prepareOpenCc by tasks.registering(Sync::class) {
  doFirst {
-  for (name in listOf("CCHelper.java", "OpenCcPhrases.java", "OpenCcPhraseData.java")) {
+  for (name in listOf("CCHelper.java", "OpenCcPhrases.java", "OpenCcPhraseData.java", "SpeedBackupIcons.java", "UnixHttpConnection.java")) {
    check(file("../../dex/app/src/main/java/com/xayah/dex/$name").isFile) { "Missing shared converter: $name; use the complete project checkout." }
   }
  }
  from("../../dex/app/src/main/java") {
-  include("com/xayah/dex/CCHelper.java", "com/xayah/dex/OpenCcPhrases.java", "com/xayah/dex/OpenCcPhraseData.java")
+  include("com/xayah/dex/CCHelper.java", "com/xayah/dex/OpenCcPhrases.java", "com/xayah/dex/OpenCcPhraseData.java", "com/xayah/dex/SpeedBackupIcons.java", "com/xayah/dex/UnixHttpConnection.java")
  }
  into(layout.buildDirectory.dir("generated/opencc"))
 }
@@ -33,10 +33,10 @@ dependencies {
  implementation("androidx.compose.material:material-icons-extended:1.7.8")
  implementation("com.materialkolor:material-kolor-material3:6.0.0-c5100e46-SNAPSHOT")
  implementation("com.github.topjohnwu.libsu:core:6.0.0-4910d8dc-SNAPSHOT")
- implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4-9d4b9c8-SNAPSHOT")
- implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4-9d4b9c8-SNAPSHOT")
- implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-9d4b9c8-SNAPSHOT")
- implementation("top.yukonga.miuix.kmp:miuix-nav-android:0.9.4-9d4b9c8-SNAPSHOT")
+ implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4-d8efe18-sb2-SNAPSHOT")
+ implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4-d8efe18-sb1-SNAPSHOT")
+ implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-d8efe18-sb1-SNAPSHOT")
+ implementation("top.yukonga.miuix.kmp:miuix-nav-android:0.9.4-d8efe18-sb1-SNAPSHOT")
  implementation("com.materialkolor:material-color-utilities:6.0.0-c5100e46-SNAPSHOT")
  implementation("io.github.kyant0:shapes-android:1.2.1")
  implementation("androidx.compose.foundation:foundation:1.12.1")

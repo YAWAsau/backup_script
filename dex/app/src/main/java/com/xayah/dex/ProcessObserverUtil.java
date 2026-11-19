@@ -88,26 +88,11 @@ final class ProcessObserverUtil {
     private static final AtomicInteger GLOBAL_LOSS_GENERATION = new AtomicInteger();
     private static final AtomicInteger GLOBAL_PROCESS_EVENTS = new AtomicInteger(0);
     private static final AtomicInteger GLOBAL_TASK_EVENTS = new AtomicInteger(0);
-    private static final String BATCH_STATE_DIR = scopedPath("SPEEDBACKUP_PROCESS_OBSERVER_BATCH_STATE_DIR", ".speedbackup_process_observer_batch_state");
+    private static final String BATCH_STATE_DIR = RunStateCleanup.Resource.OBSERVER.statePath();
     private static final long BATCH_STATE_TTL_MS = 24L * 60L * 60L * 1000L;
 
 
 
-    private static String scopedTmpDir() {
-        String run = System.getenv("SPEEDBACKUP_RUN_TMPDIR");
-        if (run != null && run.length() > 0) return run;
-        String tmp = System.getenv("TMPDIR");
-        if (tmp != null && tmp.contains(".speedbackup_run_") && tmp.length() > 0) return tmp;
-        return GuardLifecycle.fallbackRunDirectory();
-    }
-
-    private static String scopedPath(String envName, String name) {
-        String env = System.getenv(envName);
-        if (env != null && env.length() > 0) return env;
-        File dir = new File(scopedTmpDir());
-        try { dir.mkdirs(); } catch (Throwable ignored) {}
-        return new File(dir, name).getAbsolutePath();
-    }
 
     private ProcessObserverUtil() {}
 
@@ -2022,13 +2007,10 @@ final class ProcessObserverUtil {
 
 
         private boolean primaryEventNeedsCoverage(int pid) {
-            if (pid <= 0 || readStatusUid(pid) != targetUid) return false;
-            String name = readCmdline(pid);
-            // Binder may report a shared-UID process before its cmdline is ready.
-            // Once it resolves to another package, it is not our freezer target.
-            return name.isEmpty() || name.equals(packageName) || name.startsWith(packageName + ":")
-                    || name.contains("zygote") || name.endsWith("app_process")
-                    || name.endsWith("app_process64") || name.endsWith("app_process32");
+            return candidateNeedsCoverage(packageName, targetUid, pid);
+        }
+        private boolean primaryCoveragePending(List<PidInfo> alive, int eventPid) {
+            return coveragePending(userId, packageName, targetUid, alive, eventPid);
         }
 
         private boolean refreshPrimaryCgroupIfActive(String callback, List<PidInfo> alive, String stage, int eventPid) {
@@ -2061,31 +2043,30 @@ final class ProcessObserverUtil {
             // am_proc_start may precede the child's package cmdline. A package scan
             // can otherwise succeed for only the old parent and miss this sole event.
             long eventDeadline = android.os.SystemClock.elapsedRealtime() + 500L;
-            while (primaryEventNeedsCoverage(eventPid)
-                    && !CgroupFreezeUtil.isOwnedPidFrozen(userId, packageName, eventPid)
+            while (primaryCoveragePending(alive, eventPid)
                     && CgroupFreezeUtil.hasActivePrimaryAppScopeSession(userId, packageName, -1)
-                    && result != null && result.contains("CGROUP_FREEZE_PRIMARY_REFRESH_DONE ok=true")
+                    && OperationResult.isCompleted(result, "cgroup-refresh")
                     && android.os.SystemClock.elapsedRealtime() < eventDeadline) {
                 try { Thread.sleep(10L); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); break; }
                 result = CgroupFreezeUtil.refreshPrimaryAppScopePackageFreeze(userId, packageName,
                         "processObserver-event-pid", 1000);
             }
-            boolean eventCovered = !primaryEventNeedsCoverage(eventPid)
-                    || CgroupFreezeUtil.isOwnedPidFrozen(userId, packageName, eventPid);
+            boolean eventCovered = !primaryCoveragePending(alive, eventPid);
             lastPrimaryCgroupRefreshMs = System.currentTimeMillis();
-            boolean ok = eventCovered && result != null && result.contains("CGROUP_FREEZE_PRIMARY_REFRESH_DONE ok=true");
+            boolean ok = eventCovered && OperationResult.isCompleted(result, "cgroup-refresh");
             logLine("PROCESS_OBSERVER_PRIMARY_CGROUP_REFRESH stage=" + sanitize(stage)
+                    + " outcome=" + (ok && OperationResult.isSkipped(result, "cgroup-refresh") ? "skipped" : ok ? "ok" : "failed")
                     + " ok=" + ok
                     + " package=" + packageName
                     + " alivePids=" + pidCsv(alive)
                     + " callback=" + sanitize(callback)
                     + " result=" + sanitize(result));
             if (ok) {
-                lastFinalOkMs = System.currentTimeMillis();
+                if (!OperationResult.isSkipped(result, "cgroup-refresh")) lastFinalOkMs = System.currentTimeMillis();
                 return true;
             }
             if (CgroupFreezeUtil.hasActivePrimaryAppScopeSession(userId, packageName, -1))
-                CgroupFreezeUtil.markPrimaryIntegrityFailure(userId, packageName, "observer-refresh-failed");
+                CgroupFreezeUtil.markPrimaryIntegrityFailure(userId, packageName, OperationResult.isSkipped(result, "cgroup-refresh") ? "observer-refresh-live-event-uncovered" : "observer-refresh-failed");
             return true; // handled: never fall through to force-stop a protected package
             } catch (Throwable failure) {
                 if (CgroupFreezeUtil.hasActivePrimaryAppScopeSession(userId, packageName, -1))
@@ -2195,7 +2176,7 @@ final class ProcessObserverUtil {
                 for (Integer frozenPid : CgroupFreezeUtil.ownedPids(result.cgroupToken)) addFrozenPid(frozenPid, tokenPids);
                 cgroupTokenPids.put(result.cgroupToken, tokenPids);
             }
-            if (!result.finalAlive) {
+            if (!result.finalAlive && !result.skipped) {
                 lastFinalOkMs = System.currentTimeMillis();
             }
             for (String line : result.lines) {
@@ -2296,7 +2277,13 @@ final class ProcessObserverUtil {
                         + " detail=" + sanitize(freezeResult));
                 return true;
             }
-            logLine("PROCESS_OBSERVER_CGROUP_FAST_FREEZE_FAIL reason=top-target-fast-freeze"
+            if (OperationResult.isSkipped(freezeResult, "cgroup-start") && !primaryCoveragePending(alive, -1)) {
+                logLine("PROCESS_OBSERVER_CGROUP_FAST_FREEZE_SKIPPED reason=no_alive_pid monitoring=active");
+                return true;
+            }
+            logLine("PROCESS_OBSERVER_CGROUP_FAST_FREEZE_"
+                    + (OperationResult.isSkipped(freezeResult, "cgroup-start") ? "SKIPPED" : "FAIL")
+                    + " reason=top-target-fast-freeze"
                     + " package=" + packageName
                     + " token=" + freezeToken
                     + " alivePids=" + pidCsv(alive)
@@ -2680,6 +2667,7 @@ final class ProcessObserverUtil {
         final List<String> lines = new ArrayList<>();
         boolean finalAlive;
         int cgroupToken = -1;
+        boolean skipped;
     }
 
     private static final class TopSnapshot {
@@ -2694,6 +2682,33 @@ final class ProcessObserverUtil {
             this.source = source == null ? "" : source;
             this.raw = raw == null ? "" : raw;
         }
+    }
+
+    private static boolean candidateNeedsCoverage(String packageName, int targetUid, int pid) {
+            if (pid <= 0) return false;
+            int liveUid = readStatusUid(pid);
+            if (liveUid < 0) {
+                try { java.nio.file.Files.readAttributes(new File("/proc/" + pid).toPath(), java.nio.file.attribute.BasicFileAttributes.class); }
+                catch (java.nio.file.NoSuchFileException gone) { return false; }
+                catch (Exception unknown) { return true; }
+                return true;
+            }
+            if (userIdFromUid(liveUid) != userIdFromUid(targetUid)) return false;
+            String name = readCmdline(pid);
+            // Binder may report a shared-UID process before its cmdline is ready.
+            // Once it resolves to another package, it is not our freezer target.
+            return name.equals(packageName) || name.startsWith(packageName + ":")
+                    || (liveUid == targetUid && (name.isEmpty() || name.contains("zygote")
+                    || name.endsWith("app_process") || name.endsWith("app_process64") || name.endsWith("app_process32")));
+    }
+    private static boolean coveragePending(int userId, String packageName, int targetUid, List<PidInfo> alive, int eventPid) {
+        if (candidateNeedsCoverage(packageName, targetUid, eventPid)
+                && !CgroupFreezeUtil.isOwnedPidFrozen(userId, packageName, eventPid)) return true;
+        if (alive != null) for (PidInfo info : alive) {
+            if (info != null && candidateNeedsCoverage(packageName, targetUid, info.pid)
+                    && !CgroupFreezeUtil.isOwnedPidFrozen(userId, packageName, info.pid)) return true;
+        }
+        return false;
     }
 
     private static GuardResult runGuardStop(int userId, String packageName, int targetUid, String action,
@@ -2761,7 +2776,8 @@ final class ProcessObserverUtil {
             String freezeResult = CgroupFreezeUtil.start(userId, packageName, pidForFreeze, 1500, "processObserver-" + freezeScope);
             int freezeToken = CgroupFreezeUtil.parseToken(freezeResult);
             boolean freezeOk = CgroupFreezeUtil.isStartOk(freezeResult) && freezeToken > 0;
-            result.lines.add("ACTION_RESULT stage=cgroup-freeze ok=" + freezeOk
+            result.lines.add("ACTION_RESULT stage=cgroup-freeze outcome="
+                    + (OperationResult.isSkipped(freezeResult, "cgroup-start") ? "skipped" : freezeOk ? "ok" : "failed") + " ok=" + freezeOk
                     + " token=" + freezeToken
                     + " pid=" + pidForFreeze
                     + " scope=" + freezeScope
@@ -2782,6 +2798,13 @@ final class ProcessObserverUtil {
                         + " fallback=not-needed");
                 return result;
             }
+            if (OperationResult.isSkipped(freezeResult, "cgroup-start")
+                    && !coveragePending(userId, packageName, uid, before, eventPid)) {
+                result.skipped = true;
+                result.finalAlive = false;
+                result.lines.add("FINAL result=skipped finalStage=no_alive_pid monitoring=active");
+                return result;
+            }
             // onProcessDied can arrive for a pid that has already vanished while
             // sibling processes of the same high-risk app are still alive.  Freezing the
             // dead event pid returns false and previously fell through to force-stop,
@@ -2792,7 +2815,8 @@ final class ProcessObserverUtil {
                         "processObserver-package-retry-after-dead-pid");
                 int packageFreezeToken = CgroupFreezeUtil.parseToken(packageFreezeResult);
                 boolean packageFreezeOk = CgroupFreezeUtil.isStartOk(packageFreezeResult) && packageFreezeToken > 0;
-                result.lines.add("ACTION_RESULT stage=cgroup-freeze-package-retry ok=" + packageFreezeOk
+                result.lines.add("ACTION_RESULT stage=cgroup-freeze-package-retry outcome="
+                        + (OperationResult.isSkipped(packageFreezeResult, "cgroup-start") ? "skipped" : packageFreezeOk ? "ok" : "failed") + " ok=" + packageFreezeOk
                         + " token=" + packageFreezeToken
                         + " pid=-1"
                         + " scope=package"
@@ -2800,6 +2824,13 @@ final class ProcessObserverUtil {
                         + " reason=dead-event-pid"
                         + " detail=" + sanitize(packageFreezeResult));
                 if (packageFreezeToken > 0) result.cgroupToken = packageFreezeToken;
+                if (OperationResult.isSkipped(packageFreezeResult, "cgroup-start")
+                        && !coveragePending(userId, packageName, uid, before, eventPid)) {
+                    result.skipped = true;
+                    result.finalAlive = false;
+                    result.lines.add("FINAL result=skipped finalStage=no_alive_pid monitoring=active");
+                    return result;
+                }
                 if (packageFreezeOk) {
                     TopSnapshot topAfterPackageFreeze = findTopApp(userId);
                     result.lines.add(topLine("after-cgroup-freeze-package-retry", topAfterPackageFreeze, packageName));
@@ -2817,8 +2848,9 @@ final class ProcessObserverUtil {
                     return result;
                 }
             }
+            // A live event not covered by the scan must still take the protective path.
             cgroupFallbackInstantKill = true;
-            result.lines.add("CGROUP_FREEZER_FALLBACK reason=unavailable_or_failed next=native-kill-package-live-rescan scope="
+            result.lines.add("CGROUP_FREEZER_FALLBACK reason=barrier_unestablished next=native-kill-package-live-rescan scope="
                     + freezeScope + " eventPid=" + eventPid
                     + " order=force-stop,native-kill-live-rescan"
                     + " numericPidFallback=false");

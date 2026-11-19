@@ -27,6 +27,7 @@ import java.nio.file.StandardCopyOption;
  * Compatibility references: AOSP WifiStatusTracker and VREM WiFiAnalyzer WiFiWidth.
  */
 public final class WifiConnectionWatch {
+    private static final java.util.regex.Pattern CHANNEL_WIDTH=java.util.regex.Pattern.compile("channel \\d+ \\((\\d+) MHz\\), width: (20|40|80|160|320|80\\+80) MHz");
     private final File directory;
     private final WifiManager wifi;
     private final ConnectivityManager connectivity;
@@ -178,7 +179,7 @@ public final class WifiConnectionWatch {
                 while(size<buffer.length&&(n=stream.read(buffer,size,buffer.length-size))>0)size+=n;
             }
             if(size==buffer.length)return "";
-            java.util.regex.Matcher match=java.util.regex.Pattern.compile("channel \\d+ \\((\\d+) MHz\\), width: (20|40|80|160|320|80\\+80) MHz").matcher(new String(buffer,0,size,StandardCharsets.UTF_8));
+            java.util.regex.Matcher match=CHANNEL_WIDTH.matcher(new String(buffer,0,size,StandardCharsets.UTF_8));
             String result="";
             while(match.find())if(Integer.parseInt(match.group(1))==info.getFrequency()) {
                 if(!result.isEmpty()&&!result.equals(match.group(2)))return "";
@@ -201,7 +202,7 @@ public final class WifiConnectionWatch {
             Files.move(temporary.toPath(),new File(directory,"wifi.json").toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
             last=text;
         } catch(Exception | LinkageError error) {
-            System.err.println("WIFI_DIAG publish_error="+error.getClass().getSimpleName());
+            System.err.println("[ERROR] WIFI_WATCH publish_error="+error.getClass().getSimpleName());
         }
     }
     @SuppressWarnings("deprecation")
@@ -294,7 +295,7 @@ public final class WifiConnectionWatch {
             // The owning Rust process holds this pipe. EOF terminates even on old kernels.
             System.in.read();
         } catch(Exception | LinkageError error) {
-            System.err.println("WIFI_DIAG startup_error="+error.getClass().getSimpleName());
+            System.err.println("[ERROR] WIFI_WATCH startup_error="+error.getClass().getSimpleName());
             if(watch!=null)watch.failure("startupError",error);
             if(watch!=null)watch.publish(new JSONObject());
         } finally {

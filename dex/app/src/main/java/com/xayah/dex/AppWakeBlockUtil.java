@@ -46,25 +46,10 @@ final class AppWakeBlockUtil {
     private static final Map<Integer, WakeBlockSession> SESSIONS = new HashMap<>();
     private static final String OP_RUN_IN_BACKGROUND = "RUN_IN_BACKGROUND";
     private static final String OP_RUN_ANY_IN_BACKGROUND = "RUN_ANY_IN_BACKGROUND";
-    private static final String STATE_DIR = scopedPath("SPEEDBACKUP_WAKEBLOCK_STATE_DIR", ".speedbackup_wakeblock_state");
+    private static final String STATE_DIR = RunStateCleanup.Resource.WAKE.statePath();
     private static final long STATE_TTL_MS = 24L * 60L * 60L * 1000L;
 
 
-    private static String scopedTmpDir() {
-        String run = System.getenv("SPEEDBACKUP_RUN_TMPDIR");
-        if (run != null && run.length() > 0) return run;
-        String tmp = System.getenv("TMPDIR");
-        if (tmp != null && tmp.contains(".speedbackup_run_") && tmp.length() > 0) return tmp;
-        return GuardLifecycle.fallbackRunDirectory();
-    }
-
-    private static String scopedPath(String envName, String name) {
-        String env = System.getenv(envName);
-        if (env != null && env.length() > 0) return env;
-        File dir = new File(scopedTmpDir());
-        try { dir.mkdirs(); } catch (Throwable ignored) {}
-        return new File(dir, name).getAbsolutePath();
-    }
 
     private AppWakeBlockUtil() {}
 

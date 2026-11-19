@@ -1,5 +1,7 @@
 package io.github.yawasau.speedbackup.webview;
 
+import com.xayah.dex.UnixHttpConnection;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -22,12 +24,12 @@ final class NativeApi implements AutoCloseable {
     NativeApi(String address) {
         try {
             URI uri = new URI(address);
-            if (!"http".equals(uri.getScheme()) || !"127.0.0.1".equals(uri.getHost())
-                    || uri.getPort() < 1 || uri.getPort() > 65535 || uri.getRawUserInfo() != null
+            if (!"unix".equals(uri.getScheme()) || uri.getHost()==null || !uri.getHost().matches("sb-ui-[0-9a-f]{64}")
+                    || uri.getPort() != -1 || uri.getRawUserInfo() != null
                     || !"/".equals(uri.getRawPath()) || uri.getRawQuery() != null
                     || uri.getRawFragment() == null || !uri.getRawFragment().matches("[0-9a-f]{64}"))
                 throw new IllegalArgumentException("Invalid local session");
-            origin = "http://127.0.0.1:" + uri.getPort();
+            origin = "unix://" + uri.getHost();
             token = uri.getRawFragment();
             identity = origin + "#" + token;
         } catch (java.net.URISyntaxException e) {
@@ -38,7 +40,7 @@ final class NativeApi implements AutoCloseable {
     NativeApi fork() { NativeApi api=new NativeApi(origin + "/#" + token);api.diagnostic=diagnostic;return api; }
 
     void exportDiagnostics(java.io.OutputStream out, String source) throws IOException {
-        HttpURLConnection c=(HttpURLConnection)URI.create(origin+"/api/diagnostic-export").toURL().openConnection(java.net.Proxy.NO_PROXY);
+        HttpURLConnection c=new UnixHttpConnection(origin+"/api/diagnostic-export");
         synchronized(this){if(closed)throw new IOException("Session closed");active.add(c);}
         try {
             c.setInstanceFollowRedirects(false);c.setUseCaches(false);c.setConnectTimeout(5000);c.setReadTimeout(30000);
@@ -61,12 +63,22 @@ final class NativeApi implements AutoCloseable {
     }
 
     private String request(String route, String body) throws IOException {
-        final long started = android.os.SystemClock.elapsedRealtime();
         if (route == null || !route.matches("[a-z][a-z0-9-]{0,63}"))
             throw new IllegalArgumentException("Invalid API route");
+        final boolean trace = android.util.Log.isLoggable("SpeedBackupTiming", android.util.Log.DEBUG);
+        if (trace) android.os.Trace.beginSection("NativeApi." + route);
+        try {
+            return requestUntraced(route, body);
+        } finally {
+            if (trace) android.os.Trace.endSection();
+        }
+    }
+
+    private String requestUntraced(String route, String body) throws IOException {
+        final long started = android.os.SystemClock.elapsedRealtime();
         byte[] input = body == null ? null : body.getBytes(StandardCharsets.UTF_8);
         if (input != null && input.length > MAX_BYTES) throw new IOException("Request too large");
-        HttpURLConnection connection = (HttpURLConnection) URI.create(origin + "/api/" + route).toURL().openConnection(java.net.Proxy.NO_PROXY);
+        HttpURLConnection connection = new UnixHttpConnection(origin + "/api/" + route);
         synchronized (this) {
             if (closed) { connection.disconnect(); throw new IOException("Session closed"); }
             active.add(connection);
@@ -74,8 +86,10 @@ final class NativeApi implements AutoCloseable {
         try {
             connection.setInstanceFollowRedirects(false);
             connection.setUseCaches(false);
-            connection.setConnectTimeout(5000);
-            connection.setReadTimeout(18000);
+            boolean monitor = "process-monitor".equals(route);
+            int responseLimit = monitor ? 65536 : MAX_BYTES;
+            connection.setConnectTimeout(monitor ? 2000 : 18000);
+            connection.setReadTimeout(monitor ? 2000 : 18000);
             connection.setRequestProperty("X-SpeedBackup-Token", token);
             connection.setRequestProperty("Content-Type", "text/plain;charset=UTF-8");
             connection.setRequestProperty("Cache-Control", "no-store");
@@ -88,9 +102,9 @@ final class NativeApi implements AutoCloseable {
             int status = connection.getResponseCode();
             // A root endpoint must never forward session credentials to another origin.
             if (status >= 300 && status < 400) throw new IOException("API redirect rejected");
-            if (connection.getContentLengthLong() > MAX_BYTES) throw new IOException("API response too large");
+            if (connection.getContentLengthLong() > responseLimit) throw new IOException("API response too large");
             InputStream stream = status >= 200 && status < 300 ? connection.getInputStream() : connection.getErrorStream();
-            String text = stream == null ? "" : boundedRead(stream);
+            String text = stream == null ? "" : boundedRead(stream, responseLimit);
             synchronized (this) { if (closed) throw new IOException("Session closed"); }
             if (status < 200 || status >= 300) throw new ApiFailure(status, text);
             return text;
@@ -116,7 +130,7 @@ final class NativeApi implements AutoCloseable {
     }
 
     void remoteHealth(java.util.function.Consumer<String> event) throws IOException {
-        HttpURLConnection c=(HttpURLConnection)URI.create(origin+"/api/remote-health").toURL().openConnection(java.net.Proxy.NO_PROXY);
+        HttpURLConnection c=new UnixHttpConnection(origin+"/api/remote-health");
         synchronized(this){if(closed)throw new IOException("Session closed");active.add(c);}
         try {
             c.setInstanceFollowRedirects(false);c.setUseCaches(false);c.setConnectTimeout(5000);c.setReadTimeout(0);
@@ -137,7 +151,7 @@ final class NativeApi implements AutoCloseable {
     // Event-driven Rust discovery stream. No LAN sockets, DNS or credentials here.
     void discovery(String id, boolean fresh, java.util.function.Consumer<String> event) throws IOException {
         if(!id.matches("[0-9a-f]{32}"))throw new IOException("Invalid discovery id");
-        HttpURLConnection c=(HttpURLConnection)URI.create(origin+"/api/discovery").toURL().openConnection(java.net.Proxy.NO_PROXY);
+        HttpURLConnection c=new UnixHttpConnection(origin+"/api/discovery");
         synchronized(this){if(closed){c.disconnect();throw new IOException("Session closed");}active.add(c);}
         try {
             c.setInstanceFollowRedirects(false);c.setUseCaches(false);c.setConnectTimeout(5000);c.setReadTimeout(18000);
@@ -160,7 +174,7 @@ final class NativeApi implements AutoCloseable {
     // Separate bounded binary transport; text APIs keep their smaller limit.
     void systemWallpaper(int userId, java.io.File target) throws IOException {
         if(userId<0 || userId>9999)throw new IOException("Invalid user");
-        HttpURLConnection c=(HttpURLConnection)URI.create(origin+"/api/system-wallpaper").toURL().openConnection(java.net.Proxy.NO_PROXY);
+        HttpURLConnection c=new UnixHttpConnection(origin+"/api/system-wallpaper");
         synchronized(this){if(closed){c.disconnect();throw new IOException("Session closed");}active.add(c);}
         try {
             c.setInstanceFollowRedirects(false);c.setUseCaches(false);c.setConnectTimeout(5000);c.setReadTimeout(18000);
@@ -180,10 +194,14 @@ final class NativeApi implements AutoCloseable {
     }
 
     private static String boundedRead(InputStream stream) throws IOException {
+        return boundedRead(stream, MAX_BYTES);
+    }
+
+    private static String boundedRead(InputStream stream, int limit) throws IOException {
         try (InputStream in = stream; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[16384];
             for (int read; (read = in.read(buffer)) != -1;) {
-                if (out.size() > MAX_BYTES - read) throw new IOException("API response too large");
+                if (out.size() > limit - read) throw new IOException("API response too large");
                 out.write(buffer, 0, read);
             }
             return new String(out.toByteArray(), StandardCharsets.UTF_8);

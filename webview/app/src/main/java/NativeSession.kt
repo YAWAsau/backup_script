@@ -2,17 +2,97 @@ package io.github.yawasau.speedbackup.webview
 
 import android.content.Context
 import org.json.JSONObject
+
 import org.json.JSONArray
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
+internal const val HOST_HANDOFF_TIMEOUT_MS=5000L
+
 /** One serialized state owner per root-issued session; no DOM or JavaScript. */
 internal class NativeSession(private val context:Context,address:String,private val listener:Listener):AutoCloseable {
     interface Listener { fun model(value:JSONObject);fun link(url:String);fun terminal(message:String);fun exit() }
     val epoch=UUID.randomUUID().toString()
     val api=NativeApi(address)
+    private val monitorContext=context.applicationContext
+    private val monitorLock=Any()
+    private var monitorAddress:String?=address
+    private var monitorTicket=-1L
+    private var monitorBusy=false
+    private var monitorMessage=""
+        set(value){field=value;monitorBusy=false}
+    private var monitorObserver:AutoCloseable?=null
+    private val monitorAppearancePrefs=monitorContext.getSharedPreferences(
+        "native-appearance",Context.MODE_PRIVATE
+    )
+    fun processMonitorTransparency():Int=
+        monitorAppearancePrefs.getInt("monitor-transparency",65).coerceIn(0,100)
+    fun setProcessMonitorTransparency(value:Int){
+        require(value in 0..100)
+        if(closing.get())return
+        // Local preference only: available even while the monitor is disabled.
+        // The service's appearance listener coalesces live updates on main.
+        monitorAppearancePrefs.edit().putInt("monitor-transparency",value).apply()
+        emit()
+    }
+    fun processMonitorEnabled():Boolean=ProcessMonitorState.enabled(monitorContext)
+    private fun requestMonitor(on:Boolean):Long?=synchronized(monitorLock){
+        if(closing.get())return@synchronized null
+        ProcessMonitorState.request(monitorContext,on).also{
+            monitorTicket=it
+            if(!on)ProcessMonitorState.stop(monitorContext,it)
+        }
+    }
+    fun setProcessMonitor(enabled:Boolean){
+        val ticket=requestMonitor(enabled)?:return
+        if(!enabled){monitorMessage="";emit();return}
+        monitorMessage="正在啟動懸浮監控…";monitorBusy=true;emit()
+        try{
+            check(api.post("monitor-permission","").trim()=="OVERLAY_OK")
+            check(android.provider.Settings.canDrawOverlays(monitorContext))
+            launchProcessMonitor(ticket)
+        }catch(_:Exception){
+            if(ProcessMonitorState.fail(monitorContext,ticket)){monitorMessage="無法開啟懸浮監控，請確認權限後重新開啟";emit()}
+        }
+    }
+    private fun launchProcessMonitor(ticket:Long,retry:Boolean=true){
+        val app=monitorContext
+        val main=android.os.Handler(android.os.Looper.getMainLooper())
+        val replied=AtomicBoolean()
+        val receiver=object:android.os.ResultReceiver(main){
+            override fun onReceiveResult(code:Int,data:android.os.Bundle?){
+                if(!replied.compareAndSet(false,true))return
+                if(code!=1&&retry&&ProcessMonitorState.current(ticket)&&ProcessMonitorState.enabled(app)&&android.provider.Settings.canDrawOverlays(app)){
+                    main.postDelayed({execute{if(ProcessMonitorState.current(ticket))launchProcessMonitor(ticket,false)}},250)
+                    return
+                }
+                execute{if(ProcessMonitorState.current(ticket)){monitorMessage=if(code==1)"" else "懸浮監控尚未啟動，請重新開啟";emit()}}
+            }
+        }
+        main.post{
+            synchronized(monitorLock){
+                if(closing.get())return@post
+                val next=monitorAddress?:return@post
+                ProcessMonitorState.launch(app,next,ticket,receiver)
+            }
+            main.postDelayed({
+                if(replied.compareAndSet(false,true)&&ProcessMonitorState.fail(app,ticket)){
+                    ProcessMonitorState.stop(app,ticket)
+                    execute{if(ProcessMonitorState.current(ticket)){monitorMessage="懸浮監控啟動逾時，請重新開啟";emit()}}
+                }
+            },10000)
+        }
+    }
+    private fun refreshProcessMonitor(){
+        if(!ProcessMonitorState.enabled(monitorContext))return
+        if(!android.provider.Settings.canDrawOverlays(monitorContext)){
+            requestMonitor(false);monitorMessage="懸浮監控權限已關閉"
+            return
+        }
+        requestMonitor(true)?.let{monitorMessage="正在啟動懸浮監控…";monitorBusy=true;launchProcessMonitor(it)}
+    }
     val controls=NativeControls()
     fun importSystemWallpaper(){android.os.Handler(android.os.Looper.getMainLooper()).post{NativeUserWallpaper.importSystem(context,api)}}
     val appearance=NativeAppearance(context)
@@ -44,6 +124,7 @@ internal class NativeSession(private val context:Context,address:String,private 
     var status=""
     private var exportRequest=""
     private var exportSource=""
+    private var exportingDiagnostics=false
     fun exportDiagnostics(source:String=""){if(exportRequest.isEmpty()){exportSource=source;exportRequest=UUID.randomUUID().toString();emit()}}
     var sharingDiagnostics=false;private set
     fun shareDiagnostics(source:String="") {
@@ -80,7 +161,7 @@ internal class NativeSession(private val context:Context,address:String,private 
             }
         }catch(e:Exception){output?.delete();sharingDiagnostics=false;throw e}
     }
-    private var finishedAt=0L
+    private var handoffDeadline=0L
     var finished=false;private set
     private var dialog:JSONObject?=null
     private var dialogAction:(()->Unit)?=null
@@ -123,16 +204,23 @@ internal class NativeSession(private val context:Context,address:String,private 
             }
         }catch(_:Exception){ /* Older backends or unavailable queue: retry next foreground. */ }
     }
-    fun start(){execute{
+    private inline fun <T> timing(name:String,block:()->T):T {
+        val enabled=android.util.Log.isLoggable("SpeedBackupTiming",android.util.Log.DEBUG)
+        if(enabled)android.os.Trace.beginSection(name)
+        try{return block()}finally{if(enabled)android.os.Trace.endSection()}
+    }
+    fun start(){execute{timing("NativeSession.start"){
         val kind=sessionKind()
+        monitorObserver=ProcessMonitorState.observe(monitorContext){execute{if(!ProcessMonitorState.enabled(monitorContext))monitorMessage="";emit()}}
+        refreshProcessMonitor()
         catalog=NativeCatalog.get(context);appearance.load(api)
         page=when(kind){"menu"->NativeMenuPage(this);"editor"->NativeEditorPage(this,context);"console"->NativeConsolePage(this);else->error("未知操作畫面")}
-        try{page!!.load()}catch(e:Exception){loadFailed=true;throw e};emit()
+        try{timing("NativeSession.load"){page!!.load()}}catch(e:Exception){loadFailed=true;throw e};emit()
         diagnostic("native-open")
         page!!.tickIntervalMillis?.let{interval->
             executor.scheduleWithFixedDelay({if(!closed.get()&&!finished)try{page?.tick()}catch(e:Exception){failure(e)}},interval,interval,TimeUnit.MILLISECONDS)
         }
-    }}
+    }}}
     fun execute(action:()->Unit){if(!closing.get())try{executor.execute{if(!closed.get())try{action()}catch(e:Exception){failure(e)}}}catch(_:java.util.concurrent.RejectedExecutionException){}}
     fun later(delay:Long,action:()->Unit):java.util.concurrent.ScheduledFuture<*> = executor.schedule({if(!closed.get())try{action()}catch(e:Exception){failure(e)}},delay,TimeUnit.MILLISECONDS)
     private fun failure(error:Exception){
@@ -150,14 +238,14 @@ internal class NativeSession(private val context:Context,address:String,private 
             val raw=id.substringAfter(':')
             if(raw.isEmpty()){status="已取消匯出";emit();return@execute}
             val uri=android.net.Uri.parse(raw);require(uri.scheme=="content")
-            status="正在匯出整包日誌…";emit()
+            exportingDiagnostics=true;status="正在匯出整包日誌…";emit()
             try {
                 context.contentResolver.openOutputStream(uri,"wt").use{out->requireNotNull(out){"無法開啟保存位置"};api.exportDiagnostics(out,exportSource)}
                 status="整包日誌已匯出至你選擇的位置。"
             }catch(e:Exception){
                 try{android.provider.DocumentsContract.deleteDocument(context.contentResolver,uri)}catch(_:Exception){}
                 throw e
-            }
+            }finally{exportingDiagnostics=false}
             emit();return@execute
         }
         if(loadFailed){if(id=="back")exit();return@execute}
@@ -166,7 +254,7 @@ internal class NativeSession(private val context:Context,address:String,private 
                 // A successful managed submission is awaiting the root controller's
                 // replacement document. Repeated Back must not close its Activity.
                 val awaiting=page?.awaitHostNavigationAfterFinish==true &&
-                    android.os.SystemClock.elapsedRealtime()-finishedAt<5000L
+                    android.os.SystemClock.elapsedRealtime()<handoffDeadline
                 if(!awaiting)exit()
             }
             return@execute
@@ -187,29 +275,66 @@ internal class NativeSession(private val context:Context,address:String,private 
             controls.button("confirm:accept","確定"){}.put("centerLabel",true).put("materialPrimary",true)
         )).put("dialogAction",true)
     )));emit()}
-    fun finish(message:String){finishedAt=android.os.SystemClock.elapsedRealtime();finished=true;status=message;statePrefs.edit().remove(stateKey).apply();emit()}
+    fun finish(message:String){handoffDeadline=android.os.SystemClock.elapsedRealtime()+HOST_HANDOFF_TIMEOUT_MS;finished=true;status=message;statePrefs.edit().remove(stateKey).apply();emit()}
     fun exit(){listener.exit()}
     fun openLink(url:String){val u=java.net.URI(url);require(u.scheme=="https"&&!u.host.isNullOrEmpty()&&u.userInfo==null);listener.link(url)}
-    fun emit(){
+    private var shortcutLanguage=""
+    fun emit(){timing("NativeSession.emit"){
         if(closing.get()||loadFailed)return
         controls.begin()
-        val model=appearance.apply(obj("epoch" to epoch,"seq" to ++sequence,"resumeSession" to api.identity,"body" to JSONArray(),"buttons" to JSONArray(),"tabs" to false,"selected" to -1,"bottom" to 20,"hint" to status))
+        val model=appearance.apply(obj("epoch" to epoch,"seq" to ++sequence,"resumeSession" to api.identity,"body" to JSONArray(),"buttons" to JSONArray(),"tabs" to false,"selected" to -1,"bottom" to 20,"hint" to listOf(status,
+            NativeLanguage.text(monitorContext,monitorMessage)
+        ).filter{it.isNotEmpty()}.joinToString("\n")))
+        val language=appearance.values["language"]?:"zh-Hant"
+        NativeLanguage.set(language)
+        if(shortcutLanguage!=language){
+            shortcutLanguage=language
+            try{shortcutWorker.execute{EntryShortcuts.refreshPinned(context)}}
+            catch(_:java.util.concurrent.RejectedExecutionException){}
+        }
         page?.render(model)?:return
+        // A managed main menu is handing ownership to the next host document.
+        // Keep its last live presentation available for navigation/back previews.
+        model.put("handoffDeadline",handoffDeadline)
+        model.put("menuHandoff",finished&&page?.awaitHostNavigationAfterFinish==true&&model.has("menu"))
+        val diagnosticBusy=exportingDiagnostics||sharingDiagnostics
+        model.optJSONObject("screen")?.let{screen->
+            if(diagnosticBusy&&status.isNotEmpty()){
+                screen.getJSONArray("nodes").put(controls.node("session:diagnostics","loading",status))
+                if(screen.optString("hint")==status)screen.put("hint","")
+            }
+            if(monitorMessage.isNotEmpty())screen.getJSONArray("nodes").put(controls.node("session:monitor",if(monitorBusy)"loading" else "text",monitorMessage))
+        }
+        model.optJSONObject("menu")?.let{menu->
+            menu.put("statusLoading",diagnosticBusy)
+            menu.put("monitorStatus",monitorMessage).put("monitorLoading",monitorBusy)
+        }
+        if(diagnosticBusy||monitorMessage.isNotEmpty())model.put("hint",if(diagnosticBusy)"" else status)
+        // About paints an opaque surface: wallpaper-derived ink must not leak in.
+        val nodes=model.optJSONObject("screen")?.optJSONArray("nodes")
+        if(nodes!=null && (0 until nodes.length()).any{nodes.optJSONObject(it)?.optString("kind")=="brand"}) {
+            model.put("fontAdaptive",false)
+            model.put("foreground",model.getLong("controlForeground"))
+            model.put("mutedColor",model.getLong("controlMuted"))
+            if(model.optString("uiStyle")!="material")
+                model.put("background",model.getLong("cardColor"))
+        }
         model.put("diagnosticExportRequest",exportRequest)
         dialog?.let{d->
             // NativeDocument owns confirmation focus and its closing gesture.
-            if(model.optJSONObject("screen")==null){model.remove("menu");model.put("screen",controls.screen("confirmation","確認操作",emptyList(),emptyList()))}
-            model.getJSONObject("screen").put("dialog",d)
+            val screen=model.optJSONObject("screen")
+            if(screen!=null)screen.put("dialog",d)
+            else model.put("overlay",controls.screen("confirmation","",emptyList(),emptyList()).put("dialogOnly",true).put("dialog",d))
         }
         // All controller-owned windows, including discovery login, own Back before
         // their page. Do not advertise a page pop while any such dialog is present.
-        if(model.optJSONObject("screen")?.optJSONObject("dialog")!=null)
-            model.put("backRoute","").put("returnToMenu",false)
+        if(model.optJSONObject("screen")?.optJSONObject("dialog")!=null||model.optJSONObject("overlay")!=null)
+            model.put("backRoute","").put("returnToMenu",false).put("backPanel",-1)
         // Detach nested mutable page state before publishing across threads.
         val snapshot=JSONObject(model.toString())
         catalog.localize(snapshot,appearance.values["language"]?:"zh-Hant")
         listener.model(snapshot)
-    }
+    }}
     fun refresh(){execute{emit()}}
     private var foreground=false
     fun lifecycle(visible:Boolean){diagnostic(if(visible)"native-visible" else "native-hidden");execute{
@@ -220,6 +345,11 @@ internal class NativeSession(private val context:Context,address:String,private 
         if(!loadFailed){page?.lifecycle(visible);if(visible&&page!=null)emit()}
     }}
     override fun close(){if(closing.compareAndSet(false,true)){
+        monitorObserver?.close();monitorObserver=null
+        synchronized(monitorLock){
+            monitorAddress=null
+            ProcessMonitorState.release(monitorContext,monitorTicket)
+        }
         diagnostics.shutdownNow()
         shortcutWorker.shutdownNow()
         // Do not block Android's main thread. Root's draft lease prevents an old

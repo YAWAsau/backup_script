@@ -1,0 +1,65 @@
+--- a/miuix-ui/src/commonMain/kotlin/top/yukonga/miuix/kmp/basic/Slider.kt
++++ b/miuix-ui/src/commonMain/kotlin/top/yukonga/miuix/kmp/basic/Slider.kt
+@@ -153,9 +153,6 @@
+         }
+     }
+ 
+-    val currentLayoutWidth = layoutWidth
+-    val currentLayoutHeight = layoutHeight
+-
+     Box(
+         modifier = modifier
+             .then(
+@@ -179,8 +176,8 @@
+                                         continue
+                                     }
+ 
+-                                    val thumbRadius = currentLayoutHeight / 2f
+-                                    val availableWidth = (currentLayoutWidth - 2f * thumbRadius).coerceAtLeast(0f)
++                                    val thumbRadius = layoutHeight / 2f
++                                    val availableWidth = (layoutWidth - 2f * thumbRadius).coerceAtLeast(0f)
+                                     val knobRadius = thumbRadius * 0.72f
+                                     val hitRadius = knobRadius + (thumbRadius * 0.5f)
+ 
+@@ -359,9 +356,6 @@
+         }
+     }
+ 
+-    val currentLayoutWidth = layoutWidth
+-    val currentLayoutHeight = layoutHeight
+-
+     Box(
+         modifier = modifier
+             .then(
+@@ -385,8 +379,8 @@
+                                         continue
+                                     }
+ 
+-                                    val thumbRadius = currentLayoutWidth / 2f
+-                                    val availableHeight = (currentLayoutHeight - 2f * thumbRadius).coerceAtLeast(0f)
++                                    val thumbRadius = layoutWidth / 2f
++                                    val availableHeight = (layoutHeight - 2f * thumbRadius).coerceAtLeast(0f)
+                                     val knobRadius = thumbRadius * 0.72f
+                                     val hitRadius = knobRadius + (thumbRadius * 0.5f)
+ 
+@@ -581,9 +575,6 @@
+         }
+     }
+ 
+-    val currentLayoutWidth = layoutWidth
+-    val currentLayoutHeight = layoutHeight
+-
+     Box(
+         modifier = modifier
+             .then(
+@@ -608,8 +599,8 @@
+                                         continue
+                                     }
+ 
+-                                    val thumbRadius = currentLayoutHeight / 2f
+-                                    val availableWidth = (currentLayoutWidth - 2f * thumbRadius).coerceAtLeast(0f)
++                                    val thumbRadius = layoutHeight / 2f
++                                    val availableWidth = (layoutWidth - 2f * thumbRadius).coerceAtLeast(0f)
+                                     val knobRadius = thumbRadius * 0.72f
+                                     val hitRadius = knobRadius + (thumbRadius * 0.5f)
+ 

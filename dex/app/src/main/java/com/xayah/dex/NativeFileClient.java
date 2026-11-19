@@ -123,10 +123,23 @@ final class NativeFileClient {
                 ready=false;ensure();
                 r=exchange(fields,timeout,true);
             }
-            // Preserve engine diagnostics, but success is decided by the broker's waitpid result.
-            System.err.write(r.body);System.err.flush();
-            if(r.rc!=0)throw new OperationFailure(r.rc);
-            System.err.println("FILE_RPC_OK command="+args[0]+" elapsedMs="+(SystemClock.elapsedRealtime()-begin)+" ensureMs="+ensureMs);
+            // The broker merges worker stdout/stderr; only its waitpid result decides
+            // success. Keep the entire failed response on stderr (no text filtering).
+            if(r.rc!=0) {
+                System.err.write(r.body);System.err.flush();
+                throw new OperationFailure(r.rc);
+            }
+            // package-maps is deliberately best-effort; fresh workers can also
+            // fail OOM protection without failing their operation. Keep these
+            // real errors visible even with a zero operation return code.
+            String diagnostics=new String(r.body,StandardCharsets.UTF_8);
+            for(String line:diagnostics.split("\n")) {
+                if(line.startsWith("RESTORE_PACKAGE_MAP_UPDATE_ERROR ") || line.startsWith("OOM_PROTECT "))System.err.println(line);
+            }
+            // Never forward informational receipts to protocol stdout. Reuse the
+            // bounded run log, which does not recreate finalized run directories.
+            DiagnosticLog.write("root_daemon_diagnostic.log", diagnostics
+                + "FILE_RPC_OK command="+args[0]+" elapsedMs="+(SystemClock.elapsedRealtime()-begin)+" ensureMs="+ensureMs);
         } catch(Exception e){
             if(e instanceof TransportFailure && ((TransportFailure)e).written)uncertain=true;
             if(e instanceof OperationFailure && ((OperationFailure)e).code==125)uncertain=true;

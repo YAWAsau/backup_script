@@ -5,6 +5,7 @@ mod multicast_guard;
 mod discovery_target;
 #[path = "discovery_broker.rs"]
 pub(crate) mod discovery_broker;
+use std::os::unix::net::UnixStream as UiStream;
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, io::{self, Write}, net::{IpAddr,TcpStream},
@@ -22,7 +23,7 @@ impl Discovery {
     pub fn verified(&self,request:&Value)->bool {
         self.verified.lock().unwrap().as_ref().is_some_and(|(proof,at)|at.elapsed()<Duration::from_secs(60)&&["protocol","url","identity","user","password"].iter().all(|key|proof[*key]==request[*key]))
     }
-    pub fn target(&self,mut stream:TcpStream,body:String)->io::Result<()> {
+    pub fn target(&self,mut stream:UiStream,body:String)->io::Result<()> {
         let request:Value=serde_json::from_str(&body).map_err(|_|io::Error::other("地址資料無效"))?;
         let id=request["requestId"].as_str().unwrap_or("").to_owned();
         if !id.is_empty()&&(id.len()!=32||!id.bytes().all(|b|b.is_ascii_hexdigit())){return Err(io::Error::other("探測識別無效"));}
@@ -44,7 +45,7 @@ impl Discovery {
         })?;
         Ok(())
     }
-    pub fn start(&self,mut stream:TcpStream,id:&str)->io::Result<()> {
+    pub fn start(&self,mut stream:UiStream,id:&str)->io::Result<()> {
         let request=if id.starts_with('{'){Some(serde_json::from_str::<Value>(id).map_err(|_|io::Error::other("搜尋請求無效"))?)}else{None};
         let fresh=request.as_ref().is_some_and(|r|r["fresh"]==true);
         let id=request.as_ref().and_then(|r|r["id"].as_str()).unwrap_or(id);
@@ -91,7 +92,7 @@ impl Drop for Discovery {
 }
 struct Daemon(ServiceDaemon);
 impl Drop for Daemon {fn drop(&mut self){for _ in 0..4 {match self.0.shutdown(){Ok(done)=>{let _=done.recv_timeout(Duration::from_secs(2));break;},Err(_)=>std::thread::sleep(Duration::from_millis(25))}}}}
-fn line(stream:&mut TcpStream,value:&Value)->io::Result<()> {let mut bytes=serde_json::to_vec(value)?;bytes.push(b'\n');stream.write_all(&bytes)}
+fn line(stream:&mut UiStream,value:&Value)->io::Result<()> {let mut bytes=serde_json::to_vec(value)?;bytes.push(b'\n');stream.write_all(&bytes)}
 fn snapshot(results:&BTreeMap<String,Vec<Value>>,running:bool)->Value {
     let mut rows=BTreeMap::new();
     for row in results.values().flatten(){if let Some(url)=row["url"].as_str(){if !rows.contains_key(url)||row["identity"].as_str().is_some_and(|s|!s.is_empty()){rows.insert(url,row);}}}
@@ -110,7 +111,7 @@ fn snapshot(results:&BTreeMap<String,Vec<Value>>,running:bool)->Value {
     }).take(256).collect::<Vec<_>>();
     json!({"running":running,"endpoints":endpoints})
 }
-fn scan(stream:&mut TcpStream,run:&Arc<Run>,rx:mpsc::Receiver<Event>,fresh:bool)->io::Result<()> {
+fn scan(stream:&mut UiStream,run:&Arc<Run>,rx:mpsc::Receiver<Event>,fresh:bool)->io::Result<()> {
     drop(rx);
     discovery_broker::subscribe(&[],fresh,&run.cancel,|value|line(stream,&value))?;
     if run.cancel.load(Ordering::Acquire){line(stream,&json!({"running":false}))?;}
@@ -432,7 +433,7 @@ mod tests {
         for key in ["protocol","url","identity","user","password"] {let mut changed=request.clone();changed[key]=json!("different");assert!(!discovery.verified(&changed));}
         *discovery.verified.lock().unwrap()=Some((request.clone(),Instant::now()-Duration::from_secs(61)));assert!(!discovery.verified(&request));
     }
-    fn pair()->(TcpStream,TcpStream){let listener=std::net::TcpListener::bind("127.0.0.1:0").unwrap();let client=TcpStream::connect(listener.local_addr().unwrap()).unwrap();let(server,_)=listener.accept().unwrap();client.set_read_timeout(Some(Duration::from_secs(5))).unwrap();(client,server)}
+    fn pair()->(UiStream,UiStream){let(client,server)=UiStream::pair().unwrap();client.set_read_timeout(Some(Duration::from_secs(5))).unwrap();(client,server)}
     #[test] fn identity_json_order_is_not_device_identity(){
         let original=r#"{"scheme":"http","product":"SpeedBackup","id":"abcd"}"#;
         let parsed=serde_json::from_str::<Value>(original).unwrap();

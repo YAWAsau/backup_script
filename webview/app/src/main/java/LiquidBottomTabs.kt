@@ -65,6 +65,7 @@ fun LiquidBottomTabs(
     tabsCount: Int,
     selectableTabs: Int = tabsCount,
     pageDragPosition: () -> Float? = { null },
+    predictiveBackPosition: () -> Float? = { null },
     isLightTheme: Boolean = !isSystemInDarkTheme(),
     accentColor: Color = if (isLightTheme) Color(0xFF0088FF) else Color(0xFF0091FF),
     modifier: Modifier = Modifier,
@@ -73,6 +74,7 @@ fun LiquidBottomTabs(
     val glassControls=GlassMaterial.LocalControls.current
     val blurEnabled=GlassMaterial.LocalBlurEnabled.current
     val adaptive=rememberAdaptiveGlass(isLightTheme,"navigation")
+    val sharedMaterial=remember(adaptive){NavigationGlassMaterial(adaptive)}
     val samplingActive=GlassMaterial.LocalActive.current
     val containerColor = GlassMaterial.surface(isLightTheme).copy(alpha=glassControls.opacity)
 
@@ -113,6 +115,9 @@ fun LiquidBottomTabs(
 
                     }
                 },
+                onDragCancelled = {
+                    animateToValue(latestExternal.toFloat())
+                },
                 onDrag = { _, dragAmount ->
                     updateValue(
                         (targetValue + dragAmount.x / tabWidth * if (isLtr) 1f else -1f)
@@ -123,10 +128,22 @@ fun LiquidBottomTabs(
         }
         val capsuleActive by remember(dampedDragAnimation){derivedStateOf{dampedDragAnimation.pressProgress>0.001f}}
         val latestPageDrag by rememberUpdatedState(pageDragPosition)
-        LaunchedEffect(dampedDragAnimation,externalIndex) {
-            snapshotFlow { latestPageDrag() }.collectLatest { position ->
-                if(position!=null)dampedDragAnimation.updateValue(position)
-                else dampedDragAnimation.animateToValue(externalIndex.toFloat())
+        val latestPredictiveBack by rememberUpdatedState(predictiveBackPosition)
+        // Read the pager directly in drawing: applying a second spring would lag the finger.
+        val displayedPosition = remember(dampedDragAnimation) {
+            { latestPredictiveBack()?.coerceIn(0f,(selectableTabs-1).toFloat()) ?: dampedDragAnimation.value }
+        }
+        LaunchedEffect(dampedDragAnimation) {
+            var wasPredictive=false
+            snapshotFlow { Triple(latestPredictiveBack(),latestPageDrag(),latestExternal) }.collectLatest { (predictive,drag,selected) ->
+                if(predictive!=null) {
+                    wasPredictive=true
+                    dampedDragAnimation.snapToValue(predictive)
+                } else if(wasPredictive) {
+                    wasPredictive=false
+                    dampedDragAnimation.snapToValue(selected.toFloat())
+                } else if(drag!=null)dampedDragAnimation.updateValue(drag)
+                else dampedDragAnimation.animateToValue(selected.toFloat())
             }
         }
 
@@ -135,8 +152,8 @@ fun LiquidBottomTabs(
                 animationScope = animationScope,
                 position = { size, offset ->
                     Offset(
-                        if (isLtr) (dampedDragAnimation.value + 0.5f) * tabWidth + panelOffset
-                        else size.width - (dampedDragAnimation.value + 0.5f) * tabWidth + panelOffset,
+                        if (isLtr) (displayedPosition() + 0.5f) * tabWidth + panelOffset
+                        else size.width - (displayedPosition() + 0.5f) * tabWidth + panelOffset,
                         size.height / 2f
                     )
                 }
@@ -154,7 +171,7 @@ fun LiquidBottomTabs(
                     highlight = { GlassMaterial.Rim },
                     shadow = null,
                     effects = {
-                        with(adaptive){material(glassControls.adaptive,blurEnabled,glassControls.blurStrength)}
+                        with(sharedMaterial){applyMaterial(glassControls.adaptive,blurEnabled,glassControls.blurStrength)}
                         lens(GlassMaterial.LensDp.dp.toPx(), GlassMaterial.LensDp.dp.toPx()*glassControls.refraction/100f)
                     },
                     layerBlock = {
@@ -193,7 +210,7 @@ fun LiquidBottomTabs(
                         effects = {
                             val progress = dampedDragAnimation.pressProgress
                             // The selection lens must sample the same material as the bar.
-                            with(adaptive){material(glassControls.adaptive,blurEnabled,glassControls.blurStrength)}
+                            with(sharedMaterial){applyMaterial(glassControls.adaptive,blurEnabled,glassControls.blurStrength)}
                             lens(
                                 24f.dp.toPx() * progress,
                                 24f.dp.toPx() * progress * glassControls.refraction/100f
@@ -220,8 +237,8 @@ fun LiquidBottomTabs(
                 .padding(horizontal = 4f.dp)
                 .graphicsLayer {
                     translationX =
-                        if (isLtr) dampedDragAnimation.value * tabWidth + panelOffset
-                        else size.width - (dampedDragAnimation.value + 1f) * tabWidth + panelOffset
+                        if (isLtr) displayedPosition() * tabWidth + panelOffset
+                        else size.width - (displayedPosition() + 1f) * tabWidth + panelOffset
                 }
                 .then(interactiveHighlight.gestureModifier)
                 .then(dampedDragAnimation.modifier)

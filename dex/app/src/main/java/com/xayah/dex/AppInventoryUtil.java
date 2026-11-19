@@ -645,6 +645,14 @@ final class AppInventoryUtil {
             return exists;
         }
 
+        boolean usableInstaller(InstallPackageFacts facts) {
+            return facts != null && facts.enabled && facts.uid >= 0;
+        }
+
+        boolean usableHybrid(InstallPackageFacts facts, String dataDir) {
+            return usableInstaller(facts) && canInstall(facts.uid) && directoryExists(dataDir);
+        }
+
         boolean canInstall(int uid) {
             Boolean allowed = installPermissions.get(uid);
             if (allowed == null) {
@@ -706,9 +714,9 @@ final class AppInventoryUtil {
             boolean dataOk = snapshot.directoryExists(dataDir);
             boolean deDataOk = snapshot.directoryExists(deDataDir);
             boolean uidOk = item.uid >= 0;
-            boolean usablePm = item.enabled && uidOk;
+            boolean usablePm = snapshot.usableInstaller(item);
             boolean installAllowed = uidOk && snapshot.canInstall(item.uid);
-            boolean usableHybrid = usablePm && dataOk && installAllowed;
+            boolean usableHybrid = snapshot.usableHybrid(item, dataDir);
             out.append("OK\t").append(sanitize(target)).append('\t').append(sanitize(installer)).append('\t').append(userId).append('\t')
                     .append(targetInstalled ? "true" : "false").append('\t').append(sanitize(targetInstaller)).append('\t')
                     .append("true\t").append(item.enabled ? "true" : "false").append('\t').append(item.uid).append('\t')
@@ -764,11 +772,11 @@ final class AppInventoryUtil {
             try {
                 PackageInfo ipi = snapshot.packageInfo(installer);
                 InstallPackageFacts i = installPackageFacts(ipi);
-                if (i != null && i.enabled && i.uid >= 0) {
+                if (snapshot.usableInstaller(i)) {
                     installerArg = installer;
                     installerUid = i.uid;
                     boolean installAllowed = snapshot.canInstall(i.uid);
-                    usableHybrid = installAllowed && snapshot.directoryExists("/data/user/" + userId + "/" + installer);
+                    usableHybrid = snapshot.usableHybrid(i, "/data/user/" + userId + "/" + installer);
                     reason = !installAllowed ? "session_installer_permission_denied"
                             : usableHybrid ? "session_hybrid_installer_available" : "session_installer_pm_only";
                 }
@@ -776,11 +784,17 @@ final class AppInventoryUtil {
                 reason = "session_installer_unavailable_" + t.getClass().getSimpleName();
             }
         }
-        String route = "split".equals(kind) || "multi".equals(kind) ? "session-split" : "session-single";
+        // The active executor requests capabilities only. Retain the historical
+        // CLI plan as an adapter, but never claim its policy is the shell's policy.
+        boolean factsOnly = "facts-only".equals(policy);
+        String route = factsOnly ? "executor-owned"
+                : "split".equals(kind) || "multi".equals(kind) ? "session-split" : "session-single";
         out.append("OK\t").append(sanitize(target)).append('\t').append(userId).append('\t').append(sanitize(kind.isEmpty() ? "unknown" : kind)).append('\t')
-                .append(sanitize(installer)).append('\t').append(route).append("\tfalse\ttrue\ttrue\ttrue\ttrue\ttrue\t")
+                .append(sanitize(installer)).append('\t').append(route)
+                .append(factsOnly ? "\tunknown\tunknown\tunknown\tunknown\tunknown\tunknown\t" : "\tfalse\ttrue\ttrue\ttrue\ttrue\ttrue\t")
                 .append(sanitize(installerArg)).append('\t').append(installerUid).append('\t').append(usableHybrid ? "true" : "false").append('\t')
-                .append(existingInstalled ? "true" : "false").append('\t').append(existingVersion).append('\t').append(sanitize(reason)).append('\n');
+                .append(existingInstalled ? "true" : "false").append('\t').append(existingVersion).append('\t')
+                .append(factsOnly ? "android_capabilities_executor_owns_policy" : sanitize(reason)).append('\n');
         return out.toString();
     }
 

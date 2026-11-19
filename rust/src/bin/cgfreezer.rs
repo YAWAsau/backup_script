@@ -2117,7 +2117,7 @@ fn capture_v1_restore_path(pid: i32) -> Option<(String, char)> {
 /// actually diffed field-by-field against the C reference before, only
 /// checked for "does it actually freeze the right pids", which it did, but
 /// the log format itself was materially different.
-fn cmd_freeze_package(pkg: &str, user_id: i32, timeout_in: i64) -> i32 {
+fn cmd_freeze_package_mode(pkg: &str, user_id: i32, timeout_in: i64, refresh: bool) -> i32 {
     let start = Instant::now();
     if !is_valid_pkg_name(pkg) || user_id < 0 {
         println!(
@@ -2144,7 +2144,7 @@ fn cmd_freeze_package(pkg: &str, user_id: i32, timeout_in: i64) -> i32 {
         return 3;
     }
     if scan.count <= 0 {
-        println!("CGFREEZER_FREEZE_PKG_DONE ok=false package={} user={} scanned=0 checked=0 frozen=0 failed=0 reason=no_alive_pid elapsedMs={}", shell_sanitize(pkg), user_id, monotonic_ms(&start));
+        println!("CGFREEZER_FREEZE_PKG_DONE ok=false package={} user={} scanned=0 checked=0 frozen=0 failed=0 reason=no_alive_pid outcome=skipped elapsedMs={}", shell_sanitize(pkg), user_id, monotonic_ms(&start));
         return 10;
     }
 
@@ -2188,6 +2188,22 @@ fn cmd_freeze_package(pkg: &str, user_id: i32, timeout_in: i64) -> i32 {
             }
         }
         let v1_capture = capture_v1_restore_path(t.pid);
+        // Refresh may observe an existing owned v1 group, but must not mutate
+        // it or manufacture an original restore path. Dex resolves this row
+        // against the active owner's identity-checked journal.
+        if refresh {
+            if let Some((path, '1')) = &v1_capture {
+                if path.ends_with(&format!("/speedbackup_frozen_{}/cgroup.procs", t.pid))
+                    && snapshot_package_target(t.pid, pkg, user_id).is_some_and(|now| identity.same_as(&now))
+                    && capture_v1_restore_path(t.pid).as_ref() == v1_capture.as_ref() {
+                    frozen += 1;
+                    already += 1;
+                    println!("CGFREEZER_FREEZE_PKG_ENTRY ok=true package={} user={} pid={} uid={} process={} backend=v1 path={} beforeFreeze=1 beforeFrozen=1 startTime={} existingManaged=true mutation=false rc=0",
+                        shell_sanitize(pkg), user_id, identity.pid, identity.uid, shell_sanitize(&identity.process), shell_sanitize(path), identity.start_time);
+                    continue;
+                }
+            }
+        }
 
         EXPECTED_FREEZE.with(|slot| *slot.borrow_mut() = Some(identity.clone()));
         let rc = cmd_freeze_pid(t.pid, timeout_ms);
@@ -3269,6 +3285,13 @@ fn write_wchan_entry<W: Write>(args: WriteWchanEntryArgs<'_, W>) {
         shell_sanitize(process_s));
 }
 
+// Diagnostic-only receipt for the parent after a worker exits. CLI return codes
+// and socket payload/barrier flags retain their existing meaning.
+thread_local! { static WCHAN_NO_TARGET: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
+fn worker_exit_status(command: &str, rc: i32) -> i32 {
+    if matches!(command, "WCHAN_PID_LIST" | "WCHAN_UID") && WCHAN_NO_TARGET.with(|v| v.get()) { 10 } else { rc }
+}
+
 fn run_wchan_pid_list<W: Write>(
     out: &mut W,
     user: i32,
@@ -3276,13 +3299,15 @@ fn run_wchan_pid_list<W: Write>(
     expect_arg: &str,
     st: &Instant,
 ) -> i32 {
+    WCHAN_NO_TARGET.with(|v| v.set(false));
     let expect = normalize_wchan_expect(expect_arg);
     if target.is_empty() || target == "-" || target == "none" {
+        WCHAN_NO_TARGET.with(|v| v.set(true));
         let ok = expect == "thawed" || expect == "not-frozen" || expect == "any";
         let _ = writeln!(out,
-            "CGFREEZER_WCHAN_DONE ok={} origin=pid-list user={} checked=0 frozen=0 sigstop=0 unknown=0 mismatch=0 skipped=0 expect={} reason=no_pids elapsedMs={}",
+            "CGFREEZER_WCHAN_DONE ok={} origin=pid-list user={} checked=0 frozen=0 sigstop=0 unknown=0 mismatch=0 skipped=0 expect={} reason=no_pids outcome=skipped elapsedMs={}",
             if ok { "true" } else { "false" }, user, expect, monotonic_ms(st));
-        return if ok { 0 } else { 11 };
+        return 0; // A successful empty query is a no-op, not a failed freeze.
     }
     let _ = writeln!(
         out,
@@ -3335,6 +3360,7 @@ fn run_wchan_pid_list<W: Write>(
 }
 
 fn run_wchan_uid<W: Write>(out: &mut W, uid_filter: i32, expect_arg: &str, st: &Instant) -> i32 {
+    WCHAN_NO_TARGET.with(|v| v.set(false));
     let expect = normalize_wchan_expect(expect_arg);
     if uid_filter < 0 {
         let _ = writeln!(out, "CGFREEZER_WCHAN_UID_DONE ok=false uid={} checked=0 frozen=0 sigstop=0 unknown=0 mismatch=0 skipped=0 expect={} reason=bad_uid elapsedMs={}", uid_filter, expect, monotonic_ms(st));
@@ -3355,6 +3381,8 @@ fn run_wchan_uid<W: Write>(out: &mut W, uid_filter: i32, expect_arg: &str, st: &
             return 12;
         }
     };
+    let no_targets = pids.is_empty();
+    WCHAN_NO_TARGET.with(|v| v.set(no_targets));
     for pid in pids {
         let process = read_cmdline_c(pid, 512).unwrap_or_default();
         write_wchan_entry(WriteWchanEntryArgs {
@@ -3376,8 +3404,9 @@ fn run_wchan_uid<W: Write>(out: &mut W, uid_filter: i32, expect_arg: &str, st: &
         true
     };
     let _ = writeln!(out,
-        "CGFREEZER_WCHAN_UID_DONE ok={} uid={} user={} checked={} frozen={} sigstop={} unknown={} mismatch={} skipped={} expect={} reason={} elapsedMs={}",
-        if ok { "true" } else { "false" }, uid_filter, user_id, stats.checked, stats.frozen, stats.sigstop, stats.unknown, stats.mismatch, stats.skipped, expect, if ok { "ok" } else { "expect_mismatch" }, monotonic_ms(st));
+        "CGFREEZER_WCHAN_UID_DONE ok={} uid={} user={} checked={} frozen={} sigstop={} unknown={} mismatch={} skipped={} expect={} reason={} outcome={} elapsedMs={}",
+        if ok { "true" } else { "false" }, uid_filter, user_id, stats.checked, stats.frozen, stats.sigstop, stats.unknown, stats.mismatch, stats.skipped, expect, if no_targets { "no_pids" } else if ok { "ok" } else { "expect_mismatch" }, if no_targets { "skipped" } else if ok { "ok" } else { "failed" }, monotonic_ms(st));
+    if no_targets { return 0; }
     if ok {
         0
     } else {
@@ -3893,6 +3922,7 @@ struct StatClass {
     count: u64,
     completed: u64,
     failed: u64,
+    skipped: u64,
     min_ms: i64,
     max_ms: i64,
     last_ms: i64,
@@ -4077,6 +4107,10 @@ fn daemon_child_remove(stats: &mut DaemonStats, pid: i32, status: c_int) {
     if let Some(pos) = stats.children.iter().position(|c| c.pid == pid) {
         let child = stats.children.remove(pos);
         let failed = !(wifexited(status) && wexitstatus(status) == 0);
+        // Exit 10 belongs to no_alive_pid only at the package-command boundary.
+        // Keep raw exit handling (lease recovery and caller fallback) unchanged.
+        let skipped = matches!(canonical_daemon_command(&child.command), "FREEZE_PKG" | "WCHAN_PID_LIST" | "WCHAN_UID")
+            && wifexited(status) && wexitstatus(status) == 10;
         if !failed && !child.release_paths.is_empty() {
             // Successful scoped release has durably disarmed the whole group.
             // Other groups did not change; keep their existing event descriptors.
@@ -4088,13 +4122,15 @@ fn daemon_child_remove(stats: &mut DaemonStats, pid: i32, status: c_int) {
             stats,
             child.class,
             child.start.elapsed().as_millis() as i64,
-            failed,
+            failed && !skipped,
         );
+        if skipped { stats.classes[child.class].skipped += 1; }
         if failed {
             if child.command.starts_with("FREEZE") || child.command.starts_with("THAW") {
                 if child.release_paths.is_empty() { cgroup_lease::queue_recovery(pid,child.identity_start); }
                 else { cgroup_lease::queue_release_recovery(child.release_paths.clone()); }
             }
+            if skipped { return; }
             stats.last_failed_command = child.command;
             stats.last_worker_pid = pid;
             stats.last_worker_exit = if wifexited(status) {
@@ -4230,7 +4266,7 @@ fn handle_worker_to<W: Write>(args: &[String], out: &mut W) -> i32 {
                     if !(100..=5000).contains(&timeout) {
                         timeout = 1500;
                     }
-                    cmd_freeze_package(args.get(1).map(String::as_str).unwrap_or(""), user, timeout)
+                    cmd_freeze_package_mode(args.get(1).map(String::as_str).unwrap_or(""), user, timeout, args[0] == "FREEZE_PKG_REFRESH")
                 }
             }
             Some("KILL_PKG") => {
@@ -4463,8 +4499,8 @@ fn handle_parent(line: &str, stats: &DaemonStats, socket: &str) -> Option<(bool,
                 // (see the dprintf call - both %ld args are g_stat_detail_max_ms[i]),
                 // not a real percentile - kept identical rather than "improved".
                 body.push_str(&format!(
-                    "CGFREEZER_DAEMON_STATS_DETAIL_ROW class={} count={} completed={} failed={} minMs={} avgMs={} p95Ms={} maxMs={} lastMs={}\n",
-                    name, c.count, c.completed, c.failed, c.min_ms, avg, c.max_ms, c.max_ms, c.last_ms
+                    "CGFREEZER_DAEMON_STATS_DETAIL_ROW class={} count={} completed={} failed={} minMs={} avgMs={} p95Ms={} maxMs={} lastMs={} skipped={}\n",
+                    name, c.count, c.completed, c.failed, c.min_ms, avg, c.max_ms, c.max_ms, c.last_ms, c.skipped
                 ));
             }
             body.push_str(&format!("CGFREEZER_DAEMON_STATS_DETAIL_END ok=true rows={}\n", CGSTAT_CLASSES));
@@ -4794,7 +4830,7 @@ fn cmd_daemon(socket_path: &str) -> i32 {
             let rc = handle_worker_to(&args, &mut stream);
             let _ = stream.flush();
             unsafe {
-                _exit(if rc == 0 { 0 } else { rc & 0xff });
+                _exit(worker_exit_status(&cmd_name, rc) & 0xff);
             }
         } else if child > 0 {
             stats.worker += 1;
@@ -4886,15 +4922,17 @@ fn main_rc(args: &[String]) -> i32 {
             let timeout = bounded_timeout_ms(parse_ms(args.get(3), 1500), 1500);
             if args.len() >= 6 { cmd_freeze_pid_checked(pid, timeout, args[4].as_str(), parse_i(args.get(5), -1)) } else { cmd_freeze_pid(pid, timeout) }
         }
-        "freeze-package" => {
+        "freeze-package" | "refresh-package" => {
             if args.len() < 5 {
                 return 64;
             }
-            cmd_freeze_package(
+            let rc = cmd_freeze_package_mode(
                 args[2].as_str(),
                 parse_i(args.get(3), 0),
                 parse_ms(args.get(4), 1500),
-            )
+                args[1] == "refresh-package",
+            );
+            if rc == 10 { 0 } else { rc } // no_alive_pid is a completed no-op on the CLI
         }
         "freeze-pid-list" => {
             if args.len() < 5 {
@@ -5127,5 +5165,81 @@ mod subscription_cleanup_tests {
         assert!(complete.contains("ok=true"));
         assert!(complete.contains("childrenReaped=2"));
         assert!(complete.contains("cleanupVerified=true"));
+    }
+}
+
+#[cfg(test)]
+mod freeze_skip_stats_tests {
+    use super::*;
+    fn finish(stats: &mut DaemonStats, command: &str, status: i32) {
+        let class = daemon_cmd_class(command);
+        daemon_stat_note_start(stats, class);
+        daemon_child_add(stats, 2_000_000_001, class, Instant::now(), command);
+        daemon_child_remove(stats, 2_000_000_001, status);
+        assert_eq!(stats.active_children(), 0);
+    }
+    #[test]
+    fn no_alive_counts_as_completed_skip_for_both_package_commands() {
+        let mut stats = DaemonStats::default();
+        for cmd in ["FREEZE_PKG", "FREEZE_PKG_REFRESH"] { finish(&mut stats, cmd, 10 << 8); }
+        let c = &stats.classes[2];
+        assert_eq!((c.count, c.completed, c.failed, c.skipped), (2, 2, 0, 2));
+        assert_eq!(stats.last_error, "none");
+        assert_eq!(stats.last_failed_command, "none");
+    }
+    #[test]
+    fn skip_preserves_previous_real_failure_and_success_is_not_skip() {
+        let mut stats = DaemonStats::default();
+        finish(&mut stats, "FREEZE_PKG", 11 << 8);
+        let error = stats.last_error.clone();
+        finish(&mut stats, "FREEZE_PKG_REFRESH", 10 << 8);
+        finish(&mut stats, "FREEZE_PKG", 0);
+        let c = &stats.classes[2];
+        assert_eq!((c.completed, c.failed, c.skipped), (3, 1, 1));
+        assert_eq!(stats.last_error, error);
+        assert_eq!(stats.last_worker_exit, 11);
+    }
+    #[test]
+    fn other_errors_signals_and_other_commands_exit_ten_remain_failures() {
+        for (cmd, status) in [("FREEZE_PKG", 2 << 8), ("FREEZE_PKG", 75 << 8),
+            ("FREEZE_PKG", 9), ("FREEZE_PKG_REFRESH", 11 << 8), ("FREEZE", 10 << 8),
+            ("THAW", 10 << 8), ("SCAN", 10 << 8)] {
+            let mut stats = DaemonStats::default();
+            finish(&mut stats, cmd, status);
+            let c = &stats.classes[daemon_cmd_class(cmd)];
+            assert_eq!((c.failed, c.skipped), (1, 0), "{} {}", cmd, status);
+            assert!(stats.last_error.starts_with("worker_failed_"));
+        }
+    }
+}
+
+#[cfg(test)]
+mod noalive_audit_tests {
+    use super::*;
+    #[test]
+    fn empty_wchan_preserves_cli_barrier_but_skips_daemon_failure() {
+        for (expect, code) in [("frozen",0),("any",0),("thawed",0)] {
+            let mut out=Vec::new();
+            assert_eq!(run_wchan_pid_list(&mut out,0,"none",expect,&Instant::now()),code);
+            assert!(String::from_utf8(out).unwrap().contains("outcome=skipped"));
+            assert_eq!(worker_exit_status("WCHAN_PID_LIST",code),10);
+            let mut stats=DaemonStats::default();
+            daemon_child_add(&mut stats,2_000_000_002,5,Instant::now(),"WCHAN_PID_LIST");
+            daemon_child_remove(&mut stats,2_000_000_002,10<<8);
+            assert_eq!((stats.classes[5].failed,stats.classes[5].skipped),(0,1));
+            assert_eq!(stats.last_error,"none");
+        }
+    }
+    #[test]
+    fn invalid_uid_and_unknown_pid_do_not_inherit_skip() {
+        let mut out=Vec::new();
+        run_wchan_pid_list(&mut out,0,"none","frozen",&Instant::now());
+        assert_eq!(run_wchan_uid(&mut out,-1,"frozen",&Instant::now()),64);
+        assert_eq!(worker_exit_status("WCHAN_UID",64),64);
+        run_wchan_pid_list(&mut out,0,"none","frozen",&Instant::now());
+        let rc=run_wchan_pid_list(&mut out,0,"bad","frozen",&Instant::now());
+        assert_eq!(rc,12);
+        assert_eq!(worker_exit_status("WCHAN_PID_LIST",rc),12);
+        assert_eq!(worker_exit_status("FREEZE",11),11);
     }
 }

@@ -8,7 +8,7 @@ fn related(text:&str)->bool {
         token=="io.github.yawasau.speedbackup.webview"||token.starts_with("io.github.yawasau.speedbackup.webview:")||token.starts_with("com.xayah.dex.")||matches!(token.rsplit('/').next(),Some("speednative"|"speedscan"))
     }))
 }
-pub(crate) fn redact(text:&str)->String {text.lines().map(|line|{if line.contains("http://127.0.0.1:"){line.split_whitespace().map(|w|if w.contains("http://127.0.0.1:"){"[local-ui-url]"}else{w}).collect::<Vec<_>>().join(" ")}else{line.into()}}).collect::<Vec<_>>().join("\n")+"\n"}
+pub(crate) fn redact(text:&str)->String {text.lines().map(|line|{if line.contains("http://127.0.0.1:")||line.contains("unix://sb-ui-"){line.split_whitespace().map(|w|if w.contains("http://127.0.0.1:")||w.contains("unix://sb-ui-"){"[local-ui-url]"}else{w}).collect::<Vec<_>>().join(" ")}else{line.into()}}).collect::<Vec<_>>().join("\n")+"\n"}
 fn pid_record(text:&str,pid:Option<u32>)->bool {
     pid.is_some_and(|pid|["pid: ","PID: "].iter().any(|prefix|text.match_indices(prefix).any(|(i,_)|text[i+prefix.len()..].chars().take_while(char::is_ascii_digit).collect::<String>().parse::<u32>().ok()==Some(pid))))
 }

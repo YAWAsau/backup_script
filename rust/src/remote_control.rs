@@ -135,7 +135,7 @@ pub fn address(args: &[String]) -> i32 {
             let c = settings(conf)?;
             let get = |k: &str| c.get(k).map(String::as_str).unwrap_or("");
             let protocol = get("remote_type");
-            if protocol.is_empty() {
+            if protocol.is_empty() || get("backup_location")=="local" {
                 return Ok(String::new());
             }
             if !matches!(protocol, "smb" | "webdav") {

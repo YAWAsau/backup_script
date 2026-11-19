@@ -1,18 +1,20 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 package io.github.yawasau.speedbackup.webview
 
 import androidx.compose.animation.core.*
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.layout.onSizeChanged
 import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.lazy.LazyColumn
 import top.yukonga.miuix.kmp.utils.PagerNavigationSpringSpec
 import top.yukonga.miuix.kmp.utils.springAnimateToPage
+import top.yukonga.miuix.kmp.utils.pagerGestureOverride
+import top.yukonga.miuix.kmp.utils.PagerGestureNestedScrollConnection
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -22,6 +24,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.selected
@@ -58,6 +61,14 @@ import top.yukonga.miuix.kmp.icon.extended.Close2
 internal data class NativeUiStyle(val titleSize:Int,val titleWeight:FontWeight,val buttonRadius:Int,val buttonWeight:FontWeight,val dialogRadius:Int)
 internal fun nativeUiStyle()=NativeUiStyle(32,FontWeight.Normal,24,FontWeight.Medium,28)
 
+internal fun nativeConnectionPulses(state:String)=state=="checking"||state=="discovering"
+
+@Composable private fun rememberConnectionPulse(enabled:Boolean):State<Float> {
+    if(!enabled)return remember { mutableFloatStateOf(.35f) }
+    val transition=rememberInfiniteTransition(label="connection-status")
+    return transition.animateFloat(initialValue=.35f,targetValue=1f,animationSpec=infiniteRepeatable(tween(650),RepeatMode.Reverse),label="connection-pulse")
+}
+
 private val nativePageRevision=java.util.concurrent.atomic.AtomicLong()
 private fun JSONArray.objects()=(0 until length()).map { getJSONObject(it) }
 
@@ -83,7 +94,7 @@ internal fun validateNativeMenu(menu:JSONObject?) {
         require(r.getString("kind") in if(k=="choices")setOf("button","heading") else setOf("note","select","checkbox","range","button"))
         if(k=="choices"||r.optString("kind")!="note")require(r.getString("id").matches(Regex("control-[0-9]{1,12}")))
         if(r.optString("kind")=="range") {
-            require(r.getString("key") in setOf("glass-blur-strength","glass-light","glass-transparency","glass-refraction"))
+            require(r.getString("key") in setOf("glass-blur-strength","glass-light","glass-transparency","glass-refraction","monitor-transparency"))
             require(r.getString("value").toInt() in 0..100)
         }
         if(r.optString("kind")=="select") {
@@ -97,6 +108,7 @@ internal fun validateNativeMenu(menu:JSONObject?) {
 /** One native motion owner for complete pages: no DOM rectangles or frame messages. */
 @Composable internal fun NativeMainMenu(menu:JSONObject,data:JSONObject,backdrop:Backdrop,dispatch:NativeChrome.Action,onMotion:(Boolean)->Unit) {
     val epoch=data.getString("epoch")
+    val themePage=menu.optBoolean("themePage")
     val selectedPage=data.optInt("selected").coerceIn(0,2)
     // NativeMenuPage restores and persists panel with its group. A second,
     // settled-only viewport cache can still contain Home when a category is
@@ -120,29 +132,30 @@ internal fun validateNativeMenu(menu:JSONObject?) {
         } finally { pageAnimations-- }
     }
 
-    val pageDragging by pager.interactionSource.collectIsDraggedAsState()
     val latestData by rememberUpdatedState(data)
     val latestMenu by rememberUpdatedState(menu)
     val latestSelected by rememberUpdatedState(selectedPage)
     var lastDispatchedPage by remember { mutableIntStateOf(selectedPage) }
     var predictingBack by remember { mutableStateOf(false) }
+    var backGestureGeneration by remember { mutableIntStateOf(0) }
     val activeNavigation by rememberUpdatedState(LocalNativeNavigationActive.current)
     val backPanel=data.optInt("backPanel",-1)
     // Tab Back belongs to this pager, not the outer document history.
     NativePredictiveBackHandler(enabled=LocalNativeNavigationActive.current&&backPanel in 0..2) { events ->
-        val start=pager.settledPage
+        val startPosition=pager.currentPage+pager.currentPageOffsetFraction
         val startSelected=latestSelected
         val target=latestData.optInt("backPanel",-1)
         if(target !in 0..2)return@NativePredictiveBackHandler
+        val gestureGeneration=++backGestureGeneration
         predictingBack=true
         var committed=false
         try {
             pager.scroll(androidx.compose.foundation.MutatePriority.PreventUserInput) {
-                var previous=0f
                 events.collect { event ->
                     val progress=if(latestData.optBoolean("reducedMotion"))0f else event.progress.coerceIn(0f,1f)
-                    scrollBy((previous-progress)*(start-target)*(pager.layoutInfo.pageSize+pager.layoutInfo.pageSpacing))
-                    previous=progress
+                    val desired=startPosition+(target-startPosition)*progress
+                    val current=pager.currentPage+pager.currentPageOffsetFraction
+                    scrollBy((desired-current)*(pager.layoutInfo.pageSize+pager.layoutInfo.pageSpacing))
                 }
             }
             if(!activeNavigation)return@NativePredictiveBackHandler
@@ -158,9 +171,12 @@ internal fun validateNativeMenu(menu:JSONObject?) {
         } catch(cancelled:kotlinx.coroutines.CancellationException) {
             // A newer tab can cancel the finishing animation after Back committed.
             // Only a cancelled gesture should restore the original page.
-            if(!committed&&activeNavigation)kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable){animatePage(start)}
+            if(!committed&&activeNavigation&&gestureGeneration==backGestureGeneration)kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable){animatePage(latestSelected)}
             throw cancelled
-        } finally { predictingBack=false }
+        } finally {
+            // A cancelled gesture may finish after the next gesture has already started.
+            if(gestureGeneration==backGestureGeneration)predictingBack=false
+        }
     }
     val uiStyle=nativeUiStyle()
     val text=Color(data.optLong("foreground",0xffeeeeeeL).toInt())
@@ -168,7 +184,8 @@ internal fun validateNativeMenu(menu:JSONObject?) {
     val background=Color(data.optLong("background",0xff151c30L).toInt())
     val glassControls=GlassMaterial.LocalControls.current
     val scale=data.optDouble("scale",1.0).coerceIn(.7,1.5).toFloat()
-    val lists=List(3){rememberResumeList(data.optString("resumeSession"),"main-menu:$it"+if(material&&it==2)":material-rows" else "")}
+    val lists=List(3){rememberResumeList(data.optString("resumeSession"),(if(themePage)"theme-menu:$it" else "main-menu:$it")+if(material&&it==2)":material-rows" else "")}
+    val pageOverscroll=List(3){androidx.compose.foundation.rememberOverscrollEffect()}
     val moving=pager.isScrollInProgress||lists.any{it.isScrollInProgress}
     LaunchedEffect(moving){onMotion(moving)}
     DisposableEffect(Unit){onDispose{onMotion(false)}}
@@ -222,7 +239,7 @@ internal fun validateNativeMenu(menu:JSONObject?) {
         val ticket=pendingRevision
         if(ticket>0){
             kotlinx.coroutines.delay(2000)
-            snapshotFlow{pager.isScrollInProgress}.first{!it}
+            snapshotFlow{predictingBack||pager.isScrollInProgress}.first{!it}
             if(pendingRevision!=ticket)return@LaunchedEffect
             val target=latestSelected
             lastDispatchedPage=target
@@ -243,7 +260,7 @@ internal fun validateNativeMenu(menu:JSONObject?) {
         if(pager.settledPage!=selectedPage||pager.isScrollInProgress) {
             // Back may arrive while a pointer is still down. Resolve it when the
             // gesture ends, unless a newer user page request has superseded it.
-            snapshotFlow{pager.isScrollInProgress}.first{!it}
+            snapshotFlow{predictingBack||pager.isScrollInProgress}.first{!it}
             if(pendingRevision==0L&&latestSelected==selectedPage&&pager.settledPage!=selectedPage) {
                 lastDispatchedPage=selectedPage
                 if(latestMenu.optBoolean("reduced"))pager.scrollToPage(selectedPage) else animatePage(selectedPage)
@@ -264,11 +281,11 @@ internal fun validateNativeMenu(menu:JSONObject?) {
         }
     }
     val appearanceRows=remember(menu){menu.getJSONArray("appearance").objects()}
-    @Composable fun appearanceRow(i:Int,r:JSONObject) {
+    @Composable fun appearanceRow(i:Int,r:JSONObject,count:Int) {
         val controlText=if(material)androidx.compose.material3.MaterialTheme.colorScheme.onSurface else Color(data.optLong("controlForeground",data.optLong("foreground")).toInt())
         val controlMuted=if(material)androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant else Color(data.optLong("controlMuted",data.optLong("mutedColor")).toInt())
         @Composable fun controlStyle(size:Int,bold:Boolean=false,muted:Boolean=false)=style(size,bold,muted).copy(color=if(muted)controlMuted else controlText)
-          NativeSettingSegment(i,menu.getJSONArray("appearance").length()+1) {
+          NativeSettingSegment(i,count) {
           CompositionLocalProvider(LocalNativeSettingIcon provides r.optString("iconKey")) {
           val options=remember(r){r.optJSONArray("options")?.objects().orEmpty()}
           when(r.getString("kind")) {
@@ -291,12 +308,49 @@ internal fun validateNativeMenu(menu:JSONObject?) {
               }
               "range" -> {
                   val key=r.getString("key")
-                  fun current()=when(key){"glass-blur-strength"->glassControls.blurStrength;"glass-light"->glassControls.light;"glass-refraction"->glassControls.refraction;else->glassControls.transparency}
-                  val value=current()
-                  Column(Modifier.padding(if(material)16.dp else 0.dp)) {
-                      NativeSliderLabel(r.getString("label"),value.roundToInt().toString()+"%",controlStyle(17).copy(color=controlText.copy(alpha=if(r.optBoolean("disabled")) .4f else 1f)),r.optString("description"))
-                      NativeGlassSlider(data.optString("uiStyle"),r.getString("label"),value,!r.optBoolean("disabled"),!r.optBoolean("disabled"),tint,{v->glassControls.editing=true;when(key){"glass-blur-strength"->glassControls.blurStrength=v;"glass-light"->glassControls.light=v;"glass-refraction"->glassControls.refraction=v;else->glassControls.transparency=v}},{glassControls.editing=it}){
-                          commitGlass(r.getString("id"),current().roundToInt())
+                  if(key=="monitor-transparency") {
+                      val id=r.getString("id")
+                      val modelValue=r.getString("value").toFloat()
+                      val latestModelValue by rememberUpdatedState(modelValue)
+                      var monitorValue by remember(id) { mutableFloatStateOf(modelValue) }
+                      var editing by remember(id) { mutableStateOf(false) }
+                      var pending by remember(id) { mutableStateOf(false) }
+
+                      // Model updates must not move the thumb during a gesture.
+                      // After cancellation restore the latest model; after a commit
+                      // allow the bridge to acknowledge, then reconcile even rejection.
+                      LaunchedEffect(id,modelValue,editing,pending) {
+                          if(!editing) {
+                              if(pending&&modelValue!=monitorValue.roundToInt().toFloat())
+                                  kotlinx.coroutines.delay(700)
+                              monitorValue=latestModelValue
+                              pending=false
+                          }
+                      }
+                      Column(Modifier.padding(horizontal=if(material)16.dp else 0.dp,vertical=16.dp)) {
+                          NativeSliderLabel(r.getString("label"),monitorValue.roundToInt().toString()+"%",controlStyle(17).copy(color=controlText.copy(alpha=if(r.optBoolean("disabled")) .4f else 1f)),r.optString("description"))
+                          NativeGlassSlider(data.optString("uiStyle"),r.getString("label"),monitorValue,!r.optBoolean("disabled"),!r.optBoolean("disabled"),tint,{v->
+                              editing=true
+                              pending=false
+                              monitorValue=v
+                          },{dragging->
+                              editing=dragging
+                              if(dragging)pending=false
+                          }){
+                              val committed=monitorValue.roundToInt()
+                              pending=true
+                              editing=false
+                              send("value",id,committed.toString())
+                          }
+                      }
+                  } else {
+                      fun current()=when(key){"glass-blur-strength"->glassControls.blurStrength;"glass-light"->glassControls.light;"glass-refraction"->glassControls.refraction;else->glassControls.transparency}
+                      val value=current()
+                      Column(Modifier.padding(horizontal=if(material)16.dp else 0.dp,vertical=16.dp)) {
+                          NativeSliderLabel(r.getString("label"),value.roundToInt().toString()+"%",controlStyle(17).copy(color=controlText.copy(alpha=if(r.optBoolean("disabled")) .4f else 1f)),r.optString("description"))
+                          NativeGlassSlider(data.optString("uiStyle"),r.getString("label"),value,!r.optBoolean("disabled"),!r.optBoolean("disabled"),tint,{v->glassControls.editing=true;when(key){"glass-blur-strength"->glassControls.blurStrength=v;"glass-light"->glassControls.light=v;"glass-refraction"->glassControls.refraction=v;else->glassControls.transparency=v}},{glassControls.editing=it}){
+                              commitGlass(r.getString("id"),current().roundToInt())
+                          }
                       }
                   }
               }
@@ -304,11 +358,11 @@ internal fun validateNativeMenu(menu:JSONObject?) {
           }
           } }
     }
-    @Composable fun shortcutRow() {
+    @Composable fun shortcutRow(index:Int,count:Int) {
         val controlText=if(material)androidx.compose.material3.MaterialTheme.colorScheme.onSurface else Color(data.optLong("controlForeground",data.optLong("foreground")).toInt())
         val controlMuted=if(material)androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant else Color(data.optLong("controlMuted",data.optLong("mutedColor")).toInt())
         @Composable fun controlStyle(size:Int,bold:Boolean=false,muted:Boolean=false)=style(size,bold,muted).copy(color=if(muted)controlMuted else controlText)
-          NativeSettingSegment(menu.getJSONArray("appearance").length(),menu.getJSONArray("appearance").length()+1) {
+          NativeSettingSegment(index,count) {
           CompositionLocalProvider(LocalNativeSettingIcon provides "shortcut") {
           NativePreferenceRow(NativeLanguage.text(androidx.compose.ui.platform.LocalContext.current,"建立桌面捷徑"),"",NativeLanguage.text(androidx.compose.ui.platform.LocalContext.current,"從桌面直接開啟目前的備份或恢復入口。"),false,controlText,controlStyle(17),true,true){dispatch.invoke("native:create-shortcut",epoch)}
           } }
@@ -324,12 +378,18 @@ internal fun validateNativeMenu(menu:JSONObject?) {
     val navigationInset=if(tabs.size==4)with(density){navigationHeight.toDp()} else 0.dp
     val bottomSpace=if(tabs.size==4&&throughContent)with(density){navigationHeight.toDp()}+24.dp else 24.dp
     Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top).union(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)))) {
-        // Native gesture arbitration lets child sliders own horizontal drags and
-        // the vertical list own vertical drags, without replacing input nodes on DOWN.
-        HorizontalPager(state=pager,userScrollEnabled=choosing==null&&pageAnimations==0,overscrollEffect=null,
-            flingBehavior=PagerDefaults.flingBehavior(pager,snapAnimationSpec=pageSpec),
-            modifier=Modifier.fillMaxSize().then(if(throughContent)Modifier.layerBackdrop(contentBackdrop) else Modifier.padding(bottom=navigationInset)),key={it}) { page ->
-            LazyColumn(state=lists[page],modifier=Modifier.fillMaxSize(),contentPadding=PaddingValues(start=12.dp,top=8.dp,end=12.dp,bottom=bottomSpace),verticalArrangement=Arrangement.spacedBy(if(material&&page==2)2.dp else 12.dp)) {
+        val flingBehavior=PagerDefaults.flingBehavior(pager,snapAnimationSpec=pageSpec)
+        val gesturesEnabled=!themePage&&choosing==null&&pageAnimations==0&&!predictingBack
+        // Cross-axis input leaves vertical velocity to the list in both themes.
+        // Share each theme's motion spec across touch release, wheel and tab clicks.
+        HorizontalPager(state=pager,userScrollEnabled=false,overscrollEffect=null,
+            flingBehavior=flingBehavior,
+            pageNestedScrollConnection=PagerGestureNestedScrollConnection,
+            modifier=Modifier.fillMaxSize()
+                .pagerGestureOverride(pager,flingBehavior,enabled=gesturesEnabled,snapAnimationSpec=pageSpec,
+                    isVerticalOverscrollInProgress={pageOverscroll[pager.currentPage]?.isInProgress==true})
+                .then(if(throughContent)Modifier.layerBackdrop(contentBackdrop) else Modifier.padding(bottom=navigationInset)),key={it}) { page ->
+            LazyColumn(state=lists[page],overscrollEffect=pageOverscroll[page],modifier=Modifier.fillMaxSize(),contentPadding=PaddingValues(start=12.dp,top=8.dp,end=12.dp,bottom=bottomSpace),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 item("header") {
                     Column(Modifier.padding(bottom=if(material&&page==2)18.dp else 8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         val wifiRows=remember(menu){menu.optJSONObject("connection")?.optJSONArray("rows")?.objects().orEmpty()}
@@ -339,11 +399,18 @@ internal fun validateNativeMenu(menu:JSONObject?) {
                         val infoStyle=style(12)
                         val labelWidth=with(density){(wifiRows.maxOfOrNull{measure.measure(it.getString("label"),infoStyle).size.width}?:0).toDp()}
                         val valueWidth=with(density){(wifiRows.maxOfOrNull{measure.measure(it.getString("caption"),infoStyle).size.width}?:0).toDp()}
-                        @Composable fun heading(){Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
-                            BasicText(menu.getString("eyebrow"),style=style(17))
+                        @Composable fun heading(){Column(verticalArrangement=Arrangement.spacedBy(0.dp)){
                             BasicText(menu.getString("title"),style=titleStyle)
                             BasicText(menu.getString("subtitle"),style=style(16))
-                            if(menu.getString("status").isNotBlank())BasicText(menu.getString("status"),style=style())
+                            if(menu.getString("status").isNotBlank()){
+                                if(menu.optBoolean("statusLoading"))NativeLoadingStatus(menu.getString("status"),data.optString("uiStyle"),text,tint,style(),rememberNativeResumed()&&!data.optBoolean("reducedMotion"))
+                                else BasicText(menu.getString("status"),style=style())
+                            }
+                            if(menu.optString("monitorStatus").isNotBlank()){
+                                val message=NativeLanguage.text(androidx.compose.ui.platform.LocalContext.current,menu.getString("monitorStatus"))
+                                if(menu.optBoolean("monitorLoading"))NativeLoadingStatus(message,data.optString("uiStyle"),text,tint,style(),rememberNativeResumed()&&!data.optBoolean("reducedMotion"))
+                                else BasicText(message,style=style())
+                            }
                         }}
                         @Composable fun wifiInfo(){Column(verticalArrangement=Arrangement.spacedBy(3.dp)){
                             for(row in wifiRows)Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
@@ -354,22 +421,28 @@ internal fun validateNativeMenu(menu:JSONObject?) {
                         @Composable fun connectionDetails(){
                             Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         menu.optJSONObject("connection")?.takeIf{it.has("label")}?.let{connection ->
-                            val transition=rememberInfiniteTransition(label="connection-status")
-                            val pulse = transition.animateFloat(initialValue=.35f,targetValue=1f,animationSpec=infiniteRepeatable(tween(650),RepeatMode.Reverse),label="connection-pulse")
+                            val pageVisible by remember(pager,page){derivedStateOf{pager.layoutInfo.visiblePagesInfo.any{it.index==page}}}
+                            val headerVisible by remember(lists[page]){derivedStateOf{
+                                val layout=lists[page].layoutInfo
+                                layout.visibleItemsInfo.any{it.key=="header"&&it.offset<layout.viewportEndOffset&&it.offset+it.size>layout.viewportStartOffset}
+                            }}
+                            val daemons=remember(connection){connection.optJSONArray("daemons")?.objects().orEmpty()}
+                            val hasPulse=nativeConnectionPulses(connection.optString("state"))||daemons.any{nativeConnectionPulses(it.optString("state"))}
+                            val pulse=rememberConnectionPulse(LocalNativePresentationVisible.current&&pageVisible&&headerVisible&&hasPulse)
                             @Composable fun statusRow(label:String,state:String,modifier:Modifier=Modifier) {
                                 val color=when(state){"ready"->Color(0xff35d779);"checking"->Color(0xffffc857);"local","idle","discovering","setup"->text.copy(alpha=.65f);else->Color(0xffff626b)}
                                 Row(modifier.fillMaxWidth().heightIn(min=20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                    androidx.compose.foundation.Canvas(Modifier.size(12.dp)) {
+                                    androidx.compose.foundation.Canvas(Modifier.size(12.dp).graphicsLayer()) {
                                         // Read animation state only in drawing: pulse without
                                         // recomposing status text or remeasuring the header.
-                                        drawCircle(Brush.radialGradient(listOf(color.copy(alpha=if(state=="local"||state=="idle")1f else pulse.value),color.copy(alpha=.15f))))
+                                        drawCircle(Brush.radialGradient(listOf(color.copy(alpha=if(nativeConnectionPulses(state))pulse.value else 1f),color.copy(alpha=.15f))))
                                     }
                                     BasicText(label,modifier=Modifier.weight(1f),style=style(14).copy(color=color,textAlign=TextAlign.Start))
                                 }
                             }
                             Column(verticalArrangement=Arrangement.spacedBy(2.dp)) {
-                            statusRow(connection.getString("label"),connection.optString("state"),Modifier.clickable(enabled=connection.optString("state")!="local"){send("click",connection.getString("id"))})
-                            for(daemon in connection.optJSONArray("daemons")?.objects().orEmpty())statusRow(daemon.getString("label"),daemon.getString("state"))
+                            statusRow(connection.getString("label"),connection.optString("state"),Modifier.combinedClickable(enabled=connection.optBoolean("modeSwitch")||connection.optString("state")!="local",onLongClickLabel=NativeLanguage.text(androidx.compose.ui.platform.LocalContext.current,"選擇備份位置"),onLongClick=if(connection.optBoolean("modeSwitch"))({send("long",connection.getString("id"));Unit})else null,onClick={if(connection.optString("state")!="local")send("click",connection.getString("id"))}))
+                            for(daemon in daemons)statusRow(daemon.getString("label"),daemon.getString("state"))
                             }
                         }
                             }
@@ -389,13 +462,10 @@ internal fun validateNativeMenu(menu:JSONObject?) {
                 if(page==0) {
                     menu.getJSONArray("info").objects().forEachIndexed { i,g ->
                         item("info-$i") {
-                            Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                                BasicText(g.getString("title"),style=style(16,true))
-                                NativeHomeInfoGroup(g.getJSONArray("rows").objects(),
-                                    Color(data.optLong("cardColor",0xff242424L).toInt()),
-                                    Color(data.optLong("controlForeground",0xffffffffL).toInt()))
-                                Spacer(Modifier.height(8.dp))
-                            }
+                            NativeHomeInfoGroup(g.getJSONArray("rows").objects(),
+                                Color(data.optLong("cardColor",0xff242424L).toInt()),
+                                Color(data.optLong("controlForeground",0xffffffffL).toInt()),
+                                 appRootAuthorization=g.optBoolean("appRootAuthorization"))
                         }
                     }
                 } else if(page==1) {
@@ -404,28 +474,36 @@ internal fun validateNativeMenu(menu:JSONObject?) {
                         else glass(r.getString("label"),!r.optBoolean("disabled"),r.optBoolean("primary")||r.optBoolean("selected"),navigation=r.optBoolean("navigation")||r.optBoolean("backNavigation"),backwards=r.optBoolean("backNavigation")) { send("click",r.getString("id")) }
                     }
                 } else {
-                    if(material) {
-                        appearanceRows.forEachIndexed { i,r ->
-                            item("appearance-"+r.optString("id","note-$i"),contentType=r.getString("kind")) {
-                                DisposableEffect(r.optString("id")){onDispose{if(choosing==r.optString("id"))choosing=null}}
-                                appearanceRow(i,r)
+                    val groups=appearanceRows.groupBy{it.optString("cardGroup","backup")}.toMutableMap()
+                    if(!themePage&&!groups.containsKey("about"))groups["about"]=emptyList()
+                    for((group,rows) in groups){
+                        item("appearance-card-$group"){
+                            val shortcut=!themePage&&group=="about"
+                            val count=rows.size+if(shortcut)1 else 0
+                            NativeSettingsCard(if(material)"material" else "miuix",Color(data.optLong("cardColor",0xff242424L).toInt()),Color(data.optLong("controlForeground",data.optLong("foreground")).toInt()),backdrop=backdrop){
+                                Column(Modifier.padding(horizontal=if(material)0.dp else 16.dp),verticalArrangement=Arrangement.spacedBy(if(material)2.dp else 0.dp)){
+                                    rows.forEachIndexed{i,r->
+                                        key(r.optString("id","note-$i")){
+                                            DisposableEffect(r.optString("id")){onDispose{if(choosing==r.optString("id"))choosing=null}}
+                                            appearanceRow(i,r,count)
+                                        }
+                                    }
+                                    if(shortcut)shortcutRow(rows.size,count)
+                                }
                             }
                         }
-                        item("appearance-shortcut",contentType="button"){shortcutRow()}
-                    } else item("appearance-card") {
-                        NativeSettingsCard("miuix",Color(data.optLong("cardColor",0xff242424L).toInt()),Color(data.optLong("controlForeground",data.optLong("foreground")).toInt()),backdrop=backdrop) {
-                            Column(Modifier.padding(16.dp)) {
-                                appearanceRows.forEachIndexed { i,r -> key(r.optString("id","note-$i")){appearanceRow(i,r)} }
-                                shortcutRow()
-                            }
-                        }
+                    }
+                    if(themePage)item("theme-return"){
+                        val back=menu.getJSONObject("themeBack")
+                        glass(back.getString("label"),navigation=true,backwards=true){send("click",back.getString("id"))}
                     }
                 }
             }
         }
         if(tabs.size==4) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged{navigationHeight=it.height}.padding(start=16.dp,end=16.dp,bottom=navigationBottom,top=8.dp)) {
             LiquidBottomTabs(selectedTabIndex={if(pager.isScrollInProgress)pager.targetPage else pager.settledPage},onTabSelected={if(it in 0..2)navigate(it)},backdrop=if(throughContent)navigationBackdrop else backdrop,tabsCount=4,selectableTabs=3,
-                pageDragPosition={if(pageDragging)pager.currentPage+pager.currentPageOffsetFraction else null},isLightTheme=text.red<.5f,accentColor=tint,modifier=Modifier.fillMaxWidth()) {
+                predictiveBackPosition={if(predictingBack)pager.currentPage+pager.currentPageOffsetFraction else null},
+                pageDragPosition={if(pager.isScrollInProgress&&pageAnimations==0&&!predictingBack)pager.currentPage+pager.currentPageOffsetFraction else null},isLightTheme=text.red<.5f,accentColor=tint,modifier=Modifier.fillMaxWidth()) {
                 tabs.forEachIndexed { index,tab -> LiquidBottomTab(modifier=Modifier.semantics{selected=index==pager.settledPage},onClick={
                     if(!tab.optBoolean("disabled")) { if(index<3)navigate(index) else dispatch.invoke(tab.getString("id"),epoch) }
                 }) {

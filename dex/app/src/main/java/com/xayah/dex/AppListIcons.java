@@ -6,6 +6,7 @@ import java.util.*;
 import java.util.concurrent.*;
 /** Optional backup-only batch over the existing root native APK controller. No Activity launch. */
 public final class AppListIcons {
+ private static final java.util.regex.Pattern PACKAGE_NAME=java.util.regex.Pattern.compile("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+");
  public static void main(String[] args){ System.exit(run(args,System.getenv("SPEEDBACKUP_WEB_ORIGIN_SOCKET"))); }
  static int run(String[] args,String origin){
   if((args.length!=3&&args.length!=4)||!args[0].matches("[0-9]{1,5}"))return 2;
@@ -17,7 +18,7 @@ public final class AppListIcons {
   timer.schedule(()->{LocalSocket socket=active.get();if(socket!=null)try{socket.close();}catch(IOException ignored){}},budget,TimeUnit.MILLISECONDS);
   try{
    LinkedHashSet<String> names=new LinkedHashSet<>();
-   try(BufferedReader input=new BufferedReader(new FileReader(args[1]))){String line;while((line=input.readLine())!=null&&names.size()<5000){if(line.length()<=255&&line.matches("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+"))names.add(line);}}
+   try(BufferedReader input=new BufferedReader(new FileReader(args[1]))){String line;while((line=input.readLine())!=null&&names.size()<5000){if(line.length()<=255&&PACKAGE_NAME.matcher(line).matches())names.add(line);}}
    ArrayList<String> all=new ArrayList<>(names);File directory=new File(args[2]);
    if(!directory.isDirectory()||!directory.getCanonicalPath().equals(directory.getAbsolutePath()))throw new IOException("icon directory");
    for(int offset=0;offset<all.size();offset+=20){

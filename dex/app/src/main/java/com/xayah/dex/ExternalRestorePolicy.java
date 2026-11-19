@@ -124,22 +124,22 @@ final class ExternalRestorePolicy {
             String p=alias.getCanonicalPath();require(!repository.equals(p) && !repository.startsWith(p+"/"),"Source inside destination");
         }
         long t1=android.os.SystemClock.elapsedRealtime();
-        System.err.println("EXTERNAL_PREPARE_PHASE_BEGIN stage=precheck");
+        DiagnosticLog.write("root_daemon_diagnostic.log", "EXTERNAL_PREPARE_PHASE_BEGIN stage=precheck");
         StructStat old=stat(target);if(old!=null && !nativeClear) walk(target,old.st_dev,f -> {});
         long t2=android.os.SystemClock.elapsedRealtime();
-        System.err.println("EXTERNAL_PREPARE_PHASE_BEGIN stage=vold precheckMs="+(t2-t1));
+        DiagnosticLog.write("root_daemon_diagnostic.log", "EXTERNAL_PREPARE_PHASE_BEGIN stage=vold precheckMs="+(t2-t1));
         if(vold!=null) setup.invoke(vold,storage,app.uid);
         else require(target.mkdirs() || target.isDirectory(),"Cannot prepare external directory");
         long t3=android.os.SystemClock.elapsedRealtime();
-        System.err.println("EXTERNAL_PREPARE_PHASE_BEGIN stage=postcheck voldMs="+(t3-t2));
+        DiagnosticLog.write("root_daemon_diagnostic.log", "EXTERNAL_PREPARE_PHASE_BEGIN stage=postcheck voldMs="+(t3-t2));
         StructStat s=Os.lstat(target.getPath());
         require(OsConstants.S_ISDIR(s.st_mode) && (vold==null || s.st_uid==app.uid),"Unexpected prepared owner");
         if(!nativeClear) walk(target,s.st_dev,f -> {});
         long t4=android.os.SystemClock.elapsedRealtime();
-        System.err.println("EXTERNAL_PREPARE_PHASE_BEGIN stage=clear postcheckMs="+(t4-t3));
+        DiagnosticLog.write("root_daemon_diagnostic.log", "EXTERNAL_PREPARE_PHASE_BEGIN stage=clear postcheckMs="+(t4-t3));
         if(!nativeClear) clear(target,s.st_dev);
         long t5=android.os.SystemClock.elapsedRealtime();
-        System.err.println("EXTERNAL_PREPARE_PHASES native="+nativeClear+" aliasMs="+(t1-t0)+" precheckMs="+(t2-t1)+" voldMs="+(t3-t2)+" postcheckMs="+(t4-t3)+" clearMs="+(t5-t4));
+        DiagnosticLog.write("root_daemon_diagnostic.log", "EXTERNAL_PREPARE_PHASES native="+nativeClear+" aliasMs="+(t1-t0)+" precheckMs="+(t2-t1)+" voldMs="+(t3-t2)+" postcheckMs="+(t4-t3)+" clearMs="+(t5-t4));
     }
     private void repair() throws Exception {
         ancestors(target);long dev=Os.lstat(target.getPath()).st_dev;
@@ -181,7 +181,7 @@ final class ExternalRestorePolicy {
             if (vold!=null) NativeFileClient.run("external-policy-repair-selinux",backing.getPath(),Integer.toString(app.uid),kind);
             else NativeFileClient.run("selinux-restore",backing.getPath(),"12");
         }
-        System.err.println("EXTERNAL_REPAIR_TIMING nativePreflight="+nativePreflight
+        DiagnosticLog.write("root_daemon_diagnostic.log", "EXTERNAL_REPAIR_TIMING nativePreflight="+nativePreflight
                 +" dexCheckMs="+(checked-begin)+" nativeMs="+(android.os.SystemClock.elapsedRealtime()-checked));
     }
     static void command(String[] args) {

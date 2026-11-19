@@ -183,11 +183,6 @@ pub fn shell_sanitize(s: &str) -> String {
     }
     out
 }
-pub fn cstring_path(path: &Path) -> io::Result<CString> {
-    CString::new(path.as_os_str().as_bytes())
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "nul in path"))
-}
-
 pub fn file_exists(path: &Path) -> bool {
     fs::symlink_metadata(path).is_ok()
 }

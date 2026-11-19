@@ -18,6 +18,9 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.Store
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Help
@@ -134,8 +137,6 @@ internal val nativeSettingIconLabels=mapOf(
     "減少執行緒" to "Zstd_small_max_bytes",
     "預設備份模式" to "Backup_Mode",
     "自訂資料夾備份" to "backup_media",
-    "備份obb數據" to "Backup_obb_data",
-    "備份user數據" to "Backup_user_data",
     "備份通話記錄" to "backup_calllogs",
     "備份簡訊紀錄" to "backup_messages",
     "忽略進程" to "Background_apps_ignore",
@@ -184,6 +185,9 @@ internal val nativeSettingIconLabels=mapOf(
     "自動發現電腦／NAS" to "discovery",
     "WebDAV／NAS 範本" to "preset")
 private fun materialSettingIcon(key:String):ImageVector?=when(key){
+    "selection-camera" -> Icons.Filled.CameraAlt
+    "selection-image" -> Icons.Filled.Image
+    "backup_wifi" -> Icons.Filled.Wifi
     "credits" -> Icons.Filled.Person
     "licenses" -> Icons.Filled.Description
     "source" -> Icons.Filled.Code
@@ -195,7 +199,7 @@ private fun materialSettingIcon(key:String):ImageVector?=when(key){
     "daemon" -> Icons.Filled.Memory
     "shortcut" -> Icons.AutoMirrored.Filled.AddToHomeScreen
     "system" -> Icons.Filled.Android
-    "Backup_Mode","backup-settings" -> Icons.Filled.Backup
+    "Backup_Mode","backup_location","backup-settings" -> Icons.Filled.Backup
     "low_battery_mode" -> Icons.Filled.BatteryAlert
     "blacklist","blacklist_mode" -> Icons.Filled.Block
     "glass-blur","glass-blur-strength" -> Icons.Filled.BlurOn
@@ -215,7 +219,6 @@ private fun materialSettingIcon(key:String):ImageVector?=when(key){
     "scale" -> Icons.Filled.FormatSize
     "about" -> Icons.Filled.Info
     "restore_allow_low_target_sdk" -> Icons.Filled.InstallMobile
-    "Backup_obb_data","Backup_user_data" -> Icons.Filled.Inventory2
     "background_execution","Background_apps_ignore","glass-content" -> Icons.Filled.Layers
     "glass-light" -> Icons.Filled.LightMode
     "smb_url","webdav_url" -> Icons.Filled.Link
@@ -262,6 +265,9 @@ private fun materialSettingIcon(key:String):ImageVector?=when(key){
     else->null
 }
 private fun miuixSettingIcon(key:String):ImageVector?=when(key){
+    "selection-camera" -> supplementalMiuixIcon("Camera")
+    "selection-image" -> supplementalMiuixIcon("Image")
+    "backup_wifi" -> supplementalMiuixIcon("Wifi")
     "credits" -> MiuixIcons.Contacts
     "licenses" -> MiuixIcons.Notes
     "source" -> MiuixIcons.File
@@ -296,10 +302,8 @@ private fun miuixSettingIcon(key:String):ImageVector?=when(key){
     "Zstd_threads" -> supplementalMiuixIcon("FolderZip")
     "Zstd_level" -> supplementalMiuixIcon("FolderZip")
     "Zstd_small_max_bytes" -> supplementalMiuixIcon("FolderZip")
-    "Backup_Mode" -> MiuixIcons.Backup
+    "Backup_Mode","backup_location" -> MiuixIcons.Backup
     "backup_media" -> MiuixIcons.Folder
-    "Backup_obb_data" -> supplementalMiuixIcon("Inventory2")
-    "Backup_user_data" -> supplementalMiuixIcon("Inventory2")
     "backup_calllogs" -> MiuixIcons.Phone
     "backup_messages" -> MiuixIcons.Messages
     "Background_apps_ignore" -> MiuixIcons.Layers
@@ -400,6 +404,9 @@ private fun supplementalMiuixIcon(name:String):ImageVector = supplementalIcons.g
         "Bedtime" -> "M20 16 A9 9 0 1 1 8 3 C5 13 13 20 20 16 Z"
         "Terminal" -> "M3 4 H21 V20 H3 Z M6 8 L10 12 L6 16 M13 16 H18"
         "Smartphone" -> "M7 2 H17 Q19 2 19 4 V20 Q19 22 17 22 H7 Q5 22 5 20 V4 Q5 2 7 2 M10 5 H14 M11 19 H13"
+        "Camera" -> "M3 7 H7 L9 4 H15 L17 7 H21 V20 H3 Z M12 9 A4 4 0 1 0 12 17 A4 4 0 1 0 12 9"
+        "Image" -> "M3 3 H21 V21 H3 Z M3 17 L9 11 L14 16 L17 13 L21 17 M16 7 H16.01"
+        "Wifi" -> "M2 8 Q12 0 22 8 M5 12 Q12 6 19 12 M8 16 Q12 12 16 16 M12 20 H12.01"
         else->error("Unknown supplemental icon: $name")
     }
     ImageVector.Builder("SpeedBackup.Miuix.$name",24.dp,24.dp,24f,24f).apply{

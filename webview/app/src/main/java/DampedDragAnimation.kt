@@ -25,6 +25,7 @@ class DampedDragAnimation(
     val pressedScale: Float,
     val onDragStarted: DampedDragAnimation.(position: Offset) -> Unit,
     val onDragStopped: DampedDragAnimation.() -> Unit,
+    val onDragCancelled: DampedDragAnimation.() -> Unit,
     val onDrag: DampedDragAnimation.(size: IntSize, dragAmount: Offset) -> Unit,
 ) {
 
@@ -73,7 +74,7 @@ class DampedDragAnimation(
                 release()
             },
             onDragCancel = {
-                onDragStopped()
+                onDragCancelled()
                 release()
             }
         ) { change, dragAmount ->
@@ -103,6 +104,12 @@ class DampedDragAnimation(
             launch { scaleXAnimation.animateTo(initialScale, scaleXAnimationSpec) }
             launch { scaleYAnimation.animateTo(initialScale, scaleYAnimationSpec) }
         }
+    }
+
+    // The pager already owns predictive progress and its finishing spring.
+    suspend fun snapToValue(value: Float) {
+        valueAnimation.snapTo(value.coerceIn(valueRange))
+        velocityAnimation.snapTo(0f)
     }
 
     fun updateValue(value: Float) {

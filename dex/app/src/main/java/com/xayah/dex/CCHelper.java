@@ -5,6 +5,16 @@ import java.util.HashMap;
 public class CCHelper {
     // Product-specific UI wording, applied after the pinned OpenCC profiles.
     private static final String[][] TW_POLISH_PHRASES = new String[][]{
+            {"隻能", "只能"},
+            {"配置檔案", "設定檔"},
+            {"設定檔案", "設定檔"},
+            {"資料包", "封包"},
+            {"歸檔", "封存"},
+            {"文件", "文檔"},
+            {"流式", "串流"},
+            {"列表", "清單"},
+            {"超時", "逾時"},
+            {"預掃描", "預掃"},
             {"快閃記憶體", "硬碟"},
             {"幹淨", "乾淨"},
             {"幹擾", "干擾"},
@@ -61,7 +71,6 @@ public class CCHelper {
             {"壓縮檔", "压缩包"},
             {"压缩档", "压缩包"},
             {"资料库", "数据库"},
-            // OpenCC has already converted 設定 to 设置 at this stage.
             {"设置详细", "配置详细"},
             {"设定详细", "配置详细"},
             {"设置遗失", "配置丢失"},
@@ -99,6 +108,7 @@ public class CCHelper {
      * table already turned into mainland wording simply falls through there unchanged.
      */
     private static final String[][] TW_TERMS = new String[][]{
+            {"設定檔案", "配置文件"},
             {"檔案名稱", "文件名"},
             {"伺服端", "服务端"},
             {"壓縮檔", "压缩包"},
@@ -116,7 +126,15 @@ public class CCHelper {
             {"清單", "列表"},
             {"紀錄", "记录"},
             {"逾時", "超时"},
+            {"預掃描", "预扫描"},
             {"預掃", "预扫描"},
+            // Non-file compounds must shadow the product's single 檔 fallback.
+            {"檔位", "档位"},
+            {"檔次", "档次"},
+            {"檔期", "档期"},
+            {"換檔", "换挡"},
+            {"掛檔", "挂挡"},
+            {"排檔", "排挡"},
             {"檔", "文件"}
     };
 

@@ -287,7 +287,7 @@ public final class TelephonyUtil {
             n++;
         }
         if(z.getNextEntry()!=null)throw new IOException("EXTRA_ENTRY");
-        System.err.println("TELEPHONY_"+(verifyOnly?"VERIFY":restore?"RESTORE":"VALIDATE")+"_OK group="+group+" records="+n+" inserted="+inserted+" skipped="+skipped);
+        DiagnosticInfo.write("TELEPHONY_"+(verifyOnly?"VERIFY":restore?"RESTORE":"VALIDATE")+"_OK group="+group+" records="+n+" inserted="+inserted+" skipped="+skipped);
     }
     static android.content.Context resolverContext() throws Exception {
         return new android.content.ContextWrapper(HiddenApiHelper.getContext()) {
@@ -326,7 +326,7 @@ public final class TelephonyUtil {
         FramedInput checked=new FramedInput(input);
         consume(checked,group,false);
         checked.finish();
-        System.err.println("TELEPHONY_SESSION_VALIDATED group="+group);
+        DiagnosticInfo.write("TELEPHONY_SESSION_VALIDATED group="+group);
         FramedInput restore=new FramedInput(input);
         inserted=0;skipped=0;verifyOnly=false;
         consume(restore,group,true);

@@ -89,6 +89,9 @@ fn sum<'a>(values: impl Iterator<Item = &'a str>) -> io::Result<String> {
     String::from_utf8(total).map_err(|_| bad())
 }
 fn norm(s: &str) -> String {
+    if !s.contains('\\') && !s.starts_with('/') && !s.ends_with('/') && !s.contains("//") {
+        return s.to_owned();
+    }
     s.replace('\\', "/")
         .split('/')
         .filter(|s| !s.is_empty())
@@ -104,9 +107,13 @@ fn safe_rel(s: &str) -> bool {
 }
 fn entries(raw: &str, pref: &str) -> io::Result<Vec<(String, String, String)>> {
     let pref = norm(pref);
+    let prefix = format!("{pref}/");
     let mut dir = String::new();
-    let mut rows = Vec::new();
-    let mut seen = BTreeMap::new();
+    let mut dir_prefix = String::new();
+    let mut rows: Vec<(String, String, String)> = Vec::new();
+    // Tiny listings need no secondary allocation or hash-table initialization.
+    let mut seen: Option<std::collections::HashMap<String, usize>> = None;
+    let mut fields = Vec::new();
     for line in raw.lines() {
         let diagnostic=line.contains("NT_STATUS")||line.contains("ERRSRV");
         if line.is_empty()
@@ -126,9 +133,11 @@ fn entries(raw: &str, pref: &str) -> io::Result<Vec<(String, String, String)>> {
         }
         if line.starts_with('\\') {
             dir = norm(line);
+            dir_prefix = format!("{dir}/");
             continue;
         }
-        let fields: Vec<_> = line.split_ascii_whitespace().collect();
+        fields.clear();
+        fields.extend(line.split_ascii_whitespace());
         if fields.len() >= 5
             && uint(fields[0])
             && fields[1..4] == ["blocks", "of", "size"]
@@ -138,15 +147,15 @@ fn entries(raw: &str, pref: &str) -> io::Result<Vec<(String, String, String)>> {
         }
         let table = (1..fields.len().saturating_sub(1))
             .rfind(|&i| attr(fields[i]) && uint(fields[i + 1]))
-            .map(|i| {let end=fields[i].as_ptr() as usize-line.as_ptr() as usize;(line[..end].strip_prefix("  ").unwrap_or(&line[..end]).trim_end().to_owned(),fields[i],fields[i+1])});
+            .map(|i| {let end=fields[i].as_ptr() as usize-line.as_ptr() as usize;(line[..end].strip_prefix("  ").unwrap_or(&line[..end]).trim_end(),fields[i],fields[i+1])});
         let found = if table.is_some(){table}else if line.contains('|') {
             let f: Vec<_> = line.split('|').collect();
             if f.len() == 3 && attr(f[1]) && uint(f[2]) {
-                Some((f[0].to_owned(), f[1], f[2]))
+                Some((f[0], f[1], f[2]))
             } else if f.len() == 3 && attr(f[0]) && uint(f[2]) {
-                Some((f[1].to_owned(), f[0], f[2]))
+                Some((f[1], f[0], f[2]))
             } else if f.len() == 3 && attr(f[2]) && uint(f[1]) {
-                Some((f[0].to_owned(), f[2], f[1]))
+                Some((f[0], f[2], f[1]))
             } else if matches!(f[0],"Disk"|"IPC"|"Printer") {None}
             else {return Err(bad());}
         }else{None};
@@ -154,15 +163,15 @@ fn entries(raw: &str, pref: &str) -> io::Result<Vec<(String, String, String)>> {
             if diagnostic{return Err(bad());}
             continue;
         };
-        if matches!(name.as_str(), "" | "." | "..") {
+        if matches!(name, "" | "." | "..") {
             continue;
         }
         let name = norm(&name);
         if matches!(name.as_str(), "" | "." | "..") {
             continue;
         }
-        let full = if !dir.is_empty() && !name.starts_with(&(dir.clone() + "/")) {
-            norm(&format!("{dir}/{name}"))
+        let full = if !dir.is_empty() && !name.starts_with(&dir_prefix) {
+            format!("{dir}/{name}")
         } else {
             name
         };
@@ -170,7 +179,7 @@ fn entries(raw: &str, pref: &str) -> io::Result<Vec<(String, String, String)>> {
             continue;
         }
         let rel = full
-            .strip_prefix(&(pref.clone() + "/"))
+            .strip_prefix(&prefix)
             .filter(|_| !pref.is_empty())
             .unwrap_or(&full);
         if matches!(rel, "" | "." | "..") {
@@ -179,9 +188,19 @@ fn entries(raw: &str, pref: &str) -> io::Result<Vec<(String, String, String)>> {
         if !safe_rel(rel) {
             return Err(bad());
         }
-        let value=(kind.to_owned(),bytes.to_owned());
-        if let Some(previous)=seen.get(rel){if previous!=&value{return Err(bad());}continue;}
-        seen.insert(rel.to_owned(),value);
+        if rows.len() == 32 && seen.is_none() {
+            seen = Some(rows.iter().enumerate().map(|(i, row)| (row.2.clone(), i)).collect());
+        }
+        let previous_index = match &seen {
+            Some(index) => index.get(rel).copied(),
+            None => rows.iter().position(|row| row.2 == rel),
+        };
+        if let Some(index) = previous_index {
+            let previous = &rows[index];
+            if previous.0 != kind || previous.1 != bytes { return Err(bad()); }
+            continue;
+        }
+        if let Some(index) = &mut seen { index.insert(rel.to_owned(), rows.len()); }
         rows.push((kind.to_owned(), bytes.to_owned(), rel.to_owned()));
     }
     Ok(rows)

@@ -2,13 +2,13 @@
 //! execution stays in the caller's original Shell dispatch table.
 use super::*;
 
-struct Menu { health: bool, health_local: bool, remote: BTreeMap<String,String>, preparing: bool, title: String, description: String, choices: BTreeMap<String,String>, info: Vec<(String,String,String)>, multi: bool, input: bool, config: Option<PathBuf>, settings: BTreeSet<String>, foreground: BTreeSet<String>, groups: BTreeMap<String,String>, page: String, resume: String, confirm: bool, power: bool, skip_after: bool }
+struct Menu { prompt: bool, health: bool, health_local: bool, remote: BTreeMap<String,String>, preparing: bool, title: String, description: String, choices: BTreeMap<String,String>, info: Vec<(String,String,String)>, multi: bool, input: bool, config: Option<PathBuf>, settings: BTreeSet<String>, foreground: BTreeSet<String>, groups: BTreeMap<String,String>, icons:BTreeMap<String,String>, group_ids:BTreeMap<String,String>, roles:BTreeMap<String,String>, page: String, resume: String, confirm: bool, power: bool, skip_after: bool }
 impl Menu {
     fn parse(text: &str) -> io::Result<Self> {
         if text.len() > 128 * 1024 { return Err(err("menu limit")); }
         let mut lines=text.lines();
         let title=lines.next().filter(|s| !s.is_empty() && s.len()<1024).ok_or_else(||err("menu title"))?.to_string();
-        let mut menu=Self {health:false,health_local:false,remote:BTreeMap::new(),preparing:false,title,description:String::new(),choices:BTreeMap::new(),info:Vec::new(),multi:false,input:false,config:None,settings:BTreeSet::new(),foreground:BTreeSet::new(),groups:BTreeMap::new(),page:"actions".into(),resume:String::new(),confirm:false,power:false,skip_after:false};
+        let mut menu=Self {prompt:false,health:false,health_local:false,remote:BTreeMap::new(),preparing:false,title,description:String::new(),choices:BTreeMap::new(),info:Vec::new(),multi:false,input:false,config:None,settings:BTreeSet::new(),foreground:BTreeSet::new(),groups:BTreeMap::new(),icons:BTreeMap::new(),group_ids:BTreeMap::new(),roles:BTreeMap::new(),page:"actions".into(),resume:String::new(),confirm:false,power:false,skip_after:false};
         for line in lines {
             if let Some(row)=line.strip_prefix("INFOID\t") {
                 let parts:Vec<_>=row.splitn(3,'\t').collect();
@@ -20,15 +20,23 @@ impl Menu {
             if fields.len()!=3 || fields[1].is_empty() || fields[2].is_empty() { return Err(err("menu row")); }
             match fields[0] {
                 "HEALTH" if fields[1]=="mode" && matches!(fields[2],"backup"|"restore") => {menu.health=true;menu.health_local=fields[2]=="restore";},
-                "REMOTE" if matches!(fields[2],"only"|"backup"|"setup") => {menu.remote.insert(fields[1].into(),fields[2].into());},
+                "REMOTE" if matches!(fields[2],"only"|"backup"|"setup"|"connected") => {menu.remote.insert(fields[1].into(),fields[2].into());},
                 "CHOICE" if (fields[1].len()<=4 && fields[1].bytes().all(|c|c.is_ascii_digit())) => {
                     if menu.choices.insert(fields[1].into(),fields[2].into()).is_some() {return Err(err("duplicate menu id"));}
+                }
+                "ICON"|"GROUPID" if fields[2].len()<=80&&fields[2].bytes().all(|c|c.is_ascii_lowercase()||c==b'-') => {
+                    let map=if fields[0]=="ICON"{&mut menu.icons}else{&mut menu.group_ids};
+                    if map.insert(fields[1].into(),fields[2].into()).is_some(){return Err(err("duplicate metadata identity"));}
+                }
+                "ROLE" if matches!(fields[2],"back"|"action") => {
+                    if menu.roles.insert(fields[1].into(),fields[2].into()).is_some(){return Err(err("duplicate role"));}
                 }
                 "GROUP" if fields[2].len()<=80 => { if menu.groups.insert(fields[1].into(),fields[2].into()).is_some(){return Err(err("duplicate group"));} }
                 "VIEW" if fields[1]=="page" && matches!(fields[2],"home"|"actions"|"settings") => menu.page=fields[2].into(),
                 "VIEW" if fields[1]=="resume" && fields[2].bytes().all(|b|b.is_ascii_digit()) => menu.resume=fields[2].into(),
                 "MODE" if fields[1]=="power-countdown" && fields[2]=="30" && !menu.power => menu.power=true,
                 "MODE" if fields[1]=="skip-after" && fields[2]=="30" => menu.skip_after=true,
+                "MODE" if fields[1]=="prompt" && fields[2]=="1" => menu.prompt=true,
                 "MODE" if fields[1]=="confirm" && fields[2]=="1" => menu.confirm=true,
                 "SETTING" if fields[2]=="1" => { if !menu.settings.insert(fields[1].into()){return Err(err("duplicate setting id"));} }
                 "UI" if fields[2]=="1" => { if !menu.foreground.insert(fields[1].into()){return Err(err("duplicate UI id"));} }
@@ -50,6 +58,7 @@ impl Menu {
         if menu.settings.iter().any(|id|!menu.choices.contains_key(id)){return Err(err("invalid setting id"));}
         if menu.foreground.iter().any(|id| !menu.choices.contains_key(id)) {return Err(err("invalid UI id"));}
         if menu.groups.keys().any(|id| !menu.choices.contains_key(id)) {return Err(err("invalid group id"));}
+        if menu.roles.keys().chain(menu.icons.keys()).chain(menu.group_ids.keys()).any(|id|!menu.choices.contains_key(id)){return Err(err("invalid metadata id"));}
         if menu.power && (menu.multi || menu.input || menu.confirm || menu.config.is_some() || !menu.info.is_empty() || !menu.foreground.is_empty() || !menu.groups.is_empty() || menu.choices.len()!=2 || !menu.choices.contains_key("0") || !menu.choices.contains_key("1")) {return Err(err("power countdown manifest"));}
         if menu.skip_after && (menu.power || menu.multi || menu.input || !menu.choices.contains_key("0")) {return Err(err("skip timeout manifest"));}
         // Compatibility for callers predating the explicit setup marker.
@@ -78,14 +87,21 @@ impl Menu {
     }
     fn allowed(&self,id:&str)->bool {
         if !self.health{return true;}
-        let health=self.health_state();let local=health["protocol"]=="local";
-        match self.remote.get(id).map(String::as_str){Some("setup")=>!local,Some("only")=>!local&&health["status"]=="ready",Some("backup")=>local||health["status"]=="ready",_=>true}
+        self.allowed_with_health(id,&self.health_state())
+    }
+    fn allowed_with_health(&self,id:&str,health:&serde_json::Value)->bool {
+        if !self.health{return true;}
+        let local=health["protocol"]=="local";
+        match self.remote.get(id).map(String::as_str){Some("setup")=>!local,Some("only"|"connected")=>!local&&health["status"]=="ready",Some("backup")=>local||health["status"]=="ready",_=>true}
     }
     fn json(&self)->String {
         let health=self.health_state();let local=health["protocol"]=="local";
-        let choices:Vec<_>=self.choices.iter().map(|(id,label)|serde_json::json!({"id":id,"label":label,"group":self.groups.get(id).map(String::as_str).unwrap_or(""),"setting":self.settings.contains(id),"remote":self.remote.get(id).map(String::as_str).unwrap_or(""),"hidden":self.health&&local&&self.remote.get(id).is_some_and(|v|matches!(v.as_str(),"only"|"setup")),"disabled":!self.allowed(id)})).collect();
+        let choices:Vec<_>=self.choices.iter().map(|(id,label)|serde_json::json!({"id":id,"label":label,"group":self.groups.get(id).map(String::as_str).unwrap_or(""),"groupId":self.group_ids.get(id).map(String::as_str).unwrap_or(""),"role":self.roles.get(id).map(String::as_str).unwrap_or_else(||if id=="0"&&label.starts_with("返回"){"back"}else{"action"}),"iconKey":self.icons.get(id).map(String::as_str).unwrap_or(""),"setting":self.settings.contains(id),"remote":self.remote.get(id).map(String::as_str).unwrap_or(""),"hidden":self.health&&local&&self.remote.get(id).is_some_and(|v|matches!(v.as_str(),"only"|"setup")),"disabled":!self.allowed_with_health(id,&health)})).collect();
         let info:Vec<_>=self.info.iter().map(|(id,key,value)|serde_json::json!({"id":id,"key":key,"value":value})).collect();
-        serde_json::json!({"title":self.title,"choices":choices,"info":info,"multi":self.multi,"input":self.input,"confirm":self.confirm,"page":self.page,"resume":self.resume,"powerCountdown":self.power,"description":self.description,"healthEnabled":self.health,"healthLocal":self.health_local,"health":health}).to_string()
+        serde_json::json!({"viewportScope":self.config.as_ref().and_then(|p| {
+            let run=std::env::var("SPEEDBACKUP_RUN_TMPDIR").ok()?;
+            super::super::sha256_reader_hex(format!("{}\n{}",run,p.display()).as_bytes()).ok()
+        }).unwrap_or_default(),"title":self.title,"choices":choices,"info":info,"multi":self.multi,"input":self.input,"confirm":self.confirm,"page":self.page,"resume":self.resume,"prompt":self.prompt,"powerCountdown":self.power,"description":self.description,"healthEnabled":self.health,"healthLocal":self.health_local,"health":health}).to_string()
     }
 }
 
@@ -123,9 +139,9 @@ fn serve_menu(args:&[String])->io::Result<i32> {
     let result_meta=result.metadata()?;
     let _lock=if menu.preparing{None}else{Some(editor_lock()?)};
     let token=random_hex()?;
-    let listener=TcpListener::bind("127.0.0.1:0")?;listener.set_nonblocking(true)?;
-    let host=listener.local_addr()?.to_string();let origin=format!("http://{host}");let url=format!("{origin}/#{token}");
-    let mut _console_page=web_console::Page::register(&url,!menu.power && !menu.skip_after && !menu.preparing && !(menu.page=="settings" && std::env::var("SPEEDBACKUP_LANGUAGE_RETURN").as_deref()==Ok("1")))?;
+    let (listener,host)=ui_bind()?;listener.set_nonblocking(true)?;
+    let origin=format!("unix://{host}");let url=format!("{origin}/#{token}");
+    let mut _console_page=if menu.power {web_console::Page::register_modal(&url)?}else{web_console::Page::register(&url,!menu.prompt && !menu.skip_after && !menu.preparing && !(menu.page=="settings" && std::env::var("SPEEDBACKUP_LANGUAGE_RETURN").as_deref()==Ok("1")))?};
     let mut task=if _console_page.is_some(){None}else{match args[2].as_str(){"--open"=>ReturnTask::capture(Some(&url)),"--return"=>ReturnTask::capture(None),_=>None}};
     if args[2]=="--open" && task.is_none() && _console_page.is_none() {return Err(err("無法安全啟動原生選單；請檢查啟動日誌後重試"));}
     if _console_page.is_none(){terminal_println!("正在開啟原生選單");}io::stdout().flush()?;
@@ -138,7 +154,7 @@ fn serve_menu(args:&[String])->io::Result<i32> {
     let mut lifetime_check=Instant::now();
     let mut theme:Option<String>=None;let mut native_loaded=false;
     let mut completion_started:Option<Instant>=None;
-    let mut health_stream:Option<TcpStream>=None;
+    let mut health_stream:Option<UiStream>=None;
     let discovery=lan_discovery::Discovery::default();
     let (tx,rx)=std::sync::mpsc::sync_channel(8);
     let request_wake=RequestWake::new()?;
@@ -221,6 +237,27 @@ fn serve_menu(args:&[String])->io::Result<i32> {
             let result=menu.config.as_ref().ok_or_else(||err("缺少設定")).and_then(|p|Session::new(p,false)).and_then(|s|super::super::sha256_reader_hex(s.original.as_bytes()));
             match result{Ok(revision)=>{let _=respond(&mut stream,"200 OK","text/plain",&revision);},Err(e)=>{let _=respond(&mut stream,"409 Conflict","text/plain",&e.to_string());}}continue;
         }
+        if req.path=="/api/backup-location" && menu.health && !menu.health_local && !menu.info.is_empty() {
+            let change=req.method=="POST";
+            let outcome=(||->io::Result<String>{
+                let path=menu.config.as_ref().filter(|p|p.file_name().and_then(|v|v.to_str())==Some("backup_settings.conf")).ok_or_else(||err("此選單無法切換備份位置"))?;
+                let state=Session::new(path,false)?;
+                let revision=super::super::sha256_reader_hex(state.original.as_bytes())?;
+                if req.method=="GET" {return Ok(serde_json::json!({"value":super::super::web_settings::backup_location(&state.original)?,"revision":revision}).to_string());}
+                if !change||!req.headers.get("content-type").is_some_and(|v|v=="text/plain;charset=UTF-8"){return Err(err("備份位置請求無效"));}
+                let request:serde_json::Value=serde_json::from_str(&req.body)?;
+                if request["revision"].as_str()!=Some(revision.as_str()){return Err(err("設定已變更，請重新開啟選擇"));}
+                let output=super::super::web_settings::set_backup_location(&state.original,request["value"].as_str().unwrap_or(""))?;
+                state.save_text(&output)?;
+                if read(path)?.0!=output{return Err(err("設定已寫入但隨後變更，請重新確認"));}
+                Ok("設定已儲存，正在重新載入選單".into())
+            })();
+            match outcome {
+                Ok(text)=>{let _=respond(&mut stream,"200 OK","text/plain",&text);if change {if let Some(page)=_console_page.as_mut(){page.return_to_menu();}if let Some(t)=task.take(){t.finish(true,false);}return Ok(12);}},
+                Err(e)=>{let _=respond(&mut stream,"409 Conflict","text/plain",&e.to_string());}
+            }
+            continue;
+        }
         if req.path=="/api/language" && req.method=="POST" {
             config=menu.config.as_ref().map(|p|Session::new(p,false)).transpose()?;
         }
@@ -291,6 +328,49 @@ pub(super) fn run(args:&[String])->i32 {ui_event("menu-open","begin");match serv
 
 #[cfg(test)] mod preparation_handoff_tests {
     use super::*;
+
+    #[test] fn explicit_back_role_is_independent_of_label_and_legacy_still_works(){
+        for (label,role,expected) in [("Go back","back","back"),("返回","action","action"),("返回設定","","back"),("取消","","action")] {
+            let mut input=format!("Test\nCHOICE\t0\t{label}\n");
+            if !role.is_empty(){input.push_str(&format!("ROLE\t0\t{role}\n"));}
+            let v:serde_json::Value=serde_json::from_str(&Menu::parse(&input).unwrap().json()).unwrap();
+            assert_eq!(v["choices"][0]["role"],expected);
+        }
+        for tail in ["ROLE\t0\tback\nROLE\t0\taction\n","ROLE\t0\tinvalid\n","ROLE\t9\tback\n","ICON\t9\tlogs\n","GROUPID\t9\tbackup\n"] {
+            assert!(Menu::parse(&format!("Test\nCHOICE\t0\tBack\n{tail}")).is_err());
+        }
+    }
+
+    #[test] fn connected_local_speedtest_is_visible_but_disabled() {
+        let menu=Menu::parse("Diagnostics\nHEALTH\tmode\trestore\nCHOICE\t0\tBack\nCHOICE\t1\tScan\nCHOICE\t2\tSpeedtest\nUI\t0\t1\nUI\t1\t1\nREMOTE\t2\tconnected\n").unwrap();
+        assert!(menu.allowed("0"));
+        assert!(menu.allowed("1"));
+        assert!(!menu.allowed("2"));
+        assert_eq!(menu.foreground, BTreeSet::from(["0".into(),"1".into()]));
+        let model:serde_json::Value=serde_json::from_str(&menu.json()).unwrap();
+        assert_eq!(model["healthEnabled"],true);
+        for choice in model["choices"].as_array().unwrap() {
+            assert_eq!(choice["hidden"],false);
+            assert_eq!(choice["disabled"],choice["id"]=="2");
+        }
+        assert_eq!(model["choices"][2]["remote"],"connected");
+    }
+    #[test] fn connected_missing_monitor_blocks_only_speedtest() {
+        // No CONFIG means offline regardless of the process environment.
+        let menu=Menu::parse("Diagnostics\nHEALTH\tmode\tbackup\nCHOICE\t0\tBack\nCHOICE\t1\tScan\nCHOICE\t2\tSpeedtest\nUI\t0\t1\nUI\t1\t1\nREMOTE\t2\tconnected\n").unwrap();
+        assert!(menu.allowed("0"));
+        assert!(menu.allowed("1"));
+        assert!(!menu.allowed("2"));
+        let model:serde_json::Value=serde_json::from_str(&menu.json()).unwrap();
+        for choice in model["choices"].as_array().unwrap() {
+            assert_eq!(choice["hidden"],false);
+            assert_eq!(choice["disabled"],choice["id"]=="2");
+        }
+    }
+    #[test] fn connected_requires_an_existing_choice_id() {
+        assert!(Menu::parse("Diagnostics\nHEALTH\tmode\tbackup\nCHOICE\t1\tScan\nREMOTE\t2\tconnected\n").is_err());
+        assert!(Menu::parse("Diagnostics\nHEALTH\tmode\tbackup\nCHOICE\t1\tScan\nREMOTE\tx\tconnected\n").is_err());
+    }
     #[test] fn local_keeps_backup_and_hides_remote_actions(){
         let menu=Menu::parse("Test\nHEALTH\tmode\trestore\nCHOICE\t1\tBackup\nCHOICE\t2\tUpload\nREMOTE\t1\tbackup\nREMOTE\t2\tonly\n").unwrap();
         assert!(menu.allowed("1"));assert!(!menu.allowed("2"));
@@ -301,6 +381,12 @@ pub(super) fn run(args:&[String])->i32 {ui_event("menu-open","begin");match serv
     #[test] fn missing_monitor_disables_remote_but_keeps_settings(){
         let menu=Menu::parse("Test\nHEALTH\tmode\tbackup\nCHOICE\t1\tBackup\nCHOICE\t2\tSettings\nREMOTE\t1\tbackup\n").unwrap();
         assert!(!menu.allowed("1"));assert!(menu.allowed("2"));
+    }
+    #[test] fn stable_choice_metadata_survives_labels(){
+        let menu=Menu::parse("Test\nCHOICE\t1\t任意翻譯\nICON\t1\tbackup-settings\nGROUP\t1\t任意群組\nGROUPID\t1\tbackup\n").unwrap();
+        let v:serde_json::Value=serde_json::from_str(&menu.json()).unwrap();
+        assert_eq!(v["choices"][0]["iconKey"],"backup-settings");assert_eq!(v["choices"][0]["groupId"],"backup");
+        assert!(Menu::parse("Test\nCHOICE\t1\tX\nICON\t1\tbackup\nICON\t1\trestore\n").is_err());
     }
     #[test] fn legacy_setup_marker_does_not_lock_network_settings() {
         let menu=Menu::parse("Test\nHEALTH\tmode\tbackup\nCHOICE\t5\t測試遠端連線\nREMOTE\t5\tonly\nUI\t5\t1\nCHOICE\t7\t刪除遠端已卸載應用\nREMOTE\t7\tonly\n").unwrap();

@@ -684,15 +684,19 @@ object HttpCore {
     }
 
     fun readHttpLine(input: InputStream): String {
-        val out = ByteArrayOutputStream(128)
+        var bytes = ByteArray(128)
+        var size = 0
         while (true) {
             val b = input.read()
             if (b == -1) throw EOFException("truncated HTTP line")
             if (b == '\n'.code) break
-            if (out.size() >= 65536) throw java.io.IOException("HTTP line too long")
-            if (b != '\r'.code) out.write(b)
+            if (size >= 65536) throw java.io.IOException("HTTP line too long")
+            if (b != '\r'.code) {
+                if (size == bytes.size) bytes = bytes.copyOf(bytes.size * 2)
+                bytes[size++] = b.toByte()
+            }
         }
-        return out.toString("ISO-8859-1")
+        return String(bytes, 0, size, Charsets.ISO_8859_1)
     }
 
     fun writeChunked(input: InputStream, out: OutputStream) {

@@ -23,7 +23,7 @@ fn snapshot_base(base:&Path,run:&Path,tag:&str,web:bool){
 pub fn snapshot_command(args:&[String])->i32{
     if args.len()!=2{return 2;}
     let run=Path::new(&args[0]);
-    if !run.starts_with("/data/speed_debug")||run.canonicalize().ok().as_deref()!=Some(run)||!run.is_dir(){return 2;}
+    if !valid_debug_path(run)||run.canonicalize().ok().as_deref()!=Some(run)||!run.is_dir(){return 2;}
     snapshot_base(Path::new("/data/.speedbackup/console/active"),run,"current",args[1]=="/data/.speedbackup/console/active");
     snapshot_base(Path::new("/data/.speedbackup_console/active"),run,"legacy",false);
     let crashes=run.join("crashes");
@@ -132,31 +132,98 @@ mod diagnostic_migration_tests {
     }
 }
 
+const DEBUG_ROOTS: [(&str, &str); 2] = [
+    ("current", "/data/.speedbackup/debug"), ("legacy", "/data/speed_debug"),
+];
+fn checked_debug_root(base: &Path) -> io::Result<bool> {
+    let m = match fs::symlink_metadata(base) {
+        Ok(m) => m,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e),
+    };
+    if !m.is_dir() || m.uid()!=0 || (if base == Path::new("/data/speed_debug") {m.mode() & 0o022 != 0} else {m.mode() & 0o7777 != 0o700})
+        || base.canonicalize()? != base {
+        return Err(io::Error::other("invalid diagnostic directory"));
+    }
+    if base == Path::new("/data/.speedbackup/debug") {
+        let root=Path::new("/data/.speedbackup");
+        let m=fs::symlink_metadata(root)?;
+        if !m.is_dir() || m.uid()!=0 || m.mode() & 0o7777 != 0o711
+            || root.canonicalize()? != root {
+            return Err(io::Error::other("invalid runtime root"));
+        }
+    }
+    Ok(true)
+}
+pub fn valid_debug_path(path: &Path) -> bool {
+    DEBUG_ROOTS.iter().any(|(_,root)| {
+        let base=Path::new(root);
+        path.starts_with(base) && checked_debug_root(base).unwrap_or(false)
+    })
+}
+fn archive_name(name: &str) -> bool {
+    !name.contains('/') && !name.contains('\\') && !name.contains('\0')
+        && !name.contains(':') && name.starts_with("speed_debug_") && name.ends_with(".tar")
+}
 pub fn sources()->io::Result<Value>{
-    let base=Path::new("/data/speed_debug");if base.canonicalize()?!=base{return Err(io::Error::other("invalid diagnostic directory"));}
     let mut entries=Vec::new();
-    for e in fs::read_dir("/data/speed_debug")?{let e=e?;let name=e.file_name().to_string_lossy().into_owned();
-        if name.starts_with("speed_debug_")&&name.ends_with(".tar")&&e.file_type()?.is_file(){let m=e.metadata()?;entries.push((m.mtime(),name,m.len()));}}
-    entries.sort_by(|a,b|b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
-    Ok(json!(entries.into_iter().map(|(time,name,size)|json!({"id":name,"label":name,"modified":time,"bytes":size})).collect::<Vec<_>>()))
+    for (origin,root) in DEBUG_ROOTS {
+        let base=Path::new(root);
+        match checked_debug_root(base) {
+            Ok(true)=>(), Ok(false)=>continue,
+            Err(e)=>{eprintln!("DIAGNOSTIC_SOURCE_UNAVAILABLE origin={origin}: {e}");continue;}
+        }
+        for e in fs::read_dir(base)? {
+            let e=e?;let name=e.file_name().to_string_lossy().into_owned();
+            if archive_name(&name)&&e.file_type()?.is_file(){
+                let m=e.metadata()?;
+                entries.push((m.mtime(),name,m.len(),origin));
+            }
+        }
+    }
+    entries.sort_by(|a,b|b.0.cmp(&a.0).then(a.1.cmp(&b.1)).then(a.3.cmp(b.3)));
+    Ok(json!(entries.into_iter().map(|(time,name,size,origin)|
+        json!({"id":format!("{origin}:{name}"),"label":format!("{origin}: {name}"),"modified":time,"bytes":size})
+    ).collect::<Vec<_>>()))
 }
-pub fn source_path(name:&str)->io::Result<std::path::PathBuf>{
-    if name.contains('/')||name.contains('\\')||!name.starts_with("speed_debug_")||!name.ends_with(".tar")||name.contains('\0'){return Err(io::Error::other("invalid diagnostic archive selection"));}
-    let base=Path::new("/data/speed_debug");if base.canonicalize()?!=base{return Err(io::Error::other("invalid diagnostic directory"));}
-    let path=base.join(name);let f=regular(&path)?;
-    if f.metadata()?.nlink()!=1{return Err(io::Error::other("invalid diagnostic archive link"));}Ok(path)
+pub fn source_path(selection:&str)->io::Result<std::path::PathBuf>{
+    let (origin,name)=match selection.split_once(':'){
+        Some((origin,name)) if matches!(origin,"current"|"legacy") => (Some(origin),name),
+        Some(_) => return Err(io::Error::other("invalid diagnostic origin")),
+        None => (None,selection),
+    };
+    if !archive_name(name){return Err(io::Error::other("invalid diagnostic archive selection"));}
+    let mut found=None;
+    for (tag,root) in DEBUG_ROOTS {
+        if origin.is_some_and(|o|o!=tag){continue;}
+        let base=Path::new(root);
+        if !checked_debug_root(base)?{continue;}
+        let path=base.join(name);
+        match fs::symlink_metadata(&path){
+            Err(e) if e.kind()==io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e),
+            Ok(_) => (),
+        }
+        let f=regular(&path)?;
+        if f.metadata()?.nlink()!=1 || path.canonicalize()?!=path {
+            return Err(io::Error::other("invalid diagnostic archive link"));
+        }
+        if found.is_some(){return Err(io::Error::other("ambiguous diagnostic archive selection"));}
+        found=Some(path);
+    }
+    found.ok_or_else(||io::Error::new(io::ErrorKind::NotFound,"diagnostic archive unavailable"))
 }
-struct HistoryCache{identity:(std::path::PathBuf,u64,u64,i64,i64,i64,i64),files:std::collections::BTreeMap<String,Vec<u8>>}
+struct HistoryCache{identity:(std::path::PathBuf,u64,u64,u64,i64,i64,i64,i64),files:std::collections::BTreeMap<String,Vec<u8>>}
 static HISTORY:std::sync::Mutex<Option<HistoryCache>>=std::sync::Mutex::new(None);
 pub fn history_response(source:&str,selected:Option<&str>,level:&str)->io::Result<Value>{
     let path=source_path(source)?;let m=regular(&path)?.metadata()?;
-    let identity=(path.clone(),m.ino(),m.len(),m.mtime(),m.mtime_nsec(),m.ctime(),m.ctime_nsec());
+    let identity=(path.clone(),m.dev(),m.ino(),m.len(),m.mtime(),m.mtime_nsec(),m.ctime(),m.ctime_nsec());
     let mut cache=HISTORY.lock().map_err(|_|io::Error::other("history cache unavailable"))?;
     if cache.as_ref().is_none_or(|c|c.identity!=identity){
         *cache=None;
         let files=super::debug_archive::history(&path)?;
         let after=regular(&path)?.metadata()?;
-        if (after.ino(),after.len(),after.mtime(),after.mtime_nsec(),after.ctime(),after.ctime_nsec())!=(m.ino(),m.len(),m.mtime(),m.mtime_nsec(),m.ctime(),m.ctime_nsec()){return Err(io::Error::other("除錯包已更新，請重新整理"));}
+        if (after.dev(),after.ino(),after.len(),after.mtime(),after.mtime_nsec(),after.ctime(),after.ctime_nsec())!=(m.dev(),m.ino(),m.len(),m.mtime(),m.mtime_nsec(),m.ctime(),m.ctime_nsec()){return Err(io::Error::other("除錯包已更新，請重新整理"));}
         *cache=Some(HistoryCache{identity,files});
     }
     let files=&cache.as_ref().unwrap().files;
@@ -175,7 +242,7 @@ mod diagnostic_history_tests {
     #[test]
     #[ignore="isolated Android device test"]
     fn indexed_history_and_invalidation(){
-        let base=Path::new("/data/speed_debug");fs::create_dir_all(base).unwrap();let id=format!("history_test_{}",std::process::id());let run=base.join(&id);fs::create_dir(&run).unwrap();let archive=base.join(format!("speed_debug_{id}.tar"));
+        let base=Path::new("/data/.speedbackup/debug");fs::create_dir_all(base).unwrap();let id=format!("history_test_{}",std::process::id());let run=base.join(&id);fs::create_dir(&run).unwrap();let archive=base.join(format!("speed_debug_{id}.tar"));
         struct Cleanup(std::path::PathBuf,std::path::PathBuf);impl Drop for Cleanup{fn drop(&mut self){let _=fs::remove_dir_all(&self.0);let _=fs::remove_file(&self.1);*HISTORY.lock().unwrap()=None;}}let _cleanup=Cleanup(run.clone(),archive.clone());
         fs::write(run.join("main.log"),"[ERROR] old\n[DEBUG] detail\n").unwrap();
         super::super::debug_archive::archive(Path::new("/data/.speedbackup/tools/tar"),&archive,&run,true,std::time::Duration::from_secs(5)).unwrap();

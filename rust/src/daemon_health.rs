@@ -1,13 +1,13 @@
 //! Observe authenticated local daemon handshakes and lifecycle events; no timer pings.
-use std::{fs,io::{self,Read,Write},os::{fd::{AsRawFd,FromRawFd,OwnedFd},unix::{fs::MetadataExt,net::UnixStream}},path::{Path,PathBuf},sync::{Arc,atomic::Ordering},time::Duration};
+use std::{fs,io::{self,Read,Write},os::{fd::{AsRawFd,FromRawFd,OwnedFd},unix::{fs::MetadataExt,net::UnixStream}},path::{Path,PathBuf},sync::{Arc,atomic::Ordering},time::{Duration,Instant}};
 use serde_json::{json,Value};
 use speedbackup_native_rs::{inotify_init1,inotify_add_watch,read,poll,PollFd,O_CLOEXEC,O_NONBLOCK,POLLIN};
 use super::command_lifecycle::{CancelEvent,OwnedChild};
 pub struct Watch(Arc<CancelEvent>);
 impl Drop for Watch{fn drop(&mut self){self.0.store(true,Ordering::Release);}}
-struct Death {fd:OwnedFd,pid:i32,_child:Option<OwnedChild>}
+struct Death {fd:OwnedFd,pid:i32,start_time:String,_child:Option<OwnedChild>}
 struct Daemon {dirty:bool,name:&'static str,record:bool,kind:&'static str,path:PathBuf,key:Option<(u64,u64)>,pid:Option<Death>,state:Value}
-fn handshake(path:&Path,rust:bool)->io::Result<Death>{
+fn handshake(path:&Path,rust:bool)->io::Result<(Death,f64)>{
     let mut stream=UnixStream::connect(path)?;
     stream.set_read_timeout(Some(Duration::from_millis(800)))?;stream.set_write_timeout(Some(Duration::from_millis(800)))?;
     #[repr(C)] struct Cred{pid:i32,uid:u32,gid:u32}
@@ -16,16 +16,22 @@ fn handshake(path:&Path,rust:bool)->io::Result<Death>{
     if unsafe{getsockopt(stream.as_raw_fd(),1,17,&mut cred as *mut _ as _,&mut len)}!=0||len!=std::mem::size_of::<Cred>() as u32||cred.uid!=0||cred.pid<=1{return Err(io::Error::other("peer identity"));}
     // Open before the handshake so a death during reply cannot yield stale green.
     let pid=observe_pid(cred.pid)?;
+    // Only the authenticated request/reply, not connect, pid observation or UI refresh.
+    let started=Instant::now();
     stream.write_all(if rust{b"PING\n"}else{b"ping\n"})?;stream.shutdown(std::net::Shutdown::Write)?;
     let mut bytes=Vec::new();stream.take(4097).read_to_end(&mut bytes)?;
+    let elapsed_ms=started.elapsed().as_secs_f64()*1000.0;
     let text=String::from_utf8_lossy(&bytes);
     let valid=if rust{text.starts_with("CGFREEZER_DAEMON_PONG ok=true ")}else{text.starts_with("RESULT 0 OK\n")&&text.lines().last()==Some("PONG")};
     if bytes.len()>4096||!valid{return Err(io::Error::other("handshake"));}
-    Ok(pid)
+    Ok((pid,elapsed_ms))
 }
 fn observe_pid(pid:i32)->io::Result<Death>{
-    match speedbackup_native_rs::pidfd_open(pid) {
-        Ok(fd)=>Ok(Death{fd:unsafe{OwnedFd::from_raw_fd(fd)},pid,_child:None}),
+    // Capture identity only after opening the pidfd. A reused PID cannot
+    // inherit this fd; polling after the stat read detects the original death.
+    let before=identity(pid).ok_or_else(||io::Error::other("process identity"))?;
+    let death:io::Result<Death>=match speedbackup_native_rs::pidfd_open(pid) {
+        Ok(fd)=>Ok(Death{fd:unsafe{OwnedFd::from_raw_fd(fd)},pid,start_time:String::new(),_child:None}),
         Err(_)=>{
             // Existing eventwait provides the old-kernel compatibility backend.
             use std::process::{Command,Stdio};
@@ -34,9 +40,17 @@ fn observe_pid(pid:i32)->io::Result<Death>{
             super::command_lifecycle::parent_guard(&mut command);
             let mut child=OwnedChild::spawn(&mut command)?;
             let stdout=child.stdout.take().ok_or_else(||io::Error::other("process events"))?;
-            Ok(Death{fd:stdout.into(),pid,_child:Some(child)})
+            Ok(Death{fd:stdout.into(),pid,start_time:String::new(),_child:Some(child)})
         }
+    };
+    let mut death:Death=death?;
+    let start=identity(pid).ok_or_else(||io::Error::other("process exited"))?;
+    let mut event=PollFd{fd:death.fd.as_raw_fd(),events:POLLIN,revents:0};
+    if start!=before || unsafe{poll(&mut event,1,0)}!=0 {
+        return Err(io::Error::other("process exited during observation"));
     }
+    death.start_time=start;
+    Ok(death)
 }
 fn identity(pid:i32)->Option<String>{
     let text=fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
@@ -69,7 +83,7 @@ fn aggregate(daemons:&[Daemon])->Value {
                 continue;
             }
             let status=d.state["status"].as_str().unwrap_or("checking");
-            components.push(json!({"name":d.name,"status":status,"reason":d.state["reason"],"pid":d.pid.as_ref().map(|p|p.pid),"verification":if d.record{"process"}else{"handshake"}}));
+            components.push(json!({"name":d.name,"status":status,"reason":d.state["reason"],"pid":d.pid.as_ref().map(|p|p.pid),"startTime":d.pid.as_ref().map(|p|p.start_time.as_str()),"verification":if d.record{"process"}else{"handshake"},"handshakeRttMs":if !d.record&&status=="ready"{d.state["handshakeRttMs"].clone()}else{Value::Null}}));
             if status=="offline"{failures.push(json!({"name":d.name,"reason":d.state["reason"]}));}
             else if status!="ready"{pending=true;}
         }
@@ -101,8 +115,8 @@ pub fn start(dir:&Path)->io::Result<Watch>{
 fn refresh_daemon(d:&mut Daemon) {
                 let key=fs::symlink_metadata(&d.path).ok().map(|m|(m.dev(),m.ino()));
                 if d.dirty||key!=d.key {d.dirty=false;d.key=key;d.pid=None;
-                    d.state=if key.is_none(){if d.state["status"]=="ready"||d.state["status"]=="offline"{json!({"status":"offline","reason":"process_exited"})}else{json!({"status":"idle","reason":"not_started"})}}else{match if d.record{record_handshake(&d.path)}else{handshake(&d.path,d.kind=="rust")}{
-                        Ok(pid)=>{d.pid=Some(pid);json!({"status":"ready","reason":""})},
+                    d.state=if key.is_none(){if d.state["status"]=="ready"||d.state["status"]=="offline"{json!({"status":"offline","reason":"process_exited"})}else{json!({"status":"idle","reason":"not_started"})}}else{match if d.record{record_handshake(&d.path).map(|pid|(pid,None))}else{handshake(&d.path,d.kind=="rust").map(|(pid,ms)|(pid,Some(ms)))}{
+                        Ok((pid,ms))=>{d.pid=Some(pid);json!({"status":"ready","reason":"","handshakeRttMs":ms})},
                         Err(e)=>json!({"status":"offline","reason":if matches!(e.kind(),io::ErrorKind::WouldBlock|io::ErrorKind::TimedOut){"timeout"}else if d.record{"process_exited"}else{"handshake_failed"}}),
                     }};
                 }
@@ -153,7 +167,7 @@ pub fn snapshot(dir:&Path,alive:bool)->Value {
     let mut data:Value=fs::read(dir.join("daemons.json")).ok().and_then(|b|serde_json::from_slice(&b).ok()).unwrap_or_else(||json!({}));
     if !alive{for key in ["rust","dex","services"]{
         let mut components=data[key]["components"].as_array().cloned().unwrap_or_default();
-        for component in &mut components{component["status"]=json!("unknown");component["reason"]=json!("monitor_stopped");component["pid"]=Value::Null;}
+        for component in &mut components{component["status"]=json!("unknown");component["reason"]=json!("monitor_stopped");component["pid"]=Value::Null;component["startTime"]=Value::Null;component["handshakeRttMs"]=Value::Null;}
         data[key]=json!({"status":"offline","reason":"monitor_stopped","components":components,"failures":[{"name":"Health monitor","reason":"monitor_stopped"}]});
     }}
     data
@@ -164,14 +178,25 @@ pub fn snapshot(dir:&Path,alive:bool)->Value {
     #[test] fn monitor_failure_preserves_components_and_marks_all_groups_offline(){
         let dir=std::env::temp_dir().join(format!("sb-review-monitor-{}",std::process::id()));
         fs::create_dir(&dir).unwrap();
-        let stale=json!({"services":{"status":"ready","components":[{"name":"SMB publisher","status":"ready","pid":123}]}});
+        let stale=json!({"services":{"status":"ready","components":[{"name":"SMB publisher","status":"ready","pid":123,"handshakeRttMs":1.25}]}});
         fs::write(dir.join("daemons.json"),stale.to_string()).unwrap();
         let failed=snapshot(&dir,false);
         for kind in ["rust","dex","services"]{assert_eq!(failed[kind]["status"],"offline");assert_eq!(failed[kind]["reason"],"monitor_stopped");}
         assert_eq!(failed["services"]["components"][0]["name"],"SMB publisher");
         assert_eq!(failed["services"]["components"][0]["status"],"unknown");
         assert!(failed["services"]["components"][0]["pid"].is_null());
+        assert!(failed["services"]["components"][0]["handshakeRttMs"].is_null());
         fs::remove_dir_all(dir).unwrap();
+    }
+    #[test] fn rtt_is_only_exposed_for_successful_core_handshakes(){
+        let mut d=Daemon{dirty:false,name:"cgfreezer",record:false,kind:"rust",path:PathBuf::new(),key:Some((1,2)),pid:None,state:json!({"status":"ready","handshakeRttMs":0.125})};
+        assert_eq!(aggregate(std::slice::from_ref(&d))["rust"]["components"][0]["handshakeRttMs"],0.125);
+        for status in ["offline","checking","idle","unknown"] {
+            d.state["status"]=json!(status);
+            assert!(aggregate(std::slice::from_ref(&d))["rust"]["components"][0]["handshakeRttMs"].is_null());
+        }
+        d.state["status"]=json!("ready");d.record=true;
+        assert!(aggregate(&[d])["rust"]["components"][0]["handshakeRttMs"].is_null());
     }
     #[test] fn inactive_optional_is_visible_without_failing_summary(){
         let d=Daemon{dirty:false,name:"File broker",record:true,kind:"rust",path:PathBuf::new(),key:None,pid:None,state:json!({"status":"offline","reason":"process_exited"})};

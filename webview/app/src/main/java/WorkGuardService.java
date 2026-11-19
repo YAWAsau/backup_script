@@ -1,5 +1,7 @@
 package io.github.yawasau.speedbackup.webview;
 
+import com.xayah.dex.UnixHttpConnection;
+
 import android.app.*;
 import android.graphics.*;
 import android.graphics.drawable.Icon;
@@ -20,14 +22,14 @@ public final class WorkGuardService extends Service {
     private String url="";private int failures=0;private boolean gone=false,detached=false;private long generation;
     static boolean valid(String value){
         if(value==null)return false;
-        try{Uri u=Uri.parse(value);return "http".equals(u.getScheme())&&"127.0.0.1".equals(u.getHost())&&u.getPort()>0&&u.getPort()<=65535&&u.getUserInfo()==null&&"/".equals(u.getPath())&&u.getQuery()==null&&u.getFragment()!=null&&u.getFragment().matches("[0-9a-f]{64}");}catch(Exception e){return false;}
+        try{Uri u=Uri.parse(value);return "unix".equals(u.getScheme())&&u.getHost()!=null&&u.getHost().matches("sb-ui-[0-9a-f]{64}")&&u.getPort()==-1&&u.getUserInfo()==null&&"/".equals(u.getPath())&&u.getQuery()==null&&u.getFragment()!=null&&u.getFragment().matches("[0-9a-f]{64}");}catch(Exception e){return false;}
     }
     static String request(String url,String endpoint,boolean post)throws Exception{
         return request(url,endpoint,post,"");
     }
     static String request(String url,String endpoint,boolean post,String body)throws Exception{
         if(!valid(url))throw new IllegalArgumentException("session");Uri u=Uri.parse(url);
-        HttpURLConnection c=(HttpURLConnection)new URL("http://127.0.0.1:"+u.getPort()+"/api/"+endpoint).openConnection();
+        HttpURLConnection c=new UnixHttpConnection("unix://"+u.getHost()+"/api/"+endpoint);
         c.setConnectTimeout(2000);c.setReadTimeout(endpoint.equals("guard-wait")?15000:5000);c.setInstanceFollowRedirects(false);c.setRequestProperty("X-SpeedBackup-Token",u.getFragment());
         if(post){byte[] bytes=body.getBytes(java.nio.charset.StandardCharsets.UTF_8);c.setRequestMethod("POST");c.setDoOutput(true);c.setFixedLengthStreamingMode(bytes.length);try(java.io.OutputStream out=c.getOutputStream()){out.write(bytes);}}
         try{if(c.getResponseCode()!=200)throw new java.io.IOException("status "+c.getResponseCode());
@@ -38,36 +40,7 @@ public final class WorkGuardService extends Service {
     private void updateChannel(){getSystemService(NotificationManager.class).createNotificationChannel(new NotificationChannel(CHANNEL,NativeLanguage.text(this,"工作保護與接回"),NotificationManager.IMPORTANCE_LOW));}
     private Icon notificationIcon;
     private static Bitmap drawSpeedBackupSmallIconBitmap() {
-        final int size = 96;
-        final Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
-        final Canvas canvas = new Canvas(bitmap);
-        canvas.scale(size / 48.0f, size / 48.0f);
-
-        final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
-        stroke.setColor(Color.WHITE);
-        stroke.setStyle(Paint.Style.STROKE);
-        stroke.setStrokeCap(Paint.Cap.ROUND);
-        stroke.setStrokeJoin(Paint.Join.ROUND);
-        stroke.setStrokeWidth(3.4f);
-
-        final Path lid = new Path();
-        lid.moveTo(10.5f, 17.0f);
-        lid.lineTo(14.6f, 9.6f);
-        lid.lineTo(33.4f, 9.6f);
-        lid.lineTo(37.5f, 17.0f);
-        canvas.drawPath(lid, stroke);
-
-        final RectF body = new RectF(10.5f, 17.0f, 37.5f, 36.5f);
-        canvas.drawRoundRect(body, 3.2f, 3.2f, stroke);
-        canvas.drawLine(11.2f, 17.0f, 36.8f, 17.0f, stroke);
-
-        stroke.setStrokeWidth(4.2f);
-        final Path check = new Path();
-        check.moveTo(18.3f, 25.8f);
-        check.lineTo(23.0f, 30.5f);
-        check.lineTo(30.6f, 22.0f);
-        canvas.drawPath(check, stroke);
-        return bitmap;
+        return com.xayah.dex.SpeedBackupIcons.notificationBitmap(96);
     }
 
     private Notification notification(){
@@ -98,7 +71,11 @@ public final class WorkGuardService extends Service {
         worker.execute(()->{JSONObject status=null;try{status=new JSONObject(request(current,eventDriven?"guard-wait":"guard",eventDriven,expected));}catch(Exception ignored){}final JSONObject result=status;
             main.post(()->{if(gone||ticket!=generation)return;
                 if(result==null){if(++failures>=3){end();return;}}
-                else{failures=0;if(!result.optBoolean("active",false)){end();return;}boolean next=!result.optBoolean("attached",false);if(next!=detached){detached=next;getSystemService(NotificationManager.class).notify(ID,notification());}}
+                else{failures=0;if(!result.optBoolean("active",false)){end();return;}
+                    String language=result.optString("uiLanguage",NativeLanguage.get());
+                    boolean languageChanged=("zh-Hans".equals(language)||"zh-Hant".equals(language))&&!language.equals(NativeLanguage.get());
+                    if(languageChanged){NativeLanguage.set(language);getSharedPreferences(PREFS,0).edit().putString("uiLanguage",language).apply();updateChannel();}
+                    boolean next=!result.optBoolean("attached",false);if(next!=detached||languageChanged){detached=next;getSystemService(NotificationManager.class).notify(ID,notification());}}
                 boolean events=result!=null&&result.optBoolean("eventDriven",false);
                 if(events)poll(ticket,true);
                 else main.postDelayed(()->poll(ticket,false),5000); // Legacy backend / failure recovery.

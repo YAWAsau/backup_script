@@ -1,4 +1,4 @@
-//! One-session loopback list editor. No shell execution from HTTP input.
+//! One-session Unix-socket list editor. No shell execution from HTTP input.
 #[path = "lan_discovery.rs"]
 pub(crate) mod lan_discovery;
 #[path = "selection_flow.rs"]
@@ -7,11 +7,15 @@ mod selection_flow;
 mod selection_plan;
 #[path = "timeline_options.rs"]
 mod timeline_options;
+#[path = "process_monitor.rs"]
+mod process_monitor;
+#[path = "ui_socket_label.rs"]
+mod ui_socket_label;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{self, File, Metadata, OpenOptions},
     io::{self, Read, Write},
-    net::{TcpListener, TcpStream},
+    os::unix::net::{UnixListener as UiListener, UnixStream as UiStream},
     os::{
         fd::AsRawFd,
         unix::fs::{MetadataExt, OpenOptionsExt},
@@ -20,6 +24,61 @@ use std::{
     process::{Command, Stdio},
     time::{Duration, Instant},
 };
+#[cfg(target_os="android")] use std::os::android::net::SocketAddrExt;
+#[cfg(target_os="linux")] use std::os::linux::net::SocketAddrExt;
+fn ui_bind()->io::Result<(UiListener,String)> {
+    let name=format!("sb-ui-{}",random_hex()?);
+    let address=std::os::unix::net::SocketAddr::from_abstract_name(&name)?;
+    #[cfg(target_os="android")]
+    let listener={
+        if fs::read_to_string("/proc/thread-self/attr/current")?.trim_end_matches(['\n','\0'])=="u:r:magisk:s0" {
+            let context=ui_context()?;
+            ui_socket_label::bind_abstract(&context,&name)?
+        } else {UiListener::bind_addr(&address)?}
+    };
+    #[cfg(not(target_os="android"))]
+    let listener=UiListener::bind_addr(&address)?;
+    Ok((listener,name))
+}
+#[cfg(target_os="android")]
+fn ui_context()->io::Result<String> {
+    let exe=std::env::current_exe()?;
+    let dex=exe.parent().ok_or_else(||err("native parent"))?.join("classes.dex");
+    let metadata=||->io::Result<String>{
+        // The path is only a rendezvous hint, never authoritative metadata.
+        // Authenticate the kernel peer before accepting a daemon response.
+        if let Ok(path)=std::env::var("SPEEDBACKUP_DEX_HEALTH_SOCKET") {
+            if let Ok(mut s)=UiStream::connect(path) {
+                unsafe extern "C"{fn getsockopt(fd:i32,l:i32,o:i32,v:*mut std::ffi::c_void,n:*mut u32)->i32;}
+                let mut cred=[0u32;3];let mut size=12u32;
+                if unsafe{getsockopt(s.as_raw_fd(),1,17,cred.as_mut_ptr().cast(),&mut size)}!=0||size!=12||cred[1]!=0{return Err(err("metadata peer"));}
+                s.set_read_timeout(Some(Duration::from_secs(8)))?;s.set_write_timeout(Some(Duration::from_secs(2)))?;
+                s.write_all(b"ui-socket-metadata\n")?;s.shutdown(std::net::Shutdown::Write)?;
+                let mut text=String::new();s.take(8193).read_to_string(&mut text)?;
+                if text.len()>8192{return Err(err("metadata length"));}
+                if text.starts_with("RESULT 0 OK\n") {
+                    if let Some(line)=text.lines().last(){return Ok(line.into());}
+                }
+            }
+        }
+        let (status,text)=bounded_output(Command::new("/system/bin/app_process").current_dir("/").env("CLASSPATH",&dex).args(["/system/bin","com.xayah.dex.AppListReturn","--socket-metadata"]),10)?;
+        if !status.success(){return Err(err("host metadata unavailable"));}Ok(text.trim_end_matches('\n').into())
+    };
+    let mut line=metadata()?;
+    if line.starts_with("INSTALL\t"){ensure_webview(&dex)?;line=metadata()?;}
+    let fields:Vec<_>=line.split('\t').collect();
+    if fields.len()!=3||fields[0]!="UI_META"{return Err(err("host metadata invalid"));}
+    let (status,label)=bounded_output(Command::new(&exe).args(["--resolve-ui-context",fields[1],fields[2],"io.github.yawasau.speedbackup.webview"]),8)?;
+    if !status.success(){return Err(err("platform socket context unavailable"));}
+    let label=label.trim_end_matches('\n');
+    if label.is_empty()||label.len()>4096||label.bytes().any(|b|b<=32||b>=127){return Err(err("platform socket context invalid"));}
+    Ok(label.into())
+}
+fn ui_name(name:&str)->bool {name.strip_prefix("sb-ui-").is_some_and(|s|s.len()==64&&s.bytes().all(|b|b.is_ascii_digit()||(b'a'..=b'f').contains(&b)))}
+fn ui_connect(name:&str)->io::Result<UiStream> {
+    if !ui_name(name){return Err(err("invalid Unix endpoint"));}
+    UiStream::connect_addr(&std::os::unix::net::SocketAddr::from_abstract_name(name)?)
+}
 // Wake on either a new connection or a parsed request, rather than adding a
 // 10 ms accept-poll delay to every sequential startup API call. The socket pair
 // is owned by the session; request workers keep only their notification end.
@@ -33,7 +92,7 @@ impl RequestWake {
         reader.set_nonblocking(true)?;writer.set_nonblocking(true)?;
         Ok(Self{reader,writer:std::sync::Arc::new(writer)})
     }
-    fn wait(&self,listener:&TcpListener)->io::Result<()> {
+    fn wait(&self,listener:&UiListener)->io::Result<()> {
         let mut fds=[speedbackup_native_rs::PollFd{fd:listener.as_raw_fd(),events:1,revents:0},
             speedbackup_native_rs::PollFd{fd:self.reader.as_raw_fd(),events:1,revents:0}];
         let result=unsafe{speedbackup_native_rs::poll(fds.as_mut_ptr(),2,100)};
@@ -273,6 +332,7 @@ fn rows(text:&str)->io::Result<Vec<Row>> {
     result.sort_by_key(|row|row.line);
     Ok(result)
 }
+use super::restore_item::{remote_item_kind,remote_apk_supported,RemoteItemKind};
 fn selection_rows(text:&str,kind:&str)->io::Result<Vec<Row>> {
     if kind=="remote-delete" {
         let mut out=Vec::new();
@@ -296,7 +356,10 @@ fn selection_rows(text:&str,kind:&str)->io::Result<Vec<Row>> {
         let disabled=trimmed.starts_with(['#','＃']);let marker=if disabled {trimmed.chars().next().unwrap().len_utf8()} else {0};
         let rest=&trimmed[marker..];let body=rest.trim();
         if body.is_empty(){continue;}
-        let name=body.split(" #").next().unwrap().trim_end();
+        let entry=body.split(" #").next().unwrap().trim_end();
+        let apk=kind=="remote"&&entry.starts_with(['!','！']);
+        let name=if apk {&entry[entry.chars().next().unwrap().len_utf8()..]}else{entry};
+        if apk&&!remote_apk_supported(name){return Err(err("此項目不支援僅 APK"));}
         let telephony=matches!(name,"@telephony:messages"|"@telephony:calls");
         // Generated prose begins '# '; uncommented records and '#record' remain selectable.
         if disabled && rest.starts_with([' ','\t']) && !telephony {continue;}
@@ -305,7 +368,7 @@ fn selection_rows(text:&str,kind:&str)->io::Result<Vec<Row>> {
         let valid=safe && if kind=="media" {archive} else {telephony||(!name.contains(':')&&!name.starts_with('@'))};
         if !valid {if disabled {continue;}return Err(err("清單包含不支援的有效項目，未修改原檔"));}
         if !seen.insert(name.to_string()){return Err(err("清單有重複項目，請先確認原檔"));}
-        out.push(Row{line,pkg:format!("row-{line}"),label:name.into(),enabled:!disabled,data_only:false,prefix,marker,apk_start:0});
+        out.push(Row{line,pkg:format!("row-{line}"),label:name.into(),enabled:!disabled,data_only:apk,prefix,marker,apk_start:prefix+marker+rest.len()-rest.trim_start().len()});
     }
     Ok(out)
 }
@@ -356,6 +419,9 @@ fn edit(original: &str, rows: &[Row], body: &str, selection: Option<&str>) -> io
         if redundant.contains(&i) || (selection.is_none() && line.split_whitespace().last() == Some(crate::applist::HOST_PACKAGE)) { removed_host_lines.push(i); continue; }
         if let Some(r) = changes.get(&i) {
             let (selected, apk) = states[r.pkg.as_str()];
+            if apk&&selection.is_some_and(|kind|kind!="remote"||!remote_apk_supported(&r.label)) {
+                return Err(err("此項目不支援僅 APK"));
+            }
             if selected != r.enabled || apk != r.data_only {
                 let mut changed = line.to_string();
                 // Edit the later APK marker first, so the earlier comment offset remains valid.
@@ -403,13 +469,13 @@ struct Request {
     headers: BTreeMap<String, String>,
     body: String,
 }
-fn request(stream: &mut TcpStream) -> io::Result<Request> {
+fn request(stream: &mut UiStream) -> io::Result<Request> {
     let mut progress=("headers",0usize,0usize);
     let result=request_inner(stream,&mut progress);
-    if let Err(e)=&result {ui_transport_error("http-read", &format!("kind={:?} errno={:?} phase={} received={} expected={} peer_port={}",e.kind(),e.raw_os_error(),progress.0,progress.1,progress.2,stream.peer_addr().map(|a|a.port()).unwrap_or(0)));}
+    if let Err(e)=&result {ui_transport_error("http-read", &format!("kind={:?} errno={:?} phase={} received={} expected={} transport=unix",e.kind(),e.raw_os_error(),progress.0,progress.1,progress.2));}
     result
 }
-fn request_inner(stream: &mut TcpStream, progress:&mut (&'static str,usize,usize)) -> io::Result<Request> {
+fn request_inner(stream: &mut UiStream, progress:&mut (&'static str,usize,usize)) -> io::Result<Request> {
     stream.set_read_timeout(Some(Duration::from_secs(2)))?;
     stream.set_write_timeout(Some(Duration::from_secs(2)))?;
     let deadline = Instant::now() + Duration::from_secs(3);
@@ -487,8 +553,10 @@ fn ui_record(kind: &str, stage: &str, reason: &str) {
     // Normal lifecycle events belong only in the private diagnostic sink.
     if kind!="WEBUI_EVENT" { let _=writeln!(io::stderr().lock(),"{line}"); }
     let result=(|| -> io::Result<()> {
-        let path=std::env::var("SPEEDBACKUP_UI_ERROR_LOG").map_err(|_|err("sink_unset"))?;
-        if path.is_empty(){return Err(err("sink_unset"));}
+        let path=match std::env::var_os("SPEEDBACKUP_UI_ERROR_LOG") {
+            Some(path) if !path.is_empty()=>std::path::PathBuf::from(path),
+            _=>return Ok(()),
+        };
         let mut file=OpenOptions::new().append(true).custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE | speedbackup_native_rs::O_NONBLOCK).open(path).map_err(|_|err("sink_open_failed"))?;
         let meta=file.metadata().map_err(|_|err("sink_stat_failed"))?;
         if !meta.is_file()||meta.uid()!=0||meta.nlink()!=1||meta.mode()&0o077!=0{return Err(err("sink_identity_rejected"));}
@@ -517,13 +585,13 @@ fn ui_transport_error(stage:&str,reason:&str) {
     }
     if stage=="browser-lifecycle"{ui_event(stage,reason);}else{ui_error(stage,reason);}
 }
-fn respond(s: &mut TcpStream, status: &str, kind: &str, body: &str) -> io::Result<()> {
+fn respond(s: &mut UiStream, status: &str, kind: &str, body: &str) -> io::Result<()> {
     if !status.starts_with('2'){ui_transport_error("http-status",status);}
     let result=respond_inner(s,status,kind,body);
     if let Err(e)=&result{ui_transport_error("http-write",&format!("kind={:?} errno={:?}",e.kind(),e.raw_os_error()));}
     result
 }
-fn respond_inner(s: &mut TcpStream, status: &str, kind: &str, body: &str) -> io::Result<()> {
+fn respond_inner(s: &mut UiStream, status: &str, kind: &str, body: &str) -> io::Result<()> {
     write!(s,"HTTP/1.1 {status}\r\nContent-Type: {kind}; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src data:; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'\r\n\r\n{body}",body.len())
 }
 struct Session {
@@ -607,7 +675,6 @@ impl Session {
         Ok(())
     }
     fn save(&self, body: &str) -> io::Result<()> {
-        if self.selection && body.lines().any(|l|l.split('\t').nth(2)!=Some("0")){return Err(err("恢復清單只允許勾選，不支援 APK 模式"));}
         let output = edit(&self.original, &self.rows, body,self.selection_kind.as_deref())?;
         self.save_text(&output)
     }
@@ -866,7 +933,7 @@ fn bounded_output(command: &mut Command, seconds: u64) -> io::Result<(std::proce
 }
 fn bounded_output_input(command: &mut Command, seconds: u64, input: Option<&'static [u8]>) -> io::Result<(std::process::ExitStatus, String)> {
     let deadline = Instant::now() + Duration::from_secs(seconds);
-    let rebind=command.get_args().any(|a|a=="--rebind-origin");
+    let rebind=command.get_args().any(|a|a=="--rebind-origin"||a=="--grant-overlay");
     let mut child = super::command_lifecycle::OwnedChild::spawn(command.stdin(if input.is_some(){Stdio::piped()}else{Stdio::null()}).stdout(Stdio::piped()).stderr(if rebind{Stdio::inherit()}else{Stdio::null()}))?;
     let input_result=input.map(|bytes| {
         let mut stdin=child.stdin.take().expect("piped stdin");
@@ -913,6 +980,9 @@ fn prepare_host_access(user:u32,sdk:u32) {
         }
     });}});
 }
+// Installation can happen before ReturnTask (notably APatch host setup).
+// Retain that event until a handoff actually succeeds, including capture retries.
+static WEBVIEW_FRESH_TASK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 fn ensure_webview(dex: &Path) -> io::Result<()> {
     fn check(dex: &Path)->io::Result<(std::process::ExitStatus,String)>{bounded_output(Command::new("/system/bin/app_process").current_dir("/").env("CLASSPATH",dex).args(["/system/bin","com.xayah.dex.AppListReturn","--check"]),8)}
     let (status,text)=check(dex)?;
@@ -924,6 +994,7 @@ fn ensure_webview(dex: &Path) -> io::Result<()> {
     // An anonymous pipe avoids mutable staging paths and SELinux file-label access.
     let (installed,_) = bounded_output_input(Command::new("/system/bin/pm").args(["install","-r","--user",user,"-S",&bytes.len().to_string()]),60,Some(bytes))?;
     if !installed.success(){return Err(err("WebView install failed"));}
+    WEBVIEW_FRESH_TASK.store(true, std::sync::atomic::Ordering::Release);
     let (status,text)=check(dex)?;
     if !status.success()||text.trim()!="OK" {return Err(err("installed WebView identity verification"));}
     Ok(())
@@ -959,7 +1030,7 @@ impl ReturnTask {
         command
             .env("CLASSPATH", &dex)
             .env("SPEEDBACKUP_UI_LANGUAGE",web_language(None).unwrap_or_else(|_|"zh-Hant".into()))
-            .env("SPEEDBACKUP_WEBVIEW_FRESH_TASK", if installed_once { "1" } else { "0" })
+            .env("SPEEDBACKUP_WEBVIEW_FRESH_TASK", if installed_once || WEBVIEW_FRESH_TASK.load(std::sync::atomic::Ordering::Acquire) { "1" } else { "0" })
             .args(["/system/bin", "com.xayah.dex.AppListReturn"]);
         if let Some(url) = url {
             command.arg(url);
@@ -1041,7 +1112,10 @@ impl ReturnTask {
         }
         if ready.trim()=="WAIT_HOST_SETUP" {ready=state.lines.recv_timeout(Duration::from_secs(125)).ok()?;}
         match ready.trim() {
-            "READY" | "READY_CUSTOM" => Some(state),
+            "READY" | "READY_CUSTOM" => {
+                WEBVIEW_FRESH_TASK.store(false, std::sync::atomic::Ordering::Release);
+                Some(state)
+            },
             _ => None,
         }
     }
@@ -1247,10 +1321,9 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect::<String>();
-    let listener = TcpListener::bind("127.0.0.1:0")?;
+    let (listener,host) = ui_bind()?;
     listener.set_nonblocking(true)?;
-    let host = listener.local_addr()?.to_string();
-    let origin = format!("http://{host}");
+    let origin = format!("unix://{host}");
     let url = format!("{origin}/#{token}");
     let mut _console_page=web_console::Page::register(&url,!std::env::var("SPEEDBACKUP_AUTH_SETUP").is_ok_and(|v|v=="1"))?;
     let mut return_task = if args.len() >= 2 && _console_page.is_none() {
@@ -1278,7 +1351,7 @@ fn serve_kind(args: &[String], selection:Option<&str>) -> io::Result<i32> {
         );
     }
     // Same monitor subscription as the main menu; the editor never probes LAN itself.
-    struct EditorHealthStream(Option<TcpStream>);
+    struct EditorHealthStream(Option<UiStream>);
     impl Drop for EditorHealthStream { fn drop(&mut self){if let Some(s)=self.0.take(){let _=s.shutdown(std::net::Shutdown::Both);}} }
     let mut editor_health=EditorHealthStream(None);
     let health_conf=args.get(3).map(|root|Path::new(root).join("backup_settings.conf")).unwrap_or_default();
@@ -1695,7 +1768,7 @@ fn web_language(save: Option<&str>) -> io::Result<String> {
 }
 fn valid_appearance(value: &str) -> bool {
     let fields:Vec<_>=value.split('\t').collect();
-    fields.len()==2 && matches!(fields[0],"system"|"light"|"dark"|"amoled"|"space"|"night") && matches!(fields[1],"full"|"system"|"reduce")
+    fields.len()==2 && matches!(fields[0],"system"|"light"|"dark"|"amoled"|"space"|"night"|"rainbow") && matches!(fields[1],"full"|"system"|"reduce")
 }
 fn web_preference(key: &str, default: &str, valid: fn(&str)->bool, save: Option<&str>) -> io::Result<String> {
     web_preference_at(Path::new("/data/local/tmp/.speedbackup-web-preferences"),key,default,valid,save)
@@ -1754,7 +1827,7 @@ fn web_preference_at(parent: &Path, key: &str, default: &str, valid: fn(&str)->b
     Ok(default.into())
 }
 
-fn language_request(stream: &mut TcpStream, req: &Request, config: Option<&mut Session>, queue: Option<&Path>) -> Option<bool> {
+fn language_request(stream: &mut UiStream, req: &Request, config: Option<&mut Session>, queue: Option<&Path>) -> Option<bool> {
     if req.path!="/api/language" {return None;}
     let result=match req.method.as_str(){
         "GET" if req.body.is_empty()=>web_language(None),
@@ -1784,9 +1857,17 @@ pub fn language_reload(args:&[String])->i32 {
     let result=(||->io::Result<bool>{
         if args.len()!=2 || !matches!(args[1].as_str(),"zh-TW"|"zh-CN"){return Err(err("language-reload arguments"));}
         let mut state=Session::new(Path::new(&args[0]),false)?;
-        if let Some((path,value,_lock))=web_console::pending_language()? {
-            let output=super::web_settings::language(&state.original,&value)?;
-            state.save_text(&output)?;state.original=output;
+        let pending=web_console::pending_language()?;
+        // Explicit App preference is shared by backup/restore configs, including
+        // a different entry directory selected after the original language change.
+        let saved=web_preference("language", "", |v| matches!(v,"zh-Hant"|"zh-Hans"), None)?;
+        let target=pending.as_ref().map(|(_,value,_)|value.as_str()).or_else(||if saved.is_empty(){None}else{Some(saved.as_str())});
+        if let Some(value)=target {
+            let output=super::web_settings::language(&state.original,value)?;
+            if output!=state.original {state.save_text(&output)?;state.original=output;}
+        }
+        if let Some((path,value,_lock))=pending {
+            if value!=saved {web_language(Some(&value))?;}
             fs::remove_file(path)?;
         }
         let fields=super::web_settings::parse(&state.original)?;
@@ -1811,7 +1892,8 @@ pub fn prepare_origin(args: &[String]) -> i32 {
     if args.len()!=1 || !matches!(args[0].as_str(),"0"|"1") { return 2; }
     let result=(|| -> io::Result<bool> {
         let dex=std::env::current_exe()?.parent().ok_or_else(||err("dex parent"))?.join("classes.dex");
-        let (status,text)=bounded_output(Command::new("/system/bin/app_process").current_dir("/").env("CLASSPATH",dex).args(["/system/bin","com.xayah.dex.AppListReturn","--prepare-origin",&args[0]]),12)?;
+        if fs::read_to_string("/proc/thread-self/attr/current").is_ok_and(|s|s.trim_end_matches(['\n','\0'])=="u:r:magisk:s0"){ensure_webview(&dex)?;}
+        let (status,text)=bounded_output(Command::new("/system/bin/app_process").current_dir("/").env("CLASSPATH",dex).args(["/system/bin","com.xayah.dex.AppListReturn","--prepare-origin",&args[0]]),20)?;
         let ok=status.success() && text.trim()=="ORIGIN_OK";
         if !ok{terminal_eprintln!("ORIGIN_PREPARE_FAILED status={} detail={}",status,super::crash_diagnostics::redact(&text.chars().take(4096).collect::<String>()));}
         Ok(ok)
@@ -1834,6 +1916,7 @@ fn native_preference(key:&str,save:Option<&str>)->io::Result<String>{
     let (key,default,valid):(&str,&str,fn(&str)->bool)=if key=="scale" {
         ("scale","100",|v|matches!(v,"80"|"90"|"100"|"110"|"120"|"130"))
     }else if key=="monet"{("monet","on",|v|matches!(v,"on"|"off"))}
+    else if key=="miuix-monet"{("miuix-monet","off",|v|matches!(v,"on"|"off"))}
     else if key=="glass-blur"{("glass-blur","on",|v|matches!(v,"on"|"off"))}
     else if key=="glass-content"{("glass-content","off",|v|matches!(v,"on"|"off"))}
     else if key=="font-adaptive"{("font-adaptive","off",|v|matches!(v,"on"|"off"))}
@@ -1844,8 +1927,62 @@ fn native_preference(key:&str,save:Option<&str>)->io::Result<String>{
     web_preference(key,default,valid,save)
 }
 
-fn appearance_request(stream: &mut TcpStream, req: &Request) -> bool {
+fn appearance_request(stream: &mut UiStream, req: &Request) -> bool {
     // Called only after origin and session-token checks by all three controllers.
+    if req.path=="/api/process-monitor" {
+        if req.method!="GET" {
+            let _=respond(stream,"405 Method Not Allowed","text/plain","GET required");
+        } else if !req.body.is_empty() {
+            let _=respond(stream,"400 Bad Request","text/plain","empty body required");
+        } else {
+            match process_monitor::snapshot(stream) {
+                Ok(value)=>{let _=respond(stream,"200 OK","application/json",&value.to_string());}
+                Err(e)=>{
+                    ui_error("process-monitor",&e.to_string());
+                    let _=respond(stream,"500 Internal Server Error","text/plain","process snapshot unavailable");
+                }
+            }
+        }
+        return true;
+    }
+    if req.path=="/api/monitor-permission" {
+        // The authenticated native IPC caller requests this only on explicit
+        // monitor enablement. No startup grant, package/user input or preferences.
+        if req.method!="POST" {
+            let _=respond(stream,"405 Method Not Allowed","text/plain","POST required");
+            return true;
+        }
+        if !req.body.is_empty() {
+            let _=respond(stream,"400 Bad Request","text/plain","empty body required");
+            return true;
+        }
+        // NativeApi.post sends an empty string as text/plain;charset=UTF-8;
+        // this endpoint does not parse JSON or require a JSON content type.
+        let result=(||->io::Result<()> {
+            let dex=std::env::current_exe()?.parent().ok_or_else(||err("dex parent"))?.join("classes.dex");
+            // Dex verifies the installed host identity and current Android user
+            // before setting Android's named overlay AppOp, then reads it back.
+            let (status,text)=bounded_output(
+                Command::new("/system/bin/app_process").current_dir("/")
+                    .env("CLASSPATH",dex)
+                    .args(["/system/bin","com.xayah.dex.AppListReturn","--grant-overlay"]),
+                10
+            )?;
+            // Exact stdout only: extra output or a failed exit is never success.
+            if !status.success() || text!="OVERLAY_OK" {
+                return Err(err("overlay permission was not confirmed"));
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(())=>{let _=respond(stream,"200 OK","text/plain","OVERLAY_OK");}
+            Err(e)=>{
+                ui_error("monitor-permission",&e.to_string());
+                let _=respond(stream,"500 Internal Server Error","text/plain","overlay permission unavailable");
+            }
+        }
+        return true;
+    }
     if matches!(req.path.as_str(),"/api/diagnostic-files"|"/api/diagnostic-view"|"/api/diagnostic-export"|"/api/diagnostic-sources") {
         let mut response_started=false;
         let result=(||->io::Result<()> {
@@ -1867,7 +2004,7 @@ fn appearance_request(stream: &mut TcpStream, req: &Request) -> bool {
                 if req.method!="GET"{return Err(err("invalid export method"));}
                 let selected_archive=req.headers.get("x-speedbackup-diagnostic-archive").map(String::as_str).unwrap_or("");
                 let path=if selected_archive.is_empty(){PathBuf::from(std::env::var("SPEED_DEBUG_ARCHIVE").map_err(|_|err("尚無除錯包"))?)}else{super::diagnostic_session::source_path(selected_archive)?};
-                if path.parent()!=Some(Path::new("/data/speed_debug")) || path.canonicalize()?!=path || !path.file_name().is_some_and(|v|v.to_string_lossy().starts_with("speed_debug_")&&v.to_string_lossy().ends_with(".tar")){return Err(err("invalid archive"));}
+                if !path.parent().is_some_and(|p| matches!(p.to_str(),Some("/data/.speedbackup/debug"|"/data/speed_debug")) && super::diagnostic_session::valid_debug_path(p)) || path.canonicalize()?!=path || !path.file_name().is_some_and(|v|v.to_string_lossy().starts_with("speed_debug_")&&v.to_string_lossy().ends_with(".tar")){return Err(err("invalid archive"));}
                 let file=OpenOptions::new().read(true).custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE|speedbackup_native_rs::O_NONBLOCK).open(path)?;
                 let m=file.metadata()?;
                 if !m.is_file() || m.nlink()!=1 || m.len()==0 || m.len()>1024*1024*1024{return Err(err("invalid archive size"));}
@@ -1878,7 +2015,7 @@ fn appearance_request(stream: &mut TcpStream, req: &Request) -> bool {
             }
             // Paths come only from the root-owned log menu, never HTTP input.
             let run=PathBuf::from(std::env::var("SPEED_DEBUG_RUN_DIR").map_err(|_|err("日誌入口尚未準備"))?);
-            if !run.starts_with("/data/speed_debug") || run.canonicalize()?!=run || !run.is_dir(){return Err(err("invalid diagnostic directory"));}
+            if !super::diagnostic_session::valid_debug_path(&run) || run.canonicalize()?!=run || !run.is_dir(){return Err(err("invalid diagnostic directory"));}
             let mut files=Vec::new();
             fn scan(root:&Path,dir:&Path,depth:usize,out:&mut Vec<String>)->io::Result<()> {
                 if depth>4 || out.len()>=256{return Ok(());}
@@ -1943,7 +2080,7 @@ fn appearance_request(stream: &mut TcpStream, req: &Request) -> bool {
         let result=(||->io::Result<String>{
             if req.method!="GET" || !req.body.is_empty(){return Err(err("invalid preferences request"));}
             let mut fields=Vec::new();
-            for key in ["appearance","scale","style","material-palette","material-spec","monet","glass-blur","glass-blur-strength","glass-light","glass-transparency","glass-refraction","glass-adaptive","glass-content","font-adaptive","language"] {
+            for key in ["appearance","scale","style","material-palette","material-spec","monet","miuix-monet","glass-blur","glass-blur-strength","glass-light","glass-transparency","glass-refraction","glass-adaptive","glass-content","font-adaptive","language"] {
                 fields.push(format!("{}:{}",json(key),json(&native_preference(key,None)?)));
             }
             Ok(format!("{{{}}}",fields.join(",")))
@@ -1955,6 +2092,7 @@ fn appearance_request(stream: &mut TcpStream, req: &Request) -> bool {
         if req.method=="POST" && req.body.starts_with("native-") && req.body.len()<=128 && req.body.bytes().all(|b|b.is_ascii_alphanumeric()||matches!(b,b'-'|b':')) {
             let event=req.body.as_str();
             if matches!(event,"native-open"|"native-visible"|"native-hidden"|"native-close") {ui_event("native-lifecycle",event);}
+            else if event.starts_with("native-model-slow:") {ui_event("native-performance",event);}
             else {ui_transport_error("native-client",event);}
             let _=respond(stream,"200 OK","text/plain","OK");return true;
         }
@@ -1964,7 +2102,7 @@ fn appearance_request(stream: &mut TcpStream, req: &Request) -> bool {
         } else {let _=respond(stream,"400 Bad Request","text/plain","無效診斷事件");}
         return true;
     }
-    if !matches!(req.path.as_str(),"/api/appearance"|"/api/scale"|"/api/style"|"/api/material-palette"|"/api/material-spec"|"/api/monet"|"/api/glass-blur-strength"|"/api/glass-blur"|"/api/glass-light"|"/api/glass-transparency"|"/api/glass-refraction"|"/api/glass-adaptive"|"/api/glass-content"|"/api/font-adaptive") {return false;}
+    if !matches!(req.path.as_str(),"/api/appearance"|"/api/scale"|"/api/style"|"/api/material-palette"|"/api/material-spec"|"/api/monet"|"/api/miuix-monet"|"/api/glass-blur-strength"|"/api/glass-blur"|"/api/glass-light"|"/api/glass-transparency"|"/api/glass-refraction"|"/api/glass-adaptive"|"/api/glass-content"|"/api/font-adaptive") {return false;}
     let result=match req.method.as_str(){
         "GET" if req.body.is_empty()=>native_preference(req.path.trim_start_matches("/api/"),None),
         "POST" if req.headers.get("content-type").is_some_and(|v|v=="text/plain;charset=UTF-8")=>native_preference(req.path.trim_start_matches("/api/"),Some(&req.body)),
@@ -2020,8 +2158,8 @@ mod diagnostic_export_tests {
         fs::write(&archive,b"complete archive snapshot").unwrap();
         unsafe{std::env::set_var("SPEED_DEBUG_RUN_DIR",&run);std::env::set_var("SPEED_DEBUG_ARCHIVE",&archive);}
         fn call(method:&str,path:&str,body:&str)->String{
-            let listener=TcpListener::bind("127.0.0.1:0").unwrap();
-            let mut client=TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+            let (listener,host)=ui_bind().unwrap();
+            let mut client=ui_connect(&host).unwrap();
             let (mut server,_)=listener.accept().unwrap();
             let mut headers=BTreeMap::new();
             if path=="/api/diagnostic-export"&&!body.is_empty(){headers.insert("x-speedbackup-diagnostic-archive".into(),body.into());}
@@ -2119,8 +2257,8 @@ mod transport_regression_tests {
         assert_eq!(output,b"fixture\n");
     }
     fn parse(bytes:&[u8])->(io::Result<Request>,(&'static str,usize,usize)) {
-        let listener=TcpListener::bind("127.0.0.1:0").unwrap();
-        let mut client=TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (listener,host)=ui_bind().unwrap();
+        let mut client=ui_connect(&host).unwrap();
         let (mut server,_)=listener.accept().unwrap();
         client.write_all(bytes).unwrap();client.shutdown(std::net::Shutdown::Write).unwrap();
         let mut progress=("headers",0,0);let result=request_inner(&mut server,&mut progress);(result,progress)

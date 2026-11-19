@@ -4,6 +4,8 @@ param(
     [string]$SdkRoot = '',
     [string]$Ndk = '',
     [string]$SigningDir = '',
+    [string]$WebviewLicenseMetadata = '',
+    [string]$DexLicenseMetadata = '',
     [switch]$Offline
 )
 Set-StrictMode -Version Latest
@@ -11,11 +13,18 @@ $ErrorActionPreference = 'Stop'
 & python -X utf8 (Join-Path $PSScriptRoot 'restore_upstream.py') --check
 if ($LASTEXITCODE -ne 0) { throw 'Bundled upstream source integrity check failed.' }
 & (Join-Path $PSScriptRoot 'sync_version.ps1')
+& python -X utf8 (Join-Path $PSScriptRoot 'ci/generate_capabilities.py')
+if ($LASTEXITCODE -ne 0) { throw 'Capability generation failed.' }
 $hostExe = Join-Path $PSHOME 'pwsh.exe'
 if (-not (Test-Path -LiteralPath $hostExe)) { $hostExe = Join-Path $PSHOME 'powershell.exe' }
 
 # Pinned dependency metadata is shared by the native license screens.
-& python -X utf8 (Join-Path $PSScriptRoot 'ci/generate_licenses.py') --check
+if ($WebviewLicenseMetadata -or $DexLicenseMetadata) {
+    if (-not $WebviewLicenseMetadata -or -not $DexLicenseMetadata) { throw 'Both component license metadata files are required.' }
+    & python -X utf8 (Join-Path $PSScriptRoot 'ci/generate_licenses.py') --import-metadata $WebviewLicenseMetadata $DexLicenseMetadata
+} else {
+    & python -X utf8 (Join-Path $PSScriptRoot 'ci/generate_licenses.py') --check
+}
 if ($LASTEXITCODE -ne 0) { throw "License catalogue validation failed: $LASTEXITCODE" }
 
 # The UI host has an independent version and signing identity. Embed before Rust compilation.

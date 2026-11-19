@@ -68,9 +68,13 @@ fn rpc_at(dir:&Path,line:&str,limit:usize)->io::Result<String>{
 pub(super) struct Page {dir:PathBuf,id:String,returning:bool}
 impl Page {
     pub(super) fn register(url:&str,review_output:bool)->io::Result<Option<Self>>{
+        Self::register_policy(url,if review_output {"review"}else{"direct"})
+    }
+    pub(super) fn register_modal(url:&str)->io::Result<Option<Self>>{Self::register_policy(url,"modal")}
+    fn register_policy(url:&str,policy:&str)->io::Result<Option<Self>>{
         if !managed(){return Ok(None);}
         let dir=PathBuf::from(std::env::var("SPEEDBACKUP_CONSOLE_DIR").unwrap());let id=random_hex()?;
-        rpc_at(&dir,&format!("PAGE\t{id}\t{url}\t{}",if review_output {"review"}else{"direct"}),64)?;
+        rpc_at(&dir,&format!("PAGE\t{id}\t{url}\t{}",policy),64)?;
         let mut f=OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE).open(dir.join("page"))?;writeln!(f,"{id}\n{url}")?;
         Ok(Some(Self{dir,id,returning:false}))
     }
@@ -80,15 +84,15 @@ impl Drop for Page{fn drop(&mut self){let _=rpc_at(&self.dir,&format!("DONE\t{}{
 pub(super) fn icons(user:&str,packages:&[&str])->io::Result<String>{
     rpc_at(Path::new(&std::env::var("SPEEDBACKUP_CONSOLE_DIR").map_err(|_|err("console unavailable"))?),&format!("ICONS\t{user}\t{}",packages.join("\t")),6*1024*1024)
 }
-struct Ui { page:Option<(String,String)>, revision:u64, reopen:u64, attached:bool, stop:bool, held:bool, seen_page:bool, last_output:u64, handoff:Option<Instant>, notification_reopen:Option<(u64,Instant)>, ready_reopen:Option<u64> }
+struct Ui { page:Option<(String,String)>, modal:bool, revision:u64, reopen:u64, attached:bool, stop:bool, held:bool, seen_page:bool, last_output:u64, handoff:Option<Instant>, notification_reopen:Option<(u64,Instant)>, ready_reopen:Option<u64> }
 impl Ui {
     // Preserve only the existing pixels, never a dead editor URL. Reopen,
     // cancellation and worker completion always remain able to show the console.
     fn returning(&self)->bool{self.handoff.is_some_and(|t|t.elapsed()<Duration::from_secs(2))}
 }
 struct Output { bytes:VecDeque<u8>,end:u64,rc:Option<i32>,progress:String,revision:u64,stop_status:String,history_failed:bool }
-enum ServerEvent { Connection(TcpStream), Changed }
-struct Shared {dir:PathBuf,guard:Mutex<(bool,bool)>,guard_wake:Condvar,history_view:Mutex<Option<u64>>,history:Option<File>,output:Mutex<Output>,wake:Condvar,ui_signal:mpsc::SyncSender<()>,server_signal:mpsc::SyncSender<ServerEvent>,ui:Mutex<Ui>,worker:Mutex<Option<String>>,stopping:std::sync::atomic::AtomicBool}
+enum ServerEvent { Connection(UiStream), Changed }
+struct Shared {dir:PathBuf,terminal_nonhost:bool,guard:Mutex<(bool,bool)>,guard_wake:Condvar,history_view:Mutex<Option<u64>>,history:Option<File>,output:Mutex<Output>,wake:Condvar,ui_signal:mpsc::SyncSender<()>,server_signal:mpsc::SyncSender<ServerEvent>,ui:Mutex<Ui>,worker:Mutex<Option<String>>,stopping:std::sync::atomic::AtomicBool}
 fn append(s:&Shared,bytes:&[u8]){let mut o=s.output.lock().unwrap();if !o.history_failed {if let Some(file)=&s.history{if file.write_all_at(bytes,o.end).is_err(){o.history_failed=true;}}}o.end+=bytes.len() as u64;o.bytes.extend(bytes);let n=o.bytes.len().saturating_sub(CAP);o.bytes.drain(..n);s.wake.notify_all();}
 impl Shared {
     fn sync_guard(&self){
@@ -161,7 +165,7 @@ fn history_page(s:&Shared,request:&str)->io::Result<String>{
     }
     Ok(format!("{{\"from\":{from},\"next\":{},\"total\":{end},\"data\":{}}}",from+bytes.len()as u64,json(&b64(&bytes))))
 }
-fn url_valid(url:&str)->bool{let Some((host,token))=url.strip_prefix("http://127.0.0.1:").and_then(|s|s.split_once("/#"))else{return false};host.parse::<u16>().is_ok_and(|p|p>0)&&token.len()==64&&token.bytes().all(|b|b.is_ascii_hexdigit())}
+fn url_valid(url:&str)->bool{let Some((host,token))=url.strip_prefix("unix://").and_then(|s|s.split_once("/#"))else{return false};ui_name(host)&&token.len()==64&&token.bytes().all(|b|b.is_ascii_hexdigit())}
 fn root_peer(s:&UnixStream)->Option<u32>{let mut cred=[0u32;3];let mut len=12u32;if unsafe{getsockopt(s.as_raw_fd(),1,17,cred.as_mut_ptr().cast(),&mut len)==0}&&len==12&&cred[1]==0{Some(cred[0])}else{None}}
 fn control(listener:UnixListener,state:Arc<Shared>,icons:mpsc::SyncSender<(String,Vec<String>,mpsc::SyncSender<String>)>){
     let active=Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -177,8 +181,9 @@ fn control_request(c:&mut UnixStream,state:Arc<Shared>,icons:mpsc::SyncSender<(S
         let mut text=String::new();if (&mut *c).take(32769).read_to_string(&mut text).is_err()||text.len()>32768{return;}
         let f:Vec<_>=text.trim_end_matches('\n').split('\t').collect();let mut answer="OK".to_string();
         match f.as_slice(){
-            ["PAGE",id,url,policy] if matches!(*policy,"review"|"direct")&& id.len()==64&&id.bytes().all(|b|b.is_ascii_hexdigit())&&url_valid(url)=>{let mut o=state.output.lock().unwrap();let end=o.end;let mut u=state.ui.lock().unwrap();u.held=*policy=="review"&&!u.returning()&&u.seen_page&&end>u.last_output;u.handoff=None;u.seen_page=true;u.page=Some((id.to_string(),url.to_string()));u.revision+=1;o.revision+=1;state.wake.notify_all();}
-            ["DONE",id] | ["DONE",id,"return"]=>{let mut o=state.output.lock().unwrap();let end=o.end;let mut u=state.ui.lock().unwrap();if u.page.as_ref().is_some_and(|p|p.0==*id){u.page=None;u.handoff=(f.len()==3).then(Instant::now);u.held=false;u.last_output=end;u.revision+=1;o.revision+=1;state.wake.notify_all();}}
+            ["TERMINAL_HOST"]=>{answer=u8::from(state.terminal_nonhost).to_string();}
+            ["PAGE",id,url,policy] if matches!(*policy,"review"|"direct"|"modal")&& id.len()==64&&id.bytes().all(|b|b.is_ascii_hexdigit())&&url_valid(url)=>{let mut o=state.output.lock().unwrap();let end=o.end;let mut u=state.ui.lock().unwrap();u.held=*policy=="review"&&!u.returning()&&u.seen_page&&end>u.last_output;u.modal=*policy=="modal";u.handoff=None;u.seen_page=true;u.page=Some((id.to_string(),url.to_string()));u.revision+=1;o.revision+=1;state.wake.notify_all();}
+            ["DONE",id] | ["DONE",id,"return"]=>{let mut o=state.output.lock().unwrap();let end=o.end;let mut u=state.ui.lock().unwrap();if u.page.as_ref().is_some_and(|p|p.0==*id){u.page=None;u.modal=false;u.handoff=(f.len()==3).then(Instant::now);u.held=false;u.last_output=end;u.revision+=1;o.revision+=1;state.wake.notify_all();}}
             ["OPEN"]=>{let finished=state.output.lock().unwrap().rc.is_some();
                 if !finished {
                     // Peer PID comes from SO_PEERCRED, not RPC text. The caller
@@ -214,7 +219,7 @@ fn ui_worker(state:Arc<Shared>,url:String,icons:mpsc::Receiver<(String,Vec<Strin
     loop{
         let closed=task.as_mut().is_some_and(ReturnTask::externally_closed);
         if closed {eprintln!("CONSOLE_VIEW_DISCONNECTED reason=controller_closed");task=None;displayed.clear();let mut u=state.ui.lock().unwrap();if u.reopen==opened{u.attached=false;}}
-        let (revision,reopen,wanted,attached,stop,returning)={let u=state.ui.lock().unwrap();(u.revision,u.reopen,u.page.as_ref().filter(|_|!u.held&&!state.stopping.load(std::sync::atomic::Ordering::SeqCst)).map(|p|p.1.clone()).unwrap_or_else(||url.clone()),u.attached,u.stop,u.returning())};
+        let (revision,reopen,wanted,attached,stop,returning)={let u=state.ui.lock().unwrap();(u.revision,u.reopen,u.page.as_ref().filter(|_|!u.modal&&!u.held&&!state.stopping.load(std::sync::atomic::Ordering::SeqCst)).map(|p|p.1.clone()).unwrap_or_else(||url.clone()),u.attached,u.stop,u.returning())};
         if stop {if let Some(t)=task.take(){let _=t.finish(false,false);}break;}
         // DONE often immediately precedes PAGE. Avoid loading a disposable
         // console document during that tiny gap. Explicit editor returns keep
@@ -275,8 +280,8 @@ fn ui_worker(state:Arc<Shared>,url:String,icons:mpsc::Receiver<(String,Vec<Strin
         if let Some(timeout)=timeout {let _=events.recv_timeout(timeout);} else if events.recv().is_err(){break;}
     }
 }
-fn http(mut stream:TcpStream,state:Arc<Shared>,host:String,token:String){
-    let Ok(req)=request(&mut stream)else{return;};let origin=format!("http://{host}");
+fn http(mut stream:UiStream,state:Arc<Shared>,host:String,token:String){
+    let Ok(req)=request(&mut stream)else{return;};let origin=format!("unix://{host}");
     if req.headers.get("host")!=Some(&host)||req.headers.get("origin").is_some_and(|o|o!=&origin)||req.headers.get("sec-fetch-site").is_some_and(|s|!matches!(s.as_str(),"same-origin"|"none")){let _=respond(&mut stream,"403 Forbidden","text/plain","來源不符");return;}
     if req.headers.get("x-speedbackup-token")!=Some(&token){let _=respond(&mut stream,"403 Forbidden","text/plain","憑證無效");return;}
     if req.method=="GET" && req.path=="/api/session" && req.body.is_empty() {
@@ -286,7 +291,8 @@ fn http(mut stream:TcpStream,state:Arc<Shared>,host:String,token:String){
         let mut guard=state.guard.lock().unwrap();
         if req.method=="POST"{guard=state.guard_wake.wait_timeout_while(guard,Duration::from_secs(12),|g|g.0&&g.1==(req.body=="1")).unwrap().0;}
         let (active,attached)=*guard;drop(guard);
-        let _=respond_output(&mut stream,&format!("{{\"active\":{active},\"attached\":{attached},\"eventDriven\":true}}"));return;
+        let language=web_language(None).unwrap_or_else(|_|"zh-Hant".into());
+        let _=respond_output(&mut stream,&format!("{{\"active\":{active},\"attached\":{attached},\"eventDriven\":true,\"uiLanguage\":{}}}",json(&language)));return;
     }
     if req.method=="POST"&&req.path=="/api/reopen" {
         // Only a deliberate notification tap can place our private ResumeActivity
@@ -317,7 +323,8 @@ fn http(mut stream:TcpStream,state:Arc<Shared>,host:String,token:String){
         o=state.wake.wait_timeout_while(o,Duration::from_secs(12),|o|cursor==o.end&&o.rc.is_none()&&revision==Some(o.revision)).unwrap().0;
         let start=o.end-o.bytes.len()as u64;let from=cursor.max(start).min(o.end);let bytes:Vec<_>=o.bytes.iter().skip((from-start)as usize).take(65536).copied().collect();
         let pending={let u=state.ui.lock().unwrap();if u.held&&o.stop_status!="stopping"{u.page.as_ref().map(|p|p.0.clone()).unwrap_or_default()}else{String::new()}};
-        let revision=o.revision;let body=format!("{{\"stopStatus\":{},\"revision\":{revision},\"pending\":{},\"from\":{from},\"next\":{},\"data\":{},\"progress\":{},\"rc\":{}}}",json(&o.stop_status),json(&pending),from+bytes.len()as u64,json(&b64(&bytes)),json(&o.progress),o.rc.map(|r|r.to_string()).unwrap_or_else(||"null".into()));drop(o);let _=respond_output(&mut stream,&body);
+        let modal={let u=state.ui.lock().unwrap();if u.modal&&o.rc.is_none()&&o.stop_status!="stopping"{u.page.as_ref().map(|p|p.1.clone()).unwrap_or_default()}else{String::new()}};
+        let revision=o.revision;let body=format!("{{\"modal\":{},\"stopStatus\":{},\"revision\":{revision},\"pending\":{},\"from\":{from},\"next\":{},\"data\":{},\"progress\":{},\"rc\":{}}}",json(&modal),json(&o.stop_status),json(&pending),from+bytes.len()as u64,json(&b64(&bytes)),json(&o.progress),o.rc.map(|r|r.to_string()).unwrap_or_else(||"null".into()));drop(o);let _=respond_output(&mut stream,&body);
     }else if req.method=="GET"&&req.path=="/api/history-view"{
         let value=state.history_view.lock().unwrap().map(|v|v.to_string()).unwrap_or_else(||"live".into());
         let _=respond(&mut stream,"200 OK","text/plain",&value);
@@ -357,8 +364,16 @@ fn http(mut stream:TcpStream,state:Arc<Shared>,host:String,token:String){
 }
 // Called only after the worker finished, while still holding the service flock.
 // Keep the lock inode and diagnostic log; never recursively remove the session.
-fn cleanup_session_files(dir:&Path)->io::Result<()> {
+fn owns_session_files(dir:&Path,lock:&File)->io::Result<bool>{
+    let current=match fs::symlink_metadata(dir.join("lock")){Ok(m)=>m,Err(e) if e.kind()==io::ErrorKind::NotFound=>return Ok(false),Err(e)=>return Err(e)};
+    let held=lock.metadata()?;
+    Ok(current.is_file()&&current.dev()==held.dev()&&current.ino()==held.ino())
+}
+fn cleanup_session_files(dir:&Path,lock:&File)->io::Result<()> {
     private(dir)?;
+    // The old flock can survive on an unlinked inode after directory recreation.
+    // Never remove a newer supervisor's session files through the reused path.
+    if !owns_session_files(dir,lock)? {return Ok(());}
     let mut failure=None;
     for name in ["ready","control","session","page","progress","guard-active","pending-language"] {
         if let Err(e)=fs::remove_file(dir.join(name)){if e.kind()!=io::ErrorKind::NotFound{failure=Some(e);}}
@@ -382,10 +397,14 @@ fn service(dir:&Path,entry:&Path,args:&[String])->io::Result<i32>{
     OpenOptions::new().write(true).create_new(true).mode(0o600).custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE).open(&diagnostic)?;
     std::env::set_var("SPEEDBACKUP_UI_ERROR_LOG",&diagnostic);
     ui_event("console-service","start");
+    // start() is still waiting for ready: MT ancestry exists at this point.
+    // Never accept an inherited environment flag or a previous session's proof.
+    let terminal_nonhost=super::super::terminal_host::capture();
+    eprintln!("CONSOLE_TERMINAL_HOST nonhost={}",u8::from(terminal_nonhost));
     let _=fs::remove_file(dir.join("ready"));
     let _=fs::remove_file(dir.join("control"));let listener=UnixListener::bind(dir.join("control"))?;
-    let port=TcpListener::bind("127.0.0.1:0")?;let host=port.local_addr()?.to_string();let token=random_hex()?;
-    let url=format!("http://{host}/#{token}");
+    let (port,host)=ui_bind()?;let token=random_hex()?;
+    let url=format!("unix://{host}/#{token}");
     let mut session=OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE).open(dir.join("session"))?;
     writeln!(session,"{url}")?;
     let owner=std::process::id().to_string();std::env::set_var("SPEEDBACKUP_WEB_OWNER_PID",&owner);std::env::set_var("SPEEDBACKUP_WEB_ORIGIN_SOCKET",format!("sb-web-origin-{owner}-1005-1"));
@@ -406,6 +425,7 @@ fn service(dir:&Path,entry:&Path,args:&[String])->io::Result<i32>{
         }
     }
     fs::write(dir.join("guard-active"),b"active\n")?;
+    super::process_monitor::start_events();
     let _crash_monitor=super::super::crash_diagnostics::monitor().map_err(|e|eprintln!("CRASH_MONITOR unavailable: {e}")).ok();
     let origin_ready=super::prepare_origin(&["1".into()])==0;
     // Session-owned full output, separate from the bounded live RAM tail. Replace
@@ -415,7 +435,7 @@ fn service(dir:&Path,entry:&Path,args:&[String])->io::Result<i32>{
     let history=OpenOptions::new().read(true).write(true).create_new(true).mode(0o600).custom_flags(speedbackup_native_rs::O_NOFOLLOW_NATIVE).open(archive)?;
     let (ui_signal,ui_events)=mpsc::sync_channel(1);
     let (server_signal,server_events)=mpsc::sync_channel(16);
-    let state=Arc::new(Shared{dir:dir.to_path_buf(),guard:Mutex::new((true,true)),guard_wake:Condvar::new(),history_view:Mutex::new(None),history:Some(history),output:Mutex::new(Output{bytes:VecDeque::new(),end:0,rc:None,progress:String::new(),revision:0,stop_status:String::new(),history_failed:false}),wake:Condvar::new(),ui_signal,server_signal,ui:Mutex::new(Ui{page:None,revision:0,reopen:0,attached:true,stop:false,held:false,seen_page:false,last_output:0,handoff:None,notification_reopen:None,ready_reopen:None}),worker:Mutex::new(None),stopping:std::sync::atomic::AtomicBool::new(false)});
+    let state=Arc::new(Shared{dir:dir.to_path_buf(),terminal_nonhost,guard:Mutex::new((true,true)),guard_wake:Condvar::new(),history_view:Mutex::new(None),history:Some(history),output:Mutex::new(Output{bytes:VecDeque::new(),end:0,rc:None,progress:String::new(),revision:0,stop_status:String::new(),history_failed:false}),wake:Condvar::new(),ui_signal,server_signal,ui:Mutex::new(Ui{page:None,modal:false,revision:0,reopen:0,attached:true,stop:false,held:false,seen_page:false,last_output:0,handoff:None,notification_reopen:None,ready_reopen:None}),worker:Mutex::new(None),stopping:std::sync::atomic::AtomicBool::new(false)});
     let (itx,irx)=mpsc::sync_channel(2);let st=state.clone();std::thread::spawn(move||control(listener,st,itx));
     let st=state.clone();let (ui_done_tx,ui_done)=mpsc::sync_channel(1);let ui_thread=std::thread::spawn(move||{ui_worker(st,url,irx,ui_events,origin_ready);let _=ui_done_tx.send(());});
     let progress=dir.join("progress");let _=fs::remove_file(&progress);let path=std::ffi::CString::new(progress.as_os_str().as_encoded_bytes()).map_err(|_|err("fifo path"))?;
@@ -432,8 +452,8 @@ fn service(dir:&Path,entry:&Path,args:&[String])->io::Result<i32>{
     if let (Ok(stat),Ok(boot))=(fs::read_to_string(format!("/proc/{}/stat",child.id())),fs::read_to_string("/proc/sys/kernel/random/boot_id")){
         if let Some(start)=speedbackup_native_rs::proc_stat::starttime(&stat) {*state.worker.lock().unwrap()=Some(format!("{}:{start}:{}",child.id(),boot.trim()));}
     }
-    let guard_marker=dir.join("guard-active");
-    let st=state.clone();std::thread::spawn(move||{let rc=child.wait().map(|s|s.code().unwrap_or_else(||128+s.signal().unwrap_or(1))).unwrap_or(1);if read_done.recv_timeout(Duration::from_secs(2)).is_ok(){let _=read_thread.join();}let _=fs::remove_file(&guard_marker);let mut o=st.output.lock().unwrap();o.rc=Some(rc);st.wake.notify_all();drop(o);let mut u=st.ui.lock().unwrap();u.page=None;u.revision+=1;drop(u);st.sync_guard();let _=st.ui_signal.try_send(());let _=st.server_signal.try_send(ServerEvent::Changed);});
+    let guard_marker=dir.join("guard-active");let cleanup_lock=lock.try_clone()?;
+    let st=state.clone();std::thread::spawn(move||{let rc=child.wait().map(|s|s.code().unwrap_or_else(||128+s.signal().unwrap_or(1))).unwrap_or(1);if read_done.recv_timeout(Duration::from_secs(2)).is_ok(){let _=read_thread.join();}if owns_session_files(&st.dir,&cleanup_lock).unwrap_or(false){let _=fs::remove_file(&guard_marker);}let mut o=st.output.lock().unwrap();o.rc=Some(rc);st.wake.notify_all();drop(o);let mut u=st.ui.lock().unwrap();u.page=None;u.modal=false;u.revision+=1;drop(u);st.sync_guard();let _=st.ui_signal.try_send(());let _=st.server_signal.try_send(ServerEvent::Changed);});
     if let Err(e)=fs::write(dir.join("ready"),format!("{}\n",std::process::id())){eprintln!("CONSOLE_READY_WRITE {e}; worker remains active");}
     let accepts=state.server_signal.clone();
     std::thread::spawn(move||loop{
@@ -460,7 +480,7 @@ fn service(dir:&Path,entry:&Path,args:&[String])->io::Result<i32>{
     }
     state.ui.lock().unwrap().stop=true;let _=state.ui_signal.try_send(());
     if ui_done.recv_timeout(Duration::from_secs(2)).is_ok(){let _=ui_thread.join();}
-    cleanup_session_files(dir)?;Ok(0)
+    cleanup_session_files(dir,&lock)?;Ok(0)
 }
 // This endpoint exists in legacy supervisors too. It only closes a FINISHED
 // worker; a live worker returns 409 without any mutation. Never use /api/stop.
@@ -468,9 +488,8 @@ fn close_finished_at(dir:&Path)->io::Result<bool>{
     private(dir)?;
     let mut url=String::new();open(&dir.join("session"))?.take(4097).read_to_string(&mut url)?;
     let url=url.trim();if !url_valid(url){return Err(err("console session URL"));}
-    let (host,token)=url.strip_prefix("http://").unwrap().split_once("/#").unwrap();
-    let address=host.parse::<std::net::SocketAddr>().map_err(|_|err("console address"))?;
-    let mut socket=TcpStream::connect_timeout(&address,Duration::from_secs(2))?;
+    let (host,token)=url.strip_prefix("unix://").unwrap().split_once("/#").unwrap();
+    let mut socket=ui_connect(host)?;
     socket.set_read_timeout(Some(Duration::from_secs(3)))?;socket.set_write_timeout(Some(Duration::from_secs(2)))?;
     write!(socket,"POST /api/close HTTP/1.1\r\nHost: {host}\r\nX-SpeedBackup-Token: {token}\r\nContent-Length: 0\r\n\r\n")?;
     // Consume the bounded reply before closing: reading only the status line
@@ -492,7 +511,7 @@ fn read_close_reply(reader:&mut impl Read)->io::Result<bool>{
 }
 // Read-only long wait replies are abandoned when the native page closes.
 // Keep the event, but never classify a mutating response this way.
-fn respond_output(stream:&mut TcpStream,body:&str)->io::Result<()>{
+fn respond_output(stream:&mut UiStream,body:&str)->io::Result<()>{
     let result=respond_inner(stream,"200 OK","application/json",body);
     if let Err(e)=&result{
         if matches!(e.kind(),io::ErrorKind::BrokenPipe|io::ErrorKind::ConnectionReset|io::ErrorKind::ConnectionAborted){
@@ -533,7 +552,7 @@ fn reconnect(dir:&Path)->io::Result<bool>{
             let deadline=Instant::now()+Duration::from_secs(140);let mut failures=0;
             loop {match rpc_at(&dir,"VIEW_STATUS",64) {
                 Ok(status) if status=="READY"=>{super::terminal_notice("已接回現有工作；未重新執行工作。");return Ok(true);},
-                Ok(status) if status=="FAILED"=>return Err(err(&format!("現有工作仍保留，但畫面未能開啟。\n服務日誌：{}\n崩潰日誌：{}（背景收集中；若無權限，原因記於 status.log）\n除錯包：/data/speed_debug/（尚未進入腳本時可能未產生）\n請提供上述日誌，再從原入口重試。",dir.join("service.log").display(),dir.join("crashes").display()))),
+                Ok(status) if status=="FAILED"=>return Err(err(&format!("現有工作仍保留，但畫面未能開啟。\n服務日誌：{}\n崩潰日誌：{}（背景收集中；若無權限，原因記於 status.log）\n除錯包：/data/.speedbackup/debug/（尚未進入腳本時可能未產生）\n請提供上述日誌，再從原入口重試。",dir.join("service.log").display(),dir.join("crashes").display()))),
                 Ok(status) if status=="PENDING"=>{failures=0;},
                 Ok(status) if status=="FINISHED"=>{super::terminal_notice("原工作已結束；未重新啟動工作。");return Ok(true);},
                 // Old supervisors have no readiness acknowledgement. Never call
@@ -576,6 +595,7 @@ fn start(entry:&Path,args:&[String])->io::Result<i32>{
     super::super::restore_safety::app_data_namespace()?;
     if unsafe{getuid()}!=0{return Err(err("root required"));}let entry=entry.canonicalize()?;if !entry.is_file(){return Err(err("entry file"));}
     crate::runtime_cache::on_start();
+    crate::runtime_layout::on_start();
     // Old jobs own their original immutable binaries and paths. Never move them.
     let legacy=Path::new("/data/.speedbackup_console/active");
     if legacy.exists(){private(legacy)?;caller_diagnostics(legacy)?;if reconnect(legacy)?{return Ok(0);}}
@@ -640,15 +660,15 @@ mod notification_tests {
         s.output.lock().unwrap().rc=Some(0);s.sync_guard();
         assert!(post(&s,"guard-wait","0").contains("\"active\":false"));
     }
-    fn state()->Arc<Shared>{let (ui_signal,_)=mpsc::sync_channel(1);let (server_signal,_)=mpsc::sync_channel(16);Arc::new(Shared{dir:PathBuf::new(),guard:Mutex::new((true,true)),guard_wake:Condvar::new(),history_view:Mutex::new(None),history:None,output:Mutex::new(Output{bytes:VecDeque::new(),end:0,rc:None,progress:String::new(),revision:0,stop_status:String::new(),history_failed:false}),wake:Condvar::new(),ui_signal,server_signal,ui:Mutex::new(Ui{page:None,revision:0,reopen:0,attached:true,stop:false,held:false,seen_page:true,last_output:0,handoff:None,notification_reopen:None,ready_reopen:None}),worker:Mutex::new(None),stopping:std::sync::atomic::AtomicBool::new(false)})}
+    fn state()->Arc<Shared>{let (ui_signal,_)=mpsc::sync_channel(1);let (server_signal,_)=mpsc::sync_channel(16);Arc::new(Shared{dir:PathBuf::new(),terminal_nonhost:false,guard:Mutex::new((true,true)),guard_wake:Condvar::new(),history_view:Mutex::new(None),history:None,output:Mutex::new(Output{bytes:VecDeque::new(),end:0,rc:None,progress:String::new(),revision:0,stop_status:String::new(),history_failed:false}),wake:Condvar::new(),ui_signal,server_signal,ui:Mutex::new(Ui{page:None,modal:false,revision:0,reopen:0,attached:true,stop:false,held:false,seen_page:true,last_output:0,handoff:None,notification_reopen:None,ready_reopen:None}),worker:Mutex::new(None),stopping:std::sync::atomic::AtomicBool::new(false)})}
     fn rpc(s:&Arc<Shared>,line:&str)->String{
         let (mut a,mut b)=UnixStream::pair().unwrap();a.write_all(format!("{line}\n").as_bytes()).unwrap();a.shutdown(std::net::Shutdown::Write).unwrap();
         let(tx,_rx)=mpsc::sync_channel(2);control_request(&mut b,s.clone(),tx,0);drop(b);let mut result=String::new();a.read_to_string(&mut result).unwrap();result
     }
     fn post(s:&Arc<Shared>,path:&str,body:&str)->String{
-        let l=TcpListener::bind("127.0.0.1:0").unwrap();let host=l.local_addr().unwrap().to_string();let st=s.clone();let h=host.clone();
+        let (l,host)=ui_bind().unwrap();let st=s.clone();let h=host.clone();
         let t=std::thread::spawn(move||{http(l.accept().unwrap().0,st,h,"test-token".into());});
-        let mut c=TcpStream::connect(&host).unwrap();c.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        let mut c=ui_connect(&host).unwrap();c.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
         write!(c,"POST /api/{path} HTTP/1.1\r\nHost: {host}\r\nX-SpeedBackup-Token: test-token\r\nContent-Length: {}\r\n\r\n{body}",body.len()).unwrap();
         let mut reply=String::new();c.read_to_string(&mut reply).unwrap();t.join().unwrap();reply
     }
@@ -678,7 +698,7 @@ mod notification_tests {
     #[test]
     fn editor_return_handoff_is_scoped_and_bounded(){
         let s=state();let id="a".repeat(64);let next="b".repeat(64);
-        let page=|id:&str|format!("PAGE\t{id}\thttp://127.0.0.1:1234/#{}\treview","c".repeat(64));
+        let page=|id:&str|format!("PAGE\t{id}\tunix://sb-ui-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/#{}\treview","c".repeat(64));
         rpc(&s,&page(&id));rpc(&s,&format!("DONE\t{next}\treturn"));
         assert!(s.ui.lock().unwrap().handoff.is_none());
         rpc(&s,&format!("DONE\t{id}\treturn"));
@@ -713,7 +733,7 @@ mod notification_tests {
     }
     #[test]
     fn page_before_poll_and_progress_are_not_lost(){
-        let s=state();append(&s,b"x");let id="a".repeat(64);rpc(&s,&format!("PAGE\t{id}\thttp://127.0.0.1:1234/#{}\treview","b".repeat(64)));
+        let s=state();append(&s,b"x");let id="a".repeat(64);rpc(&s,&format!("PAGE\t{id}\tunix://sb-ui-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/#{}\treview","b".repeat(64)));
         let start=Instant::now();let r=post(&s,"output","1\t0");assert!(start.elapsed()<Duration::from_secs(1));assert!(r.contains(&format!("\"pending\":\"{id}\"")));assert!(r.contains("\"revision\":1"));
         // Old callers without a state cursor must get an immediate snapshot too.
         assert!(post(&s,"output","1").contains(&id));
@@ -726,7 +746,7 @@ mod notification_tests {
         let s=state();append(&s,b"x");let st=s.clone();let(tx,rx)=mpsc::channel();
         let t=std::thread::spawn(move||{tx.send(post(&st,"output","1\t0")).unwrap();});
         assert!(rx.recv_timeout(Duration::from_millis(100)).is_err());
-        let id="a".repeat(64);rpc(&s,&format!("PAGE\t{id}\thttp://127.0.0.1:1234/#{}\treview","b".repeat(64)));
+        let id="a".repeat(64);rpc(&s,&format!("PAGE\t{id}\tunix://sb-ui-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/#{}\treview","b".repeat(64)));
         assert!(rx.recv_timeout(Duration::from_secs(1)).unwrap().contains(&id));t.join().unwrap();
     }
 }
@@ -735,14 +755,23 @@ mod notification_tests {
 mod session_cleanup_tests {
  use super::*;
  use std::os::unix::fs::{DirBuilderExt,symlink};
+ #[test]fn superseded_lock_cannot_remove_new_session(){
+  let base=PathBuf::from(format!("/data/local/tmp/sb-console-cleanup-{}",random_hex().unwrap()));fs::DirBuilder::new().mode(0o700).create(&base).unwrap();
+  fs::write(base.join("lock"),b"old").unwrap();let old=File::open(base.join("lock")).unwrap();fs::remove_file(base.join("lock")).unwrap();
+  for n in ["lock","ready","control","session","page","progress","guard-active","pending-language"]{fs::write(base.join(n),b"new").unwrap();}
+  assert!(!owns_session_files(&base,&old).unwrap());cleanup_session_files(&base,&old).unwrap();
+  for n in ["lock","ready","control","session","page","progress","guard-active","pending-language"]{assert_eq!(fs::read(base.join(n)).unwrap(),b"new");}
+  let current=File::open(base.join("lock")).unwrap();assert!(owns_session_files(&base,&current).unwrap());cleanup_session_files(&base,&current).unwrap();assert!(!base.join("guard-active").exists());fs::remove_dir_all(base).unwrap();
+ }
+
  #[test]fn removes_session_artifacts_preserves_lock_and_unrelated_files(){
   let base=PathBuf::from(format!("/data/local/tmp/sb-console-cleanup-{}",random_hex().unwrap()));fs::DirBuilder::new().mode(0o700).create(&base).unwrap();
   for n in ["lock","service.log","ready","control","session","page","progress","pending-language","unrelated"]{fs::write(base.join(n),b"keep").unwrap();}
-  let before=fs::metadata(base.join("lock")).unwrap().ino();cleanup_session_files(&base).unwrap();
+  let lock=File::open(base.join("lock")).unwrap();let before=lock.metadata().unwrap().ino();cleanup_session_files(&base,&lock).unwrap();
   for n in ["ready","control","session","page","progress","guard-active"]{assert!(!base.join(n).exists());}
   assert_eq!(fs::metadata(base.join("lock")).unwrap().ino(),before);for n in ["lock","service.log","unrelated"]{assert_eq!(fs::read(base.join(n)).unwrap(),b"keep");}
-  symlink(base.join("unrelated"),base.join("session")).unwrap();cleanup_session_files(&base).unwrap();assert_eq!(fs::read(base.join("unrelated")).unwrap(),b"keep");
-  fs::create_dir(base.join("page")).unwrap();assert!(cleanup_session_files(&base).is_err());assert!(base.join("page").is_dir());fs::remove_dir_all(base).unwrap();
+  symlink(base.join("unrelated"),base.join("session")).unwrap();cleanup_session_files(&base,&lock).unwrap();assert_eq!(fs::read(base.join("unrelated")).unwrap(),b"keep");
+  fs::create_dir(base.join("page")).unwrap();assert!(cleanup_session_files(&base,&lock).is_err());assert!(base.join("page").is_dir());fs::remove_dir_all(base).unwrap();
  }
 }
 

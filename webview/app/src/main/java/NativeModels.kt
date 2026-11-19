@@ -45,12 +45,14 @@ internal class NativeControls {
 }
 
 /** No evaluation: serialize exactly the values accepted by Rust's literal-conf codec. */
+private val settingsKeyPattern=Regex("[A-Za-z_][A-Za-z_0-9]*")
+private val selectionLeasePattern=Regex("[1-9][0-9]*")
 internal fun encodeSettings(fields:List<JSONObject>):String=fields.joinToString("\n") { field ->
-    val key=field.getString("key");require(key.matches(Regex("[A-Za-z_][A-Za-z_0-9]*")))
+    val key=field.getString("key");require(key.matches(settingsKeyPattern))
     key+"\t"+field.getString("value").toByteArray(Charsets.UTF_8).joinToString(""){"%02x".format(it.toInt() and 255)}
 }
 
-internal class NativeSelection {
+internal class NativeSelection(private val context:android.content.Context) {
     var apps=emptyList<JSONObject>();private set
     var page=0
     var search=""
@@ -59,9 +61,10 @@ internal class NativeSelection {
     var saved=JSONObject();private set
     var timeline=obj("mode" to "match","target" to "","sources" to JSONArray())
     fun load(list:String,draft:String,singleChoice:Boolean){
+        searchText.clear()
         apps=JSONArray(list).modelObjects().map{it.put("original",it.getBoolean("selected")).put("originalApk",it.getBoolean("apk"))}
         require(apps.size<=100000&&apps.map{it.getString("pkg")}.toSet().size==apps.size)
-        lease=draft.substringBefore('\n');require(lease.matches(Regex("[1-9][0-9]*")))
+        lease=draft.substringBefore('\n');require(lease.matches(selectionLeasePattern))
         saved=JSONObject(draft.substringAfter('\n',"{}"))
         page=saved.optInt("page",0).coerceAtLeast(0);search=saved.optString("search");filter=saved.optString("filter","all").takeIf{it in setOf("all","yes","no")}?:"all"
         saved.optJSONObject("timeline")?.let{value->
@@ -73,14 +76,26 @@ internal class NativeSelection {
         saved.optJSONArray("choices")?.let{rows->for(i in 0 until rows.length()){
             val row=rows.optJSONArray(i)?:continue
             if(row.length()!=3||row.opt(1) !is Boolean||row.opt(2) !is Boolean)continue
-            byId[row.optString(0)]?.takeUnless{it.optBoolean("removed")}?.let{it.put("selected",row.getBoolean(1));it.put("apk",!singleChoice&&row.getBoolean(2))}
+            byId[row.optString(0)]?.takeUnless{it.optBoolean("removed")}?.let{it.put("selected",row.getBoolean(1));it.put("apk",(!singleChoice||it.optBoolean("apkSupported"))&&row.getBoolean(2))}
         }}
     }
     fun changed()=apps.filter{it.getBoolean("selected")!=it.getBoolean("original")||it.getBoolean("apk")!=it.getBoolean("originalApk")}
+    private data class SearchText(val label:String,val pkg:String,val display:String,val language:String,val text:String,val lowerLabel:String)
+    private val searchText=java.util.IdentityHashMap<JSONObject,SearchText>()
     fun filtered():List<JSONObject> {
         val q=search.trim().lowercase(java.util.Locale.ROOT)
-        val result=apps.filter{a->("${a.getString("label")} ${a.getString("pkg")} ${a.optString("displayPackage")}").lowercase(java.util.Locale.ROOT).contains(q)&&(filter=="all"||a.getBoolean("selected")== (filter=="yes"))}
-        return if(q.isEmpty())result else result.sortedBy{val v=it.getString("label").lowercase(java.util.Locale.ROOT);if(v.startsWith(q))0 else if(v.contains(q))1 else 2}
+        // Empty queries need neither translation nor a search index.
+        if(q.isEmpty())return apps.filter{it.getString("label");it.getString("pkg");filter=="all"||it.getBoolean("selected")==(filter=="yes")}
+        val language=NativeLanguage.get()
+        fun text(a:JSONObject):SearchText {
+            val label=a.getString("label");val pkg=a.getString("pkg");val display=a.optString("displayPackage")
+            val old=searchText[a]
+            if(old!=null&&old.label==label&&old.pkg==pkg&&old.display==display&&old.language==language)return old
+            val friendly=nativeSelectionPresentation(a)?.let{it.name+" "+it.detail+" "+NativeLanguage.text(context,it.name)}?:""
+            return SearchText(label,pkg,display,language,("$label $pkg $display $friendly").lowercase(java.util.Locale.ROOT),label.lowercase(java.util.Locale.ROOT)).also{searchText[a]=it}
+        }
+        val result=apps.filter{a->text(a).text.contains(q)&&(filter=="all"||a.getBoolean("selected")==(filter=="yes"))}
+        return result.sortedBy{val v=searchText.getValue(it).lowerLabel;if(v.startsWith(q))0 else if(v.contains(q))1 else 2}
     }
     fun draft(extra:JSONObject=JSONObject()):String=lease+"\n"+extra.put("timeline",timeline).put("page",page).put("search",search).put("filter",filter)
         .put("choices",arr(changed().filterNot{it.optBoolean("removed")}.map{arr(listOf(it.getString("pkg"),it.getBoolean("selected"),it.getBoolean("apk")))})).toString()

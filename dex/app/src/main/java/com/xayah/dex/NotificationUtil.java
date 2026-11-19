@@ -99,8 +99,8 @@ public class NotificationUtil extends BaseUtil {
         DaemonOutput.current().println("  THROTTLE_MS|500                      # skip non-urgent repeat updates inside window");
         DaemonOutput.current().println("  INBOX|1                              # recent event list");
         DaemonOutput.current().println("  ERROR_AGGREGATE|1                    # aggregate ERROR/WARN notifications");
-        DaemonOutput.current().println("  LOG_PATH|/data/speed_debug/run_x/main.log     # metadata only, no notification action");
-        DaemonOutput.current().println("  DIR_PATH|/data/speed_debug/run_x              # metadata only, no notification action");
+        DaemonOutput.current().println("  LOG_PATH|/data/.speedbackup/debug/run_x/main.log     # metadata only, no notification action");
+        DaemonOutput.current().println("  DIR_PATH|/data/.speedbackup/debug/run_x              # metadata only, no notification action");
         DaemonOutput.current().println("  ONGOING|1");
         DaemonOutput.current().println("  AUTO_CANCEL|0");
         DaemonOutput.current().println("  ONLY_ALERT_ONCE|1");
@@ -606,9 +606,10 @@ public class NotificationUtil extends BaseUtil {
                         | android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP);
         android.app.PendingIntent click = android.app.PendingIntent.getActivity(userContext, 2024, intent,
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+        String liveLanguage=hostNotificationLanguage();
         Notification.Builder builder = new Notification.Builder(userContext, channel)
-                .setContentTitle(notificationText("SpeedBackup 工作仍在進行"))
-                .setContentText(notificationText("我的進程鼠掉了，點此接回目前工作"))
+                .setContentTitle(notificationText("SpeedBackup 工作仍在進行",liveLanguage))
+                .setContentText(notificationText("我的進程鼠掉了，點此接回目前工作",liveLanguage))
                 .setContentIntent(click).setTimeoutAfter(30000).setOngoing(true).setOnlyAlertOnce(true).setShowWhen(false);
         applySpeedBackupNotificationIcon(builder);
         manager.notify(tag, 2024, builder.build());
@@ -639,36 +640,7 @@ public class NotificationUtil extends BaseUtil {
     }
 
     private static Bitmap drawSpeedBackupSmallIconBitmap() {
-        final int size = SPEEDBACKUP_SMALL_ICON_SIZE_PX;
-        final Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
-        final Canvas canvas = new Canvas(bitmap);
-        canvas.scale(size / 48.0f, size / 48.0f);
-
-        final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
-        stroke.setColor(Color.WHITE);
-        stroke.setStyle(Paint.Style.STROKE);
-        stroke.setStrokeCap(Paint.Cap.ROUND);
-        stroke.setStrokeJoin(Paint.Join.ROUND);
-        stroke.setStrokeWidth(3.4f);
-
-        final Path lid = new Path();
-        lid.moveTo(10.5f, 17.0f);
-        lid.lineTo(14.6f, 9.6f);
-        lid.lineTo(33.4f, 9.6f);
-        lid.lineTo(37.5f, 17.0f);
-        canvas.drawPath(lid, stroke);
-
-        final RectF body = new RectF(10.5f, 17.0f, 37.5f, 36.5f);
-        canvas.drawRoundRect(body, 3.2f, 3.2f, stroke);
-        canvas.drawLine(11.2f, 17.0f, 36.8f, 17.0f, stroke);
-
-        stroke.setStrokeWidth(4.2f);
-        final Path check = new Path();
-        check.moveTo(18.3f, 25.8f);
-        check.lineTo(23.0f, 30.5f);
-        check.lineTo(30.6f, 22.0f);
-        canvas.drawPath(check, stroke);
-        return bitmap;
+        return com.xayah.dex.SpeedBackupIcons.notificationBitmap(96);
     }
 
     private static void setCompatPriority(Notification.Builder builder, int importance) {
@@ -698,8 +670,32 @@ public class NotificationUtil extends BaseUtil {
         return CHANNEL_PROGRESS_ID;
     }
 
+    // Only the rare host-death fallback fetches live preferences. Normal progress
+    // notifications retain their event language and never pay for an HTTP request.
+    private static String hostNotificationLanguage() {
+        java.net.HttpURLConnection connection=null;
+        try {
+            String source=System.getenv("SPEEDBACKUP_CONSOLE_URL");
+            if(source==null)return System.getenv("SPEEDBACKUP_UI_LANGUAGE");
+            android.net.Uri uri=android.net.Uri.parse(source);
+            if(!"unix".equals(uri.getScheme())||uri.getHost()==null||!uri.getHost().matches("sb-ui-[0-9a-f]{64}")||uri.getPort()!=-1||uri.getUserInfo()!=null||!"/".equals(uri.getPath())||uri.getQuery()!=null||uri.getFragment()==null||!uri.getFragment().matches("[0-9a-f]{64}"))return System.getenv("SPEEDBACKUP_UI_LANGUAGE");
+            connection=new UnixHttpConnection("unix://"+uri.getHost()+"/api/language");
+            connection.setConnectTimeout(1000);connection.setReadTimeout(1000);connection.setInstanceFollowRedirects(false);
+            connection.setRequestProperty("X-SpeedBackup-Token",uri.getFragment());
+            if(connection.getResponseCode()==200)try(java.io.InputStream in=connection.getInputStream()){
+                byte[] bytes=new byte[17];int count=0,n;
+                while(count<bytes.length&&(n=in.read(bytes,count,bytes.length-count))!=-1)count+=n;
+                String language=new String(bytes,0,count,java.nio.charset.StandardCharsets.US_ASCII).trim();
+                if("zh-Hans".equals(language)||"zh-Hant".equals(language))return language;
+            }
+        }catch(Exception ignored){}finally{if(connection!=null)connection.disconnect();}
+        return System.getenv("SPEEDBACKUP_UI_LANGUAGE");
+    }
+
     static String notificationText(String value) {
-        String language=System.getenv("SPEEDBACKUP_UI_LANGUAGE");
+        return notificationText(value,System.getenv("SPEEDBACKUP_UI_LANGUAGE"));
+    }
+    private static String notificationText(String value,String language) {
         boolean simplified=language!=null ? "zh-Hans".equals(language) : "CN".equalsIgnoreCase(System.getenv("SCRIPT_LANG"));
         if(value==null)return null;
         return simplified ? NotificationLanguage.CONVERTER.t2s(value) : NotificationLanguage.CONVERTER.s2t(value);

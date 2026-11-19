@@ -174,8 +174,16 @@ fn null(v: &V) -> bool {
 fn g(v: &V, k: &str) -> V {
     v.get(k).cloned().unwrap_or_else(|| atom("null"))
 }
-fn path(v: &V, keys: &[&str]) -> V {
-    keys.iter().fold(v.clone(), |v, k| g(&v, k))
+fn path<'a>(mut v: &'a V, keys: &[&str]) -> V {
+    // Traverse borrowed nodes: cloning every ancestor copied the entire metadata
+    // document repeatedly in both individual readers and batched backup plans.
+    for key in keys {
+        match v.get(key) {
+            Some(child) => v = child,
+            None => return atom("null"),
+        }
+    }
+    v.clone()
 }
 fn fallback(xs: &[V]) -> V {
     xs.iter()
@@ -321,11 +329,14 @@ fn remove(v: &mut V, k: &str) {
     }
 }
 fn first(v: &V, k: &str) -> V {
-    objects(v)
-        .iter()
-        .map(|v| g(v, k))
-        .find(|v| !null(v))
-        .unwrap_or_else(|| atom("null"))
+    // Preserve child order and first non-null (including false), without
+    // materializing/cloning every child object for each requested metadata key.
+    let field = |child: &V| child.get(k).filter(|value| !null(value)).cloned();
+    match v {
+        V::Object(rows) => rows.iter().find_map(|(_, child)| field(child)),
+        V::Array(rows) => rows.iter().find_map(field),
+        _ => None,
+    }.unwrap_or_else(|| atom("null"))
 }
 fn state_schema(v: &V) -> bool {
     if !v.object() && !array(v) {
@@ -790,12 +801,7 @@ fn execute(op: &str, v: &V, a: &Vars, file: &str) -> Result<Vec<V>, String> {
             }
             Ok(xs)
         }
-        "payload-summary" => Ok(vec![
-            fallback(&[path(v, &[&var(a, "e"), "Size"]), empty.clone()]),
-            fallback(&[first(v, "keystore"), empty.clone()]),
-            fallback(&[path(v, &[&var(a, "e"), "path"]), empty.clone()]),
-            fallback(&[path(v, &[&var(a, "e"), "archive_input_bytes"]), empty]),
-        ]),
+        "payload-summary" => Ok(payload_summary(v, &var(a, "e"), &first(v, "keystore"))),
         "installer-state" => {
             let s = first(v, "app_state");
             one(fallback(&[
@@ -1393,6 +1399,19 @@ fn state_diff(v: &V) -> Result<Vec<V>, String> {
     }
     Ok(out)
 }
+// Resolve the entry object once; batch plans also resolve the document-wide
+// keystore once. Keep the single-operation fallback and field order authoritative.
+fn payload_summary(doc: &V, entry: &str, keystore: &V) -> Vec<V> {
+    let missing = atom("null");
+    let payload = doc.get(entry).unwrap_or(&missing);
+    vec![
+        fallback(&[g(payload, "Size"), string("")]),
+        fallback(&[keystore.clone(), string("")]),
+        fallback(&[g(payload, "path"), string("")]),
+        fallback(&[g(payload, "archive_input_bytes"), string("")]),
+    ]
+}
+
 // Private fixed-line protocol for one immutable Restore App scope. Keep the
 // existing JSON operations as the authority; unusual values use their original
 // shell consumers instead of inventing escaping/flattening rules here.
@@ -1419,9 +1438,9 @@ fn restore_metadata_plan(v: &V, a: &Vars) -> Result<Vec<V>, String> {
     let mask = scalar(&execute("restore-mask", v, a, "")?[0])?;
     let mut out = vec![string("RESTORE_METADATA_PLAN_1"), string(&pkg),
         string(version), string(installer), string(mask)];
+    let keystore = first(doc, "keystore");
     for entry in ["user", "data", "obb", "media", "user_de", "thanox", "hma"] {
-        let vars = Vars::from([("e".into(), entry.into())]);
-        for field in execute("payload-summary", doc, &vars, "")? {
+        for field in payload_summary(doc, entry, &keystore) {
             out.push(string(scalar(&field)?));
         }
     }
@@ -1697,6 +1716,46 @@ pub(super) fn run(args: &[String]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn borrowed_metadata_reads_match_materialized_readers() {
+        for text in [r#"{"a":{"k":null},"b":{"k":false},"c":{"k":7}}"#,
+            r#"[0,{"k":null},{"k":""},{"k":9}]"#, "null", "[]"] {
+            let doc = parse(text).unwrap();
+            for key in ["k", "absent"] {
+                let old = objects(&doc).iter().map(|v| g(v, key)).find(|v| !null(v)).unwrap_or_else(|| atom("null"));
+                assert_eq!(first(&doc, key).emit(false, 0), old.emit(false, 0));
+            }
+            for keys in [vec![], vec!["b"], vec!["b", "k"], vec!["absent", "k"]] {
+                let old = keys.iter().fold(doc.clone(), |v, k| g(&v, k));
+                assert_eq!(path(&doc, &keys).emit(false, 0), old.emit(false, 0));
+            }
+        }
+    }
+
+    #[test]
+    fn payload_summary_retains_legacy_fallbacks_and_order() {
+        for text in [
+            "null", "false", "[]", "{}",
+            r#"{"keystore":false,"user":null}"#,
+            r#"{"keystore":[false,"key"],"user":{"Size":0,"path":false,"archive_input_bytes":"0001"}}"#,
+            r#"{"keystore":"a\nb","user":{"Size":{"nested":1},"path":[1,2],"archive_input_bytes":null}}"#,
+        ] {
+            let doc = parse(text).unwrap();
+            for entry in ["user", "missing"] {
+                let original = vec![
+                    fallback(&[path(&doc, &[entry, "Size"]), string("")]),
+                    fallback(&[first(&doc, "keystore"), string("")]),
+                    fallback(&[path(&doc, &[entry, "path"]), string("")]),
+                    fallback(&[path(&doc, &[entry, "archive_input_bytes"]), string("")]),
+                ];
+                let actual = payload_summary(&doc, entry, &first(&doc, "keystore"));
+                assert_eq!(V::Array(actual).emit(false, 0), V::Array(original).emit(false, 0));
+            }
+        }
+        let doc = parse(r#"{"PackageName":["pkg"],"user":{"path":"a\nb"}}"#).unwrap();
+        assert!(restore_metadata_plan(&V::Array(vec![doc]), &Vars::new()).is_err());
+    }
+
     #[test]
     fn soc_new_sources_keep_priority_and_report_conflicts() {
         let table=V::Object(vec![

@@ -39,7 +39,7 @@ internal class NativeCatalog(context:Context) {
         fun visit(value:Any?){when(value){
             is org.json.JSONArray->for(i in 0 until value.length())visit(value.opt(i))
             is JSONObject->{
-                val literal=value.optString("kind") in setOf("app","log","license","contributor")
+                val literal=value.optString("kind") in setOf("app","log","license","contributor")&&!value.optBoolean("translateLabel")
                 for(key in value.keys().asSequence().toList()){
                     if(key=="picker")continue // File names and paths are exact user data.
                     val child=value.opt(key)
@@ -54,10 +54,11 @@ internal class NativeCatalog(context:Context) {
     }
     val communityUrl=context.assets.open("community.json").bufferedReader().use{JSONObject(it.readText()).getString("url")}
     private val settings=context.assets.open("settings-labels.json").bufferedReader().use{JSONObject(it.readText())}
-    fun label(key:String)=settings.getJSONObject("labels").optString(key,key)
-    fun help(key:String,fallback:String,mode:String)=when(key){
+    fun label(key:String)=if(key=="backup_location")"備份位置" else settings.getJSONObject("labels").optString(key,key)
+    fun help(key:String,mode:String)=when(key){
+        "backup_location"->"切換本地或遠端備份；保留已設定的遠端協定、地址與帳密。"
         "setDisplayPowerMode"->(if(mode=="restore")"恢復" else "備份")+"開始後啟用亮屏偽裝。"
         "Background_apps_ignore"->"選擇略過執行中的應用，或繼續處理這些應用。"
-        else->settings.getJSONObject("help").optString(key,fallback.ifEmpty{"沿用原設定值；留空不會自動套入其他值。"})
+        else->settings.getJSONObject("help").optString(key,"沿用原設定值；留空不會自動套入其他值。")
     }
 }

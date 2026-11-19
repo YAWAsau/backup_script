@@ -39,7 +39,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
         NativeLanguage.set(language);
         if(!NativeLanguage.get().equals(getPreferences(0).getString("uiLanguage",null)))getPreferences(0).edit().putString("uiLanguage",NativeLanguage.get()).apply();
     }
-    private void showTransition(Runnable next){if(!closing){nativeChrome.beginNavigation();next.run();}}
+    private void showTransition(Runnable next){if(!closing){next.run();}}
     private void loadDocument(String address){
         presentationFailed=false;
         final long generation=++documentGeneration;
@@ -116,7 +116,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void bind(Intent intent) throws Exception {
         String url=intent.getDataString();if(url==null)throw new IllegalArgumentException("missing session address");Uri uri=Uri.parse(url);
-        if(!"http".equals(uri.getScheme())||!"127.0.0.1".equals(uri.getHost())||uri.getPort()<1||uri.getUserInfo()!=null||!"/".equals(uri.getPath())||uri.getQuery()!=null||uri.getFragment()==null||!uri.getFragment().matches("[0-9a-f]{64}"))throw new IllegalArgumentException();
+        if(!"unix".equals(uri.getScheme())||uri.getHost()==null||!uri.getHost().matches("sb-ui-[0-9a-f]{64}")||uri.getPort()!=-1||uri.getUserInfo()!=null||!"/".equals(uri.getPath())||uri.getQuery()!=null||uri.getFragment()==null||!uri.getFragment().matches("[0-9a-f]{64}"))throw new IllegalArgumentException();
         Bundle launchExtras=intent.getExtras();final IBinder next=launchExtras==null?null:launchExtras.getBinder("session");if(next==null)throw new IllegalArgumentException();
         // A death callback may have retired this Activity while it was cached/frozen.
         // Never acknowledge a new session on an Activity already scheduled for removal.
@@ -152,7 +152,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
         }
         shortcutId=EntryShortcuts.remember(this,intent);
-        session=next;death=nextDeath;linked=true;sessionReady=false;navigationTarget=null;navigationId=null;origin="http://127.0.0.1:"+uri.getPort();
+        session=next;death=nextDeath;linked=true;sessionReady=false;navigationTarget=null;navigationId=null;origin="unix://"+uri.getHost();
         endpoint=new Binder(){
             @Override protected boolean onTransact(int code,Parcel data,Parcel reply,int flags)throws RemoteException {
                 if(Binder.getCallingUid()!=0)return false;
@@ -170,12 +170,12 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                     final String id=data.readString(),target=data.readString();
                     if(id==null||!id.matches("[0-9a-f]{64}"))return false;
                     final Uri targetUri=Uri.parse(target==null?"":target);
-                    if(!"http".equals(targetUri.getScheme())||!"127.0.0.1".equals(targetUri.getHost())||targetUri.getPort()<1||targetUri.getUserInfo()!=null||!"/".equals(targetUri.getPath())||targetUri.getQuery()!=null||targetUri.getFragment()==null||!targetUri.getFragment().matches("[0-9a-f]{64}"))return false;
+                    if(!"unix".equals(targetUri.getScheme())||targetUri.getHost()==null||!targetUri.getHost().matches("sb-ui-[0-9a-f]{64}")||targetUri.getPort()!=-1||targetUri.getUserInfo()!=null||!"/".equals(targetUri.getPath())||targetUri.getQuery()!=null||targetUri.getFragment()==null||!targetUri.getFragment().matches("[0-9a-f]{64}"))return false;
                     main.post(()->{
                         if(session!=next)return;
                         if(closing||isFinishing()||isDestroyed()){notifyNavigation(id,2);return;}
                         if(navigationId!=null){notifyNavigation(id,3);return;}
-                        navigationId=id;navigationTarget=target;origin="http://127.0.0.1:"+targetUri.getPort();
+                        navigationId=id;navigationTarget=target;origin="unix://"+targetUri.getHost();
                         showTransition(()->loadDocument(target));
                     });return true;
                 }
@@ -267,6 +267,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
+        EntryShortcuts.refreshPinned(this);
         updateLanguage(getIntent().getStringExtra("uiLanguage")!=null?getIntent().getStringExtra("uiLanguage"):getPreferences(0).getString("uiLanguage","zh-Hant"));
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
@@ -293,7 +294,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
     }
     @Override public void onConfigurationChanged(android.content.res.Configuration configuration){super.onConfigurationChanged(configuration);frame.requestApplyInsets();if(controller!=null)controller.refresh();}
     private void back(){if(closing)return;if(controller==null||presentationFailed){close("back-unavailable");return;}controller.dispatch("back",controller.getEpoch());}
-    @Override protected void onResume(){super.onResume();activityResumed=true;main.post(this::finishPermissionSetup);main.postDelayed(pinWhenStable,1800);if(controller!=null)controller.lifecycle(true);}
+    @Override protected void onResume(){super.onResume();activityResumed=true;AppRootAuthorization.resume(this);main.post(this::finishPermissionSetup);main.postDelayed(pinWhenStable,1800);if(controller!=null)controller.lifecycle(true);}
     @Override protected void onPause(){activityResumed=false;if(controller!=null)controller.lifecycle(false);super.onPause();if(cancelOnPause&&!closing)close("pause-policy");}
     private void close(){close("client-close");}
     private void close(String reason){if(closing)return;android.util.Log.w("SpeedBackupNative","Process: io.github.yawasau.speedbackup.webview close="+reason+" navigation="+(navigationId!=null)+" resumed="+activityResumed);closing=true;finishAndRemoveTask();}

@@ -54,8 +54,10 @@ if [ -z "${SPEEDBACKUP_CONSOLE_DIR:-}" ]; then
     if [ -e "$_sb_cache_lock" ]; then [ -f "$_sb_cache_lock" ] || exit 1
     else (umask 077; : >> "$_sb_cache_lock") || exit 1; fi
     [ "$(stat -c '%u:%a:%h' "$_sb_cache_lock")" = '0:600:1' ] || exit 1
-    exec 9>>"$_sb_cache_lock" || exit 1
-    /system/bin/flock -s 9 9>&9 || exit 1
+    # Keep the open description in fd8; distinct dup to fd9 avoids relying on
+    # a shell's no-op 9>&9 to clear close-on-exec. Native consumes fd9.
+    exec 8>>"$_sb_cache_lock" || exit 1
+    /system/bin/flock -s 9 9>&8 8>&- || exit 1
     export SPEEDBACKUP_CACHE_LEASE_FD=9
     fi
     _sb_console_cache=/data/.speedbackup/console_boot
@@ -98,7 +100,7 @@ if [ -z "${SPEEDBACKUP_CONSOLE_DIR:-}" ]; then
     done
     [ "$_sb_console_ok" = 1 ] || exit 1
     if [ "${SPEEDBACKUP_CACHE_LEASE_FD:-}" = 9 ]; then
-      exec "$_sb_console_boot/speednative" speedscan console-start "$_sb_entry_dir/${_sb_entry_file##*/}" "$@" 9>&9
+      exec "$_sb_console_boot/speednative" speedscan console-start "$_sb_entry_dir/${_sb_entry_file##*/}" "$@" 9>&8 8>&-
     else
       exec "$_sb_console_boot/speednative" speedscan console-start "$_sb_entry_dir/${_sb_entry_file##*/}" "$@"
     fi
@@ -123,7 +125,7 @@ export SPEEDBACKUP_ENTRY_SCRIPT="$0"
 # 防止舊入口腳本 / 父 shell 殘留上一輪 speed_debug run_xxx 變數，導致單獨腳本誤寫已被 final 刪除的 main.log/stderr.log。
 unset SPEED_DEBUG_RUN_DIR SPEED_DEBUG_MAIN_LOG SPEED_DEBUG_PENDING_ERR_LOG SPEED_DEBUG_CMD_LOG SPEED_DEBUG_INFO_LOG SPEED_DEBUG_DEX_HUMAN_LOG SPEED_DEBUG_ARCHIVE SPEED_DEBUG_PACKED SPEED_DEBUG_SNAPSHOT_DONE SPEED_DEBUG_RUN_DIR_REMOVED SPEED_DEBUG_ERR_LOG
 # 446: 不可使用 `. tools.sh | tee`。source 放在 pipeline 內會讓部分 shell/入口條件下主流程直接退出或在 subshell 中跑壞。
-# r36: legacy logfile 由 _speed_debug_sync_legacy_log 在 final/snapshot 打包前寫入 main.log 鏡像；實際診斷仍以 /data/speed_debug 內 speed_debug 包為準。
+# r36: legacy logfile 由 _speed_debug_sync_legacy_log 在 final/snapshot 打包前寫入 main.log 鏡像；實際診斷仍以 /data/.speedbackup/debug 內 speed_debug 包為準。
 . "$_sb_root/tools/tools.sh"
 _entry_rc=$?
 case "$_entry_rc" in

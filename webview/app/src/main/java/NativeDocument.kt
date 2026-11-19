@@ -60,7 +60,7 @@ internal fun validateNativeDocument(screen:JSONObject?) {
         require(depth<=8&&a.length()<=2200)
         for(n in a.nodes()) {
             require(++count<=6000)
-            require(n.getString("kind") in setOf("range","button","toggle","input","select","text","heading","link","log","progress","app","group","license","loading","contributor"))
+            require(n.getString("kind") in setOf("range","button","toggle","input","select","text","heading","link","log","progress","app","group","license","loading","contributor","brand"))
             require(n.getString("id").matches(nativeControlId)&&ids.add(n.getString("id")))
             for(k in listOf("label","value","detail","description","caption","placeholder"))require(n.optString(k).length<=262144)
             require(n.optString("icon").length<=131072)
@@ -190,6 +190,19 @@ internal fun resumeKey(session:String,route:String):String = java.security.Messa
     return list
 }
 
+// Preload while there is still room for the current fling; reaching an edge
+// first consumes its velocity. Returning to live output requires the real bottom.
+internal fun consolePrefetchEdge(direction:Int,before:Long,after:Long,viewport:Int,canOlder:Boolean,canNewer:Boolean,historyActive:Boolean,atBottom:Boolean):String {
+    if(viewport<=0)return ""
+    val margin=viewport.toLong()*3
+    return when {
+        direction<0&&before<=margin&&canOlder->"olderId"
+        direction>0&&after<=margin&&canNewer->"newerId"
+        direction>0&&atBottom&&historyActive&&!canNewer->"latestId"
+        else->""
+    }
+}
+
 @Composable internal fun NativeDocument(screen:JSONObject,data:JSONObject,logs:List<NativeLogChunk>,backdrop:Backdrop,resumed:Boolean,dispatch:NativeChrome.Action,onMotion:(Boolean)->Unit) {
     val rawStyle=NativeDocumentStyle(Color(data.optLong("foreground",0xffeeeeeeL).toInt()),Color(data.optLong("accent",0xff96bdffL).toInt()),backdrop,data.optDouble("scale",1.0).coerceIn(.7,1.5).toFloat(),resumed,data.optString("uiStyle","miuix"),Color(data.optLong("cardColor",0xff242424L).toInt()),Color(data.optLong("fieldColor",0xff2d2d2dL).toInt()),Color(data.optLong("mutedColor",0xffaaaaaaL).toInt()),Color(data.optLong("lineColor",0xff404040L).toInt()),unset=NativeLanguage.text(androidx.compose.ui.platform.LocalContext.current,screen.optString("unset","未設定")),reducedMotion=data.optBoolean("reducedMotion"),controlText=Color(data.optLong("controlForeground",data.optLong("foreground")).toInt()),controlMuted=Color(data.optLong("controlMuted",data.optLong("mutedColor")).toInt()))
     val style=if(LocalNativeMaterial.current){
@@ -235,6 +248,7 @@ internal fun resumeKey(session:String,route:String):String = java.security.Messa
     val historyActive=history?.optBoolean("active")==true
     val licensePage=screen.getString("key")=="menu:licenses"
     val nodes=remember(screen){screen.getJSONArray("nodes").nodes()}
+    val brandPage=nodes.any{it.optString("kind")=="brand"}
     val dialog=screen.optJSONObject("dialog")
     fun send(kind:String,id:String,value:String=""):Long {
         if(!navigationActive)return -1L
@@ -275,33 +289,50 @@ internal fun resumeKey(session:String,route:String):String = java.security.Messa
     }
     // History extends the same keyed list. LazyColumn retains the visible anchor;
     // no scrollToItem is issued when older/newer records arrive.
-    LaunchedEffect(scrollGesture,history?.optLong("revision",0)) {
+    val logOffsets=remember(logs){LongArray(logs.size+1).also{offsets->logs.forEachIndexed{i,chunk->offsets[i+1]=offsets[i]+chunk.height}}}
+    val pagingHistory by rememberUpdatedState(history)
+    val pagingLogs by rememberUpdatedState(logs)
+    val pagingOffsets by rememberUpdatedState(logOffsets)
+    val pagingStart by rememberUpdatedState(nodes.size+1)
+    LaunchedEffect(scrollGesture,history?.optLong("revision",0),console,dialog!=null) {
         if(scrollGesture>0&&console&&dialog==null&&!historyRequestPending&&history?.optBoolean("loading")==false){
             val edge=snapshotFlow{
-                when {
-                    scrollDirection<0&&list.firstVisibleItemIndex<=nodes.size+3&&history.optBoolean("canLoadOlder")->"olderId"
-                    scrollDirection>0&&!list.canScrollForward&&history.optBoolean("canLoadNewer")->"newerId"
-                    else->""
+                val h=pagingHistory ?: return@snapshotFlow ""
+                val chunks=pagingLogs
+                val offsets=pagingOffsets
+                val firstLog=pagingStart // header, then non-log nodes
+                val index=list.firstVisibleItemIndex-firstLog
+                val first=list.layoutInfo.visibleItemsInfo.firstOrNull{it.index==list.firstVisibleItemIndex}
+                // Wait for the matching measure pass after prepending/trimming rows.
+                if(index in chunks.indices&&first?.key!=chunks[index].id) ""
+                else {
+                    val before=offsets[index.coerceIn(0,chunks.size)]+if(index>=0)list.firstVisibleItemScrollOffset else 0
+                    val viewport=list.layoutInfo.viewportSize.height
+                    val after=(offsets.last()-before-viewport).coerceAtLeast(0)
+                    val edge=consolePrefetchEdge(scrollDirection,before,after,viewport,h.optBoolean("canLoadOlder"),h.optBoolean("canLoadNewer"),h.optBoolean("active"),!list.canScrollForward)
+                    if(edge=="latestId"&&h.optString(edge).isEmpty())""else edge
                 }
             }.first{it.isNotEmpty()}
-            val actionId=history.optString(edge).takeIf{it.isNotEmpty()}?:return@LaunchedEffect
+            val h=pagingHistory?:return@LaunchedEffect
+            val actionId=h.optString(edge).takeIf{it.isNotEmpty()}?:return@LaunchedEffect
             historyRequestPending=true
-            send("click",actionId,history.optLong("revision",0).toString())
+            send("click",actionId,h.optLong("revision",0).toString())
         }
     }
     val underlay=data.optBoolean("glassContent")&&!console
     val scrollBackdrop=rememberLayerBackdrop()
     val footerBackdrop=rememberCombinedBackdrop(backdrop,scrollBackdrop)
-    NativeDocumentViewport(underlay&&!LocalNativeMaterial.current,Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top).union(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))),content={ bottomInset ->
+    val brandBackground=if(brandPage) nativeBrandBackground(style) else Modifier
+    if(!screen.optBoolean("dialogOnly"))NativeDocumentViewport(underlay&&!LocalNativeMaterial.current,Modifier.fillMaxSize().then(brandBackground).windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top).union(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))),content={ bottomInset ->
         LazyColumn(state=list,modifier=Modifier.fillMaxSize().then(if(underlay)Modifier.layerBackdrop(scrollBackdrop) else Modifier).then(if(console)Modifier.nestedScroll(logScrollConnection)else Modifier),contentPadding=PaddingValues(start=12.dp,top=24.dp,end=12.dp,bottom=24.dp+bottomInset),verticalArrangement=Arrangement.spacedBy(0.dp)) {
             item("header") { Column(Modifier.padding(bottom=20.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
-                if(licensePage) {
+                if(licensePage||brandPage) {
                     val back=screen.getJSONArray("footer").nodes().firstOrNull()
                     if(back!=null)NativeBackButton(back.getString("label"),style.text){send("click",back.getString("id"))}
                 }
-                if(!licensePage)BasicText(screen.getString("eyebrow"),style=style.text(17))
-                BasicText(screen.getString("title"),Modifier.semantics{heading()},style=style.text(32).copy(fontWeight=nativeUiStyle().titleWeight))
-                BasicText(screen.getString("subtitle"),style=style.text(17))
+                if(!licensePage&&!brandPage)BasicText(screen.getString("eyebrow"),style=style.text(17))
+                if(!brandPage||LocalNativeMaterial.current)BasicText(screen.getString("title"),Modifier.semantics{heading()},style=style.text(32).copy(fontWeight=nativeUiStyle().titleWeight))
+                if(!brandPage)BasicText(screen.getString("subtitle"),style=style.text(17))
             } }
             if(screen.has("wallpaperSystem"))item("wallpaper-preview"){
                 NativeWallpaperPreview(Color(data.optLong("background",0xff151c30L).toInt()),style.text,style.text(14))
@@ -309,7 +340,7 @@ internal fun resumeKey(session:String,route:String):String = java.security.Messa
             if(screen.has("wallpaperSystem"))item("wallpaper-settings"){
                 val surfaceStyle=style.surfaceStyle()
                 NativeComponentCard("miuix",style.card,surfaceStyle.text,backdrop=style.backdrop) {
-                    Box(Modifier.padding(if(LocalNativeMaterial.current)0.dp else 16.dp)) {NativeWallpaperSettings(surfaceStyle.text,style.field,style.accent,surfaceStyle.text(17),!list.isScrollInProgress,importWallpaper,wallpaperText=style.text){send("click",screen.getString("wallpaperSystem"))}}
+                    Box(Modifier.padding(if(LocalNativeMaterial.current)0.dp else 16.dp)) {NativeWallpaperSettings(surfaceStyle.text,style.field,style.accent,surfaceStyle.text(17),!list.isScrollInProgress,importWallpaper,wallpaperText=style.text,animate=resumed&&!style.reducedMotion){send("click",screen.getString("wallpaperSystem"))}}
                 }
             }
             for(n in nodes) {
@@ -338,7 +369,7 @@ internal fun resumeKey(session:String,route:String):String = java.security.Messa
         CompositionLocalProvider(LocalNativeFooterAction provides true,LocalNativeBackdrop provides if(underlay)footerBackdrop else backdrop) {
         val footerStyle=style
         val footerGap=if(LocalNativeMaterial.current)4.dp else 8.dp
-        if(!licensePage)Column(Modifier.fillMaxWidth().padding(start=16.dp,end=16.dp,bottom=data.optDouble("bottom",20.0).coerceIn(0.0,160.0).dp,top=footerGap),verticalArrangement=Arrangement.spacedBy(footerGap)) {
+        if(!licensePage&&!brandPage)Column(Modifier.fillMaxWidth().padding(start=16.dp,end=16.dp,bottom=data.optDouble("bottom",20.0).coerceIn(0.0,160.0).dp,top=footerGap),verticalArrangement=Arrangement.spacedBy(footerGap)) {
             if(screen.getString("hint").isNotEmpty())BasicText(screen.getString("hint"),style=footerStyle.text(12))
             val footer=screen.getJSONArray("footer").nodes()
             val footerMeasurer=rememberTextMeasurer()
@@ -429,6 +460,34 @@ internal fun resumeKey(session:String,route:String):String = java.security.Messa
     }
 }
 
+@Composable private fun nativeBrandBackground(s:NativeDocumentStyle):Modifier {
+    // Opaque semantic surface, matching the About model background.
+    // Brand ink/logo motion and glass/navigation effects remain independent.
+    val base=if(LocalNativeMaterial.current)
+        androidx.compose.material3.MaterialTheme.colorScheme.background else s.card
+    return Modifier.background(base)
+}
+
+@Composable private fun NativeBrandHeader(n:JSONObject,s:NativeDocumentStyle) {
+    val context=androidx.compose.ui.platform.LocalContext.current
+    val appVersion=remember(context){runCatching{context.packageManager.getPackageInfo(context.packageName,0).versionName.orEmpty()}.getOrDefault("")}
+    val runtimeVersion=n.optString("detail").trim()
+    val version=listOf(runtimeVersion,appVersion.takeIf{it.isNotBlank()}?.let{"App $it"}.orEmpty()).filter{it.isNotBlank()}.joinToString(" · ")
+    val compact=LocalConfiguration.current.screenHeightDp<520
+    val material=LocalNativeMaterial.current
+    Column(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=if(compact)24.dp else 56.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+        if(material) Image(androidx.compose.ui.res.painterResource(R.drawable.brand_logo),null,Modifier.size(if(compact)80.dp else 96.dp))
+        else Image(androidx.compose.ui.res.painterResource(R.drawable.brand_mark),null,Modifier.size(if(compact)80.dp else 100.dp).brandInk(s.resumed&&!s.reducedMotion&&LocalNativeNavigationActive.current,s.card.luminance()<.5f))
+        Spacer(Modifier.height(12.dp))
+        BasicText("SpeedBackup",Modifier.fillMaxWidth().semantics{heading()}.then(if(material)Modifier else Modifier.brandInk(s.resumed&&!s.reducedMotion&&LocalNativeNavigationActive.current,s.card.luminance()<.5f)),style=s.text(34,true).copy(color=s.text,textAlign=androidx.compose.ui.text.style.TextAlign.Center),maxLines=2)
+        if(version.isNotBlank()) {
+            Spacer(Modifier.height(12.dp))
+            BasicText(version,Modifier.fillMaxWidth(),style=s.text(15).copy(color=s.muted,textAlign=androidx.compose.ui.text.style.TextAlign.Center))
+        }
+        Spacer(Modifier.height(if(compact)8.dp else 24.dp))
+    }
+}
+
 @Composable private fun NativeNode(n:JSONObject,s:NativeDocumentStyle,send:(String,String,String)->Long) = NativeNode(n,s,send,Modifier)
 
 @Composable private fun NativeNode(n:JSONObject,incoming:NativeDocumentStyle,send:(String,String,String)->Long,modifier:Modifier) {
@@ -446,7 +505,12 @@ internal fun resumeKey(session:String,route:String):String = java.security.Messa
         "log" -> androidx.compose.foundation.text.selection.SelectionContainer {
             BasicText(n.getString("label"),Modifier.fillMaxWidth(),style=s.text(14).copy(fontFamily=androidx.compose.ui.text.font.FontFamily.Monospace))
         }
-        "heading" -> BasicText(n.getString("label"),Modifier.semantics{heading()},style=if(n.optBoolean("settingCategory"))s.text(18,true).copy(color=s.text,shadow=if(s.text.red>.5f)androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha=.7f),blurRadius=4f) else null) else s.text(if(n.optString("level")=="H3")14 else 20,n.optString("level")!="H3").copy(color=if(n.optString("level")=="H3")s.accent else s.text))
+        "heading" -> if(n.has("trailingNumber")) {
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
+                BasicText(n.getString("label"),Modifier.weight(1f).semantics{heading()},style=s.text(20,true))
+                BasicText(n.getString("trailingNumber"),style=s.text(28,true))
+            }
+        } else BasicText(n.getString("label"),Modifier.semantics{heading()},style=if(n.optBoolean("settingCategory"))s.text(18,true).copy(color=s.text,shadow=if(s.text.red>.5f)androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha=.7f),blurRadius=4f) else null) else s.text(if(n.optString("level")=="H3")14 else 20,n.optString("level")!="H3").copy(color=if(n.optString("level")=="H3")s.accent else s.text))
         "text" -> {
             val wallpaperNote=n.optBoolean("muted")&&!s.grouped
             BasicText(n.getString("label"),style=s.text(if(n.optBoolean("muted"))14 else 16).copy(
@@ -521,6 +585,7 @@ internal fun resumeKey(session:String,route:String):String = java.security.Messa
                 }else MaterialPreference(n.getString("label"),selected?.getString("label")?:n.getString("value"),"",true,enabled,popupContent=popup){open=true}
             }
         }
+        "brand" -> NativeBrandHeader(n,s)
         "contributor" -> NativeComponentCard(s.uiStyle,s.card,s.text) {
             Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
                 Image(androidx.compose.ui.res.painterResource(when(n.optString("avatar")){"xayah"->R.drawable.xayah;"skkk"->R.drawable.skkk;"rainy"->R.drawable.rainy;else->R.drawable.h1acker}),n.getString("label")+NativeLanguage.text(androidx.compose.ui.platform.LocalContext.current," 頭像"),Modifier.size(56.dp).clip(androidx.compose.foundation.shape.CircleShape),contentScale=androidx.compose.ui.layout.ContentScale.Crop)
@@ -673,7 +738,8 @@ internal object NativeIconCache {
             if(value==null)value=withContext(Dispatchers.Default){NativeIconCache.decode(icon)}
         }}
         Box(Modifier.size(44.dp).clip(RoundedCornerShape(13.dp)).background(if(bitmap==null)s.field else Color.Transparent),contentAlignment=Alignment.Center) {
-            if(bitmap!=null)Image(bitmap!!,null,Modifier.fillMaxSize())
+            if(n.optString("iconKey").isNotEmpty())CompositionLocalProvider(LocalNativeSettingIcon provides n.getString("iconKey")){NativeSettingIcon(tint=if(removed)s.muted else s.accent)}
+            else if(bitmap!=null)Image(bitmap!!,null,Modifier.fillMaxSize())
             else Canvas(Modifier.size(28.dp)){drawRoundRect(if(removed)s.muted else s.accent,Offset(size.width*.22f,size.height*.07f),Size(size.width*.56f,size.height*.86f),CornerRadius(2.dp.toPx()),style=Stroke(2.dp.toPx()));drawCircle(if(removed)s.muted else s.accent,1.5.dp.toPx(),Offset(size.width*.5f,size.height*.8f))}
         }
         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
@@ -814,8 +880,26 @@ internal object NativeIconCache {
             }
         }
         "log-content" -> NativeComponentCard(s.uiStyle,s.card,s.text,backdrop=s.backdrop) {
-            Column(Modifier.fillMaxWidth().padding(12.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                for(c in children)key(c.getString("id")){NativeNode(c,s.copy(grouped=true),send)}
+            val childStyle = s.copy(grouped = true)
+            androidx.compose.foundation.text.selection.SelectionContainer {
+                Column(
+                    Modifier.fillMaxWidth().padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    for (c in children) key(c.getString("id")) {
+                        if (c.getString("kind") == "log") {
+                            BasicText(
+                                c.getString("label"),
+                                Modifier.fillMaxWidth(),
+                                style = childStyle.text(14).copy(
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                )
+                            )
+                        } else {
+                            NativeNode(c, childStyle, send)
+                        }
+                    }
+                }
             }
         }
         "controls" -> NativeComponentCard(s.uiStyle,s.card,s.text,backdrop=s.backdrop) { Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {for(c in children)key(c.getString("id")){NativeNode(c,s.copy(compact=true),send)}} }

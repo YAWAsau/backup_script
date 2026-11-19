@@ -2,6 +2,7 @@ package io.github.yawasau.speedbackup.webview
 
 import androidx.compose.runtime.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,7 +34,16 @@ internal val nativeHomeIconLabels=mapOf(
     "腳本路徑" to "script-path",
     "作者" to "author",
     "支援" to "support")
-@Composable internal fun NativeHomeInfoGroup(rows:List<JSONObject>,card:Color,text:Color){
+@Composable internal fun NativeHomeInfoGroup(infoRows:List<JSONObject>,card:Color,text:Color,appRootAuthorization:Boolean=false){
+    // App-owned state stays reactive in Compose, not in the backend info snapshot.
+    val rows=if(appRootAuthorization)infoRows+JSONObject()
+        .put("label",AppRootAuthorization.title()).put("value",AppRootAuthorization.value())
+        .put("iconKey","selinux") else infoRows
+    val context=androidx.compose.ui.platform.LocalContext.current
+    fun action(index:Int): (() -> Unit)? = if(appRootAuthorization&&index==infoRows.size) ({
+        (context as? android.app.Activity)?.let { AppRootAuthorization.retry(it) }
+        Unit
+    }) else null
     if(LocalNativeMaterial.current){
         val colors=androidx.compose.material3.MaterialTheme.colorScheme
         Column(verticalArrangement=Arrangement.spacedBy(2.dp)){
@@ -47,7 +57,7 @@ internal val nativeHomeIconLabels=mapOf(
                         verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
                         shapes=androidx.compose.material3.ListItemDefaults.segmentedShapes(index,rows.size),
                         colors=androidx.compose.material3.ListItemDefaults.colors(containerColor=if(LocalNativeSurfaceBacked.current)Color.Transparent else colors.surfaceBright,contentColor=colors.onSurface,supportingContentColor=colors.onSurfaceVariant),
-                        modifier=Modifier.fillMaxWidth())
+                        modifier=Modifier.fillMaxWidth().then(action(index)?.let { Modifier.clickable(onClick=it) }?:Modifier))
                 }
                 }
             }}
@@ -58,7 +68,7 @@ internal val nativeHomeIconLabels=mapOf(
                 rows.forEachIndexed { index,row -> key(index,row.getString("label")){
                     CompositionLocalProvider(LocalNativeSettingIcon provides row.optString("iconKey","unknown")){
                         top.yukonga.miuix.kmp.basic.BasicComponent(title=row.getString("label"),summary=row.getString("value"),
-                            startAction={NativeSettingIcon()},insideMargin=PaddingValues(horizontal=16.dp,vertical=16.dp))
+                            startAction={NativeSettingIcon()},insideMargin=PaddingValues(horizontal=16.dp,vertical=16.dp),onClick=action(index))
                     }
                 }}
             }

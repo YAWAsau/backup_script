@@ -87,7 +87,7 @@ fn rename(folder:&Path,name:&str,pkg:&str)->io::Result<()> {
 fn media(root:&Path,out:&Path,reset:bool)->io::Result<()> {
     if !reset&&!root.join("Media").is_dir(){return Ok(());}
     let mut body=if reset{String::new()}else{match fs::read_to_string(out){Ok(s)=>s,Err(e) if e.kind()==io::ErrorKind::NotFound=>String::new(),Err(e)=>return Err(e)}};
-    let dir=root.join("Media");if dir.is_dir(){if !reset&&!out.exists(){body.push_str("#不需要恢復的資料夾請在開頭使用#注釋 比如：#Download\n");}for entry in fs::read_dir(dir)?{let entry=entry?;let name=entry.file_name();let name=name.to_str().ok_or_else(||error("media encoding"))?;if entry.file_type()?.is_file()&&name.contains(".tar"){if !token(name){return Err(error("media name"));}body.push_str(name);body.push('\n');}}}
+    let dir=root.join("Media");if dir.is_dir(){if !reset&&!out.exists(){body.push_str("#不需要恢復的資料夾請在開頭使用#注釋 比如：#Download\n");}for entry in fs::read_dir(dir)?{let entry=entry?;let name=entry.file_name();let name=name.to_str().ok_or_else(||error("media encoding"))?;if entry.file_type()?.is_file()&&super::restore_item::catalog_media(name){if !token(name){return Err(error("media name"));}body.push_str(name);body.push('\n');}}}
     publish(out,&body)
 }
 fn apps(manifest:&Path,out:&Path)->io::Result<()> {

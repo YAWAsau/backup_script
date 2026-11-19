@@ -6,7 +6,7 @@ import org.json.JSONObject
 
 internal class NativeEditorPage(private val session:NativeSession,private val context:Context):NativePage {
     private val c get()=session.controls
-    private val selection=NativeSelection()
+    private val selection=NativeSelection(context)
     private val form=NativeSettingsForm(context,session.catalog)
     private lateinit var manager:JSONObject
     private val settings=linkedMapOf<String,List<JSONObject>>()
@@ -435,11 +435,13 @@ internal class NativeEditorPage(private val session:NativeSession,private val co
         val readyApps=if(mode=="media")pageApps else pageApps.takeWhile{it.getString("pkg").let{id->id.startsWith("removed:")||id in iconSettled}}
         for(app in readyApps){
             val id=app.getString("pkg");val removed=app.optBoolean("removed");val selected=app.getBoolean("selected");val apk=app.getBoolean("apk")
+            val appSingle=single&&!app.optBoolean("apkSupported")
             val children=mutableListOf<JSONObject>()
-            if(!single)children+=toggle("app:$id:apk","僅 APK",selected&&apk,removed){val active=!selected||!apk;app.put("selected",active).put("apk",active);changed()}.put("caption","僅 APK")
-            children+=toggle("app:$id:full",if(single)"選取" else "完整",selected&&(!apk||single),removed){app.put("selected",!selected||apk).put("apk",false);changed()}.put("caption",if(single)"選取" else "完整")
+            if(!appSingle)children+=toggle("app:$id:apk","僅 APK",selected&&apk,removed){val active=!selected||!apk;app.put("selected",active).put("apk",active);changed()}.put("caption","僅 APK")
+            children+=toggle("app:$id:full",if(appSingle)"選取" else "完整",selected&&(!apk||appSingle),removed){app.put("selected",!selected||apk).put("apk",false);changed()}.put("caption",if(appSingle)"選取" else "完整")
             if(!removed&&app.optString("displayPackage").ifEmpty{id}=="com.google.android.apps.maps"&&flow in setOf("restore","remote")&&timeline.getJSONArray("sources").length()>0)children+=timelineNodes()
-            nodes+=c.node("app:$id","app",app.getString("label")).put("detail",app.optString("displayPackage").ifEmpty{if(single)"" else id}).put("icon",icons[id]?:"").put("badge",app.optString("badge")).put("removed",removed).put("children",arr(children))
+            val presentation=if(mode=="remote-delete")null else nativeSelectionPresentation(app)
+            nodes+=c.node("app:$id","app",presentation?.name?:app.getString("label")).put("detail",presentation?.detail?:app.optString("displayPackage").ifEmpty{if(appSingle)"" else id}).put("translateLabel",presentation?.friendly==true).put("translateDetail",presentation!=null).put("iconKey",presentation?.icon?:"").put("icon",icons[id]?:"").put("badge",app.optString("badge")).put("removed",removed).put("children",arr(children))
         }
         if(readyApps.size<pageApps.size)nodes+=c.node("apps:icons-loading","loading","正在載入其餘應用圖示…").put("indicator","orbit").put("muted",true)
         nodes+=c.group("apps:paging","row",listOf(c.button("apps:prev","上一頁",selection.page==0){selection.page--;changed()},c.node("apps:page","text","${selection.page+1} / $pages").put("centerLabel",true),c.button("apps:next","下一頁",selection.page+1>=pages){selection.page++;changed()}))
@@ -498,7 +500,7 @@ internal class NativeEditorPage(private val session:NativeSession,private val co
             if(!form.connectionSetup)add(c.group("settings:actions","row",listOf(c.button("settings:undo","還原未儲存修改"){session.confirm("還原這份設定尚未儲存的修改？"){settings.getValue(panel).forEach{it.put("value",it.getString("original"))};changed()}},
             c.button("settings:save","儲存此設定"){session.confirm("儲存此設定？其他檔案不會一起寫入。"){saveSettings(panel);session.status="設定已儲存";session.emit()}}.put("materialPrimary",true))))
         }
-        val tabs=if(manager.optString("panel")=="manager")listOf("apps" to "應用清單","backup" to "備份設定","restore" to "恢復設定").filter{it.first=="apps"||manager.optBoolean(it.first)}.map{(key,label)->c.button("editor:panel:$key",label,session.finished){if(key=="apps")panel=key else openSettings(key);changed()}.put("selected",key==panel)} else emptyList()
+        val tabs=if(manager.optString("panel")=="manager")listOf("backup" to "備份設定","restore" to "恢復設定").filter{manager.optBoolean(it.first)}.map{(key,label)->c.button("editor:panel:$key",label,session.finished){openSettings(key);changed()}.put("selected",key==panel)} else emptyList()
         val title=if(form.authSetup)"認證失敗，請重新輸入帳密" else if(panel!="apps"&&form.connectionSetup)(if(settings.getValue(panel).any{it.optString("key")=="remote_type"&&it.optString("value")=="smb"})"SMB" else "WebDAV")+" 連線設定" else if(panel!="apps")if(panel=="restore")"恢復設定" else "備份設定" else if(flow=="backup")"選擇備份應用" else if(flow.isNotEmpty())"選擇恢復項目" else if(mode=="remote-delete")"編輯遠端備份" else "應用清單"
         val label=if(form.authSetup)"儲存並重試" else if(manager.optBoolean("discoverySetup"))"連線並繼續" else if(flow=="backup")"下一步 · 開始備份" else if(flow.isNotEmpty())"下一步 · 開始恢復" else if(mode=="remote-delete")"刪除所選備份" else "儲存並返回"
         val count=selection.changed().size+settingsChanged()
